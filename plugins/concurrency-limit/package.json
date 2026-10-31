@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.102"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Concurrency limit",
     "description": "Control the number of concurrent threads that are running in bb",

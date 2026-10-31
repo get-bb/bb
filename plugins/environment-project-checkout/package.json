@@ -7,6 +7,9 @@
   "engines": {
     "bb": ">=0.0"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Project checkout",
     "description": "Run a thread in the project's own checkout on an enrolled machine, on the branch you choose",

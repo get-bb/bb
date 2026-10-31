@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.94"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Thread list",
     "description": "bb's sidebar thread list: pinned threads, custom sections, projects, machines, and nested threads.",

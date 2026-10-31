@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
-import { z } from "zod";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
   RUNTIME_SLOT_BY_SPECIFIER,
+  dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
 } from "@bb/plugin-build";
 
@@ -22,6 +22,7 @@ interface PluginArtifactMeta {
     pluginSdkVersion: string;
   };
   runtimeSlots?: string[];
+  cssScope?: "owned-root-v1";
 }
 
 interface PluginArtifactMetaParseResult {
@@ -222,6 +223,8 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
     }
     runtimeSlots = meta.runtimeSlots;
   }
+  const cssScope =
+    meta.cssScope === "owned-root-v1" ? { cssScope: meta.cssScope } : {};
   const authoritativeKeys = [
     "artifactFormatVersion",
     "pluginId",
@@ -235,6 +238,7 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,
         ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
+        ...cssScope,
       },
       error: null,
     };
@@ -292,6 +296,7 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         pluginSdkVersion: builtWith.pluginSdkVersion,
       },
       ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
+      ...cssScope,
     },
     error: null,
   };
@@ -343,19 +348,6 @@ export async function readPluginAppBundleMeta(
   return parsePluginAppBundleMeta(raw);
 }
 
-const ownedRootMetaSchema = z.object({
-  ownedRootCss: z.object({
-    version: z.literal(1),
-    jsSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-    legacyCssSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-    cssSha256: z.string().regex(/^[a-f0-9]{64}$/u),
-  }),
-});
-
-function sha256(bytes: Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 export async function loadPluginAppBundle(
   pluginId: string,
   rootDir: string,
@@ -391,29 +383,19 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
-  let ownedRootCss: PluginCssBytes | null = null;
-  const optionalMeta = ownedRootMetaSchema.safeParse(JSON.parse(metaRaw));
-  if (optionalMeta.success && css !== null) {
-    const binding = optionalMeta.data.ownedRootCss;
-    if (
-      binding.jsSha256 === sha256(js) &&
-      binding.legacyCssSha256 === sha256(css.original)
-    ) {
-      try {
-        const original = await readFile(join(distDir, "app.owned-root.css"));
-        if (binding.cssSha256 === sha256(original)) {
-          ownedRootCss = {
-            original,
-            withoutHostTailwind: Buffer.from(
-              dropHostProvidedTailwind(original.toString("utf8")),
+  const ownedRootCss: PluginCssBytes | null =
+    css !== null && meta.cssScope === "owned-root-v1"
+      ? {
+          original: Buffer.from(
+            dropAnonymousPluginRootScope(css.original.toString("utf8")),
+          ),
+          withoutHostTailwind: Buffer.from(
+            dropAnonymousPluginRootScope(
+              css.withoutHostTailwind.toString("utf8"),
             ),
-          };
+          ),
         }
-      } catch {
-        ownedRootCss = null;
-      }
-    }
-  }
+      : null;
   const hasher = createHash("sha256").update(js);
   if (css !== null) {
     hasher.update(css.original);

@@ -2,7 +2,7 @@ import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -262,7 +262,7 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(unknownFile.status).toBe(404);
   }, 60_000);
 
-  it("serves built owned-root CSS only to capable clients with independent compression variants", async () => {
+  it("serves owned-root CSS only to capable clients with independent compression variants", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-owned");
     await writeAppPluginFixture(rootDir, {
       name: "bb-plugin-owned",
@@ -273,14 +273,12 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     const bundle = entry.app.bundle;
     if (bundle === null) throw new Error("missing built app bundle");
     const legacy = await readFile(join(rootDir, "dist", "app.css"), "utf8");
-    const owned = await readFile(
-      join(rootDir, "dist", "app.owned-root.css"),
-      "utf8",
+    expect(legacy).toContain(",[data-bb-plugin-root]:not([data-bb-plugin])");
+    const owned = legacy.replaceAll(
+      ",[data-bb-plugin-root]:not([data-bb-plugin])",
+      "",
     );
-    expect(legacy).toContain("[data-bb-plugin-root]:not([data-bb-plugin])");
-    expect(owned).not.toContain("[data-bb-plugin-root]:not([data-bb-plugin])");
-    expect(owned).toContain("line-clamp-2");
-    await rm(join(rootDir, "dist", "app.owned-root.css"));
+    expect(owned).toContain(":where([data-bb-plugin=owned]) .line-clamp-2");
     await writeFile(join(rootDir, "dist", "app.css"), "changed after snapshot");
     for (const url of [
       `${BASE}${bundle.cssUrl}`,
@@ -332,127 +330,56 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     }
   }, 60_000);
 
-  it("falls back on invalid optional bindings while retaining immutable CSS snapshots", async () => {
-    const rootDir = join(
-      harness.config.dataDir,
-      "fixtures",
-      "bb-plugin-binding",
-    );
-    await writeAppPluginFixture(rootDir, { name: "bb-plugin-binding" });
+  it("derives owned-root CSS only from metadata that declares it", async () => {
+    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-scope");
+    await writeAppPluginFixture(rootDir, { name: "bb-plugin-scope" });
     const dist = join(rootDir, "dist");
     await mkdir(dist, { recursive: true });
-    const js = "export default {};";
-    const legacy = ".legacy{color:red}";
-    const owned = ".owned{color:blue}";
-    const digest = (text: string) =>
-      createHash("sha256").update(text).digest("hex");
-    const binding = {
-      version: 1,
-      jsSha256: digest(js),
-      legacyCssSha256: digest(legacy),
-      cssSha256: digest(owned),
-    };
-    const baseMeta = {
-      sdkMajor: PLUGIN_SDK_MAJOR,
-      sdkVersion: PLUGIN_SDK_VERSION,
-    };
+    await writeFile(join(dist, "app.js"), "export default {};");
+    const legacy =
+      "@layer utilities{:where([data-bb-plugin=scope],[data-bb-plugin-root]:not([data-bb-plugin])) .p-2{padding:.5rem}}" +
+      "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
+    const owned =
+      "@layer utilities{:where([data-bb-plugin=scope]) .p-2{padding:.5rem}}" +
+      "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
+    await writeFile(join(dist, "app.css"), legacy);
     upsertInstalledPlugin(harness.db, {
-      ...npmPersistence("bb-plugin-binding", "0.1.0"),
-      id: "binding",
-      source: "npm:bb-plugin-binding@0.1.0",
+      ...npmPersistence("bb-plugin-scope", "0.1.0"),
+      id: "scope",
+      source: "npm:bb-plugin-scope@0.1.0",
       rootDir,
       version: "0.1.0",
       enabled: true,
       enabledFollowsDefault: false,
     });
-    const cases = [
-      { name: "missing metadata", optional: undefined },
-      { name: "unknown version", optional: { ...binding, version: 2 } },
-      { name: "null metadata", optional: null },
-      { name: "malformed metadata", optional: { ...binding, cssSha256: 1 } },
-      { name: "short digest", optional: { ...binding, cssSha256: "abc" } },
-      { name: "missing candidate", optional: binding, missing: true },
-      { name: "stale js", optional: binding, js: js + "void 1;" },
-      { name: "stale legacy", optional: binding, legacy: legacy + ".new{}" },
-      { name: "stale candidate", optional: binding, owned: owned + ".new{}" },
-      { name: "valid", optional: binding, valid: true },
-    ];
-    for (const scenario of cases) {
-      await writeFile(join(dist, "app.js"), scenario.js ?? js);
-      await writeFile(join(dist, "app.css"), scenario.legacy ?? legacy);
-      if (scenario.missing)
-        await rm(join(dist, "app.owned-root.css"), { force: true });
-      else
-        await writeFile(
-          join(dist, "app.owned-root.css"),
-          scenario.owned ?? owned,
-        );
+    const hashes = new Set<string>();
+    for (const cssScope of [undefined, "unknown", "owned-root-v1"]) {
       await writeFile(
         join(dist, "app.meta.json"),
-        JSON.stringify({ ...baseMeta, ownedRootCss: scenario.optional }),
+        JSON.stringify({
+          sdkMajor: PLUGIN_SDK_MAJOR,
+          sdkVersion: PLUGIN_SDK_VERSION,
+          cssScope,
+        }),
       );
-      await harness.pluginService.reload("binding");
+      await harness.pluginService.reload("scope");
       const bundle = harness.pluginService
         .list()
-        .find((plugin) => plugin.id === "binding")?.app.bundle;
-      if (bundle == null) throw new Error(`missing bundle: ${scenario.name}`);
-      for (const path of [
-        bundle.cssUrl,
-        `/api/v1/plugins/binding/assets/app.css?h=${bundle.hash}`,
-      ]) {
-        for (const scope of [null, "unknown", "owned-root-v1"]) {
-          const url = new URL(`${BASE}${path}`);
-          if (scope !== null) url.searchParams.set("css-scope", scope);
-          const response = await harness.app.request(url.toString());
-          expect(response.status, scenario.name).toBe(200);
-          expect(await response.text(), scenario.name).toBe(
-            scenario.valid && scope === "owned-root-v1"
-              ? owned
-              : (scenario.legacy ?? legacy),
-          );
-        }
+        .find((plugin) => plugin.id === "scope")?.app.bundle;
+      if (bundle == null) throw new Error(`missing bundle: ${cssScope}`);
+      hashes.add(bundle.hash);
+      for (const requested of [null, "unknown", "owned-root-v1"]) {
+        const url = new URL(`${BASE}${bundle.cssUrl}`);
+        if (requested !== null) url.searchParams.set("css-scope", requested);
+        const response = await harness.app.request(url.toString());
+        expect(await response.text(), `${cssScope} ${requested}`).toBe(
+          cssScope === "owned-root-v1" && requested === "owned-root-v1"
+            ? owned
+            : legacy,
+        );
       }
     }
-    const before = harness.pluginService
-      .list()
-      .find((plugin) => plugin.id === "binding")?.app.bundle;
-    if (before == null) throw new Error("missing valid bundle");
-    const retained = harness.pluginService.getAppAssetByHash(
-      before.hash,
-      "css",
-    );
-    await rm(join(dist, "app.owned-root.css"));
-    await harness.pluginService.reload("binding");
-    const withoutCandidate = harness.pluginService
-      .list()
-      .find((plugin) => plugin.id === "binding")?.app.bundle;
-    expect(withoutCandidate?.hash).not.toBe(before.hash);
-    const changed = owned + ".new{color:green}";
-    await writeFile(join(dist, "app.owned-root.css"), changed);
-    await writeFile(
-      join(dist, "app.meta.json"),
-      JSON.stringify({
-        ...baseMeta,
-        ownedRootCss: { ...binding, cssSha256: digest(changed) },
-      }),
-    );
-    await harness.pluginService.reload("binding");
-    const after = harness.pluginService
-      .list()
-      .find((plugin) => plugin.id === "binding")?.app.bundle;
-    expect(after?.hash).not.toBe(before.hash);
-    expect(
-      (
-        await retained?.read({ hostTailwind: false, ownedRoot: true })
-      )?.toString(),
-    ).toBe(owned);
-    expect(
-      await (
-        await harness.app.request(
-          `${BASE}${after?.cssUrl}?css-scope=owned-root-v1`,
-        )
-      ).text(),
-    ).toBe(changed);
+    expect(hashes.size).toBe(3);
   });
 
   it("reports hasApp:false for headless plugins and 404s their assets", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
   pluginScopeRoots,
   scopePluginUtilities,
@@ -155,6 +156,22 @@ describe("scopePluginUtilities", () => {
       "@layer properties{@supports (top:1px){*,::before{--tw-blur:initial}}}" +
       "@layer utilities{.blur-sm{filter:blur(4px)}}";
     expect(() => scopePluginUtilities(css, ROOTS)).not.toThrow();
+  });
+});
+
+describe("dropAnonymousPluginRootScope", () => {
+  it("matches scoping to the plugin's own root and leaves other CSS alone", () => {
+    const utilities =
+      "@layer utilities{.a,.b{color:red}@media (width>=40rem){.p-2{padding:.5rem}}}";
+    const authored =
+      ":where([data-bb-plugin-root]) .x,[data-bb-plugin-root]:not([data-bb-plugin]) .y{opacity:.5}";
+    expect(
+      dropAnonymousPluginRootScope(
+        `${scopePluginUtilities(utilities, ROOTS)}${authored}`,
+      ),
+    ).toBe(
+      `${scopePluginUtilities(utilities, '[data-bb-plugin="demo"]')}${authored}`,
+    );
   });
 });
 

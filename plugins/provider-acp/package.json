@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.90"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "ACP providers",
     "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",

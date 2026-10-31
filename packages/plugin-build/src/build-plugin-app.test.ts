@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -20,7 +19,10 @@ import {
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { buildPluginServer } from "./build-plugin-server.js";
-import { dropHostProvidedTailwind } from "./scope-plugin-utilities.js";
+import {
+  dropAnonymousPluginRootScope,
+  dropHostProvidedTailwind,
+} from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -377,12 +379,9 @@ describe("plugin app runtime shim", () => {
 
     const packagePath = join(dir, "package.json");
     const originalPackage = await readFile(packagePath, "utf8");
-    expect(
-      JSON.parse(await readFile(result.metaPath, "utf8")),
-    ).not.toHaveProperty("ownedRootCss");
-    await expect(
-      readFile(join(dir, "dist/app.owned-root.css")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
+    const readMeta = async () =>
+      JSON.parse(await readFile(result.metaPath, "utf8"));
+    expect(await readMeta()).not.toHaveProperty("cssScope");
     await writeFile(
       packagePath,
       JSON.stringify({
@@ -390,45 +389,22 @@ describe("plugin app runtime shim", () => {
         bbPluginBuild: { experimental_cssScope: "owned-root-v1" },
       }),
     );
-    const optedIn = await buildPluginApp(
-      dir,
-      "0.9.0-test",
-      await testToolchain(),
-    );
-    const ownedCss = await readFile(
-      join(dir, "dist/app.owned-root.css"),
-      "utf8",
-    );
-    const legacyCss = await readFile(optedIn.cssPath, "utf8");
-    expect(legacyCss).toBe(css);
+    await buildPluginApp(dir, "0.9.0-test", await testToolchain());
+    expect(await readFile(result.cssPath, "utf8")).toBe(css);
+    expect(await readMeta()).toMatchObject({ cssScope: "owned-root-v1" });
+    const ownedCss = dropAnonymousPluginRootScope(css);
     expect(ownedCss).not.toContain(
       "[data-bb-plugin-root]:not([data-bb-plugin])",
     );
     expect(ownedCss).toContain(
+      String.raw`:where([data-bb-plugin=css-fixture]) .flex-col`,
+    );
+    expect(ownedCss).toContain(
       "[data-bb-plugin-root] .bb71-authored-portal{opacity:.75}",
     );
-    expect(ownedCss).toContain(":where([data-bb-plugin=css-fixture])");
-    const normalize = (value: string) =>
-      value.replaceAll(",[data-bb-plugin-root]:not([data-bb-plugin])", "");
-    expect(normalize(legacyCss)).toBe(ownedCss);
-    const digest = (value: Uint8Array | string) =>
-      createHash("sha256").update(value).digest("hex");
-    expect(
-      JSON.parse(await readFile(optedIn.metaPath, "utf8")).ownedRootCss,
-    ).toEqual({
-      version: 1,
-      jsSha256: digest(await readFile(optedIn.jsPath)),
-      legacyCssSha256: digest(legacyCss),
-      cssSha256: digest(ownedCss),
-    });
     await writeFile(packagePath, originalPackage);
     await buildPluginApp(dir, "0.9.0-test", await testToolchain());
-    expect(
-      JSON.parse(await readFile(result.metaPath, "utf8")),
-    ).not.toHaveProperty("ownedRootCss");
-    await expect(
-      readFile(join(dir, "dist/app.owned-root.css")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readMeta()).not.toHaveProperty("cssScope");
   });
 
   it.each([

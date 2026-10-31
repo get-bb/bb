@@ -26,6 +26,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.91"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "File Editor",
     "description": "Edit files in BB with the Monaco editor instead of the read-only preview.",

@@ -14,11 +14,7 @@ interface Statement {
   body: string | null;
 }
 
-export function pluginScopeRoots(
-  pluginId: string,
-  mode: "legacy" | "owned-root-v1" = "legacy",
-): string {
-  if (mode === "owned-root-v1") return `[data-bb-plugin="${pluginId}"]`;
+export function pluginScopeRoots(pluginId: string): string {
   return `[data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin])`;
 }
 
@@ -33,6 +29,21 @@ export function scopePluginUtilities(css: string, scopeRoots: string): string {
       }
       assertNoUnscopedClassRule(statement);
       return `${statement.prelude}{${statement.body}}`;
+    })
+    .join("");
+}
+
+const ANONYMOUS_PLUGIN_ROOT_ARM =
+  /,\s*\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)/g;
+
+export function dropAnonymousPluginRootScope(css: string): string {
+  return splitStatements(css)
+    .map((statement) => {
+      if (statement.body === null) return statement.prelude;
+      const body = isUtilitiesLayer(statement.prelude)
+        ? statement.body.replace(ANONYMOUS_PLUGIN_ROOT_ARM, "")
+        : statement.body;
+      return `${statement.prelude}{${body}}`;
     })
     .join("");
 }

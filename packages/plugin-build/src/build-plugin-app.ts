@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -288,10 +287,10 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   };
 }
 
-type CssScopeMode = "legacy" | "owned-root-v1";
+type CssScope = "legacy" | "owned-root-v1";
 
 interface PluginAppConfig {
-  cssScope: CssScopeMode;
+  cssScope: CssScope;
   appEntry: string;
   packageName: string;
   pluginVersion: string;
@@ -394,7 +393,7 @@ async function readDependencyTailwindSources(
 function readCssScope(
   pkg: Record<string, unknown>,
   packageJsonPath: string,
-): CssScopeMode {
+): CssScope {
   const config = pkg.bbPluginBuild;
   if (config === undefined) return "legacy";
   if (
@@ -440,6 +439,7 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
 
 async function buildTailwindCss(
   rootDir: string,
+  pluginId: string,
   toolchain: PluginBuildToolchain,
   dependencySources: ScannerSource[],
   bundledInputs: ReadonlySet<string>,
@@ -505,7 +505,10 @@ async function buildTailwindCss(
       candidates.add(candidate);
     }
   }
-  return compiler.build([...candidates]);
+  return scopePluginUtilities(
+    compiler.build([...candidates]),
+    pluginScopeRoots(pluginId),
+  );
 }
 
 async function bundledInputPaths(
@@ -556,7 +559,7 @@ export async function buildPluginApp(
   toolchain: PluginBuildToolchain,
   options: PluginAppBuildOptions = { minify: true },
 ): Promise<PluginAppBuildResult> {
-  const { appEntry, packageName, pluginVersion, cssScope } =
+  const { appEntry, cssScope, packageName, pluginVersion } =
     await readPluginAppConfig(rootDir);
   const pluginId = derivePluginId(packageName);
   const dependencySources = await readDependencyTailwindSources(rootDir);
@@ -565,7 +568,6 @@ export async function buildPluginApp(
   const jsPath = join(distDir, "app.js");
   const cssPath = join(distDir, "app.css");
   const metaPath = join(distDir, "app.meta.json");
-  const ownedCssPath = join(distDir, "app.owned-root.css");
 
   let migrationWarnings: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
@@ -617,39 +619,21 @@ export async function buildPluginApp(
       dependencySources.length > 0
         ? await bundledInputPaths(bundle.metafile, rootDir)
         : new Set();
-    const generatedCss = await buildTailwindCss(
-      rootDir,
-      toolchain,
-      dependencySources,
-      bundledInputs,
-    );
+    const tailwindCss = (
+      await buildTailwindCss(
+        rootDir,
+        pluginId,
+        toolchain,
+        dependencySources,
+        bundledInputs,
+      )
+    ).trimEnd();
     const { optimize } = (await import(
       toolchain.tailwindNode
     )) as typeof import("@tailwindcss/node");
-    const scopedCss = (mode: CssScopeMode) => {
-      const tailwindCss = scopePluginUtilities(
-        generatedCss,
-        pluginScopeRoots(pluginId, mode),
-      ).trimEnd();
-      return optimize(`${tailwindCss}\n${authoredCss}`, {
-        minify: options.minify,
-      }).code;
-    };
-    const css = scopedCss("legacy");
-    const stagedOwnedCssPath = join(stageDir, "app.owned-root.css");
-    let ownedRootCss;
-    if (cssScope === "owned-root-v1") {
-      const ownedCss = scopedCss(cssScope);
-      await writeFile(stagedOwnedCssPath, ownedCss);
-      ownedRootCss = {
-        version: 1,
-        jsSha256: createHash("sha256")
-          .update(await readFile(stagedJsPath))
-          .digest("hex"),
-        legacyCssSha256: createHash("sha256").update(css).digest("hex"),
-        cssSha256: createHash("sha256").update(ownedCss).digest("hex"),
-      };
-    }
+    const css = optimize(`${tailwindCss}\n${authoredCss}`, {
+      minify: options.minify,
+    }).code;
     await writeFile(stagedCssPath, css);
     await writeFile(
       stagedMetaPath,
@@ -661,7 +645,7 @@ export async function buildPluginApp(
             bbVersion,
           }),
           runtimeSlots,
-          ...(ownedRootCss === undefined ? {} : { ownedRootCss }),
+          ...(cssScope === "legacy" ? {} : { cssScope }),
         },
         null,
         2,
@@ -670,11 +654,6 @@ export async function buildPluginApp(
 
     await renameIntoPlace(stagedJsPath, jsPath);
     await renameIntoPlace(stagedCssPath, cssPath);
-    if (ownedRootCss !== undefined) {
-      await renameIntoPlace(stagedOwnedCssPath, ownedCssPath);
-    } else {
-      await rm(ownedCssPath, { force: true });
-    }
     await renameIntoPlace(stagedMetaPath, metaPath);
   } finally {
     await rm(stageDir, { recursive: true, force: true });

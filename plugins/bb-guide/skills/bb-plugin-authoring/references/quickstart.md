@@ -161,6 +161,14 @@ namespaces routes, storage, settings, and CLI commands.
   `app.meta.json` also lists `runtimeSlots`, the shimmed host modules the
   bundle imports. bb downloads `@pierre/diffs` only before evaluating a bundle
   that lists it; a bundle built without the field gets every slot.
+- Utility classes match inside your plugin's `data-bb-plugin` roots and also
+  inside any `data-bb-plugin-root` without an id, which only very old vendored
+  `lib/portal-scope` copies render. If every mount and portal carries the id
+  (current `lib/portal-scope` and the shared overlays do), set top-level
+  `"bbPluginBuild": { "experimental_cssScope": "owned-root-v1" }` in
+  `package.json`. The build records `cssScope` in `app.meta.json`, and bb then
+  serves selectors without the id-less match, which keeps restyles of the rest
+  of the page cheap.
 - Runtime imports that bb does not shim belong in `dependencies`; validator
   imports such as Zod are ordinary runtime dependencies that the build
   bundles. `devDependencies` is for types and tooling only. A build-required

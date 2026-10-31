@@ -1036,14 +1036,13 @@ of its `package.json`, outside `bb`. Audit custom portals and content-script
 mounts before enabling it. Nested roots retain the existing ancestor matching;
 this does not introduce a nearest-root cascade boundary.
 
-`bb plugin build` keeps legacy `dist/app.css` and emits an additional
-`dist/app.owned-root.css`. The artifact metadata binds that variant to the JS
-and both CSS files. Supporting clients request it; older clients and servers
-continue using legacy CSS. Missing or invalid optional metadata or mismatched
-files also use legacy CSS. Authored CSS remains unchanged. Old builders ignore
-the opt-in and produce only the legacy artifact.
-Packages with an explicit `files` allowlist must include
-`dist/app.owned-root.css` alongside the JS, metadata, and legacy CSS files.
+`bb plugin build` still writes one `dist/app.css` with the legacy selectors and
+records `"cssScope": "owned-root-v1"` in `dist/app.meta.json`. When the app
+requests a stylesheet with `css-scope=owned-root-v1`, the server drops the
+`[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that plugin's
+utility selectors and serves the narrower variant. Requests without the
+parameter, and plugins without the metadata field, get the legacy CSS. Authored
+CSS is never rewritten. Every bundled plugin with a frontend opts in.
 
 ### Multi-plugin repositories
 

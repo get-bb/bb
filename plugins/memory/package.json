@@ -25,6 +25,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.102"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Memory",
     "description": "Provider-independent durable memory for agents. We recommend disabling provider-native memory when using this plugin.",

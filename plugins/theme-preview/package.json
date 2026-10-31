@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.6"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Theme Preview",
     "description": "Preview and validate bb themes across representative app screens, components, overlays, style tokens, and contrast checks.",
