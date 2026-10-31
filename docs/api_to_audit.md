@@ -3917,8 +3917,8 @@ through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit`
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method. The setup guide's
-Plugins step reports `recommendation` `shown` and `selected` with a per-visit
-`recommendation_id`; `selected` also stores that id in server-owned settings
+Plugins step reports `recommendation` `shown`, `selected` and `deselected`
+(a featured plugin switched back off) with a per-visit `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
