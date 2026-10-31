@@ -1,0 +1,104 @@
+---
+title: Choose a model, reasoning and context size
+description: Pick the agent, model, reasoning level and speed in the model picker. bb remembers your choice per project; Claude Code can offer 1M-token context.
+type: how-to
+sources:
+  - apps/app/src/components/pickers/ModelReasoningMenu.tsx
+  - apps/app/src/components/pickers/ModelReasoningPicker.tsx
+  - apps/app/src/components/thread/timeline/ThreadContextWindowIndicator.tsx
+  - apps/app/src/components/settings/ProvidersSettingsSection.tsx
+  - apps/server/src/services/threads/project-execution-defaults.ts
+  - apps/server/src/services/threads/thread-default-policy.ts
+  - apps/server/src/services/providers/provider-model-catalog-store.ts
+  - apps/cli/src/commands/thread/spawn.ts
+  - plugins/provider-claude-code/src/model-list.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+The model picker sits next to the composer's **+** button.
+
+## Pick a model and reasoning level
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click the model picker, or use its [keyboard shortcut](/docs/keyboard-shortcuts).
+2. Choose the agent from the icons along the top, then a model under **Model**.
+3. Choose a level under **Reasoning**.
+4. For a faster speed, turn on **Fast mode** or pick one under **Speed**.
+
+<Screenshot
+  src="/docs-images/choose-a-model-reasoning-and-context-size/model-picker"
+  alt="The open model picker shows agent icons, the Model list, Reasoning levels and the Fast mode switch."
+  width={760}
+  height={583}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb provider models claude-code
+bb thread spawn --provider claude-code --model claude-opus-5-5 --reasoning-level high "Review the open PR"
+```
+
+`--service-tier fast` picks a faster speed. `--option <option=value>` sets a model option.
+
+</Tab>
+</Tabs>
+
+| Agent | Reasoning levels (models may offer fewer) |
+| --- | --- |
+| Claude Code | Low, Medium, High, Extra High, Ultracode, Max |
+| Codex | None, Low, Medium, High, Extra High, Max, Ultra |
+| Pi | None, Low, Medium, High, Extra High, Max |
+| ACP agents | What the agent reports |
+
+Faster speeds cost more. Turn off **Allow faster service tiers** in **Settings → Providers** to block them everywhere.
+
+## Change the model in a running thread
+
+Pick a new model or level in the composer; it applies from the next message. To switch agent, choose **Handoff to new thread**.
+
+| Command | Effect |
+| --- | --- |
+| `bb thread tell <id> --model <model> "message"` | One message |
+| `bb thread update <id> --model <model>` | Following turns |
+
+## Set defaults for a project
+
+There is no default model setting. New threads in a project reuse the agent, model, reasoning, permission mode and speed of your last app thread there.
+
+- **Default agent:** check **Default** in the agent's **⋯** menu in **Settings → Providers**.
+- **Child threads** inherit their parent's model and reasoning on the same agent.
+- **CLI:** `bb thread spawn` without `--provider` or `--model` uses the project's choice.
+
+## Get 1M context
+
+The context window belongs to the model and your account, not to bb.
+
+- **Claude Code** decides which models get a 1M-token window; a separate 1M version ends in **(1M)**.
+- **Disable 1M context** in **Settings → Plugins → Claude Code provider** turns it off.
+
+Hover the composer's ring for tokens used; it turns amber at 75% and red at 90%. `/compact` or `bb thread compact <id>` summarizes a full thread.
+
+## If a model is missing
+
+The list comes from the agent on the thread's machine.
+
+1. Update the agent there.
+2. Check what it reports: `bb provider models <provider-id> --machine <machine>`.
+3. If it couldn't load models, the agent isn't installed or signed in there. See [Claude Code](/docs/claude-code), [Codex](/docs/codex), [Pi](/docs/pi) or [ACP agents](/docs/add-acp-agents).
+
+For an unlisted model ID, add it to `customModels`; see [Run local models](/docs/add-acp-agents#run-local-models).
+
+## Check it worked
+
+The picker shows your choice, and the next reply uses it.
+
+## Related troubleshooting
+
+- [Claude Code](/docs/claude-code#check-it-worked): the Claude model list is empty.
+- [Use several accounts](/docs/use-several-accounts): routing through the Account Pooler.

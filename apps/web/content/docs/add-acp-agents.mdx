@@ -1,0 +1,125 @@
+---
+title: Add Cursor, opencode and other ACP agents
+description: bb runs any agent that speaks the Agent Client Protocol. Cursor, opencode and others are built in, the ACP registry adds more, or add your own as JSON.
+type: how-to
+sources:
+  - plugins/provider-acp/server.ts
+  - plugins/provider-acp/app.tsx
+  - plugins/provider-acp/src/agents.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - plugins/provider-acp/src/registry.ts
+  - plugins/provider-acp/src/registry-service.ts
+  - packages/provider-bridge-acp/src/launch-spec.ts
+since: 0.0.29
+owner: brsbl
+verified: 2026-10-30
+---
+
+bb runs the agent's command on the thread's machine and talks to it over ACP, through the **ACP providers** plugin.
+
+## Use a built-in agent
+
+1. Install the agent's CLI on the machine and sign in.
+2. Start a thread and pick the agent in the model picker.
+
+| Agent | Command bb runs | Sign in with |
+| --- | --- | --- |
+| Cursor | `cursor-agent acp` | `cursor-agent login` |
+| opencode | `opencode acp` | `opencode auth login` |
+| omp | `omp acp` | `omp login` |
+| Grok Build | `grok agent stdio` | `grok login` |
+| Hermes Agent | `hermes acp` | `hermes login` |
+
+To hide an agent, use its **⋯** menu → **Disable** in **Settings → Providers**, or run `bb provider disable acp-opencode`.
+
+## Add an agent from the ACP registry
+
+bb can add any registry agent that runs through `npx` or `uvx`; the machine needs Node.js or uv.
+
+1. Open **Settings → Plugins → ACP providers**.
+2. Under **Agent registry**, search for the agent and choose **Add**.
+3. Pick the agent in the model picker.
+
+<Screenshot
+  src="/docs-images/add-acp-agents/agent-registry"
+  alt="The Agent registry lists agents, each with an Add button or a Manual install badge."
+  width={768}
+  height={330}
+/>
+
+```sh
+bb acp registry
+bb acp add <agent-id>
+bb acp remove <agent-id>
+```
+
+| Label | Meaning |
+| --- | --- |
+| **Manual install** | Binary only; add it as a custom agent. |
+| **Built in** | bb ships it. |
+| **Update** | A newer version exists. |
+
+## Add your own agent
+
+Any command serving ACP on stdin and stdout works. Add it to **Custom agents** in **Settings → Plugins → ACP providers**:
+
+```json title="Custom agents"
+[
+  { "id": "my-agent", "displayName": "My Agent", "command": "my-agent", "args": ["acp"] }
+]
+```
+
+```sh
+bb plugin config provider-acp set customAgents '[{"id": "my-agent", "displayName": "My Agent", "command": "my-agent", "args": ["acp"]}]'
+```
+
+It appears as `acp-<id>`. Keep the `id` once threads use it.
+
+| Field | Required | What it is |
+| --- | --- | --- |
+| `id` | Yes | Lowercase letters, digits and dashes. |
+| `displayName` | Yes | Name in the model picker. |
+| `command` | Yes | Program to run. |
+| `args`, `env`, `cwd` | No | Arguments, environment and folder. |
+| `modelCli`, `reasoningCli`, `nativeReasoning`, `permissionCli` | No | Set models, reasoning and permissions. |
+| `nativeSkillRoots`, `supportsManualCompaction`, `providerUsage`, `dialect` | No | Skills, `/compact`, usage and message format. |
+
+:::warning
+A custom agent runs as you. Add only agents you trust.
+:::
+
+## Run local models
+
+bb doesn't run models. Set the model up in an agent that reaches it: [Pi](/docs/pi), opencode, or a custom agent.
+
+To make an extra model ID selectable, add it to `customModels`, then restart bb. The agent can still reject it.
+
+```json title="~/.bb/config.json"
+{
+  "customModels": [
+    { "providerId": "acp-my-agent", "model": "my-proxy/my-model", "displayName": "My Proxy Model" }
+  ]
+}
+```
+
+## What's supported
+
+| Feature | ACP agents |
+| --- | --- |
+| Permission modes | Accept Edits and Full Access |
+| Models, reasoning, context and cost | What the agent reports |
+| Questions | Up to 10 fields |
+| Forks | opencode, omp and Hermes Agent |
+| Edit an earlier message | No |
+| Usage limits | Cursor and opencode, in [Provider usage](/docs/track-usage-limits-and-cost) |
+
+See [Agent feature support](/docs/agent-feature-support).
+
+## Check it worked
+
+Run `bb provider list`; the agent appears as `acp-<id>`. If the picker can't load models, the command isn't installed or signed in.
+
+## Related troubleshooting
+
+- [Choose a model, reasoning and context size](/docs/choose-a-model-reasoning-and-context-size#if-a-model-is-missing): a model is missing.
+- [Connect MCP servers](/docs/connect-mcp-servers): the agent doesn't see MCP servers.
