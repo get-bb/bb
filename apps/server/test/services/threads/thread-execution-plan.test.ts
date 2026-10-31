@@ -282,11 +282,11 @@ describe("thread execution plan input sources", () => {
       );
 
       expect(ignoredDisplayedValue.providerId).toBe("codex");
-      expect(ignoredDisplayedValue.executionDefaults?.model).toBe("gpt-5");
+      expect(ignoredDisplayedValue.defaultModel).toBe("gpt-5");
       expect(legacyExplicitValue.providerId).toBe("pi");
-      expect(legacyExplicitValue.executionDefaults).toBeNull();
+      expect(legacyExplicitValue.defaultModel).toBeNull();
       expect(clientPreferredProvider.providerId).toBe("pi");
-      expect(clientPreferredProvider.executionDefaults).toBeNull();
+      expect(clientPreferredProvider.defaultModel).toBeNull();
       expect(clientPreferredProvider.requestedModel).toBeNull();
     });
   });
@@ -312,7 +312,7 @@ describe("thread execution plan input sources", () => {
       );
 
       expect(resolution.providerId).toBe("codex");
-      expect(resolution.executionDefaults).toBeNull();
+      expect(resolution.defaultModel).toBeNull();
       expect(resolution.requestedModel).toBeNull();
     });
   });
