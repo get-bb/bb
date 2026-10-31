@@ -112,7 +112,10 @@ Queued messages:
 
   bb thread queue list [<thread-id>] [--wait-holder plugin:<plugin-id>]
   bb thread queue create <thread-id> <message> [--file <path>] [--image <path>]
-  bb thread queue update <thread-id> <message-id> <message> [--file <path>] [--image <path>]
+  bb thread queue update <thread-id> <message-id> [<message>] [--file <path>] [--image <path>]
+                         [--send-at <when> | --clear-send-at] [--model <model>]
+                         [--reasoning-level <level>] [--permission-mode <mode>]
+                         [--service-tier <tier>]
                                            create and update also take --message-file <path>
   bb thread queue send <thread-id> <message-id> [--mode auto|steer]
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
@@ -142,7 +145,27 @@ Queued messages:
   Failed rows show their failure reason instead of their previous wait, followed
   by a recovery command: `bb thread queue send <thread-id> <message-id>`.
   Use it to retry immediately, including after automatic retries are exhausted.
-  Editing the message does not clear its failure or trigger a retry.
+  Editing the message does not clear its failure or trigger a retry; setting a
+  new send time with `--send-at` does, and the row retries at that time.
+
+  `queue update --send-at <when>` moves a row to a new send time, earlier or
+  later, and `--clear-send-at` removes its send time so it goes as soon as
+  nothing else holds it. Either works on any row not already sending, including
+  a retry, and the message text is optional when you pass one. Changing only
+  the time keeps an edit in progress in the app and does not touch the text. When
+  the new time arrives the row is dispatched the same way as any scheduled send:
+  `message.dispatch` hooks still apply, and a busy thread queues it again. The
+  SDK takes `sendAt` (epoch ms, or null to clear) on
+  `threads.queuedMessages.update`, with or without `input`; a time that has
+  passed is rejected.
+
+  `queue update --model`, `--reasoning-level`, `--permission-mode`, and
+  `--service-tier` change what the row will run with; flags you leave out keep
+  the row's current values, the same checks as a send apply (the machine's
+  permission ceiling, the provider's levels), and the message text is optional.
+  A row grouped with other rows is refused when its new options would no longer
+  match theirs; ungroup it first. The SDK takes the same four fields on
+  `threads.queuedMessages.update`.
 
   `queue send` dispatches a row now, bypassing every plugin wait and its own
   schedule — the invariants (a running turn, an unfinished workspace, an

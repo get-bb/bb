@@ -286,6 +286,14 @@
       "type": "registry:ui"
     },
     {
+      "name": "schedule-time",
+      "type": "registry:lib"
+    },
+    {
+      "name": "schedule-time-fields",
+      "type": "registry:ui"
+    },
+    {
       "name": "scroll-area",
       "type": "registry:ui"
     },
