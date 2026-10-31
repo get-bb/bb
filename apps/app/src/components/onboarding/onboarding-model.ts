@@ -33,6 +33,32 @@ export const ONBOARDING_PLUGINS: readonly {
 
 export const CONNECT_PLUGIN_ID = "connect";
 
+export type SetupGuideVariant = "control" | "new";
+
+export interface SetupGuide {
+  variant: SetupGuideVariant;
+  featuredPluginEntryIds: readonly string[] | null;
+}
+
+export function featuredPluginEntryIds(guide: SetupGuide): readonly string[] {
+  return (
+    guide.featuredPluginEntryIds ??
+    ONBOARDING_PLUGINS.map((plugin) => plugin.entryId)
+  );
+}
+
+export type StepOutcome = "completed" | "skipped";
+
+export function skippedStepIds(
+  outcomes: ReadonlyMap<OnboardingStepId, StepOutcome>,
+): ReadonlySet<OnboardingStepId> {
+  return new Set(
+    [...outcomes]
+      .filter(([, outcome]) => outcome === "skipped")
+      .map(([step]) => step),
+  );
+}
+
 export type AgentSetupState =
   | { status: "checking" }
   | { status: "ready"; detail: string | null }

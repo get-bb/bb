@@ -248,6 +248,7 @@ change the host-daemon protocol.
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                                                                                                                                                                                     |
 | `BB_TELEMETRY`                 | `bb-app env`, or environment                       | Startup-only            | `false` always disables anonymous usage telemetry, overriding the `telemetryEnabled` setting.                                                                                                                                                                              |
 | `BB_SKIP_ONBOARDING`           | Environment                                        | Startup-only            | Default false. `1` marks first-run setup completed at startup when it is not yet, so the setup screen is skipped. Settings → General can still replay it. `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`; an explicit `0` retains setup. |
+| `BB_SETUP_GUIDE_VARIANT`       | Environment                                        | Startup-only QA         | `control` or `new` forces the first-run setup guide variant, ignoring telemetry and the `setup-guide-redesign` experiment. Unset by default. See [General settings](#general-settings).                                                                                    |
 | `BB_PERF_DIAGNOSTICS`          | `bb-app env`, environment, or `--perf-diagnostics` | Startup-only            | Default false. Permits the `performanceDiagnostics` experiment; see [Experiments](#experiments).                                                                                                                                                                           |
 | `BB_CLI_ERROR_LOG`             | Environment of the `bb` process                    | Optional                | `0` stops the CLI recording failed invocations (command path, error code, no argument values) to `<dataDir>/logs/cli-errors.jsonl`. See `bb guide overview`.                                                                                                               |
 | `BB_ACCOUNT_POOL_PARENT_URL`   | Set automatically by a parent bb server            | Nested bb servers       | Account Pooler hub of the bb server whose thread launched this one. When present the Account Pooler plugin is enabled on first run and proxies to that parent; `bb pool parent isolate` opts out. Not a `bb-app config` key.                                               |
@@ -334,6 +335,17 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings �
 General → Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
+The guide shown is `control` (current) or `new` (redesign), from
+`GET /api/v1/system/setup-guide` (`sdk.system.experimental_setupGuide()`,
+`{ variant, featuredPluginEntryIds }`). The server resolves it once per run on
+the first request: `BB_SETUP_GUIDE_VARIANT` forces a variant for QA; with
+telemetry off or unavailable it is `control`; otherwise it reuses the
+assignment saved in `<dataDir>/setup-guide-assignment.json`, else evaluates the
+PostHog `setup-guide-redesign` flag for the anonymous install id (3-second
+timeout). Failures, a missing or disabled flag, or an unknown variant fall back
+to `control`. The `new` variant's flag payload `{"plugins": ["memory", ...]}`
+lists bb-official entry ids to feature; `featuredPluginEntryIds` is `null`
+when it is absent or invalid, and the app uses its default list.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -348,6 +360,14 @@ first-send events through `POST /api/v1/system/telemetry/events`
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
+`onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
+being shown: the server saves the setup-guide assignment, adds
+`setup_guide_variant` and `setup_guide_source` (`override`, `flag`, or
+`default`), sets the `setup_guide_variant` person property, and, when the
+variant came from the flag, also sends PostHog's `$feature_flag_called`. The
+server adds `setup_guide_variant` to every setup-guide event (`onboarding_*`
+and onboarding `recommendation`), and once a flag assignment is known every
+event, including `turn_finished`, carries `$feature/setup-guide-redesign`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
@@ -818,16 +838,16 @@ ui_preference_conflict`. Read and write them with `bb settings ui
 list|get|set|reset` or `sdk.system.uiPreferences` (see
 `bb guide customization`).
 
-| Key                           | Value                                                                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one |
-| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`       |
-| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                           |
-| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
-| `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
-| `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
-| `threadContextCard.pinned`   | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
-| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)          |
+| Key                           | Value                                                                                                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one    |
+| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`          |
+| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                              |
+| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                            |
+| `sidebar.footerOrder`         | Footer action order                                                                                                                                       |
+| `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                            |
+| `threadContextCard.pinned`    | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
+| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)             |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,

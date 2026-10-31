@@ -12,6 +12,7 @@ import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
+import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
@@ -64,7 +65,9 @@ import { sdk } from "@/lib/sdk";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
+  AgentInstallErrorDetails,
   AgentSignInGuide,
+  AgentSignInPanel,
   AgentStep,
   DevicesStep,
   OnboardingLayout,
@@ -72,21 +75,26 @@ import {
   OnboardingPluginGrid,
   OnboardingPluginGridSkeleton,
   ProjectsStep,
+  ConnectUnavailableRow,
+  RedesignedDevicesStep,
   type OnboardingAgent,
   type OnboardingRepo,
 } from "./OnboardingViews";
 import {
   CONNECT_PLUGIN_ID,
-  ONBOARDING_PLUGINS,
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  featuredPluginEntryIds,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
+  skippedStepIds,
   type OnboardingStepId,
+  type SetupGuide,
+  type StepOutcome,
 } from "./onboarding-model";
 import {
   recordTelemetryEvent,
@@ -100,8 +108,12 @@ const SIGN_IN_TERMINAL_ROWS = 14;
 const SIGN_IN_OUTPUT_POLL_INTERVAL_MS = 1_000;
 const SIGN_IN_OUTPUT_TAIL_BYTES = 64 * 1024;
 const SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 6_000;
+const REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 3_000;
 const INSTALL_FAILED_MESSAGE = "Install failed";
+const REDESIGN_INSTALL_FAILED_MESSAGE =
+  "Couldn't install. Check your connection and retry.";
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
+const PHONE_MEDIA_QUERY = "(max-width: 640px) and (pointer: coarse)";
 
 function decodeTerminalChunks(chunks: readonly TerminalOutputChunk[]): string {
   const decoder = new TextDecoder();
@@ -121,12 +133,14 @@ function encodeTerminalInput(text: string): string {
 }
 
 function AgentSignInContainer({
+  redesign,
   agentName,
   session,
   alternate,
   onUseAlternate,
   onExit,
 }: {
+  redesign: boolean;
   agentName: string;
   session: TerminalSession;
   alternate: { label: string; method: SignInMethod } | null;
@@ -160,10 +174,12 @@ function AgentSignInContainer({
   useEffect(() => {
     const timer = window.setTimeout(
       () => setFallbackDue(true),
-      SIGN_IN_TERMINAL_FALLBACK_DELAY_MS,
+      redesign
+        ? REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS
+        : SIGN_IN_TERMINAL_FALLBACK_DELAY_MS,
     );
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [redesign]);
   const terminalVisible =
     terminalChoice ?? (fallbackDue && (guide === null || guide.url === null));
 
@@ -189,6 +205,39 @@ function AgentSignInContainer({
       });
   };
 
+  const terminal = (
+    <ThreadTerminalView autoFocus={false} isPanelOpen session={session} />
+  );
+  if (redesign) {
+    return (
+      <AgentSignInPanel
+        agentName={agentName}
+        guide={guide}
+        code={code}
+        codeSubmitted={codeSubmitted}
+        terminalVisible={terminalVisible}
+        terminal={terminal}
+        alternate={
+          alternate?.method === "local"
+            ? "browser"
+            : alternate === null
+              ? null
+              : "code"
+        }
+        onCodeChange={(next) => {
+          setCode(next);
+          setCodeSubmitted(false);
+        }}
+        onSubmitCode={submitCode}
+        onOpenUrl={openUrlInExternalBrowser}
+        onCopy={(text) => void copyToClipboardWithToast(text)}
+        onToggleTerminal={() => setTerminalChoice(!terminalVisible)}
+        onUseAlternate={() => {
+          if (alternate !== null) onUseAlternate(alternate.method);
+        }}
+      />
+    );
+  }
   return (
     <AgentSignInGuide
       agentName={agentName}
@@ -196,9 +245,7 @@ function AgentSignInContainer({
       code={code}
       codeSubmitted={codeSubmitted}
       terminalVisible={terminalVisible}
-      terminal={
-        <ThreadTerminalView autoFocus={false} isPanelOpen session={session} />
-      }
+      terminal={terminal}
       onCodeChange={(next) => {
         setCode(next);
         setCodeSubmitted(false);
@@ -218,6 +265,9 @@ function AgentSignInContainer({
 interface StepChrome {
   compact: boolean;
   reserveMacosTrafficLights: boolean;
+  composition: "docked" | "centered";
+  showSkipAll: boolean;
+  skippedSteps: ReadonlySet<OnboardingStepId>;
   onSelectStep: (step: OnboardingStepId) => void;
   onSkipAll: () => void;
 }
@@ -256,12 +306,14 @@ interface SignInSession {
 
 function AgentStepContainer({
   chrome,
+  redesign,
   entry,
   hostId,
   hostName,
   onContinue,
 }: {
   chrome: StepChrome;
+  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
   hostName: string | null;
@@ -432,6 +484,7 @@ function AgentStepContainer({
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signingIn = signIn?.providerId === health.providerId;
+          const installFailure = installRunner.failuresByJobKey.get(jobKey);
           return {
             id: health.providerId,
             name: health.displayName,
@@ -442,9 +495,12 @@ function AgentStepContainer({
               installing:
                 installRunner.runningJobKey === jobKey ||
                 installRunner.queuedJobKeys.has(jobKey),
-              installFailure: installRunner.failuresByJobKey.has(jobKey)
-                ? INSTALL_FAILED_MESSAGE
-                : null,
+              installFailure:
+                installFailure === undefined
+                  ? null
+                  : redesign
+                    ? REDESIGN_INSTALL_FAILED_MESSAGE
+                    : INSTALL_FAILED_MESSAGE,
               signingIn,
               signInFailed: signInFailedProviderId === health.providerId,
               installInfoPending: cliStatusQuery.isPending,
@@ -453,6 +509,7 @@ function AgentStepContainer({
               signingIn && signIn !== null ? (
                 <AgentSignInContainer
                   key={signIn.session.id}
+                  redesign={redesign}
                   agentName={health.displayName}
                   session={signIn.session}
                   alternate={
@@ -473,6 +530,10 @@ function AgentStepContainer({
                   }
                   onExit={handleSignInExit}
                 />
+              ) : redesign && installFailure !== undefined ? (
+                <AgentInstallErrorDetails
+                  log={installFailure.logDialogState.log}
+                />
               ) : undefined,
           };
         });
@@ -484,17 +545,26 @@ function AgentStepContainer({
       {...chrome}
       step="agent"
       title="Connect a coding agent"
-      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
+      description={
+        !redesign
+          ? "bb runs the agents you already use. You need one that is installed and signed in on this computer."
+          : hostName === null
+            ? "Waiting for this computer to connect…"
+            : `Agents run on ${hostName}. bb needs one installed and signed in.`
+      }
       footerNote={
-        agentBlocked ? "Threads can't start until one agent is ready." : null
+        agentBlocked && !redesign
+          ? "Threads can't start until one agent is ready."
+          : null
       }
       primaryLabel="Continue"
-      primaryDisabled={!agentReady}
-      secondaryLabel={agentBlocked ? "Skip for now" : undefined}
+      primaryDisabled={!agentReady && !redesign}
+      secondaryLabel={agentBlocked && !redesign ? "Skip for now" : undefined}
       onPrimary={onContinue}
       onSecondary={onContinue}
     >
       <AgentStep
+        quiet={redesign}
         machineName={hostName}
         agents={agents}
         onSignIn={(providerId) => void startSignIn(providerId)}
@@ -512,6 +582,7 @@ function AgentStepContainer({
 
 function ProjectsStepContainer({
   chrome,
+  redesign,
   entry,
   hostId,
   projectIdsAtOpen,
@@ -520,6 +591,7 @@ function ProjectsStepContainer({
   onSkip,
 }: {
   chrome: StepChrome;
+  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
@@ -636,10 +708,11 @@ function ProjectsStepContainer({
       }
       primaryDisabled={scanning}
       primaryBusy={importing}
-      secondaryLabel="Skip"
+      secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (selectedPaths.size === 0) onContinue();
-        else void importSelected();
+        if (selectedPaths.size > 0) void importSelected();
+        else if (redesign) onSkip();
+        else onContinue();
       }}
       onSecondary={onSkip}
       onBack={onBack}
@@ -695,11 +768,13 @@ function ProjectsStepContainer({
 
 function PluginCardContainer({
   entry,
+  compact,
   enabled,
   onChanged,
   onSelected,
 }: {
   entry: PluginCatalogSearchEntry;
+  compact: boolean;
   enabled: boolean;
   onChanged: () => Promise<void>;
   onSelected: () => void;
@@ -752,6 +827,8 @@ function PluginCardContainer({
 
   return (
     <OnboardingPluginCard
+      density={compact ? "compact" : "default"}
+      showStateLabel={!compact}
       name={entry.displayName}
       description={entry.description}
       icon={{
@@ -773,12 +850,14 @@ function PluginCardContainer({
 
 function PluginsStepContainer({
   chrome,
+  setupGuide,
   entry: onboardingEntry,
   onBack,
   onContinue,
   onSkip,
 }: {
   chrome: StepChrome;
+  setupGuide: SetupGuide;
   entry: OnboardingEntry;
   onBack: () => void;
   onContinue: () => void;
@@ -798,10 +877,15 @@ function PluginsStepContainer({
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
+  const redesign = setupGuide.variant === "new";
+  const entryIds = useMemo(
+    () => featuredPluginEntryIds(setupGuide),
+    [setupGuide],
+  );
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return ONBOARDING_PLUGINS.flatMap(({ entryId }) => {
+    return entryIds.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -809,7 +893,12 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries]);
+  }, [catalogQuery.data?.entries, entryIds]);
+  const isEnabled = (entry: PluginCatalogSearchEntry) =>
+    entry.installed &&
+    (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
+      ?.enabled ??
+      false);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
@@ -845,29 +934,32 @@ function PluginsStepContainer({
     <OnboardingLayout
       {...chrome}
       step="plugins"
+      width={redesign ? "wide" : "default"}
       title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
+      description={
+        redesign
+          ? "Customize almost everything in bb with plugins. Turn on a few, change them anytime."
+          : "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
+      }
       primaryLabel="Continue"
-      secondaryLabel="Skip"
-      onPrimary={onContinue}
+      secondaryLabel={redesign ? undefined : "Skip"}
+      onPrimary={() => {
+        if (redesign && !(entries ?? []).some(isEnabled)) onSkip();
+        else onContinue();
+      }}
       onSecondary={onSkip}
       onBack={onBack}
     >
-      <OnboardingPluginGrid compact={chrome.compact}>
+      <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
         {entries === null ? (
-          <OnboardingPluginGridSkeleton count={ONBOARDING_PLUGINS.length} />
+          <OnboardingPluginGridSkeleton count={entryIds.length} />
         ) : (
           entries.map((entry) => (
             <PluginCardContainer
               key={entry.entryId}
               entry={entry}
-              enabled={
-                entry.installed &&
-                (installedPlugins?.find(
-                  (plugin) => plugin.id === entry.pluginId,
-                )?.enabled ??
-                  false)
-              }
+              compact={redesign}
+              enabled={isEnabled(entry)}
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
@@ -882,15 +974,19 @@ function PluginsStepContainer({
 
 function DevicesStepContainer({
   chrome,
+  redesign,
   entry,
   hostId,
+  hostName,
   onBack,
   onFinish,
   onLeave,
 }: {
   chrome: StepChrome;
+  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
+  hostName: string | null;
   onBack: () => void;
   onFinish: () => void;
   onLeave: () => void;
@@ -899,6 +995,7 @@ function DevicesStepContainer({
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
+  const onPhone = useMediaQuery(PHONE_MEDIA_QUERY);
   const location = useLocation();
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
@@ -945,6 +1042,52 @@ function DevicesStepContainer({
     recordDeviceSetup("add_machine", "succeeded");
   }, [connectedMachineCount, recordDeviceSetup]);
 
+  const startRemoteAccessSetup = () => {
+    if (connect.status !== "off" || pendingSetup.current.remoteAccess) return;
+    pendingSetup.current.remoteAccess = true;
+    recordDeviceSetup("remote_access", "started");
+  };
+  const addMachine = () => {
+    if (
+      connectedMachineCount !== undefined &&
+      pendingSetup.current.machinesBefore === null
+    ) {
+      pendingSetup.current.machinesBefore = connectedMachineCount;
+      recordDeviceSetup("add_machine", "started");
+    }
+    setAddMachineOpen(true);
+  };
+  const addMachineDialog = (
+    <AddMachineDialog open={addMachineOpen} onOpenChange={setAddMachineOpen} />
+  );
+  if (redesign) {
+    return (
+      <OnboardingLayout
+        {...chrome}
+        step="devices"
+        width="wide"
+        title="Use bb away from this computer"
+        description="Start a task at your desk, then check on it from anywhere. Change these later in Settings."
+        primaryLabel="Start using bb"
+        onPrimary={onFinish}
+        onBack={onBack}
+      >
+        <RedesignedDevicesStep
+          hostName={hostName}
+          connectSection={
+            <PluginSetupGuideSections
+              pluginId={CONNECT_PLUGIN_ID}
+              onPhone={onPhone}
+              onSetupStarted={startRemoteAccessSetup}
+              fallback={<ConnectUnavailableRow />}
+            />
+          }
+          onAddMachine={addMachine}
+        />
+        {addMachineDialog}
+      </OnboardingLayout>
+    );
+  }
   return (
     <OnboardingLayout
       {...chrome}
@@ -962,32 +1105,13 @@ function DevicesStepContainer({
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
         onToggleConnectSetup={() => {
-          if (
-            !connectSetupOpen &&
-            connect.status === "off" &&
-            !pendingSetup.current.remoteAccess
-          ) {
-            pendingSetup.current.remoteAccess = true;
-            recordDeviceSetup("remote_access", "started");
-          }
+          if (!connectSetupOpen) startRemoteAccessSetup();
           setConnectSetupOpen((open) => !open);
         }}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
-        onAddMachine={() => {
-          if (
-            connectedMachineCount !== undefined &&
-            pendingSetup.current.machinesBefore === null
-          ) {
-            pendingSetup.current.machinesBefore = connectedMachineCount;
-            recordDeviceSetup("add_machine", "started");
-          }
-          setAddMachineOpen(true);
-        }}
+        onAddMachine={addMachine}
       />
-      <AddMachineDialog
-        open={addMachineOpen}
-        onOpenChange={setAddMachineOpen}
-      />
+      {addMachineDialog}
     </OnboardingLayout>
   );
 }
@@ -1002,13 +1126,25 @@ const STEP_ORDER: readonly OnboardingStepId[] = [
 export function OnboardingFlow({
   initialStep,
   entry,
+  setupGuide,
   onClose,
 }: {
   initialStep: OnboardingStepId;
   entry: OnboardingEntry;
+  setupGuide: SetupGuide;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
+  const redesign = setupGuide.variant === "new";
+  const [stepOutcomes, setStepOutcomes] = useState<
+    ReadonlyMap<OnboardingStepId, StepOutcome>
+  >(() => new Map());
+  const exposedRef = useRef(false);
+  useEffect(() => {
+    if (exposedRef.current) return;
+    exposedRef.current = true;
+    recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
+  }, [entry]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
     useState<ReadonlySet<string> | null>(null);
@@ -1132,6 +1268,9 @@ export function OnboardingFlow({
       desktopInfo,
       windowState,
     }),
+    composition: redesign ? "centered" : "docked",
+    showSkipAll: !redesign,
+    skippedSteps: redesign ? skippedStepIds(stepOutcomes) : new Set(),
     onSelectStep: setStep,
     onSkipAll: () => close("skipped"),
   };
@@ -1139,7 +1278,8 @@ export function OnboardingFlow({
     const next = STEP_ORDER[STEP_ORDER.indexOf(step) + offset];
     if (next !== undefined) setStep(next);
   };
-  const advance = (outcome: "completed" | "skipped") => () => {
+  const advance = (outcome: StepOutcome) => () => {
+    setStepOutcomes((current) => new Map(current).set(step, outcome));
     recordTelemetryEvent({
       name:
         outcome === "completed"
@@ -1155,6 +1295,7 @@ export function OnboardingFlow({
       return (
         <AgentStepContainer
           chrome={chrome}
+          redesign={redesign}
           entry={entry}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
@@ -1167,6 +1308,7 @@ export function OnboardingFlow({
       return (
         <ProjectsStepContainer
           chrome={chrome}
+          redesign={redesign}
           entry={entry}
           hostId={hostId}
           projectIdsAtOpen={projectIdsAtOpen}
@@ -1179,6 +1321,7 @@ export function OnboardingFlow({
       return (
         <PluginsStepContainer
           chrome={chrome}
+          setupGuide={setupGuide}
           entry={entry}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
@@ -1189,8 +1332,10 @@ export function OnboardingFlow({
       return (
         <DevicesStepContainer
           chrome={chrome}
+          redesign={redesign}
           entry={entry}
           hostId={hostId}
+          hostName={primaryHost?.name ?? null}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}
           onLeave={() => close("skipped")}

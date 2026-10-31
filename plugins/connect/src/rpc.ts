@@ -114,6 +114,12 @@ export const connectRpcContract = defineRpcContract({
   },
   createDesktopSession: { input: z.null(), output: desktopSessionSchema },
   createMachineCode: { input: z.null(), output: machineCodeSchema },
+  lookupMachineCode: {
+    input: z.object({ code: z.string().min(1) }).strict(),
+    output: z
+      .object({ consumed: z.boolean(), machineId: z.string().nullable() })
+      .strict(),
+  },
   revokeMachine: {
     input: revokeMachineInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
@@ -203,6 +209,20 @@ export function createRpcHandlers(args: {
             throw new MachineCodeError("not_paired");
           }
           return hosted.createMachineCode(AbortSignal.timeout(10_000));
+        },
+        (error) => error instanceof MachineCodeError,
+      );
+    },
+    async lookupMachineCode(args) {
+      return rethrowErrorCode(
+        () => {
+          if (tunnel.getIdentity() === null) {
+            throw new MachineCodeError("not_paired");
+          }
+          return hosted.lookupMachineCode(
+            args.code,
+            AbortSignal.timeout(10_000),
+          );
         },
         (error) => error instanceof MachineCodeError,
       );
