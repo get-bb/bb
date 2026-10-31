@@ -148,6 +148,7 @@ export const guide: Guide = {
       ),
     },
   ],
+  docs: null,
   closer: {
     title: "Get your agents working together",
     body: "Free and open source. Bring the Claude and ChatGPT plans you already have.",

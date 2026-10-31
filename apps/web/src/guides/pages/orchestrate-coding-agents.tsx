@@ -295,6 +295,10 @@ export const guide: Guide = {
       ),
     },
   ],
+  docs: {
+    href: "/docs/run-an-orchestrator-thread#set-up-the-orchestrator",
+    label: "Run an orchestrator thread",
+  },
   closer: {
     title: "Hand off the work you repeat",
     body: "Free and open source. Bring the Claude and ChatGPT plans you already have.",
