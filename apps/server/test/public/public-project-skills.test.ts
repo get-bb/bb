@@ -1699,7 +1699,7 @@ describe("public project skills route", () => {
 
       for (const [hiddenPath, status] of [
         [".env", 404],
-        ["references/../../secrets.md", 404],
+        ["references/../../secrets.md", 400],
         ["/etc/passwd", 400],
       ] as const) {
         query.set("path", hiddenPath);
