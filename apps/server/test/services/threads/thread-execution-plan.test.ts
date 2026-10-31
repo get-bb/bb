@@ -24,6 +24,40 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import { buildPluginProviderRegistration } from "../../../src/services/providers/plugin-provider-registration.js";
+
+const TIERLESS_PROVIDER_ID = "tierless";
+
+function registerTierlessProvider(harness: TestAppHarness): void {
+  const pluginId = `provider-${TIERLESS_PROVIDER_ID}`;
+  harness.deps.providerRegistry.register({
+    ...buildPluginProviderRegistration({
+      iconHash: null,
+      available: true,
+      pluginId,
+      declaration: validatePluginProviderDeclaration({
+        id: TIERLESS_PROVIDER_ID,
+        displayName: "Tierless",
+        maintenance: { health: false, usage: false, installation: false },
+        capabilities: {
+          supportsServiceTier: false,
+          supportsNativeUserQuestion: false,
+          fork: "none",
+          supportsManualCompaction: false,
+          supportsThreadArchive: false,
+          supportsThreadRename: false,
+          permissionModes: ["full"],
+          reasoningLevels: ["medium"],
+        },
+        composerActions: [],
+      }),
+      readSettings: () => ({}),
+    }),
+    pluginId,
+    iconNames: new Set<string>(),
+  });
+}
 
 describe("thread execution plan input sources", () => {
   it("uses the default tier for explicit and inherited fast selections when fast is disabled", async () => {
@@ -142,6 +176,7 @@ describe("thread execution plan input sources", () => {
 
   it("runs a provider without service tiers at the default tier unless a tier is explicitly requested", async () => {
     await withTestHarness(async (harness) => {
+      registerTierlessProvider(harness);
       const { host } = seedHostSession(harness.deps, {
         id: "host-no-tier",
       });
@@ -155,12 +190,12 @@ describe("thread execution plan input sources", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        providerId: "pi",
+        providerId: TIERLESS_PROVIDER_ID,
       });
       upsertProjectExecutionDefaults(harness.deps.db, {
         projectId: project.id,
-        providerId: "pi",
-        model: "pi-model",
+        providerId: TIERLESS_PROVIDER_ID,
+        model: "tierless-model",
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "fast",
@@ -179,7 +214,7 @@ describe("thread execution plan input sources", () => {
         resolve({ serviceTier: { source: "explicit", value: "fast" } }),
       ).rejects.toMatchObject({
         status: 400,
-        body: { message: "Provider pi does not support service tiers." },
+        body: { message: "Provider tierless does not support service tiers." },
       });
     });
   });

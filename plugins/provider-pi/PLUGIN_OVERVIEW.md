@@ -3,6 +3,7 @@ Start a thread, pick Pi, and let the Pi coding agent work in your repository fro
 ## What you get
 
 - Reasoning levels from None to Max.
+- Fast and Ultrafast service tiers on OpenAI Codex models, and Fast on OpenAI and Claude Opus 4.8 and 5 models, where your account is eligible.
 - Checkpoint forks and manual compaction.
 - Pi skills from your home directory and project, listed next to bb skills.
 - Health and install status on each host, with an install or update action.

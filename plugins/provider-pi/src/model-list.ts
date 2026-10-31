@@ -6,6 +6,7 @@ import {
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
+  type ModelServiceTier,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
 const NONE_REASONING_EFFORT: ModelReasoningEffort = {
@@ -14,6 +15,7 @@ const NONE_REASONING_EFFORT: ModelReasoningEffort = {
 };
 
 export interface PiCatalogModel {
+  api?: string;
   id: string;
   input: string[];
   name: string;
@@ -61,8 +63,30 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     reasoningDiscovery: "known",
     supportedReasoningEfforts,
     defaultReasoningEffort,
+    supportedServiceTiers: getPiServiceTiers(model),
     isDefault: false,
   };
+}
+
+const CLAUDE_FAST_MODE_MODEL_PATTERN = /opus-(?:4-8|5)/u;
+
+export function getPiServiceTiers(
+  model: Pick<PiCatalogModel, "api" | "id" | "provider">,
+): ModelServiceTier[] {
+  if (model.api === "openai-codex-responses") {
+    return [{ id: "fast" }, { id: "ultrafast" }];
+  }
+  if (model.api === "openai-responses" && model.provider === "openai") {
+    return [{ id: "fast" }];
+  }
+  if (
+    model.api === "anthropic-messages" &&
+    model.provider === "anthropic" &&
+    CLAUDE_FAST_MODE_MODEL_PATTERN.test(model.id)
+  ) {
+    return [{ id: "fast" }];
+  }
+  return [];
 }
 
 export function buildPiAvailableModels(

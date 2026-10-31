@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPiSessionParams } from "./session-params.js";
+import { buildPiSessionParams, buildPiTurnOptions } from "./session-params.js";
 
 describe("buildPiSessionParams", () => {
   it("injects the bb thread id into the shell env and drops invalid keys", () => {
@@ -69,5 +69,22 @@ describe("buildPiSessionParams", () => {
       baseInstructions: "Focus on the failing tests first.",
     });
     expect(withMode("replace")).not.toHaveProperty("appendSystemPrompt");
+  });
+
+  it("defaults the service tier and carries a requested one into turns", () => {
+    const params = (serviceTier?: string) =>
+      buildPiSessionParams({
+        threadId: "bb-thread-1",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: serviceTier === undefined ? {} : { serviceTier },
+      });
+
+    expect(params().serviceTier).toBe("default");
+    expect(params("ultrafast").serviceTier).toBe("ultrafast");
+    expect(buildPiTurnOptions({ serviceTier: "fast" }).serviceTier).toBe(
+      "fast",
+    );
+    expect(buildPiTurnOptions({}).serviceTier).toBeUndefined();
   });
 });

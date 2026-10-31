@@ -39,6 +39,7 @@ it("auto-cancels extension dialogs in a helper session without a UI handler", as
       scratchDir: dir,
       extensionPath: join(dir, "extension.mjs"),
       recordThreadId: "thr_helper_ui",
+      serviceTier: "default",
       noSession: true,
     },
     async () => ({ content: "", isError: true }),

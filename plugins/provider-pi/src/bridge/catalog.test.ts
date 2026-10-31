@@ -160,6 +160,35 @@ describe("pi catalog freshness", () => {
     ]);
   }, 60_000);
 
+  it("narrows service tiers from the api each Pi model reports", async () => {
+    const paths = setUpFakeCatalog({});
+    writeFileSync(
+      paths.modelsPath,
+      JSON.stringify([
+        {
+          ...FAKE_MODEL,
+          id: "gpt-6.1-sol",
+          provider: "openai-codex",
+          api: "openai-codex-responses",
+        },
+        { ...FAKE_MODEL, api: "fake-api" },
+      ]),
+    );
+
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const { models } = await catalog.listModels();
+
+    expect(
+      models.map((model) => [
+        model.id,
+        model.supportedServiceTiers?.map((tier) => tier.id),
+      ]),
+    ).toEqual([
+      ["openai-codex/gpt-6.1-sol", ["fast", "ultrafast"]],
+      ["fake-provider/fake-model", []],
+    ]);
+  }, 60_000);
+
   it("shares one model refresh between concurrent reads", async () => {
     const paths = setUpFakeCatalog({});
 

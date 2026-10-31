@@ -370,6 +370,31 @@ async function runExtensionTool(name, toolArgs) {
   return result;
 }
 
+async function logProviderPayload() {
+  const logPath = process.env.FAKE_PI_PROVIDER_PAYLOAD_LOG;
+  if (!logPath) return;
+  const requestModel = {
+    ...model,
+    api: process.env.FAKE_PI_MODEL_API ?? "fake-api",
+    ...(process.env.FAKE_PI_MODEL_PROVIDER
+      ? { provider: process.env.FAKE_PI_MODEL_PROVIDER }
+      : {}),
+    ...(process.env.FAKE_PI_MODEL_ID
+      ? { id: process.env.FAKE_PI_MODEL_ID }
+      : {}),
+  };
+  let payload = { model: requestModel.id, betas: ["existing-beta"] };
+  for (const handler of extensionHandlers.get("before_provider_request") ??
+    []) {
+    const next = await handler(
+      { type: "before_provider_request", payload },
+      { ...extensionContext, model: requestModel },
+    );
+    if (next !== undefined) payload = next;
+  }
+  appendFileSync(logPath, `${JSON.stringify(payload)}\n`);
+}
+
 async function runPrompt(text) {
   isStreaming = true;
   turnCounter += 1;
@@ -379,6 +404,7 @@ async function runPrompt(text) {
   await emitExtensionEvent("agent_start");
   event({ type: "agent_start" });
   event({ type: "turn_start" });
+  await logProviderPayload();
   if (text === "/hold" || text === "/wait-hold") {
     if (text === "/wait-hold")
       event({

@@ -293,7 +293,7 @@ describe("first-party provider plugins", () => {
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
-            supportsServiceTier: false,
+            supportsServiceTier: true,
             supportsNativeUserQuestion: false,
             permissionModes: ["full"],
             supportsFork: true,

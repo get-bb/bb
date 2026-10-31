@@ -728,6 +728,7 @@ async function buildSessionOptions(args: {
     ...(args.params.thinkingLevel
       ? { thinkingLevel: args.params.thinkingLevel }
       : {}),
+    serviceTier: args.params.serviceTier,
     ...(args.params.dynamicTools && args.params.dynamicTools.length > 0
       ? { dynamicTools: args.params.dynamicTools }
       : {}),
@@ -1016,6 +1017,7 @@ async function reconcileTurnOptions(
     changedModelRequest === undefined &&
     !thinkingLevelChanged
   ) {
+    await applyServiceTier(threadSession, turnOptions.serviceTier);
     return threadSession;
   }
   const nextModel =
@@ -1028,10 +1030,14 @@ async function reconcileTurnOptions(
       threadSession.constructionModel.provider !== nextModel.provider ||
       threadSession.constructionModel.id !== nextModel.id);
   if (!environmentChanged && !modelChanged && !thinkingLevelChanged) {
+    await applyServiceTier(threadSession, turnOptions.serviceTier);
     return threadSession;
   }
   const replacement = await rebuildThreadSession(threadId, threadSession, {
     ...construction,
+    ...(turnOptions.serviceTier === undefined
+      ? {}
+      : { serviceTier: turnOptions.serviceTier }),
     ...(shellEnvOverrides === undefined ? {} : { shellEnvOverrides }),
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
@@ -1052,6 +1058,20 @@ async function reconcileTurnOptions(
     },
   });
   return replacement;
+}
+
+async function applyServiceTier(
+  threadSession: ThreadSession,
+  serviceTier: string | undefined,
+): Promise<void> {
+  if (
+    serviceTier === undefined ||
+    serviceTier === threadSession.session.getServiceTier()
+  ) {
+    return;
+  }
+  await threadSession.session.setServiceTier(serviceTier);
+  threadSession.construction = { ...threadSession.construction, serviceTier };
 }
 
 async function handleTurnStart(

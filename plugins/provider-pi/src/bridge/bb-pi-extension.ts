@@ -177,6 +177,7 @@ export default function bbExtension(pi) {
   const pendingToolCalls = new Map();
   let nextId = 0;
   let sessionContext = null;
+  let serviceTier = process.env.PI_BB_SERVICE_TIER || "default";
   let runId = 0;
   let lastSettlement = null;
 
@@ -287,6 +288,9 @@ export default function bbExtension(pi) {
         return currentModelScope();
       case "refresh-models":
         return refreshModels();
+      case "service-tier":
+        serviceTier = typeof message.serviceTier === "string" ? message.serviceTier : "default";
+        return { serviceTier };
       default:
         throw new Error("unknown bridge request " + String(message.method));
     }
@@ -351,6 +355,10 @@ export default function bbExtension(pi) {
     });
   }
 
+  pi.on("before_provider_request", (event, ctx) => {
+    return applyServiceTier(event.payload, ctx?.model ?? sessionContext?.model, serviceTier);
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     sessionContext = ctx;
     writeLine(CHILD_TO_BRIDGE_FD, {
@@ -392,6 +400,37 @@ export default function bbExtension(pi) {
     };
     writeLine(CHILD_TO_BRIDGE_FD, { kind: "agent-settled-leaf", ...lastSettlement });
   });
+}
+
+const CLAUDE_FAST_MODE_BETA = "fast-mode-2026-02-01";
+const CLAUDE_FAST_MODE_MODEL = /opus-(?:4-8|5)/u;
+
+function applyServiceTier(payload, model, tier) {
+  if (tier === "default" || !payload || typeof payload !== "object" || !model) {
+    return undefined;
+  }
+  if (model.api === "openai-codex-responses") {
+    if (tier === "fast") return { ...payload, service_tier: "priority" };
+    if (tier === "ultrafast") return { ...payload, service_tier: "ultrafast" };
+    return undefined;
+  }
+  if (model.api === "openai-responses" && model.provider === "openai") {
+    return tier === "fast" ? { ...payload, service_tier: "priority" } : undefined;
+  }
+  if (
+    model.api === "anthropic-messages" &&
+    model.provider === "anthropic" &&
+    CLAUDE_FAST_MODE_MODEL.test(String(model.id)) &&
+    tier === "fast"
+  ) {
+    const betas = Array.isArray(payload.betas) ? payload.betas : [];
+    return {
+      ...payload,
+      speed: "fast",
+      betas: betas.includes(CLAUDE_FAST_MODE_BETA) ? betas : [...betas, CLAUDE_FAST_MODE_BETA],
+    };
+  }
+  return undefined;
 }
 
 function toolErrorText(content) {

@@ -15,6 +15,7 @@ export interface PiRpcSessionOptions {
   cwd: string;
   model?: { provider: string; id: string };
   thinkingLevel?: string;
+  serviceTier: string;
   additionalSkillPaths?: readonly string[];
   shellEnvOverrides?: Record<string, string>;
   dynamicTools?: readonly DynamicToolDefinition[];
@@ -171,6 +172,7 @@ export interface PiRpcSessionState {
 
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
+  private serviceTier: string;
   private isProcessing = false;
   private supportsSettlement = false;
   private agentRunsStarted = 0;
@@ -228,7 +230,18 @@ export class PiRpcSession {
     private readonly forwardToolCall: ToolCallForwarder,
     private readonly onEvent: PiSessionEventHandler,
     private readonly onDone: PiSessionDoneHandler,
-  ) {}
+  ) {
+    this.serviceTier = options.serviceTier;
+  }
+
+  getServiceTier(): string {
+    return this.serviceTier;
+  }
+
+  async setServiceTier(serviceTier: string): Promise<void> {
+    await this.channelRequest({ method: "service-tier", serviceTier });
+    this.serviceTier = serviceTier;
+  }
 
   getIsCompacting(): boolean {
     return this.isCompacting;
@@ -312,6 +325,7 @@ export class PiRpcSession {
       env: buildPiChildEnv({
         ...(this.options.shellEnvOverrides ?? {}),
         PI_BB_TOOLS_FILE: toolsFilePath,
+        PI_BB_SERVICE_TIER: this.serviceTier,
       }),
       args,
       onEvent: (event) => {
@@ -536,6 +550,7 @@ export class PiRpcSession {
         scratchDir: args.scratchDir,
         extensionPath: args.extensionPath,
         recordThreadId: args.recordThreadId,
+        serviceTier: "default",
         noSession: true,
       },
       () =>
