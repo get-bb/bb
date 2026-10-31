@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import {
   getEnvironmentFilePreviewSourceAtRef,
-  type HostFileTabState,
   type ThreadStorageFileTabState,
   type WorkspaceFileTabState,
 } from "@bb/client-core";
@@ -35,10 +34,6 @@ interface UsePanelFilesArgs {
 
 export interface PanelFiles {
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
-  openHostFile: (
-    file: HostFileTabState,
-    options?: PanelFileOpenOptions,
-  ) => void;
   openStorageFile: (
     file: ThreadStorageFileTabState,
     options?: PanelFileOpenOptions,
@@ -118,12 +113,6 @@ export function usePanelFiles({
     },
     [openTab],
   );
-  const openHostFile = useCallback(
-    (file: HostFileTabState, options?: PanelFileOpenOptions) => {
-      openTab({ kind: "host-file-preview", tab: file }, options);
-    },
-    [openTab],
-  );
   const openFilePreview = useCallback(
     (intent: AppFilePreviewIntent) => {
       if (!available) return false;
@@ -139,5 +128,5 @@ export function usePanelFiles({
     },
     [available, openTab, reveal, scope],
   );
-  return { openFilePreview, openHostFile, openStorageFile, openWorkspaceFile };
+  return { openFilePreview, openStorageFile, openWorkspaceFile };
 }

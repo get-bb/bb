@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import {
   useEnvironment,
   useEnvironmentFilePreview,
@@ -27,12 +26,13 @@ import {
   type FilePreviewLineRange,
 } from "@bb/client-core";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
-  buildMarkdownFileImageRouting,
-  buildMarkdownHostFileImageRouting,
-} from "@/components/ui/markdown-file-image-routing";
-import { getAbsoluteDirname } from "@bb/shared-ui/lib/absolute-file-path";
-
+  getAbsoluteDirname,
+  isAbsoluteFilePathWithinRoot,
+} from "@bb/shared-ui/lib/absolute-file-path";
+import { buildHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface WorkspaceFilePreviewTabContentProps {
   activePath: string;
@@ -40,7 +40,6 @@ interface WorkspaceFilePreviewTabContentProps {
   copyPath?: string | null;
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
-  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
@@ -54,7 +53,6 @@ interface ProjectFilePreviewTabContentProps {
   environmentId: string | null;
   hostId: string | null;
   lineRange: FilePreviewLineRange | null;
-  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   projectId: string;
@@ -68,7 +66,6 @@ interface HostFilePreviewTabContentProps {
   copyPath: string;
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
-  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -95,7 +92,6 @@ interface ThreadStorageFilePreviewTabContentProps {
   isPanelOpen: boolean;
   copyPath?: string | null;
   lineRange: FilePreviewLineRange | null;
-  markdownLinkRouting?: MarkdownLinkRouting;
   onSelectionAddToChat?: (text: string) => void;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -117,17 +113,13 @@ export function WorkspaceFilePreviewTabContent({
   environmentId,
   isPanelOpen,
   lineRange,
-  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   source,
   threadId,
 }: WorkspaceFilePreviewTabContentProps) {
+  const navigation = useAppNavigationHost();
   const environmentQuery = useEnvironment(environmentId ?? null, {
-    enabled:
-      environmentId !== null &&
-      environmentId !== undefined &&
-      markdownLinkRouting?.localImage === undefined,
     staleTime: 5_000,
   });
   const workspaceFilePreviewQuery = useEnvironmentFilePreview(
@@ -137,23 +129,25 @@ export function WorkspaceFilePreviewTabContent({
     { enabled: isPanelOpen },
   );
   const environmentRootPath = environmentQuery.data?.path ?? null;
-  const resolvedMarkdownLinkRouting = useMemo(() => {
-    if (source === null || !environmentId) {
-      return markdownLinkRouting;
-    }
-    return buildMarkdownFileImageRouting({
+  const markdownLinkRouting = useMemo(() => {
+    if (source === null || !environmentId) return undefined;
+    return buildMarkdownFileRouting({
       path: activePath,
       rootPath: environmentRootPath,
       threadId: threadId ?? null,
-      linkRouting: markdownLinkRouting,
       resolveRelativeSrc: (path) =>
         buildEnvironmentFileContentUrl(environmentId, source, path),
+      openFile: (path, _absolutePath, location) =>
+        navigation.openFilePreview({
+          target: { kind: "workspace", environmentId, path },
+          location,
+        }),
     });
   }, [
     activePath,
     environmentId,
     environmentRootPath,
-    markdownLinkRouting,
+    navigation,
     source,
     threadId,
   ]);
@@ -169,7 +163,7 @@ export function WorkspaceFilePreviewTabContent({
           : null
       }
       lineRange={lineRange}
-      markdownLinkRouting={resolvedMarkdownLinkRouting}
+      markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={
@@ -186,7 +180,6 @@ export function ProjectFilePreviewTabContent({
   hostId,
   isPanelOpen,
   lineRange,
-  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   projectId,
@@ -199,24 +192,20 @@ export function ProjectFilePreviewTabContent({
     { environmentId, hostId },
     { enabled: isPanelOpen },
   );
-  const resolvedMarkdownLinkRouting = useMemo(() => {
-    return buildMarkdownFileImageRouting({
-      path: activePath,
-      rootPath,
-      threadId,
-      linkRouting: markdownLinkRouting,
-      resolveRelativeSrc: (path) =>
-        buildProjectFileContentUrl(projectId, path, { environmentId, hostId }),
-    });
-  }, [
-    activePath,
-    environmentId,
-    hostId,
-    markdownLinkRouting,
-    projectId,
-    rootPath,
-    threadId,
-  ]);
+  const markdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownFileRouting({
+        path: activePath,
+        rootPath,
+        threadId,
+        resolveRelativeSrc: (path) =>
+          buildProjectFileContentUrl(projectId, path, {
+            environmentId,
+            hostId,
+          }),
+      }),
+    [activePath, environmentId, hostId, projectId, rootPath, threadId],
+  );
 
   return (
     <SecondaryPanelFilePreview
@@ -228,7 +217,7 @@ export function ProjectFilePreviewTabContent({
         hostId,
       })}
       lineRange={lineRange}
-      markdownLinkRouting={resolvedMarkdownLinkRouting}
+      markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
@@ -242,29 +231,46 @@ export function HostFilePreviewTabContent({
   environmentId,
   isPanelOpen,
   lineRange,
-  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   threadId,
 }: HostFilePreviewTabContentProps) {
+  const navigation = useAppNavigationHost();
+  const environment = useEnvironment(environmentId ?? null, {
+    staleTime: 5_000,
+  }).data;
   const hostFilePreviewQuery = useThreadHostFilePreview(
     threadId,
     environmentId,
     activePath,
     { enabled: isPanelOpen },
   );
-  const resolvedMarkdownLinkRouting = useMemo(() => {
-    return buildMarkdownFileImageRouting({
+  const markdownLinkRouting = useMemo(() => {
+    const workspaceRootPath = environment?.path ?? null;
+    const hostId = environment?.hostId;
+    return buildMarkdownFileRouting({
       path: activePath,
       rootPath:
-        markdownLinkRouting?.localFile?.relativeLinks?.rootPath ??
-        getAbsoluteDirname({ path: activePath }),
+        workspaceRootPath !== null &&
+        isAbsoluteFilePathWithinRoot({
+          candidatePath: activePath,
+          rootPath: workspaceRootPath,
+        })
+          ? workspaceRootPath
+          : getAbsoluteDirname({ path: activePath }),
       threadId,
-      linkRouting: markdownLinkRouting,
       resolveRelativeSrc: (_relativePath, path) =>
         buildThreadHostFileContentUrl(threadId, path),
+      openFile:
+        hostId === undefined
+          ? undefined
+          : (_relativePath, path, location) =>
+              navigation.openFilePreview({
+                target: { kind: "host", hostId, path },
+                location,
+              }),
     });
-  }, [activePath, markdownLinkRouting, threadId]);
+  }, [activePath, environment, navigation, threadId]);
 
   return (
     <SecondaryPanelFilePreview
@@ -273,7 +279,7 @@ export function HostFilePreviewTabContent({
       copyPath={copyPath}
       htmlPreviewUrl={buildThreadHostFileContentUrl(threadId, activePath)}
       lineRange={lineRange}
-      markdownLinkRouting={resolvedMarkdownLinkRouting}
+      markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
@@ -291,13 +297,23 @@ export function HostScopedFilePreviewTabContent({
   const hostFilePreviewQuery = useHostFilePreview(hostId, activePath, {
     enabled: isPanelOpen,
   });
-  const markdownLinkRouting = useMemo(() => {
-    return buildMarkdownHostFileImageRouting({
-      path: activePath,
-      rootPath: getAbsoluteDirname({ path: activePath }),
-      hostId,
-    });
-  }, [activePath, hostId]);
+  const navigation = useAppNavigationHost();
+  const markdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownFileRouting({
+        path: activePath,
+        rootPath: getAbsoluteDirname({ path: activePath }),
+        threadId: null,
+        resolveRelativeSrc: (_relativePath, path) =>
+          buildHostFileContentUrl(hostId, path),
+        openFile: (_relativePath, path, location) =>
+          navigation.openFilePreview({
+            target: { kind: "host", hostId, path },
+            location,
+          }),
+      }),
+    [activePath, hostId, navigation],
+  );
   return (
     <SecondaryPanelFilePreview
       {...filePreviewQueryProps(hostFilePreviewQuery)}
@@ -317,26 +333,32 @@ export function ThreadStorageFilePreviewTabContent({
   copyPath = null,
   isPanelOpen,
   lineRange,
-  markdownLinkRouting,
   onSelectionAddToChat,
   onOpenInEditor,
   threadId,
 }: ThreadStorageFilePreviewTabContentProps) {
+  const navigation = useAppNavigationHost();
   const threadStorageFilePreviewQuery = useThreadStorageFilePreview(
     threadId,
     activePath,
     { enabled: isPanelOpen },
   );
-  const resolvedMarkdownLinkRouting = useMemo(() => {
-    return buildMarkdownFileImageRouting({
-      path: activePath,
-      rootPath: null,
-      threadId,
-      linkRouting: markdownLinkRouting,
-      resolveRelativeSrc: (path) =>
-        buildThreadStorageRawContentUrl(threadId, path),
-    });
-  }, [activePath, markdownLinkRouting, threadId]);
+  const markdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownFileRouting({
+        path: activePath,
+        rootPath: null,
+        threadId,
+        resolveRelativeSrc: (path) =>
+          buildThreadStorageRawContentUrl(threadId, path),
+        openFile: (path, _absolutePath, location) =>
+          navigation.openFilePreview({
+            target: { kind: "thread-storage", threadId, path },
+            location,
+          }),
+      }),
+    [activePath, navigation, threadId],
+  );
 
   return (
     <SecondaryPanelFilePreview
@@ -345,7 +367,7 @@ export function ThreadStorageFilePreviewTabContent({
       copyPath={copyPath}
       htmlPreviewUrl={buildThreadStorageRawContentUrl(threadId, activePath)}
       lineRange={lineRange}
-      markdownLinkRouting={resolvedMarkdownLinkRouting}
+      markdownLinkRouting={markdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}

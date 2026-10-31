@@ -3,12 +3,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FilePreview } from "@/components/secondary-panel/FilePreview";
+import { buildMarkdownFileRouting } from "./markdown-file-routing";
 import {
-  buildMarkdownFileImageRouting,
-  buildMarkdownHostFileImageRouting,
-} from "./markdown-file-image-routing";
-import type { MarkdownLinkRouting } from "./markdown-link-routing";
-import {
+  buildHostFileContentUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageRawContentUrl,
 } from "@/lib/file-content-urls";
@@ -32,7 +29,7 @@ function renderMarkdownFilePreview({
   render(
     <FilePreview
       headerMode="none"
-      markdownLinkRouting={buildMarkdownFileImageRouting({
+      markdownLinkRouting={buildMarkdownFileRouting({
         path,
         threadId: imageContent.threadId,
         resolveRelativeSrc: (relativePath, absolutePath) =>
@@ -96,33 +93,59 @@ describe("Markdown file preview image routing", () => {
     ).toMatch(/one\.png$/u);
   });
 
-  it("preserves explicit image routing and file-link handlers", () => {
-    const linkRouting: MarkdownLinkRouting = {
-      onOpenLink: vi.fn(() => false),
-      localImage: {
-        absolutePaths: { kind: "trusted-host" },
-        resolveSrc: vi.fn(() => "/custom/image.png"),
-      },
-    };
-    expect(
-      buildMarkdownFileImageRouting({
-        path: "docs/report.md",
-        rootPath: "/workspace",
-        threadId: "thr_preview",
-        linkRouting,
-        resolveRelativeSrc: vi.fn(),
-      }),
-    ).toBe(linkRouting);
+  it("opens links that stay inside the previewed file's root", () => {
+    const openFile = vi.fn(() => true);
+    render(
+      <FilePreview
+        headerMode="none"
+        markdownLinkRouting={buildMarkdownFileRouting({
+          path: "docs/report.md",
+          rootPath: "/workspace",
+          threadId: null,
+          resolveRelativeSrc: (path) => `/content/${path}`,
+          openFile,
+        })}
+        path="docs/report.md"
+        state={{
+          kind: "ready",
+          file: {
+            contents:
+              "[sibling](notes.md#L3) [parent](../README.md) [absolute](/workspace/src/a.ts) [escape](../../etc/passwd) [outside](/tmp/x.md)",
+            name: "report.md",
+          },
+          lineRange: null,
+          textPreviewKind: "markdown",
+        }}
+      />,
+    );
+
+    for (const name of ["sibling", "parent", "absolute", "escape", "outside"]) {
+      fireEvent.click(
+        screen.queryByRole("link", { name }) ?? screen.getByText(name),
+      );
+    }
+
+    expect(openFile.mock.calls).toEqual([
+      [
+        "docs/notes.md",
+        "/workspace/docs/notes.md",
+        { kind: "range", startLine: 3, endLine: 3 },
+      ],
+      ["README.md", "/workspace/README.md", null],
+      ["src/a.ts", "/workspace/src/a.ts", null],
+    ]);
   });
 
   it("resolves nested skill and host images within the previewed folder", () => {
     render(
       <FilePreview
         headerMode="none"
-        markdownLinkRouting={buildMarkdownHostFileImageRouting({
+        markdownLinkRouting={buildMarkdownFileRouting({
           path: "references/guide.md",
           rootPath: "/skills/example",
-          hostId: "host_skill",
+          threadId: null,
+          resolveRelativeSrc: (_relativePath, path) =>
+            buildHostFileContentUrl("host_skill", path),
         })}
         path="references/guide.md"
         state={{

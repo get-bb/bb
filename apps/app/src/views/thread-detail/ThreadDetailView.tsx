@@ -37,7 +37,6 @@ import {
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
-  type ThreadTimelineLocalFileLinkHandler,
   type TimelineTitleActionResolver,
   useThreadTimelineController,
 } from "@/components/thread/timeline";
@@ -101,11 +100,7 @@ import {
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
-import {
-  getAbsoluteDirname,
-  isAbsoluteFilePathWithinRoot,
-  resolveAbsoluteFilePath,
-} from "@bb/shared-ui/lib/absolute-file-path";
+import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 import {
@@ -196,16 +191,11 @@ import {
   resolveEnvironmentOpenContext,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
-import {
-  resolveThreadLocalFileLink,
-  type ThreadLocalFileLinkResolution,
-} from "@/lib/thread-local-file-links";
+import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
-  type MarkdownLinkRouting,
   type MarkdownLocalFileContextMenuItem,
-  type MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
   useFixedPanelTabsStorageMaintenance,
@@ -249,85 +239,8 @@ type ThreadDetailViewProps =
   | ThreadDetailViewPageProps
   | ThreadDetailViewPaneProps;
 
-interface BuildMarkdownPreviewLinkRoutingArgs {
-  baseDir: string | undefined;
-  onOpenLink: ThreadTimelineLinkHandler;
-  onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
-  rootPath: string | null | undefined;
-}
-
-interface ResolveHostFilePreviewLinkRootPathArgs {
-  baseDir: string | undefined;
-  threadStorageRootPath: string | null;
-  workspaceRootPath: string | null;
-}
-
-function buildMarkdownPreviewLinkRouting({
-  baseDir,
-  onOpenLink,
-  onOpenLocalFileLink,
-  rootPath,
-}: BuildMarkdownPreviewLinkRoutingArgs): MarkdownLinkRouting {
-  if (rootPath === null || rootPath === undefined) {
-    return {
-      onOpenLink,
-    };
-  }
-
-  const localFileRouting: MarkdownLocalFileLinkRouting = {
-    absoluteLinks: {
-      kind: "contained",
-      rootPath,
-    },
-    onOpenLink: onOpenLocalFileLink,
-  };
-  if (baseDir !== undefined) {
-    localFileRouting.relativeLinks = {
-      baseDir,
-      rootPath,
-    };
-  }
-
-  return {
-    localFile: localFileRouting,
-    onOpenLink,
-  };
-}
-
 function buildOpenTargetMenuItemLabel(target: WorkspaceOpenTarget): string {
   return `Open in ${target.label}`;
-}
-
-function resolveHostFilePreviewLinkRootPath({
-  baseDir,
-  threadStorageRootPath,
-  workspaceRootPath,
-}: ResolveHostFilePreviewLinkRootPathArgs): string | null {
-  if (baseDir === undefined) {
-    return null;
-  }
-
-  if (
-    workspaceRootPath !== null &&
-    isAbsoluteFilePathWithinRoot({
-      candidatePath: baseDir,
-      rootPath: workspaceRootPath,
-    })
-  ) {
-    return workspaceRootPath;
-  }
-
-  if (
-    threadStorageRootPath !== null &&
-    isAbsoluteFilePathWithinRoot({
-      candidatePath: baseDir,
-      rootPath: threadStorageRootPath,
-    })
-  ) {
-    return threadStorageRootPath;
-  }
-
-  return null;
 }
 
 function ThreadDetailNotFound() {
@@ -771,7 +684,6 @@ function ThreadDetailViewInternal(
   const {
     closePanel: closeWorkspacePanel,
     openCompactDrawer,
-    openHostFile,
     openStorageFile,
     openWorkspaceFile,
     togglePanel: toggleWorkspacePanel,
@@ -780,7 +692,6 @@ function ThreadDetailViewInternal(
     drawerVisibility: secondaryPanelDrawerVisibility,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
-    openPersistedHostFile: panelFiles.openHostFile,
     openPersistedPanel: setThreadSecondaryPanel,
     openPersistedStorageFile: panelFiles.openStorageFile,
     openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
@@ -1208,90 +1119,57 @@ function ThreadDetailViewInternal(
     },
     [thread, updateThread],
   );
-  const handleTimelineLocalFileLinkResolution = useCallback(
-    (
-      resolution: ThreadLocalFileLinkResolution,
-      options?: ThreadSecondaryPanelFileOpenOptions,
-    ) => {
-      if (resolution.kind === "app-route") {
-        return false;
-      }
-      if (resolution.kind === "error") {
-        appToast.error("Failed to open file locally", {
-          description: resolution.description,
-        });
-        return true;
-      }
-
-      if (resolution.kind === "open-in-target") {
-        void openPathInFileTarget({
-          lineNumber: getFilePreviewLineRangeStart({
-            lineRange: resolution.request.lineRange,
-          }),
-          path: resolution.request.path,
-          rememberTarget: false,
-          targetId: resolution.request.targetId,
-        });
-        return true;
-      }
-
-      if (resolution.kind === "open-workspace-path") {
-        openWorkspaceFile(
-          {
-            lineRange: resolution.request.lineRange,
-            path: resolution.request.relativePath,
-            source: { kind: "working-tree" },
-            statusLabel: null,
-          },
-          options,
-        );
-        return true;
-      }
-
-      if (resolution.kind === "open-thread-storage-path") {
-        openStorageFile(
-          {
-            lineRange: resolution.request.lineRange,
-            path: resolution.request.relativePath,
-          },
-          options,
-        );
-        return true;
-      }
-
-      openHostFile(
-        {
-          lineRange: resolution.request.lineRange,
-          path: resolution.request.path,
-        },
-        options,
-      );
-      return true;
-    },
-    [openHostFile, openPathInFileTarget, openStorageFile, openWorkspaceFile],
-  );
   const handleOpenTimelineLocalFileLink = useCallback(
     (
       link: ThreadTimelineLocalFileLink,
       options?: ThreadSecondaryPanelFileOpenOptions,
     ) => {
-      return handleTimelineLocalFileLinkResolution(
-        resolveThreadLocalFileLink({
-          fileOpenTargetIds: fileOpenTargets.map((target) => target.id),
-          hostFileLinksAvailable:
-            thread?.environmentId !== null &&
-            thread?.environmentId !== undefined,
-          link,
-          threadStorageRootPath,
-          workspaceRootPath: workspacePreviewRootPath,
-        }),
-        options,
-      );
+      const resolution = resolveThreadLocalFileLink({
+        fileOpenTargetIds: fileOpenTargets.map((target) => target.id),
+        hostId:
+          thread?.environmentId == null ? null : (environment?.hostId ?? null),
+        link,
+        threadStorage:
+          thread === undefined || threadStorageRootPath === null
+            ? null
+            : { rootPath: threadStorageRootPath, threadId: thread.id },
+        workspace:
+          thread?.environmentId == null || workspacePreviewRootPath === null
+            ? null
+            : {
+                environmentId: thread.environmentId,
+                rootPath: workspacePreviewRootPath,
+              },
+      });
+      switch (resolution.kind) {
+        case "app-route":
+          return false;
+        case "error":
+          appToast.error("Failed to open file locally", {
+            description: resolution.description,
+          });
+          return true;
+        case "open-in-target":
+          void openPathInFileTarget({
+            lineNumber: getFilePreviewLineRangeStart({
+              lineRange: resolution.lineRange,
+            }),
+            path: resolution.path,
+            rememberTarget: false,
+            targetId: resolution.targetId,
+          });
+          return true;
+        case "preview":
+          openLiveFilePreview({ ...resolution.options, ...options });
+          return true;
+      }
     },
     [
+      environment?.hostId,
       fileOpenTargets,
-      handleTimelineLocalFileLinkResolution,
-      thread?.environmentId,
+      openLiveFilePreview,
+      openPathInFileTarget,
+      thread,
       threadStorageRootPath,
       workspacePreviewRootPath,
     ],
@@ -1806,14 +1684,6 @@ function ThreadDetailViewInternal(
             environmentId={tab.environmentId}
             isPanelOpen={isSecondaryPanelOpen}
             lineRange={tab.lineRange}
-            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
-              baseDir: copyPath
-                ? getAbsoluteDirname({ path: copyPath })
-                : undefined,
-              onOpenLink: handleOpenTimelineLink,
-              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              rootPath: workspacePreviewRootPath,
-            })}
             onOpenInEditor={handleOpenFileInEditor}
             onSelectionAddToChat={handleSelectionAddToChat}
             source={tab.source}
@@ -1822,7 +1692,6 @@ function ThreadDetailViewInternal(
         );
       }
       case "host-file-preview": {
-        const baseDir = getAbsoluteDirname({ path: tab.path });
         return (
           <LazyHostFilePreviewTabContent
             activePath={tab.path}
@@ -1830,16 +1699,6 @@ function ThreadDetailViewInternal(
             environmentId={tab.environmentId}
             isPanelOpen={isSecondaryPanelOpen}
             lineRange={tab.lineRange}
-            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
-              baseDir,
-              onOpenLink: handleOpenTimelineLink,
-              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              rootPath: resolveHostFilePreviewLinkRootPath({
-                baseDir,
-                threadStorageRootPath,
-                workspaceRootPath: workspacePreviewRootPath,
-              }),
-            })}
             onOpenInEditor={handleOpenHostFileInEditor}
             onSelectionAddToChat={handleSelectionAddToChat}
             threadId={thread.id}
@@ -1867,14 +1726,6 @@ function ThreadDetailViewInternal(
             copyPath={copyPath}
             isPanelOpen={isSecondaryPanelOpen}
             lineRange={tab.lineRange}
-            markdownLinkRouting={buildMarkdownPreviewLinkRouting({
-              baseDir: copyPath
-                ? getAbsoluteDirname({ path: copyPath })
-                : undefined,
-              onOpenLink: handleOpenTimelineLink,
-              onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              rootPath: threadStorageRootPath,
-            })}
             onOpenInEditor={handleOpenStorageFileInEditor}
             onSelectionAddToChat={handleSelectionAddToChat}
             threadId={thread.id}

@@ -235,14 +235,11 @@ describe("PluginThreadChat", () => {
       updatedAt: 1,
     } as never);
     const openFilePreview = vi.fn(() => true);
-    const openFileExternally = vi.fn(() => true);
 
     render(
       <Wrapper>
         <MemoryRouter>
-          <AppNavigationHostProvider
-            capabilities={{ openFileExternally, openFilePreview }}
-          >
+          <AppNavigationHostProvider capabilities={{ openFilePreview }}>
             <DemoPluginPage threadId="thr_demo" />
           </AppNavigationHostProvider>
         </MemoryRouter>
@@ -296,15 +293,17 @@ describe("PluginThreadChat", () => {
           location: null,
         },
       ],
+      [
+        {
+          target: {
+            kind: "workspace",
+            environmentId: "env_demo",
+            path: "src/index.ts",
+          },
+          location: null,
+        },
+      ],
     ]);
-    expect(openFileExternally).toHaveBeenCalledWith({
-      target: {
-        kind: "workspace",
-        environmentId: "env_demo",
-        path: "src/index.ts",
-      },
-      location: null,
-    });
   });
 
   it("maps variant timeline to a composer-less transcript", async () => {

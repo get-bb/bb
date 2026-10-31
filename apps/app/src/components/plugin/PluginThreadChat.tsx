@@ -20,7 +20,7 @@ import {
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/timeline/types";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import { environmentFileLinkOpenOptions } from "@/lib/environment-file-links";
+import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
@@ -185,10 +185,20 @@ function PluginThreadChatBody({
     if (canUseHostFileNavigation) return timelineNavigation.onOpenLocalFileLink;
     if (environment === null) return undefined;
     return (link) => {
-      const options = environmentFileLinkOpenOptions({ environment, link });
-      return link.openTargetId === null
-        ? navigation.openFilePreview(options)
-        : navigation.openFileExternally(options);
+      const resolution = resolveThreadLocalFileLink({
+        fileOpenTargetIds: [],
+        hostId: environment.hostId,
+        link,
+        threadStorage: null,
+        workspace:
+          environment.path === null
+            ? null
+            : { environmentId: environment.id, rootPath: environment.path },
+      });
+      return (
+        resolution.kind === "preview" &&
+        navigation.openFilePreview(resolution.options)
+      );
     };
   }, [canUseHostFileNavigation, environment, navigation, timelineNavigation]);
   const resolveHostMentionLink = canUseHostFileNavigation

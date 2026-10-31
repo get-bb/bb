@@ -103,22 +103,6 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
     expect(reveal).toHaveBeenCalledTimes(accepted ? 1 : 0);
   });
 
-  it("opens host files in the same tab shape core uses", () => {
-    if (!surface.accepts.ownHost) return;
-    const { openTab, panelFiles } = renderSurface(surface);
-    panelFiles.openFilePreview({ target: OWN_HOST, location: null });
-    panelFiles.openHostFile({ lineRange: null, path: OWN_HOST.path });
-
-    const [apiRequest, coreRequest] = openTab.mock.calls.map(
-      ([request]) => request,
-    );
-    expect(apiRequest).toEqual(
-      surface.scope === null || surface.scope.threadId === null
-        ? { ...coreRequest, hostId: OWN_HOST.hostId }
-        : coreRequest,
-    );
-  });
-
   it.runIf(surface.accepts.ownWorkspace).each([
     ["HEAD", { kind: "head" }],
     ["abc1234", { kind: "merge-base", ref: "abc1234" }],
