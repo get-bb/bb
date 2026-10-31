@@ -1,10 +1,21 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
+import {
+  DisclosureToggle,
+  InlineTextButton,
+  InlineTextLink,
+  SignInPanel,
+  type SignInPanelVariant,
+} from "@bb/shared-ui/sign-in-panel";
+import {
+  SetupOptionGroup,
+  SetupOptionRow,
+} from "@bb/shared-ui/setup-option-row";
 import { Switch } from "@bb/shared-ui/switch";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -27,10 +38,14 @@ import {
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 const CONTENT_COLUMN_CLASS =
-  "mx-auto w-full max-w-[600px] px-4 @min-[36rem]/onboarding:px-6";
+  "mx-auto w-full max-w-[600px] px-4 @xl/onboarding:px-6";
 
 interface OnboardingLayoutProps {
   step: OnboardingStepId;
+  width?: "default" | "wide";
+  showSkipAll?: boolean;
+  skippedSteps?: ReadonlySet<OnboardingStepId>;
+  composition?: "docked" | "centered";
   compact?: boolean;
   reserveMacosTrafficLights?: boolean;
   title: string;
@@ -50,6 +65,10 @@ interface OnboardingLayoutProps {
 
 export function OnboardingLayout({
   step,
+  width = "default",
+  showSkipAll = true,
+  skippedSteps,
+  composition = "docked",
   compact = false,
   reserveMacosTrafficLights = false,
   title,
@@ -67,6 +86,38 @@ export function OnboardingLayout({
   onSkipAll,
 }: OnboardingLayoutProps) {
   const activeIndex = ONBOARDING_STEPS.findIndex((entry) => entry.id === step);
+  const centered = composition === "centered";
+  const actions = (
+    <>
+      {onBack ? (
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <Icon name="ArrowLeft" aria-hidden />
+          Back
+        </Button>
+      ) : null}
+      {centered ? null : (
+        <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+          {footerNote}
+        </span>
+      )}
+      {secondaryLabel && onSecondary ? (
+        <Button variant="ghost" size="sm" onClick={onSecondary}>
+          {secondaryLabel}
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        disabled={primaryDisabled || primaryBusy}
+        onClick={onPrimary}
+      >
+        {primaryBusy ? (
+          <Icon name="Spinner" aria-hidden className="animate-spin" />
+        ) : null}
+        {primaryLabel}
+        {primaryBusy ? null : <Icon name="ArrowRight" aria-hidden />}
+      </Button>
+    </>
+  );
   return (
     <div
       data-testid="onboarding"
@@ -74,7 +125,7 @@ export function OnboardingLayout({
     >
       <header
         className={cn(
-          "grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 pr-4 @min-[36rem]/onboarding:gap-3",
+          "grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 pr-4 @xl/onboarding:gap-3",
           reserveMacosTrafficLights
             ? cn(
                 MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
@@ -94,22 +145,24 @@ export function OnboardingLayout({
           className="col-start-2 row-start-1 flex min-w-0 items-center justify-center gap-1"
         >
           {ONBOARDING_STEPS.map((entry, index) => {
-            const done = index < activeIndex;
+            const passed = index < activeIndex;
+            const skipped = passed && (skippedSteps?.has(entry.id) ?? false);
+            const done = passed && !skipped;
             const active = index === activeIndex;
             return (
               <button
                 key={entry.id}
                 type="button"
-                disabled={!done}
+                disabled={!passed}
                 aria-current={active ? "step" : undefined}
-                aria-label={entry.label}
+                aria-label={skipped ? `${entry.label} (skipped)` : entry.label}
                 onClick={() => onSelectStep(entry.id)}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-full px-1 py-1 text-xs font-medium transition-colors @min-[36rem]/onboarding:px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-1 py-1 text-xs font-medium transition-colors @xl/onboarding:px-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                   MACOS_APP_REGION_NO_DRAG_CLASS,
                   active && "text-foreground",
-                  done && "text-subtle-foreground hover:bg-state-hover",
-                  !active && !done && "text-muted-foreground",
+                  passed && "text-subtle-foreground hover:bg-state-hover",
+                  !active && !passed && "text-muted-foreground",
                 )}
               >
                 <span
@@ -117,18 +170,21 @@ export function OnboardingLayout({
                     "flex size-5 items-center justify-center rounded-full text-xs tabular-nums",
                     active && "bg-foreground text-background",
                     done && "bg-success text-background",
-                    !active && !done && "border border-border",
+                    skipped && "bg-state-hover text-subtle-foreground",
+                    !active && !passed && "border border-border",
                   )}
                 >
                   {done ? (
                     <Icon name="Check" aria-hidden className="size-3" />
+                  ) : skipped ? (
+                    <Icon name="Minus" aria-hidden className="size-3" />
                   ) : (
                     index + 1
                   )}
                 </span>
                 <span
                   className={cn(
-                    !active && "sr-only @min-[36rem]/onboarding:not-sr-only",
+                    !active && "sr-only @xl/onboarding:not-sr-only",
                   )}
                 >
                   {entry.label}
@@ -137,70 +193,75 @@ export function OnboardingLayout({
             );
           })}
         </nav>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "col-start-3 row-start-1 shrink-0 text-muted-foreground",
-            MACOS_APP_REGION_NO_DRAG_CLASS,
-          )}
-          onClick={onSkipAll}
-        >
-          <span className="@min-[36rem]/onboarding:hidden">Skip</span>
-          <span className="hidden @min-[36rem]/onboarding:inline">
-            Skip setup
-          </span>
-        </Button>
+        {showSkipAll ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "col-start-3 row-start-1 shrink-0 text-muted-foreground",
+              MACOS_APP_REGION_NO_DRAG_CLASS,
+            )}
+            onClick={onSkipAll}
+          >
+            <span className="@xl/onboarding:hidden">Skip</span>
+            <span className="hidden @xl/onboarding:inline">Skip setup</span>
+          </Button>
+        ) : (
+          <span aria-hidden className="col-start-3 row-start-1 w-6" />
+        )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto",
+          centered && "flex flex-col",
+        )}
+      >
         <div
           className={cn(
             CONTENT_COLUMN_CLASS,
-            "flex flex-col gap-6",
+            width === "wide" && "max-w-3xl",
+            "flex flex-col",
+            centered ? "gap-5" : "gap-6",
             compact ? "py-4" : "py-6",
+            centered && "pt-8",
           )}
         >
-          <div className="flex flex-col gap-1.5">
+          <div
+            className={cn(
+              "flex flex-col gap-1.5",
+              centered && "items-center text-center",
+            )}
+          >
             <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
           {children}
+          {centered ? (
+            <div className="sticky bottom-0 flex flex-col items-center gap-2 bg-background pb-4 pt-2 before:pointer-events-none before:absolute before:inset-x-0 before:-top-6 before:h-6 before:bg-gradient-to-t before:from-background before:to-transparent">
+              {footerNote ? (
+                <p className="text-center text-xs text-muted-foreground">
+                  {footerNote}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {actions}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
-      <footer className="shrink-0 border-t border-border-hairline">
-        <div
-          className={cn(
-            CONTENT_COLUMN_CLASS,
-            "flex items-center gap-1 py-3 @min-[36rem]/onboarding:gap-2",
-          )}
-        >
-          {onBack ? (
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <Icon name="ArrowLeft" aria-hidden />
-              Back
-            </Button>
-          ) : null}
-          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
-            {footerNote}
-          </span>
-          {secondaryLabel && onSecondary ? (
-            <Button variant="ghost" size="sm" onClick={onSecondary}>
-              {secondaryLabel}
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            disabled={primaryDisabled || primaryBusy}
-            onClick={onPrimary}
+      {centered ? null : (
+        <footer className="shrink-0 border-t border-border-hairline">
+          <div
+            className={cn(
+              CONTENT_COLUMN_CLASS,
+              "flex items-center gap-1 py-3 @xl/onboarding:gap-2",
+            )}
           >
-            {primaryBusy ? (
-              <Icon name="Spinner" aria-hidden className="animate-spin" />
-            ) : null}
-            {primaryLabel}
-            {primaryBusy ? null : <Icon name="ArrowRight" aria-hidden />}
-          </Button>
-        </div>
-      </footer>
+            {actions}
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
@@ -247,21 +308,41 @@ interface AgentRowHandlers {
   onCancelSignIn: (id: string) => void;
 }
 
+function AgentActionIcon({
+  agent,
+  quiet,
+}: {
+  agent: OnboardingAgent;
+  quiet: boolean;
+}) {
+  return quiet ? (
+    <ProviderIcon
+      providerKind="agent"
+      provider={agent.provider}
+      className="size-4"
+    />
+  ) : (
+    <Icon name="Download" aria-hidden />
+  );
+}
+
 function AgentRow({
   agent,
+  quiet,
   onSignIn,
   onInstall,
   onViewInstallLog,
   onCancelSignIn,
-}: AgentRowHandlers & { agent: OnboardingAgent }) {
+}: AgentRowHandlers & { agent: OnboardingAgent; quiet: boolean }) {
   const { state } = agent;
+  const loudFailure = state.status === "installFailed" && !quiet;
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
       <div
         className={cn(
           "items-center gap-3",
-          state.status === "installFailed"
-            ? "grid grid-cols-[1.5rem_minmax(0,1fr)] @min-[36rem]/onboarding:flex"
+          loudFailure
+            ? "grid grid-cols-[1.5rem_minmax(0,1fr)] @xl/onboarding:flex"
             : "flex",
         )}
       >
@@ -279,7 +360,7 @@ function AgentRow({
             expandLabel="Show details"
             className={cn(
               "text-xs text-muted-foreground",
-              state.status === "installFailed" && "text-destructive-text",
+              loudFailure && "text-destructive-text",
             )}
           >
             {agentSubline(state)}
@@ -294,17 +375,29 @@ function AgentRow({
             />
           ) : null}
           {state.status === "ready" ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-              <Icon name="CircleCheck" aria-hidden className="size-4" />
-              Ready
-            </span>
+            quiet ? (
+              <span className="flex items-center gap-1 text-2xs text-subtle-foreground">
+                <Icon name="CircleCheck" aria-hidden className="size-3" />
+                Ready
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-success">
+                <Icon name="CircleCheck" aria-hidden className="size-4" />
+                Ready
+              </span>
+            )
           ) : null}
           {state.status === "signIn" && state.canSignIn ? (
-            <Button size="sm" onClick={() => onSignIn(agent.id)}>
+            <Button
+              size="sm"
+              variant={quiet ? "outline" : "default"}
+              onClick={() => onSignIn(agent.id)}
+            >
+              {quiet ? <AgentActionIcon agent={agent} quiet /> : null}
               Sign in
             </Button>
           ) : null}
-          {state.status === "installFailed" ? (
+          {loudFailure ? (
             <Button
               size="sm"
               variant="ghost"
@@ -322,7 +415,7 @@ function AgentRow({
               variant="outline"
               onClick={() => onInstall(agent.id)}
             >
-              <Icon name="Download" aria-hidden />
+              <AgentActionIcon agent={agent} quiet={quiet} />
               {state.status === "installFailed"
                 ? "Retry"
                 : state.status === "update"
@@ -330,7 +423,7 @@ function AgentRow({
                   : "Install"}
             </Button>
           ) : null}
-          {state.status === "signingIn" ? (
+          {state.status === "signingIn" && !quiet ? (
             <Button
               size="sm"
               variant="ghost"
@@ -347,12 +440,14 @@ function AgentRow({
 }
 
 interface AgentStepProps extends AgentRowHandlers {
+  quiet?: boolean;
   machineName: string | null;
   agents: readonly OnboardingAgent[] | null;
   onRecheck: () => void;
 }
 
 export function AgentStep({
+  quiet = false,
   machineName,
   agents,
   onRecheck,
@@ -360,28 +455,30 @@ export function AgentStep({
 }: AgentStepProps) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon name="Laptop" aria-hidden className="size-3.5" />
-        <span className="min-w-0 flex-1 truncate">
-          {machineName === null
-            ? "Waiting for this computer to connect…"
-            : `On ${machineName}`}
-        </span>
-        {machineName === null ? null : (
-          <button
-            type="button"
-            onClick={onRecheck}
-            className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Icon
-              name="ArrowReloadHorizontal"
-              aria-hidden
-              className="size-3.5"
-            />
-            Check again
-          </button>
-        )}
-      </div>
+      {quiet ? null : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon name="Laptop" aria-hidden className="size-3.5" />
+          <span className="min-w-0 flex-1 truncate">
+            {machineName === null
+              ? "Waiting for this computer to connect…"
+              : `On ${machineName}`}
+          </span>
+          {machineName === null ? null : (
+            <button
+              type="button"
+              onClick={onRecheck}
+              className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <Icon
+                name="ArrowReloadHorizontal"
+                aria-hidden
+                className="size-3.5"
+              />
+              Check again
+            </button>
+          )}
+        </div>
+      )}
       {agents === null ? (
         <ul className="divide-y divide-border-hairline rounded-lg border border-border">
           {[0, 1, 2].map((index) => (
@@ -397,14 +494,21 @@ export function AgentStep({
       ) : (
         <ul className="divide-y divide-border-hairline rounded-lg border border-border">
           {agents.map((agent) => (
-            <AgentRow key={agent.id} agent={agent} {...rowHandlers} />
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              quiet={quiet}
+              {...rowHandlers}
+            />
           ))}
         </ul>
       )}
-      <p className="text-xs text-muted-foreground">
-        Don't see your agent? bb picks up other ACP agents, such as opencode,
-        once they are installed.
-      </p>
+      {quiet ? null : (
+        <p className="text-xs text-muted-foreground">
+          Don't see your agent? bb picks up other ACP agents, such as opencode,
+          once they are installed.
+        </p>
+      )}
     </div>
   );
 }
@@ -726,13 +830,15 @@ export function ProjectsStep({
 
 export function OnboardingPluginGrid({
   compact = false,
+  showHelp = true,
   children,
 }: {
   compact?: boolean;
+  showHelp?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn("flex flex-col", showHelp ? "gap-4" : "gap-2")}>
       <ResourceBrowseGrid
         className={cn(
           "w-full gap-2",
@@ -743,11 +849,13 @@ export function OnboardingPluginGrid({
       >
         {children}
       </ResourceBrowseGrid>
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon name="Puzzle" aria-hidden className="size-3.5 shrink-0" />
-        Want something that isn't here? Ask an agent to build a plugin at any
-        time.
-      </p>
+      {showHelp ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon name="Puzzle" aria-hidden className="size-3.5 shrink-0" />
+          Want something that isn't here? Ask an agent to build a plugin at any
+          time.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -770,6 +878,8 @@ export function OnboardingPluginGridSkeleton({ count }: { count: number }) {
 }
 
 interface OnboardingPluginCardProps {
+  density?: "default" | "compact";
+  showStateLabel?: boolean;
   name: string;
   description: string;
   icon: { icon: string | null; iconUrl: string | null; iconTinted: boolean };
@@ -780,6 +890,8 @@ interface OnboardingPluginCardProps {
 }
 
 export function OnboardingPluginCard({
+  density = "default",
+  showStateLabel = true,
   name,
   description,
   icon,
@@ -796,7 +908,8 @@ export function OnboardingPluginCard({
       }
       title={name}
       description={unavailableReason ?? description}
-      descriptionLines="expandable"
+      descriptionLines={density === "compact" ? 3 : "expandable"}
+      density={density}
       disabled={disabled}
       byline={
         <PluginAuthorByline name="BB Official" github={null} official>
@@ -816,7 +929,7 @@ export function OnboardingPluginCard({
               aria-hidden
               className="size-3.5 animate-spin"
             />
-          ) : enabled ? (
+          ) : !showStateLabel ? null : enabled ? (
             "On"
           ) : (
             "Off"
@@ -985,5 +1098,187 @@ export function DevicesStep({
         }
       />
     </ul>
+  );
+}
+
+export function AgentInstallErrorDetails({ log }: { log: string }) {
+  const [open, setOpen] = useState(false);
+  if (log.trim().length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-col items-start gap-1 pl-8 text-xs text-muted-foreground">
+      <DisclosureToggle expanded={open} onToggle={() => setOpen(!open)}>
+        {open ? "Hide details" : "Show details"}
+      </DisclosureToggle>
+      {open ? (
+        <pre className="max-h-32 w-full overflow-auto whitespace-pre-wrap px-1 font-mono text-xs text-muted-foreground">
+          {log}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+interface AgentSignInPanelProps {
+  agentName: string;
+  guide: SignInGuide | null;
+  code: string;
+  codeSubmitted: boolean;
+  terminalVisible: boolean;
+  terminal: ReactNode;
+  alternate: "browser" | "code" | null;
+  onCodeChange: (code: string) => void;
+  onSubmitCode: () => void;
+  onOpenUrl: (url: string) => void;
+  onCopy: (text: string) => void;
+  onToggleTerminal: () => void;
+  onUseAlternate: () => void;
+}
+
+export function AgentSignInPanel({
+  agentName,
+  guide,
+  code,
+  codeSubmitted,
+  terminalVisible,
+  terminal,
+  alternate,
+  onCodeChange,
+  onSubmitCode,
+  onOpenUrl,
+  onCopy,
+  onToggleTerminal,
+  onUseAlternate,
+}: AgentSignInPanelProps) {
+  const url = guide?.url ?? null;
+  const userCode = guide?.userCode ?? null;
+  const acceptsPastedCode = guide?.acceptsPastedCode ?? false;
+  const starting = url === null && !terminalVisible;
+  const page =
+    url === null ? null : (
+      <InlineTextLink
+        href={url}
+        onOpen={(href) => {
+          onOpenUrl(href);
+          return true;
+        }}
+      >
+        {agentName} page
+      </InlineTextLink>
+    );
+  const alternateAction =
+    alternate === null ? null : (
+      <InlineTextButton onClick={onUseAlternate}>
+        {alternate === "browser"
+          ? "sign in with a browser"
+          : "use a code instead"}
+      </InlineTextButton>
+    );
+  const instruction =
+    url === null ? (
+      terminalVisible ? (
+        `Sign in to ${agentName} in the terminal below.`
+      ) : undefined
+    ) : userCode !== null ? (
+      alternateAction === null ? (
+        <>Enter this code on the {page}.</>
+      ) : (
+        <>
+          Enter this code on the {page}, or {alternateAction}.
+        </>
+      )
+    ) : acceptsPastedCode ? (
+      <>Sign in on the {page}, then paste the code it shows you.</>
+    ) : alternate === "code" ? (
+      <>Sign in with your browser, or {alternateAction}.</>
+    ) : (
+      <>Finish signing in on the {page}.</>
+    );
+  const variant: SignInPanelVariant =
+    url !== null && userCode !== null
+      ? {
+          kind: "code",
+          code: userCode,
+          label: `${agentName} sign-in code`,
+          onCopyCode: onCopy,
+        }
+      : url !== null && acceptsPastedCode
+        ? {
+            kind: "paste",
+            label: `${agentName} authorization code`,
+            value: code,
+            onChange: onCodeChange,
+            onSubmit: onSubmitCode,
+          }
+        : { kind: "waiting" };
+  return (
+    <div className="mt-3 pl-9">
+      <SignInPanel
+        status={
+          codeSubmitted
+            ? "Finishing sign-in…"
+            : starting
+              ? `Starting ${agentName} sign-in…`
+              : "bb continues automatically after you sign in."
+        }
+        instruction={instruction}
+        variant={variant}
+        toggles={
+          <DisclosureToggle
+            expanded={terminalVisible}
+            onToggle={onToggleTerminal}
+          >
+            {terminalVisible ? "Hide terminal" : "Show terminal"}
+          </DisclosureToggle>
+        }
+        expanded={
+          terminalVisible ? <div className="h-48">{terminal}</div> : null
+        }
+      />
+    </div>
+  );
+}
+
+export function ConnectUnavailableRow() {
+  return (
+    <SetupOptionRow
+      icon="ComputerCloud"
+      title="bb connect"
+      description="bb connect is turned off on this server. Turn on its plugin to get a private getbb.app address."
+    />
+  );
+}
+
+export function RedesignedDevicesStep({
+  hostName,
+  connectSection,
+  onAddMachine,
+}: {
+  hostName: string | null;
+  connectSection: ReactNode;
+  onAddMachine: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <SetupOptionGroup label="Where you use bb">
+        {connectSection}
+      </SetupOptionGroup>
+      <SetupOptionGroup label="Where agents run">
+        <SetupOptionRow
+          icon="Laptop"
+          title="Add another machine"
+          description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings → Machines.`}
+          action={
+            <Button
+              size="sm"
+              variant="ghost"
+              className="-mr-3 text-muted-foreground hover:text-foreground @max-xl/onboarding:mr-0 @max-xl/onboarding:-ml-3"
+              onClick={onAddMachine}
+            >
+              Add a machine
+            </Button>
+          }
+        />
+      </SetupOptionGroup>
+    </div>
   );
 }

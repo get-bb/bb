@@ -419,6 +419,21 @@
       "types": "./src/components/ui/info-list-row.tsx",
       "default": "./src/components/ui/info-list-row.tsx"
     },
+    "./mobile-platform-icon": {
+      "source": "./src/components/ui/mobile-platform-icon.tsx",
+      "types": "./src/components/ui/mobile-platform-icon.tsx",
+      "default": "./src/components/ui/mobile-platform-icon.tsx"
+    },
+    "./setup-option-row": {
+      "source": "./src/components/ui/setup-option-row.tsx",
+      "types": "./src/components/ui/setup-option-row.tsx",
+      "default": "./src/components/ui/setup-option-row.tsx"
+    },
+    "./sign-in-panel": {
+      "source": "./src/components/ui/sign-in-panel.tsx",
+      "types": "./src/components/ui/sign-in-panel.tsx",
+      "default": "./src/components/ui/sign-in-panel.tsx"
+    },
     "./file-path-link": {
       "source": "./src/components/ui/file-path-link.tsx",
       "types": "./src/components/ui/file-path-link.tsx",

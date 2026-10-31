@@ -137,7 +137,7 @@ const FRONTEND_TYPE_EXPORT_NAMES = [
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean),
-];
+].filter((name) => !name.startsWith("InternalDoNotUse"));
 
 const FRONTEND_TEST_EXPORT_NAMES = [
   "packages/plugin-sdk/src/testing/app.tsx",
@@ -312,7 +312,10 @@ type SlotPropsByName = {
 
 type SlotPropKeys<T> = T extends unknown ? keyof T : never;
 
-type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
+type MissingSlot = Exclude<
+  keyof PluginAppSlots,
+  keyof SlotPropsByName | `internal_DO_NOT_USE_${string}`
+>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 

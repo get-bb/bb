@@ -38,6 +38,7 @@ import {
   type ComposerView,
   type ExperimentalTabRegistration,
   type ExperimentalAppOverlayRegistration,
+  type InternalDoNotUseSetupGuideSectionRegistration,
   type ExperimentalSidebarNavigationActions,
   type ExperimentalSidebarNavigationTarget,
   type ExperimentalSidebarNavigationIconProps,
@@ -2064,6 +2065,7 @@ export interface CapturedPluginApp {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
+  setupGuideSections: InternalDoNotUseSetupGuideSectionRegistration[];
   navPanels: import("../internal/plugin-app-registration-collector.js").LegacyNavPanelRegistration[];
   tabs: ExperimentalTabRegistration[];
   threadPanelActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadPanelActionRegistration[];

@@ -1,15 +1,15 @@
 {
   "name": "bb-plugin-inline-vis",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Show HTML visualizations inline in assistant messages, written in the reply as a fenced block or read from a workspace or thread-storage file, and Markdown documents from a file.",
+  "description": "Let agents show HTML visualizations and Markdown documents inline in their replies.",
   "engines": {
     "bb": ">=0.0"
   },
   "bb": {
     "name": "Inline visualizations",
-    "description": "Show HTML visualizations inline in assistant messages, written in the reply as a fenced block or read from a workspace or thread-storage file, and Markdown documents from a file.",
+    "description": "Let agents show HTML visualizations and Markdown documents inline in their replies.",
     "branding": {
       "icon": "AppWindow"
     },

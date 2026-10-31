@@ -6,10 +6,11 @@ Open your bb from a phone or another computer. Once this bb is signed in to your
 - Port shares. Publish a local HTTP server, such as a dev server, at a share URL. The link opens from any device with your session. With bb connect next on, shares from this bb's machine also get a `.next` URL.
 - Pairing for the bb mobile app with a QR code or a one-time code.
 - A bb connect section in Settings, with the connection state and the remote URL.
+- A bb connect row in the first-run setup guide. Set up signs this bb in, and once bb connect is on the row shows a code to pair the bb mobile app.
 
 ## How it works
 
-Remote access uses the bb account plugin. Sign in from Settings → bb connect, Settings → bb account, or `bb account login`. A pairing code from the getbb.app dashboard also works: paste it in Settings or run `bb connect --code <code>`. Remote access starts as soon as the account is signed in, and connects with the server credential bb account holds. The plugin reconnects after a drop, and signs out if getbb.app no longer accepts the credential.
+Remote access uses the bb account plugin. Sign in from the setup guide, Settings → bb connect, Settings → bb account, or `bb account login`. Starting a sign-in in bb opens getbb.app in your browser. A pairing code from the getbb.app dashboard also works: paste it in Settings or run `bb connect --code <code>`. Remote access starts as soon as the account is signed in, and connects with the server credential bb account holds. The plugin reconnects after a drop, and signs out if getbb.app no longer accepts the credential.
 
 `bb connect off`, or the Remote access switch in the plugin settings, turns remote access off and keeps this bb signed in; `bb connect on` turns it back on. `bb account logout` forgets the pairing. Disable the plugin to cut all remote access at once.
 
