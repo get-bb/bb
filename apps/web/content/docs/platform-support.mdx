@@ -1,0 +1,87 @@
+---
+title: Platform support
+description: Which operating systems, processors and Node.js versions bb runs on, what works in the iOS and Android apps, and the limits of native Windows and WSL2.
+type: reference
+sources:
+  - apps/desktop/electron-builder.config.json
+  - packages/bb-app/package.json
+  - apps/web/src/landing/site.ts
+  - apps/app/src/components/settings/MobileAppSection.tsx
+  - apps/mobile/app.json
+  - docs/platform-support.md
+since: 0.45.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+## Desktop app
+
+| System | Desktop app | Status |
+| --- | --- | --- |
+| macOS on Apple Silicon (arm64) | `.dmg`, macOS 13 or later | Supported |
+| macOS on Intel | None | Run `npx bb-app@latest` instead |
+| Linux x64 | AppImage | Alpha |
+| Linux arm64 | None | Run `npx bb-app@latest` instead |
+| Windows x64 | `.exe` installer | Alpha |
+
+| Channel | Download | Notes |
+| --- | --- | --- |
+| Stable | Download for [macOS](/download/macos), [Linux](/download/linux) or [Windows](/download/windows) | |
+| bb Nightly | The [desktop-nightly release](https://github.com/get-bb/bb/releases/tag/desktop-nightly) | Its own app name, a yellow icon and its own update feed, so it installs alongside the stable app |
+
+## The npx package
+
+`npx bb-app@latest` runs the same server and app in your browser at `http://localhost:38886` on any system where Node.js runs.
+
+| Requirement | Supported |
+| --- | --- |
+| Node.js | 22.19 or newer. Tested on Node.js 22 (22.19 and later), 24 and 26. Newer release lines aren't blocked: npm warns about a version bb hasn't been tested on, and bb still installs |
+| Native modules | `better-sqlite3`, `node-pty`, `@parcel/watcher`. If you change Node.js versions after installing, reinstall bb or run `npm rebuild better-sqlite3` |
+| Operating systems | macOS, Linux, Windows inside WSL2, and native Windows 11 x64 (alpha) |
+| Git | Needed for worktrees and Git features. Native Windows needs Git for Windows |
+
+## Windows
+
+| | Native Windows (alpha) | WSL2 |
+| --- | --- | --- |
+| How to run | The Windows desktop installer, or `npx bb-app@latest` in PowerShell or CMD | `npx bb-app@latest` in your WSL2 (Ubuntu) shell |
+| Needs | [Git for Windows](https://git-scm.com/download/win) | Node.js, Git and your agent CLIs installed inside WSL2 |
+| Project paths | Drive-letter paths such as `C:\Users\me\repo`. Network paths (`\\server\share`) are refused: map the share to a drive letter | Linux paths. Windows folders work as `/mnt/c/...` but are slower and watch files less reliably than folders inside WSL |
+| Terminals | PowerShell 7 if installed, otherwise Windows PowerShell | Your Linux shell |
+| Worktree setup scripts | `.bb-env-setup.sh` and `.bb-env-teardown.sh` run in Git for Windows' bash | Run as on Linux |
+| Path case | Compared without regard to case: `C:\src\Repo` and `C:\src\repo` are the same project | As on Linux |
+| Path style | Refuses Linux-style paths | Refuses Windows drive-letter paths, as macOS and Linux do |
+| Add as a machine to another server | Yes: **Settings → Machines** shows a PowerShell command | As on Linux |
+| Move your server here | No | |
+
+## Phones and tablets
+
+The phone app is a client for your bb server: it runs no agents or plugins itself, and adds screens for pairing, saved servers, device settings and notifications.
+
+| Platform | How to install |
+| --- | --- |
+| iOS (iPhone and iPad) | TestFlight beta: **Settings → Mobile → Join iOS TestFlight** |
+| Android | APK download: **Settings → Mobile → Download Android APK**. Google Play isn't available yet |
+
+| Feature | On a phone |
+| --- | --- |
+| Threads, projects, plugins and server settings | Yes, the same as in a browser |
+| Connect with bb Connect | Yes, by scanning a pairing code |
+| Connect directly by URL | Yes. iOS only allows plain `http://` for local network addresses and `.local` names, so a Tailscale address needs HTTPS (Tailscale Serve) |
+| Push notifications | Needs bb Connect or an HTTPS address, and a server that can reach `exp.host`. A plain `http://` address can't register |
+| Plugin UI and themes | Yes inside the app's pages. The app's own screens use the built-in colors |
+| Open in an editor, the native folder picker | No. Browse folders on the server instead |
+| Signing in to an agent | Needs a terminal on the machine that runs the agent |
+| The in-app browser | Desktop app only |
+
+## Web browsers
+
+| Feature | In a browser |
+| --- | --- |
+| The app | Opens at your server's address, such as `http://localhost:38886` |
+| Notifications | Need an open bb tab, HTTPS or `localhost`, and your permission |
+| The in-app browser | Desktop app only |
+
+## Where this list comes from
+
+Hand-written from the desktop build targets in [`electron-builder.config.json`](https://github.com/get-bb/bb/blob/main/apps/desktop/electron-builder.config.json), the Node.js range in [`bb-app/package.json`](https://github.com/get-bb/bb/blob/main/packages/bb-app/package.json), the download options on getbb.app, and **Settings → Mobile**.
