@@ -20,10 +20,15 @@ export function siteHeadLinks(
   ];
 }
 
-export function pageMeta(title: string, description: string, path: string) {
+export function pageMeta(
+  title: string,
+  description: string,
+  path: string,
+  image?: Parameters<typeof unfurlMeta>[3],
+) {
   return [
     { title },
     { name: "description", content: description },
-    ...unfurlMeta(title, description, path),
+    ...unfurlMeta(title, description, path, image),
   ];
 }
