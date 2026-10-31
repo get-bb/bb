@@ -27,24 +27,19 @@ if ($null -eq $dialog) { Save-Screen "missing"; throw "Folder dialog did not ope
 Start-Sleep -Seconds 1
 Save-Screen "open"
 
+$shell = New-Object -ComObject WScript.Shell
+$null = $shell.AppActivate("Browse For Folder")
+Start-Sleep -Milliseconds 500
+$tree = Find-Named $dialog "Navigation Pane" $scope::Descendants
+if ($null -ne $tree) { $tree.SetFocus() }
+Start-Sleep -Milliseconds 300
+
 if ($Action -eq "pick") {
-  $leaf = "Documents"
-  $item = $null
-  for ($i = 0; $i -lt 20 -and $null -eq $item; $i++) {
-    $item = Find-Named $dialog $leaf $scope::Descendants
-    if ($null -eq $item) { Start-Sleep -Milliseconds 500 }
-  }
-  if ($null -eq $item) {
-    Save-Screen "notfound"
-    $all = $dialog.FindAll($scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-    foreach ($element in $all) { Write-Host ("UIA {0} | {1} | {2}" -f $element.Current.ControlType.ProgrammaticName, $element.Current.Name, $element.Current.ClassName) }
-    throw "Folder $leaf is not in the dialog tree"
-  }
-  $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-  Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.SendKeys]::SendWait("Documents")
+  Start-Sleep -Seconds 1
   Save-Screen "selected"
-  $button = Find-Named $dialog "OK" $scope::Descendants
+  [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 } else {
-  $button = Find-Named $dialog "Cancel" $scope::Descendants
+  [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
 }
-$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Seconds 1
