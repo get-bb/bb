@@ -12,6 +12,7 @@ import {
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
+import { createTestResourceLedger } from "../resource-ledger-fixture.js";
 
 function streamedEntries(emitted: EventSinkInput[]) {
   return emitted.flatMap((input) =>
@@ -151,6 +152,7 @@ describe("environment command dispatch", () => {
       resolveProvisionStarted = resolve;
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async (options) => {
         provisionSignal = options.signal;
@@ -207,6 +209,7 @@ describe("environment command dispatch", () => {
       resolveProvisionStarted = resolve;
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async (options) => {
         provisionSignal = options.signal;
@@ -312,6 +315,7 @@ describe("environment command dispatch", () => {
     const emittedEvents: EventSinkInput[] = [];
     const eventCountsAtFlush: number[] = [];
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: async (options) => {
         options.onProgress?.({
           type: "step",
@@ -384,6 +388,7 @@ describe("environment command dispatch", () => {
     const emittedEvents: EventSinkInput[] = [];
     let flushCount = 0;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: async (options) => {
         options.onProgress?.({
           type: "step",

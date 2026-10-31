@@ -7,6 +7,16 @@ function hasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
+export function processTerminated(child: ChildProcess): boolean {
+  if (hasExited(child) || child.pid === undefined) return true;
+  try {
+    process.kill(child.pid, 0);
+    return false;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "ESRCH";
+  }
+}
+
 export function terminateWindowsProcessTrees(
   pids: readonly number[],
 ): Promise<boolean> {
@@ -53,7 +63,11 @@ function waitForRootExit(child: ChildProcess): Promise<void> {
     };
     const timer = setTimeout(() => {
       child.off("exit", onExit);
-      reject(new Error(`Process did not exit after termination: ${child.pid}`));
+      if (processTerminated(child)) resolve();
+      else
+        reject(
+          new Error(`Process did not exit after termination: ${child.pid}`),
+        );
     }, 1_000);
     child.once("exit", onExit);
   });

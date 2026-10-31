@@ -25,6 +25,7 @@ import {
   makeDispatchOptions,
   DISPATCH_TEST_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
+import { createTestResourceLedger } from "../resource-ledger-fixture.js";
 
 let nextClientRequestIdValue = 1;
 
@@ -2271,6 +2272,7 @@ describe("thread command dispatch", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: async () => workspace,
       createRuntime: (options) => {
         const fake = fakes[createRuntimeCalls];

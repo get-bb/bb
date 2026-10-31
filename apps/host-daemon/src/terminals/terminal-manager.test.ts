@@ -1,3 +1,4 @@
+import { readProcessIdentity } from "@bb/process-utils";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +20,7 @@ import {
   type TerminalPtyExit,
   type TerminalPtyProcess,
 } from "./terminal-manager.js";
+import { createTestResourceLedger } from "../../test/resource-ledger-fixture.js";
 
 const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
 
@@ -297,6 +299,7 @@ function createHarnessWithOptions(
   const runtime = createFakeRuntime();
   const workspace = createFakeWorkspace("/tmp/terminal-workspace");
   const runtimeManager = new RuntimeManager({
+    resourceLedger: createTestResourceLedger(),
     createRuntime: () => runtime,
     provisionWorkspace: async () => workspace,
     shellEnv: {
@@ -1486,6 +1489,77 @@ describe("TerminalManager", () => {
     expect(pty.resizeCalls).toEqual([{ cols: 120, rows: 40 }]);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "keeps a job started with nohup running after the terminal closes",
+    async () => {
+      const cwd = await makeTempDir("bb-terminal-nohup-");
+      const messages: HostDaemonDaemonWsMessage[] = [];
+      const manager = new TerminalManager({
+        logger: createFakeLogger(),
+        resolveShell: async () => "/bin/sh",
+        runtimeManager: new RuntimeManager({
+          resourceLedger: createTestResourceLedger(),
+          createRuntime: () => createFakeRuntime(),
+          provisionWorkspace: async () => createFakeWorkspace(cwd),
+        }),
+        sendMessage: (message) => {
+          messages.push(message);
+          return true;
+        },
+      });
+      await manager.handleMessage({
+        type: "terminal.open",
+        contributedEnv: [],
+        requestId: "open-nohup",
+        terminalId: "term-nohup",
+        target: { kind: "host_path", cwd },
+        cols: 80,
+        rows: 24,
+        start: {
+          mode: "command",
+          command: 'nohup sleep 60 >/dev/null 2>&1 & echo "kept=$!;"; sleep 60',
+        },
+      });
+      await waitForOutputContaining({ messages, text: ";" });
+      const kept = Number(
+        /kept=(\d+);/u.exec(collectTerminalOutput(messages))?.[1],
+      );
+      const alive = (): boolean => {
+        try {
+          process.kill(kept, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      try {
+        await expect
+          .poll(async () => (await readProcessIdentity(kept))?.command)
+          .toMatch(/^sleep 60/u);
+        await manager.handleMessage({
+          type: "terminal.close",
+          terminalId: "term-nohup",
+          reason: "user",
+        });
+        await expect
+          .poll(() =>
+            messages.some(
+              (message) =>
+                message.type === "terminal.exited" &&
+                message.terminalId === "term-nohup",
+            ),
+          )
+          .toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
+
+        expect(alive()).toBe(true);
+      } finally {
+        if (alive()) process.kill(kept, "SIGKILL");
+        await manager.shutdownAll();
+      }
+    },
+  );
+
   it("kills a terminal and emits exactly one user exit", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
@@ -1642,6 +1716,7 @@ describe("TerminalManager", () => {
     const expectedTargetPath = await fs.realpath(targetPath);
     const messages: HostDaemonDaemonWsMessage[] = [];
     const runtimeManager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => createFakeRuntime(),
       provisionWorkspace: async () => createFakeWorkspace(workspacePath),
     });

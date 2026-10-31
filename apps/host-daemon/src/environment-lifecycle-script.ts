@@ -6,13 +6,15 @@ import {
 import { operationEnvironment } from "./operation-environment.js";
 import type { HostDaemonContributedEnvEntry } from "@bb/host-daemon-contract";
 import {
-  execPortableFile,
   isProcessGroupAlive,
   killProcessGroup,
-  spawnPortableOutputProcess,
   supportsProcessGroups,
+  type ProcessOwner,
   type ProcessStopResult,
+  hostProcessOwner,
+  processesOwnedBy,
 } from "@bb/process-utils";
+import type { ResourceLedger } from "./resource-ledger.js";
 import {
   findGitBashProcessGroup,
   stopGitBashProcessGroup,
@@ -30,6 +32,12 @@ import {
   type ProgressCallback,
 } from "bb-environment-provider-host/transcript";
 
+const { execPortableFile } = processesOwnedBy(hostProcessOwner);
+
+export interface LifecycleScriptOwner extends ProcessOwner {
+  captureTree(): Promise<void>;
+}
+
 export interface RunSetupScriptArgs {
   workspacePath: string;
   timeoutMs: number;
@@ -38,6 +46,7 @@ export interface RunSetupScriptArgs {
   contributedEnv?: readonly HostDaemonContributedEnvEntry[];
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
+  processOwner: LifecycleScriptOwner;
 }
 
 type RunTeardownScriptArgs = RunSetupScriptArgs;
@@ -208,7 +217,7 @@ async function runLifecycleScript(
           ...env,
           PATH: [...command.pathPrefix, env.PATH ?? ""].join(path.delimiter),
         };
-  const child = spawnPortableOutputProcess({
+  const child = processesOwnedBy(args.processOwner).spawnPortableOutputProcess({
     command: command.command,
     args: command.args,
     cwd: args.workspacePath,
@@ -265,16 +274,22 @@ async function runLifecycleScript(
       .then(() => delay(WINDOWS_OUTPUT_CLOSE_GRACE_MS))
       .then(reportOutputLeftOpen, reportOutputLeftOpen);
   };
+  const captureThenKill = (): void => {
+    void args.processOwner
+      .captureTree()
+      .catch(() => undefined)
+      .then(killScriptProcesses);
+  };
   const timeout = setTimeout(() => {
     timedOut = true;
-    killScriptProcesses();
+    captureThenKill();
   }, timeoutMs);
   const abortLifecycleScript = () => {
     if (abortRequested) {
       return;
     }
     abortRequested = true;
-    killScriptProcesses();
+    captureThenKill();
   };
   args.signal?.addEventListener("abort", abortLifecycleScript, {
     once: true,
@@ -406,5 +421,65 @@ export async function runTeardownScript(
       error instanceof Error ? error.message : String(error),
     );
     return { ran: true };
+  }
+}
+
+const HOOK_DEADLINE_GRACE_MS = 30_000;
+
+export async function runEnvironmentHookOperation(args: {
+  ledger: ResourceLedger;
+  operationId: string;
+  kind: "setup" | "teardown";
+  workspacePath: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  run: (control: {
+    signal: AbortSignal;
+    processOwner: LifecycleScriptOwner;
+  }) => Promise<unknown>;
+}): Promise<void> {
+  const resource = args.ledger.open({
+    owner: {
+      kind: "environment-hook",
+      operationId: args.operationId,
+      hook: args.kind,
+      path: args.workspacePath,
+    },
+    deadline: {
+      kind: "at",
+      at: Date.now() + args.timeoutMs + HOOK_DEADLINE_GRACE_MS,
+    },
+  });
+  let stopped = false;
+  const processOwner: LifecycleScriptOwner = {
+    trackProcess: resource.trackProcess,
+    captureTree: () => {
+      stopped = true;
+      return resource.captureTree();
+    },
+  };
+  try {
+    await args.run({
+      signal:
+        args.signal === undefined
+          ? resource.signal
+          : AbortSignal.any([args.signal, resource.signal]),
+      processOwner,
+    });
+    if (stopped)
+      await resource.close({
+        status: "failed",
+        message: `${args.kind} hook was stopped before it finished`,
+        terminationUnverified: false,
+      });
+    else resource.leaveRunning();
+  } catch (error) {
+    await resource.close({
+      status: "failed",
+      message: error instanceof Error ? error.message : String(error),
+      terminationUnverified:
+        error instanceof LifecycleScriptTerminationUnverifiedError,
+    });
+    throw error;
   }
 }

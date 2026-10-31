@@ -21,10 +21,18 @@ import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
 import { hostToolchain } from "./host-toolchain.js";
 import { prepareNodeNetworkLaunch } from "./node-network.js";
+import { recordOwnedProcess } from "./process-owner.js";
 
-function observe(child: ChildProcess): ChildProcess {
+function observe(
+  child: ChildProcess,
+  launch: { command: string; detached?: boolean | undefined },
+): ChildProcess {
   child.once("error", (error) => hostToolchain.invalidateFailure(error));
   child.once("exit", (code) => hostToolchain.invalidateFailure(code));
+  recordOwnedProcess(child, {
+    command: launch.command,
+    detached: launch.detached,
+  });
   return child;
 }
 
@@ -81,10 +89,14 @@ export function spawnHostProcess(
       parsed.file
         ? nodeSpawn(parsed.command, parsed.args, parsed.options)
         : nodeSpawn(launch.command, launch.args, spawnOptions),
+      { command, detached: options.detached },
     );
   }
   const spawn = options.shell ? nodeSpawn : crossSpawn;
-  return observe(spawn(launch.command, launch.args, spawnOptions));
+  return observe(spawn(launch.command, launch.args, spawnOptions), {
+    command,
+    detached: options.detached,
+  });
 }
 
 export function forkHostProcess(
@@ -102,6 +114,7 @@ export function forkHostProcess(
       : options.execPath;
   return observe(
     nodeFork(modulePath, args, { ...options, env, execArgv, execPath }),
+    { command: String(modulePath), detached: options.detached },
   );
 }
 
@@ -149,6 +162,7 @@ export function execHostFileCallback(
       { ...launch.options, encoding: options.encoding ?? "utf8" },
       callback,
     ),
+    { command },
   );
 }
 
@@ -196,6 +210,7 @@ export function execHostFileBuffer(
         { ...launch.options, encoding: "buffer" },
         callback,
       ),
+      { command },
     ),
   );
 }

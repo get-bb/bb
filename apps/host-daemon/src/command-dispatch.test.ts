@@ -25,6 +25,7 @@ import type { CommandOf } from "./command-dispatch-support.js";
 import { PROVIDER_INSTALLATION_GATE_TTL_MS } from "./provider-installation-gate.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import { stageInjectedSkillSources } from "./injected-skills.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
 
@@ -81,6 +82,7 @@ async function setupBusySkillCatalogEnvironment(args: {
   const runtime = createRuntime();
   const createRuntimeSpy = vi.fn(() => runtime);
   const manager = new RuntimeManager({
+    resourceLedger: createTestResourceLedger(),
     dataDir,
     createRuntime: createRuntimeSpy,
     provisionWorkspace: async () => createWorkspace(),
@@ -334,6 +336,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
 }) {
   const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
   const manager = new RuntimeManager({
+    resourceLedger: createTestResourceLedger(),
     dataDir,
     createRuntime,
     provisionWorkspace: async () => createWorkspace(),
@@ -411,6 +414,7 @@ describe("dispatchCommand", () => {
     const options = makeDispatchOptions({
       dataDir,
       runtimeManager: new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         createRuntime,
         provisionWorkspace: async () => createWorkspace(),
       }),
@@ -443,6 +447,7 @@ describe("dispatchCommand", () => {
   it("steers an auto submit when the active turn appears after the server snapshot", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -491,6 +496,7 @@ describe("dispatchCommand", () => {
   it("rebases auto input onto the daemon's newer active turn", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -528,6 +534,7 @@ describe("dispatchCommand", () => {
   it("starts auto input immediately when the prior turn already completed", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -560,6 +567,7 @@ describe("dispatchCommand", () => {
   it("rejects auto input when a pending turn still has no id after the wait", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -596,6 +604,7 @@ describe("dispatchCommand", () => {
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -651,6 +660,7 @@ describe("dispatchCommand", () => {
   it("cancels Plan through the active provider runtime before flushing events", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -690,6 +700,7 @@ describe("dispatchCommand", () => {
   it("does not cancel Plan after its turn has already ended", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -729,6 +740,7 @@ describe("dispatchCommand", () => {
   it("does not cancel a newer turn when the Plan cancellation is stale", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -769,6 +781,7 @@ describe("dispatchCommand", () => {
   it("resumes a reaped Codex runtime before clearing its Goal", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -839,6 +852,7 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(oldRuntime)
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: createRuntimeSpy,
       provisionWorkspace: async (args) => createWorkspace(args.path),
     });
@@ -925,6 +939,7 @@ describe("dispatchCommand", () => {
   it("stops the old owner when the moved thread has no runtime yet", async () => {
     const oldRuntime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => oldRuntime,
       provisionWorkspace: async () => createWorkspace("/tmp/bb-stop-old"),
     });
@@ -968,6 +983,7 @@ describe("dispatchCommand", () => {
   it("releases an idle runtime without the active-turn wait", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace("/tmp/bb-release"),
     });
@@ -1020,6 +1036,7 @@ describe("dispatchCommand", () => {
   it("reports a retained turn instead of releasing a turn that started after the server read the thread", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
     });
@@ -1075,6 +1092,7 @@ describe("dispatchCommand", () => {
 
   it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => createRuntime(),
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1104,6 +1122,7 @@ describe("dispatchCommand", () => {
   it("cancels a plan in the environment the thread moved away from", async () => {
     const oldRuntime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => oldRuntime,
       provisionWorkspace: async () => createWorkspace("/tmp/bb-plan-old"),
     });
@@ -1142,6 +1161,7 @@ describe("dispatchCommand", () => {
   it("leaves a plan alone when no runtime runs the expected turn", async () => {
     const oldRuntime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => oldRuntime,
       provisionWorkspace: async () => createWorkspace("/tmp/bb-plan-old"),
     });
@@ -1183,6 +1203,7 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(oldRuntime)
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: createRuntimeSpy,
       provisionWorkspace: async (args) => createWorkspace(args.path),
     });
@@ -1233,6 +1254,7 @@ describe("dispatchCommand", () => {
       .mockReturnValueOnce(oldRuntime)
       .mockReturnValueOnce(newRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: createRuntimeSpy,
       provisionWorkspace: async (args) => createWorkspace(args.path),
     });
@@ -1294,6 +1316,7 @@ describe("dispatchCommand", () => {
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1327,6 +1350,7 @@ describe("dispatchCommand", () => {
   it("blocks any installation-managed provider whose bridge reports an unsupported version", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1412,6 +1436,7 @@ describe("dispatchCommand", () => {
   it("skips version checks when the provider declaration does not support installation", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1472,6 +1497,7 @@ describe("dispatchCommand", () => {
   it("prepares a Codex rewind through the requested retained turn", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1622,6 +1648,7 @@ describe("dispatchCommand", () => {
   it("reuses a supported installation probe across thread starts", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1650,6 +1677,7 @@ describe("dispatchCommand", () => {
   it("retries concurrent thread starts when a shell env refresh interrupts their shared probe", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
       shellEnv: { PATH: "/old/bin" },
@@ -1686,6 +1714,7 @@ describe("dispatchCommand", () => {
   it("keys the rewind requirement separately from thread start", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1733,6 +1762,7 @@ describe("dispatchCommand", () => {
     const runtime = createRuntime();
     const createdRuntimeShellPaths: (string | undefined)[] = [];
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: (runtimeOptions) => {
         createdRuntimeShellPaths.push(runtimeOptions.shellEnv?.PATH);
         return runtime;
@@ -1778,6 +1808,7 @@ describe("dispatchCommand", () => {
   it("remembers the first probe after a shell env change", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
       shellEnv: { PATH: "/old/bin" },
@@ -1811,6 +1842,7 @@ describe("dispatchCommand", () => {
   it("does not remember a not-installed provider that enforces a minimum version", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
@@ -1855,6 +1887,7 @@ describe("dispatchCommand", () => {
     try {
       const runtime = createRuntime();
       const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         createRuntime: () => runtime,
         provisionWorkspace: async () => createWorkspace(),
       });
@@ -1898,6 +1931,7 @@ describe("dispatchCommand", () => {
     createRuntimeSpy.mockReturnValueOnce(staleRuntime);
     createRuntimeSpy.mockReturnValueOnce(freshRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: createRuntimeSpy,
       dataDir,
       provisionWorkspace: async () => createWorkspace(),
@@ -2016,6 +2050,7 @@ describe("dispatchCommand", () => {
       const runtime = createRuntime();
       const createRuntimeSpy = vi.fn(() => runtime);
       const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         createRuntime: createRuntimeSpy,
         dataDir,
         provisionWorkspace: async () => createWorkspace(),
@@ -2075,6 +2110,7 @@ describe("dispatchCommand", () => {
     const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       dataDir,
       provisionWorkspace: async () => createWorkspace(),
@@ -2166,6 +2202,7 @@ describe("dispatchCommand", () => {
   it("does not spawn when the provider withdraws a stale installation action", async () => {
     const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime,
       dataDir,
       provisionWorkspace: async () => createWorkspace(),
@@ -2408,6 +2445,7 @@ describe("dispatchCommand", () => {
   it("routes provider health and usage to the targeted bridge runtime", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });

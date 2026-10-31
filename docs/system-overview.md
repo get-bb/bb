@@ -52,6 +52,85 @@ it. During the grace it still counts as live, so its environment and machine
 are not retired under it. A thread start still in flight is stopped as soon as
 it is archived.
 
+### Daemon resource ledger
+
+Every long-lived process the host daemon starts belongs to one resource in
+`apps/host-daemon/src/resource-ledger.ts`: provider bridges (per environment
+runtime and the maintenance runtime), setup and teardown hooks, host plugin
+workers, the connect-next frpc, the file watcher and short host commands. A
+resource has a daemon-local typed owner, a deadline (a
+fixed time, an idle timeout with per-request leases, or the owner's lifetime),
+and is written to `<dataDir>/host-daemon-resources/` before its first process
+starts. Lease changes only re-arm the in-memory deadline timer; they are not
+written, because restart cleanup stops recorded processes whatever their
+deadline. The ledger enforces deadlines by calling the owner's stop and, after a
+grace, stopping the recorded process groups itself. On startup, before anything
+new runs, the daemon stops every process a previous instance recorded,
+verifying each start token so a reused PID is never signalled. Nothing new
+crosses the server/daemon wire: the server learns a hook's outcome through
+`environment.hook.cancel`, which answers `terminated` once the hook's
+processes are confirmed gone. A confirmed hook outcome stays on disk (for 30
+days) so a second restart before the server asks does not lose it. Provision
+setup is recorded under a daemon-local id; a cancel for the server's setup id
+of that environment (`environment:<id>:<instance key>:setup`) finds it.
+
+Ending a resource ends its whole process tree. `DaemonResource.end(stop)` first
+snapshots the tree under every recorded process (`snapshotProcessTree` in
+`@bb/process-utils`: the recorded process groups, every ppid descendant, and
+the group of any descendant that leads one, which catches setsid'd tool shells
+and job-control jobs), then runs the owner's graceful stop, then stops whatever
+in the snapshot is still alive. `close()` stops what is still recorded; a
+successful setup or teardown hook calls `leaveRunning()` instead, so processes
+it started on purpose stay with the environment. When the stop cannot be
+confirmed, the record stays on disk with its processes so the next start
+retries it.
+
+Process identity has one rule. A record holds a pid and the OS's own start
+token for it (`probeProcessStart` in `@bb/process-utils`: boot id plus start
+ticks on Linux, `ps -o lstart` under `LC_ALL=C TZ=UTC0` on macOS), read by the
+same probe with the same pinned environment when recording and when acting, so
+time zones and wall clock changes do not matter. `lstart` has one-second
+precision, so on macOS a pid reused within the same second as the recorded
+process is indistinguishable from it. The daemon reads the token while it
+still holds the child unreaped, so it cannot pick up a reused pid. Windows has
+no token: a recorded process there is never signalled, and processes are
+stopped only through the handle of the process that started them, as before.
+A process is signalled only when its current token matches the record,
+along with the descendants and groups reached from a matched process. A record
+that cannot be matched (no token yet, an unreadable process, or a group whose
+leader is gone while members remain, or a live pid whose token differs from
+the record) is never signalled and never counts as exited: the stop is
+unverified and the record is kept. Only a pid with no process, and for a group
+no member left, counts as gone. Records this daemon version cannot read are
+kept and reported unverified. The same rule stops managed processes: their
+stop snapshots the child's tree while it still holds the child, signals the
+leader through its handle, and stops the rest by token; once the child has
+exited it signals nothing. Hook scripts capture their tree before a timeout or
+cancel kills them, and a hook that had to be killed stops that tree when it
+ends, even a teardown whose failure is otherwise not fatal.
+Terminals are not recorded: closing one hangs up its shell's process group,
+as before, so jobs detached with nohup or disown keep running. Managed processes
+(`spawnManagedProcess`, used for provider bridges and ACP agents) sweep the
+same way when stopped. A process whose parent exited before the snapshot
+(ppid 1, own group) is out of reach; the environment's cwd sweep on destroy
+covers those. Host plugin workers run in their own process group, are killed
+through their resource, and their idle shutdown is the resource's `idle`
+deadline: calls, watches and retained leases hold a lease, and a deadline that
+finds the worker busy again re-arms instead of stopping it.
+
+Nothing starts without an owner. Callers take spawn helpers from
+`processesOwnedBy(owner)`, which records every child (pid and process group)
+with that owner, and lint bans `child_process`, `cross-spawn`, `execa` and
+`node-pty` value imports elsewhere. Long-lived daemon processes pass their
+ledger resource. The plain spawn helpers record to `hostProcessOwner`, which
+the daemon binds to its `host-command` resource (children are written to disk
+only if still running after a second); in a host plugin worker it is unbound,
+and the worker's process group and tree stop cover what a plugin starts. A
+plugin's children are stopped when the daemon stops the worker (dispose, idle,
+reload, disable or a forced kill); those of a worker that crashed are not.
+Worker cleanup starts at the worker's exit, not when its inherited pipes
+close.
+
 ### Transport contracts
 
 Two contract packages define the boundaries between components:

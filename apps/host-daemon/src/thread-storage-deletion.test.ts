@@ -10,6 +10,7 @@ import {
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
 
 it.for(["thread deletion", "orphan removal"] as const)(
   "%s stops processes in nested thread storage before removing files and preserves neighboring processes",
@@ -59,7 +60,9 @@ it.for(["thread deletion", "orphan removal"] as const)(
     try {
       await Promise.all([childReady, siblingReady]);
       const options = makeDispatchOptions({
-        runtimeManager: new RuntimeManager(),
+        runtimeManager: new RuntimeManager({
+          resourceLedger: createTestResourceLedger(),
+        }),
         threadStorageRootPath: storageRoot,
       });
       if (cleanup === "thread deletion") {

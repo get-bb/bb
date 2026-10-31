@@ -4,72 +4,72 @@ import type {
 } from "../command-dispatch-support.js";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 import {
-  LifecycleScriptTerminationUnverifiedError,
+  runEnvironmentHookOperation,
   runSetupScript,
   runTeardownScript,
 } from "../environment-lifecycle-script.js";
-
+import type { ResourceEnd } from "../resource-ledger.js";
 import { inspectWorkspaceProcesses } from "../workspace-processes.js";
 
-interface HookOutcome {
-  active: boolean;
-  terminationUnverified: boolean;
+function hookResult(end: ResourceEnd): Record<string, never> {
+  if (end.status === "failed") throw new Error(end.message);
+  return {};
 }
 
-interface HookOperation {
-  controller: AbortController;
-  done: Promise<Record<string, never>>;
-  outcome: HookOutcome;
-  path: string;
-  kind: "setup" | "teardown";
-}
-const operations = new WeakMap<
-  object,
-  Map<string, HookOperation | "cancelled">
->();
-
-function controllers(
-  options: CommandDispatchOptions,
-): Map<string, HookOperation | "cancelled"> {
-  let active = operations.get(options.runtimeManager);
-  if (active === undefined) {
-    active = new Map();
-    operations.set(options.runtimeManager, active);
-  }
-  return active;
+function cancelStatus(end: ResourceEnd): "unknown" | "terminated" {
+  return end.status === "failed" && end.terminationUnverified
+    ? "unknown"
+    : "terminated";
 }
 
 export async function runEnvironmentHook(
   command: CommandOf<"environment.hook.run">,
   options: CommandDispatchOptions,
 ): Promise<Record<string, never>> {
-  const active = controllers(options);
-  const existing = active.get(command.operationId);
-  if (existing === "cancelled")
+  const ledger = options.runtimeManager.resourceLedger;
+  if (ledger.isOperationCancelled(command.operationId))
     throw new ExpectedCommandDispatchError(
       "command_failed",
       "Environment hook cancelled before dispatch",
     );
-  if (existing !== undefined) {
-    if (existing.path !== command.path || existing.kind !== command.kind)
-      throw new Error("Environment hook identity mismatch");
-    return existing.done;
-  }
-  if (command.resumeOnly)
+  const existing = ledger.findOperation(command.operationId);
+  const ended = ledger.operationEnd(command.operationId);
+  const owner = existing?.owner ?? ended?.owner;
+  if (
+    owner !== undefined &&
+    (owner.kind !== "environment-hook" ||
+      owner.path !== command.path ||
+      owner.hook !== command.kind)
+  )
+    throw new Error("Environment hook identity mismatch");
+  if (existing !== undefined) return hookResult(await existing.done);
+  if (ended !== null) return hookResult(ended.end);
+  if (command.resumeOnly) {
+    if (
+      ledger.previousOperationTermination(command.operationId) === "confirmed"
+    )
+      throw new Error(
+        "Environment hook was interrupted when the host daemon restarted; bb stopped its processes",
+      );
     throw new Error("Environment hook outcome is unknown after daemon restart");
-  const controller = new AbortController();
-  const outcome: HookOutcome = { terminationUnverified: false, active: true };
-  const done = Promise.resolve().then(
-    async (): Promise<Record<string, never>> => {
-      const run = command.kind === "setup" ? runSetupScript : runTeardownScript;
-      try {
-        await run({
+  }
+  const run = command.kind === "setup" ? runSetupScript : runTeardownScript;
+  try {
+    await runEnvironmentHookOperation({
+      ledger,
+      operationId: command.operationId,
+      kind: command.kind,
+      workspacePath: command.path,
+      timeoutMs: command.timeoutMs,
+      run: (control) =>
+        run({
           workspacePath: command.path,
           contributedEnv: command.contributedEnv,
           env: { ...process.env, ...options.runtimeManager.getShellEnv() },
           timeoutMs: command.timeoutMs,
           shellPath: options.runtimeManager.getShellEnv().PATH,
-          signal: controller.signal,
+          signal: control.signal,
+          processOwner: control.processOwner,
           onProgress: (entry) =>
             options.emitEnvironmentHookProgress?.({
               type: "environment.hook.progress",
@@ -80,55 +80,40 @@ export async function runEnvironmentHook(
                 status: entry.status ?? null,
               },
             }),
-        });
-      } catch (error) {
-        if (error instanceof LifecycleScriptTerminationUnverifiedError) {
-          outcome.terminationUnverified = true;
-        }
-        throw new Error(error instanceof Error ? error.message : String(error));
-      } finally {
-        outcome.active = false;
-      }
-      return {};
-    },
-  );
-  active.set(command.operationId, {
-    controller,
-    done,
-    outcome,
-    path: command.path,
-    kind: command.kind,
-  });
-  return done;
+        }),
+    });
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : String(error));
+  }
+  return {};
 }
 
 export async function cancelEnvironmentHooks(
   runtimeManager: CommandDispatchOptions["runtimeManager"],
 ): Promise<void> {
-  const running = [...(operations.get(runtimeManager)?.values() ?? [])].filter(
-    (operation) => operation !== "cancelled",
+  const running = runtimeManager.resourceLedger.find(
+    (owner) => owner.kind === "environment-hook",
   );
-  for (const operation of running) operation.controller.abort();
-  await Promise.all(
-    running.map((operation) => operation.done.catch(() => undefined)),
-  );
+  await Promise.all(running.map((resource) => resource.abort()));
+  await Promise.all(running.map((resource) => resource.done));
 }
 
 export async function cancelEnvironmentHook(
   command: CommandOf<"environment.hook.cancel">,
   options: CommandDispatchOptions,
 ): Promise<{ status: "unknown" | "terminated" }> {
-  const active = controllers(options);
-  const operation = active.get(command.operationId);
-  if (operation === undefined || operation === "cancelled") {
-    active.set(command.operationId, "cancelled");
-    return { status: "unknown" };
+  const ledger = options.runtimeManager.resourceLedger;
+  const resource = ledger.findOperation(command.operationId);
+  if (resource !== undefined) {
+    await resource.abort();
+    return { status: cancelStatus(await resource.done) };
   }
-  operation.controller.abort();
-  await operation.done.catch(() => undefined);
-  return {
-    status: operation.outcome.terminationUnverified ? "unknown" : "terminated",
-  };
+  const ended = ledger.operationEnd(command.operationId);
+  if (ended !== null) return { status: cancelStatus(ended.end) };
+  if (ledger.previousOperationTermination(command.operationId) === "confirmed")
+    return { status: "terminated" };
+  ledger.markOperationCancelled(command.operationId);
+  return { status: "unknown" };
 }
 
 export async function inspectEnvironmentCleanup(
@@ -140,11 +125,9 @@ export async function inspectEnvironmentCleanup(
     options.runtimeManager.hasPendingEnvironmentProvision(
       command.environmentId,
     ) ||
-    [...controllers(options).values()].some(
-      (operation) =>
-        operation !== "cancelled" &&
-        operation.path === command.path &&
-        operation.outcome.active,
-    );
+    options.runtimeManager.resourceLedger.find(
+      (owner) =>
+        owner.kind === "environment-hook" && owner.path === command.path,
+    ).length > 0;
   return { ...inspection, active };
 }

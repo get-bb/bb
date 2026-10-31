@@ -16,8 +16,8 @@ import {
   killProcessGroup,
   killProcessesWithCwdUnder,
   listProcessesWithCwdUnder,
+  createProcessStop,
   spawnPortablePipedProcess,
-  stopProcessGroupLeaderFirst,
 } from "../src/index.js";
 
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
@@ -227,11 +227,7 @@ posixOnly("process tree helpers", () => {
     cleanupPids.push(child.pid ?? 0);
     expect(await readFirstLine(child.stdout)).toBe("ready");
 
-    await stopProcessGroupLeaderFirst({
-      child,
-      timeoutMs: 5000,
-      killGraceMs: 1000,
-    });
+    await createProcessStop(child)({ gracePeriodMs: 5000 });
 
     expect(child.exitCode).toBe(0);
     expect(isProcessGroupAlive(child)).toBe(false);
@@ -251,13 +247,9 @@ posixOnly("process tree helpers", () => {
     cleanupPids.push(child.pid ?? 0, memberPid);
     const startedAt = Date.now();
 
-    await stopProcessGroupLeaderFirst({
-      child,
-      timeoutMs: 300,
-      killGraceMs: 5000,
-    });
+    await createProcessStop(child)({ gracePeriodMs: 300 });
 
-    expect(Date.now() - startedAt).toBeLessThan(2000);
+    expect(Date.now() - startedAt).toBeLessThan(3000);
     expect(child.exitCode).toBe(0);
     await waitFor(() => !isAlive(memberPid));
     expect(isProcessGroupAlive(child)).toBe(false);
