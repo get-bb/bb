@@ -19,7 +19,11 @@ interface ResolveThreadLocalFileLinkArgs {
   hostId: string | null;
   link: ThreadTimelineLocalFileLink;
   threadStorage: { rootPath: string; threadId: string } | null;
-  workspace: { environmentId: string; rootPath: string } | null;
+  workspace: {
+    environmentId: string;
+    experimental_ref?: string;
+    rootPath: string;
+  } | null;
 }
 
 export type ThreadLocalFileLinkResolution =
@@ -95,6 +99,9 @@ export function resolveThreadLocalFileLink({
           kind: "workspace",
           environmentId: workspace.environmentId,
           path: workspacePath,
+          ...(workspace.experimental_ref === undefined
+            ? {}
+            : { experimental_ref: workspace.experimental_ref }),
         },
         location,
       },

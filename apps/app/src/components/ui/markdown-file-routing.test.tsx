@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import { buildMarkdownFileRouting } from "./markdown-file-routing";
+import type { MarkdownPreviewLocalFileLinkHandler } from "./markdown-local-file-link";
 import {
   buildHostFileContentUrl,
   buildThreadHostFileContentUrl,
@@ -94,7 +95,7 @@ describe("Markdown file preview image routing", () => {
   });
 
   it("opens links that stay inside the previewed file's root", () => {
-    const openFile = vi.fn(() => true);
+    const openLink = vi.fn<MarkdownPreviewLocalFileLinkHandler>(() => true);
     render(
       <FilePreview
         headerMode="none"
@@ -103,7 +104,7 @@ describe("Markdown file preview image routing", () => {
           rootPath: "/workspace",
           threadId: null,
           resolveRelativeSrc: (path) => `/content/${path}`,
-          openFile,
+          openLink,
         })}
         path="docs/report.md"
         state={{
@@ -125,14 +126,14 @@ describe("Markdown file preview image routing", () => {
       );
     }
 
-    expect(openFile.mock.calls).toEqual([
-      [
-        "docs/notes.md",
-        "/workspace/docs/notes.md",
-        { kind: "range", startLine: 3, endLine: 3 },
-      ],
-      ["README.md", "/workspace/README.md", null],
-      ["src/a.ts", "/workspace/src/a.ts", null],
+    expect(openLink.mock.calls.map(([link]) => link)).toEqual([
+      {
+        lineRange: { startLineNumber: 3, endLineNumber: 3 },
+        openTargetId: null,
+        path: "/workspace/docs/notes.md",
+      },
+      { lineRange: null, openTargetId: null, path: "/workspace/README.md" },
+      { lineRange: null, openTargetId: null, path: "/workspace/src/a.ts" },
     ]);
   });
 

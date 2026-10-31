@@ -11,6 +11,7 @@ import {
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
+  useThreadStorageLocation,
 } from "@/hooks/queries/thread-panel-queries";
 import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
 import {
@@ -28,6 +29,10 @@ import {
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  useLocalFileLinkOpener,
+  useThreadFileLinkOpener,
+} from "@/hooks/useLocalFileLinkOpener";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
@@ -129,6 +134,11 @@ export function WorkspaceFilePreviewTabContent({
     { enabled: isPanelOpen },
   );
   const environmentRootPath = environmentQuery.data?.path ?? null;
+  const { openLink } = useThreadFileLinkOpener({
+    environment: environmentQuery.data,
+    openFilePreview: navigation.openFilePreview,
+    threadId: threadId ?? undefined,
+  });
   const markdownLinkRouting = useMemo(() => {
     if (source === null || !environmentId) return undefined;
     return buildMarkdownFileRouting({
@@ -137,17 +147,13 @@ export function WorkspaceFilePreviewTabContent({
       threadId: threadId ?? null,
       resolveRelativeSrc: (path) =>
         buildEnvironmentFileContentUrl(environmentId, source, path),
-      openFile: (path, _absolutePath, location) =>
-        navigation.openFilePreview({
-          target: { kind: "workspace", environmentId, path },
-          location,
-        }),
+      openLink,
     });
   }, [
     activePath,
     environmentId,
     environmentRootPath,
-    navigation,
+    openLink,
     source,
     threadId,
   ]);
@@ -239,15 +245,19 @@ export function HostFilePreviewTabContent({
   const environment = useEnvironment(environmentId ?? null, {
     staleTime: 5_000,
   }).data;
+  const { openLink } = useThreadFileLinkOpener({
+    environment,
+    openFilePreview: navigation.openFilePreview,
+    threadId,
+  });
   const hostFilePreviewQuery = useThreadHostFilePreview(
     threadId,
     environmentId,
     activePath,
     { enabled: isPanelOpen },
   );
+  const workspaceRootPath = environment?.path ?? null;
   const markdownLinkRouting = useMemo(() => {
-    const workspaceRootPath = environment?.path ?? null;
-    const hostId = environment?.hostId;
     return buildMarkdownFileRouting({
       path: activePath,
       rootPath:
@@ -261,16 +271,9 @@ export function HostFilePreviewTabContent({
       threadId,
       resolveRelativeSrc: (_relativePath, path) =>
         buildThreadHostFileContentUrl(threadId, path),
-      openFile:
-        hostId === undefined
-          ? undefined
-          : (_relativePath, path, location) =>
-              navigation.openFilePreview({
-                target: { kind: "host", hostId, path },
-                location,
-              }),
+      openLink,
     });
-  }, [activePath, environment, navigation, threadId]);
+  }, [activePath, openLink, threadId, workspaceRootPath]);
 
   return (
     <SecondaryPanelFilePreview
@@ -298,6 +301,13 @@ export function HostScopedFilePreviewTabContent({
     enabled: isPanelOpen,
   });
   const navigation = useAppNavigationHost();
+  const { openLink } = useLocalFileLinkOpener({
+    canOpenInEditor: true,
+    hostId,
+    openFilePreview: navigation.openFilePreview,
+    threadStorage: null,
+    workspace: null,
+  });
   const markdownLinkRouting = useMemo(
     () =>
       buildMarkdownFileRouting({
@@ -306,13 +316,9 @@ export function HostScopedFilePreviewTabContent({
         threadId: null,
         resolveRelativeSrc: (_relativePath, path) =>
           buildHostFileContentUrl(hostId, path),
-        openFile: (_relativePath, path, location) =>
-          navigation.openFilePreview({
-            target: { kind: "host", hostId, path },
-            location,
-          }),
+        openLink,
       }),
-    [activePath, hostId, navigation],
+    [activePath, hostId, openLink],
   );
   return (
     <SecondaryPanelFilePreview
@@ -338,6 +344,16 @@ export function ThreadStorageFilePreviewTabContent({
   threadId,
 }: ThreadStorageFilePreviewTabContentProps) {
   const navigation = useAppNavigationHost();
+  const storageLocation = useThreadStorageLocation(threadId).data;
+  const storageRootPath = storageLocation?.storageRootPath ?? null;
+  const { openLink } = useLocalFileLinkOpener({
+    canOpenInEditor: true,
+    hostId: storageLocation?.hostId ?? null,
+    openFilePreview: navigation.openFilePreview,
+    threadStorage:
+      storageRootPath === null ? null : { rootPath: storageRootPath, threadId },
+    workspace: null,
+  });
   const threadStorageFilePreviewQuery = useThreadStorageFilePreview(
     threadId,
     activePath,
@@ -347,17 +363,13 @@ export function ThreadStorageFilePreviewTabContent({
     () =>
       buildMarkdownFileRouting({
         path: activePath,
-        rootPath: null,
+        rootPath: storageRootPath,
         threadId,
         resolveRelativeSrc: (path) =>
           buildThreadStorageRawContentUrl(threadId, path),
-        openFile: (path, _absolutePath, location) =>
-          navigation.openFilePreview({
-            target: { kind: "thread-storage", threadId, path },
-            location,
-          }),
+        openLink,
       }),
-    [activePath, navigation, threadId],
+    [activePath, openLink, storageRootPath, threadId],
   );
 
   return (

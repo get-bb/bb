@@ -19,7 +19,7 @@ import {
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import { useOpenThreadLocalFileLink } from "@/hooks/useOpenThreadLocalFileLink";
+import { useThreadFileLinkOpener } from "@/hooks/useLocalFileLinkOpener";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
@@ -178,11 +178,11 @@ function PluginThreadChatBody({
     thread.environmentId === timelineNavigation?.environmentId;
   const onOpenLink = timelineNavigation?.onOpenLink;
   const navigation = useAppNavigationHost();
-  const onOpenLocalFileLink = useOpenThreadLocalFileLink({
+  const onOpenLocalFileLink = useThreadFileLinkOpener({
     environment,
     openFilePreview: navigation.openFilePreview,
     threadId: thread?.id,
-  });
+  }).openLink;
   const resolveHostMentionLink = canUseHostFileNavigation
     ? timelineNavigation.resolveMentionLink
     : undefined;

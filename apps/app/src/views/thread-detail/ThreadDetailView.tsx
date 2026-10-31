@@ -58,7 +58,6 @@ import {
   useThread,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
-import { useThreadStorageLocation } from "../../hooks/queries/thread-panel-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
@@ -82,9 +81,8 @@ import {
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInEnvironment } from "@/hooks/useCreateThreadInEnvironment";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import type { LiveFileRoot } from "@/hooks/useResolvedLiveFileTarget";
-import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { useThreadTerminals } from "@/hooks/queries/thread-terminal-queries";
@@ -186,10 +184,9 @@ import {
 import { usePendingTerminalIds } from "@/components/thread/terminal/pending-terminals";
 import {
   buildOpenFileExternallyHandler,
-  resolveEnvironmentOpenContext,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
-import { useOpenThreadLocalFileLink } from "@/hooks/useOpenThreadLocalFileLink";
+import { useThreadFileLinkOpener } from "@/hooks/useLocalFileLinkOpener";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
@@ -407,11 +404,6 @@ function ThreadDetailViewInternal(
       fileListEnabled: shouldLoadThreadStorageFiles,
       threadId,
     });
-  const threadStorageLocationQuery = useThreadStorageLocation(threadId, {
-    enabled: Boolean(thread?.environmentId),
-  });
-  const threadStorageRootPath =
-    threadStorageLocationQuery.data?.storageRootPath ?? null;
   const terminalsListQuery = useThreadTerminals(threadId, {
     enabled: isSecondaryPanelOpen,
   });
@@ -1080,24 +1072,22 @@ function ThreadDetailViewInternal(
     ],
   );
   const workspacePreviewRootPath = environment?.path ?? null;
-  const threadOpenContext = executionUnavailable
-    ? null
-    : resolveEnvironmentOpenContext({
-        environment,
-        serverOrigin: window.location.origin,
-        threadEnvironmentIsLocal,
-      });
   const {
-    canOpenPreferredDirectoryTarget,
-    directoryOpenTargets,
-    fileOpenTargets,
-    openPathInDirectoryTarget,
-    openPathInFileTarget,
-    openPathInPreferredDirectoryTarget,
-    preferredDirectoryTarget,
-  } = useLocalOpenTargets({
-    enabled: threadOpenContext !== null,
-    ...(threadOpenContext ? { openContext: threadOpenContext } : {}),
+    openLink: handleOpenTimelineLocalFileLink,
+    openTargets: {
+      canOpenPreferredDirectoryTarget,
+      directoryOpenTargets,
+      fileOpenTargets,
+      openPathInDirectoryTarget,
+      openPathInFileTarget,
+      openPathInPreferredDirectoryTarget,
+      preferredDirectoryTarget,
+    },
+    threadStorageRootPath,
+  } = useThreadFileLinkOpener({
+    environment,
+    openFilePreview: openLiveFilePreview,
+    threadId,
   });
   const parentThreadId = thread?.parentThreadId;
   const parentThreadDisplayName =
@@ -1117,11 +1107,6 @@ function ThreadDetailViewInternal(
     },
     [thread, updateThread],
   );
-  const handleOpenTimelineLocalFileLink = useOpenThreadLocalFileLink({
-    environment: thread?.environmentId == null ? null : environment,
-    openFilePreview: openLiveFilePreview,
-    threadId: thread?.id,
-  });
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
     ({ href }) => openBrowserUrl(href),
     [openBrowserUrl],
@@ -1182,9 +1167,12 @@ function ThreadDetailViewInternal(
       environmentHostId ? { kind: "host", hostId: environmentHostId } : null,
     [environmentHostId],
   );
-  const canOpenWorkspaceFile = useCanOpenFileExternally(workspaceFileRoot);
-  const canOpenStorageFile = useCanOpenFileExternally(storageFileRoot);
-  const canOpenHostFile = useCanOpenFileExternally(hostFileRoot);
+  const canOpenWorkspaceFile =
+    useLiveFileOpenTargets(workspaceFileRoot).canOpenExternally;
+  const canOpenStorageFile =
+    useLiveFileOpenTargets(storageFileRoot).canOpenExternally;
+  const canOpenHostFile =
+    useLiveFileOpenTargets(hostFileRoot).canOpenExternally;
   const { openFileExternally } = useAppNavigationHost();
   const handleOpenFileInEditor = useMemo(
     () =>

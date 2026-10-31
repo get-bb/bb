@@ -1,10 +1,7 @@
 import type { Environment } from "@bb/domain";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { describe, expect, it } from "vitest";
-import {
-  resolveEnvironmentOpenContext,
-  resolveThreadWorkspaceOpenPath,
-} from "./threadWorkspaceOpenPath";
+import { resolveThreadWorkspaceOpenPath } from "./threadWorkspaceOpenPath";
 
 function makeWorkspaceEnvironment(
   overrides: Partial<Environment> = {},
@@ -24,27 +21,6 @@ function makeWorkspaceEnvironment(
 }
 
 describe("resolveThreadWorkspaceOpenPath", () => {
-  it("resolves local and remote editor contexts", () => {
-    expect(
-      resolveEnvironmentOpenContext({
-        environment: makeWorkspaceEnvironment({ hostId: "host-local" }),
-        serverOrigin: "https://bb.example.test",
-        threadEnvironmentIsLocal: true,
-      }),
-    ).toEqual({ kind: "local" });
-    expect(
-      resolveEnvironmentOpenContext({
-        environment: makeWorkspaceEnvironment({ hostId: "host-remote" }),
-        serverOrigin: "https://bb.example.test",
-        threadEnvironmentIsLocal: false,
-      }),
-    ).toEqual({
-      kind: "remote-ssh",
-      serverOrigin: "https://bb.example.test",
-      hostId: "host-remote",
-    });
-  });
-
   it("hides when workspace open preconditions are missing", () => {
     expect(
       resolveThreadWorkspaceOpenPath({

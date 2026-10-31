@@ -1,4 +1,3 @@
-import type { ExperimentalFileLocation } from "@get-bb/plugin-sdk";
 import type { MarkdownLinkRouting } from "./markdown-link-routing";
 import type { MarkdownPreviewLocalFileLinkHandler } from "./markdown-local-file-link";
 import {
@@ -8,22 +7,15 @@ import {
   normalizeAbsoluteFilePath,
 } from "@bb/shared-ui/lib/absolute-file-path";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
-import { toFileOpenLocation } from "@/lib/thread-local-file-links";
 
 const ROUTE_ROOT = "/__bb_markdown_file_root__";
-
-type MarkdownFileOpener = (
-  rootRelativePath: string,
-  absolutePath: string,
-  location: ExperimentalFileLocation | null,
-) => boolean;
 
 export function buildMarkdownFileRouting({
   path,
   rootPath,
   threadId,
   resolveRelativeSrc,
-  openFile,
+  openLink,
   openOutsideRoot,
 }: {
   path: string;
@@ -33,7 +25,7 @@ export function buildMarkdownFileRouting({
     rootRelativePath: string,
     absolutePath: string,
   ) => string;
-  openFile?: MarkdownFileOpener;
+  openLink?: MarkdownPreviewLocalFileLinkHandler;
   openOutsideRoot?: MarkdownPreviewLocalFileLinkHandler;
 }): MarkdownLinkRouting | undefined {
   const root = normalizeAbsoluteFilePath({ path: rootPath ?? ROUTE_ROOT });
@@ -60,7 +52,7 @@ export function buildMarkdownFileRouting({
           ? buildThreadHostFileContentUrl(threadId, image.path)
           : resolveRelativeSrc(rootRelative(image.path), image.path),
     },
-    ...(openFile === undefined
+    ...(openLink === undefined || rootPath === null
       ? {}
       : {
           localFile: {
@@ -74,11 +66,7 @@ export function buildMarkdownFileRouting({
                 candidatePath: link.path,
                 rootPath: root,
               })
-                ? openFile(
-                    rootRelative(link.path),
-                    link.path,
-                    toFileOpenLocation(link.lineRange),
-                  )
+                ? openLink(link)
                 : (openOutsideRoot?.(link) ?? false),
           },
         }),

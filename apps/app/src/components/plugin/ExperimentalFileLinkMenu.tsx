@@ -6,9 +6,8 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@bb/shared-ui/context-menu";
-import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
-import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
+import { resolveLiveFilePath } from "@/hooks/useResolvedLiveFileTarget";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
@@ -31,14 +30,11 @@ export function ExperimentalFileLinkMenu({
   intent: ExperimentalFileOpenOptions;
 }) {
   const navigation = useAppNavigationHost();
-  const canOpenFileExternally = useCanOpenFileExternally(intent.target);
-  const resolved = useResolvedLiveFileTarget(intent.target, { enabled: true });
-  const localTargets = useLocalOpenTargets({
-    enabled: resolved.status === "available",
-    ...(resolved.status === "available"
-      ? { openContext: resolved.openContext }
-      : {}),
-  });
+  const localTargets = useLiveFileOpenTargets(intent.target);
+  const absolutePath =
+    localTargets.root.status === "available"
+      ? resolveLiveFilePath(localTargets.root, intent.target.path)
+      : null;
   const { fileOpeners } = usePluginSlots();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
@@ -85,13 +81,12 @@ export function ExperimentalFileLinkMenu({
         </ContextMenuSub>
       ) : null}
       <ContextMenuItem
-        disabled={!canOpenFileExternally}
+        disabled={!localTargets.canOpenExternally}
         onSelect={() => navigation.openFileExternally(intent)}
       >
         Open externally
       </ContextMenuItem>
-      {resolved.status === "available" &&
-      localTargets.fileOpenTargets.length > 0 ? (
+      {absolutePath !== null && localTargets.fileOpenTargets.length > 0 ? (
         <ContextMenuSub>
           <ContextMenuSubTrigger>Open in</ContextMenuSubTrigger>
           <ContextMenuSubContent className="min-w-52">
@@ -102,7 +97,7 @@ export function ExperimentalFileLinkMenu({
                   void localTargets.openPathInFileTarget({
                     columnNumber: location.columnNumber,
                     lineNumber: location.lineNumber,
-                    path: resolved.absolutePath,
+                    path: absolutePath,
                     rememberTarget: false,
                     targetId: target.id,
                   });
@@ -117,15 +112,10 @@ export function ExperimentalFileLinkMenu({
       <ContextMenuSeparator />
       <ContextMenuItem
         onSelect={() => {
-          void copyToClipboardWithToast(
-            resolved.status === "available"
-              ? resolved.absolutePath
-              : intent.target.path,
-            {
-              successMessage: "File path copied",
-              errorMessage: "Failed to copy file path",
-            },
-          );
+          void copyToClipboardWithToast(absolutePath ?? intent.target.path, {
+            successMessage: "File path copied",
+            errorMessage: "Failed to copy file path",
+          });
         }}
       >
         Copy file path
