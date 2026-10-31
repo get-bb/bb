@@ -41,7 +41,7 @@ import { DocsSearch } from "./docs-search";
 import { ReferenceBody, TableWrap } from "./reference-body";
 import type { DocsNavIcon } from "./nav";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
-import { Screenshot, Shot } from "./shot";
+import { Screenshot, Shot, Video } from "./shot";
 
 const SITE = "https://getbb.app";
 
@@ -285,6 +285,7 @@ function MdxBody({ contentPath }: { contentPath: string }) {
         h3: DocsH3,
         Shot,
         Screenshot,
+        Video,
         Tabs,
         Tab,
         Callout,

@@ -1,0 +1,8 @@
+Quickstart: delegate work to child threads
+
+1. Open Settings → Projects and choose Add a project.
+2. Choose New thread, pick your project and Worktree, then ask for child threads.
+3. Each child appears under the parent. The Active child threads card tracks them.
+4. Open a child and press Ctrl+D (⌘D on a Mac) to open its Diff tab.
+5. Ask the parent to merge each child's branch and run the tests.
+6. When the parent has merged them, archive each child from the sidebar.
