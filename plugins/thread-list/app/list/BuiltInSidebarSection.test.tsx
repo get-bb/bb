@@ -10,10 +10,11 @@ import {
 } from "@get-bb/plugin-sdk/testing/app";
 import type { BuiltInSidebarSectionOptionsById } from "./BuiltInSidebarSection.js";
 
+import { makeSidebarThread } from "../model/fixtures.js";
+
 installTestPluginRuntime();
-const { renderBuiltInSidebarSection } = await import(
-  "./BuiltInSidebarSection.js"
-);
+const { renderBuiltInSidebarSection } =
+  await import("./BuiltInSidebarSection.js");
 
 const SECTIONS: BuiltInSidebarSectionOptionsById = {
   pinned: {
@@ -125,6 +126,11 @@ describe("built-in sidebar section renderer", () => {
           ...SECTIONS,
           threads: {
             ...SECTIONS.threads,
+            collapsedThreads: [
+              makeSidebarThread({
+                activity: { goals: 1 },
+              }),
+            ],
             activity: {
               ...NO_COLLAPSED_CHILD_ACTIVITY,
               goal: true,
