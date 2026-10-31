@@ -377,21 +377,6 @@ describe("plugin app runtime shim", () => {
     );
     expect(css).toContain("@keyframes bb71-authored-pulse");
 
-    const packagePath = join(dir, "package.json");
-    const originalPackage = await readFile(packagePath, "utf8");
-    const readMeta = async () =>
-      JSON.parse(await readFile(result.metaPath, "utf8"));
-    expect(await readMeta()).not.toHaveProperty("cssScope");
-    await writeFile(
-      packagePath,
-      JSON.stringify({
-        ...JSON.parse(originalPackage),
-        bbPluginBuild: { experimental_cssScope: "owned-root-v1" },
-      }),
-    );
-    await buildPluginApp(dir, "0.9.0-test", await testToolchain());
-    expect(await readFile(result.cssPath, "utf8")).toBe(css);
-    expect(await readMeta()).toMatchObject({ cssScope: "owned-root-v1" });
     const ownedCss = dropAnonymousPluginRootScope(css);
     expect(ownedCss).not.toContain(
       "[data-bb-plugin-root]:not([data-bb-plugin])",
@@ -402,29 +387,52 @@ describe("plugin app runtime shim", () => {
     expect(ownedCss).toContain(
       "[data-bb-plugin-root] .bb71-authored-portal{opacity:.75}",
     );
-    await writeFile(packagePath, originalPackage);
-    await buildPluginApp(dir, "0.9.0-test", await testToolchain());
-    expect(await readMeta()).not.toHaveProperty("cssScope");
   });
 
-  it.each([
-    null,
-    [],
-    true,
-    "owned-root-v1",
-    { experimental_cssScope: "unknown" },
-    { experimental_cssScope: null },
-    { cssScope: "owned-root-v1" },
-  ])("rejects invalid builder CSS configuration %j", async (bbPluginBuild) => {
-    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-invalid-css-"));
+  it("warns when the built app renders plugin roots without a plugin id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-roots-"));
     tempDirs.push(dir);
     await writeFile(
       join(dir, "package.json"),
-      JSON.stringify({ bbPluginBuild }),
+      JSON.stringify({
+        name: "bb-plugin-roots",
+        version: "0.0.0",
+        bb: {
+          name: "Roots fixture",
+          description: "Verifies plugin root warnings.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
     );
-    await expect(
-      buildPluginApp(dir, "0.9.0-test", await testToolchain()),
-    ).rejects.toThrow(/invalid bbPluginBuild/);
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    const build = async (source: string) => {
+      await writeFile(join(dir, "app.ts"), source);
+      return (await buildPluginApp(dir, "0.9.0-test", await testToolchain()))
+        .migrationWarnings;
+    };
+    const current =
+      "declare const __BB_PLUGIN_ID__: string | undefined;\n" +
+      "export function usePortalScopeProps() {\n" +
+      '  const pluginId = typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;\n' +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}) };\n' +
+      "}\n";
+    const preStamp =
+      "export function usePortalScopeProps() {\n" +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "" };\n' +
+      "}\n";
+    expect(await build("export const value = 1;\n")).toEqual([]);
+    expect(await build(current)).toEqual([]);
+    const warnings = await build(preStamp);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(
+      "sets data-bb-plugin-root without data-bb-plugin 1 time(s)",
+    );
+    expect(warnings[0]).toContain('data-bb-plugin="roots"');
   });
 
   it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {

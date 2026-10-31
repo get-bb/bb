@@ -302,26 +302,6 @@ asynchronously for installs with many slow plugins, and whether startup needs
 an out-of-band override (env var or flag) for a plugin that breaks the server
 before the toggle is reachable.
 
-## Plugin CSS scope (`bbPluginBuild.experimental_cssScope`)
-
-A plugin's `package.json` may set top-level
-`"bbPluginBuild": { "experimental_cssScope": "owned-root-v1" }`. The builder
-rejects any other key or value, keeps `dist/app.css` unchanged, and records
-`"cssScope": "owned-root-v1"` in `dist/app.meta.json`. For such a plugin the
-server serves its stylesheet without the
-`[data-bb-plugin-root]:not([data-bb-plugin])` utility-selector alternative when
-the request carries `css-scope=owned-root-v1`, which the app always sends.
-Every bundled plugin with a frontend opts in, through the same build and
-asset-route path.
-
-Docs: quickstart.md and
-[configuration.md](configuration.md#plugin-css-scope-builds).
-Before stabilization, decide whether owned-root scoping should become the
-default for plugins built with this SDK, which would retire the id-less arm and
-this key; whether the build should detect id-less roots instead of trusting
-the declaration; and whether the request parameter is still needed once no
-supported client predates plugin-id stamping (#791).
-
 ## Queued message edit holds
 
 `bb.sdk.threads.queuedMessages.experimental_holdForEdit({ threadId, queuedMessageId })`

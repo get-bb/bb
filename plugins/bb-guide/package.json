@@ -8,9 +8,6 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.0"
   },
-  "bbPluginBuild": {
-    "experimental_cssScope": "owned-root-v1"
-  },
   "bb": {
     "name": "BB guide",
     "description": "Control the BB introduction and bundled agent skills.",

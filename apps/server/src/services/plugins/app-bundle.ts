@@ -9,6 +9,7 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
+  findUnnamedPluginRoots,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -22,7 +23,6 @@ interface PluginArtifactMeta {
     pluginSdkVersion: string;
   };
   runtimeSlots?: string[];
-  cssScope?: "owned-root-v1";
 }
 
 interface PluginArtifactMetaParseResult {
@@ -223,8 +223,6 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
     }
     runtimeSlots = meta.runtimeSlots;
   }
-  const cssScope =
-    meta.cssScope === "owned-root-v1" ? { cssScope: meta.cssScope } : {};
   const authoritativeKeys = [
     "artifactFormatVersion",
     "pluginId",
@@ -238,7 +236,6 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,
         ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
-        ...cssScope,
       },
       error: null,
     };
@@ -296,7 +293,6 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         pluginSdkVersion: builtWith.pluginSdkVersion,
       },
       ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
-      ...cssScope,
     },
     error: null,
   };
@@ -384,7 +380,7 @@ export async function loadPluginAppBundle(
     css = null;
   }
   const ownedRootCss: PluginCssBytes | null =
-    css !== null && meta.cssScope === "owned-root-v1"
+    css !== null && findUnnamedPluginRoots(js.toString("utf8")).length === 0
       ? {
           original: Buffer.from(
             dropAnonymousPluginRootScope(css.original.toString("utf8")),

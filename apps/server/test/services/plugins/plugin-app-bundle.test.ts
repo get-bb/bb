@@ -68,7 +68,6 @@ async function writeAppPluginFixture(
     app?: boolean;
     appSource?: string;
     serverSource?: string;
-    ownedRoot?: boolean;
   },
 ): Promise<void> {
   await mkdir(rootDir, { recursive: true });
@@ -77,9 +76,6 @@ async function writeAppPluginFixture(
     JSON.stringify({
       name: options.name,
       version: "0.1.0",
-      ...(options.ownedRoot
-        ? { bbPluginBuild: { experimental_cssScope: "owned-root-v1" } }
-        : {}),
       bb: {
         name: "App bundle fixture",
         description: "Plugin app bundle fixture.",
@@ -267,7 +263,6 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     await writeAppPluginFixture(rootDir, {
       name: "bb-plugin-owned",
       appSource: COMPRESSIBLE_APP_SOURCE,
-      ownedRoot: true,
     });
     const entry = await harness.pluginService.installPath(rootDir);
     const bundle = entry.app.bundle;
@@ -330,12 +325,11 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     }
   }, 60_000);
 
-  it("derives owned-root CSS only from metadata that declares it", async () => {
+  it("keeps legacy CSS for bundles that render plugin roots without an id", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-scope");
     await writeAppPluginFixture(rootDir, { name: "bb-plugin-scope" });
     const dist = join(rootDir, "dist");
     await mkdir(dist, { recursive: true });
-    await writeFile(join(dist, "app.js"), "export default {};");
     const legacy =
       "@layer utilities{:where([data-bb-plugin=scope],[data-bb-plugin-root]:not([data-bb-plugin])) .p-2{padding:.5rem}}" +
       "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
@@ -343,6 +337,13 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       "@layer utilities{:where([data-bb-plugin=scope]) .p-2{padding:.5rem}}" +
       "[data-bb-plugin-root]:not([data-bb-plugin]) .authored{color:red}";
     await writeFile(join(dist, "app.css"), legacy);
+    await writeFile(
+      join(dist, "app.meta.json"),
+      JSON.stringify({
+        sdkMajor: PLUGIN_SDK_MAJOR,
+        sdkVersion: PLUGIN_SDK_VERSION,
+      }),
+    );
     upsertInstalledPlugin(harness.db, {
       ...npmPersistence("bb-plugin-scope", "0.1.0"),
       id: "scope",
@@ -352,34 +353,30 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       enabled: true,
       enabledFollowsDefault: false,
     });
-    const hashes = new Set<string>();
-    for (const cssScope of [undefined, "unknown", "owned-root-v1"]) {
-      await writeFile(
-        join(dist, "app.meta.json"),
-        JSON.stringify({
-          sdkMajor: PLUGIN_SDK_MAJOR,
-          sdkVersion: PLUGIN_SDK_VERSION,
-          cssScope,
-        }),
-      );
+    const scenarios = [
+      { js: "export default {};", narrowed: true },
+      {
+        js: 'export const p={"data-bb-plugin-root":"","data-bb-plugin":"scope"};',
+        narrowed: true,
+      },
+      { js: 'export const p={"data-bb-plugin-root":""};', narrowed: false },
+    ];
+    for (const scenario of scenarios) {
+      await writeFile(join(dist, "app.js"), scenario.js);
       await harness.pluginService.reload("scope");
       const bundle = harness.pluginService
         .list()
         .find((plugin) => plugin.id === "scope")?.app.bundle;
-      if (bundle == null) throw new Error(`missing bundle: ${cssScope}`);
-      hashes.add(bundle.hash);
+      if (bundle == null) throw new Error(`missing bundle: ${scenario.js}`);
       for (const requested of [null, "unknown", "owned-root-v1"]) {
         const url = new URL(`${BASE}${bundle.cssUrl}`);
         if (requested !== null) url.searchParams.set("css-scope", requested);
         const response = await harness.app.request(url.toString());
-        expect(await response.text(), `${cssScope} ${requested}`).toBe(
-          cssScope === "owned-root-v1" && requested === "owned-root-v1"
-            ? owned
-            : legacy,
+        expect(await response.text(), `${scenario.js} ${requested}`).toBe(
+          scenario.narrowed && requested === "owned-root-v1" ? owned : legacy,
         );
       }
     }
-    expect(hashes.size).toBe(3);
   });
 
   it("reports hasApp:false for headless plugins and 404s their assets", async () => {

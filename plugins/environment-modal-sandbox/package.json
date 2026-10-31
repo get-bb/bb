@@ -8,9 +8,6 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.102"
   },
-  "bbPluginBuild": {
-    "experimental_cssScope": "owned-root-v1"
-  },
   "bb": {
     "name": "Modal Sandbox [Experimental]",
     "description": "Run bb threads in on-demand, isolated sandboxes",

@@ -1027,23 +1027,6 @@ plugins, with `bb plugin config <id> set <key> <value>`, or with SDK
 `plugins.updateSettings({ pluginId, values })`. Running plugins receive changes
 live.
 
-### Plugin CSS scope builds
-
-A plugin that gives every utility-styled mount and portal a named
-`data-bb-plugin` root can opt in to narrower generated selectors by adding
-`"bbPluginBuild": { "experimental_cssScope": "owned-root-v1" }` at the top level
-of its `package.json`, outside `bb`. Audit custom portals and content-script
-mounts before enabling it. Nested roots retain the existing ancestor matching;
-this does not introduce a nearest-root cascade boundary.
-
-`bb plugin build` still writes one `dist/app.css` with the legacy selectors and
-records `"cssScope": "owned-root-v1"` in `dist/app.meta.json`. When the app
-requests a stylesheet with `css-scope=owned-root-v1`, the server drops the
-`[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that plugin's
-utility selectors and serves the narrower variant. Requests without the
-parameter, and plugins without the metadata field, get the legacy CSS. Authored
-CSS is never rewritten. Every bundled plugin with a frontend opts in.
-
 ### Multi-plugin repositories
 
 An optional `.bb/plugins.json` collection manifest at a repository root

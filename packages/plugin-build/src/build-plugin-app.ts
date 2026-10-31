@@ -35,6 +35,7 @@ import {
 } from "./runtime-shims.mjs";
 import { retiredSdkMemberWarnings } from "./retired-sdk-members.js";
 import {
+  findUnnamedPluginRoots,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -287,10 +288,7 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   };
 }
 
-type CssScope = "legacy" | "owned-root-v1";
-
 interface PluginAppConfig {
-  cssScope: CssScope;
   appEntry: string;
   packageName: string;
   pluginVersion: string;
@@ -390,33 +388,9 @@ async function readDependencyTailwindSources(
   return sources;
 }
 
-function readCssScope(
-  pkg: Record<string, unknown>,
-  packageJsonPath: string,
-): CssScope {
-  const config = pkg.bbPluginBuild;
-  if (config === undefined) return "legacy";
-  if (
-    !isRecord(config) ||
-    Object.keys(config).some((key) => key !== "experimental_cssScope")
-  ) {
-    throw new Error(
-      `invalid bbPluginBuild in ${packageJsonPath}: expected an object with optional experimental_cssScope`,
-    );
-  }
-  if (config.experimental_cssScope === undefined) return "legacy";
-  if (config.experimental_cssScope !== "owned-root-v1") {
-    throw new Error(
-      `invalid bbPluginBuild.experimental_cssScope in ${packageJsonPath}: expected "owned-root-v1"`,
-    );
-  }
-  return config.experimental_cssScope;
-}
-
 async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   const packageJsonPath = join(rootDir, "package.json");
   const pkg = await readPackageJson(packageJsonPath);
-  const cssScope = readCssScope(pkg, packageJsonPath);
   const manifest = await validatePluginBuildManifest(
     pkg,
     rootDir,
@@ -431,7 +405,6 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
   const appEntry = await resolveManifestEntryFile(rootDir, app, "bb.app");
   return {
     appEntry,
-    cssScope,
     packageName: manifest.name,
     pluginVersion: manifest.version,
   };
@@ -559,7 +532,7 @@ export async function buildPluginApp(
   toolchain: PluginBuildToolchain,
   options: PluginAppBuildOptions = { minify: true },
 ): Promise<PluginAppBuildResult> {
-  const { appEntry, cssScope, packageName, pluginVersion } =
+  const { appEntry, packageName, pluginVersion } =
     await readPluginAppConfig(rootDir);
   const pluginId = derivePluginId(packageName);
   const dependencySources = await readDependencyTailwindSources(rootDir);
@@ -607,6 +580,14 @@ export async function buildPluginApp(
           ? warning.text
           : `${warning.location.file}:${warning.location.line}: ${warning.text}`,
       );
+    const builtJs = await readFile(stagedJsPath, "utf8");
+    const unnamedRoots = findUnnamedPluginRoots(builtJs);
+    const [first] = unnamedRoots;
+    if (first !== undefined) {
+      migrationWarnings.push(
+        `app.js sets data-bb-plugin-root without data-bb-plugin ${unnamedRoots.length} time(s), so bb serves this plugin's utilities with the slower legacy scope. Refresh lib/portal-scope with "npx shadcn add @bb/portal-scope", or set data-bb-plugin="${pluginId}" next to data-bb-plugin-root. First match: ${builtJs.slice(Math.max(0, first - 40), first + 60)}`,
+      );
+    }
 
     let authoredCss = "";
     try {
@@ -645,7 +626,6 @@ export async function buildPluginApp(
             bbVersion,
           }),
           runtimeSlots,
-          ...(cssScope === "legacy" ? {} : { cssScope }),
         },
         null,
         2,

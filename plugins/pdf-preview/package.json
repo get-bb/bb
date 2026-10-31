@@ -8,9 +8,6 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.84"
   },
-  "bbPluginBuild": {
-    "experimental_cssScope": "owned-root-v1"
-  },
   "bb": {
     "name": "PDF preview",
     "description": "Preview PDF files with the browser's built-in viewer.",

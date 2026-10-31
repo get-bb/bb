@@ -7,9 +7,6 @@
   "engines": {
     "bb": ">=0.0"
   },
-  "bbPluginBuild": {
-    "experimental_cssScope": "owned-root-v1"
-  },
   "bb": {
     "name": "Worktree",
     "description": "Run a thread in a fresh git worktree on an enrolled machine",

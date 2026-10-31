@@ -31,4 +31,5 @@ export { copyPluginRuntime } from "./prepare-plugin-runtime.js";
 export {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
+  findUnnamedPluginRoots,
 } from "./scope-plugin-utilities.js";
