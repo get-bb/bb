@@ -3,6 +3,7 @@ import {
   cancelPreparingMachinePause,
   isMachineWaitingForExecution,
 } from "../machines/lifecycle.js";
+import { activeMachineNeedsResume } from "../machines/provider-orchestration.js";
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
@@ -551,6 +552,9 @@ async function runDispatchAttempt(
         { kind: "host-offline", hostName: dispatchHost.name },
         null,
       );
+      if (activeMachineNeedsResume(deps, dispatchHost.id)) {
+        requestQueuedMachineReadiness(deps, dispatchHost.id);
+      }
       return;
     }
 

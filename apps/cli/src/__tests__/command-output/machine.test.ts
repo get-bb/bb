@@ -400,6 +400,41 @@ describe("bb machine command output", () => {
     ]);
   });
 
+  it("reports a resume that failed and left the machine active", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const resume = vi.fn(async () => ({
+      ...hosts[1]!,
+      lifecycle: { ...hosts[1]!.lifecycle, phase: "resuming" as const },
+    }));
+    const get = vi.fn(async () => ({
+      ...hosts[1]!,
+      lifecycle: {
+        ...hosts[1]!.lifecycle,
+        message: "Machine resume failed: sandbox API unavailable",
+      },
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.$get": get,
+      "v1.hosts.:id.resume.$post": resume,
+    });
+
+    const command = expect(
+      runCommand(["machine", "resume", "laptop"], register),
+    ).rejects.toThrow("process.exit:1");
+    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(500);
+    await command;
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([]);
+    expect(collectLogPayloads(vi.mocked(console.error))).toEqual([
+      "Error: Machine resume failed: sandbox API unavailable",
+    ]);
+  });
+
   it("bb machine remove resolves and removes a provider machine", async () => {
     const remove = vi.fn(async () => undefined);
     stubServerApi({

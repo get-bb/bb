@@ -8,6 +8,7 @@ import {
   getThread,
   listQueuedThreadMessages,
   setProjectGitRemoteUrlIfMissing,
+  updateHost,
 } from "@bb/db";
 import {
   systemThreadProvisioningEventDataSchema,
@@ -31,6 +32,8 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { defaultEnvironmentProviderRecords } from "../helpers/environment-provider.js";
+import { readJson } from "../helpers/json.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedHostSession,
@@ -383,6 +386,48 @@ describe("composed machine thread lifecycle", () => {
         );
         expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
         expect(getHost(harness.db, source.host.id)?.destroyedAt).toBeNull();
+      });
+    },
+  );
+
+  it.each([
+    { daemon: "gone", acceptedPhase: "resuming", resumeCalls: 1 },
+    { daemon: "connected", acceptedPhase: "active", resumeCalls: 0 },
+  ] as const)(
+    "resumes an active machine on request only when its daemon is $daemon",
+    async ({ daemon, acceptedPhase, resumeCalls }) => {
+      await withTestHarness(async (harness) => {
+        const target = seedHostSession(harness.deps, {
+          id: "requested-active-resume",
+        });
+        const resume = vi.fn(async ({ hostId }: { hostId: string }) => {
+          seedSession(harness.deps, hostId, { instanceId: "instance-2" });
+          return { resource: { id: "owned" } };
+        });
+        installMachineProvider({
+          suspend: async () => ({ resource: { id: "owned" } }),
+          resume,
+        });
+        updateHost(harness.db, harness.hub, target.host.id, {
+          machineProviderId: "test-machine",
+          resource: { id: "owned" },
+        });
+        if (daemon === "gone") harness.hub.unregisterDaemon(target.session.id);
+
+        const response = await harness.app.request(
+          `/api/v1/hosts/${target.host.id}/resume`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(202);
+        expect(await readJson(response)).toMatchObject({
+          lifecycle: { phase: acceptedPhase },
+        });
+        await expect
+          .poll(() => getHost(harness.db, target.host.id)?.phase)
+          .toBe("active");
+        expect(resume).toHaveBeenCalledTimes(resumeCalls);
+        expect(harness.hub.hasDaemonForHost(target.host.id)).toBe(true);
       });
     },
   );

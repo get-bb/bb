@@ -116,6 +116,14 @@ records, not filesystem saves: providers create any filesystem snapshot
 themselves. Daemon-connected is not agent-ready; checkout setup and provider
 authentication still need to complete.
 
+Core also calls `resume` for an active machine whose daemon has been gone for
+30 seconds while a thread runs there or a message waits for it, and when
+`bb.sdk.hosts.experimental_resume` targets an active machine without its
+daemon. Reuse the running compute and bootstrap again with the create key:
+the enrolled daemon starts, or the call returns once it answers. A failed
+attempt leaves the machine active with the error and core retries it a minute
+later.
+
 ### Environment compositions and project sources
 
 Machine registration does not contribute environment-picker entries. Register
@@ -190,7 +198,8 @@ on nonzero exit. Do not emit credentials.
 ### Coordinated suspension
 
 Your plugin owns idle timing, vendor observations, expiry scheduling, snapshot
-identifiers, cleanup, and explicit recovery from loss. Keep deadlines in
+identifiers, cleanup, and explicit recovery from vendor-side loss; core
+restarts a lost daemon through `resume`. Keep deadlines in
 plugin storage with `bb.background.schedule` plus startup reconciliation, and
 subscribe to `experimental_thread.events` and `experimental_terminal.input` to
 extend them (for example, while a thread on the machine is active).

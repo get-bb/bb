@@ -777,14 +777,21 @@ description, icon, `create`, `reconcileCleanup` and `remove`; optional
 suspend/resume. Core owns enrollment, durable launches, cleanup retries and
 lifecycle transitions. Plugins own allocation, filesystem preservation and
 idle policy. The lifecycle context's `checkpoint(resource)` persists a
-bounded (16 KiB), credential-free recovery record.
+bounded (16 KiB), credential-free recovery record. Core also calls `resume`
+for an active machine whose daemon has been gone past the 30-second reconnect
+grace while a thread runs there or a message waits for it, and for an explicit
+resume of such a machine; a failed attempt keeps it active and retries after a
+minute.
 
 Docs: `backend-machines.md`.
 
 Before stabilization, verify registration validation, creation-key ownership,
 interrupted allocation cleanup, checkpoint rejection, resource privacy,
-removal serialization and same-identity restoration. Machine lifecycle uses
-removing; removal retry timing is internal, not a public retirement policy.
+removal serialization and same-identity restoration. Resuming an active
+machine must reuse its running compute without a duplicate allocation, and
+must not restore an older snapshot over compute that is still there. Machine
+lifecycle uses removing; removal retry timing is internal, not a public
+retirement policy.
 The checkpoint requires real-DB crash recovery after allocation and before
 bootstrap, competing lifecycle operations, wrong-owner rejection and no
 duplicate enrollment. Standalone SDK submit/launch/follow/cancel must match
@@ -3465,7 +3472,10 @@ prove reachability from a remote machine.
 
 `bb.experimental_machines.bootstrap` prepares enrollment through the
 provider's `MachineExecutor` and waits for the daemon connection. Each call
-issues a fresh single-use credential for the same durable host identity. The
+issues a fresh single-use credential for the same durable host identity. For a
+host that has connected before, it runs the installer's `--start`, which
+returns as soon as the daemon answers; this is how a resume of an active
+machine starts its lost daemon again. The
 supporting `MachineExecutorRequest`, `MachineExecutor`,
 `MachineBootstrapRequest` and `MachineBootstrapApi` belong to the experimental
 `PluginMachines`, so their unprefixed names do not mean they are stable.

@@ -1,7 +1,11 @@
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { isMachineWaitingForExecution } from "../machines/lifecycle.js";
 import { isServerMoveFrozen } from "../server-move/freeze-state.js";
-import { waitForMachineMaintenance } from "../machines/provider-orchestration.js";
+import {
+  activeMachineNeedsResume,
+  resumeMachine,
+  waitForMachineMaintenance,
+} from "../machines/provider-orchestration.js";
 import {
   getQueuedThreadMessage,
   getThread,
@@ -174,6 +178,10 @@ export function requestQueuedMachineReadiness(
   if (pending.has(hostId)) return;
   pending.add(hostId);
   void waitForMachineMaintenance(deps, hostId)
+    .then(() => {
+      if (!activeMachineNeedsResume(deps, hostId)) return;
+      return resumeMachine(deps, hostId, { includeActive: true });
+    })
     .then(() => {
       return ensureHostSessionReadyForWork(deps, { hostId });
     })

@@ -36,6 +36,27 @@ export function machineHasLiveThreads(db: Connection, hostId: string): boolean {
   );
 }
 
+export function machineHasRunningThreads(
+  db: Connection,
+  hostId: string,
+): boolean {
+  return (
+    db
+      .select({ id: threads.id })
+      .from(threads)
+      .innerJoin(environments, eq(threads.environmentId, environments.id))
+      .where(
+        and(
+          eq(environments.hostId, hostId),
+          inArray(threads.status, ["active", "starting", "stopping"]),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 function machineHasThreadLaunchWhere(
   db: Connection,
   hostId: string,

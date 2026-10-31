@@ -44,7 +44,8 @@ does not prove reachability.
   bb machine retry-update <id-or-name>    Retry a pending daemon update now
   bb machine reconcile <id-or-name>       Reconcile compute with core’s recorded state
   bb machine suspend <id-or-name>         Suspend a provider-managed machine
-  bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
+  bb machine resume <id-or-name>          Resume a machine; an active one only restarts
+                                          its daemon when the daemon is gone
   bb machine retry-cleanup <id-or-name>   Retry failed teardown now
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
     --force                               Finish removing a disconnected machine whose
@@ -87,7 +88,12 @@ both operations. Suspending interrupts active turns and closes terminals before
 saving; interrupted turns are never reported successful, so submit a new turn
 after restore. `bb machine suspend` polls until the machine is paused, and
 `bb machine resume` waits for the provider restore; resume does not rerun
-environment setup. `bb machine reconcile` / `hosts.experimental_reconcile` is an
+environment setup. When an active machine's daemon has been gone for 30
+seconds while a thread runs there or a message waits for it, core resumes the
+machine itself: the provider reuses the running compute and starts the daemon
+again. A failed attempt leaves the machine active with the error and retries a
+minute later; `bb machine resume` retries at once and reports the failure.
+`bb machine reconcile` / `hosts.experimental_reconcile` is an
 explicit request, not a timer: for a machine core records as suspended, it runs
 the provider's save-and-stop operation, and the CLI polls until completion.
 Active machines and lifecycle operations already in progress are left alone.
