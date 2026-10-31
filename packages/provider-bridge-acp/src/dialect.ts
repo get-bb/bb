@@ -43,6 +43,7 @@ export interface AcpDialect {
   ): AcpClassifiedToolCall | undefined;
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
   normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
+  normalizeToolCallEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
   readonly clientRequestMethods?: readonly string[];
   handleClientRequest?(
     method: string,
