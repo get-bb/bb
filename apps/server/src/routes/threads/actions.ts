@@ -24,7 +24,10 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { type ThreadQueuedMessage } from "@bb/domain";
+import {
+  getRelativeHostPathSegments,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import {
@@ -38,7 +41,6 @@ import {
   requireConnectedHostSession,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
-import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
   compactThreadContext,
@@ -485,8 +487,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.file !== null) {
-      parseSafeRelativeRoutePath(payload.file.path);
+    if (
+      payload.file !== null &&
+      getRelativeHostPathSegments(payload.file.path) === null
+    ) {
+      throw new ApiError(400, "invalid_path", "Invalid file path");
     }
     const delivered = deps.hub.notifyThreadOpen(
       { projectId: publicThread.projectId, threadId: publicThread.id },
