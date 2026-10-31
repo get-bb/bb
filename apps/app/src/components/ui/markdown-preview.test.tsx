@@ -6,6 +6,7 @@ import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { ApplicationUrlDialog } from "@/components/ApplicationUrlDialog";
 import { resolveApplicationUrlConfirmation } from "@/lib/application-url";
 import { LazyMarkdownHtml } from "./lazy-markdown-html";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 import {
   act,
@@ -674,6 +675,77 @@ describe("MarkdownPreview", () => {
     expect(
       screen.getByRole("link", { name: "local thread" }).getAttribute("href"),
     ).toBe(href);
+  });
+
+  it("scrolls in-page fragment links to their target inside the same preview", () => {
+    const onOpenLink = vi.fn(() => true);
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+    render(
+      <>
+        <MarkdownPreview content="## Plain heading" />
+        <MarkdownPreview
+          allowHtml
+          content={
+            '[Heading](#plain-heading) [Anchor](#block-1) [Missing](#nowhere)\n\n## Plain heading\n\n## Plain heading\n\n<a id="block-1"></a>'
+          }
+          linkRouting={{ onOpenLink }}
+        />
+      </>,
+    );
+
+    for (const name of ["Heading", "Anchor", "Missing"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link.getAttribute("target")).toBeNull();
+      expect(fireEvent.click(link)).toBe(false);
+    }
+
+    expect(scrolled).toEqual([
+      "user-content-plain-heading",
+      "user-content-block-1",
+    ]);
+    expect(
+      document.querySelectorAll('[id="user-content-plain-heading-1"]'),
+    ).toHaveLength(1);
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  it("leaves modified clicks on web links to the platform", () => {
+    const onOpenLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[docs](https://example.com/docs)"
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "docs" });
+
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(onOpenLink).not.toHaveBeenCalled();
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
+  });
+
+  it("opens web links through the app navigation host when the surface has no link handler", () => {
+    const openUrl = vi.fn(() => true);
+    render(
+      <AppNavigationHostProvider capabilities={{ openUrl }}>
+        <MarkdownPreview content="[docs](https://example.com/docs)" />
+      </AppNavigationHostProvider>,
+    );
+
+    expect(fireEvent.click(screen.getByRole("link", { name: "docs" }))).toBe(
+      false,
+    );
+    expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/docs" });
   });
 
   it("routes editor file links to the local file handler with their editor", () => {

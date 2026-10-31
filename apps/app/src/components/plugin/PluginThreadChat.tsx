@@ -18,6 +18,9 @@ import {
   type ThreadTimelineForkMessageHandler,
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/timeline/types";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { environmentFileLinkOpenOptions } from "@/lib/environment-file-links";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
@@ -175,9 +178,19 @@ function PluginThreadChatBody({
     thread !== undefined &&
     thread.environmentId === timelineNavigation?.environmentId;
   const onOpenLink = timelineNavigation?.onOpenLink;
-  const onOpenLocalFileLink = canUseHostFileNavigation
-    ? timelineNavigation.onOpenLocalFileLink
-    : undefined;
+  const navigation = useAppNavigationHost();
+  const onOpenLocalFileLink = useMemo<
+    ThreadTimelineLocalFileLinkHandler | undefined
+  >(() => {
+    if (canUseHostFileNavigation) return timelineNavigation.onOpenLocalFileLink;
+    if (environment === null) return undefined;
+    return (link) => {
+      const options = environmentFileLinkOpenOptions({ environment, link });
+      return link.openTargetId === null
+        ? navigation.openFilePreview(options)
+        : navigation.openFileExternally(options);
+    };
+  }, [canUseHostFileNavigation, environment, navigation, timelineNavigation]);
   const resolveHostMentionLink = canUseHostFileNavigation
     ? timelineNavigation.resolveMentionLink
     : undefined;

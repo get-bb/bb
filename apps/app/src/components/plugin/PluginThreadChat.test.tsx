@@ -16,6 +16,8 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import type { ThreadTimelineLocalFileLinkHandler } from "@/components/thread/timeline/types";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 beforeAll(() => LazyPluginThreadChat.preload());
@@ -28,6 +30,7 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: { get: vi.fn() },
     environments: { get: vi.fn() },
+    hosts: { list: vi.fn(async () => []) },
     providers: { list: vi.fn(async () => []) },
   },
   BbHttpError: class BbHttpError extends Error {
@@ -217,6 +220,91 @@ describe("PluginThreadChat", () => {
       workspaceMentionHandler,
     );
     expect(resolveMentionLink).toHaveBeenCalledWith(workspaceMention);
+  });
+
+  it("opens file links through app navigation outside the thread detail view", async () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.threads.get).mockResolvedValue({
+      ...THREAD_FIXTURE,
+      environmentId: "env_demo",
+    } as never);
+    vi.mocked(sdk.environments.get).mockResolvedValue({
+      id: "env_demo",
+      hostId: "host_demo",
+      path: "/workspace",
+      updatedAt: 1,
+    } as never);
+    const openFilePreview = vi.fn(() => true);
+    const openFileExternally = vi.fn(() => true);
+
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <AppNavigationHostProvider
+            capabilities={{ openFileExternally, openFilePreview }}
+          >
+            <DemoPluginPage threadId="thr_demo" />
+          </AppNavigationHostProvider>
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() =>
+      expect(mocks.threadScreenProps.at(-1)?.workspaceRootPath).toBe(
+        "/workspace",
+      ),
+    );
+    const timelineHost = mocks.threadScreenProps.at(-1)!.timelineHost as {
+      onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
+    };
+    const lineRange = { startLineNumber: 3, endLineNumber: 5 };
+
+    timelineHost.onOpenLocalFileLink({
+      lineRange,
+      openTargetId: null,
+      path: "/workspace/docs/erd.mmd",
+    });
+    timelineHost.onOpenLocalFileLink({
+      lineRange: null,
+      openTargetId: null,
+      path: "/workspace-sibling/notes.md",
+    });
+    timelineHost.onOpenLocalFileLink({
+      lineRange: null,
+      openTargetId: "cursor",
+      path: "/workspace/src/index.ts",
+    });
+
+    expect(openFilePreview.mock.calls).toEqual([
+      [
+        {
+          target: {
+            kind: "workspace",
+            environmentId: "env_demo",
+            path: "docs/erd.mmd",
+          },
+          location: { kind: "range", startLine: 3, endLine: 5 },
+        },
+      ],
+      [
+        {
+          target: {
+            kind: "host",
+            hostId: "host_demo",
+            path: "/workspace-sibling/notes.md",
+          },
+          location: null,
+        },
+      ],
+    ]);
+    expect(openFileExternally).toHaveBeenCalledWith({
+      target: {
+        kind: "workspace",
+        environmentId: "env_demo",
+        path: "src/index.ts",
+      },
+      location: null,
+    });
   });
 
   it("maps variant timeline to a composer-less transcript", async () => {

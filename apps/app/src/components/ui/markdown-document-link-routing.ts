@@ -1,6 +1,7 @@
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
 import { getEnvironmentFilePreviewSourceAtRef } from "@bb/client-core";
 import { normalizeExperimentalLiveFileTarget } from "@/lib/live-file-navigation";
+import { toFileOpenLocation } from "@/lib/environment-file-links";
 import {
   buildAbsoluteFilePath,
   isAbsoluteFilePathWithinRoot,
@@ -72,14 +73,7 @@ export function buildMarkdownDocumentLinkRouting({
             ...target,
             path: link.path.slice(rootPath === "/" ? 1 : rootPath.length + 1),
           },
-          location:
-            link.lineRange === null
-              ? null
-              : {
-                  kind: "range",
-                  startLine: link.lineRange.startLineNumber,
-                  endLine: link.lineRange.endLineNumber,
-                },
+          location: toFileOpenLocation(link.lineRange),
         });
       },
     },
