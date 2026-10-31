@@ -1119,16 +1119,23 @@ function MarkdownTableHead({ children }: MarkdownTableHeadProps) {
   return <thead className="bg-surface-recessed">{children}</thead>;
 }
 
-function MarkdownTableHeader({ children }: MarkdownTableHeaderProps) {
+function MarkdownTableHeader({ children, style }: MarkdownTableHeaderProps) {
   return (
-    <th className="border border-border px-2 py-1 text-left font-medium">
+    <th
+      className="border border-border px-2 py-1 text-left font-medium"
+      style={style}
+    >
       {children}
     </th>
   );
 }
 
-function MarkdownTableCell({ children }: MarkdownTableCellProps) {
-  return <td className="border border-border px-2 py-1">{children}</td>;
+function MarkdownTableCell({ children, style }: MarkdownTableCellProps) {
+  return (
+    <td className="border border-border px-2 py-1" style={style}>
+      {children}
+    </td>
+  );
 }
 
 function MarkdownRenderedImage({
