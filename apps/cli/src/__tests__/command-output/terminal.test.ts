@@ -556,6 +556,46 @@ describe("bb terminal command output", () => {
     },
   );
 
+  it("keeps waiting while the machine is disconnected", async () => {
+    const output = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: "terminal_output_unavailable",
+            message:
+              "Terminal output is unavailable because the session is not running",
+          }),
+          { status: 409, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(outputResponse({ nextSeq: 1, text: "ready\n" }));
+    stubServerApi({
+      "v1.terminals.:terminalId.$get": vi.fn(async () =>
+        makeTerminalSession({ status: "disconnected" }),
+      ),
+      "v1.terminals.:terminalId.output.$get": output,
+    });
+
+    await runCommand(
+      [
+        "terminal",
+        "wait",
+        "term-1",
+        "--from-start",
+        "--contains",
+        "ready",
+        "--poll-interval",
+        "1ms",
+      ],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Terminal term-1 matched ready",
+    ]);
+  });
+
   it("finds a marker that is followed by more output than the retained window", async () => {
     const output = vi.fn().mockResolvedValueOnce(
       outputResponse({

@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { stripVTControlCharacters } from "node:util";
 import { Command, Option } from "commander";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import type { TerminalCreateScope, TerminalListScope } from "@bb/sdk";
@@ -15,6 +14,10 @@ import { durationHelp, parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
+import {
+  parseTerminalOutputCondition,
+  waitForTerminalCondition,
+} from "./terminal-wait.js";
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
@@ -505,6 +508,14 @@ function terminalOutputQuery(opts: TerminalOutputOptions) {
     ...(opts.sinceSeq !== undefined
       ? { sinceSeq: parseNonNegativeInteger(opts.sinceSeq, "--since-seq") }
       : {}),
+    ...terminalOutputBounds(opts),
+  };
+}
+
+function terminalOutputBounds(
+  opts: Pick<TerminalOutputOptions, "limitChunks" | "tailBytes">,
+) {
+  return {
     ...(opts.tailBytes !== undefined
       ? {
           tailBytes: parseRequiredPositiveInteger(
@@ -680,7 +691,6 @@ function sendTerminalInput(socket: { send(data: string): void }, data: Buffer) {
   }
 }
 
-const TERMINAL_WAIT_MATCH_WINDOW_CHARS = 256 * 1024;
 const TERMINAL_WAIT_EXIT_TAIL_CHARS = 2000;
 
 interface TerminalWaitResult {
@@ -697,12 +707,6 @@ function describeTerminalExit(
   return exitCode === null
     ? `Terminal ${terminalId} exited`
     : `Terminal ${terminalId} exited with code ${exitCode}`;
-}
-
-function decodeChunks(chunks: readonly { dataBase64: string }[]): string {
-  return chunks
-    .map((chunk) => Buffer.from(chunk.dataBase64, "base64").toString("utf8"))
-    .join("");
 }
 
 async function waitForTerminal(args: {
@@ -733,12 +737,10 @@ async function waitForTerminal(args: {
     label: "--poll-interval",
     value: args.opts.pollInterval ?? "500ms",
   });
-  const deadline = Date.now() + timeoutMs;
-  let nextSeq = args.opts.fromStart ? 0 : undefined;
-  const regex =
-    args.opts.regex === undefined ? null : new RegExp(args.opts.regex, "u");
+  const condition = parseTerminalOutputCondition(args.opts);
 
-  if (!hasExit && nextSeq === undefined) {
+  let sinceSeq = 0;
+  if (condition !== null && !args.opts.fromStart) {
     const currentOutput = await sdk.terminals.output({
       terminalId: args.terminalId,
       limitChunks: 1,
@@ -754,57 +756,38 @@ async function waitForTerminal(args: {
         },
       );
     }
-    nextSeq = currentOutput.nextSeq;
+    sinceSeq = currentOutput.nextSeq;
   }
 
-  let seen = "";
-  while (Date.now() <= deadline) {
-    if (hasExit) {
-      const session = await sdk.terminals.get({ terminalId: args.terminalId });
-      if (session.status === "exited") {
+  const outcome = await waitForTerminalCondition({
+    condition,
+    outputBounds: terminalOutputBounds(args.opts),
+    pollDelaysMs: [pollIntervalMs],
+    sdk,
+    sinceSeq,
+    terminalId: args.terminalId,
+    timeoutMs,
+  });
+  switch (outcome.kind) {
+    case "matched":
+      return {
+        exitCode: outcome.exitCode,
+        matched: args.opts.contains ?? args.opts.regex ?? "",
+        nextSeq: outcome.nextSeq,
+        terminalId: args.terminalId,
+      };
+    case "exited": {
+      if (condition === null) {
         return {
-          exitCode: session.exitCode,
+          exitCode: outcome.exitCode,
           matched: "exit",
-          nextSeq: nextSeq ?? 0,
+          nextSeq: outcome.nextSeq,
           terminalId: args.terminalId,
         };
       }
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      continue;
-    }
-
-    const output = await sdk.terminals.output({
-      terminalId: args.terminalId,
-      ...terminalOutputQuery(args.opts),
-      ...(nextSeq !== undefined ? { sinceSeq: nextSeq } : {}),
-    });
-    nextSeq = output.nextSeq;
-    const searched = `${seen}${decodeChunks(output.chunks)}`;
-    seen = searched.slice(-TERMINAL_WAIT_MATCH_WINDOW_CHARS);
-    const plainText = stripVTControlCharacters(searched);
-    if (
-      args.opts.contains !== undefined &&
-      plainText.includes(args.opts.contains)
-    ) {
-      return {
-        exitCode: output.exitCode,
-        matched: args.opts.contains,
-        nextSeq,
-        terminalId: args.terminalId,
-      };
-    }
-    if (regex && regex.test(plainText)) {
-      return {
-        exitCode: output.exitCode,
-        matched: args.opts.regex ?? "",
-        nextSeq,
-        terminalId: args.terminalId,
-      };
-    }
-    if (output.status === "exited") {
-      const tail = seen.slice(-TERMINAL_WAIT_EXIT_TAIL_CHARS).trimEnd();
+      const tail = outcome.text.slice(-TERMINAL_WAIT_EXIT_TAIL_CHARS).trimEnd();
       throw new CliExitError(
-        `${describeTerminalExit(args.terminalId, output.exitCode)} before the requested output matched`,
+        `${describeTerminalExit(args.terminalId, outcome.exitCode)} before the requested output matched`,
         TERMINAL_WAIT_TIMEOUT_EXIT_CODE,
         {
           code: "terminal_exited",
@@ -815,14 +798,14 @@ async function waitForTerminal(args: {
         },
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    case "timed-out":
+      throw new CliExitError(
+        `Timed out waiting for terminal ${args.terminalId}`,
+        TERMINAL_WAIT_TIMEOUT_EXIT_CODE,
+        {
+          code: "timeout",
+          hint: `Read what it has printed so far with \`bb terminal output ${args.terminalId} --tail-bytes 4000\`.`,
+        },
+      );
   }
-  throw new CliExitError(
-    `Timed out waiting for terminal ${args.terminalId}`,
-    TERMINAL_WAIT_TIMEOUT_EXIT_CODE,
-    {
-      code: "timeout",
-      hint: `Read what it has printed so far with \`bb terminal output ${args.terminalId} --tail-bytes 4000\`.`,
-    },
-  );
 }
