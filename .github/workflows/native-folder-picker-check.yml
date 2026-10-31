@@ -87,3 +87,64 @@ jobs:
         with:
           name: linux-folder-dialog
           path: ${{ runner.temp }}/shots
+
+  screenshots:
+    name: Choose a folder screenshots (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            ref: 32cec974c6a9bf48bf1902495b58792a8cc1848f
+          - label: after
+            ref: ${{ github.sha }}
+    env:
+      DISPLAY: ":77"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: harness
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.ref }}
+          path: app
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - name: Install system tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick zenity
+      - name: Build bb
+        working-directory: app
+        run: |
+          npm install --global pnpm@9.15.0 --ignore-scripts
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Start Xvfb, bb, and Chrome
+        working-directory: app
+        run: |
+          Xvfb :77 -screen 0 2880x1800x24 >/dev/null 2>&1 &
+          mkdir -p "$HOME/fixture"
+          (HOME="$HOME/fixture" BB_SKIP_ONBOARDING=0 pnpm start:worktree > "$RUNNER_TEMP/bb.log" 2>&1 &)
+          for _ in $(seq 1 120); do grep -q "Host daemon http" "$RUNNER_TEMP/bb.log" && break; sleep 2; done
+          sleep 10
+          app_url=$(grep -o 'App http://[0-9.:]*' "$RUNNER_TEMP/bb.log" | head -1 | cut -d' ' -f2)
+          test -n "$app_url"
+          echo "APP_URL=$app_url" >> "$GITHUB_ENV"
+          (google-chrome --no-first-run --no-default-browser-check --user-data-dir="$RUNNER_TEMP/chrome" \
+            --force-device-scale-factor=2 --window-position=0,0 --window-size=1440,900 \
+            --remote-debugging-port=9222 --app=about:blank > "$RUNNER_TEMP/chrome.log" 2>&1 &)
+          sleep 5
+      - name: Click Choose a folder and Add a project
+        run: node harness/.github/picker-check/drive-app.mjs "$APP_URL" "$RUNNER_TEMP/shots" "${{ matrix.label }}"
+      - if: always()
+        run: tail -40 "$RUNNER_TEMP/bb.log" || true
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: choose-a-folder-${{ matrix.label }}
+          path: ${{ runner.temp }}/shots
