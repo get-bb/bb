@@ -147,7 +147,7 @@ describe("useCycle", () => {
 });
 
 describe("StartAnywhere", () => {
-  it("shows a ChatGPT handoff, a sidebar grouped by machine and the phone", () => {
+  it("shows a ChatGPT handoff, a sidebar grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
       ">ChatGPT<",
@@ -160,11 +160,16 @@ describe("StartAnywhere", () => {
       "MacBook",
       "Fix CI on main",
       "Daily changelog",
-      "Reply to this thread",
+      "Explored",
+      "Running",
+      "pnpm test checkout",
+      "Working...",
+      "Ask a follow-up",
     ]) {
       expect(html).toContain(text);
     }
     expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
+    expect(html.match(/class="bw-phone"/g)).toHaveLength(1);
     expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto/);
   });
 });
