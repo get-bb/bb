@@ -407,7 +407,7 @@ if [ "$node_supported" != yes ]; then
   fail_step "Node.js $node_version is too old; bb-app requires Node.js 22.19 or newer (22.19, 24, and 26 are tested)."
   exit 1
 fi
-node_bin=$(command -v node)
+node_bin=$(node -p 'process.execPath')
 
 if [ -z "${HOME:-}" ]; then
   HOME=$(node -e 'const home = require("node:os").homedir(); if (!require("node:path").isAbsolute(home)) process.exit(1); process.stdout.write(home);')
