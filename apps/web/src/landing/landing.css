@@ -167,6 +167,33 @@ body {
   background: var(--bg);
 }
 
+/* A hairline fades in under the pinned header once the page scrolls, so
+   content passing beneath it has an edge. Browsers without scroll-driven
+   animations keep today's edgeless header. */
+.nav-sticky::after {
+  content: "";
+  position: absolute;
+  inset: auto calc(50% - 50vw) 0;
+  height: 1px;
+  background: var(--border-soft);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@supports (animation-timeline: scroll()) {
+  .nav-sticky::after {
+    animation: nav-hairline linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 48px;
+  }
+}
+
+@keyframes nav-hairline {
+  to {
+    opacity: 1;
+  }
+}
+
 /* Keep focused and hash-targeted elements clear of the pinned header. */
 html:has(.nav-sticky) {
   scroll-padding-top: 88px;
