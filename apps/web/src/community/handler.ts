@@ -1,16 +1,15 @@
 import { z } from "zod";
 import type { Env } from "../server/env";
 import {
-  surveyAnswers,
-  surveyFields,
-  validateSurvey,
-  type SurveyReply,
-} from "./survey";
+  advanceClaim,
+  CLAIM_PENDING,
+  saveResponse,
+  type ClaimsEnv,
+} from "./claims";
+import { surveyFields, validateSurvey, type SurveyReply } from "./survey";
 
-type CommunityEnv = Pick<
-  Env,
-  "DB" | "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER"
->;
+type CommunityEnv = ClaimsEnv &
+  Pick<Env, "COMMUNITY_FORMS_ENABLED" | "COMMUNITY_FORM_RATE_LIMITER">;
 
 const MAX_BODY_BYTES = 16384;
 const submission = z.object({
@@ -129,12 +128,17 @@ export async function handleSurveySubmission(
   const errors = validateSurvey(values);
   if (Object.keys(errors).length) return reply({ errors }, 400);
   try {
-    const response = await env.DB.prepare(
-      "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING",
-    )
-      .bind(id, Date.now(), JSON.stringify(surveyAnswers(values)))
-      .run();
-    return reply({ result: { duplicate: !response.meta.changes } });
+    const now = Date.now();
+    const saved = await saveResponse(env, id, values, now);
+    const advanced = saved.claim
+      ? await advanceClaim(env, saved.claim, now)
+      : null;
+    const claimLink = advanced?.ok ? advanced.claimLink : null;
+    const claimNote =
+      saved.note ?? (saved.claim && !claimLink ? CLAIM_PENDING : null);
+    return reply({
+      result: { duplicate: saved.duplicate, claimLink, claimNote },
+    });
   } catch {
     return reply(
       { error: "We couldn't save your response. Please try again." },
