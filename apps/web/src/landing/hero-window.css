@@ -598,7 +598,12 @@
 .rhb .rhb-has-panel .rhb-rail-new {
   height: 28px;
   opacity: 1;
-  animation: rhb-flash 1.8s ease 0.3s;
+}
+
+/* Only the icon that just arrived gets the highlight, and it eases on and
+   off instead of snapping. */
+.rhb .rhb-has-panel .rhb-rail-linear {
+  animation: rhb-flash 1.8s ease 0.3s both;
 }
 
 .rhb .rhb-strip {
@@ -1312,9 +1317,13 @@
 }
 
 @keyframes rhb-flash {
-  0%,
-  45% {
-    background: var(--rhb-active);
+  from,
+  to {
+    background-color: transparent;
+  }
+  25%,
+  50% {
+    background-color: var(--rhb-active);
   }
 }
 
@@ -1836,14 +1845,39 @@
   margin-top: 0;
 }
 
+/* "Working" shimmers while live; when the turn finishes it crossfades into
+   the static "Worked for" label. */
 .rhb .rhb-shimmer-text {
+  background: linear-gradient(
+      90deg,
+      var(--dim) 0%,
+      var(--dim) 40%,
+      var(--ink) 50%,
+      var(--dim) 60%,
+      var(--dim) 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
   color: var(--dim);
+  -webkit-text-fill-color: transparent;
+  animation: rhb-shimmer 2s linear infinite;
+}
+
+@keyframes rhb-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .rhb .rhb-shimmer-text {
     background: none;
     color: var(--dim);
+    -webkit-text-fill-color: currentColor;
   }
 }
 
@@ -1922,8 +1956,9 @@
   margin-top: 9px;
 }
 
-.rhb .rhb-has-panel .rhb-feed,
-.rhb .rhb-uses-panel .rhb-feed {
+/* Keyed to the feed's own scene so an outgoing feed keeps its layout while
+   it fades out. */
+.rhb .rhb-fl-linear > .rhb-feed {
   padding-inline: 16px;
 }
 
@@ -1999,14 +2034,35 @@
 .rhb .rhb-turn-stack > * {
   display: inline-flex;
   grid-area: 1 / 1;
+  justify-self: start;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
-.rhb .rhb-turn-w {
+/* Status words change in place: the old word fades out while the new one
+   fades in over it (inline delays set when), and the turn label's slot glides
+   between the two measured widths. */
+.rhb .rhb-turn-stack.is-swap {
+  overflow: hidden;
+  width: var(--rhb-wa);
+  animation: rhb-turn-slot 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes rhb-turn-slot {
+  from {
+    width: var(--rhb-wa);
+  }
+  to {
+    width: var(--rhb-wb);
+  }
+}
+
+.rhb .rhb-turn-w,
+.rhb .rhb-swap-a,
+.rhb .rhb-fix-idle.is-timed {
   opacity: 0;
-  animation-name: rhb-hold;
-  animation-timing-function: linear;
+  animation: rhb-swap-out 0.3s ease both;
 }
 
 .rhb .rhb-turn-w.is-live {
@@ -2018,10 +2074,12 @@
   animation: rhb-fade-in 0.35s ease backwards;
 }
 
-@keyframes rhb-hold {
-  from,
-  to {
+@keyframes rhb-swap-out {
+  from {
     opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -2112,12 +2170,6 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-}
-
-.rhb .rhb-fix-idle.is-timed {
-  opacity: 0;
-  animation-name: rhb-hold;
-  animation-timing-function: linear;
 }
 
 .rhb .rhb-fix-run {
@@ -2325,12 +2377,6 @@
   align-items: center;
   gap: inherit;
   min-width: 0;
-}
-
-.rhb .rhb-swap-a {
-  opacity: 0;
-  animation-name: rhb-hold;
-  animation-timing-function: linear;
 }
 
 .rhb .rhb-swap-b {
@@ -2593,6 +2639,7 @@
 }
 
 .rhb .rhb-title-stack {
+  position: relative;
   display: inline-grid;
   min-width: 0;
 }
@@ -2625,7 +2672,7 @@
 }
 
 .rhb .rhb-has-panel .plugin-panel-bar {
-  animation: rhb-fade-in 0.25s ease 0.65s backwards;
+  animation: rhb-fade-in 0.25s ease 0.3s backwards;
 }
 .rhb .rhb-feed .rhb-work.customize-msg {
   animation-duration: 0s, 0.2s;
@@ -2635,9 +2682,13 @@
 /* # mention demo. Times count from the demo mounting; children of a revealed
    parent count from that parent's reveal. */
 .rhb .rhb-issue-q {
+  position: absolute; top: 0; left: 0;
   display: inline-flex; align-items: center;
-  animation: rhb-reveal 0s linear 1s backwards, rhb-gone 0s linear 2.85s forwards;
+  animation: rhb-reveal 0s linear 1s backwards, rhb-hide 0.2s ease 2.75s forwards, rhb-gone 0s linear 2.95s forwards;
 }
+/* The query and the finished mention overlap briefly instead of blinking. */
+.rhb .rhb-issue-demo.is-leaving { position: absolute; inset: 0; animation: rhb-hide 0.3s ease forwards; }
+.rhb .rhb-placeholder.is-back { animation: rhb-fade-in 0.3s ease 0.15s backwards; }
 .rhb .rhb-issue-q1 { animation: rhb-gone 0s linear 1.05s forwards; }
 .rhb .rhb-issue-q2 { animation: rhb-reveal 0s linear 1.05s backwards; }
 .rhb .rhb-caret {
@@ -2656,7 +2707,7 @@
   background: var(--bg); color: var(--ink);
   font-size: 12px; line-height: 16px;
   box-shadow: 0 6px 20px -6px color-mix(in oklab, var(--shade, #000) 14%, transparent);
-  animation: rhb-reveal 0s linear 1.25s backwards, rhb-rise-in 0.18s ease 1.25s backwards, rhb-gone 0s linear 2.85s forwards;
+  animation: rhb-reveal 0s linear 1.25s backwards, rhb-rise-in 0.18s ease 1.25s backwards, rhb-hide 0.15s ease 2.7s forwards, rhb-gone 0s linear 2.85s forwards;
 }
 .dark .rhb .rhb-issue-picker { --rhb-state-active: color-mix(in oklab, var(--ink) 22.5%, transparent); }
 .rhb .rhb-issue-head { padding: 6px 12px 4px; color: var(--dim); }
@@ -2669,15 +2720,17 @@
 .rhb .rhb-issue-num { flex-shrink: 0; color: var(--subtle); font-variant-numeric: tabular-nums; }
 .rhb .rhb-issue-title { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .rhb .rhb-issue-meta { flex-shrink: 0; margin-left: auto; padding-left: 8px; color: var(--subtle); }
-.rhb .rhb-issue-option.is-first { background: var(--rhb-state-active); animation: rhb-issue-unselect 0s linear 0.8s forwards; }
-.rhb .rhb-issue-option.is-drop { animation: rhb-gone 0s linear 0.8s forwards; }
-.rhb .rhb-issue-option.is-pick { animation: rhb-issue-select 0s linear 0.8s forwards; }
+.rhb .rhb-issue-option.is-first { background: var(--rhb-state-active); animation: rhb-issue-unselect 0.2s ease 0.8s forwards; }
+/* Filtered-out rows fold away so the picker eases down rather than jumping. */
+.rhb .rhb-issue-option.is-drop { overflow: hidden; max-height: 28px; animation: rhb-issue-drop 0.25s ease 0.8s forwards; }
+.rhb .rhb-issue-option.is-pick { animation: rhb-issue-select 0.2s ease 0.8s forwards; }
+@keyframes rhb-issue-drop { 40% { opacity: 0; } to { max-height: 0; margin-top: -1px; padding-block: 0; opacity: 0; } }
 @keyframes rhb-issue-select { to { background: var(--rhb-state-active); } }
 @keyframes rhb-issue-unselect { to { background: transparent; } }
 
 .rhb .rhb-issue-draft {
   display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap;
-  animation: rhb-reveal 0s linear 2.85s backwards, rhb-fade-in 0.15s ease 2.85s backwards;
+  animation: rhb-reveal 0s linear 2.85s backwards, rhb-fade-in 0.2s ease 2.85s backwards;
 }
 .rhb .rhb-issue-rest { flex-shrink: 0; animation: rhb-reveal 0s linear 0.5s backwards; }
 
@@ -2774,7 +2827,13 @@
   animation: rhb-fade-in 0.7s ease backwards;
 }
 
-.rhb .rhb-title-stack > .rhb-title.is-out { animation: rhb-ghost-out 0.3s ease forwards; }
+.rhb .rhb-title-stack > .rhb-title.is-out {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  animation: rhb-ghost-out 0.3s ease forwards;
+}
 .rhb .rhb-title-stack > .rhb-title-swap { animation: rhb-fade-in 0.35s ease 0.3s backwards; }
 .rhb .rhb-stage-out + .rhb-stage { animation: none; }
 .rhb .rhb-stage.rhb-stage-out { animation: rhb-wrap-out 0.7s linear forwards; }
