@@ -23,15 +23,17 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
+On a Linux desktop host, "Choose a folder" opens the system dialog through
+`zenity` or `kdialog` when one is installed, a display is available, and the
+browser runs on the same computer; otherwise it opens bb's own folder browser.
+
 Windows has two host paths. Inside WSL2 the Linux stack runs unchanged:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
 - Node.js, Git, provider CLIs, and pnpm for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
-- "Choose a folder" opens bb's own folder browser; a Linux desktop host opens
-  the system dialog through `zenity` or `kdialog` when one is installed and a
-  display is available
+- "Choose a folder" opens bb's own folder browser
 
 The native Windows host is alpha. It runs from the Windows desktop installer or
 `npx bb-app` in PowerShell or CMD:

@@ -120,16 +120,19 @@ type DirectoryListing =
       gitMarker: "directory" | "file" | null;
     }
   | { kind: "unreadable" }
-  | { kind: "failed" };
+  | { kind: "failed" }
+  | { kind: "timedOut" };
 
 async function listDirectory(
   dir: string,
   depth: number,
+  deadline: number,
 ): Promise<DirectoryListing> {
   const children: string[] = [];
   let gitMarker: "directory" | "file" | null = null;
   try {
     for await (const entry of await opendir(dir)) {
+      if (Date.now() > deadline) return { kind: "timedOut" };
       if (entry.name === ".git") {
         if (depth > 0) {
           gitMarker = entry.isDirectory() ? "directory" : "file";
@@ -174,9 +177,11 @@ async function walkForRepos(
     }
 
     const listing = await limitOpenDirectories(() =>
-      withDeadline(listDirectory(dir, depth), deadline),
+      Date.now() > deadline
+        ? Promise.resolve(null)
+        : withDeadline(listDirectory(dir, depth, deadline), deadline),
     );
-    if (listing === null) {
+    if (listing === null || listing.kind === "timedOut") {
       truncated = true;
       return;
     }

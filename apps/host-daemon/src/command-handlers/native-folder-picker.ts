@@ -93,10 +93,16 @@ export function resolveFolderPickerCommand({
   }
 }
 
-function exitCode(error: unknown): unknown {
-  return typeof error === "object" && error !== null && "code" in error
-    ? error.code
-    : undefined;
+export function isFolderPickerCancel(
+  picker: Pick<FolderPickerCommand, "cancelExitCode">,
+  error: unknown,
+): boolean {
+  if (picker.cancelExitCode === null) return false;
+  if (typeof error !== "object" || error === null) return false;
+  const code = "code" in error ? error.code : undefined;
+  const stderr =
+    "stderr" in error && typeof error.stderr === "string" ? error.stderr : "";
+  return code === picker.cancelExitCode && stderr.trim() === "";
 }
 
 function trimTrailingSeparator(path: string): string {
@@ -123,12 +129,7 @@ export async function pickHostFolder(): Promise<
     });
     stdout = result.stdout;
   } catch (error) {
-    if (
-      picker.cancelExitCode !== null &&
-      exitCode(error) === picker.cancelExitCode
-    ) {
-      return { path: null };
-    }
+    if (isFolderPickerCancel(picker, error)) return { path: null };
     throw new ExpectedCommandDispatchError(
       "folder_picker_failed",
       `Folder picker failed: ${error instanceof Error ? error.message : String(error)}`,

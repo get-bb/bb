@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveFolderPickerCommand } from "./native-folder-picker.js";
+import {
+  isFolderPickerCancel,
+  resolveFolderPickerCommand,
+} from "./native-folder-picker.js";
 
 const onPath =
   (...available: string[]) =>
@@ -56,5 +59,36 @@ describe("resolveFolderPickerCommand", () => {
         resolveCommand: onPath(...available),
       }),
     ).toBeNull();
+  });
+});
+
+describe("isFolderPickerCancel", () => {
+  const linuxPicker = { cancelExitCode: 1 };
+
+  it("treats a quiet exit with the cancel code as a cancel", () => {
+    expect(
+      isFolderPickerCancel(
+        linuxPicker,
+        Object.assign(new Error("exit 1"), { code: 1, stderr: "" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a dialog that could not open as a failure so bb falls back", () => {
+    expect(
+      isFolderPickerCancel(
+        linuxPicker,
+        Object.assign(new Error("exit 1"), {
+          code: 1,
+          stderr: "(zenity:123): Gtk-WARNING **: cannot open display: :0\n",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isFolderPickerCancel(
+        { cancelExitCode: null },
+        Object.assign(new Error("exit 1"), { code: 1, stderr: "" }),
+      ),
+    ).toBe(false);
   });
 });
