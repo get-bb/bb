@@ -1,10 +1,6 @@
 import type { Thread, ThreadListEntry } from "@bb/domain";
-import {
-  resolveThreadListIndicator,
-  threadListIndicatorStateForThread,
-} from "@bb/client-core";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
+import { ThreadListEntryStatusGlyph } from "@/components/thread/ThreadListEntryStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useChildThreads, useThreads } from "@/hooks/queries/thread-queries";
 import { getThreadRoutePath } from "@/lib/route-paths";
@@ -32,18 +28,18 @@ export function RelatedThreadsSection({
         getKey={(relatedThread) => relatedThread.id}
         renderItem={(relatedThread) => {
           const title = getThreadDisplayTitle(relatedThread);
-          const indicator = resolveThreadListIndicator(
-            threadListIndicatorStateForThread(relatedThread, false),
-          );
           return (
             <InfoListRow
               leading={
                 <span className="flex items-center text-subtle-foreground [&_[data-icon-root]]:size-3">
-                  {idleIcon !== undefined && indicator === "none" ? (
-                    <Icon name={idleIcon} aria-hidden="true" />
-                  ) : (
-                    <ThreadStatusGlyph indicator={indicator} size="compact" />
-                  )}
+                  <ThreadListEntryStatusGlyph
+                    thread={relatedThread}
+                    idle={
+                      idleIcon === undefined ? null : (
+                        <Icon name={idleIcon} aria-hidden="true" />
+                      )
+                    }
+                  />
                 </span>
               }
               name={<ThreadTitle title={title} />}

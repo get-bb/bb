@@ -1,29 +1,12 @@
 import type { ThreadListEntry } from "@bb/domain";
-import {
-  getCollapsedChildActivity,
-  type CollapsedChildActivity,
-} from "../thread/thread-activity.js";
-
-interface ProjectThreadNodeStats {
-  childCount: number;
-  childActivity: CollapsedChildActivity;
-}
 
 export interface ProjectThreadNode {
   thread: ThreadListEntry;
   children: ProjectThreadItem[];
   depth: number;
-  stats: ProjectThreadNodeStats;
-}
-
-export interface SidebarSectionDefinition {
-  id: string;
-  name: string;
 }
 
 export type ProjectThreadItem = { kind: "thread"; node: ProjectThreadNode };
-
-export const CHRONOLOGICAL_CONTAINER_ID = "chronological";
 
 export type ThreadComparator = (
   left: ThreadListEntry,
@@ -40,7 +23,6 @@ interface BuildThreadNodeArgs {
   childrenByParentId: ReadonlyMap<string, readonly ThreadListEntry[]>;
   compareThreads: ThreadComparator;
   depth: number;
-  draftThreadIds: ReadonlySet<string>;
   thread: ThreadListEntry;
   visitedThreadIds: Set<string>;
 }
@@ -55,16 +37,6 @@ export function getProjectThreadItemDescendants(
   items: readonly ProjectThreadItem[],
 ): ThreadListEntry[] {
   return items.flatMap((item) => getNodeAndDescendantThreads(item.node));
-}
-
-function buildStatsForHiddenThreads(
-  threads: readonly ThreadListEntry[],
-  draftThreadIds: ReadonlySet<string>,
-): ProjectThreadNodeStats {
-  return {
-    childCount: threads.length,
-    childActivity: getCollapsedChildActivity(threads, draftThreadIds),
-  };
 }
 
 function buildThreadItem(node: ProjectThreadNode): ProjectThreadItem {
@@ -84,7 +56,6 @@ function buildThreadNode({
   childrenByParentId,
   compareThreads,
   depth,
-  draftThreadIds,
   thread,
   visitedThreadIds,
 }: BuildThreadNodeArgs): ProjectThreadNode {
@@ -103,7 +74,6 @@ function buildThreadNode({
         childrenByParentId,
         compareThreads,
         depth: depth + 1,
-        draftThreadIds,
         thread: childThread,
         visitedThreadIds,
       }),
@@ -111,15 +81,7 @@ function buildThreadNode({
   }
 
   const children = buildSortedItems(childNodes, compareThreads);
-  return {
-    thread,
-    children,
-    depth,
-    stats: buildStatsForHiddenThreads(
-      getProjectThreadItemDescendants(children),
-      draftThreadIds,
-    ),
-  };
+  return { thread, children, depth };
 }
 
 function isRootThread(
@@ -132,27 +94,9 @@ function isRootThread(
   );
 }
 
-export function resolveSidebarProjectId(
-  thread: ThreadListEntry,
-  threadById: ReadonlyMap<string, ThreadListEntry>,
-): string {
-  const visitedThreadIds = new Set<string>([thread.id]);
-  let current = thread;
-  while (current.parentThreadId !== null) {
-    const parent = threadById.get(current.parentThreadId);
-    if (parent === undefined || visitedThreadIds.has(parent.id)) {
-      break;
-    }
-    visitedThreadIds.add(parent.id);
-    current = parent;
-  }
-  return current.projectId;
-}
-
 export function buildChronologicalThreadList(
   allThreads: readonly ThreadListEntry[],
   compareThreads: ThreadComparator,
-  draftThreadIds: ReadonlySet<string> = new Set(),
 ): ProjectThreadItem[] {
   const projectThreads = allThreads.filter(isSidebarProjectThread);
   const projectThreadIds = new Set(projectThreads.map((thread) => thread.id));
@@ -183,7 +127,6 @@ export function buildChronologicalThreadList(
         childrenByParentId,
         compareThreads,
         depth: 0,
-        draftThreadIds,
         thread,
         visitedThreadIds,
       }),
@@ -199,7 +142,6 @@ export function buildChronologicalThreadList(
         childrenByParentId,
         compareThreads,
         depth: 0,
-        draftThreadIds,
         thread,
         visitedThreadIds,
       }),

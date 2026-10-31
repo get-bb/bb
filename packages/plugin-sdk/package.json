@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.109",
+  "version": "0.6.110",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -91,6 +91,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-view.d.ts",
       "import": "./dist/internal/composer-view.js",
       "default": "./dist/internal/composer-view.js"
+    },
+    "./internal/thread-status": {
+      "source": "./src/internal/thread-status.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-thread-status.d.ts",
+      "import": "./dist/internal/thread-status.js",
+      "default": "./dist/internal/thread-status.js"
     },
     "./internal/file-navigation-validation": {
       "source": "./src/internal/file-navigation-validation.ts",

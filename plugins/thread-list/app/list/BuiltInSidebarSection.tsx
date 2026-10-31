@@ -11,9 +11,8 @@ import type {
   CollapsibleSidebarSectionId,
   SidebarSectionId,
 } from "../model/sidebar-section-id.js";
-import type { CollapsedChildActivity } from "../model/thread-activity.js";
 import { PINNED_THREAD_PARENT_KEY } from "../dnd/useSectionThreadDnd.js";
-import type { ThreadSplitIndicatorTarget } from "./groupRollups.js";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 
 interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
   disabled: boolean;
@@ -21,10 +20,9 @@ interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
 }
 
 export interface BuiltInSidebarSectionOptions {
-  activity?: CollapsedChildActivity;
   actions?: ReactNode;
   actionsOpen?: boolean;
-  collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
+  collapsedThreads?: readonly SidebarThread[];
   content: ReactNode;
   label: string;
 }
@@ -83,7 +81,6 @@ export const SortableSidebarSection = memo(function SortableSidebarSection({
 function BuiltInSidebarSection({
   actions,
   actionsOpen,
-  activity,
   collapsedThreads,
   consumeClickSuppression,
   content,
@@ -101,7 +98,6 @@ function BuiltInSidebarSection({
       disabled={disabled}
       actions={actions}
       actionsOpen={actionsOpen}
-      collapsedActivity={activity}
       collapsedThreads={collapsedThreads}
       actionsMobileAlways
       collapseControl={{

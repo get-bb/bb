@@ -37,30 +37,26 @@ const renderCounts = new Map<string, number>();
 
 const CollapsedRowProbe = memo(function CollapsedRowProbe({
   id,
-  threadIds,
+  threads,
 }: {
   id: string;
-  threadIds: readonly string[];
+  threads: readonly { id: string }[];
 }) {
   renderCounts.set(id, (renderCounts.get(id) ?? 0) + 1);
-  const hasDraft = useThreadsHaveDraft(threadIds);
+  const hasDraft = useThreadsHaveDraft(threads);
   return <span data-testid={id}>{hasDraft ? "draft" : "none"}</span>;
 });
 
-const ROW_THREAD_IDS = Array.from({ length: 50 }, (_, index) => [
-  `thr_child_${index}`,
+const ROW_THREADS = Array.from({ length: 50 }, (_, index) => [
+  { id: `thr_child_${index}` },
 ]);
 
 function SidebarProbe() {
   return (
     <>
       <SidebarDraftPresenceSync />
-      {ROW_THREAD_IDS.map((threadIds, index) => (
-        <CollapsedRowProbe
-          key={index}
-          id={`row_${index}`}
-          threadIds={threadIds}
-        />
+      {ROW_THREADS.map((threads, index) => (
+        <CollapsedRowProbe key={index} id={`row_${index}`} threads={threads} />
       ))}
     </>
   );

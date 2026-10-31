@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useSyncExternalStore } from "react";
 import { useSidebarThreadDraftIds } from "@get-bb/plugin-sdk/app";
 
 const NO_DRAFT_THREAD_IDS: ReadonlySet<string> = new Set();
-export const NO_THREAD_IDS: readonly string[] = [];
 
 let publishedDraftThreadIds: ReadonlySet<string> = NO_DRAFT_THREAD_IDS;
 let mountedSyncCount = 0;
@@ -40,10 +39,12 @@ export function SidebarDraftPresenceSync(): null {
   return null;
 }
 
-export function useThreadsHaveDraft(threadIds: readonly string[]): boolean {
+export function useThreadsHaveDraft(
+  threads: readonly { id: string }[],
+): boolean {
   const getSnapshot = useCallback(
-    () => threadIds.some((threadId) => publishedDraftThreadIds.has(threadId)),
-    [threadIds],
+    () => threads.some((thread) => publishedDraftThreadIds.has(thread.id)),
+    [threads],
   );
   return useSyncExternalStore(
     subscribeDraftThreadIds,
