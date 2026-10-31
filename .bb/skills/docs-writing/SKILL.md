@@ -57,7 +57,8 @@ A bug isn't a docs gap. If people ask because something is broken or confusing,
 fix the product. Document it only if no fix is planned.
 
 There is no scheduled cleanup. Remove a page in the same PR that removes the
-feature it documents.
+feature it documents. A page whose `sources` match no file fails the freshness
+check.
 
 ## Place the page in the sidebar
 
@@ -120,9 +121,19 @@ verified: 2026-10-30
 - `since`: the first release with the behavior, or `unreleased`. Unreleased
   pages show an Unreleased badge until the release process swaps in the
   version.
-- `owner`: the GitHub handle of the person who keeps the page accurate.
+- `owner`: the GitHub handle the freshness check names.
 - `verified`: the date someone last checked the page against the app. It is
   never shown on the page.
+
+The freshness check (CI job "Docs pages are verified after their sources
+change", `apps/web/scripts/docs-freshness.mjs`) runs on every PR. For each
+page, it compares the date of the last commit touching its `sources` with
+`verified`:
+
+- A later commit adds a warning annotation on the page that names its `owner`.
+  It doesn't fail the PR. Check the page against the app, fix it, and set
+  `verified` to today.
+- A `sources` glob that matches no tracked file fails the job.
 
 ## Use MDX components
 
@@ -203,6 +214,7 @@ and replaces each placeholder with a `<Screenshot>`.
 
 ```sh
 pnpm exec turbo run test typecheck build --filter=@bb/web
+node apps/web/scripts/docs-freshness.mjs
 ```
 
 The `@bb/web` tests check front-matter, required headings, `<Shot>`
