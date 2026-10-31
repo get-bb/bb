@@ -1554,7 +1554,7 @@ export function PluginCopyLinkStates() {
     <PluginStoryQueryBoundary>
       <Story
         title="Plugin copy link states"
-        description="Every plugin with a getbb.app page gets a Copy link icon button. Catalog pages: Copy link, Install, ⋯ (hidden when empty). Installed pages: Settings and Copy link as one icon group, a divider, then the switch and ⋯. Clicking copies the page link on every device and shows “Link copied”. Plugins with no page show no Copy link, and ⋯ no longer has Copy marketplace link."
+        description="Every plugin with a getbb.app page gets a Copy link icon button. Catalog pages: Copy link, Install, ⋯ (hidden when empty). Installed pages: Copy link, a divider, then the switch and ⋯, with Settings as the first ⋯ item when the plugin has settings. Clicking copies the page link on every device and shows “Link copied”. Plugins with no page show no Copy link, and ⋯ no longer has Copy marketplace link."
         renderedNote="The real header, at desktop and phone widths (page clipped below the header)"
       >
         <State
@@ -1610,7 +1610,7 @@ export function PluginCopyLinkStates() {
 
         <State
           name="Installed · BB Official"
-          note="Catalog install with settings. Settings and Copy link form one icon group, then a divider, the enable switch, and ⋯ (Uninstall)."
+          note="Catalog install with settings. Copy link, a divider, the enable switch, and ⋯ (Settings, Uninstall)."
         >
           <StoryWidths>
             <Plugin plugin={LINK_OFFICIAL_INSTALLED} />
@@ -1637,7 +1637,7 @@ export function PluginCopyLinkStates() {
 
         <State
           name="Installed · no page"
-          note="An unlisted built-in plugin. No Copy link; the group holds only Settings, then the divider, switch, and ⋯."
+          note="An unlisted built-in plugin. No Copy link and no divider: the switch, then ⋯ (Settings, Uninstall)."
         >
           <StoryWidths>
             <Plugin plugin={LINK_BUILTIN_UNLISTED} />
@@ -1646,7 +1646,7 @@ export function PluginCopyLinkStates() {
 
         <State
           name="Folder install · stage 2"
-          note="Installed from a local folder. No Copy link in stage 2: a matching ID alone could be someone else's plugin. With no settings either, there is no icon group or divider. ⋯ has Edit and Remove from bb; Open source and Copy path stay in the Source section."
+          note="Installed from a local folder. No Copy link in stage 2: a matching ID alone could be someone else's plugin. With no page there is no Copy link or divider. ⋯ has Edit and Remove from bb; Open source and Copy path stay in the Source section."
         >
           <StoryWidths>
             <Plugin plugin={LINK_FOLDER_PLUGIN} />

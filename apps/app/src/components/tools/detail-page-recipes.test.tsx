@@ -310,7 +310,7 @@ describe("Plugin detail recipe", () => {
     expect(screen.getByText("Issues")).toBeTruthy();
   });
 
-  it("links every capability with a stable destination to its owning surface", () => {
+  it("links every capability with a stable destination to its owning surface", async () => {
     const listSkills = vi
       .spyOn(sdk.skills, "list")
       .mockResolvedValue({ skills: [] });
@@ -422,9 +422,6 @@ describe("Plugin detail recipe", () => {
         href,
       );
     }
-    expect(
-      screen.getByRole("button", { name: "GitHub settings" }),
-    ).toBeTruthy();
     expect(renderedRecipe(container).map(([kind]) => kind)).not.toContain(
       "configuration",
     );
@@ -432,6 +429,10 @@ describe("Plugin detail recipe", () => {
     expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
     expect(listSkills).not.toHaveBeenCalled();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Settings" })).toBeTruthy();
   });
 
   it("links uncached plugin skills to the library without discovering skills", () => {

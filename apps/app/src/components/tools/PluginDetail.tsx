@@ -418,8 +418,21 @@ export function PluginDetail({
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);
   const linkTarget = installedPluginLinkTarget(plugin);
-  const hasHeaderTools = hasConfiguration || linkTarget !== null;
   const overflowItems: ResourceOverflowMenuItem[] = [
+    ...(hasConfiguration
+      ? [
+          {
+            label: "Settings",
+            icon: "Settings" as const,
+            onSelect: () =>
+              onConfigure
+                ? onConfigure()
+                : navigate(
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+                  ),
+          },
+        ]
+      : []),
     ...(canEditSource
       ? [
           {
@@ -467,33 +480,12 @@ export function PluginDetail({
         )
       }
       actions={
-        hasHeaderTools ? (
+        linkTarget === null ? undefined : (
           <>
-            <span className="flex items-center gap-0.5">
-              {hasConfiguration ? (
-                <ResourceActionButton
-                  label={`${pluginName} settings`}
-                  tooltipLabel="Settings"
-                  icon="Settings"
-                  onClick={() =>
-                    onConfigure
-                      ? onConfigure()
-                      : navigate(
-                          getPluginConfigurationRoutePath({
-                            pluginId: plugin.id,
-                          }),
-                        )
-                  }
-                />
-              ) : null}
-              <PluginCopyLinkButton
-                target={linkTarget}
-                displayName={pluginName}
-              />
-            </span>
+            <PluginCopyLinkButton target={linkTarget} displayName={pluginName} />
             <Separator orientation="vertical" className="h-4" />
           </>
-        ) : undefined
+        )
       }
       lifecycleControl={
         <Switch

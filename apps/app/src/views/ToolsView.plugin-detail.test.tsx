@@ -934,7 +934,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
   });
 
-  it("groups Settings and Copy link before the switch on an installed built-in plugin", async () => {
+  it("puts Copy link before the switch and Settings first in ⋯ on an installed built-in plugin", async () => {
     const telemetry = stubTelemetryFetch();
     const writeText = stubClipboard();
     renderInstalledPlugin({
@@ -949,26 +949,33 @@ describe("PluginDetail official catalog lifecycle", () => {
       marketplacePageUrl: PAGE_URL,
     });
 
-    const settings = screen.getByRole("button", {
-      name: "Simple Notes settings",
-    });
+    expect(
+      screen.queryByRole("button", { name: "Simple Notes settings" }),
+    ).toBeNull();
     const copyLink = screen.getByRole("button", {
       name: "Copy link to Simple Notes",
     });
     const toggle = screen.getByRole("switch", {
       name: "Disable Simple Notes",
     });
-    const following = Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(settings.compareDocumentPosition(copyLink) & following).toBeTruthy();
-    expect(copyLink.compareDocumentPosition(toggle) & following).toBeTruthy();
+    expect(
+      copyLink.compareDocumentPosition(toggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Simple Notes actions" }),
     );
     await screen.findByRole("menuitem", { name: "Uninstall" });
     expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+    ).toEqual(["Settings", "Uninstall"]);
+    expect(
       screen.queryByRole("menuitem", { name: "Copy marketplace link" }),
     ).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
 
     fireEvent.click(copyLink);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
@@ -2887,7 +2894,10 @@ describe("plugin detail source and settings", () => {
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",
@@ -3004,7 +3014,10 @@ describe("plugin detail source and settings", () => {
     expect(
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",
