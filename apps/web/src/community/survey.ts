@@ -139,11 +139,12 @@ export const surveyQuestions: readonly Question[] = [
   },
 ];
 
-export type FormValues = Record<string, string[]>;
+export const formValues = z.object({}).catchall(z.array(z.string()));
+export type FormValues = z.infer<typeof formValues>;
 export type FormErrors = Record<string, string>;
 export const surveyReply = z.object({
-  result: z.object({ duplicate: z.boolean() }).optional(),
-  errors: z.record(z.string(), z.string()).optional(),
+  result: z.object({ duplicate: z.literal([true, false]) }).optional(),
+  errors: z.object({}).catchall(z.string()).optional(),
   error: z.string().optional(),
 });
 export type SurveyReply = z.infer<typeof surveyReply>;
@@ -209,4 +210,30 @@ export function surveyAnswers(values: FormValues): FormValues {
     if (selected.length) answers[name] = selected;
   }
   return answers;
+}
+
+export const SECTIONS: Record<string, string> = {
+  discovery: "Getting to know you",
+  love: "Your experience with bb",
+  community: "What you'd like from the bb community",
+};
+
+export type SurveyOrder = Record<string, string[]>;
+
+function shuffled(options: readonly string[], fixedLast: number): string[] {
+  const result = options.slice(0, options.length - fixedLast);
+  for (let index = result.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [result[index], result[other]] = [result[other]!, result[index]!];
+  }
+  return [...result, ...options.slice(options.length - fixedLast)];
+}
+
+export function surveyOrder(): SurveyOrder {
+  const options = (name: string) =>
+    surveyQuestions.find((question) => question.name === name)!.options;
+  return {
+    discovery: shuffled(options("discovery"), 2),
+    community: shuffled(options("community"), 1),
+  };
 }
