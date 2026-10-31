@@ -14,6 +14,27 @@ question.
 [provider-bridge-protocol.md](provider-bridge-protocol.md). An entry without
 a "Docs:" line has no owning doc, so it keeps the essential contract itself.
 
+## Host paths (`@get-bb/plugin-sdk`)
+
+`experimental_normalizeHostPath(path)`,
+`experimental_resolveHostPath({ rootPath, path })`, and
+`experimental_isHostPathWithin({ rootPath, candidatePath })` use the shared
+`packages/domain/src/host-path.ts` parser. Normalization returns null for
+non-absolute paths; resolution accepts absolute paths or joins relative paths
+against an absolute root, rejecting empty/NUL paths, rootless backslashes and
+drive-relative forms such as `C:foo`. Bare `C:` means the drive root. Windows
+paths accept either separator and containment is case-insensitive; POSIX
+backslashes within relative names stay literal. Resolution permits `..` escapes;
+containment is a separate lexical check, not a symlink or filesystem check.
+Workflows applies containment; Secrets deliberately allows outside destinations.
+
+Core callers of the same parser include project-path normalization,
+`normalizeAbsoluteFilePath` / `isAbsoluteFilePathWithinRoot` in shared-ui,
+`isBbManagedWorkspacePath` on the server, and database host-path SQL functions.
+Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
+Before stabilization, audit drive/UNC ambiguity, separator and case rules,
+relative escapes, and whether more callers need resolution rather than joining.
+
 ## Application link approvals (`@get-bb/plugin-sdk/app`)
 
 `experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
