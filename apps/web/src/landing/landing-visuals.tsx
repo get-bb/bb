@@ -28,6 +28,10 @@ import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
@@ -775,11 +779,10 @@ function useFitWindow(ref: RefObject<HTMLElement | null>) {
         Number.parseFloat(frameStyle.paddingRight);
       if (!width || !visible || !room) return;
       const scale = Math.min(1, room / visible);
+      const slice = Math.min(width, room / scale);
       node.style.setProperty("--bw-scale", String(scale));
-      node.style.setProperty(
-        "--bw-slice",
-        `${Math.min(width, room / scale)}px`,
-      );
+      node.style.setProperty("--bw-slice", `${slice}px`);
+      node.style.setProperty("--bw-slice-ratio", String(slice / width));
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -1328,6 +1331,82 @@ export function DelegationTree() {
 
 const START_PROMPT = "Hand this off to bb: fix the checkout bug";
 
+const FileReadIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={File01Icon} className={className} />
+);
+const SearchIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Search01Icon} className={className} />
+);
+const EditFileIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Edit04Icon} className={className} />
+);
+const CommandIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ComputerTerminal01Icon} className={className} />
+);
+
+type StartStep =
+  | { at: number; say: string }
+  | {
+      at: number;
+      say?: undefined;
+      icon: RowIcon;
+      verb: string;
+      object: string;
+      live?: boolean;
+    };
+
+const START_STEPS: readonly StartStep[] = [
+  { at: 2.4, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
+  { at: 2.9, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
+  {
+    at: 3.5,
+    say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
+  },
+  { at: 4.4, icon: EditFileIcon, verb: "Edited", object: "2 files" },
+  {
+    at: 5.2,
+    icon: CommandIcon,
+    verb: "Running",
+    object: "pnpm test checkout",
+    live: true,
+  },
+];
+
+function PhoneStatusBar() {
+  return (
+    <div className="bw-phone-status">
+      <span>9:41</span>
+      <span className="bw-phone-sys">
+        <svg viewBox="0 0 18 12" width="18" height="12">
+          <rect x="0" y="8" width="3" height="4" rx="1" />
+          <rect x="5" y="5.5" width="3" height="6.5" rx="1" />
+          <rect x="10" y="3" width="3" height="9" rx="1" />
+          <rect x="15" y="0" width="3" height="12" rx="1" />
+        </svg>
+        <svg viewBox="0 0 16 12" width="16" height="12">
+          <path d="M8 2.6c2.2 0 4.2.8 5.7 2.2l1.2-1.3A10 10 0 0 0 8 .8a10 10 0 0 0-6.9 2.7l1.2 1.3A8.2 8.2 0 0 1 8 2.6Z" />
+          <path d="M8 6.2c1.2 0 2.3.4 3.2 1.2l1.2-1.3A6.5 6.5 0 0 0 8 4.4a6.5 6.5 0 0 0-4.4 1.7l1.2 1.3c.9-.8 2-1.2 3.2-1.2Z" />
+          <path d="M8 9.7 10 7.6a3 3 0 0 0-4 0Z" />
+        </svg>
+        <svg viewBox="0 0 27 12" width="27" height="12">
+          <rect
+            x="0.5"
+            y="0.5"
+            width="23"
+            height="11"
+            rx="3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.4"
+          />
+          <rect x="2" y="2" width="16" height="8" rx="2" />
+          <path d="M25 4v4a2 2 0 0 0 0-4Z" fillOpacity="0.4" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
 export function StartAnywhere() {
   const ref = useRef<HTMLDivElement>(null);
   useFitWindow(ref);
@@ -1337,7 +1416,7 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="A ChatGPT chat says Hand this off to bb: fix the checkout bug and Used Control bb, with Claude and Grok behind it. The thread lands in the bb sidebar, grouped by machine under linux-box, the server, next to a thread from CI and one from a schedule. A phone shows the same thread running, picked up on the go."
+      aria-label="A ChatGPT chat says Hand this off to bb: fix the checkout bug and Used Control bb, with Claude and Grok behind it. The thread lands in the bb sidebar, grouped by machine under linux-box, the server, next to a thread from CI and one from a schedule. An iPhone shows the same thread in the bb mobile app, still working: it explored the code, edited two files and is running the tests."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
@@ -1394,18 +1473,18 @@ export function StartAnywhere() {
                 <Reveal at={1.8}>
                   <div className="msg-user">{START_PROMPT}</div>
                 </Reveal>
-                <Reveal at={2.4}>
-                  <div className="msg-step">
-                    <ChevronRight className="step-chev" />
-                    Read <code>src/checkout/pay.ts</code>
-                  </div>
-                </Reveal>
-                <Reveal at={3}>
-                  <div className="msg-say">
-                    The payment call has no timeout, so slow networks hang
-                    checkout. Adding one with a retry.
-                  </div>
-                </Reveal>
+                {START_STEPS.map((step) => (
+                  <Reveal key={step.at} at={step.at}>
+                    {step.say !== undefined ? (
+                      <div className="msg-say">{step.say}</div>
+                    ) : (
+                      <div className="msg-step">
+                        <ChevronRight className="step-chev" />
+                        {step.verb} {step.object}
+                      </div>
+                    )}
+                  </Reveal>
+                ))}
               </div>
             </div>
           </div>
@@ -1431,32 +1510,60 @@ export function StartAnywhere() {
                 Used <b>Control bb</b>
                 <CheckGlyph className="bw-used-check" />
               </span>
+              <span className="bw-chat-say bw-fade" style={at(1.2)}>
+                Started <b>Fix the checkout bug</b> in bb on linux-box.
+              </span>
             </div>
           </div>
         </div>
-        <div className="bw-phone">
-          <div className="bw-phone-bar">
-            <span>9:41</span>
-          </div>
-          <div className="bw-phone-head bw-fade" style={at(3.8)}>
-            <ChevronLeft className="bw-phone-back" />
-            <span className="bw-phone-title">Fix the checkout bug</span>
-            <ThreadStatus status="running" />
-          </div>
-          <div className="bw-phone-feed">
-            <Reveal at={4.2}>
-              <div className="msg-step">
-                <ChevronRight className="step-chev" />
-                Read <code>pay.ts</code>
+        <div className="bw-phone" aria-hidden>
+          <div className="bw-phone-screen">
+            <div className="bw-phone-ui">
+              <PhoneStatusBar />
+              <div className="bw-m-head">
+                <PanelIcon className="bw-m-head-ic" />
+                <span className="bw-m-title">Fix the checkout bug</span>
+                <MoreIcon className="bw-m-head-ic" />
+                <PanelRightIcon className="bw-m-head-ic bw-m-head-end" />
               </div>
-            </Reveal>
-            <Reveal at={4.8}>
-              <div className="msg-say">
-                No timeout on the payment call. Adding one with a retry.
+              <div className="bw-m-feed">
+                <Reveal at={1.8}>
+                  <div className="bw-m-user">{START_PROMPT}</div>
+                </Reveal>
+                {START_STEPS.map((step) => (
+                  <Reveal key={step.at} at={step.at}>
+                    {step.say !== undefined ? (
+                      <div className="bw-m-say">{step.say}</div>
+                    ) : (
+                      <div
+                        className={step.live ? "bw-m-row is-live" : "bw-m-row"}
+                      >
+                        <step.icon className="bw-m-row-ic" />
+                        <span className="bw-m-verb">{step.verb}</span>
+                        <span className="bw-m-object">{step.object}</span>
+                        {step.live ? (
+                          <span className="bw-m-timer">14s</span>
+                        ) : null}
+                        <ChevronRight className="bw-m-chev" />
+                      </div>
+                    )}
+                  </Reveal>
+                ))}
+                <div className="bw-m-working bw-fade" style={at(5.6)}>
+                  Working...
+                </div>
               </div>
-            </Reveal>
+              <div className="bw-m-composer">
+                <span className="bw-m-placeholder">Ask a follow-up</span>
+                <MicIcon className="bw-m-mic" />
+                <span className="bw-m-stop">
+                  <i />
+                </span>
+              </div>
+              <span className="bw-phone-home" />
+            </div>
+            <span className="bw-phone-island" />
           </div>
-          <div className="bw-phone-input">Reply to this thread</div>
         </div>
       </div>
     </div>

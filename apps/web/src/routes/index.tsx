@@ -1325,15 +1325,15 @@ function RefreshedBelowFold() {
       </Band>
 
       <Band
-        title="Put an agent in charge."
+        title="Stop babysitting threads."
         stacked
         section="hand-off"
         visual={<DelegationTree />}
       >
         <p>
-          Stop babysitting threads. Have Claude Code plan, Cursor implement,
-          Codex review, and Grok orchestrate them all. You can step in anytime,
-          and only hear about what needs you.
+          Have Claude Code plan, Cursor implement, Codex review, and Grok
+          orchestrate them all. Step in anytime, and only hear about what needs
+          you.
         </p>
       </Band>
 
@@ -1344,9 +1344,10 @@ function RefreshedBelowFold() {
         visual={<StartAnywhere />}
       >
         <p>
-          Work doesn&rsquo;t wait for you to be at your desk. Start threads from
-          ChatGPT, Claude, your phone or CI, and pick them up on any device.
-          They run on your own machines, even a Linux box that never sleeps.
+          Work doesn&rsquo;t wait for you to be at your desk. Start bb threads
+          from other AI apps like ChatGPT and Claude, or from CI, and pick them
+          up anywhere, including the bb mobile app. bb is fully self-hostable,
+          so your threads run on machines you control.
         </p>
       </Band>
 
@@ -1354,13 +1355,8 @@ function RefreshedBelowFold() {
         <h2 className="sec-title">
           All your agents, in one workspace you control.
         </h2>
-        <p>Free and runs on your machines and infrastructure.</p>
+        <p>Free and self-hostable.</p>
         <InstallOptions placement="closer" />
-        <div className="cta-row cta-row-secondary">
-          <GitHubLink placement="closer" className="btn btn-ghost">
-            View on GitHub
-          </GitHubLink>
-        </div>
       </section>
     </>
   );

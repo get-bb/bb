@@ -2494,8 +2494,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 100%;
 }
 
+/* One window size for all three sections. */
 .bw .mock-body {
-  height: 500px;
+  height: 540px;
 }
 
 .bw .bar-left {
@@ -2570,10 +2571,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-foot-ic {
   width: 15px;
   height: 15px;
-}
-
-.bw-plugins .mock-body {
-  height: 540px;
 }
 
 .bw .side-act {
@@ -2741,16 +2738,27 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+/* Plugin callouts: a soft ring and a quiet tag, so the plugin UI stays the
+   subject. Every ring uses the same radius, inset panels included. */
 .bw-spot {
+  --bw-spot-ring: color-mix(in oklab, var(--accent) 42%, transparent);
+  --bw-spot-inset: -4px;
   position: relative;
-  border-radius: 8px;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  transition: outline-color 0.6s ease;
 }
 
-.bw-spot.is-lit {
-  outline-color: color-mix(in oklab, var(--accent) 75%, transparent);
+.bw-spot::after {
+  position: absolute;
+  z-index: 1;
+  inset: var(--bw-spot-inset);
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  content: "";
+  transition: border-color 0.6s ease;
+  pointer-events: none;
+}
+
+.bw-spot.is-lit::after {
+  border-color: var(--bw-spot-ring);
 }
 
 .bw-spot-tag {
@@ -2763,12 +2771,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 5px;
   height: 22px;
   padding: 0 9px;
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--bg));
   border-radius: 999px;
-  background: var(--accent);
+  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  color: var(--bg);
+  color: color-mix(in oklab, var(--accent) 80%, var(--ink));
   white-space: nowrap;
   opacity: 0;
   transform: translateY(3px);
@@ -2776,6 +2785,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity 0.5s ease,
     transform 0.5s ease;
   pointer-events: none;
+}
+
+/* The chart and the banner run past the right edge of narrow crops, so
+   their tags sit on the left where they always stay in view. */
+.bw-chart .bw-spot-tag,
+.bw-banner .bw-spot-tag {
+  right: auto;
+  left: 12px;
+}
+
+.bw-banner .bw-spot-tag {
+  top: -21px;
 }
 
 .bw-spot.is-lit .bw-spot-tag {
@@ -2786,6 +2807,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-spot-ic {
   width: 13px;
   height: 13px;
+  opacity: 0.85;
 }
 
 /* Room above the PR rows for their tag, so it never covers a thread title. */
@@ -2836,14 +2858,15 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 2px;
 }
 
+/* Green, not the callout blue, so the chart never reads blue on blue. */
 .bw-key-team,
 .bw-bar-team {
-  background: color-mix(in oklab, var(--accent) 82%, var(--bg));
+  background: color-mix(in oklab, var(--ok) 88%, var(--ink));
 }
 
 .bw-key-pro,
 .bw-bar-pro {
-  background: color-mix(in oklab, var(--accent) 38%, var(--bg));
+  background: color-mix(in oklab, var(--ok) 42%, var(--bg));
 }
 
 .bw-bars {
@@ -2879,14 +2902,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-panel {
+  --bw-spot-inset: 6px;
+  position: relative;
   width: 300px;
-  border-radius: 0;
-  outline-offset: -3px;
 }
 
 .bw-panel .bw-spot-tag {
-  top: 12px;
-  right: 12px;
+  top: 14px;
+  right: 16px;
 }
 
 .bw-tabs {
@@ -3093,99 +3116,120 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   line-height: 16px;
 }
 
+/* The phone and the chat cards keep their size on wide screens and shrink
+   together as the visible slice of the window narrows (--bw-slice-ratio,
+   from useFitWindow), so they never collide. When the slice is too narrow
+   to show the timeline beside the phone (--bw-drop flips from 0 to 1), the
+   phone drops below the timeline instead of covering it. */
 .bw-start-stage {
+  --bw-overlay-scale: clamp(0.74, var(--bw-slice-ratio, 1) * 1.25, 1);
+  --bw-drop: clamp(0, (0.968 - var(--bw-slice-ratio, 1)) * 1000, 1);
+  --bw-stage-pad: calc(
+    150px + var(--bw-drop) * (656px * var(--bw-overlay-scale) - 396px)
+  );
   position: relative;
-  padding-bottom: 116px;
+  padding-bottom: var(--bw-stage-pad);
 }
 
-.bw-start .mock-body {
-  height: 440px;
+/* Wrap the desktop timeline before the phone, so the phone never cuts a
+   line of it in half. */
+.bw-start .bw-feed {
+  padding-right: calc(
+    (1 - var(--bw-drop)) *
+      min(386px, 968px - var(--bw-fit-slice) + 312px * var(--bw-overlay-scale))
+  );
 }
 
 .bw-chat-stack {
-  --bw-chat-left: clamp(8px, var(--bw-fit-slice) - 644px, 280px);
   position: absolute;
   z-index: 2;
-  bottom: 0;
-  left: var(--bw-chat-left);
-  width: clamp(250px, var(--bw-fit-slice) - 264px - var(--bw-chat-left), 340px);
+  bottom: calc(var(--bw-stage-pad) - 150px);
+  left: clamp(
+    8px,
+    var(--bw-fit-slice) - 36px - 704px * var(--bw-overlay-scale),
+    150px
+  );
+  width: 392px;
+  transform: scale(var(--bw-overlay-scale));
+  transform-origin: left bottom;
 }
 
 .bw-chat-back {
   position: absolute;
   display: flex;
   align-items: flex-start;
-  gap: 7px;
-  height: 80px;
-  padding: 7px 14px;
+  gap: 8px;
+  height: 90px;
+  padding: 9px 16px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--subtle);
+  color: var(--dim);
+  box-shadow: 0 12px 30px -20px
+    color-mix(in oklab, var(--shade) 40%, transparent);
 }
 
 .bw-chat-back-1 {
-  top: -22px;
-  right: 12px;
-  left: 12px;
+  top: -34px;
+  right: 14px;
+  left: 14px;
 }
 
 .bw-chat-back-2 {
-  top: -44px;
-  right: 24px;
-  left: 24px;
-  opacity: 0.8;
+  top: -66px;
+  right: 28px;
+  left: 28px;
 }
 
 .bw-chat-back-ic {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   margin-top: 1px;
 }
 
 .bw-chat {
   position: relative;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg);
-  box-shadow: 0 24px 50px -24px
-    color-mix(in oklab, var(--shade) 45%, transparent);
+  box-shadow: 0 28px 56px -26px
+    color-mix(in oklab, var(--shade) 50%, transparent);
 }
 
 .bw-chat-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 14px;
+  gap: 9px;
+  height: 48px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-soft);
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--ink);
 }
 
 .bw-chat-ic {
-  width: 16px;
-  height: 16px;
+  width: 19px;
+  height: 19px;
 }
 
 .bw-chat-body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  padding: 14px;
+  gap: 12px;
+  padding: 16px;
 }
 
 .bw-bubble {
   align-self: flex-end;
-  max-width: 92%;
-  padding: 8px 12px;
-  border-radius: 14px;
+  max-width: 88%;
+  padding: 9px 14px;
+  border-radius: 18px;
   background: var(--surface-recessed);
-  font-size: 13.5px;
+  font-size: 15px;
   line-height: 1.45;
   color: var(--ink);
 }
@@ -3193,104 +3237,325 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-used {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 11px;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
-  font-size: 13px;
+  border-radius: 10px;
+  font-size: 14px;
   color: var(--dim);
 }
 
-.bw-used b {
+.bw-used b,
+.bw-chat-say b {
   font-weight: 600;
   color: var(--ink);
 }
 
 .bw-used-mark {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
 }
 
 .bw-used-check {
-  width: 15px;
-  height: 15px;
-  color: var(--accent);
-}
-
-.bw-phone {
-  position: absolute;
-  z-index: 2;
-  bottom: 0;
-  left: calc(var(--bw-fit-slice) - 250px);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 214px;
-  height: 400px;
-  padding: 10px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 30px;
-  background: var(--bg);
-  box-shadow:
-    0 0 0 5px color-mix(in oklab, var(--ink) 9%, var(--bg)),
-    0 26px 54px -22px color-mix(in oklab, var(--shade) 50%, transparent);
-}
-
-.bw-phone-bar {
-  display: flex;
-  justify-content: center;
-  padding: 2px 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.bw-phone-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 4px 9px;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.bw-phone-back {
   width: 16px;
   height: 16px;
-  flex-shrink: 0;
-  color: var(--subtle);
+  color: var(--ok);
 }
 
-.bw-phone-title {
-  flex: 1;
+.bw-chat-say {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-strong);
+}
+
+/* An iPhone at 0.75x beside the window. The screen is laid out at the real
+   393 x 852 point size and scaled down, so the bb mobile UI keeps its true
+   proportions. */
+.bw-phone {
+  --bw-phone-ui-scale: 0.748;
+  position: absolute;
+  z-index: 3;
+  bottom: 0;
+  left: calc(var(--bw-fit-slice) - 20px - 312px);
+  width: 312px;
+  height: 656px;
+  padding: 9px;
+  border-radius: 50px;
+  background: #1b1b1d;
+  box-shadow:
+    inset 0 0 0 1.5px #3a3a3e,
+    0 0 0 1px color-mix(in oklab, var(--shade) 18%, transparent),
+    0 40px 80px -30px color-mix(in oklab, var(--shade) 55%, transparent);
+  transform: scale(var(--bw-overlay-scale));
+  transform-origin: right bottom;
+}
+
+.bw-phone-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 41px;
+  background: var(--bg);
+}
+
+.bw-phone-ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 393px;
+  height: 852px;
+  transform: scale(var(--bw-phone-ui-scale));
+  transform-origin: 0 0;
+  color: var(--ink);
+}
+
+.bw-phone-island {
+  position: absolute;
+  z-index: 5;
+  top: 11px;
+  left: 50%;
+  width: 124px;
+  height: 36px;
+  border-radius: 999px;
+  background: #000;
+  transform: translateX(-50%);
+}
+
+.bw-phone-status {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 4px 30px 0 52px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--heading);
+}
+
+.bw-phone-sys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bw-phone-sys svg {
+  display: block;
+  height: 12px;
+  fill: currentColor;
+}
+
+.bw-phone-home {
+  position: absolute;
+  z-index: 5;
+  bottom: 8px;
+  left: 50%;
+  width: 139px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--heading);
+  transform: translateX(-50%);
+}
+
+/* bb's thread view as the mobile app shows it: the web app in the native
+   shell, at its phone sizes (header 48px, 15px timeline, 48px composer). */
+.bw-m-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--border-soft) 60%, var(--bg));
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.bw-m-head-ic {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.bw-m-title {
   min-width: 0;
+  margin-left: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.bw-phone-feed {
+.bw-m-head-end {
+  margin-left: auto;
+  color: var(--subtle);
+}
+
+.bw-m-feed {
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: 0 4px;
+  min-height: 0;
+  padding: 10px 16px 0;
+  overflow: hidden;
 }
 
-.bw-phone-feed > .bw-reveal > .bw-reveal-inner {
+.bw-m-feed > .bw-reveal > .bw-reveal-inner {
   padding-top: 10px;
 }
 
-.bw-phone-input {
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  font-size: 12.5px;
+.bw-m-user {
+  width: fit-content;
+  max-width: 70%;
+  margin-left: auto;
+  margin-bottom: 6px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-recessed);
+  font-size: 15px;
+  line-height: 1.625;
+  color: var(--ink);
+}
+
+.bw-m-say {
+  padding: 4px 8px;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink);
+}
+
+.bw-m-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--dim);
+  white-space: nowrap;
+  opacity: 0.4;
+}
+
+.bw-m-row.is-live {
+  opacity: 1;
+}
+
+.bw-m-row-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.bw-m-object {
+  overflow: hidden;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  text-overflow: ellipsis;
+}
+
+.bw-m-timer {
   color: var(--subtle);
+}
+
+.bw-m-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: color-mix(in oklab, var(--subtle) 60%, transparent);
+}
+
+.bw-m-working {
+  min-height: 28px;
+  margin-top: 16px;
+  padding: 0 8px;
+  font-size: 15px;
+  line-height: 28px;
+  color: var(--dim);
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    #000 30%,
+    rgb(0 0 0 / 0.35) 50%,
+    #000 70%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    #000 30%,
+    rgb(0 0 0 / 0.35) 50%,
+    #000 70%
+  );
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation:
+    fw-fade-in 0.5s ease var(--fw-at, 0s) both,
+    bw-m-sweep 1s linear infinite;
+}
+
+.leaving .bw-m-working {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+@keyframes bw-m-sweep {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+
+.bw-m-composer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  margin: 12px 16px 34px;
+  padding: 0 4px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 7%, transparent);
+}
+
+.bw-m-placeholder {
+  flex: 1;
+  font-size: 16px;
+  color: var(--subtle);
+}
+
+.bw-m-mic {
+  width: 20px;
+  height: 20px;
+  margin: 0 10px;
+  color: var(--dim);
+}
+
+.bw-m-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
+}
+
+.bw-m-stop i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--ink);
 }
 
 @media (max-width: 587px) {
