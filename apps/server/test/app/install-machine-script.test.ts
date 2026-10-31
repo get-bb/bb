@@ -1624,7 +1624,7 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     );
   });
 
-  it("restarts an active Linux systemd user unit after replacing it", () => {
+  it("restarts an active Linux systemd user unit without retaining a temporary Node symlink", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeServerInstallTools(fixture, 200);
@@ -1673,6 +1673,13 @@ fi
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user show-environment\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
     );
+    const serviceNode = /^ExecStart="([^"]+)"/m.exec(unit)?.[1] ?? "";
+    rmSync(join(fixture.binDir, "node"));
+    const nodeAfterSession = spawnSync(serviceNode, ["--version"], {
+      encoding: "utf8",
+    });
+    expect(nodeAfterSession.status, nodeAfterSession.error?.message).toBe(0);
+    expect(nodeAfterSession.stdout.trim()).toBe(process.version);
   });
 
   it("recovers the current user's systemd runtime path when the installer has no session environment", () => {
