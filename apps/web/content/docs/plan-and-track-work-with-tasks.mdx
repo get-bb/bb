@@ -16,7 +16,7 @@ Tasks has statuses, priorities, labels, due dates and subtasks. Each task collec
 <Tabs items={["Desktop", "CLI"]}>
 <Tab value="Desktop">
 
-1. Click **Plugins** in the sidebar, find **Tasks** and install it.
+1. Click **Plugins** in the sidebar, find **Tasks** and [install it](/docs/find-and-install-plugins).
 2. Open **Tasks** and click **New project** in its sidebar.
 3. Enter a **Name** and a **Prefix**, such as `PROD`, which starts task keys like `PROD-1`.
 4. Under **Linked bb project**, choose the bb project, then click **Create project**.
@@ -59,7 +59,7 @@ Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done` and `canceled
 
 ## Create a preset
 
-A preset sets the agent, model, reasoning, permission mode, environment and extra instructions for a task's worker.
+A preset sets the agent, model, reasoning, [permission mode](/docs/choose-a-permission-mode), [environment](/docs/choose-where-a-thread-runs) and extra instructions for a task's worker.
 
 <Tabs items={["Desktop", "CLI"]}>
 <Tab value="Desktop">
@@ -127,6 +127,6 @@ Each dispatch starts a new thread, even if one is already working the task.
 
 | Symptom | Fix |
 | --- | --- |
-| No dispatch button, or it's greyed out | Create a preset, and check the project has a **Linked bb project** |
+| No dispatch button, or it's greyed out | [Create a preset](#create-a-preset), and check the project has a **Linked bb project** |
 | A subtask can't get its own subtask | Tasks allows one level. Make it a separate task |
 | A worker thread died | Detach it on the task's page, then dispatch again |

@@ -76,10 +76,10 @@ Sign in from a terminal on the thread's machine, as the user bb runs as, then op
 
 ### It works in my terminal
 
-- **The thread runs on another machine.** It runs on the machine picked in the composer. Sign in there.
+- **The thread runs on another machine.** It runs on the [machine picked in the composer](/docs/choose-where-a-thread-runs). Sign in there.
 - **bb runs as another user**, for example a systemd service as `root`. Sign in as that user, or run bb as yourself.
 - **Claude Code's login isn't where bb looks.** bb looks for it in the macOS Keychain or `~/.claude/.credentials.json`.
-- **The API key is only in your shell.** The desktop app reads only `PATH` and proxy settings from your shell profile. Add keys such as `ANTHROPIC_API_KEY` in **Settings → Environment variables**.
+- **The API key is only in your shell.** The desktop app reads only `PATH` and proxy settings from your shell profile. Add keys such as `ANTHROPIC_API_KEY` in [**Settings → Environment variables**](/docs/settings#environment-variables).
 
 ## Your Claude session expired. Run `claude`, then reload.
 
@@ -93,7 +93,7 @@ A thread started and the CLI was missing. Fix it as in [Claude Code not installe
 
 - In **Settings → Providers**, open the agent's actions menu and choose **Enable**, or run `bb provider enable <provider-id>`.
 - If it shows **Unavailable**, turn its plugin on in **Settings → Installed plugins**, or run `bb plugin enable <plugin-id>`.
-- Add ACP agents such as Cursor and opencode under **ACP providers** in the Settings sidebar's **Plugins** group.
+- Add [ACP agents](/docs/add-acp-agents) such as Cursor and opencode under **ACP providers** in the Settings sidebar's **Plugins** group.
 
 `bb provider list --all` shows every agent and whether it's enabled.
 

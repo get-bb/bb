@@ -83,7 +83,7 @@ Files go in `~/.bb-machines/<server-host>`. The daemon updates itself.
   bb thread spawn --project <project-id> --machine "<machine name>" --prompt "Run the test suite"
   ```
 
-Each machine's **Permission limit**, set in **Settings → Machines**, caps its threads' permission mode.
+Each machine's [**Permission limit**](/docs/choose-a-permission-mode#limit-a-machine), set in **Settings → Machines**, caps its threads' permission mode.
 
 ## Rename or remove a machine
 
@@ -103,6 +103,6 @@ The machine shows as online in **Settings → Machines**, or in `bb machine list
 
 | Symptom | Fix |
 | --- | --- |
-| The command fails with a connection error | The computer can't reach the address. Try bb connect. |
+| The command fails with a connection error | The computer can't reach the address. Try [bb connect](/docs/set-up-remote-access#bb-connect). |
 | The machine is offline after a reboot | Without systemd, run a fresh command. If access was revoked, use **Reconnect**. |
-| A thread can't find Claude Code or Codex | Install them on the machine. Check with `bb machine provider-cli status <machine>`. |
+| A thread can't find Claude Code or Codex | [Install them](/docs/an-agent-wont-sign-in-or-cant-be-found) on the machine. Check with `bb machine provider-cli status <machine>`. |

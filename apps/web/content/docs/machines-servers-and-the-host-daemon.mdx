@@ -46,13 +46,13 @@ A machine is any computer whose host daemon is connected to your server. You pic
 | --- | --- |
 | The server's own computer | A machine from the start |
 | Computers you add | Run only a host daemon, not a second server. See [Add a machine](/docs/add-a-machine). |
-| Sandboxes from a plugin, such as Modal Sandbox | Made for a thread and removed after it. See [Run threads in sandboxes](/docs/run-threads-in-sandboxes). |
+| Sandboxes from a plugin, such as Modal Sandbox | Made for a thread and removed after it. See [Run threads in sandboxes, containers and VMs](/docs/run-threads-in-sandboxes). |
 
 A computer can be a machine for several servers, with a separate host daemon and folder for each.
 
 ## How apps and machines reach the server
 
-The server listens only on `127.0.0.1` by default. Choose a route in **Settings → Machines → Machine access**:
+The server listens only on `127.0.0.1` by default. [Choose a route](/docs/set-up-remote-access#choose-a-route) in **Settings → Machines → Machine access**:
 
 - **bb connect:** a private `getbb.app` address that only your bb account can open.
 - **Manual:** your own domain or a shared-network address, such as Tailscale.

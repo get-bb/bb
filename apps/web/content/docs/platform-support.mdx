@@ -48,15 +48,15 @@ verified: 2026-10-30
 | Needs | [Git for Windows](https://git-scm.com/download/win) | Node.js, Git and your agent CLIs installed inside WSL2 |
 | Project paths | Drive-letter paths such as `C:\Users\me\repo`. Network paths (`\\server\share`) are refused: map the share to a drive letter | Linux paths. Windows folders work as `/mnt/c/...` but are slower and watch files less reliably than folders inside WSL |
 | Terminals | PowerShell 7 if installed, otherwise Windows PowerShell | Your Linux shell |
-| Worktree setup scripts | `.bb-env-setup.sh` and `.bb-env-teardown.sh` run in Git for Windows' bash | Run as on Linux |
+| [Worktree setup scripts](/docs/choose-where-a-thread-runs#prepare-new-worktrees) | `.bb-env-setup.sh` and `.bb-env-teardown.sh` run in Git for Windows' bash | Run as on Linux |
 | Path case | Compared without regard to case: `C:\src\Repo` and `C:\src\repo` are the same project | As on Linux |
 | Path style | Refuses Linux-style paths | Refuses Windows drive-letter paths, as macOS and Linux do |
-| Add as a machine to another server | Yes: **Settings → Machines** shows a PowerShell command | As on Linux |
-| Move your server here | No | |
+| [Add as a machine](/docs/add-a-machine) to another server | Yes: **Settings → Machines** shows a PowerShell command | As on Linux |
+| [Move your server](/docs/move-your-server-to-another-machine) here | No | |
 
 ## Phones and tablets
 
-The phone app is a client for your bb server: it runs no agents or plugins itself, and adds screens for pairing, saved servers, device settings and notifications.
+The [phone app](/docs/use-bb-on-your-phone) is a client for your bb server: it runs no agents or plugins itself, and adds screens for pairing, saved servers, device settings and notifications.
 
 | Platform | How to install |
 | --- | --- |
@@ -66,9 +66,9 @@ The phone app is a client for your bb server: it runs no agents or plugins itsel
 | Feature | On a phone |
 | --- | --- |
 | Threads, projects, plugins and server settings | Yes, the same as in a browser |
-| Connect with bb Connect | Yes, by scanning a pairing code |
-| Connect directly by URL | Yes. iOS only allows plain `http://` for local network addresses and `.local` names, so a Tailscale address needs HTTPS (Tailscale Serve) |
-| Push notifications | Needs bb Connect or an HTTPS address, and a server that can reach `exp.host`. A plain `http://` address can't register |
+| Connect with [bb connect](/docs/set-up-remote-access#bb-connect) | Yes, by scanning a pairing code |
+| Connect directly by URL | Yes. iOS only allows plain `http://` for local network addresses and `.local` names, so a Tailscale address needs HTTPS ([Tailscale Serve](/docs/set-up-remote-access#tailscale-serve)) |
+| [Push notifications](/docs/get-notified) | Needs bb connect or an HTTPS address, and a server that can reach `exp.host`. A plain `http://` address can't register |
 | Plugin UI and themes | Yes inside the app's pages. The app's own screens use the built-in colors |
 | Open in an editor, the native folder picker | No. Browse folders on the server instead |
 | Signing in to an agent | Needs a terminal on the machine that runs the agent |

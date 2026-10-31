@@ -112,7 +112,7 @@ CI validates the entry, then a maintainer reviews the plugin.
 
 ## Share without the marketplace
 
-Share an install command, such as `bb plugin install git:https://github.com/acme/bb-plugin-notes.git@^1.0.0`, or host a `marketplace.json` that others add with `bb marketplace add <source>`.
+Share an [install command](/docs/find-and-install-plugins#install-a-plugin-that-isnt-in-the-marketplace), such as `bb plugin install git:https://github.com/acme/bb-plugin-notes.git@^1.0.0`, or host a `marketplace.json` that others add with `bb marketplace add <source>`.
 
 ## Check it worked
 
@@ -137,5 +137,5 @@ It then appears under **Plugins → Browse plugins** and on getbb.app/marketplac
 | Symptom | Fix |
 | --- | --- |
 | CI rejects the entry | Fix the field the message names |
-| Users get a version error | Their bb is outside `engines.bb` |
+| Users get a [version error](/docs/a-plugin-wont-install-or-load#requires-a-newer-bb) | Their bb is outside `engines.bb` |
 | bb refuses an update after a re-tag | Publish a new version instead |

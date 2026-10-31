@@ -24,7 +24,7 @@ verified: 2026-10-30
 | **Remote access is off** | Remote access was turned off | Click **Turn on**, or run `bb connect on` |
 | "That code is invalid or has expired." | Pairing codes last 10 minutes and work once | Get a new code from the getbb.app dashboard |
 | "Device limit reached" on your phone | The account has its maximum of paired devices | Revoke a device in the getbb.app dashboard |
-| "Could not sign in" on your phone | The phone's pairing was revoked or expired | Pair the phone again with a new code |
+| "Could not sign in" on your phone | The phone's pairing was revoked or expired | [Pair the phone again](/docs/use-bb-on-your-phone#2-pair-it-with-your-server) with a new code |
 | Remote access drops often, local is fine | A busy server, sleep, or an unstable network | See [It keeps dropping](#it-keeps-dropping) |
 
 ## Your bb is offline
@@ -32,7 +32,7 @@ verified: 2026-10-30
 Local access on bb's machine keeps working. The page retries every few seconds.
 
 1. Wake the machine and check that bb is running.
-2. On macOS and Windows, turn on the **Keep Awake** plugin; `bb keep-awake status` checks it.
+2. On macOS and Windows, turn on the [**Keep Awake**](/docs/run-bb-on-an-always-on-machine#2-keep-it-running) plugin; `bb keep-awake status` checks it.
 3. If it stays offline, run `bb connect status` on that machine, or open **Settings → bb connect**, and find the message below.
 
 ## bb connect hit a temporary problem
@@ -79,7 +79,7 @@ Common causes:
 - **The server is overloaded**, for example by many agents on a small machine. See [bb is slow or uses a lot of memory](/docs/bb-is-slow-or-uses-a-lot-of-memory).
 - **A proxy or firewall closes long-lived connections.** Allow WebSocket traffic to getbb.app.
 
-Requests in flight when it drops fail; reload the page. On a private network you control, Tailscale works without bb connect:
+Requests in flight when it drops fail; reload the page. On a private network you control, [Tailscale](/docs/set-up-remote-access#tailscale-serve) works without bb connect:
 
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:38886
