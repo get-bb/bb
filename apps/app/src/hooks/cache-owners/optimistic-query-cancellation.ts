@@ -1,9 +1,11 @@
-import type {
-  Mutation,
-  Query,
-  QueryClient,
-  QueryFilters,
+import {
+  matchMutation,
+  type Mutation,
+  type Query,
+  type QueryClient,
+  type QueryFilters,
 } from "@tanstack/react-query";
+import { threadReadStateMutationKey } from "../queries/query-keys";
 
 const recoveries = new WeakMap<QueryClient, Map<Query, Set<Mutation>>>();
 
@@ -54,9 +56,11 @@ export function cancelOptimisticQueries(
   queryClient: QueryClient,
   filters: QueryFilters,
 ): Promise<void> {
-  const mutations = queryClient
-    .getMutationCache()
-    .findAll({ status: "pending" });
+  const mutations = queryClient.getMutationCache().findAll({
+    status: "pending",
+    predicate: (mutation) =>
+      !matchMutation({ mutationKey: threadReadStateMutationKey() }, mutation),
+  });
   if (mutations.length > 0) {
     for (const query of queryClient.getQueryCache().findAll(filters)) {
       const existing = recoveries.get(queryClient)?.get(query);

@@ -1,7 +1,4 @@
-import {
-  markThreadReadMutationOptions,
-  markThreadUnreadMutationOptions,
-} from "@/hooks/mutations/thread-state-mutations";
+import { runThreadReadStateCommand } from "@/hooks/mutations/thread-state-mutations";
 import { createThreadMutationBatcher } from "@/hooks/mutations/thread-mutation-batcher";
 import type {
   BbSdkAreas,
@@ -210,23 +207,24 @@ export function bindSdkToPlugin(
     threads: {
       ...sdk.threads,
       ...threadMutations,
-      markRead(args) {
-        return queryClient
-          .getMutationCache()
-          .build(
-            queryClient,
-            markThreadReadMutationOptions(queryClient, sdk.threads),
-          )
-          .execute(args);
+      markRead({ experimental_throughAttentionAt, signal, threadId }) {
+        return runThreadReadStateCommand(
+          queryClient,
+          {
+            kind: "read",
+            signal,
+            threadId,
+            throughAttentionAt: experimental_throughAttentionAt,
+          },
+          sdk.threads,
+        );
       },
-      markUnread(args) {
-        return queryClient
-          .getMutationCache()
-          .build(
-            queryClient,
-            markThreadUnreadMutationOptions(queryClient, sdk.threads),
-          )
-          .execute(args);
+      markUnread({ signal, threadId }) {
+        return runThreadReadStateCommand(
+          queryClient,
+          { kind: "unread", signal, threadId },
+          sdk.threads,
+        );
       },
       async reorderPinned(args) {
         const orderedRoots = await sdk.threads.reorderPinned(args);

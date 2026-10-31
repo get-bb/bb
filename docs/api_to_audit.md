@@ -1096,6 +1096,46 @@ Docs: `backend-sdk.md`.
    becoming visible, so a caller that skips hidden threads cannot refresh
    one when it appears; decide whether visibility changes need an event.
 
+## `bb.sdk.threads.markRead({ experimental_throughAttentionAt })`
+
+`POST /threads/:id/read?throughAttentionAt=<ms>` marks the thread read only
+when its `latestAttentionAt` is at most that value. Otherwise it writes
+nothing, sends no `read-state-changed`, and answers the thread as it stands,
+newer `latestAttentionAt` included, which the app applies. Without the argument
+the read stays unconditional. Core caller: the app's auto-read
+(`useThreadReadTracking`), which goes through the same read-state executor in
+`apps/app/src/hooks/mutations/thread-state-mutations.ts` as the core Mark read
+action and the plugin-bound `markRead`. The executor retries a command whose
+outcome is unknown (a timeout, a network error, 408, 429 or 5xx) up to four
+times, and the condition keeps a late retry from marking unseen output read.
+
+The executor sends one thread's read and unread commands one at a time, in
+order, whether or not the page is visible, and the newest wins. This applies
+to `markRead` and `markUnread`, with or without the experimental argument. A
+command that a newer one replaces before it is sent is never sent, and one
+whose attempt fails after it is replaced is not retried; both reject with an
+`AbortError`, which callers such as the core Mark read action treat as no
+failure. A replaced command whose request succeeds resolves with the server's
+thread, which the app does not apply over the newer command.
+
+**Audit before stabilizing.**
+
+1. **Arrival order.** The server keeps whichever read or unread reaches it
+   last. A replaced command whose attempt ended without an answer (a timeout
+   or a network error) can still land after the newer command from the same
+   client, as can an older command from another client. Every client then
+   shows that state through `read-state-changed`, and a read sent with
+   `experimental_throughAttentionAt` still never covers newer attention.
+   Confirm that this stays acceptable. Ordering on the server was weighed and
+   left out: a per-client sequence closes only the same-client case, a hybrid
+   logical clock per thread needs a new field in every thread payload, and
+   wall-clock ordering would ignore the clicks of a device whose clock lags.
+2. **Name.** Decide whether the condition should stay an argument of
+   `markRead` or become the default for every reader that knows what it saw.
+3. **Replaced commands.** Decide whether a replaced command should keep
+   rejecting with an `AbortError` or resolve with the outcome of the command
+   that replaced it.
+
 ## `bb.sdk.threads.experimental_listCascade`
 
 `POST /threads/cascade` with `{ threadIds, action }` (1–200 ids, `action`

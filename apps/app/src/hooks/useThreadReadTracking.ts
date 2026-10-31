@@ -10,10 +10,12 @@ import { useUserActive } from "@/lib/user-activity";
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
 interface MarkThreadReadMutation {
+  hasFailed: (threadId: string, latestAttentionAt: number) => boolean;
+  noteSeenRead: (threadId: string) => void;
   mutateAsync: (input: {
-    signal?: AbortSignal;
     threadId: string;
-  }) => Promise<ThreadReadState>;
+    throughAttentionAt: number;
+  }) => Promise<unknown>;
 }
 
 interface UseThreadReadTrackingParams {
@@ -27,28 +29,18 @@ interface ReadTrackingSnapshot {
   isRead: boolean | null;
   latestAttentionAt: number | null;
   threadId: string | null;
+  visibilityRevision: number;
 }
 
 export function useThreadReadTracking({
   markThreadRead,
   thread,
 }: UseThreadReadTrackingParams) {
-  const failedReadKeysRef = useRef<Set<string>>(new Set());
-  const pendingReadControllersRef = useRef<Map<string, AbortController>>(
-    new Map(),
-  );
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
   const visibilityRevision = useDocumentVisibilityRevision();
   const isVisible = useDocumentVisible();
   const isActive = useUserActive();
-
-  useEffect(() => {
-    const controllers = pendingReadControllersRef.current;
-    return () => {
-      for (const controller of controllers.values()) controller.abort();
-    };
-  }, []);
 
   useEffect(() => {
     const previousSnapshot = previousSnapshotRef.current;
@@ -59,14 +51,9 @@ export function useThreadReadTracking({
       isRead: threadIsRead,
       latestAttentionAt: thread?.latestAttentionAt ?? null,
       threadId: thread?.id ?? null,
+      visibilityRevision,
     };
     previousSnapshotRef.current = currentSnapshot;
-
-    if (previousSnapshot?.threadId !== currentSnapshot.threadId) {
-      for (const controller of pendingReadControllersRef.current.values()) {
-        controller.abort();
-      }
-    }
 
     if (!isVisible) {
       return;
@@ -86,18 +73,21 @@ export function useThreadReadTracking({
     }
 
     if (threadIsRead) {
-      failedReadKeysRef.current.delete(marker);
+      markThreadRead.noteSeenRead(thread.id);
       suppressedManualUnreadKeysRef.current.delete(marker);
       return;
     }
 
-    const isRetry = failedReadKeysRef.current.has(marker);
+    const readFailed = markThreadRead.hasFailed(
+      thread.id,
+      thread.latestAttentionAt,
+    );
     const becameManuallyUnread =
       previousSnapshot?.threadId === thread.id &&
       previousSnapshot.latestAttentionAt === thread.latestAttentionAt &&
       previousSnapshot.isVisible &&
       previousSnapshot.isRead === true &&
-      !isRetry;
+      !readFailed;
 
     if (becameManuallyUnread) {
       suppressedManualUnreadKeysRef.current.add(marker);
@@ -116,25 +106,22 @@ export function useThreadReadTracking({
     const becameActive =
       previousSnapshot?.threadId === thread.id &&
       previousSnapshot.isActive === false;
-    if (!isOpenedThread && !hasNewAttention && !becameActive && !isRetry) {
-      return;
-    }
-    if (pendingReadControllersRef.current.has(marker)) {
+    const retryFailedRead =
+      readFailed && previousSnapshot?.visibilityRevision !== visibilityRevision;
+    if (
+      !isOpenedThread &&
+      !hasNewAttention &&
+      !becameActive &&
+      !retryFailedRead
+    ) {
       return;
     }
 
-    failedReadKeysRef.current.delete(marker);
-    const controller = new AbortController();
-    pendingReadControllersRef.current.set(marker, controller);
     void markThreadRead
-      .mutateAsync({ signal: controller.signal, threadId: thread.id })
-      .catch(() => {
-        failedReadKeysRef.current.add(marker);
+      .mutateAsync({
+        threadId: thread.id,
+        throughAttentionAt: thread.latestAttentionAt,
       })
-      .finally(() => {
-        if (pendingReadControllersRef.current.get(marker) === controller) {
-          pendingReadControllersRef.current.delete(marker);
-        }
-      });
+      .catch(() => undefined);
   }, [isActive, isVisible, markThreadRead, thread, visibilityRevision]);
 }

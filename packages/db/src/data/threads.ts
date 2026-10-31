@@ -12,6 +12,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   or,
   placeholder,
@@ -1919,6 +1920,39 @@ export function updateThread(
     });
   }
   return updated ?? null;
+}
+
+interface MarkThreadReadInput {
+  throughAttentionAt: number | null;
+}
+
+export function markThreadRead(
+  db: ThreadWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  { throughAttentionAt }: MarkThreadReadInput,
+) {
+  const now = Date.now();
+  const updated = db
+    .update(threads)
+    .set({ lastReadAt: now, updatedAt: now })
+    .where(
+      throughAttentionAt === null
+        ? eq(threads.id, id)
+        : and(
+            eq(threads.id, id),
+            lte(threads.latestAttentionAt, throughAttentionAt),
+          ),
+    )
+    .returning()
+    .get();
+  if (!updated) {
+    return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+  }
+  notifier.notifyThread(id, ["read-state-changed"], {
+    projectId: updated.projectId,
+  });
+  return updated;
 }
 
 export interface ThreadExecutionOverride {

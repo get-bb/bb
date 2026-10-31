@@ -670,6 +670,10 @@ export function threadQueryKey(threadId: string): ThreadQueryKey {
   return [THREAD_QUERY_KEY, threadId];
 }
 
+export function threadReadStateMutationKey(): readonly ["threadReadState"] {
+  return ["threadReadState"];
+}
+
 export function threadTabsQueryKey(threadId: string): ThreadTabsQueryKey {
   return [THREAD_TABS_QUERY_KEY, threadId];
 }

@@ -5,6 +5,7 @@ import {
   getQueuedThreadMessage,
   getThread,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
+  markThreadRead,
   pinThread,
   reorderPinnedThread,
   reorderQueuedThreadMessage,
@@ -624,10 +625,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  post(routes.read, (context) => {
+  post(routes.read, (context, query) => {
     requirePublicThread(deps.db, context.req.param("id"));
-    const thread = updateThread(deps.db, deps.hub, context.req.param("id"), {
-      lastReadAt: Date.now(),
+    const thread = markThreadRead(deps.db, deps.hub, context.req.param("id"), {
+      throughAttentionAt:
+        query.throughAttentionAt === undefined
+          ? null
+          : Number(query.throughAttentionAt),
     });
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");

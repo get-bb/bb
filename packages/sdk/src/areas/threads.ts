@@ -337,6 +337,16 @@ export interface ThreadActionArgs {
   threadId: string;
 }
 
+export interface ThreadReadArgs extends ThreadActionArgs {
+  /**
+   * The thread's `latestAttentionAt` as the reader saw it. When the thread
+   * has newer attention the read changes nothing, so a delayed or retried
+   * request never marks output read that the reader has not seen. Omit it to
+   * mark the thread read unconditionally.
+   */
+  experimental_throughAttentionAt?: number;
+}
+
 export interface ThreadStatusArgs extends ThreadActionArgs {
   signal?: AbortSignal;
 }
@@ -688,7 +698,19 @@ export interface ThreadsArea {
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
-  markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
+  /**
+   * Marks the thread read. In the bb app, one thread's read and unread
+   * commands run one at a time and the newest wins: a command that a newer one
+   * replaces is not sent, or not retried after a failed attempt, and rejects
+   * with an `AbortError`. The server keeps whichever command reaches it last,
+   * so a replaced attempt that ended without an answer can still land after
+   * the newer command.
+   */
+  markRead(args: ThreadReadArgs): Promise<ThreadReadStateResult>;
+  /**
+   * Marks the thread unread. In the bb app, a newer read or unread of the same
+   * thread replaces it as described for `markRead`.
+   */
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   open(args: ThreadOpenArgs): Promise<ThreadOpenResult>;
   paneAction(args: ThreadPaneActionArgs): Promise<ThreadPaneActionResult>;
@@ -1432,10 +1454,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async markRead(input) {
+      const throughAttentionAt = input.experimental_throughAttentionAt;
       return transport.readJson(
         transport.api.v1.threads[":id"].read.$post(
           {
             param: { id: input.threadId },
+            ...(throughAttentionAt === undefined
+              ? {}
+              : { query: { throughAttentionAt: String(throughAttentionAt) } }),
           },
           ...signalRequestArgs(input.signal),
         ),

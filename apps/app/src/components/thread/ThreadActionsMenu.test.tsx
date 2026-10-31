@@ -21,8 +21,10 @@ import {
   type PluginThreadActionsInlineItem,
 } from "@get-bb/plugin-sdk";
 import type { ThreadListEntry } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { appToast } from "@/components/ui/app-toast";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
@@ -666,9 +668,9 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       await screen.findByRole("menuitem", { name: "Mark unread" }),
     );
     await waitFor(() =>
-      expect(sdkThreads.markUnread).toHaveBeenCalledWith({
-        threadId: baseThread.id,
-      }),
+      expect(sdkThreads.markUnread).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: baseThread.id }),
+      ),
     );
 
     await surface.open();
@@ -769,6 +771,50 @@ describe("thread action run containment", () => {
     await waitFor(() => expect(error).toHaveBeenCalled());
     await surface.open();
     expect(await screen.findByRole("menuitem", { name: "Pin" })).not.toBeNull();
+  });
+});
+
+describe("core read state action", () => {
+  it("reports the failure of the newest change, not of one it replaced", async () => {
+    const toastError = vi.spyOn(appToast, "error").mockReturnValue("toast");
+    let failFirst: (error: Error) => void = () => {};
+    sdkThreads.markUnread
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failFirst = reject;
+          }),
+      )
+      .mockRejectedValueOnce(
+        new BbHttpError({ body: null, code: null, message: "", status: 404 }),
+      );
+    try {
+      const [surface] = SURFACES;
+      if (surface === undefined) throw new Error("no surface");
+      renderSurface(surface, { thread: baseThread });
+      for (let click = 0; click < 2; click += 1) {
+        await surface.open();
+        fireEvent.click(
+          await screen.findByRole("menuitem", { name: "Mark unread" }),
+        );
+      }
+      await waitFor(() =>
+        expect(sdkThreads.markUnread).toHaveBeenCalledTimes(1),
+      );
+      await act(async () =>
+        failFirst(
+          new BbHttpError({ body: null, code: null, message: "", status: 503 }),
+        ),
+      );
+      await waitFor(() =>
+        expect(sdkThreads.markUnread).toHaveBeenCalledTimes(2),
+      );
+      await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      expect(toastError).toHaveBeenCalledTimes(1);
+    } finally {
+      toastError.mockRestore();
+    }
   });
 });
 
@@ -1230,8 +1276,8 @@ describe.each([
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
     await waitFor(() =>
       expect(sdkThreads.markRead.mock.calls).toEqual([
-        [{ threadId: "thr_read" }],
-        [{ threadId: "thr_unread" }],
+        [{ threadId: "thr_read", signal: expect.any(AbortSignal) }],
+        [{ threadId: "thr_unread", signal: expect.any(AbortSignal) }],
       ]),
     );
 

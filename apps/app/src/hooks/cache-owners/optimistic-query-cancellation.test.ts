@@ -4,6 +4,7 @@ import {
   QueryObserver,
 } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import { threadReadStateMutationKey } from "../queries/query-keys";
 import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 
 function deferred<T>() {
@@ -119,6 +120,36 @@ describe("optimistic query cancellation", () => {
       unrelated.resolve();
       await c;
       expect(f.queryFn).toHaveBeenCalledTimes(2);
+    } finally {
+      f.unsubscribe();
+      f.queryClient.clear();
+    }
+  });
+
+  it("does not wait for read state commands, which reconcile their own queries", async () => {
+    const f = fixture();
+    const read = deferred<void>();
+    const write = deferred<void>();
+    try {
+      const reading = new MutationObserver(f.queryClient, {
+        mutationKey: threadReadStateMutationKey(),
+        mutationFn: () => read.promise,
+      }).mutate();
+      void f.queryClient.invalidateQueries({ queryKey: f.queryKey });
+      const writing = new MutationObserver(f.queryClient, {
+        mutationFn: () => write.promise,
+        onMutate: () =>
+          cancelOptimisticQueries(f.queryClient, { queryKey: f.queryKey }),
+      }).mutate();
+      await vi.waitFor(() => expect(f.signals[0]?.aborted).toBe(true));
+      write.resolve();
+      await writing;
+      await vi.waitFor(() =>
+        expect(f.queryClient.getQueryData(f.queryKey)).toEqual([]),
+      );
+      expect(f.queryClient.isMutating()).toBe(1);
+      read.resolve();
+      await reading;
     } finally {
       f.unsubscribe();
       f.queryClient.clear();

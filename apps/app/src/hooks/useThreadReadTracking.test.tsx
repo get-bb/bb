@@ -11,15 +11,10 @@ type MarkThreadReadMutation = Parameters<
 
 function makeMarkThreadRead() {
   return {
+    hasFailed: vi.fn<MarkThreadReadMutation["hasFailed"]>(() => false),
+    noteSeenRead: vi.fn<MarkThreadReadMutation["noteSeenRead"]>(),
     mutateAsync: vi.fn<MarkThreadReadMutation["mutateAsync"]>(
-      ({ signal }) =>
-        new Promise((_resolve, reject) => {
-          signal?.addEventListener(
-            "abort",
-            () => reject(new Error("Aborted")),
-            { once: true },
-          );
-        }),
+      () => new Promise(() => {}),
     ),
   } satisfies MarkThreadReadMutation;
 }
@@ -154,6 +149,7 @@ describe("useThreadReadTracking", () => {
       }),
     );
     await act(async () => {});
+    markThreadRead.hasFailed.mockReturnValue(true);
     act(() => {
       window.dispatchEvent(new Event("pageshow"));
     });

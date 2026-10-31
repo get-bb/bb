@@ -241,6 +241,7 @@ import {
   type ThreadSectionMutationResponse,
   type ThreadSectionResponse,
   type ThreadGetQuery,
+  type ThreadReadQuery,
   type ThreadCountQuery,
   type ThreadCountResponse,
   type ThreadListQuery,
@@ -374,6 +375,7 @@ import {
   threadEventsQuerySchema,
   threadMessageQuerySchema,
   threadGetQuerySchema,
+  threadReadQuerySchema,
   threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
@@ -1734,10 +1736,19 @@ export const publicApiRoutes = {
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadResponse>(),
     }),
+    /**
+     * Marks the thread read. With `throughAttentionAt`, the read only covers
+     * attention up to that timestamp: when the thread has newer attention,
+     * nothing changes, no change event is sent, and the response is the
+     * thread as it stands, newer `latestAttentionAt` included. Retrying the
+     * same request is safe.
+     */
     read: defineRoute({
       path: "/threads/:id/read",
       method: "post",
-      request: noRequest<PathId>(),
+      request: optionalQueryRequest<PathId, ThreadReadQuery>(
+        threadReadQuerySchema,
+      ),
       response: jsonResponse<ThreadResponse>(),
     }),
     unread: defineRoute({

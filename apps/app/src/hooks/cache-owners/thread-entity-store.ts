@@ -371,6 +371,43 @@ export function patchThreadEntity(
   );
 }
 
+export function writeThreadEntity(
+  client: QueryClient,
+  threadId: string,
+  update: (entity: ThreadEntity) => ThreadEntity,
+): void {
+  registerThreadEntityViews(client);
+  writeKeyedEntity(client, THREAD_ENTITIES, threadId, (current) =>
+    current === undefined ? current : update(current),
+  );
+}
+
+export function queryMayShowThread(
+  queryKey: QueryKey,
+  threadId: string,
+): boolean {
+  const family = familyOf(queryKey);
+  return (
+    family !== undefined && (family !== DETAIL || queryKey[1] === threadId)
+  );
+}
+
+export function queryDataHoldsThread(
+  queryKey: QueryKey,
+  data: unknown,
+  threadId: string,
+): boolean {
+  const family = familyOf(queryKey);
+  if (family === undefined || data === undefined) return false;
+  return (
+    family
+      .slots(data)
+      ?.some(({ items }) =>
+        items.some((item) => family.threadOf(item)?.id === threadId),
+      ) === true
+  );
+}
+
 function confirmThreadRow(
   client: QueryClient,
   row: ThreadWithRuntime,

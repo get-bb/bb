@@ -14,7 +14,6 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 import {
-  applyThreadReadStateResult,
   applyThreadUpdateResult,
   applyPinnedThreadOrderResult,
   applyThreadMetadataBatchResult,
@@ -26,8 +25,10 @@ import {
   rollbackDeleteThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
+  predictThreadPinState,
   rollbackThreadListMutationTransaction,
-  rollbackThreadReadStateTransaction,
+  settleThreadReadStateFailure,
+  settleThreadReadStateSuccess,
 } from "./thread-state-cache-owner";
 
 import {
@@ -108,10 +109,13 @@ describe("thread state cache owner", () => {
         sidebarNavigationQueryKey(),
         makeSidebarNavigation([original]),
       );
-      await beginThreadReadStateTransaction({
+      const transaction = beginThreadReadStateTransaction({
+        intent:
+          lastReadAt === null
+            ? { kind: "unread" }
+            : { kind: "read", throughAttentionAt: undefined },
         queryClient,
         threadId: original.id,
-        lastReadAt,
       });
       await beginSendThreadMessageTransaction({
         queryClient,
@@ -140,9 +144,10 @@ describe("thread state cache owner", () => {
         sidebarNavigationQueryKey(),
       );
       expect(activeThread?.runtime.displayStatus).toBe("active");
-      applyThreadReadStateResult({
+      settleThreadReadStateSuccess({
         queryClient,
         thread: makeThreadWithRuntime({ ...original, lastReadAt }),
+        transaction,
       });
       expect(queryClient.getQueryData(threadQueryKey(original.id))).toEqual({
         ...activeThread,
@@ -375,137 +380,259 @@ describe("thread state cache owner", () => {
     ).toBe("Old title");
   });
 
-  it("optimistically marks read state in thread, list, and sidebar caches", async () => {
+  it.each([
+    { throughAttentionAt: 50, lastReadAt: 50 },
+    { throughAttentionAt: 40, lastReadAt: 40 },
+    { throughAttentionAt: 5, lastReadAt: 10 },
+  ])(
+    "reads only through the attention the reader saw, keeps it in shared caches and drops the unwatched detail when the write fails (through $throughAttentionAt)",
+    ({ throughAttentionAt, lastReadAt }) => {
+      const { queryClient } = createQueryClientTestHarness();
+      const threadId = "thread-1";
+      const unreadListEntry = makeThreadListEntry({
+        id: threadId,
+        lastReadAt: 10,
+        latestAttentionAt: 50,
+      });
+      const threadListKey = threadListQueryKey({
+        archived: false,
+        projectId: "project-1",
+      });
+      queryClient.setQueryData(
+        threadQueryKey(threadId),
+        makeThreadWithRuntime(unreadListEntry),
+      );
+      queryClient.setQueryData(threadListKey, [unreadListEntry]);
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([unreadListEntry]),
+      );
+      const readAtEverywhere = () => [
+        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+          ?.lastReadAt,
+        queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
+          ?.lastReadAt,
+        queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )?.projects[0]?.threads[0]?.lastReadAt,
+      ];
+
+      const transaction = beginThreadReadStateTransaction({
+        intent: { kind: "read", throughAttentionAt },
+        queryClient,
+        threadId,
+      });
+      expect(readAtEverywhere()).toEqual([lastReadAt, lastReadAt, lastReadAt]);
+
+      settleThreadReadStateFailure({ queryClient, transaction });
+      expect(readAtEverywhere()).toEqual([undefined, lastReadAt, lastReadAt]);
+      expect(
+        queryClient.getQueryState(threadQueryKey(threadId)),
+      ).toBeUndefined();
+      expect(
+        [threadListKey, sidebarNavigationQueryKey()].map(
+          (queryKey) => queryClient.getQueryState(queryKey)?.isInvalidated,
+        ),
+      ).toEqual([true, true]);
+    },
+  );
+
+  it("reads through the newest cached attention when the reader names none", () => {
     const { queryClient } = createQueryClientTestHarness();
-    const threadId = "thread-1";
-    const unreadThread = makeThreadWithRuntime({
-      id: threadId,
-      lastReadAt: 10,
-      latestAttentionAt: 50,
-    });
-    const unreadListEntry = makeThreadListEntry({
-      id: threadId,
-      lastReadAt: 10,
-      latestAttentionAt: 50,
-    });
     const threadListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",
     });
-
-    queryClient.setQueryData(threadQueryKey(threadId), unreadThread);
-    queryClient.setQueryData(threadListKey, [unreadListEntry]);
     queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([unreadListEntry]),
+      threadQueryKey("thread-1"),
+      makeThreadWithRuntime({ lastReadAt: 10, latestAttentionAt: 50 }),
     );
+    queryClient.setQueryData(threadListKey, [
+      makeThreadListEntry({
+        lastReadAt: 10,
+        latestAttentionAt: 70,
+        updatedAt: 2,
+      }),
+    ]);
 
-    const transaction = await beginThreadReadStateTransaction({
-      lastReadAt: 20,
+    beginThreadReadStateTransaction({
+      intent: { kind: "read", throughAttentionAt: undefined },
       queryClient,
-      threadId,
+      threadId: "thread-1",
     });
 
     expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey("thread-1"))
         ?.lastReadAt,
-    ).toBe(50);
+    ).toBe(70);
     expect(
       queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
         ?.lastReadAt,
-    ).toBe(50);
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.lastReadAt,
-    ).toBe(50);
-
-    rollbackThreadListMutationTransaction({
-      queryClient,
-      threadId,
-      transaction,
-    });
-
-    expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-        ?.lastReadAt,
-    ).toBe(10);
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
-        ?.lastReadAt,
-    ).toBe(10);
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.lastReadAt,
-    ).toBe(10);
+    ).toBe(70);
   });
-});
 
-it.each([null, 80, 100])(
-  "rolls back only the pending read, preserving newer fields and sibling caches (%s)",
-  async (lastReadAt) => {
+  it("ignores a superseded read state result", () => {
     const { queryClient } = createQueryClientTestHarness();
     const threadId = "thread-1";
-    const listKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    const original = makeThreadListEntry({
-      id: threadId,
-      lastReadAt: 10,
-      latestAttentionAt: 20,
-    });
     queryClient.setQueryData(
       threadQueryKey(threadId),
-      makeThreadWithRuntime(original),
+      makeThreadWithRuntime({ lastReadAt: 10, latestAttentionAt: 50 }),
     );
-    queryClient.setQueryData(listKey, [original]);
-    queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([original]),
-    );
-    const transaction = await beginThreadReadStateTransaction({
+    const read = beginThreadReadStateTransaction({
+      intent: { kind: "read", throughAttentionAt: 50 },
       queryClient,
       threadId,
-      lastReadAt: 100,
     });
-    const updated = makeThreadListEntry({
-      ...original,
-      lastReadAt,
-      latestAttentionAt: 200,
-      title: "New title",
+    beginThreadReadStateTransaction({
+      intent: { kind: "unread" },
+      queryClient,
+      threadId,
     });
-    const sibling = makeThreadListEntry({ id: "new-sibling", lastReadAt: 300 });
-    queryClient.setQueryData(
-      threadQueryKey(threadId),
-      makeThreadWithRuntime(updated),
-    );
-    queryClient.setQueryData(listKey, [updated, sibling]);
+
+    settleThreadReadStateSuccess({
+      queryClient,
+      thread: makeThreadWithRuntime({ lastReadAt: 900, latestAttentionAt: 50 }),
+      transaction: read,
+    });
+
+    expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.lastReadAt,
+    ).toBeNull();
+  });
+
+  it.each(["latest", "replaced"] as const)(
+    "keeps a failed read's intent over an earlier %s unread accepted behind a pending pin",
+    (earlier) => {
+      const { queryClient } = createQueryClientTestHarness();
+      queryClient.setQueryData(
+        sidebarNavigationQueryKey(),
+        makeSidebarNavigation([makeThreadListEntry({ lastReadAt: 60 })]),
+      );
+      const readAt = () =>
+        queryClient.getQueryData<SidebarBootstrapResponse>(
+          sidebarNavigationQueryKey(),
+        )?.projects[0]?.threads[0]?.lastReadAt;
+      const pin = predictThreadPinState(queryClient, {
+        pinnedAt: 99,
+        threadId: "thread-1",
+      });
+      const unread = beginThreadReadStateTransaction({
+        intent: { kind: "unread" },
+        queryClient,
+        threadId: "thread-1",
+      });
+      const settleUnread = () =>
+        settleThreadReadStateSuccess({
+          queryClient,
+          thread: makeThreadWithRuntime({ lastReadAt: null, updatedAt: 2 }),
+          transaction: unread,
+        });
+      if (earlier === "latest") settleUnread();
+      const read = beginThreadReadStateTransaction({
+        intent: { kind: "read", throughAttentionAt: 50 },
+        queryClient,
+        threadId: "thread-1",
+      });
+      if (earlier === "replaced") settleUnread();
+
+      settleThreadReadStateFailure({ queryClient, transaction: read });
+      expect(readAt()).toBe(50);
+      pin.succeed();
+      expect(readAt()).toBe(50);
+    },
+  );
+
+  it("lets a newer successful unread win over an older failed read's fence", async () => {
+    const { queryClient } = createQueryClientTestHarness();
     queryClient.setQueryData(
       sidebarNavigationQueryKey(),
-      makeSidebarNavigation([updated, sibling]),
+      makeSidebarNavigation([makeThreadListEntry({ lastReadAt: 10 })]),
     );
-    rollbackThreadReadStateTransaction({ queryClient, threadId, transaction });
-    const expected = {
-      lastReadAt: lastReadAt === 100 ? 10 : lastReadAt,
-      latestAttentionAt: 200,
-      title: "New title",
-    };
-    expect(queryClient.getQueryData(threadQueryKey(threadId))).toMatchObject(
-      expected,
-    );
-    expect(queryClient.getQueryData<ThreadListEntry[]>(listKey)).toEqual([
-      expect.objectContaining(expected),
-      sibling,
-    ]);
-    expect(
+    const readAt = () =>
       queryClient.getQueryData<SidebarBootstrapResponse>(
         sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads,
-    ).toEqual([expect.objectContaining(expected), sibling]);
-  },
-);
+      )?.projects[0]?.threads[0]?.lastReadAt;
+    let land!: (sidebar: SidebarBootstrapResponse) => void;
+    const landing = queryClient.fetchQuery({
+      queryKey: sidebarNavigationQueryKey(),
+      queryFn: () =>
+        new Promise<SidebarBootstrapResponse>((resolve) => {
+          land = resolve;
+        }),
+      staleTime: 0,
+    });
+    const read = beginThreadReadStateTransaction({
+      intent: { kind: "read", throughAttentionAt: 50 },
+      queryClient,
+      threadId: "thread-1",
+    });
+    settleThreadReadStateFailure({ queryClient, transaction: read });
+    const unread = beginThreadReadStateTransaction({
+      intent: { kind: "unread" },
+      queryClient,
+      threadId: "thread-1",
+    });
+    settleThreadReadStateSuccess({
+      queryClient,
+      thread: makeThreadWithRuntime({ lastReadAt: null, updatedAt: 100 }),
+      transaction: unread,
+    });
+
+    land(
+      makeSidebarNavigation([
+        makeThreadListEntry({ lastReadAt: null, updatedAt: 120 }),
+      ]),
+    );
+    await landing;
+    expect(readAt()).toBeNull();
+  });
+
+  it("does not re-assert a failed read when a list without the thread lands", async () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const sidebar = () =>
+      makeSidebarNavigation([makeThreadListEntry({ lastReadAt: 10 })]);
+    queryClient.setQueryData(sidebarNavigationQueryKey(), sidebar());
+    const otherListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-2",
+    });
+    const otherEntry = makeThreadListEntry({
+      id: "thread-2",
+      projectId: "project-2",
+    });
+    queryClient.setQueryData(otherListKey, [otherEntry]);
+    const readAt = () =>
+      queryClient.getQueryData<SidebarBootstrapResponse>(
+        sidebarNavigationQueryKey(),
+      )?.projects[0]?.threads[0]?.lastReadAt;
+    let land!: (entries: ThreadListEntry[]) => void;
+    const landing = queryClient.fetchQuery({
+      queryKey: otherListKey,
+      queryFn: () =>
+        new Promise<ThreadListEntry[]>((resolve) => {
+          land = resolve;
+        }),
+      staleTime: 0,
+    });
+    const read = beginThreadReadStateTransaction({
+      intent: { kind: "read", throughAttentionAt: 50 },
+      queryClient,
+      threadId: "thread-1",
+    });
+    settleThreadReadStateFailure({ queryClient, transaction: read });
+    await queryClient.fetchQuery({
+      queryKey: sidebarNavigationQueryKey(),
+      queryFn: async () => sidebar(),
+      staleTime: 0,
+    });
+    expect(readAt()).toBe(10);
+
+    land([otherEntry]);
+    await landing;
+    expect(readAt()).toBe(10);
+  });
+});
 
 function seedConcurrentThreadCaches() {
   const { queryClient } = createQueryClientTestHarness();
