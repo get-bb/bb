@@ -31,7 +31,7 @@ $shell = New-Object -ComObject WScript.Shell
 $null = $shell.AppActivate("Browse For Folder")
 Start-Sleep -Milliseconds 500
 $tree = Find-Named $dialog "Navigation Pane" $scope::Descendants
-if ($null -ne $tree) { $tree.SetFocus() }
+if ($null -ne $tree) { try { $tree.SetFocus() } catch { Write-Host "Tree focus skipped: $_" } }
 Start-Sleep -Milliseconds 300
 
 if ($Action -eq "pick") {
