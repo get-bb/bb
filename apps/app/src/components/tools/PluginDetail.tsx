@@ -49,13 +49,11 @@ import {
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
-  catalogEntryShareTarget,
-  installedPluginShareTarget,
+  catalogEntryLinkTarget,
+  installedPluginLinkTarget,
 } from "@bb/client-core";
-import {
-  copyMarketplaceLinkItems,
-  PluginShareButton,
-} from "@/components/plugin/management/PluginShareButton";
+import { Separator } from "@bb/shared-ui/separator";
+import { PluginCopyLinkButton } from "@/components/plugin/management/PluginCopyLinkButton";
 import {
   useCancelPluginInstallJob,
   useCatalogEntryInstallJob,
@@ -183,8 +181,6 @@ export function CatalogPluginDetail({
   const installBlocker = catalogEntryInstallBlocker(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const { mutate: cancelInstall } = useCancelPluginInstallJob();
-  const shareTarget = catalogEntryShareTarget(entry);
-  const overflowItems = copyMarketplaceLinkItems(shareTarget);
   const entryTitle = splitPluginDisplayName(entry.displayName);
   return (
     <ResourceDetailPage
@@ -199,8 +195,8 @@ export function CatalogPluginDetail({
       metadata={<PluginMarketplaceByline entry={entry} />}
       actions={
         <>
-          <PluginShareButton
-            target={shareTarget}
+          <PluginCopyLinkButton
+            target={catalogEntryLinkTarget(entry)}
             displayName={entry.displayName}
           />
           <PluginCatalogInstallControl
@@ -215,14 +211,6 @@ export function CatalogPluginDetail({
             onCancelInstall={cancelInstall}
           />
         </>
-      }
-      overflowMenu={
-        overflowItems.length === 0 ? undefined : (
-          <ResourceOverflowMenu
-            label={`${entry.displayName} actions`}
-            items={overflowItems}
-          />
-        )
       }
     >
       <ResourceDetailStack>
@@ -429,9 +417,9 @@ export function PluginDetail({
 
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);
-  const shareTarget = installedPluginShareTarget(plugin);
+  const linkTarget = installedPluginLinkTarget(plugin);
+  const hasHeaderTools = hasConfiguration || linkTarget !== null;
   const overflowItems: ResourceOverflowMenuItem[] = [
-    ...copyMarketplaceLinkItems(shareTarget),
     ...(canEditSource
       ? [
           {
@@ -479,23 +467,33 @@ export function PluginDetail({
         )
       }
       actions={
-        <>
-          {hasConfiguration ? (
-            <ResourceActionButton
-              label={`${pluginName} settings`}
-              tooltipLabel="Settings"
-              icon="Settings"
-              onClick={() =>
-                onConfigure
-                  ? onConfigure()
-                  : navigate(
-                      getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-                    )
-              }
-            />
-          ) : null}
-          <PluginShareButton target={shareTarget} displayName={pluginName} />
-        </>
+        hasHeaderTools ? (
+          <>
+            <span className="flex items-center gap-0.5">
+              {hasConfiguration ? (
+                <ResourceActionButton
+                  label={`${pluginName} settings`}
+                  tooltipLabel="Settings"
+                  icon="Settings"
+                  onClick={() =>
+                    onConfigure
+                      ? onConfigure()
+                      : navigate(
+                          getPluginConfigurationRoutePath({
+                            pluginId: plugin.id,
+                          }),
+                        )
+                  }
+                />
+              ) : null}
+              <PluginCopyLinkButton
+                target={linkTarget}
+                displayName={pluginName}
+              />
+            </span>
+            <Separator orientation="vertical" className="h-4" />
+          </>
+        ) : undefined
       }
       lifecycleControl={
         <Switch

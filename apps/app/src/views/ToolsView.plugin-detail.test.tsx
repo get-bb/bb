@@ -822,10 +822,10 @@ describe("PluginDetail official catalog lifecycle", () => {
     ).not.toHaveLength(0);
   });
 
-  const SHARE_URL =
+  const PAGE_URL =
     "https://getbb.app/marketplace/acme-github?utm_source=bb&utm_medium=share";
 
-  function stubShareFetch() {
+  function stubTelemetryFetch() {
     const fetchMock = vi.fn(async () =>
       Response.json({ ok: true }, { status: 200 }),
     );
@@ -846,7 +846,7 @@ describe("PluginDetail official catalog lifecycle", () => {
     return writeText;
   }
 
-  function stubShareSheet(share: () => Promise<void>) {
+  function stubTouchShareSheet() {
     vi.stubGlobal(
       "matchMedia",
       (query: string) =>
@@ -861,7 +861,7 @@ describe("PluginDetail official catalog lifecycle", () => {
           dispatchEvent: () => false,
         }) satisfies MediaQueryList,
     );
-    const shareMock = vi.fn(share);
+    const shareMock = vi.fn(async () => {});
     Object.defineProperty(navigator, "share", {
       value: shareMock,
       configurable: true,
@@ -898,11 +898,11 @@ describe("PluginDetail official catalog lifecycle", () => {
     marketplace: "bb-community",
     marketplaceDisplayName: "BB Community",
     official: false,
-    marketplacePageUrl: SHARE_URL,
+    marketplacePageUrl: PAGE_URL,
   } satisfies PluginCatalogSearchEntry;
 
-  it("shares a catalog entry's page from Share and from the ⋯ menu", async () => {
-    const telemetry = stubShareFetch();
+  it("copies a catalog entry's page link from the header and drops the ⋯ menu", async () => {
+    const telemetry = stubTelemetryFetch();
     const writeText = stubClipboard();
     renderWithQueryClient(
       <CatalogPluginDetail
@@ -913,30 +913,29 @@ describe("PluginDetail official catalog lifecycle", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Share GitHub" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(SHARE_URL));
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "GitHub actions" }),
-    );
+    expect(
+      screen.queryByRole("button", { name: "GitHub actions" }),
+    ).toBeNull();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy marketplace link" }),
+      screen.getByRole("button", { name: "Copy link to GitHub" }),
     );
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
-
-    const shared = {
-      name: "plugin_link_shared",
-      properties: {
-        entry_id: "acme-github",
-        marketplace: "bb-community",
-        share_method: "copy_link",
-      },
-    };
-    await waitFor(() => expect(telemetry()).toEqual([shared, shared]));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
+    await waitFor(() =>
+      expect(telemetry()).toEqual([
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "acme-github",
+            marketplace: "bb-community",
+            share_method: "copy_link",
+          },
+        },
+      ]),
+    );
   });
 
-  it("places Share after Settings and before the switch on an installed built-in plugin", async () => {
-    const telemetry = stubShareFetch();
+  it("groups Settings and Copy link before the switch on an installed built-in plugin", async () => {
+    const telemetry = stubTelemetryFetch();
     const writeText = stubClipboard();
     renderInstalledPlugin({
       ...GITHUB_PLUGIN,
@@ -947,22 +946,32 @@ describe("PluginDetail official catalog lifecycle", () => {
       catalogEntryId: null,
       catalogMarketplaceName: null,
       hasSettings: true,
-      marketplacePageUrl: SHARE_URL,
+      marketplacePageUrl: PAGE_URL,
     });
 
     const settings = screen.getByRole("button", {
       name: "Simple Notes settings",
     });
-    const share = screen.getByRole("button", { name: "Share Simple Notes" });
+    const copyLink = screen.getByRole("button", {
+      name: "Copy link to Simple Notes",
+    });
     const toggle = screen.getByRole("switch", {
       name: "Disable Simple Notes",
     });
     const following = Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(settings.compareDocumentPosition(share) & following).toBeTruthy();
-    expect(share.compareDocumentPosition(toggle) & following).toBeTruthy();
+    expect(settings.compareDocumentPosition(copyLink) & following).toBeTruthy();
+    expect(copyLink.compareDocumentPosition(toggle) & following).toBeTruthy();
 
-    fireEvent.click(share);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(SHARE_URL));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Simple Notes actions" }),
+    );
+    await screen.findByRole("menuitem", { name: "Uninstall" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Copy marketplace link" }),
+    ).toBeNull();
+
+    fireEvent.click(copyLink);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
     await waitFor(() =>
       expect(telemetry()).toEqual([
         {
@@ -977,21 +986,21 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
   });
 
-  it("opens the share sheet on touch devices and records it", async () => {
-    const telemetry = stubShareFetch();
+  it("copies instead of opening the share sheet on touch devices", async () => {
+    const telemetry = stubTelemetryFetch();
     const writeText = stubClipboard();
-    const share = stubShareSheet(async () => {});
+    const share = stubTouchShareSheet();
     renderInstalledPlugin({
       ...GITHUB_PLUGIN,
       catalogEntryId: "acme-github",
       catalogMarketplaceName: "bb-community",
-      marketplacePageUrl: SHARE_URL,
+      marketplacePageUrl: PAGE_URL,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Share GitHub" }));
-    await waitFor(() =>
-      expect(share).toHaveBeenCalledWith({ title: "GitHub", url: SHARE_URL }),
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy link to GitHub" }),
     );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
     await waitFor(() =>
       expect(telemetry()).toEqual([
         {
@@ -999,33 +1008,15 @@ describe("PluginDetail official catalog lifecycle", () => {
           properties: {
             entry_id: "acme-github",
             marketplace: "bb-community",
-            share_method: "share_sheet",
+            share_method: "copy_link",
           },
         },
       ]),
     );
-    expect(writeText).not.toHaveBeenCalled();
+    expect(share).not.toHaveBeenCalled();
   });
 
-  it("sends nothing when the share sheet is cancelled", async () => {
-    const telemetry = stubShareFetch();
-    const share = stubShareSheet(async () => {
-      throw new DOMException("cancelled", "AbortError");
-    });
-    renderInstalledPlugin({
-      ...GITHUB_PLUGIN,
-      catalogEntryId: "acme-github",
-      catalogMarketplaceName: "bb-community",
-      marketplacePageUrl: SHARE_URL,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Share GitHub" }));
-    await waitFor(() => expect(share).toHaveBeenCalledOnce());
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(telemetry()).toEqual([]);
-  });
-
-  it("offers no Share or marketplace link when the plugin has no page", async () => {
+  it("offers no Copy link when the plugin has no page", async () => {
     renderInstalledPlugin({
       ...GITHUB_PLUGIN,
       catalogEntryId: "acme-github",
@@ -1033,7 +1024,9 @@ describe("PluginDetail official catalog lifecycle", () => {
       marketplacePageUrl: null,
     });
 
-    expect(screen.queryByRole("button", { name: "Share GitHub" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Copy link to GitHub" }),
+    ).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "GitHub actions" }),
     );

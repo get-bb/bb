@@ -3832,7 +3832,7 @@ Official or BB Community entry, or nulls. App callers, all through
 through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web), and
-`PluginShareButton`'s `plugin_link_shared`. `bb plugin new` and
+`PluginCopyLinkButton`'s `plugin_link_shared`. `bb plugin new` and
 `bb plugin share` send their events through the same SDK method. The setup guide's
 Plugins step reports `recommendation` `shown` and `selected` with a per-visit
 `recommendation_id`; `selected` also stores that id in server-owned settings

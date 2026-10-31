@@ -2,17 +2,17 @@ import type { InstalledPlugin } from "@bb/server-contract";
 
 const BB_OFFICIAL_MARKETPLACE_NAME = "bb-official";
 
-export interface PluginShareTarget {
+export interface PluginLinkTarget {
   url: string;
   marketplace: string;
   entryId: string;
 }
 
-export function catalogEntryShareTarget(entry: {
+export function catalogEntryLinkTarget(entry: {
   marketplacePageUrl: string | null;
   marketplace: string;
   entryId: string;
-}): PluginShareTarget | null {
+}): PluginLinkTarget | null {
   if (entry.marketplacePageUrl === null) return null;
   return {
     url: entry.marketplacePageUrl,
@@ -21,13 +21,13 @@ export function catalogEntryShareTarget(entry: {
   };
 }
 
-export function installedPluginShareTarget(plugin: {
+export function installedPluginLinkTarget(plugin: {
   id: string;
   provenance: InstalledPlugin["provenance"];
   catalogEntryId: string | null;
   catalogMarketplaceName: string | null;
   marketplacePageUrl: string | null;
-}): PluginShareTarget | null {
+}): PluginLinkTarget | null {
   if (plugin.marketplacePageUrl === null) return null;
   if (plugin.catalogMarketplaceName !== null && plugin.catalogEntryId !== null) {
     return {

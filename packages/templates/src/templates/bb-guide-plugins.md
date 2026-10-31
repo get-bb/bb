@@ -59,7 +59,7 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  semver range and resolved tag, engine ranges,
                                  install time, and recent activation history
   bb plugin share <id> [--json]  Print the plugin's getbb.app page link, the
-                                 same one the app's Share button copies. Works
+                                 same one the app's Copy link button copies. Works
                                  for installed and uninstalled BB Official and
                                  BB Community plugins; exits 1 when the plugin
                                  has no page (local, third-party, or unlisted)

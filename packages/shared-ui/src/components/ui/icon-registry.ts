@@ -111,7 +111,6 @@ export const EXTENDED_ICON_NAMES = [
   "Rows2",
   "SecurityCheck",
   "Sent",
-  "Share",
   "SideChat",
   "Smartphone",
   "Sort",

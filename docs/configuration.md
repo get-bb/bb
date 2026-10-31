@@ -348,10 +348,9 @@ first-send events through `POST /api/v1/system/telemetry/events`
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app), and
-`plugin_link_shared` when you share a plugin's getbb.app page from its Share
-button, the ⋯ menu's Copy marketplace link, or `bb plugin share`
-(`share_method` `share_sheet`, `copy_link`, or `cli`; a cancelled share sheet
-sends nothing).
+`plugin_link_shared` when you copy a plugin's getbb.app page link with the
+Copy link button in its header (`share_method` `copy_link`) or print it with
+`bb plugin share` (`cli`); `share_sheet` is reserved and not sent today.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The

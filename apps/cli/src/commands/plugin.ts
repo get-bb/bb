@@ -34,9 +34,9 @@ import {
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
 import {
-  catalogEntryShareTarget,
-  installedPluginShareTarget,
-  type PluginShareTarget,
+  catalogEntryLinkTarget,
+  installedPluginLinkTarget,
+  type PluginLinkTarget,
 } from "@bb/client-core";
 import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
@@ -362,16 +362,16 @@ async function isPackageInstalled(
 const PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS = 2_000;
 const PLUGIN_SHARE_TELEMETRY_TIMEOUT_MS = 2_000;
 
-async function resolvePluginShareTarget(
+async function resolvePluginLinkTarget(
   baseUrl: string,
   id: string,
-): Promise<PluginShareTarget | null> {
+): Promise<PluginLinkTarget | null> {
   const sdk = createCliBbSdk(baseUrl);
   const installed = (await sdk.plugins.list()).plugins.find(
     (plugin) => plugin.id === id,
   );
   if (installed !== undefined) {
-    return installedPluginShareTarget({
+    return installedPluginLinkTarget({
       id: installed.id,
       provenance: installed.provenance,
       catalogEntryId: installed.catalogEntryId ?? null,
@@ -389,12 +389,12 @@ async function resolvePluginShareTarget(
       1,
     );
   }
-  return catalogEntryShareTarget(listed);
+  return catalogEntryLinkTarget(listed);
 }
 
 async function recordPluginLinkShared(
   baseUrl: string,
-  target: PluginShareTarget,
+  target: PluginLinkTarget,
 ): Promise<void> {
   try {
     await createCliBbSdk(
@@ -1113,7 +1113,7 @@ export function registerPluginCommands(
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
         const baseUrl = getUrl();
-        const target = await resolvePluginShareTarget(baseUrl, id);
+        const target = await resolvePluginLinkTarget(baseUrl, id);
         if (target === null) {
           throw new CliExitError(
             `"${id}" has no marketplace page to share. Only BB Official and BB Community plugins with a getbb.app page have one.`,

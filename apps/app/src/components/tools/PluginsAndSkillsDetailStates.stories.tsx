@@ -58,7 +58,7 @@ export default {
 
 const noop = () => {};
 
-function shareLink(entryId: string): string {
+function pageLink(entryId: string): string {
   return `https://getbb.app/marketplace/${entryId}?utm_source=bb&utm_medium=share`;
 }
 
@@ -82,7 +82,7 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
       "github-update-failed",
       "github-compatibility-blocked",
       "enterprise-issue-tracker-synchronization",
-      ...SHARE_STORY_SOURCE_PLUGIN_IDS,
+      ...COPY_LINK_STORY_SOURCE_PLUGIN_IDS,
     ]) {
       client.setQueryData(pluginSourceQueryKey(pluginId), {
         requested: `npm:@bb-plugins/${pluginId}`,
@@ -95,7 +95,7 @@ function PluginStoryQueryBoundary({ children }: { children: ReactNode }) {
       });
     }
     client.setQueryData(pluginInstallJobsQueryKey(), [
-      SHARE_STORY_INSTALL_JOB,
+      COPY_LINK_STORY_INSTALL_JOB,
     ]);
     return client;
   });
@@ -548,7 +548,7 @@ Sign in once with \`gh auth login\`. The plugin reuses your GitHub CLI session a
   installs: null,
   compatible: true,
   incompatibleReason: null,
-  marketplacePageUrl: shareLink("github"),
+  marketplacePageUrl: pageLink("github"),
 } satisfies PluginCatalogSearchEntry;
 
 const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
@@ -1079,7 +1079,7 @@ const CATALOG_PLUGIN = {
   catalogEntryId: "github",
   catalogMarketplaceName: "bb-community",
   publisherLabel: "BB Community",
-  marketplacePageUrl: shareLink("github"),
+  marketplacePageUrl: pageLink("github"),
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
@@ -1370,13 +1370,13 @@ export function ResourceControlStates() {
   );
 }
 
-const SHARE_STORY_SOURCE_PLUGIN_IDS = [
+const COPY_LINK_STORY_SOURCE_PLUGIN_IDS = [
   "agent-annotations",
-  "github-community-share",
+  "github-community-link",
 ];
 
-const SHARE_STORY_INSTALL_JOB = {
-  id: "job-share-story",
+const COPY_LINK_STORY_INSTALL_JOB = {
+  id: "job-copy-link-story",
   target: {
     kind: "catalog",
     entryId: "bb--git",
@@ -1386,7 +1386,7 @@ const SHARE_STORY_INSTALL_JOB = {
   state: "running",
 } as const;
 
-const SHARE_CATALOG_ENTRY = {
+const LINK_CATALOG_ENTRY = {
   ...UNINSTALLED_CATALOG_PLUGIN,
   entryId: "agent-annotations",
   pluginId: "agent-annotations",
@@ -1398,11 +1398,11 @@ const SHARE_CATALOG_ENTRY = {
   categoryId: "tasks-and-workflows",
   category: "Tasks & Workflows",
   source: "builtin:agent-annotations",
-  marketplacePageUrl: shareLink("agent-annotations"),
+  marketplacePageUrl: pageLink("agent-annotations"),
 } satisfies PluginCatalogSearchEntry;
 
-const SHARE_INSTALLING_ENTRY = {
-  ...SHARE_CATALOG_ENTRY,
+const LINK_INSTALLING_ENTRY = {
+  ...LINK_CATALOG_ENTRY,
   entryId: "bb--git",
   pluginId: "git",
   displayName: "Git",
@@ -1410,11 +1410,11 @@ const SHARE_INSTALLING_ENTRY = {
   overview: "Stage, commit, and review changes without leaving the thread.",
   icon: "GitBranch",
   source: "builtin:git",
-  marketplacePageUrl: shareLink("bb--git"),
+  marketplacePageUrl: pageLink("bb--git"),
 } satisfies PluginCatalogSearchEntry;
 
-const SHARE_COMMUNITY_ENTRY = {
-  ...SHARE_CATALOG_ENTRY,
+const LINK_COMMUNITY_ENTRY = {
+  ...LINK_CATALOG_ENTRY,
   entryId: "linear-sync",
   pluginId: "linear-sync",
   displayName: "Linear Sync",
@@ -1433,11 +1433,11 @@ const SHARE_COMMUNITY_ENTRY = {
     url: "https://github.com/mira-dev",
   },
   installs: 1240,
-  marketplacePageUrl: shareLink("linear-sync"),
+  marketplacePageUrl: pageLink("linear-sync"),
 } satisfies PluginCatalogSearchEntry;
 
-const SHARE_UNLISTED_ENTRY = {
-  ...SHARE_CATALOG_ENTRY,
+const LINK_UNLISTED_ENTRY = {
+  ...LINK_CATALOG_ENTRY,
   entryId: "provider-codex",
   pluginId: "provider-codex",
   displayName: "Codex",
@@ -1448,11 +1448,11 @@ const SHARE_UNLISTED_ENTRY = {
   marketplacePageUrl: null,
 } satisfies PluginCatalogSearchEntry;
 
-const SHARE_OFFICIAL_INSTALLED: PluginListItem = {
+const LINK_OFFICIAL_INSTALLED: PluginListItem = {
   ...PLUGIN,
   id: "agent-annotations",
   name: "Agent Annotations",
-  description: SHARE_CATALOG_ENTRY.description,
+  description: LINK_CATALOG_ENTRY.description,
   icon: "Edit",
   source: "catalog:bb-official/agent-annotations",
   provenance: "catalog",
@@ -1460,10 +1460,10 @@ const SHARE_OFFICIAL_INSTALLED: PluginListItem = {
   catalogMarketplaceName: "bb-official",
   publisherLabel: "BB Official",
   hasSettings: true,
-  marketplacePageUrl: shareLink("agent-annotations"),
+  marketplacePageUrl: pageLink("agent-annotations"),
 };
 
-const SHARE_BUILTIN_RENAMED: PluginListItem = {
+const LINK_BUILTIN_RENAMED: PluginListItem = {
   ...BUNDLED_PLUGIN,
   id: "simple-notes",
   name: "Simple Notes",
@@ -1471,10 +1471,10 @@ const SHARE_BUILTIN_RENAMED: PluginListItem = {
   icon: "FileText",
   source: "builtin:docs",
   rootDir: "/managed/plugins/docs",
-  marketplacePageUrl: shareLink("simple-notes"),
+  marketplacePageUrl: pageLink("simple-notes"),
 };
 
-const SHARE_BUILTIN_UNLISTED: PluginListItem = {
+const LINK_BUILTIN_UNLISTED: PluginListItem = {
   ...BUNDLED_PLUGIN,
   id: "provider-codex",
   name: "Codex",
@@ -1486,21 +1486,21 @@ const SHARE_BUILTIN_UNLISTED: PluginListItem = {
   marketplacePageUrl: null,
 };
 
-const SHARE_COMMUNITY_INSTALLED: PluginListItem = {
+const LINK_COMMUNITY_INSTALLED: PluginListItem = {
   ...PLUGIN,
-  id: "github-community-share",
+  id: "github-community-link",
   name: "Linear Sync",
-  description: SHARE_COMMUNITY_ENTRY.description,
+  description: LINK_COMMUNITY_ENTRY.description,
   icon: "Link",
   source: "catalog:bb-community/linear-sync",
   provenance: "catalog",
   catalogEntryId: "linear-sync",
   catalogMarketplaceName: "bb-community",
   publisherLabel: "BB Community",
-  marketplacePageUrl: shareLink("linear-sync"),
+  marketplacePageUrl: pageLink("linear-sync"),
 };
 
-const SHARE_FOLDER_PLUGIN: PluginListItem = {
+const LINK_FOLDER_PLUGIN: PluginListItem = {
   ...PLUGIN,
   id: "standup-notes",
   name: "Standup Notes",
@@ -1513,18 +1513,18 @@ const SHARE_FOLDER_PLUGIN: PluginListItem = {
   marketplacePageUrl: null,
 };
 
-function ShareWidths({ children }: { children: ReactNode }) {
+function StoryWidths({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col gap-4">
-      <ShareFrame label="Desktop">{children}</ShareFrame>
-      <ShareFrame label="Phone · 390px" phone>
+      <StoryFrame label="Desktop">{children}</StoryFrame>
+      <StoryFrame label="Phone · 390px" phone>
         {children}
-      </ShareFrame>
+      </StoryFrame>
     </div>
   );
 }
 
-function ShareFrame({
+function StoryFrame({
   label,
   phone = false,
   children,
@@ -1549,108 +1549,108 @@ function ShareFrame({
   );
 }
 
-export function PluginShareStates() {
+export function PluginCopyLinkStates() {
   return (
     <PluginStoryQueryBoundary>
       <Story
-        title="Plugin share states"
-        description="Share appears on every plugin that has a getbb.app page: before Install on catalog pages, and right after Settings on installed pages, with the enable switch keeping its spot just before ⋯. On desktop it copies the link and shows “Link copied”; on phones it opens the system share sheet. Plugins with no page show no Share. “Copy marketplace link” stays in the ⋯ menu."
+        title="Plugin copy link states"
+        description="Every plugin with a getbb.app page gets a Copy link icon button. Catalog pages: Copy link, Install, ⋯ (hidden when empty). Installed pages: Settings and Copy link as one icon group, a divider, then the switch and ⋯. Clicking copies the page link on every device and shows “Link copied”. Plugins with no page show no Copy link, and ⋯ no longer has Copy marketplace link."
         renderedNote="The real header, at desktop and phone widths (page clipped below the header)"
       >
         <State
           name="Catalog · Install"
-          note="Uninstalled BB Official plugin with a page. Share sits left of Install, so the primary acquisition action keeps the trailing edge."
+          note="Uninstalled BB Official plugin with a page. Copy link sits left of Install, which stays the only labeled button. ⋯ is hidden because it has nothing left to offer."
         >
-          <ShareWidths>
-            <CatalogPlugin entry={SHARE_CATALOG_ENTRY} />
-          </ShareWidths>
+          <StoryWidths>
+            <CatalogPlugin entry={LINK_CATALOG_ENTRY} />
+          </StoryWidths>
         </State>
 
         <State
           name="Catalog · installing"
-          note="Install progress replaces Install in place. Share stays put, so the header doesn't shift while the install runs."
+          note="Install progress replaces Install in place. Copy link stays put, so the header doesn't shift while the install runs."
         >
-          <ShareWidths>
-            <CatalogPlugin entry={SHARE_INSTALLING_ENTRY} />
-          </ShareWidths>
+          <StoryWidths>
+            <CatalogPlugin entry={LINK_INSTALLING_ENTRY} />
+          </StoryWidths>
         </State>
 
         <State
           name="Catalog · BB Community"
-          note="A community plugin with an install count. The byline names its author; Share and the ⋯ menu's Copy marketplace link both point at its page."
+          note="A community plugin with an install count. The byline names its author; Copy link points at its getbb.app page."
         >
-          <ShareWidths>
-            <CatalogPlugin entry={SHARE_COMMUNITY_ENTRY} />
-          </ShareWidths>
+          <StoryWidths>
+            <CatalogPlugin entry={LINK_COMMUNITY_ENTRY} />
+          </StoryWidths>
         </State>
 
         <State
           name="Catalog · install unavailable"
-          note="Install is disabled by a compatibility blocker. Sharing still works: the page exists even when this bb can't install it."
+          note="Install is disabled by a compatibility blocker. Copy link still works: the page exists even when this bb can't install it."
         >
-          <ShareWidths>
+          <StoryWidths>
             <CatalogPlugin
               entry={{
-                ...SHARE_CATALOG_ENTRY,
+                ...LINK_CATALOG_ENTRY,
                 compatible: false,
                 incompatibleReason: "Requires bb 0.50 or newer.",
               }}
             />
-          </ShareWidths>
+          </StoryWidths>
         </State>
 
         <State
           name="Catalog · no page"
-          note="One of the nine unlisted official plugins (providers, environments, account-pool, plugin-api-tester). No Share, and no ⋯ menu because it has nothing to copy."
+          note="One of the nine unlisted official plugins (providers, environments, account-pool, plugin-api-tester). No Copy link and no ⋯ menu."
         >
-          <ShareWidths>
-            <CatalogPlugin entry={SHARE_UNLISTED_ENTRY} />
-          </ShareWidths>
+          <StoryWidths>
+            <CatalogPlugin entry={LINK_UNLISTED_ENTRY} />
+          </StoryWidths>
         </State>
 
         <State
           name="Installed · BB Official"
-          note="Catalog install with settings. Order: Settings, Share, the enable switch, then ⋯ (Copy marketplace link, Uninstall)."
+          note="Catalog install with settings. Settings and Copy link form one icon group, then a divider, the enable switch, and ⋯ (Uninstall)."
         >
-          <ShareWidths>
-            <Plugin plugin={SHARE_OFFICIAL_INSTALLED} />
-          </ShareWidths>
+          <StoryWidths>
+            <Plugin plugin={LINK_OFFICIAL_INSTALLED} />
+          </StoryWidths>
         </State>
 
         <State
           name="Installed · built-in, renamed"
           note="Ships with bb, so Uninstall in ⋯ is disabled. Its built-in name (docs) differs from its plugin ID and page (simple-notes); the server-filled link points at the page."
         >
-          <ShareWidths>
-            <Plugin plugin={SHARE_BUILTIN_RENAMED} />
-          </ShareWidths>
+          <StoryWidths>
+            <Plugin plugin={LINK_BUILTIN_RENAMED} />
+          </StoryWidths>
         </State>
 
         <State
           name="Installed · BB Community"
-          note="Community catalog install without settings: Share, switch, ⋯."
+          note="Community catalog install without settings: Copy link, divider, switch, ⋯."
         >
-          <ShareWidths>
-            <Plugin plugin={SHARE_COMMUNITY_INSTALLED} />
-          </ShareWidths>
+          <StoryWidths>
+            <Plugin plugin={LINK_COMMUNITY_INSTALLED} />
+          </StoryWidths>
         </State>
 
         <State
           name="Installed · no page"
-          note="An unlisted built-in plugin. No Share; the header keeps Settings, the switch, and ⋯ exactly as today."
+          note="An unlisted built-in plugin. No Copy link; the group holds only Settings, then the divider, switch, and ⋯."
         >
-          <ShareWidths>
-            <Plugin plugin={SHARE_BUILTIN_UNLISTED} />
-          </ShareWidths>
+          <StoryWidths>
+            <Plugin plugin={LINK_BUILTIN_UNLISTED} />
+          </StoryWidths>
         </State>
 
         <State
           name="Folder install · stage 2"
-          note="Installed from a local folder. No Share in stage 2: a matching ID alone could be someone else's plugin. ⋯ has Edit and Remove from bb; Open source and Copy path stay in the Source section."
+          note="Installed from a local folder. No Copy link in stage 2: a matching ID alone could be someone else's plugin. With no settings either, there is no icon group or divider. ⋯ has Edit and Remove from bb; Open source and Copy path stay in the Source section."
         >
-          <ShareWidths>
-            <Plugin plugin={SHARE_FOLDER_PLUGIN} />
-          </ShareWidths>
+          <StoryWidths>
+            <Plugin plugin={LINK_FOLDER_PLUGIN} />
+          </StoryWidths>
         </State>
 
       </Story>
@@ -1664,13 +1664,13 @@ function cardEntry(
   overrides: Partial<PluginCatalogSearchEntry> = {},
 ): PluginCatalogSearchEntry {
   return {
-    ...SHARE_CATALOG_ENTRY,
+    ...LINK_CATALOG_ENTRY,
     entryId,
     pluginId: entryId,
     displayName,
     description: `${displayName} for bb.`,
     source: `builtin:${entryId}`,
-    marketplacePageUrl: shareLink(entryId),
+    marketplacePageUrl: pageLink(entryId),
     ...overrides,
   };
 }
@@ -1886,7 +1886,7 @@ export function PluginCardInstallStates() {
     <CardStoryQueryBoundary>
       <Story
         title="Plugin card install states"
-        description="The Browse card's footer moves from Install, through install progress, to Installed with the enable switch beside it. Click Install on the first card to run the whole sequence; the switch then turns the plugin on and off."
+        description="The Browse card's footer moves from Install, through install progress, to Installed with the enable switch beside it. Click Install on the first card to run the whole sequence; the switch then turns the plugin on and off. Cards carry no Copy link; it lives in the plugin page header."
         renderedNote="The real Browse card"
       >
         <State
