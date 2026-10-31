@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.4.90"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "Provider usage",
     "description": "View provider usage in plugin settings and an optional sidebar footer card.",

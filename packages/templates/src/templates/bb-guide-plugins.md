@@ -340,6 +340,14 @@ skill; in a checkout it lives under plugins/bb-guide/skills/bb-plugin-authoring/
 `plugins/` holds every bundled plugin and `examples/plugins/` holds reference
 plugins.
 
+Plugins with audited named roots for all utility-styled mounts and portals can
+set top-level `bbPluginBuild.experimental_cssScope` to `"owned-root-v1"` in
+`package.json`. `bb plugin build` then emits an optional narrower CSS artifact
+alongside legacy `app.css`; compatible clients select it, while old clients or
+invalid optional artifacts keep legacy CSS. Keep this key outside the strict
+`bb` manifest object. Custom portals must carry the plugin's identity too.
+If the package allowlists individual build files, include `dist/app.owned-root.css`.
+
 ## Inspect plugin RPC
 
 `bb plugin rpc list [plugin-id] [--method <exact-name>] [--json]` lists discoverable methods from running plugins, optionally restricted to one plugin. `bb plugin rpc inspect <plugin-id> [method] [--json]` dumps registration and method descriptions plus input/output JSON Schemas. Copy the relevant schema into your consumer and call the existing plugin RPC endpoint. Discovery is opt-in advertising, not access control; method names may carry versions such as `provider-usage.v1.listResources`.

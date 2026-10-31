@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -330,6 +331,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.css"),
       ".bb71-authored-decoration { text-decoration: underline; }\n" +
+        "[data-bb-plugin-root] .bb71-authored-portal { opacity: 0.75; }\n" +
         "@keyframes bb71-authored-pulse { to { opacity: 0.5; } }\n",
     );
 
@@ -372,6 +374,81 @@ describe("plugin app runtime shim", () => {
       css.lastIndexOf("@layer utilities{"),
     );
     expect(css).toContain("@keyframes bb71-authored-pulse");
+
+    const packagePath = join(dir, "package.json");
+    const originalPackage = await readFile(packagePath, "utf8");
+    expect(
+      JSON.parse(await readFile(result.metaPath, "utf8")),
+    ).not.toHaveProperty("ownedRootCss");
+    await expect(
+      readFile(join(dir, "dist/app.owned-root.css")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await writeFile(
+      packagePath,
+      JSON.stringify({
+        ...JSON.parse(originalPackage),
+        bbPluginBuild: { experimental_cssScope: "owned-root-v1" },
+      }),
+    );
+    const optedIn = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const ownedCss = await readFile(
+      join(dir, "dist/app.owned-root.css"),
+      "utf8",
+    );
+    const legacyCss = await readFile(optedIn.cssPath, "utf8");
+    expect(legacyCss).toBe(css);
+    expect(ownedCss).not.toContain(
+      "[data-bb-plugin-root]:not([data-bb-plugin])",
+    );
+    expect(ownedCss).toContain(
+      "[data-bb-plugin-root] .bb71-authored-portal{opacity:.75}",
+    );
+    expect(ownedCss).toContain(":where([data-bb-plugin=css-fixture])");
+    const normalize = (value: string) =>
+      value.replaceAll(",[data-bb-plugin-root]:not([data-bb-plugin])", "");
+    expect(normalize(legacyCss)).toBe(ownedCss);
+    const digest = (value: Uint8Array | string) =>
+      createHash("sha256").update(value).digest("hex");
+    expect(
+      JSON.parse(await readFile(optedIn.metaPath, "utf8")).ownedRootCss,
+    ).toEqual({
+      version: 1,
+      jsSha256: digest(await readFile(optedIn.jsPath)),
+      legacyCssSha256: digest(legacyCss),
+      cssSha256: digest(ownedCss),
+    });
+    await writeFile(packagePath, originalPackage);
+    await buildPluginApp(dir, "0.9.0-test", await testToolchain());
+    expect(
+      JSON.parse(await readFile(result.metaPath, "utf8")),
+    ).not.toHaveProperty("ownedRootCss");
+    await expect(
+      readFile(join(dir, "dist/app.owned-root.css")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([
+    null,
+    [],
+    true,
+    "owned-root-v1",
+    { experimental_cssScope: "unknown" },
+    { experimental_cssScope: null },
+    { cssScope: "owned-root-v1" },
+  ])("rejects invalid builder CSS configuration %j", async (bbPluginBuild) => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-invalid-css-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({ bbPluginBuild }),
+    );
+    await expect(
+      buildPluginApp(dir, "0.9.0-test", await testToolchain()),
+    ).rejects.toThrow(/invalid bbPluginBuild/);
   });
 
   it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {

@@ -182,7 +182,7 @@ function deactivateAfterFinalRelease(
 }
 
 function hostTailwindUrl(url: string): string {
-  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}`;
+  return `${url}${url.includes("?") ? "&" : "?"}host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
 }
 
 export function prefetchPluginCss(url: string): void {

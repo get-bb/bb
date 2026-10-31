@@ -436,7 +436,7 @@ describe("reconcilePluginFrontends", () => {
     });
 
     expect(loadedDuringRender).toHaveBeenCalledWith([
-      `/api/v1/plugins/hello/assets/app.css?h=cold&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/api/v1/plugins/hello/assets/app.css?h=cold&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     expect(container.textContent).toContain("cold panel body:notes/today.md");
     expect(
@@ -504,7 +504,7 @@ describe("reconcilePluginFrontends", () => {
       };
     });
     const sheet = (version: string) =>
-      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
     const links = () => [
       ...document.head.querySelectorAll<HTMLLinkElement>(
         'link[data-bb-plugin-css="hello"]',
@@ -602,7 +602,7 @@ describe("reconcilePluginFrontends", () => {
       };
     });
     const sheet = (version: string) =>
-      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
     const hrefs = () =>
       [
         ...document.head.querySelectorAll<HTMLLinkElement>(
@@ -662,7 +662,7 @@ describe("reconcilePluginFrontends", () => {
       };
     });
     const sheet = (pluginId: string, version: string) =>
-      `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+      `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
     const links = (pluginId: string) => [
       ...document.head.querySelectorAll<HTMLLinkElement>(
         `link[data-bb-plugin-css="${pluginId}"]`,
@@ -1522,14 +1522,16 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     const first = links("hello")[0];
     expect(first?.getAttribute("href")).toBe(
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     );
     prefetchPluginCss("/assets/prefetched.css");
     expect(
       document
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
-    ).toBe(`/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}`);
+    ).toBe(
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+    );
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(links("hello")[0]).toBe(first);
 
@@ -1560,7 +1562,7 @@ describe("applyPluginCss", () => {
     await failed;
     warn.mockRestore();
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
 
     const cleared = applyPluginCss("hello", "/assets/app.css?h=ccc");
@@ -1591,7 +1593,7 @@ describe("applyPluginCss", () => {
     await Promise.resolve();
     expect(secondSettled).toBe(false);
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
 
     links("hello")[0]?.dispatchEvent(new Event("load"));
@@ -1638,7 +1640,7 @@ describe("applyPluginCss", () => {
     expect(preloads("hello")).toHaveLength(1);
     expect(preloads("hello")[0]?.fetchPriority).not.toBe("low");
     expect(preloads("hello")[0]?.getAttribute("href")).toBe(
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     );
     expect(links("hello")).toHaveLength(0);
 
@@ -1719,18 +1721,18 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const fresh = links("hello")[1];
     expect(fresh?.getAttribute("href")).toBe(
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     );
     releaseFirst();
     await vi.advanceTimersByTimeAsync(200);
     fresh?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     await vi.advanceTimersByTimeAsync(300);
     const releaseSecond = retainPluginCss("hello");
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     expect(links("hello")[0]).toBe(fresh);
     expect(preloads("hello")).toHaveLength(0);
@@ -1750,18 +1752,18 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     const inflight = links("hello")[1];
     expect(inflight?.getAttribute("href")).toBe(
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     );
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     inflight?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     retainPluginCss("hello");
     expect(links("hello")).toHaveLength(2);
@@ -1769,11 +1771,11 @@ describe("applyPluginCss", () => {
       .find(
         (l) =>
           l.getAttribute("href") ===
-          `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+          `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
       )
       ?.dispatchEvent(new Event("load"));
     expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -1809,14 +1811,14 @@ describe("applyPluginCss", () => {
     applyPluginCss("hello", "/assets/app.css?h=bbb");
     expect(links("hello")).toHaveLength(0);
     expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
     expect(vi.getTimerCount()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(0);
     expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
     ]);
   });
 

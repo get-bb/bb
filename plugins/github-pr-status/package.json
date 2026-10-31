@@ -8,6 +8,9 @@
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.94"
   },
+  "bbPluginBuild": {
+    "experimental_cssScope": "owned-root-v1"
+  },
   "bb": {
     "name": "GitHub PR Status",
     "description": "GitHub pull request status and actions for each environment's branch",
