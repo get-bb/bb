@@ -157,7 +157,7 @@ type Follow = {
   clicks: number[];
 };
 
-const SCENES: Scene[] = [
+const ALL_SCENES: Scene[] = [
   {
     id: "sentry",
     hold: 2.5,
@@ -203,7 +203,7 @@ const SCENES: Scene[] = [
   },
   {
     id: "spawn",
-    hold: 2.5,
+    hold: 2,
     title: "CSV export",
     prompt:
       "Add CSV export to the reports page. Have Codex write the tests in parallel.",
@@ -424,12 +424,20 @@ const SCENES: Scene[] = [
   },
 ];
 
+// One play-through (~15.5s) that tells one story, then holds on the finished
+// frame: the agent works and hands tests to a Codex child thread, the turn
+// settles, then a Linear issues panel plugin opens beside the thread and
+// stays open as the end frame. The other scenes stay defined for later
+// cuts.
+const PLAY = ["spawn", "linear"];
+const SCENES: Scene[] = PLAY.map((id) => ALL_SCENES.find((x) => x.id === id)!);
+
 const PERSIST = new Set<string>(["spawn", "composer", "strip", "grouped"]);
 const RAIL: Record<string, string> = {
   sentry: "rail-sentry",
   linear: "rail-linear",
 };
-const CLOSES = new Set<string>(["sentry", "linear"]);
+const CLOSES = new Set<string>(["sentry"]);
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
@@ -440,7 +448,7 @@ const FIRST_ROW = 0.6;
 
 const REST = 1.1;
 const REST_AFTER_CLOSE = 1.4;
-const XFADE = 0.7;
+const XFADE = 0.35;
 
 function timing(scene: Scene, tablet = false) {
   const posts = scene.post ?? [];
@@ -747,7 +755,7 @@ function Swap({
 }) {
   return (
     <span className={["rhb-swap", className].filter(Boolean).join(" ")}>
-      <span className="rhb-swap-a" style={{ animationDuration: `${at}s` }}>
+      <span className="rhb-swap-a" style={{ animationDelay: `${at}s` }}>
         {a}
       </span>
       <span className="rhb-swap-b" style={{ animationDelay: `${at}s` }}>
@@ -794,18 +802,42 @@ function TurnHeader({
   doneAt: number | null;
   style?: CSSProperties;
 }) {
+  // "Working" crossfades into "Worked for" in place while the label slot
+  // glides between the two measured widths, so the chevron slides instead of
+  // blinking.
+  const stackRef = useRef<HTMLSpanElement>(null);
+  const swaps = doneAt != null && doneAt !== 0;
+  useLayoutEffect(() => {
+    const stack = stackRef.current;
+    if (!stack || !swaps) return;
+    const [a, b] = Array.from(stack.children);
+    const measure = () => {
+      const wa = box(a).width;
+      if (!wa) return;
+      stack.style.setProperty("--rhb-wa", `${wa}px`);
+      stack.style.setProperty("--rhb-wb", `${box(b).width}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(a);
+    ro.observe(b);
+    return () => ro.disconnect();
+  }, [swaps]);
   return (
     <div className="rhb-turn customize-msg" style={style}>
-      <span className="rhb-turn-stack">
+      <span
+        ref={stackRef}
+        className={swaps ? "rhb-turn-stack is-swap" : "rhb-turn-stack"}
+        style={swaps ? { animationDelay: `${doneAt}s` } : undefined}
+      >
         {doneAt === 0 ? null : (
           <span
             className={doneAt == null ? "rhb-turn-w is-live" : "rhb-turn-w"}
             style={
-              doneAt == null ? undefined : { animationDuration: `${doneAt}s` }
+              doneAt == null ? undefined : { animationDelay: `${doneAt}s` }
             }
           >
             <span className="rhb-turn-label rhb-shimmer-text">Working</span>
-            <ChevronDown className="rhb-chev" />
           </span>
         )}
         {doneAt == null ? null : (
@@ -817,10 +849,10 @@ function TurnHeader({
           >
             <span className="rhb-turn-label">Worked for</span>
             <span className="rhb-dur">{worked}</span>
-            <ChevronDown className="rhb-chev" />
           </span>
         )}
       </span>
+      <ChevronDown className="rhb-chev" />
     </div>
   );
 }
@@ -908,7 +940,7 @@ function freeze(src: HTMLElement): HTMLElement {
   clone.style.boxSizing = rootStyle.boxSizing;
 
   const sel =
-    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-w, .rhb-turn-d, .rhb-typing, .rhb-kids";
+    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-stack, .rhb-turn-w, .rhb-turn-d, .rhb-typing, .rhb-kids";
   const from = src.querySelectorAll<HTMLElement>(sel);
   const to = clone.querySelectorAll<HTMLElement>(sel);
   from.forEach((el, i) => {
@@ -917,6 +949,7 @@ function freeze(src: HTMLElement): HTMLElement {
     if (!c) return;
     if (cs.display === "none") c.style.display = "none";
     c.style.opacity = cs.opacity;
+    if (el.matches(".rhb-turn-stack")) c.style.width = cs.width;
   });
   return clone;
 }
@@ -1024,15 +1057,17 @@ function dissolve(
     glide(el, move);
     glide(wrap, move);
   }
+  // Old and new content overlap while they trade places, so the column never
+  // shows an empty frame between them.
   if (seq)
     el.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 220,
-      delay: 140,
+      duration: 260,
+      delay: 40,
       fill: "backwards",
       easing: "ease-out",
     });
   const anim = wrap.animate([{ opacity: 1 }, { opacity: 0 }], {
-    duration: seq ? 130 : 150,
+    duration: seq ? 300 : 150,
     easing: "cubic-bezier(0.7, 0, 0.3, 1)",
     fill: "forwards",
   });
@@ -1227,6 +1262,23 @@ function flipLayout(root: HTMLElement, first: Snap) {
       s.pad !== undefined &&
       Math.abs(s.pad - parseFloat(getComputedStyle(el).paddingLeft)) > 1;
     const inBand = !!el.parentElement?.matches(".rhb-band");
+    if (el.matches(".rhb-dock-wrap") && Math.abs(s.r.width - b.width) > 1) {
+      // The composer resizes and slides with the layout instead of
+      // dissolving between two widths.
+      const top = el.closest(TOP);
+      const t = (top && moved.get(top)) || { x: 0, y: 0 };
+      const ml = parseFloat(getComputedStyle(el).marginLeft);
+      const inset = b.left - pb.left - ml;
+      glide(el, [
+        {
+          marginLeft: `${s.r.left - s.p.left - inset}px`,
+          width: `${s.r.width}px`,
+          transform: `translate(${s.p.left - pb.left - t.x}px, ${s.r.top - b.top - t.y}px)`,
+        },
+        { marginLeft: `${ml}px`, width: `${b.width}px`, transform: "none" },
+      ]);
+      return;
+    }
     if (!inBand && (Math.abs(s.r.width - b.width) > 1 || repad)) {
       const top = el.closest(TOP);
       if (s.clone)
@@ -1240,7 +1292,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
           s.pad,
           drawer,
         );
-      else if (s.r.width < 2) glide(el, [{ opacity: 0 }, { opacity: 1 }], 450);
+      else if (s.r.width < 2) glide(el, [{ opacity: 0 }, { opacity: 1 }], 250);
     } else if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
       glide(el, [
         { transform: `translate(${dx}px, ${dy}px)` },
@@ -1411,8 +1463,8 @@ function onReveal(e: AnimationEvent) {
   const el = e.target as HTMLElement;
   if (!el.closest(".rhb-side")) return;
   if (el.matches(".rhb-kids, .rhb-thread"))
-    el.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], {
-      duration: 450,
+    el.animate([{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1 }], {
+      duration: 300,
     });
   const cs = getComputedStyle(el);
   const h =
@@ -1427,7 +1479,7 @@ function onReveal(e: AnimationEvent) {
       glide(
         sib,
         [{ transform: `translateY(${-h}px)` }, { transform: "none" }],
-        450,
+        300,
       );
     }
   }
@@ -1524,7 +1576,7 @@ const LinearPanel = memo(function LinearPanel() {
               <div
                 className="plugin-task"
                 key={task.key}
-                style={{ animationDelay: `${0.85 + i * 0.06}s` }}
+                style={{ animationDelay: `${0.45 + i * 0.06}s` }}
               >
                 <span className={`plugin-task-status is-${task.status}`} />
                 <span className="plugin-task-key">{task.key}</span>
@@ -1555,29 +1607,41 @@ function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
     const feed = feedRef.current;
     if (!feed || reduced || out || pre) return;
 
-    const offs = new Map<HTMLElement, { top: number; off: number }>();
-    const self = { top: feed.offsetTop, off: 0 };
+    type Off = { top: number; off: number; v: number };
+    const offs = new Map<HTMLElement, Off>();
+    const self: Off = { top: feed.offsetTop, off: 0, v: 0 };
     let raf = 0;
     let last = 0;
     const apply = (el: HTMLElement, off: number) => {
       el.style.translate = Math.abs(off) < 0.3 ? "" : `0 ${off}px`;
     };
+    // Critically damped spring (settles in ~0.33s): a push starts from rest
+    // and eases out, and a second push mid-glide keeps the current velocity.
+    const W = 0.02;
+    const settle = (o: Off, dt: number) => {
+      const e = Math.exp(-W * dt);
+      const c = o.v + W * o.off;
+      o.off = (o.off + c * dt) * e;
+      o.v = (o.v - W * c * dt) * e;
+      return Math.abs(o.off) >= 0.3 || Math.abs(o.v) * 16 >= 0.3;
+    };
     const tick = (ts: number) => {
-      const k = Math.exp(-(last ? ts - last : 16) / 110);
+      const dt = Math.min(last ? ts - last : 16, 64);
       last = ts;
-      let live = false;
-      self.off *= k;
+      let live = settle(self, dt);
       apply(feed, self.off);
-      if (Math.abs(self.off) >= 0.3) live = true;
       offs.forEach((o, el) => {
-        o.off *= k;
+        if (settle(o, dt)) live = true;
         apply(el, o.off);
-        if (Math.abs(o.off) >= 0.3) live = true;
       });
       if (live) raf = requestAnimationFrame(tick);
       else {
-        self.off = 0;
-        offs.forEach((o) => (o.off = 0));
+        self.off = self.v = 0;
+        apply(feed, 0);
+        offs.forEach((o, el) => {
+          o.off = o.v = 0;
+          apply(el, 0);
+        });
         raf = 0;
         last = 0;
       }
@@ -1603,7 +1667,7 @@ function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
           child.offsetParent === feed ? child.offsetTop : child.offsetTop - ft;
         const o = offs.get(child);
         if (!o) {
-          offs.set(child, { top, off: 0 });
+          offs.set(child, { top, off: 0, v: 0 });
           continue;
         }
         const d = o.top - top;
@@ -1626,13 +1690,7 @@ function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
 
   return (
     <div
-      className={
-        pre
-          ? "rhb-feed-layer is-pre"
-          : out
-            ? "rhb-feed-layer is-out"
-            : "rhb-feed-layer"
-      }
+      className={`rhb-feed-layer rhb-fl-${scene.id}${pre ? " is-pre" : out ? " is-out" : ""}`}
     >
       <div className="rhb-feed" ref={feedRef}>
         <FeedBody scene={scene} reduced={reduced} tablet={tablet} />
@@ -1847,7 +1905,7 @@ const FeedBody = memo(function FeedBody({
                     <>
                       <span
                         className="rhb-fix-idle is-timed"
-                        style={{ animationDuration: `${at}s` }}
+                        style={{ animationDelay: `${at}s` }}
                       >
                         Start thread
                       </span>
@@ -1885,52 +1943,64 @@ const ISSUES: { n: number; title: string; csv?: boolean }[] = [
   { n: 468, title: "CSV import drops header row", csv: true },
 ];
 
-function ComposerText({ demo }: { demo: boolean }) {
-  return demo ? (
-    <div className="rhb-issue-demo">
-      <span className="rhb-placeholder rhb-issue-ph">
-        Ask for a follow-up. @ to mention files, folders, sections, or threads
-      </span>
-      <span className="rhb-issue-q">
-        <span className="rhb-issue-q1">#</span>
-        <span className="rhb-issue-q2">#csv</span>
-        <i className="rhb-caret" />
-      </span>
-      <div className="rhb-issue-picker">
-        <div className="rhb-issue-head">GitHub issues</div>
-        <div className="rhb-issue-list">
-          {ISSUES.map((x, i) => (
-            <div
-              key={x.n}
-              className={[
-                "rhb-issue-option",
-                i === 0 && "is-first",
-                !x.csv && "is-drop",
-                x.n === 491 && "is-pick",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              <IssueGlyph className="rhb-issue-ic" />
-              <span className="rhb-issue-num">#{x.n}</span>
-              <span className="rhb-issue-title">{x.title}</span>
-              <span className="rhb-issue-meta">open</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <span className="rhb-issue-draft">
-        <span className="rhb-issue-chip">
-          <IssueGlyph className="rhb-issue-chip-ic" />
-          <span className="rhb-issue-chip-text">#491 CSV export times out</span>
+function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
+  // The finished draft fades out over the placeholder when the scene moves on
+  // instead of being swapped out in one frame.
+  return (
+    <>
+      {demo ? null : (
+        <span
+          className={leaving ? "rhb-placeholder is-back" : "rhb-placeholder"}
+        >
+          Ask for a follow-up. @ to mention files, folders, sections, or threads
         </span>
-        <span className="rhb-issue-rest">fix this</span>
-      </span>
-    </div>
-  ) : (
-    <span className="rhb-placeholder">
-      Ask for a follow-up. @ to mention files, folders, sections, or threads
-    </span>
+      )}
+      {demo || leaving ? (
+        <div className={demo ? "rhb-issue-demo" : "rhb-issue-demo is-leaving"}>
+          <span className="rhb-placeholder rhb-issue-ph">
+            Ask for a follow-up. @ to mention files, folders, sections, or
+            threads
+          </span>
+          <span className="rhb-issue-q">
+            <span className="rhb-issue-q1">#</span>
+            <span className="rhb-issue-q2">#csv</span>
+            <i className="rhb-caret" />
+          </span>
+          <div className="rhb-issue-picker">
+            <div className="rhb-issue-head">GitHub issues</div>
+            <div className="rhb-issue-list">
+              {ISSUES.map((x, i) => (
+                <div
+                  key={x.n}
+                  className={[
+                    "rhb-issue-option",
+                    i === 0 && "is-first",
+                    !x.csv && "is-drop",
+                    x.n === 491 && "is-pick",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <IssueGlyph className="rhb-issue-ic" />
+                  <span className="rhb-issue-num">#{x.n}</span>
+                  <span className="rhb-issue-title">{x.title}</span>
+                  <span className="rhb-issue-meta">open</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <span className="rhb-issue-draft">
+            <span className="rhb-issue-chip">
+              <IssueGlyph className="rhb-issue-chip-ic" />
+              <span className="rhb-issue-chip-text">
+                #491 CSV export times out
+              </span>
+            </span>
+            <span className="rhb-issue-rest">fix this</span>
+          </span>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1938,12 +2008,10 @@ type ShellProps = {
   idx: number;
   n: number;
   reduced: boolean;
-  ghost?: boolean;
-  pre?: boolean;
   nextFeed?: number | null;
 };
 
-function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
+function Shell({ idx, n, reduced, nextFeed }: ShellProps) {
   const scene = SCENES[idx];
   const tablet = useMedia(TABLET_QUERY);
   const t = timing(scene, tablet);
@@ -1969,13 +2037,17 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     }
   });
   if (scene.id === "sentry" && (n === 5 || n === 1)) hasSet.add("collapsed");
-  if (scene.id === "linear" && tablet && (n === 5 || n === 1 || n === 3))
+  if (
+    scene.id === "linear" &&
+    tablet &&
+    (n === 5 || n === 1 || n === 3 || n === 4)
+  )
     hasSet.add("panel-collapsed");
   const has = (x: string) => hasSet.has(x);
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
-  const chart = SCENES[chartIdx];
+  const chart = ALL_SCENES.find((x) => x.id === "chart")!;
   const chartF =
     chart.follow && timing(chart).f
       ? { ...chart.follow, at: timing(chart).f! }
@@ -2054,6 +2126,25 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     return () => window.clearTimeout(id);
   }, [idx, reduced]);
 
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const titleW = useRef({ idx, w: 0 });
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    const was = titleW.current;
+    const w = el.offsetWidth;
+    titleW.current = { idx, w };
+    // The title column takes the new title's width at once; the icon after
+    // it glides over from where the old title ended.
+    const icon = el.nextElementSibling;
+    if (!reduced && icon && was.idx !== idx && was.w && Math.abs(was.w - w) > 1)
+      glide(
+        icon,
+        [{ transform: `translateX(${was.w - w}px)` }, { transform: "none" }],
+        300,
+      );
+  }, [idx, n, reduced]);
+
   const outgoing = prevIdx.current < idx ? prevIdx.current : outIdx;
   const shellClass = [
     "rhb-stage",
@@ -2061,8 +2152,6 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     n >= 1 && "rhb-on",
     n === 4 && "rhb-final",
     reduced && "rhb-still",
-    ghost && "rhb-stage-out",
-    pre && "rhb-stage-pre",
     ...[...hasSet].map((x) => `rhb-has-${x}`),
     ...[...usesSet].map((x) => `rhb-uses-${x}`),
     (n >= 1 && scene.sideView) || n === 4 ? "rhb-side-view" : "",
@@ -2357,7 +2446,7 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
 
         <div className="rhb-col rhb-col-main">
           <div className="rhb-band">
-            <span className="rhb-title-stack">
+            <span className="rhb-title-stack" ref={titleRef}>
               {outIdx != null && outIdx < idx ? (
                 <span className="rhb-title is-out" key={`t${outIdx}`}>
                   {SCENES[outIdx].title}
@@ -2400,7 +2489,12 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
             <div className="rhb-dock-wrap">
               <div className="rhb-box">
                 <div className="rhb-input">
-                  <ComposerText demo={scene.id === "composer" && n === 1} />
+                  <ComposerText
+                    demo={scene.id === "composer" && n === 1}
+                    leaving={
+                      outgoing != null && SCENES[outgoing].id === "composer"
+                    }
+                  />
                 </div>
                 <div className="rhb-box-row">
                   <PlusIcon className="rhb-ic" />
@@ -2445,8 +2539,6 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     </div>
   );
 }
-
-const FINAL_HOLD = 2.2;
 
 type Clock = {
   at: (sec: number, fn: () => void) => () => void;
@@ -2493,15 +2585,13 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
   const tablet = useMedia(TABLET_QUERY);
   const reduced = useMedia("(prefers-reduced-motion: reduce)");
   const last = SCENES.length - 1;
+  // The clock starts paused until the window is first in view, so the story
+  // plays from its first frame; it plays once and holds on the end frame.
   const [clock] = useState(() => createClock(paused));
   useEffect(() => clock.setPaused(paused), [clock, paused]);
 
-  const [loop, setLoop] = useState(0);
   const [pos, setPos] = useState<{ idx: number; n: number }>({ idx: 0, n: 0 });
-
   const [nextFeed, setNextFeed] = useState<number | null>(null);
-  const [ghost, setGhost] = useState<number | null>(null);
-  const [pre, setPre] = useState<number | null>(null);
   useEffect(() => {
     if (reduced) return;
     const idx = pos.idx;
@@ -2512,56 +2602,25 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     if (t.collapseAt !== null)
       ids.push(at(t.collapseAt, () => setPos({ idx, n: 5 })));
     if (t.then) ids.push(at(t.then.at, () => setPos({ idx, n: 2 })));
-    const closes = CLOSES.has(scene.id);
-    if (closes) ids.push(at(t.end, () => setPos({ idx, n: 3 })));
-    const sequentialClose = scene.id === "linear" && tablet;
-    if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
-    const next =
-      t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
-    if (idx === 0) ids.push(at(XFADE + 0.05, () => setGhost(null)));
     if (idx < last) {
+      const closes = CLOSES.has(scene.id);
+      if (closes) ids.push(at(t.end, () => setPos({ idx, n: 3 })));
+      const sequentialClose = closes && scene.id === "linear" && tablet;
+      if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
+      const next =
+        t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
       ids.push(
         at(next - 0.8, () => startTransition(() => setNextFeed(idx + 1))),
       );
       ids.push(at(next, () => setPos({ idx: idx + 1, n: 0 })));
     } else {
       ids.push(at(t.end, () => setPos({ idx, n: 4 })));
-      ids.push(
-        at(t.end + FINAL_HOLD - 1.6, () =>
-          startTransition(() => setPre(loop + 1)),
-        ),
-      );
-      ids.push(
-        at(t.end + FINAL_HOLD, () => {
-          setGhost(loop);
-          setPre(null);
-          setNextFeed(null);
-          setLoop((l) => l + 1);
-          setPos({ idx: 0, n: 0 });
-        }),
-      );
     }
     return () => ids.forEach((cancel) => cancel());
-  }, [clock, loop, pos.idx, reduced, last, tablet]);
+  }, [clock, pos.idx, reduced, last, tablet]);
 
   if (reduced) {
     return <Shell key="still" idx={last} n={4} reduced />;
   }
-  return (
-    <>
-      {ghost != null ? (
-        <Shell key={ghost} idx={last} n={4} reduced={false} ghost />
-      ) : null}
-      <Shell
-        key={loop}
-        idx={pos.idx}
-        n={pos.n}
-        reduced={false}
-        nextFeed={nextFeed}
-      />
-      {pre != null ? (
-        <Shell key={pre} idx={0} n={0} reduced={false} pre />
-      ) : null}
-    </>
-  );
+  return <Shell idx={pos.idx} n={pos.n} reduced={false} nextFeed={nextFeed} />;
 }
