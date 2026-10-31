@@ -1,0 +1,90 @@
+name: Native folder picker check
+
+on:
+  push:
+    branches:
+      - bb/native-folder-picker-windows-linux-thr_5cgqzfbm72
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows folder dialog
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - name: Install dependencies
+        shell: bash
+        run: |
+          npm install --global pnpm@9.15.0 --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/host-daemon..."
+          pnpm --filter @bb/process-utils run generate:profile-worker
+      - name: Pick and cancel
+        shell: bash
+        run: |
+          shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
+          target="$(powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')")\\bb-pick-target"
+          powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$target' | Out-Null"
+          for action in pick cancel; do
+            node --conditions=source --import tsx .github/picker-check/check.mts "$action" "$target" &
+            pid=$!
+            powershell -NoProfile -ExecutionPolicy Bypass -File .github/picker-check/drive-windows.ps1 -Action "$action" -Target "$target" -Shots "$shots"
+            wait "$pid"
+          done
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-folder-dialog
+          path: ${{ runner.temp }}/shots
+
+  linux:
+    name: Linux folder dialog (Xvfb)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DISPLAY: ":77"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - name: Install dependencies
+        run: |
+          npm install --global pnpm@9.15.0 --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/host-daemon..."
+          pnpm --filter @bb/process-utils run generate:profile-worker
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick
+          if command -v zenity || command -v kdialog; then echo "dialog tool preinstalled"; exit 1; fi
+      - name: Start Xvfb
+        run: |
+          Xvfb :77 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+      - name: No dialog tool installed
+        run: node --conditions=source --import tsx .github/picker-check/check.mts missing
+      - name: Install zenity
+        run: sudo apt-get install -y -qq zenity
+      - name: Pick, cancel, and a display that cannot open
+        run: |
+          shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
+          target="$HOME/bb-pick-target"; mkdir -p "$target"
+          for action in pick cancel; do
+            node --conditions=source --import tsx .github/picker-check/check.mts "$action" "$target" &
+            pid=$!
+            bash .github/picker-check/drive-linux.sh "$action" "$target" "$shots"
+            wait "$pid"
+          done
+          DISPLAY=:78 node --conditions=source --import tsx .github/picker-check/check.mts failure
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: linux-folder-dialog
+          path: ${{ runner.temp }}/shots

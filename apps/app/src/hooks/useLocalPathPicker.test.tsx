@@ -233,4 +233,39 @@ describe("useLocalPathPicker", () => {
       );
     });
   });
+
+  it("does nothing when the native picker is cancelled", async () => {
+    mocks.pickFolder.mockResolvedValue({ path: null });
+    const submit = vi.fn();
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit }),
+    );
+
+    await act(async () => {
+      result.current.openPicker({ kind: "create" });
+    });
+
+    await waitFor(() => expect(mocks.pickFolder).toHaveBeenCalledOnce());
+    expect(submit).not.toHaveBeenCalled();
+    expect(result.current.projectPathDialog.isOpen).toBe(false);
+  });
+
+  it("falls back to bb's folder browser when the native picker fails", async () => {
+    mocks.pickFolder.mockRejectedValue(new Error("folder_picker_failed"));
+    const submit = vi.fn();
+    const { result } = renderHook(() =>
+      useLocalPathPicker({ isPending: false, submit }),
+    );
+
+    act(() => {
+      result.current.openPicker({ kind: "create" });
+    });
+
+    await waitFor(() =>
+      expect(result.current.projectPathDialog.target).toEqual({
+        kind: "create",
+      }),
+    );
+    expect(submit).not.toHaveBeenCalled();
+  });
 });
