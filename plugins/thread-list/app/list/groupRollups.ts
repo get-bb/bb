@@ -1,10 +1,14 @@
 import { useMemo } from "react";
 import {
+  experimental_resolveThreadStatus,
   useSidebarSplitLayout,
   useSidebarThreadRowStatuses,
   type PluginSidebarSplitPane,
   type PluginSidebarThreadRowStatus,
+  type PluginThreadStatus,
 } from "@get-bb/plugin-sdk/app";
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import { useThreadsHaveDraft } from "./sidebarDraftPresence.js";
 
 export interface ThreadSplitIndicatorTarget {
   id: string;
@@ -53,4 +57,23 @@ export function usePluginThreadRowStatusForThreads(
     }
     return null;
   }, [statuses, threads]);
+}
+
+export const NO_HIDDEN_THREADS: readonly SidebarThread[] = [];
+
+export function useHiddenThreadsStatus(
+  threads: readonly SidebarThread[],
+  rowStatus: PluginSidebarThreadRowStatus | null,
+): PluginThreadStatus {
+  const hasUnsubmittedDraft = useThreadsHaveDraft(threads);
+  return useMemo(
+    () =>
+      experimental_resolveThreadStatus({
+        thread: null,
+        hiddenThreads: threads,
+        hasUnsubmittedDraft,
+        rowStatus,
+      }),
+    [hasUnsubmittedDraft, rowStatus, threads],
+  );
 }

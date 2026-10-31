@@ -2,7 +2,7 @@
 
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
+import { makeSidebarThread } from "../model/fixtures.js";
 import type {
   PluginSidebarSplitLayout,
   PluginSidebarThreadRowStatus,
@@ -34,7 +34,7 @@ function renderSectionRow(
       name: "Nested work",
       label: "Nested work",
       depth: 1,
-      activity: NO_COLLAPSED_CHILD_ACTIVITY,
+      collapsedThreads: [],
       isCollapsed: false,
       onToggleCollapsed: vi.fn(),
       ...props,
@@ -81,8 +81,10 @@ describe("SidebarSectionRow", () => {
       {
         name: "Build",
         label: "Work / Build",
-        activity: { ...NO_COLLAPSED_CHILD_ACTIVITY, pending: true },
-        collapsedThreads: [{ id: "thread-one" }, { id: "thread-two" }],
+        collapsedThreads: [
+          makeSidebarThread({ id: "thread-one", hasPendingInteraction: true }),
+          makeSidebarThread({ id: "thread-two", isUnread: false }),
+        ],
         isCollapsed: true,
       },
       {
@@ -132,7 +134,9 @@ describe("SidebarSectionRow", () => {
       {
         name: "Building",
         label: "Work / Building",
-        collapsedThreads: [{ id: "thread-one" }],
+        collapsedThreads: [
+          makeSidebarThread({ id: "thread-one", isUnread: false }),
+        ],
         isCollapsed: true,
       },
       {
@@ -158,7 +162,9 @@ describe("SidebarSectionRow", () => {
       {
         name: "Building",
         label: "Work / Building",
-        collapsedThreads: [{ id: "thread-one" }],
+        collapsedThreads: [
+          makeSidebarThread({ id: "thread-one", isUnread: false }),
+        ],
         isCollapsed: false,
       },
       {

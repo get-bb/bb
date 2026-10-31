@@ -7,7 +7,6 @@ import {
   type ProjectThreadItem,
   type ThreadComparator,
 } from "../model/project-thread-groups.js";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import {
   makeSidebarEnvironment,
   makeSidebarThread,
@@ -42,7 +41,7 @@ function threadNode(entry: SidebarThread): ProjectThreadNode {
     depth: 0,
     stats: {
       childCount: 0,
-      childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+      hiddenThreads: [],
     },
   };
 }
@@ -63,7 +62,7 @@ function environmentItem(
       nodes: [threadNode(representative), threadNode(sibling)],
       stats: {
         childCount: 0,
-        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+        hiddenThreads: [],
       },
     },
   };
@@ -78,7 +77,7 @@ function sectionItem(name: string): ProjectThreadItem {
       name,
       items: [],
       threadCount: 0,
-      activity: NO_COLLAPSED_CHILD_ACTIVITY,
+      hiddenThreads: [],
     },
   };
 }
@@ -149,17 +148,11 @@ describe("getSidebarThreadComparator", () => {
       ];
 
       expect(
-        order(
-          getSidebarThreadComparator(sort, "ascending"),
-          entries,
-        ),
+        order(getSidebarThreadComparator(sort, "ascending"), entries),
       ).toEqual(["active_old", "active_new", "idle_old", "idle_new"]);
       for (const direction of ["default", "descending"] as const) {
         expect(
-          order(
-            getSidebarThreadComparator(sort, direction),
-            entries,
-          ),
+          order(getSidebarThreadComparator(sort, direction), entries),
         ).toEqual(["active_new", "active_old", "idle_new", "idle_old"]);
       }
     },

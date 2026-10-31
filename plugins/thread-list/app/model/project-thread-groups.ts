@@ -1,14 +1,10 @@
 import { compareCodepoint } from "./compare-codepoint.js";
 import { buildSectionKey } from "./section-keys.js";
 import type { SidebarThread } from "./sidebar-thread.js";
-import {
-  getCollapsedChildActivity,
-  type CollapsedChildActivity,
-} from "./thread-activity.js";
 
 interface ProjectThreadNodeStats {
   childCount: number;
-  childActivity: CollapsedChildActivity;
+  hiddenThreads: readonly SidebarThread[];
 }
 
 export interface ProjectThreadNode {
@@ -42,7 +38,7 @@ export interface SidebarSectionGroup {
   name: string;
   items: ProjectThreadItem[];
   threadCount: number;
-  activity: CollapsedChildActivity;
+  hiddenThreads: readonly SidebarThread[];
 }
 
 export type ProjectThreadItem =
@@ -168,10 +164,7 @@ export function getProjectThreadItemDescendants(
 function buildStatsForHiddenThreads(
   threads: readonly SidebarThread[],
 ): ProjectThreadNodeStats {
-  return {
-    childCount: threads.length,
-    childActivity: getCollapsedChildActivity(threads),
-  };
+  return { childCount: threads.length, hiddenThreads: threads };
 }
 
 function buildEnvironmentThreadGroup(
@@ -592,7 +585,7 @@ function buildSectionGroup(
     name: section.name,
     items,
     threadCount: descendantThreads.length,
-    activity: getCollapsedChildActivity(descendantThreads),
+    hiddenThreads: descendantThreads,
   };
 }
 

@@ -4,7 +4,6 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import type {
   PluginSidebarSplitLayout,
   PluginSidebarThreadRowStatus,
@@ -218,11 +217,13 @@ describe("TopLevelSidebarSection", () => {
         }
         actionsAlwaysVisible
         actionsMobileAlways
-        collapsedActivity={{
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          working: true,
-          runtimeWorking: true,
-        }}
+        collapsedThreads={[
+          makeSidebarThread({
+            id: "thread-busy",
+            status: "active",
+            runtimeStatus: "active",
+          }),
+        ]}
         collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
       >
         <div>Active thread</div>
@@ -249,8 +250,9 @@ describe("TopLevelSidebarSection", () => {
     renderTree(
       <TopLevelSidebarSection
         label="Pinned"
-        collapsedActivity={NO_COLLAPSED_CHILD_ACTIVITY}
-        collapsedThreads={[{ id: "thread-one" }]}
+        collapsedThreads={[
+          makeSidebarThread({ id: "thread-one", isUnread: false }),
+        ]}
         collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
       >
         <div>Pinned thread</div>
@@ -287,7 +289,9 @@ describe("TopLevelSidebarSection", () => {
     const renderSection = (isCollapsed: boolean) => (
       <TopLevelSidebarSection
         label="Building"
-        collapsedThreads={[{ id: "thread-one" }]}
+        collapsedThreads={[
+          makeSidebarThread({ id: "thread-one", isUnread: false }),
+        ]}
         collapseControl={{ isCollapsed, onToggleCollapsed: vi.fn() }}
       >
         <div>Draft thread</div>

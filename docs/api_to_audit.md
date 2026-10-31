@@ -3692,19 +3692,50 @@ The SDK test fake exposes the props as `data-*` attributes.
 **Core callers.** `ThreadStatusGlyph`
 (`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK export
 and the glyph in the thread search palette, the related threads info section,
-and mobile recents. The thread-list plugin draws its rows and collapsed-group
-rollups with it.
+the thread context card's sub-threads, and mobile recents. The thread-list
+plugin draws its rows and collapsed-group rollups with it. Its labels and the
+rule for when `rowStatus` replaces the indicator come from
+`packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
+`experimental_resolveThreadStatus`.
 
 Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
-1. **Indicator resolution.** The caller resolves the indicator, so the
-   thread-list plugin keeps its own copy of the indicator precedence and labels
-   that `@bb/client-core` holds for bb's surfaces. Decide whether the SDK should
-   export the resolver and labels instead.
-2. **Archived rows.** No plugin passes `archived` yet; confirm the archived
+1. **Archived rows.** No plugin passes `archived` yet; confirm the archived
    glyph belongs on this component rather than in the archived list.
+
+## `experimental_resolveThreadStatus` (`@get-bb/plugin-sdk/app`)
+
+A pure function from `PluginThreadStatusInput` (the row's thread or null for a
+group row, the threads it hides while collapsed, whether any of them holds a
+draft, and another plugin's row status) to `PluginThreadStatus`: the
+indicator, the row status when it shows in place of the indicator, the
+accessible label, and whether anything is working. Hidden threads add their
+attention and work; their queued messages do not count. The host installs the
+function from `packages/plugin-sdk/src/internal/thread-status.ts`, so a plugin
+built against an older SDK still resolves with the running host's precedence.
+
+**Core callers.** It is the only status resolver.
+`toPluginSidebarThread` (`apps/app/src/lib/plugin-sidebar-threads.ts`) fills
+`PluginSidebarThread.indicator` with it. `useThreadListEntryStatus`
+(`apps/app/src/hooks/useThreadListEntryStatus.ts`) resolves mobile recents
+(including a collapsed parent's descendants), the thread search palette, the
+related threads info section, and the thread context card through it, reading
+the same draft and row status the sidebar reads. The thread-list plugin
+resolves its thread rows and its collapsed parent, section, project,
+environment, and hidden-group rollups through it. `apps/app/src/lib/thread-status.test.ts`
+runs one case table through both the core and the plugin inputs.
+
+**Audit before stabilizing.**
+
+1. **Rollup scope.** A collapsed parent row folds in hidden threads' attention
+   and work but only its own row status; a collapsed group uses the first
+   hidden thread's row status. Decide whether the input should take hidden
+   threads' row statuses too (see #5810).
+2. **Unread grouping.** The thread-list plugin's read-status grouping keeps
+   its own "unread and done" predicate. Decide whether that predicate belongs
+   in the SDK next to this function.
 
 ## `HostsArea.experimental_reconcile`
 
