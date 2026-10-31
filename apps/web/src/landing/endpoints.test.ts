@@ -242,7 +242,7 @@ describe("marketing download", () => {
           {
             headers: {
               referer:
-                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb",
+                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb&via=share",
               ...(gpc ? { "Sec-GPC": gpc } : {}),
             },
           },
@@ -276,6 +276,9 @@ describe("marketing download", () => {
       expect(body.properties.placement).toBe("nav");
       expect(body.properties.utm_campaign).toBe("x");
       expect(body.properties.utm_source).toBe("google");
+      expect(
+        new URL(body.properties.$referrer ?? "").searchParams.get("via"),
+      ).toBe("share");
       for (const [name, value, referrerValue] of [
         ["gclid", "abc", "ref"],
         ["gbraid", "gb", "ref-gb"],

@@ -19,6 +19,7 @@ import {
 import { initAnalytics, trackLandingEvent } from "../landing/analytics.js";
 import { classifyArrivalSource } from "../landing/arrival-source.js";
 import { CommandButton } from "../landing/command-button.js";
+import { SendToComputerButton } from "../landing/send-to-computer-button.js";
 import { SiteFooter, SiteNav } from "../landing/site-chrome.js";
 import {
   marketplaceInstallBadge,
@@ -592,6 +593,9 @@ function MarketplaceToolbar({
             Themes, providers, workflows, and tools, installed with one command.
           </p>
           <div className="marketplace-hero-search">{search}</div>
+          <div className="marketplace-hero-send touch-only">
+            <SendToComputerButton placement="marketplace" />
+          </div>
         </header>
       ) : (
         <div className="marketplace-author-search">{search}</div>

@@ -58,6 +58,9 @@ describe("public marketplace route rendering", () => {
     );
     expect(html).toContain('aria-label="Make bb yours"');
     expect(html).toContain(
+      '<div class="marketplace-hero-send touch-only"><button type="button" class="btn btn-primary btn-install install-send touch-only">',
+    );
+    expect(html).toContain(
       "Themes, providers, workflows, and tools, installed with one command.",
     );
     expect(html).toContain("New &amp; notable");

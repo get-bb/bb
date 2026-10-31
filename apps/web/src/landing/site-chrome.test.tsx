@@ -66,4 +66,11 @@ describe("site navigation", () => {
     );
     expect(footer).not.toContain('href="/plugin-guide" aria-current="page"');
   });
+
+  it("keeps the footer installer link off touch devices", () => {
+    const footer = renderToStaticMarkup(<SiteFooter />);
+    expect(footer).toContain(
+      '<li class="desktop-only"><a href="/download/macos?placement=footer">Download</a></li>',
+    );
+  });
 });
