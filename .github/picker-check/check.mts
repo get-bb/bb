@@ -12,7 +12,8 @@ function sameFolder(left: string, right: string): boolean {
 }
 
 async function outcome(): Promise<
-  { kind: "picked"; path: string | null } | { kind: "failed"; code: string }
+  | { kind: "picked"; path: string | null }
+  | { kind: "failed"; code: string; message: string }
 > {
   try {
     return { kind: "picked", path: (await pickHostFolder()).path };
@@ -21,7 +22,8 @@ async function outcome(): Promise<
       typeof error === "object" && error !== null && "code" in error
         ? String(error.code)
         : String(error);
-    return { kind: "failed", code };
+    const message = error instanceof Error ? error.message : "";
+    return { kind: "failed", code, message };
   }
 }
 

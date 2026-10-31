@@ -65,14 +65,17 @@ describe("resolveFolderPickerCommand", () => {
 describe("isFolderPickerCancel", () => {
   const linuxPicker = { cancelExitCode: 1 };
 
-  it("treats a quiet exit with the cancel code as a cancel", () => {
-    expect(
-      isFolderPickerCancel(
-        linuxPicker,
-        Object.assign(new Error("exit 1"), { code: 1, stderr: "" }),
-      ),
-    ).toBe(true);
-  });
+  it.each(["", "(zenity:42): Gtk-WARNING **: Theme parsing error\n"])(
+    "treats the cancel code as a cancel even with stderr %j",
+    (stderr) => {
+      expect(
+        isFolderPickerCancel(
+          linuxPicker,
+          Object.assign(new Error("exit 1"), { code: 1, stderr }),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("treats a dialog that could not open as a failure so bb falls back", () => {
     expect(

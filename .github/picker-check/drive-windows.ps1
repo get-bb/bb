@@ -34,7 +34,12 @@ if ($Action -eq "pick") {
     $item = Find-Named $dialog $leaf $scope::Descendants
     if ($null -eq $item) { Start-Sleep -Milliseconds 500 }
   }
-  if ($null -eq $item) { throw "Folder $leaf is not in the dialog tree" }
+  if ($null -eq $item) {
+    Save-Screen "notfound"
+    $all = $dialog.FindAll($scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $all) { Write-Host ("UIA {0} | {1} | {2}" -f $element.Current.ControlType.ProgrammaticName, $element.Current.Name, $element.Current.ClassName) }
+    throw "Folder $leaf is not in the dialog tree"
+  }
   $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
   Start-Sleep -Milliseconds 500
   Save-Screen "selected"

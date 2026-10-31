@@ -15,6 +15,9 @@ const execFileAsync = execHostFile;
 
 const PICKER_TITLE = "Choose a project folder";
 
+const DISPLAY_FAILURE =
+  /cannot open display|failed to open display|could not connect to display/iu;
+
 const WINDOWS_PICKER_SCRIPT = [
   "Add-Type -AssemblyName System.Windows.Forms",
   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
@@ -102,7 +105,7 @@ export function isFolderPickerCancel(
   const code = "code" in error ? error.code : undefined;
   const stderr =
     "stderr" in error && typeof error.stderr === "string" ? error.stderr : "";
-  return code === picker.cancelExitCode && stderr.trim() === "";
+  return code === picker.cancelExitCode && !DISPLAY_FAILURE.test(stderr);
 }
 
 function trimTrailingSeparator(path: string): string {
