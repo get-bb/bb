@@ -159,6 +159,7 @@ export function PullRequestContextCardRowView({
         <span className="flex min-w-0 items-center gap-1.5">
           <PullRequestSummaryLabel
             pullRequest={pullRequest}
+            numberPrefix="PR #"
             showState
             hideNumberWhenCompact={false}
           />

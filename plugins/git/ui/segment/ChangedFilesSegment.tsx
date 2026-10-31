@@ -5,7 +5,9 @@ import {
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk/app";
 import { BranchPicker } from "@bb/shared-ui/branch-picker";
+import { CONTEXT_CARD_SEGMENT_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getMergeBaseBranchCandidateGroups,
 } from "../merge-base-branch-candidates";
@@ -65,6 +67,11 @@ export function useChangedFilesSegmentVisible({
   );
 }
 
+const MERGE_BASE_TRIGGER_CLASS = cn(
+  CONTEXT_CARD_SEGMENT_CLASS,
+  "mx-0 h-auto max-w-[12rem] gap-1.5 [&_[data-icon-root]]:size-3.5",
+);
+
 export function MergeBaseActionView({
   mergeBase,
 }: {
@@ -88,20 +95,22 @@ export function MergeBaseActionView({
   );
   if (!mergeBase.showMergeBase || !branch) return null;
   return (
-    <BannerActionSlot hideInCompact>
-      <Icon name="GitMerge" className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="shrink-0">Merge base</span>
+    <BannerActionSlot hideInCompact className="pr-0">
       <BranchPicker
         value={branch}
         options={candidates.options}
         remoteOptions={candidates.remoteOptions}
         variant="minimal"
+        triggerIcon="GitMerge"
+        triggerTitle={`Merge base: ${branch}`}
+        ariaLabel="Merge base"
+        menuLabel="Merge base"
         emphasizeTriggerValue={false}
         loading={mergeBase.optionsLoading}
         onChange={mergeBase.onChange}
         onOpenChange={mergeBase.onPickerOpenChange}
         onSearchQueryChange={mergeBase.onSearchQueryChange}
-        className="max-w-[10rem]"
+        className={MERGE_BASE_TRIGGER_CLASS}
         muted
         popoverAlign="end"
       />
@@ -147,7 +156,7 @@ export function ChangedFilesSegmentView({
     return (
       <SectionToggleButton
         buttonRef={focusRef}
-        fillRow
+        showChevron
         id={TOGGLE_ID}
         controlsId={BODY_ID}
         icon={

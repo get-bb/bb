@@ -111,7 +111,7 @@ export const PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS = "group/disclosure";
 
 export const PROMPT_STACK_TRAILING_SLOT_CLASS =
   "ml-auto mr-px flex w-6 shrink-0 items-center justify-center";
-const HOVER_CHEVRON_CLASS =
+export const PROMPT_STACK_HOVER_CHEVRON_CLASS =
   "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/disclosure:opacity-100 group-focus-visible/disclosure:opacity-100 [@media(hover:none)]:hidden";
 
 export function PromptStackHoverChevron({
@@ -124,7 +124,7 @@ export function PromptStackHoverChevron({
       {isExpanded ? null : (
         <Icon
           name="ChevronDown"
-          className={HOVER_CHEVRON_CLASS}
+          className={PROMPT_STACK_HOVER_CHEVRON_CLASS}
           aria-hidden="true"
         />
       )}
@@ -166,7 +166,7 @@ const SEGMENT_SHRINK_CLASS = "min-w-0 overflow-hidden";
 
 interface SectionToggleButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
-  fillRow: boolean;
+  showChevron: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -180,7 +180,7 @@ interface SectionToggleButtonProps {
 
 export function SectionToggleButton({
   buttonRef,
-  fillRow,
+  showChevron,
   id,
   controlsId,
   ariaLabel,
@@ -205,7 +205,6 @@ export function SectionToggleButton({
         CONTEXT_CARD_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        fillRow && "flex-1 justify-start text-left",
         PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
@@ -226,7 +225,13 @@ export function SectionToggleButton({
           {compactLabel}
         </span>
       ) : null}
-      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
+      {showChevron && !isExpanded ? (
+        <Icon
+          name="ChevronDown"
+          className={PROMPT_STACK_HOVER_CHEVRON_CLASS}
+          aria-hidden="true"
+        />
+      ) : null}
     </button>
   );
 }

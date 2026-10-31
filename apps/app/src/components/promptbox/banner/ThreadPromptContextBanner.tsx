@@ -261,7 +261,7 @@ function ParentThreadSectionToggle({
   return (
     <SectionToggleButton
       buttonRef={buttonRef}
-      fillRow={false}
+      showChevron={false}
       id={SECTION_IDS.parentThread.toggle}
       controlsId={SECTION_IDS.parentThread.body}
       ariaLabel={ariaLabel}
@@ -1067,7 +1067,7 @@ function ReadOnlyContextBanner({
         ) : (
           <SectionToggleButton
             buttonRef={statusFocus.triggerRef}
-            fillRow
+            showChevron
             id={SECTION_IDS.status.toggle}
             controlsId={SECTION_IDS.status.body}
             icon={statusIcon}

@@ -9,7 +9,7 @@ import {
   BranchPickerSectionHeader,
 } from "../ui/branch-picker-primitives";
 import { Button } from "../ui/button";
-import { Icon } from "../ui/icon";
+import { Icon, type IconName } from "../ui/icon";
 import { LIST_HOVER_TRANSITION } from "../ui/motion";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
@@ -168,6 +168,8 @@ export interface BranchPickerProps {
   placeholder?: string;
   triggerLabel?: string;
   triggerTitle?: string;
+  triggerIcon?: IconName;
+  ariaLabel?: string;
   emphasizeTriggerValue?: boolean;
   menuLabel?: string;
   onChange: (branch: string) => void;
@@ -190,6 +192,8 @@ export function BranchPicker({
   placeholder,
   triggerLabel: triggerLabelOverride,
   triggerTitle,
+  triggerIcon,
+  ariaLabel = "Branch",
   emphasizeTriggerValue = true,
   menuLabel,
   onChange,
@@ -284,7 +288,7 @@ export function BranchPicker({
           variant={variant === "default" ? "outline" : "ghost"}
           size="sm"
           disabled={disabled}
-          aria-label="Branch"
+          aria-label={ariaLabel}
           className={cn(
             LIST_HOVER_TRANSITION,
             variant === "default" &&
@@ -320,9 +324,16 @@ export function BranchPicker({
             </span>
           ) : (
             <span
-              className="flex min-w-0 items-center overflow-hidden"
+              className="flex min-w-0 items-center gap-1.5 overflow-hidden"
               title={triggerTitle ?? triggerLabel}
             >
+              {triggerIcon === undefined ? null : (
+                <Icon
+                  name={triggerIcon}
+                  className="shrink-0"
+                  aria-hidden="true"
+                />
+              )}
               <BranchPickerText
                 label={triggerLabel}
                 emphasizePlainLabel={triggerHasPlainBranchValue}

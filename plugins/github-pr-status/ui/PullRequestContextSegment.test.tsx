@@ -175,7 +175,7 @@ describe("pull request context segment", () => {
     show(PULL_REQUEST);
     const { container } = renderPart("summary");
 
-    expect(container.textContent).toContain("PR #128");
+    expect(screen.getByText("#128")).toBeTruthy();
     expect(container.textContent).not.toContain("· Open");
     expect(container.textContent).not.toContain("Ready to merge");
     expect(container.querySelector("[data-promptbox-hide-compact]")).toBeNull();
@@ -183,13 +183,12 @@ describe("pull request context segment", () => {
 
   it("keeps a standalone terminal state label", () => {
     show({ ...PULL_REQUEST, state: "closed", attention: "closed" });
-    expect(renderPart("summary").container.textContent).toContain(
-      "PR #128 · Closed",
-    );
+    renderPart("summary");
+    expect(screen.getByText("#128 · Closed")).toBeTruthy();
   });
 
   it.each([
-    ["beside changed files", [SELF, CHANGED_FILES], "PR #128", true],
+    ["beside changed files", [SELF, CHANGED_FILES], "#128", true],
     ["beside a parent thread", [PARENT, SELF], null, false],
     ["among three segments", [PARENT, SELF, CHANGED_FILES], null, false],
   ] as const)("sizes the label %s", (_, segments, label, hiddenInCompact) => {
@@ -197,10 +196,10 @@ describe("pull request context segment", () => {
     const { container } = renderPart("summary", segments);
     const link = screen.getByRole("link", { name: /Pull request 128:/ });
     if (label) {
-      expect(container.textContent).toContain(label);
+      expect(screen.getByText(label)).toBeTruthy();
       expect(container.textContent).not.toContain("Closed");
     } else {
-      expect(link.textContent).not.toContain("PR #128");
+      expect(link.textContent).not.toContain("#128");
     }
     expect(
       container.querySelector("[data-promptbox-hide-compact]") !== null,
