@@ -312,7 +312,10 @@ type SlotPropsByName = {
 
 type SlotPropKeys<T> = T extends unknown ? keyof T : never;
 
-type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
+type MissingSlot = Exclude<
+  keyof PluginAppSlots,
+  keyof SlotPropsByName | `internal_DO_NOT_USE_${string}`
+>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 

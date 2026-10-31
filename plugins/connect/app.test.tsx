@@ -164,11 +164,15 @@ describe("connect settings section", () => {
       method: "login.start",
       input: { baseUrl: null },
     });
+    expect(slot.navigateCalls).toContainEqual({
+      method: "openUrl",
+      url: "https://getbb.app/link?code=K7QP-2M4X",
+    });
     const link = slot.getByRole("link", {
-      name: /Open getbb\.app/,
+      name: "getbb.app",
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
-    expect(link.target).toBe("_blank");
+    slot.getByText("Remote access turns on automatically after you sign in.");
 
     await act(async () => vi.advanceTimersByTimeAsync(1_999));
     expect(polls).toBe(0);
@@ -841,5 +845,227 @@ describe("Connect settings realtime recovery", () => {
 
     expect(slot.queryByText(/Failed to load/)).toBeNull();
     expect(slot.getByText("Connected")).toBeTruthy();
+  });
+});
+
+describe("connect setup guide section", () => {
+  const section = () => app.setupGuideSections[0]!;
+
+  it("offers Set up with install links while bb connect is off", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      { rpc: { status: () => status() } },
+    );
+
+    await slot.findByRole("button", { name: "Set up" });
+    slot.getByText(/A private web address for your bb server/);
+    slot.getByText("Install the mobile app:");
+    fireEvent.click(slot.getByRole("button", { name: "iPhone" }));
+    await slot.findByRole("img", { name: "QR code to install bb on iPhone" });
+    slot.getByText(/Install TestFlight if asked/);
+    fireEvent.click(slot.getByRole("button", { name: "Copy install link" }));
+    await waitFor(() =>
+      expect(slot.experimental_clipboardWrites).toContainEqual({
+        text: "https://testflight.apple.com/join/T9MayTMb",
+      }),
+    );
+  });
+
+  it("starts sign-in from Set up, opens getbb.app, and shows the code without a Cancel", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await slot.findByText("K7QP-2M4X");
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+    expect(slot.navigateCalls).toContainEqual({
+      method: "openUrl",
+      url: "https://getbb.app/link?code=K7QP-2M4X",
+    });
+    slot.getByText("bb connect turns on automatically after you sign in.");
+    expect(
+      (slot.getByRole("link", { name: "getbb.app" }) as HTMLAnchorElement).href,
+    ).toBe("https://getbb.app/link?code=K7QP-2M4X");
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
+    expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("turns remote access back on when this bb is already signed in", async () => {
+    let currentStatus = status({ paired: true, enabled: false });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => currentStatus,
+          setRemoteAccess: (input: unknown) => {
+            currentStatus = connected();
+            expect(input).toEqual({ enabled: true });
+            return currentStatus;
+          },
+          createMachineCode: () => ({
+            code: "PAIR-CODE",
+            expiresAt: Date.now() + 600_000,
+            serverUrl: "https://workstation.getbb.app",
+          }),
+          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await slot.findByText("bb connect is on");
+    slot.getByText("https://workstation.getbb.app");
+  });
+
+  it("shows the pairing code when on, and replaces it once a phone pairs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let consumed = false;
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => ({
+            code: "PAIR-CODE",
+            expiresAt: Date.now() + 600_000,
+            serverUrl: "https://workstation.getbb.app",
+          }),
+          lookupMachineCode: () => ({
+            consumed,
+            machineId: consumed ? "machine-1" : null,
+          }),
+        },
+      },
+    );
+
+    await slot.findByText("PAIR-CODE");
+    slot.getByText(/Get bb on your phone/);
+    await slot.findByRole("img", { name: "QR code to pair the bb mobile app" });
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
+
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    expect(slot.rpcCalls).toContainEqual({
+      method: "lookupMachineCode",
+      input: { code: "PAIR-CODE" },
+    });
+    expect(slot.getByText("PAIR-CODE")).toBeTruthy();
+
+    consumed = true;
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    expect(slot.getByText("Phone paired")).toBeTruthy();
+    expect(slot.queryByText("PAIR-CODE")).toBeNull();
+    expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
+  });
+
+  it("re-mints the pairing code before it expires", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let minted = 0;
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => {
+            minted += 1;
+            return {
+              code: minted === 1 ? "AAAA-1111" : "BBBB-2222",
+              expiresAt: Date.now() + 60_000,
+              serverUrl: "https://workstation.getbb.app",
+            };
+          },
+          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+        },
+      },
+    );
+
+    await slot.findByText("AAAA-1111");
+    await act(async () => vi.advanceTimersByTimeAsync(46_000));
+    expect(slot.getByText("BBBB-2222")).toBeTruthy();
+    expect(slot.queryByText(/expire/i)).toBeNull();
+  });
+
+  it("swaps the pairing code for the install QR while a platform is open", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => ({
+            code: "PAIR-CODE",
+            expiresAt: Date.now() + 600_000,
+            serverUrl: "https://workstation.getbb.app",
+          }),
+          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+        },
+      },
+    );
+
+    await slot.findByText("PAIR-CODE");
+    fireEvent.click(slot.getByRole("button", { name: "Android" }));
+    await slot.findByRole("img", { name: "QR code to install bb on Android" });
+    expect(slot.queryByText("PAIR-CODE")).toBeNull();
+    fireEvent.click(slot.getByRole("button", { name: "Show pairing code" }));
+    slot.getByText("PAIR-CODE");
+  });
+
+  it("explains the device limit inline", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        rpc: {
+          status: () => connected(),
+          createMachineCode: () => {
+            throw new Error("machine_limit");
+          },
+        },
+      },
+    );
+
+    await slot.findByText(/reached its device limit/);
+    expect(slot.queryByText("machine_limit")).toBeNull();
+  });
+
+  it("hides install links and phone pairing on a phone", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: true, onSetupStarted: () => {} },
+      { rpc: { status: () => connected() } },
+    );
+
+    await slot.findByText("bb connect is on");
+    expect(slot.queryByText("Install the mobile app:")).toBeNull();
+    expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
+    expect(slot.rpcCalls.map((call) => call.method)).not.toContain(
+      "createMachineCode",
+    );
+  });
+
+  it("hides install links on a phone while bb connect is off", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: true, onSetupStarted: () => {} },
+      { rpc: { status: () => status() } },
+    );
+
+    await slot.findByRole("button", { name: "Set up" });
+    expect(slot.queryByText("Install the mobile app:")).toBeNull();
   });
 });

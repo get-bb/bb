@@ -352,6 +352,23 @@ describe("consumer-specific config", () => {
     ).toThrow("BB_PERF_DIAGNOSTICS must be a boolean");
   });
 
+  it("reads the optional setup guide variant override", () => {
+    expect(
+      loadServerConfig({ env: createServerRuntimeEnv({}) })
+        .BB_SETUP_GUIDE_VARIANT,
+    ).toBeUndefined();
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_SETUP_GUIDE_VARIANT: "new" }),
+      }).BB_SETUP_GUIDE_VARIANT,
+    ).toBe("new");
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_SETUP_GUIDE_VARIANT: "redesign" }),
+      }),
+    ).toThrow("BB_SETUP_GUIDE_VARIANT must be one of control, new");
+  });
+
   it("carries the launcher's server launch id only when it is set", () => {
     expect(
       loadServerConfig({

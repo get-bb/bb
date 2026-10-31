@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import {
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  featuredPluginEntryIds,
+  skippedStepIds,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
@@ -507,5 +509,45 @@ describe("parseSignInOutput", () => {
       userCode: null,
       acceptsPastedCode: false,
     });
+  });
+});
+
+describe("featuredPluginEntryIds", () => {
+  it("uses the experiment's plugin list when it has one", () => {
+    expect(
+      featuredPluginEntryIds({
+        variant: "new",
+        featuredPluginEntryIds: ["memory", "inline-vis"],
+      }),
+    ).toEqual(["memory", "inline-vis"]);
+  });
+
+  it("falls back to today's six plugins without a list", () => {
+    expect(
+      featuredPluginEntryIds({ variant: "new", featuredPluginEntryIds: null }),
+    ).toEqual([
+      "browser-automation",
+      "workflows",
+      "monaco-editor",
+      "prompt-library",
+      "agent-annotations",
+      "ask-user-question",
+    ]);
+  });
+});
+
+describe("skippedStepIds", () => {
+  it("marks only the steps whose last forward move was a skip", () => {
+    expect(
+      [
+        ...skippedStepIds(
+          new Map([
+            ["agent", "skipped"],
+            ["projects", "completed"],
+            ["plugins", "skipped"],
+          ] as const),
+        ),
+      ].sort(),
+    ).toEqual(["agent", "plugins"]);
   });
 });
