@@ -1632,26 +1632,50 @@ function systemOperationLeadingIcon(
 function leadingIconForSystemRow(
   row: ThreadTimelineViewRow,
 ): IconName | undefined {
-  if (row.kind !== "system" || row.systemKind !== "operation") {
+  if (row.kind !== "system") {
     return undefined;
   }
-  return systemOperationLeadingIcon(
-    row.operationKind,
-    row.operationKind === "parent-change" ? row.parentChange.action : null,
-  );
+  switch (row.systemKind) {
+    case "reconnect":
+      return "AlertTriangle";
+    case "error":
+      return "AlertCircle";
+    case "debug":
+      return undefined;
+    case "operation":
+      return systemOperationLeadingIcon(
+        row.operationKind,
+        row.operationKind === "parent-change" ? row.parentChange.action : null,
+      );
+    default:
+      return assertNever(row);
+  }
 }
 
 function leadingIconForRow(row: ThreadTimelineViewRow): IconName | undefined {
   return leadingIconForWorkRow(row) ?? leadingIconForSystemRow(row);
 }
 
+const RECONNECT_ICON_STYLE = { color: "var(--warning-text)" } as const;
+const ERROR_ICON_STYLE = { color: "var(--destructive-text)" } as const;
+
 function leadingIconStyleForRow(
   row: ThreadTimelineViewRow,
 ): CSSProperties | undefined {
-  if (row.kind !== "work") {
+  if (row.kind === "work") {
+    return presentationTintStyle(workRowPresentation(row));
+  }
+  if (row.kind !== "system") {
     return undefined;
   }
-  return presentationTintStyle(workRowPresentation(row));
+  switch (row.systemKind) {
+    case "reconnect":
+      return RECONNECT_ICON_STYLE;
+    case "error":
+      return ERROR_ICON_STYLE;
+    default:
+      return undefined;
+  }
 }
 
 function useLeadingIconUrlForRow(
@@ -1799,12 +1823,17 @@ function TimelineRowView({
           scopeActive,
         })}
       >
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
-          <TimelineLeadingIcon
-            icon={staticLeadingIcon}
-            iconUrl={staticLeadingIconUrl}
-            style={staticLeadingIconStyle}
-          />
+        <span className="inline-flex min-w-0 max-w-full items-start gap-1.5">
+          {staticLeadingIcon !== undefined ||
+          staticLeadingIconUrl !== undefined ? (
+            <span className="inline-flex h-5 shrink-0 items-center">
+              <TimelineLeadingIcon
+                icon={staticLeadingIcon}
+                iconUrl={staticLeadingIconUrl}
+                style={staticLeadingIconStyle}
+              />
+            </span>
+          ) : null}
           <TitleView title={titleState.title} onTitleAction={onTitleAction} />
         </span>
       </TimelineStaticRowHeader>

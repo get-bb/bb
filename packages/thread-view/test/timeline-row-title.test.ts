@@ -1133,10 +1133,46 @@ describe("buildTimelineRowTitle", () => {
 
     expect(title.plain).toBe("Thread release failed (error)");
     expect(title.tone).toBe("default");
+    expect(title.segments.map((segment) => segment.accent)).toEqual([
+      undefined,
+    ]);
     expect(title.decorations).toEqual([
       { kind: "status", status: "error", durationMs: null, emphasis: true },
     ]);
   });
+
+  it.each([
+    {
+      systemKind: "reconnect" as const,
+      rowTitle: "Claude Code API retry 1/10 after 616ms: unknown",
+      status: null,
+      accent: "warning",
+    },
+    {
+      systemKind: "error" as const,
+      rowTitle: "API Error: Overloaded",
+      status: "error" as const,
+      accent: "destructive",
+    },
+  ])(
+    "tints $systemKind rows with a $accent accent instead of a status tag",
+    ({ systemKind, rowTitle, status, accent }) => {
+      const row: TimelineSystemRow = {
+        ...baseRow(`system-${systemKind}`),
+        kind: "system",
+        systemKind,
+        title: rowTitle,
+        detail: null,
+        status,
+      };
+
+      const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+
+      expect(title.plain).toBe(rowTitle);
+      expect(title.decorations).toEqual([]);
+      expect(title.segments.map((segment) => segment.accent)).toEqual([accent]);
+    },
+  );
 
   it("renders elapsed duration on completed compaction rows", () => {
     const row: TimelineSystemRow = {

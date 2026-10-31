@@ -63,7 +63,12 @@ type TimelineStatusDecorationStatus = "denied" | "error" | "interrupted";
 
 export type TimelineTitleLink = { kind: "thread"; threadId: string };
 
-export type TimelineTitleSegmentAccent = "muted" | "subtle" | "file";
+export type TimelineTitleSegmentAccent =
+  | "muted"
+  | "subtle"
+  | "file"
+  | "warning"
+  | "destructive";
 
 export interface TimelineTitleSegment {
   text: string;
@@ -1620,8 +1625,24 @@ function mapParentChangeSystemTitle(
   });
 }
 
+function systemTitleAccent(
+  row: TimelineSystemViewRow,
+): TimelineTitleSegmentAccent | undefined {
+  switch (row.systemKind) {
+    case "reconnect":
+      return "warning";
+    case "error":
+      return "destructive";
+    case "debug":
+    case "operation":
+      return undefined;
+    default:
+      return assertNever(row);
+  }
+}
+
 function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
-  const hasError = row.systemKind === "error" || row.status === "error";
+  const showsErrorStatus = row.systemKind !== "error" && row.status === "error";
   if (row.systemKind === "operation" && row.operationKind === "parent-change") {
     return mapParentChangeSystemTitle(row);
   }
@@ -1636,7 +1657,7 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
     : isCompaction && row.status === "pending"
       ? `${row.title}…`
       : row.title;
-  const decorations: TimelineTitleDecoration[] = hasError
+  const decorations: TimelineTitleDecoration[] = showsErrorStatus
     ? [statusDecoration("error", null, { emphasis: true })]
     : isReasoning ||
         (isCompaction &&
@@ -1645,7 +1666,13 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
       : [];
   const shimmer = row.status === "pending";
   return makeTitle({
-    segments: [segment(titleText, { shimmer, truncate: true })],
+    segments: [
+      segment(titleText, {
+        shimmer,
+        truncate: true,
+        accent: systemTitleAccent(row),
+      }),
+    ],
     decorations,
   });
 }
