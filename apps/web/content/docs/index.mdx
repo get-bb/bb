@@ -1,55 +1,64 @@
 ---
 title: What is bb
-description: bb runs your coding agents side by side on your own machines and keeps every thread in one place. This page is a placeholder until its real text is written.
+description: bb is an open-source app for running coding agents such as Claude Code, Codex, Cursor and Pi side by side on your own machines, a thread per piece of work.
 type: concept
 sources:
-  - apps/app/src/**
-since: 0.48.1
+  - README.md
+  - apps/web/src/landing/site.ts
+  - apps/app/src/components/onboarding/onboarding-model.ts
+  - apps/web/src/docs/nav.ts
+since: 0.46.1
 owner: brsbl
 verified: 2026-10-30
 ---
 
-> Placeholder. The finished page explains what bb is and points you to the page for what you want to do. Until then, the [home page](/) has the current description.
+Bring the agents you already use. bb gives each piece of work its own thread, its own copy of your code, and one place to follow, steer and review it.
 
-## What is here today
+Your code, agents and threads stay on machines you control. The desktop app, web app, phone app, `bb` CLI and API all drive the same bb, so anything you do in the app, you or an agent can script.
 
-The reference pages are generated from bb's source, so they are already complete:
+## How bb fits together
 
-- [CLI](/docs/cli): every core `bb` command and its flags.
-- [Keyboard shortcuts](/docs/keyboard-shortcuts): every shortcut and its default keys.
-- [Plugin SDK](/docs/plugin-sdk): one page for each place a plugin can add to bb.
+| Term | What it is |
+| --- | --- |
+| **Thread** | One conversation with one agent about one piece of work. Watch it, message it, fork it, or hand it off. |
+| **Child thread** | A thread started by another thread. A parent splits a task, hands each part to a child, and hears back when each finishes. |
+| **Project** | A repository bb works in. |
+| **Environment** | Where a thread's code lives: by default its own Git worktree. It can also be your project checkout or a personal workspace. |
+| **Agent** | The coding agent CLI that does the work. Settings calls these **Providers**. |
+| **Machine and server** | The server keeps your threads; a host daemon on each machine runs agents there. One server can use several machines. |
+| **Plugins and skills** | Plugins add features to bb itself; skills are instructions your agents can load. |
 
-## Placeholder: page components
+## I want to…
 
-> Placeholder. This section only exercises the docs page components until real pages use them. It is removed when this page is written.
+| I want to | Go here |
+| --- | --- |
+| Install bb, or update it | [Install bb](/docs/install) |
+| Use my Claude Code, Codex, Cursor or Pi sign-in | [Connect your agents](/docs/connect-your-agents) |
+| Split a task across several agents | [Quickstart: delegate work to child threads](/docs/quickstart-delegate-work) |
+| Move over from Claude Code, Codex, Conductor or Cursor | [Switch from another tool](/docs/switch-from-another-tool) |
+| Understand worktrees, checkouts and sandboxes | Projects, threads and environments |
+| Choose between child threads, subagents and workflows | Child threads, subagents and workflows |
+| Steer or queue messages while an agent works | Send, steer and queue messages |
+| Review an agent's changes and pull requests | View diffs and pull requests |
+| Choose a model, reasoning level or context size | Choose a model, reasoning and context size |
+| Add an agent bb doesn't list, or a local model | Add Cursor, opencode and other ACP agents |
+| Use several accounts for one agent | Use several accounts |
+| Make my skills show up in the / menu | Add and share skills |
+| Run threads in a sandbox, container or VM | Run threads in sandboxes, containers and VMs |
+| Run agents on another computer | Add a machine |
+| Keep bb running on an always-on machine | Run bb on an always-on machine |
+| Use bb from my phone or away from my desk | Use bb on your phone |
+| Run a prompt on a schedule | Schedule an automation |
+| Find and install plugins | Find and install plugins |
+| Look up a command or keyboard shortcut | CLI and Keyboard shortcuts |
+| Fix something that isn't working | Find your problem |
 
-:::note
-Placeholder callout. A real page uses at most one per section.
-:::
+## Ask your agent about bb
 
-<Tabs items={["Desktop", "CLI"]}>
-<Tab value="Desktop">
-
-Placeholder: open **Settings → Plugins**.
-
-</Tab>
-<Tab value="CLI">
-
-Placeholder: list your plugins from a terminal.
-
-```bash
-$ bb plugin list
-```
-
-</Tab>
-</Tabs>
-
-```json title="placeholder.json"
-{ "placeholder": true, "tabs": 2 }
-```
+Agents in bb have the `bb` command. Ask one how to do something; it looks it up with `bb guide` and can do it for you.
 
 ## Next steps
 
-- [CLI](/docs/cli)
-- [Keyboard shortcuts](/docs/keyboard-shortcuts)
-- [Plugin SDK](/docs/plugin-sdk)
+- [Install bb](/docs/install)
+- [Connect your agents](/docs/connect-your-agents)
+- [Quickstart: delegate work to child threads](/docs/quickstart-delegate-work)
