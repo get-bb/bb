@@ -32,6 +32,7 @@ import {
   credentialMarker,
 } from "./credential-copy.js";
 import { FakeAccount, TEST_ACCOUNT } from "./testing/fake-account.js";
+import type { AccountFetchResult } from "./account-client.js";
 
 const SERVER_HOST_ID = "host-server";
 const SERVER_HOST_NAME = "Server";
@@ -2365,28 +2366,51 @@ describe("connect plugin", () => {
     );
   });
 
-  it("lookupMachineCode reports whether a phone redeemed the code", async () => {
-    const current = await loadPlugin();
-    const lookups: unknown[] = [];
-    account.route(
-      "api",
-      "POST",
-      "/api/connect/machine-code-lookup",
-      (request) => {
-        lookups.push(request.body);
-        return {
-          status: 200,
-          body: { consumed: true, machineId: "machine-1" },
-        };
+  it.each<{
+    name: string;
+    body: AccountFetchResult["body"];
+    machineName: string | null;
+  }>([
+    {
+      name: "with the phone's name",
+      body: {
+        consumed: true,
+        machineId: "machine-1",
+        machineName: "Sawyer's iPhone",
       },
-    );
-    await signIn(current);
+      machineName: "Sawyer's iPhone",
+    },
+    {
+      name: "from a getbb.app that predates machine names",
+      body: { consumed: true, machineId: "machine-1" },
+      machineName: null,
+    },
+  ])(
+    "lookupMachineCode reports whether a phone redeemed the code $name",
+    async ({ body, machineName }) => {
+      const current = await loadPlugin();
+      const lookups: unknown[] = [];
+      account.route(
+        "api",
+        "POST",
+        "/api/connect/machine-code-lookup",
+        (request) => {
+          lookups.push(request.body);
+          return { status: 200, body };
+        },
+      );
+      await signIn(current);
 
-    await expect(
-      current.harness.callRpc("lookupMachineCode", { code: "ABCD-EFGH" }),
-    ).resolves.toEqual({ consumed: true, machineId: "machine-1" });
-    expect(lookups).toEqual([{ code: "ABCD-EFGH" }]);
-  });
+      await expect(
+        current.harness.callRpc("lookupMachineCode", { code: "ABCD-EFGH" }),
+      ).resolves.toEqual({
+        consumed: true,
+        machineId: "machine-1",
+        machineName,
+      });
+      expect(lookups).toEqual([{ code: "ABCD-EFGH" }]);
+    },
+  );
 
   it("lookupMachineCode reports not_paired without making a request", async () => {
     const { harness } = await loadPlugin();

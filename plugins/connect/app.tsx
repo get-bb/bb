@@ -1735,7 +1735,7 @@ type PhonePairing =
   | { kind: "loading" }
   | { kind: "code"; payload: MobilePairingPayload }
   | { kind: "error"; code: MachineCodeErrorCode }
-  | { kind: "paired" };
+  | { kind: "paired"; machineName: string | null };
 
 function usePhonePairing(active: boolean): PhonePairing {
   const rpc = useRpc<typeof connectRpcContract>();
@@ -1795,7 +1795,9 @@ function usePhonePairing(active: boolean): PhonePairing {
         .call("lookupMachineCode", { code })
         .then(
           (result) => {
-            if (!cancelled && result.consumed) setPairing({ kind: "paired" });
+            if (!cancelled && result.consumed) {
+              setPairing({ kind: "paired", machineName: result.machineName });
+            }
           },
           () => {},
         )
@@ -1907,7 +1909,9 @@ function ConnectOnSetupContent({
             aria-hidden
             className="size-3.5 text-success"
           />
-          Phone paired
+          {pairing.machineName === null
+            ? "Phone paired"
+            : `Phone paired: ${pairing.machineName}`}
         </p>
       ) : (
         <>

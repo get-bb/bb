@@ -140,7 +140,7 @@ async function hasMachineCapacity(
   userId: string,
 ): Promise<boolean> {
   const active = await db
-    .select({ id: machine.id })
+    .select({ id: machine.id, name: machine.name })
     .from(machine)
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
@@ -448,7 +448,7 @@ async function retryPendingMachineRevocations(
   userId: string,
 ): Promise<void> {
   const pending = await deps.db
-    .select({ id: machine.id })
+    .select({ id: machine.id, name: machine.name })
     .from(machine)
     .where(
       and(
@@ -846,7 +846,7 @@ export async function lookupMachineCodeForServerCredential(
   credential: string,
   code: string,
 ): Promise<
-  | { consumed: boolean; machineId: string | null }
+  | { consumed: boolean; machineId: string | null; machineName: string | null }
   | { error: string; status: number }
 > {
   const srv = await findServerByCredential(deps.db, credential);
@@ -866,7 +866,7 @@ export async function lookupMachineCodeForServerCredential(
   if (!row || row.userId === null)
     return { error: "invalid-code", status: 404 };
   const device = await deps.db
-    .select({ id: machine.id })
+    .select({ id: machine.id, name: machine.name })
     .from(machine)
     .where(
       and(
@@ -875,7 +875,11 @@ export async function lookupMachineCodeForServerCredential(
       ),
     )
     .get();
-  return { consumed: row.consumedAt !== null, machineId: device?.id ?? null };
+  return {
+    consumed: row.consumedAt !== null,
+    machineId: device?.id ?? null,
+    machineName: device?.name ?? null,
+  };
 }
 
 export async function redeemMachineCode(

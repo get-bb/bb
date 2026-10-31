@@ -921,7 +921,11 @@ describe("connect setup guide section", () => {
             expiresAt: Date.now() + 600_000,
             serverUrl: "https://workstation.getbb.app",
           }),
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+          lookupMachineCode: () => ({
+            consumed: false,
+            machineId: null,
+            machineName: null,
+          }),
         },
       },
     );
@@ -931,46 +935,58 @@ describe("connect setup guide section", () => {
     slot.getByText("https://workstation.getbb.app");
   });
 
-  it("shows the pairing code when on, and replaces it once a phone pairs", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    let consumed = false;
-    const slot = renderSlot(
-      section(),
-      { onPhone: false, onSetupStarted: () => {} },
-      {
-        rpc: {
-          status: () => connected(),
-          createMachineCode: () => ({
-            code: "PAIR-CODE",
-            expiresAt: Date.now() + 600_000,
-            serverUrl: "https://workstation.getbb.app",
-          }),
-          lookupMachineCode: () => ({
-            consumed,
-            machineId: consumed ? "machine-1" : null,
-          }),
+  it.each([
+    {
+      machineName: "Sawyer's iPhone",
+      confirmation: "Phone paired: Sawyer's iPhone",
+    },
+    { machineName: null, confirmation: "Phone paired" },
+  ])(
+    'shows the pairing code when on, and replaces it with "$confirmation" once a phone pairs',
+    async ({ machineName, confirmation }) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let consumed = false;
+      const slot = renderSlot(
+        section(),
+        { onPhone: false, onSetupStarted: () => {} },
+        {
+          rpc: {
+            status: () => connected(),
+            createMachineCode: () => ({
+              code: "PAIR-CODE",
+              expiresAt: Date.now() + 600_000,
+              serverUrl: "https://workstation.getbb.app",
+            }),
+            lookupMachineCode: () => ({
+              consumed,
+              machineId: consumed ? "machine-1" : null,
+              machineName: consumed ? machineName : null,
+            }),
+          },
         },
-      },
-    );
+      );
 
-    await slot.findByText("PAIR-CODE");
-    slot.getByText(/Get bb on your phone/);
-    await slot.findByRole("img", { name: "QR code to pair the bb mobile app" });
-    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
+      await slot.findByText("PAIR-CODE");
+      slot.getByText(/Get bb on your phone/);
+      await slot.findByRole("img", {
+        name: "QR code to pair the bb mobile app",
+      });
+      expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
 
-    await act(async () => vi.advanceTimersByTimeAsync(3_000));
-    expect(slot.rpcCalls).toContainEqual({
-      method: "lookupMachineCode",
-      input: { code: "PAIR-CODE" },
-    });
-    expect(slot.getByText("PAIR-CODE")).toBeTruthy();
+      await act(async () => vi.advanceTimersByTimeAsync(3_000));
+      expect(slot.rpcCalls).toContainEqual({
+        method: "lookupMachineCode",
+        input: { code: "PAIR-CODE" },
+      });
+      expect(slot.getByText("PAIR-CODE")).toBeTruthy();
 
-    consumed = true;
-    await act(async () => vi.advanceTimersByTimeAsync(3_000));
-    expect(slot.getByText("Phone paired")).toBeTruthy();
-    expect(slot.queryByText("PAIR-CODE")).toBeNull();
-    expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
-  });
+      consumed = true;
+      await act(async () => vi.advanceTimersByTimeAsync(3_000));
+      expect(slot.getByText(confirmation)).toBeTruthy();
+      expect(slot.queryByText("PAIR-CODE")).toBeNull();
+      expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
+    },
+  );
 
   it("re-mints the pairing code before it expires", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -989,7 +1005,11 @@ describe("connect setup guide section", () => {
               serverUrl: "https://workstation.getbb.app",
             };
           },
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+          lookupMachineCode: () => ({
+            consumed: false,
+            machineId: null,
+            machineName: null,
+          }),
         },
       },
     );
@@ -1017,7 +1037,11 @@ describe("connect setup guide section", () => {
               serverUrl: "https://workstation.getbb.app",
             };
           },
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+          lookupMachineCode: () => ({
+            consumed: false,
+            machineId: null,
+            machineName: null,
+          }),
         },
       },
     );
@@ -1039,7 +1063,11 @@ describe("connect setup guide section", () => {
             expiresAt: Date.now() + 600_000,
             serverUrl: "https://workstation.getbb.app",
           }),
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+          lookupMachineCode: () => ({
+            consumed: false,
+            machineId: null,
+            machineName: null,
+          }),
         },
       },
     );

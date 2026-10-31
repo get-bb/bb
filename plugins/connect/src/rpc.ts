@@ -117,7 +117,11 @@ export const connectRpcContract = defineRpcContract({
   lookupMachineCode: {
     input: z.object({ code: z.string().min(1) }).strict(),
     output: z
-      .object({ consumed: z.boolean(), machineId: z.string().nullable() })
+      .object({
+        consumed: z.boolean(),
+        machineId: z.string().nullable(),
+        machineName: z.string().nullable(),
+      })
       .strict(),
   },
   revokeMachine: {

@@ -50,6 +50,7 @@ const machineCodeResponseSchema = z.object({
 const machineCodeLookupSchema = z.object({
   consumed: z.boolean(),
   machineId: z.string().nullable(),
+  machineName: z.string().nullable().optional(),
 });
 
 const revokeMachineResponseSchema = z.object({ ok: z.literal(true) });
@@ -186,7 +187,11 @@ export class HostedConnectApi {
   async lookupMachineCode(
     code: string,
     signal?: AbortSignal,
-  ): Promise<{ consumed: boolean; machineId: string | null }> {
+  ): Promise<{
+    consumed: boolean;
+    machineId: string | null;
+    machineName: string | null;
+  }> {
     let result: AccountFetchResult;
     try {
       result = await this.send(
@@ -214,7 +219,11 @@ export class HostedConnectApi {
     }
     const parsed = machineCodeLookupSchema.safeParse(result.body);
     if (!parsed.success) throw new MachineCodeError("network");
-    return parsed.data;
+    return {
+      consumed: parsed.data.consumed,
+      machineId: parsed.data.machineId,
+      machineName: parsed.data.machineName ?? null,
+    };
   }
 
   async revokeMachine(machineId: string, signal?: AbortSignal): Promise<void> {
