@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { surfaceDocsPath } from "../../../../plugins/plugin-api-docs/src/surface-docs";
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
+import { GUIDES } from "../guides/guides";
 import {
   DOCS_NAV,
   DOCS_NAV_COMMUNITY,
@@ -624,6 +625,35 @@ describe("docs links", () => {
     "every /docs link and #anchor on %s resolves",
     (_url, page) => {
       expect(brokenLinks(page, pagesByUrl)).toEqual([]);
+    },
+  );
+
+  const guideLinks = GUIDES.flatMap((guide): Array<[string, string]> =>
+    guide.docs ? [[guide.slug, guide.docs.href]] : [],
+  );
+
+  it("links the guides that have a docs page to it", () => {
+    expect(guideLinks.map(([slug]) => slug)).toEqual(
+      expect.arrayContaining([
+        "orchestrate-coding-agents",
+        "agent-browser",
+        "work-from-anywhere",
+        "run-an-agent-on-a-schedule",
+        "switch-from-claude-code",
+      ]),
+    );
+  });
+
+  it.each(guideLinks)(
+    "the %s guide links to a real docs section: %s",
+    (slug, href) => {
+      expect(href).toContain("#");
+      const linking: LinkablePage = {
+        url: `/guides/${slug}`,
+        markdown: `[${slug}](${href})`,
+        anchors: new Set(),
+      };
+      expect(brokenLinks(linking, pagesByUrl)).toEqual([]);
     },
   );
 

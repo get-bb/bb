@@ -324,6 +324,10 @@ export const guide: Guide = {
     },
     COST_FAQ,
   ],
+  docs: {
+    href: "/docs/use-bb-on-your-phone#1-install-the-app",
+    label: "Use bb on your phone",
+  },
   closer: {
     title: "Take your agents with you",
     body: "Free and open source. Your agents keep running on your computer.",

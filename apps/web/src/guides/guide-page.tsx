@@ -246,6 +246,16 @@ export function GuidePage({ guide }: { guide: Guide }) {
               <StepSection key={step.id} step={step} number={index + 1} />
             ))}
 
+            {guide.docs ? (
+              <section id="docs">
+                <h2 className="gd-h2">In the docs</h2>
+                <p>
+                  Settings, options and limits for this are in the bb docs:{" "}
+                  <a href={guide.docs.href}>{guide.docs.label}</a>.
+                </p>
+              </section>
+            ) : null}
+
             <section id="troubleshooting">
               <h2 className="gd-h2">Troubleshooting</h2>
               <FaqList items={guide.troubleshooting} />

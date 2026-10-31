@@ -20,7 +20,11 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Suspense, useEffect, useRef } from "react";
 import { AnchorProvider, TOCItem, type TOCItemType } from "fumadocs-core/toc";
 
-import { useInitAnalytics } from "../landing/analytics";
+import {
+  trackLandingEvent,
+  useInitAnalytics,
+  type DocsCopyPageAction,
+} from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
@@ -159,12 +163,20 @@ function CopyPageMenu({ view }: { view: DocsPageView }) {
   const markdown = useCopy(view.pageMarkdown, "Page copied as Markdown");
   const openInBb = useCopy(prompt, PROMPT_COPIED);
   const close = () => ref.current?.removeAttribute("open");
+  const track = (action: DocsCopyPageAction) =>
+    trackLandingEvent({
+      name: "docs_copy_page_action",
+      properties: { action },
+    });
   return (
     <div className="docs-copy">
       <button
         type="button"
         className="docs-copy-main"
-        onClick={() => void markdown.copy()}
+        onClick={() => {
+          track("copy-markdown");
+          void markdown.copy();
+        }}
       >
         <HugeiconsIcon icon={Copy01Icon} className="docs-ic" aria-hidden />
         {markdown.copied ? "Copied" : "Copy page"}
@@ -183,6 +195,7 @@ function CopyPageMenu({ view }: { view: DocsPageView }) {
             role="menuitem"
             onClick={() => {
               close();
+              track("open-in-bb");
               void openInBb.copy();
             }}
           >
@@ -194,13 +207,18 @@ function CopyPageMenu({ view }: { view: DocsPageView }) {
             role="menuitem"
             onClick={() => {
               close();
+              track("copy-markdown");
               void markdown.copy();
             }}
           >
             <span>Copy as Markdown</span>
             <small>For pasting into any agent</small>
           </button>
-          <a role="menuitem" href={view.markdownUrl}>
+          <a
+            role="menuitem"
+            href={view.markdownUrl}
+            onClick={() => track("view-markdown")}
+          >
             <span>View as Markdown</span>
             <small>Open this page as plain text</small>
           </a>
@@ -209,6 +227,7 @@ function CopyPageMenu({ view }: { view: DocsPageView }) {
             href={`https://claude.ai/new?q=${aiPrompt}`}
             target="_blank"
             rel="noreferrer"
+            onClick={() => track("open-in-claude")}
           >
             <span>Open in Claude</span>
             <small>Ask Claude about this page</small>
@@ -218,6 +237,7 @@ function CopyPageMenu({ view }: { view: DocsPageView }) {
             href={`https://chatgpt.com/?q=${aiPrompt}`}
             target="_blank"
             rel="noreferrer"
+            onClick={() => track("open-in-chatgpt")}
           >
             <span>Open in ChatGPT</span>
             <small>Ask ChatGPT about this page</small>
@@ -291,7 +311,7 @@ export function DocsPage({ view }: { view: DocsPageView }) {
         <AnchorProvider toc={tocItems(view.toc)} single>
           <div className="docs-wrap">
             <div className="wrap docs-chrome">
-              <SiteNav />
+              <SiteNav current="docs" />
             </div>
             <div className="docs-bar">
               <a className="docs-bar-title" href="/docs">

@@ -54,7 +54,24 @@ type LandingEvent =
   | {
       name: "marketplace_install_command_copied";
       properties: { plugin_id: string; entry_id: string };
+    }
+  | {
+      name: "docs_search_used";
+      properties: { result_count: DocsSearchResultBucket };
+    }
+  | {
+      name: "docs_copy_page_action";
+      properties: { action: DocsCopyPageAction };
     };
+
+export type DocsSearchResultBucket = "0" | "1-5" | "6+";
+
+export type DocsCopyPageAction =
+  | "copy-markdown"
+  | "open-in-bb"
+  | "view-markdown"
+  | "open-in-claude"
+  | "open-in-chatgpt";
 
 let client: PostHog | null = null;
 let loading = false;

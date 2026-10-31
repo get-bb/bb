@@ -2,11 +2,50 @@ import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createContentHighlighter } from "fumadocs-core/search";
 import { useStaticSearch } from "fumadocs-core/search/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  trackLandingEvent,
+  type DocsSearchResultBucket,
+} from "../landing/analytics";
 import { searchEntries, type DocsSearchEntry } from "./search-results";
 
 const DOCS_SEARCH_INDEX = "/docs/search.json";
+const SEARCH_SETTLE_MS = 1000;
+
+export function searchResultBucket(count: number): DocsSearchResultBucket {
+  if (count === 0) return "0";
+  return count <= 5 ? "1-5" : "6+";
+}
+
+export function useTrackDocsSearch(
+  settledQuery: string | null,
+  resultCount: number,
+): () => void {
+  const tracked = useRef<string | null>(null);
+  const pending = useRef<{ query: string; resultCount: number } | null>(null);
+  const flush = useCallback(() => {
+    const next = pending.current;
+    pending.current = null;
+    if (!next || next.query === tracked.current) return;
+    tracked.current = next.query;
+    trackLandingEvent({
+      name: "docs_search_used",
+      properties: { result_count: searchResultBucket(next.resultCount) },
+    });
+  }, []);
+  useEffect(() => {
+    const query = settledQuery?.trim() ?? "";
+    if (query === "" || query === tracked.current) {
+      pending.current = null;
+      return;
+    }
+    pending.current = { query, resultCount };
+    const timer = window.setTimeout(flush, SEARCH_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [settledQuery, resultCount, flush]);
+  return flush;
+}
 
 function isSearchShortcut(event: {
   key: string;
@@ -91,6 +130,10 @@ export function DocsSearch() {
     () => createContentHighlighter(data?.query ?? ""),
     [data?.query],
   );
+  const flushSearchEvent = useTrackDocsSearch(
+    !isLoading && !error && data?.query === search ? search : null,
+    items.length,
+  );
 
   useEffect(() => {
     setMac(/Mac|iPhone|iPad/u.test(navigator.platform));
@@ -131,6 +174,7 @@ export function DocsSearch() {
             setActive((index) => Math.max(index - 1, 0));
           } else if (event.key === "Enter" && items[active]) {
             event.preventDefault();
+            flushSearchEvent();
             window.location.assign(items[active].url);
           } else if (event.key === "Escape") {
             onSearchChange("");
@@ -155,6 +199,7 @@ export function DocsSearch() {
                 href={item.url}
                 data-kind={item.kind}
                 className={index === active ? "active" : undefined}
+                onClick={flushSearchEvent}
               >
                 <SearchEntryText entry={item} highlighter={highlighter} />
               </a>

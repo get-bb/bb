@@ -27,7 +27,13 @@ import {
 } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 
-type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
+type SiteNavPage =
+  | "blog"
+  | "changelog"
+  | "docs"
+  | "plugins"
+  | "plugin-guide"
+  | "guides";
 
 function NavMenu({
   label,
@@ -207,6 +213,12 @@ export function SiteNav({
         <PluginsMenu current={current} />
         <GuidesMenu current={current} path={path} />
         <a
+          className={current === "docs" ? "nav-current nav-wide" : "nav-wide"}
+          href="/docs"
+        >
+          Docs
+        </a>
+        <a
           className={current === "blog" ? "nav-current" : undefined}
           href="/blog"
         >
@@ -283,6 +295,9 @@ export function SiteFooter({ current }: { current?: string }) {
           <DownloadLink placement="footer" platform={platform}>
             Download
           </DownloadLink>
+        </li>
+        <li>
+          <a href="/docs">Docs</a>
         </li>
         <li>
           <a href="/marketplace">Plugins</a>
