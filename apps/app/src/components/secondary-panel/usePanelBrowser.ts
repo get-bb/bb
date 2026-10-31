@@ -6,7 +6,10 @@ import {
   useOpenLinksInAppBrowserPreference,
 } from "@/lib/in-app-browser-link-preference";
 import { isRoutePath } from "@/lib/route-paths";
-import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import {
+  openUrlInExternalBrowser,
+  useFocusedBrowserRegistration,
+} from "@/lib/url-open-routing";
 import type { BrowserAddressFocusRequest } from "./BrowserTabContent";
 import type { OpenSecondaryPanelTabRequest } from "./useThreadFileTabs";
 
@@ -76,6 +79,10 @@ export function usePanelBrowser({
       reveal();
     },
     [openTab, reveal],
+  );
+
+  useFocusedBrowserRegistration(
+    available && isFocused ? openInAppBrowser : null,
   );
 
   const openUrl = useCallback(
