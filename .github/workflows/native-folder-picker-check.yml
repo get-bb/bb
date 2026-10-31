@@ -30,8 +30,7 @@ jobs:
         shell: bash
         run: |
           shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
-          target="$(powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')")\\bb-pick-target"
-          powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$target' | Out-Null"
+          target="$(powershell -NoProfile -Command "[Environment]::GetFolderPath('MyDocuments')")"
           for action in pick cancel; do
             node --conditions=source --import tsx .github/picker-check/check.mts "$action" "$target" &
             pid=$!
@@ -62,7 +61,7 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/host-daemon..."
           pnpm --filter @bb/process-utils run generate:profile-worker
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xdotool imagemagick
+          sudo apt-get install -y -qq xvfb xdotool xclip imagemagick
           if command -v zenity || command -v kdialog; then echo "dialog tool preinstalled"; exit 1; fi
       - name: Start Xvfb
         run: |

@@ -28,15 +28,7 @@ Start-Sleep -Seconds 1
 Save-Screen "open"
 
 if ($Action -eq "pick") {
-  $leaf = Split-Path $Target -Leaf
-  $treeItem = New-Object System.Windows.Automation.PropertyCondition($auto::ControlTypeProperty, [System.Windows.Automation.ControlType]::TreeItem)
-  $named = New-Object System.Windows.Automation.PropertyCondition($auto::NameProperty, "Desktop")
-  $desktops = $dialog.FindAll($scope::Descendants, (New-Object System.Windows.Automation.AndCondition($treeItem, $named)))
-  foreach ($node in $desktops) {
-    $expand = $node.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
-    if ($expand.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Collapsed) { $expand.Expand() }
-  }
-  Start-Sleep -Seconds 1
+  $leaf = "Documents"
   $item = $null
   for ($i = 0; $i -lt 20 -and $null -eq $item; $i++) {
     $item = Find-Named $dialog $leaf $scope::Descendants
