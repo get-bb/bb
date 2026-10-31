@@ -119,7 +119,9 @@ If any input is unclear, ask before bumping the version.
    `/changelog` page and the optional in-app Updates preview consume these
    shared files, so both changes must land before the release is published —
    redeploy `@bb/web` after the release commit lands so the site shows the new
-   version.
+   version. Once a month, these notes also feed the "What's new in bb" email;
+   the `monthly-release-email` skill in `.bb/skills/` builds it from
+   `scripts/monthly-email/`.
 
 5. Make any release documentation updates requested by the user.
 
