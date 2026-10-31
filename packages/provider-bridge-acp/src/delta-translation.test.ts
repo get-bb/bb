@@ -8,6 +8,7 @@ import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
+  ACP_PROMPT_INTERRUPTED_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
@@ -17,7 +18,7 @@ import {
   createAcpDeltaTranslator,
   type AcpDeltaTranslator,
 } from "./delta-translation.js";
-import { resolveAcpDialect } from "./dialect.js";
+import { resolveAcpDialect, type AcpDialect } from "./dialect.js";
 import { ACP_TOOL_PAYLOAD_MAX_CHARS } from "./tool-classification.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
 
@@ -2889,5 +2890,221 @@ describe("acp delta translation (bb-injected tools)", () => {
       "toolCall",
     ]);
     expect(settled[1]).toMatchObject({ tool: "ask_user_question" });
+  });
+});
+
+describe("acp dialect tool call event normalization", () => {
+  function normalizingTranslator(dialect: AcpDialect) {
+    return createAcpDeltaTranslator({ cwd: SESSION_CWD, dialect });
+  }
+
+  function openAgentCall(translator: AcpDeltaTranslator) {
+    translator.translateAcpEvent(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-agent",
+        title: "Agent",
+        kind: "other",
+        status: "pending",
+      }),
+      { threadId: THREAD_ID },
+    );
+  }
+
+  function argumentEchoUpdate(text: string) {
+    return updateEvent({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-agent",
+      status: "in_progress",
+      content: [{ type: "content", content: { type: "text", text } }],
+    });
+  }
+
+  it("suppresses non-command progress text the dialect filters out", () => {
+    const translator = normalizingTranslator({
+      id: "test",
+      normalizeToolCallEvent: (event) => {
+        const { content: _content, ...rest } = event;
+        return rest;
+      },
+    });
+    openAgentCall(translator);
+    const deltas = translator.translateAcpEvent(
+      argumentEchoUpdate('{"prompt": "Compute'),
+      { threadId: THREAD_ID },
+    );
+    expect(deltas.filter((delta) => delta.kind === "item.progress")).toEqual(
+      [],
+    );
+  });
+
+  it("emits progress text the dialect rewrites", () => {
+    const translator = normalizingTranslator({
+      id: "test",
+      normalizeToolCallEvent: (event) => ({
+        ...event,
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "Launching subagent" },
+          },
+        ],
+      }),
+    });
+    openAgentCall(translator);
+    const deltas = translator.translateAcpEvent(
+      argumentEchoUpdate('{"prompt": "Compute'),
+      { threadId: THREAD_ID },
+    );
+    expect(deltas).toContainEqual(
+      expect.objectContaining({
+        kind: "item.progress",
+        message: "Launching subagent",
+      }),
+    );
+  });
+
+  it("applies the hook to generic close result text", () => {
+    const translator = normalizingTranslator({
+      id: "test",
+      normalizeToolCallEvent: (event) => {
+        const { content: _content, ...rest } = event;
+        return rest;
+      },
+    });
+    openAgentCall(translator);
+    const deltas = translator.translateAcpEvent(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-agent",
+        status: "completed",
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: '{"prompt": "Compute 2+2"}' },
+          },
+        ],
+      }),
+      { threadId: THREAD_ID },
+    );
+    const close = deltas.find((delta) => delta.kind === "item.close");
+    expect(close).toBeDefined();
+    expect(close?.resultText).toBeUndefined();
+  });
+
+  describe.each([
+    { name: "Agent", kind: "other", rawInput: { prompt: "Compute 2+2" } },
+    { name: "Bash", kind: "execute", rawInput: { command: "echo hello" } },
+  ] as const)("forced $name close", ({ name, kind, rawInput }) => {
+    it.each([
+      {
+        name: "cancelled turn",
+        event: turnCompletedEvent("cancelled"),
+        acpStatus: "cancelled",
+        itemStatus: "interrupted",
+      },
+      {
+        name: "prompt interruption",
+        event: {
+          jsonrpc: "2.0",
+          method: ACP_PROMPT_INTERRUPTED_METHOD,
+          params: { threadId: THREAD_ID },
+        },
+        acpStatus: "cancelled",
+        itemStatus: "interrupted",
+      },
+      {
+        name: "completed turn",
+        event: turnCompletedEvent("end_turn"),
+        acpStatus: "completed",
+        itemStatus: "completed",
+      },
+      {
+        name: "provider error",
+        event: {
+          jsonrpc: "2.0",
+          method: "error",
+          params: { threadId: THREAD_ID, message: "Agent request failed" },
+        },
+        acpStatus: "failed",
+        itemStatus: null,
+      },
+    ])(
+      "settles the normalizer on $name",
+      ({ event, acpStatus, itemStatus }) => {
+        const activeCalls = new Set<string>();
+        const statuses: AcpToolCallUpdateEvent["status"][] = [];
+        function normalize(
+          event: AcpToolCallUpdateEvent,
+        ): AcpToolCallUpdateEvent {
+          statuses.push(event.status);
+          if (
+            event.status === "completed" ||
+            event.status === "failed" ||
+            event.status === "cancelled"
+          ) {
+            activeCalls.delete(event.toolCallId);
+          } else if (activeCalls.has(event.toolCallId)) {
+            return event;
+          } else {
+            activeCalls.add(event.toolCallId);
+          }
+          const { content: _content, ...rest } = event;
+          return rest;
+        }
+        const translator = normalizingTranslator({
+          id: "test",
+          normalizeCommandEvent: normalize,
+          normalizeToolCallEvent: normalize,
+        });
+        const context = { threadId: THREAD_ID };
+        translator.translateAcpEvent(turnStartedEvent(), context);
+        translator.translateAcpEvent(
+          updateEvent({
+            sessionUpdate: "tool_call",
+            toolCallId: "call-normalized",
+            title: name,
+            kind,
+            status: "pending",
+            rawInput,
+          }),
+          context,
+        );
+        translator.translateAcpEvent(
+          updateEvent({
+            sessionUpdate: "tool_call_update",
+            toolCallId: "call-normalized",
+            status: "in_progress",
+            rawInput,
+            content: [
+              {
+                type: "content",
+                content: { type: "text", text: JSON.stringify(rawInput) },
+              },
+            ],
+          }),
+          context,
+        );
+        const deltas = translator.translateAcpEvent(event, context);
+
+        expect(statuses).toEqual(["in_progress", acpStatus]);
+        expect(activeCalls.size).toBe(0);
+        if (itemStatus === null) {
+          expect(deltas).toEqual([
+            {
+              kind: "provider.error",
+              message: "Provider error",
+              detail: "Agent request failed",
+              settlesTurn: true,
+            },
+          ]);
+        } else {
+          const close = deltas.find((delta) => delta.kind === "item.close");
+          expect(close).toMatchObject({ status: itemStatus });
+          expect(close?.resultText).toBeUndefined();
+          expect(close?.aggregatedOutput).toBeUndefined();
+        }
+      },
+    );
   });
 });
