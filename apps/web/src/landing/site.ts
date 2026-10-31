@@ -49,7 +49,13 @@ export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 
-export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
+export type CtaPlacement =
+  | "nav"
+  | "hero"
+  | "local"
+  | "customize"
+  | "closer"
+  | "footer";
 
 export const UTM_PARAM_NAMES = [
   "utm_source",
@@ -64,6 +70,13 @@ export const CLICK_ID_PARAM_NAMES = ["gclid", "gbraid", "wbraid"] as const;
 export const CAMPAIGN_PARAM_NAMES = [
   ...UTM_PARAM_NAMES,
   ...CLICK_ID_PARAM_NAMES,
+] as const;
+
+export const VISIT_PARAM_NAMES = [
+  "visitor_id",
+  "session_id",
+  "first_page",
+  "first_referrer",
 ] as const;
 
 export function downloadHref(

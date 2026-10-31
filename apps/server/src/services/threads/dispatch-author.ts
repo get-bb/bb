@@ -6,7 +6,7 @@ interface ResolveDispatchAuthorArgs {
   startedOnBehalfOf: StartedOnBehalfOf | null;
 }
 
-interface DispatchAuthor {
+export interface DispatchAuthor {
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
 }

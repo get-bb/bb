@@ -45,6 +45,7 @@ describe("client telemetry events", () => {
           name: "new_thread_submit",
           properties: { outcome: "failed" },
         },
+        { name: "plugin_creation_started", properties: {} },
       ];
       for (const event of events) {
         capture.mockClear();
@@ -53,6 +54,71 @@ describe("client telemetry events", () => {
         await expect(readJson(response)).resolves.toEqual({ ok: true });
         expect(capture).toHaveBeenCalledExactlyOnceWith(event);
       }
+    });
+  });
+
+  it("forwards accepted release notes events to telemetry unchanged", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const events = [
+        {
+          name: "release_notes_opened",
+          properties: { release_version: "0.47.0", view: "inline" },
+        },
+        {
+          name: "release_notes_opened",
+          properties: { release_version: "0.47.0.1", view: "web" },
+        },
+        {
+          name: "release_notes_opened",
+          properties: { release_version: "1.2", view: "inline" },
+        },
+      ];
+      for (const event of events) {
+        capture.mockClear();
+        const response = await post(harness, event);
+        expect(response.status).toBe(200);
+        await expect(readJson(response)).resolves.toEqual({ ok: true });
+        expect(capture).toHaveBeenCalledExactlyOnceWith(event);
+      }
+    });
+  });
+
+  it("rejects release notes events with free-text versions or extra properties", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const opened = (properties: Record<string, unknown>) => ({
+        name: "release_notes_opened",
+        properties: { view: "inline", ...properties },
+      });
+      for (const event of [
+        opened({ release_version: "0.47.0; drop" }),
+        opened({ release_version: "v0.47.0" }),
+        opened({ release_version: "0.47.0-beta.1" }),
+        opened({ release_version: `0.${"1".repeat(40)}` }),
+        opened({ release_version: "0.47.0", threadId: "thr_123" }),
+        opened({ release_version: "0.47.0", view: "panel" }),
+        opened({
+          release_version: "0.47.0",
+          url: "https://example.com/notes",
+        }),
+        {
+          name: "release_notes_opened",
+          properties: {
+            release_version: "0.47.0",
+            entry_point: "updates_link",
+          },
+        },
+        {
+          name: "release_notes_preview_shown",
+          properties: { release_version: "0.47.0", update_available: true },
+        },
+      ]) {
+        expect((await post(harness, event)).status).toBe(400);
+      }
+      expect(capture).not.toHaveBeenCalled();
     });
   });
 
@@ -88,6 +154,10 @@ describe("client telemetry events", () => {
         {
           name: "new_thread_submit",
           properties: { outcome: "failed", message: "private prompt" },
+        },
+        {
+          name: "plugin_creation_started",
+          properties: { pluginName: "bb-plugin-secret" },
         },
       ]) {
         expect((await post(harness, event)).status).toBe(400);

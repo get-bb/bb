@@ -877,4 +877,3 @@ has been exercised or that every behavior has been understood.
 - `setting-or-key: packages/domain/src/app-settings.ts: showUnhandledProviderEvents`
 - `setting-or-key: packages/domain/src/app-settings.ts: steerActiveThreadOnEnter`
 - `setting-or-key: packages/domain/src/app-settings.ts: streamerMode`
-- `setting-or-key: packages/domain/src/experiments.ts: changelogPreview`

@@ -69,6 +69,8 @@ export type TelemetryEvent =
         provenance: "builtin" | "catalog" | "direct";
         marketplace: string | null;
         source_kind: "builtin" | "git" | "npm" | "path";
+        is_fresh_install: boolean;
+        entry_id: string | null;
       };
     }
   | RecordTelemetryEventRequest;

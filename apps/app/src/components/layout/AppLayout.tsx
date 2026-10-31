@@ -811,19 +811,6 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     document.title = documentTitle;
   }, [documentTitle]);
 
-  if (canonicalThreadRoutePath !== null) {
-    return (
-      <Navigate
-        to={{
-          pathname: canonicalThreadRoutePath,
-          search: location.search,
-          hash: location.hash,
-        }}
-        replace
-      />
-    );
-  }
-
   return (
     <SidebarThreadEntriesProvider navigation={sidebarNavigationQuery.data}>
       <TooltipProvider delayDuration={300} disableHoverableContent>
@@ -831,6 +818,16 @@ function AppLayoutContent({ children }: AppLayoutProps) {
           <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
             <ThreadActionsProvider>
               <SidebarStateBridge usesDesktopChrome={usesDesktopChrome}>
+                {canonicalThreadRoutePath !== null ? (
+                  <Navigate
+                    to={{
+                      pathname: canonicalThreadRoutePath,
+                      search: location.search,
+                      hash: location.hash,
+                    }}
+                    replace
+                  />
+                ) : null}
                 {backToAppRoutePath !== null && !isSidebarResizing ? (
                   <BackToAppCommandHandler routePath={backToAppRoutePath} />
                 ) : null}

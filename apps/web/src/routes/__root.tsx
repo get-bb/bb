@@ -6,11 +6,14 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { experimentsBeforeLoad } from "../experiments/use-experiment";
+import { readVisitIds } from "../landing/analytics";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { canonicalHref } from "../lib/canonical";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
 export const Route = createRootRoute({
+  beforeLoad: experimentsBeforeLoad,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -60,7 +63,7 @@ const JS_INIT = `document.documentElement.classList.add("js")`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => watchSystemTheme(), []);
-  useEffect(() => carryUtmToDownloadLinks(), []);
+  useEffect(() => carryUtmToDownloadLinks(readVisitIds), []);
   const canonical = useRouterState({
     select: (state) => canonicalHref(state.matches),
   });

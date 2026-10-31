@@ -1,4 +1,5 @@
 import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
+import { setQueryDataOverInFlightFetch } from "./cache-effect-utils";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   applyAppKeybindingOverrides,
@@ -177,5 +178,9 @@ export function writeCachedAiServices(
   queryClient: QueryClient,
   view: SystemAiServicesResponse,
 ): void {
-  queryClient.setQueryData(systemAiServicesQueryKey(), view);
+  setQueryDataOverInFlightFetch<SystemAiServicesResponse>(
+    queryClient,
+    systemAiServicesQueryKey(),
+    view,
+  );
 }

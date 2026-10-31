@@ -18,7 +18,7 @@ const NOW = Date.now();
 
 function StoryCard({ children }: { children: ReactNode }) {
   return (
-    <div className="w-72 shrink-0 rounded-2xl border border-border bg-popover p-2 text-popover-foreground">
+    <div className="w-72 shrink-0 rounded-md border border-border bg-popover p-2 text-popover-foreground">
       {children}
     </div>
   );

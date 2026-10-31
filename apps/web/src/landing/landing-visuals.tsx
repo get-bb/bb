@@ -3,13 +3,38 @@ import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import RecordIcon from "@hugeicons/core-free-icons/RecordIcon";
+import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
+import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
+import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
@@ -21,6 +46,7 @@ import {
   CursorIcon,
   GrokIcon,
   HermesAgentIcon,
+  LinuxIcon,
   OmpIcon,
   OpenAiIcon,
   OpencodeIcon,
@@ -158,22 +184,23 @@ export function ProviderChips() {
 export function Band({
   title,
   flip,
+  stacked,
   section,
   visual,
   children,
 }: {
   title: ReactNode;
   flip?: boolean;
+  stacked?: boolean;
   section?: string;
   visual: ReactNode;
   children: ReactNode;
 }) {
+  const classes = ["band"];
+  if (flip) classes.push("band-flip");
+  if (stacked) classes.push("band-stacked");
   return (
-    <section
-      className={flip ? "band band-flip" : "band"}
-      data-reveal
-      data-section={section}
-    >
+    <section className={classes.join(" ")} data-reveal data-section={section}>
       <div className="band-grid">
         <div className="band-copy">
           <h2>{title}</h2>
@@ -185,12 +212,36 @@ export function Band({
   );
 }
 
-export function useCycle(holdMs: number, fadeMs: number) {
+export function useCycle(
+  holdMs: number,
+  fadeMs: number,
+  ref?: RefObject<Element | null>,
+) {
   const [cycle, setCycle] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [inView, setInView] = useState(ref === undefined);
+  useEffect(() => {
+    if (!ref) return;
+    const target = ref.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1];
+      if (latest) setInView(latest.isIntersecting);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ref]);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
+    }
+    if (!inView) return;
+    if (ref) {
+      setCycle((c) => c + 1);
+      setLeaving(false);
     }
     let holdTimer = 0;
     let fadeTimer = 0;
@@ -209,8 +260,8 @@ export function useCycle(holdMs: number, fadeMs: number) {
       window.clearTimeout(holdTimer);
       window.clearTimeout(fadeTimer);
     };
-  }, [holdMs, fadeMs]);
-  return { cycle, leaving };
+  }, [holdMs, fadeMs, inView, ref]);
+  return { cycle, leaving, paused: !inView };
 }
 
 export function SpawnRow({
@@ -565,6 +616,953 @@ export function CustomizeBuild() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ClockIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Clock01Icon} className={className} />
+);
+const TerminalIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={CommandLineIcon} className={className} />
+);
+const DoneIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={CheckmarkCircle02Icon} className={className} />
+);
+const WaitingIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
+);
+const GitHubMark = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={GithubIcon} className={className} />
+);
+const PhoneIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SmartPhone01Icon} className={className} />
+);
+const LaptopGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={LaptopIcon} className={className} />
+);
+const CheckGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Tick02Icon} className={className} />
+);
+const ChevronLeft = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowLeft01Icon} className={className} />
+);
+const MoreIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={MoreHorizontalIcon} className={className} />
+);
+const NewThreadIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
+);
+const PanelRightIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SidebarRightIcon} className={className} />
+);
+const PullRequestIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={GitPullRequestIcon} className={className} />
+);
+const IssueIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={RecordIcon} className={className} />
+);
+const PluginIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Plug02Icon} className={className} />
+);
+const SubagentIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={UserAdd01Icon} className={className} />
+);
+const MicIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Mic02Icon} className={className} />
+);
+const HomeIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Home01Icon} className={className} />
+);
+const SkillsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ZapIcon} className={className} />
+);
+const AutomationsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={RepeatIcon} className={className} />
+);
+const SettingsIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Settings01Icon} className={className} />
+);
+const BugIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Bug01Icon} className={className} />
+);
+const BbGlyph = ({ className }: IconProps) => (
+  <span aria-hidden className={`bb-mark ${className ?? ""}`} />
+);
+
+type ThreadState = "running" | "done" | "waiting";
+
+function StatusGlyph({ status }: { status: ThreadState }) {
+  if (status === "running") return <Spinner className="trun" />;
+  if (status === "done") return <DoneIcon className="tdone" />;
+  return <WaitingIcon className="twait" />;
+}
+
+type StatusStep = { status: ThreadState; at: number };
+
+function ThreadStatus({
+  status,
+  then = [],
+}: {
+  status: ThreadState;
+  then?: readonly StatusStep[];
+}) {
+  if (then.length === 0) {
+    return (
+      <span className="tstatus" aria-hidden>
+        <StatusGlyph status={status} />
+      </span>
+    );
+  }
+  const phases = [{ status, at: 0 }, ...then];
+  return (
+    <span className="tstatus bw-phases" aria-hidden>
+      {phases.map((phase, index) => {
+        const next = phases[index + 1];
+        const role =
+          index === 0 ? "first" : next === undefined ? "last" : "mid";
+        return (
+          <span
+            key={index}
+            className={`bw-phase bw-phase-${role}`}
+            style={phaseStyle(phase.at, next?.at)}
+          >
+            <StatusGlyph status={phase.status} />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function phaseStyle(start: number, end?: number): CSSProperties {
+  return {
+    "--fw-at": `${start}s`,
+    "--fw-out": `${end ?? start}s`,
+  } as CSSProperties;
+}
+
+function at(seconds: number): CSSProperties {
+  return { "--fw-at": `${seconds}s` } as CSSProperties;
+}
+
+function WindowDots() {
+  return (
+    <span className="mock-dots" aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+function useFitWindow(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const node = ref.current;
+    const frame = node?.parentElement;
+    if (!node || !frame || typeof ResizeObserver === "undefined") return;
+    const fit = () => {
+      const windowStyle = getComputedStyle(node);
+      const frameStyle = getComputedStyle(frame);
+      const width = Number.parseFloat(
+        windowStyle.getPropertyValue("--bw-width"),
+      );
+      const visible = Number.parseFloat(
+        windowStyle.getPropertyValue("--bw-visible-width"),
+      );
+      const room =
+        frame.clientWidth -
+        Number.parseFloat(frameStyle.paddingLeft) -
+        Number.parseFloat(frameStyle.paddingRight);
+      if (!width || !visible || !room) return;
+      const scale = Math.min(1, room / visible);
+      const slice = Math.min(width, room / scale);
+      node.style.setProperty("--bw-scale", String(scale));
+      node.style.setProperty("--bw-slice", `${slice}px`);
+      node.style.setProperty("--bw-slice-ratio", String(slice / width));
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [ref]);
+}
+
+function stageClass(base: string, leaving: boolean, paused: boolean) {
+  return `${base}${leaving ? " leaving" : ""}${paused ? " fw-paused" : ""}`;
+}
+
+function Reveal({
+  at: seconds,
+  className,
+  children,
+}: {
+  at: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={className ? `bw-reveal ${className}` : "bw-reveal"}
+      style={at(seconds)}
+    >
+      <div className="bw-reveal-inner">{children}</div>
+    </div>
+  );
+}
+
+function WindowBar({
+  title,
+  panelOpen = false,
+}: {
+  title: string;
+  panelOpen?: boolean;
+}) {
+  return (
+    <div className="mock-bar">
+      <div className="bar-left">
+        <WindowDots />
+        <span className="bar-menu" aria-hidden>
+          <PanelIcon className="ri bar-ic" />
+        </span>
+        <span className="bar-nav" aria-hidden>
+          <ChevronLeft className="ri" />
+          <ChevronRight className="ri" />
+        </span>
+      </div>
+      <div className="bar-main">
+        <span className="bar-title">{title}</span>
+        <MoreIcon className="bar-kebab" />
+        <span className="bar-actions" aria-hidden>
+          <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
+            <PanelRightIcon className="ri" />
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NavRail({ children }: { children?: ReactNode }) {
+  return (
+    <nav className="bw-rail" aria-hidden>
+      <span className="bw-rail-btn is-on">
+        <HomeIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <PluginIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <SkillsIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn">
+        <AutomationsIcon className="bw-rail-ic" />
+      </span>
+      {children}
+      <span className="bw-rail-btn">
+        <MoreIcon className="bw-rail-ic" />
+      </span>
+      <span className="bw-rail-btn bw-rail-settings">
+        <SettingsIcon className="bw-rail-ic" />
+      </span>
+    </nav>
+  );
+}
+
+function Sidebar({
+  rail,
+  children,
+}: {
+  rail?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <NavRail>{rail}</NavRail>
+      <aside className="side">
+        <div className="side-act">
+          <NewThreadIcon className="sa-ic" />
+          New thread
+        </div>
+        {children}
+        <div className="side-foot bw-side-foot" aria-hidden>
+          <PhoneIcon className="bw-foot-ic" />
+          <BugIcon className="bw-foot-ic" />
+        </div>
+      </aside>
+    </>
+  );
+}
+
+type RowIcon = (props: IconProps) => ReactNode;
+
+function ThreadRow({
+  title,
+  status,
+  then,
+  icon: Icon,
+  active = false,
+  kid = false,
+  meta,
+}: {
+  title: string;
+  status?: ThreadState;
+  then?: readonly StatusStep[];
+  icon?: RowIcon;
+  active?: boolean;
+  kid?: boolean;
+  meta?: ReactNode;
+}) {
+  const classes = ["trow", "bw-row"];
+  if (active) classes.push("active");
+  if (kid) classes.push("trow-kid");
+  if (meta) classes.push("bw-row-meta");
+  return (
+    <div className={classes.join(" ")}>
+      {Icon ? <Icon className="bw-row-ic" /> : null}
+      <span className="bw-row-text">
+        <span className="trow-title">{title}</span>
+        {meta ? <span className="bw-meta">{meta}</span> : null}
+      </span>
+      {status ? <ThreadStatus status={status} then={then} /> : null}
+    </div>
+  );
+}
+
+function ComposerBox({
+  placeholder,
+  model,
+  modelIcon: ModelIcon,
+  banner,
+}: {
+  placeholder: string;
+  model: string;
+  modelIcon: RowIcon;
+  banner?: ReactNode;
+}) {
+  return (
+    <div className="composer">
+      {banner}
+      <div className="composer-box">
+        <div className="composer-top">
+          <span className="composer-input bw-placeholder">{placeholder}</span>
+          <Maximize2 className="cb-expand" />
+        </div>
+        <div className="composer-row">
+          <span className="model">
+            <ModelIcon className="model-ic" />
+            {model}
+            <ChevronDown className="chev-sm" />
+          </span>
+          <span className="composer-actions" aria-hidden>
+            <Paperclip className="composer-clip" />
+            <MicIcon className="composer-clip" />
+            <span className="send-btn">
+              <SendIcon className="send-ic" />
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PLUGIN_SPOTS = [
+  { id: "issues", label: "GitHub · Issues panel" },
+  { id: "pr", label: "GitHub PR Status" },
+  { id: "chart", label: "Inline visualizations" },
+  { id: "banner", label: "Send later" },
+] as const;
+
+type PluginSpot = (typeof PLUGIN_SPOTS)[number]["id"];
+
+const SIGNUP_WEEKS = [
+  { team: 34, pro: 40 },
+  { team: 40, pro: 42 },
+  { team: 38, pro: 46 },
+  { team: 52, pro: 47 },
+  { team: 61, pro: 50 },
+  { team: 72, pro: 52 },
+];
+
+const GITHUB_ISSUES = [
+  { n: 512, title: "Checkout times out on slow networks", label: "bug" },
+  { n: 508, title: "Export invoices as CSV", label: "feature" },
+  { n: 503, title: "Promo codes ignore the cart minimum", label: "bug" },
+  { n: 497, title: "Retry failed webhooks with backoff", label: "infra" },
+  { n: 491, title: "Dark mode for the billing page", label: "design" },
+];
+
+function Spot({
+  id,
+  lit,
+  className,
+  children,
+}: {
+  id: PluginSpot;
+  lit: PluginSpot;
+  className?: string;
+  children: ReactNode;
+}) {
+  const label = PLUGIN_SPOTS.find((spot) => spot.id === id)?.label;
+  const classes = ["bw-spot"];
+  if (className) classes.push(className);
+  if (id === lit) classes.push("is-lit");
+  return (
+    <div className={classes.join(" ")}>
+      {children}
+      <span className="bw-spot-tag" aria-hidden>
+        <PluginIcon className="bw-spot-ic" />
+        {label}
+      </span>
+    </div>
+  );
+}
+
+export function PluginMap() {
+  const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
+  const { cycle, paused } = useCycle(2800, 400, ref);
+  const lit = PLUGIN_SPOTS[cycle % PLUGIN_SPOTS.length].id;
+  return (
+    <div
+      ref={ref}
+      className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
+      role="img"
+      aria-label="The bb app with plugin UI in place: a GitHub Issues panel open on the right, pull request status under thread titles in the sidebar, a chart of weekly signups inside an agent reply, and a Send later banner above the composer."
+    >
+      <div className="mock bw-window">
+        <WindowBar title="Signups by plan" panelOpen />
+        <div className="mock-body bw-body">
+          <Sidebar
+            rail={
+              <span className="bw-rail-btn">
+                <GitHubMark className="bw-rail-ic" />
+                <span className="bw-rail-badge">5</span>
+              </span>
+            }
+          >
+            <div className="side-label">Threads</div>
+            <ThreadRow title="Signups by plan" status="running" active />
+            <Spot id="pr" lit={lit} className="bw-spot-rows">
+              <ThreadRow
+                title="Fix the checkout bug"
+                status="done"
+                meta={
+                  <>
+                    <PullRequestIcon className="bw-meta-ic" />
+                    #482
+                    <CheckGlyph className="bw-meta-ic bw-ok" />
+                    Checks passed
+                  </>
+                }
+              />
+              <ThreadRow
+                title="Bump the SDK"
+                status="done"
+                meta={
+                  <>
+                    <PullRequestIcon className="bw-meta-ic" />
+                    #479 · Merged
+                  </>
+                }
+              />
+            </Spot>
+            <ThreadRow title="Refactor auth" status="waiting" />
+            <ThreadRow title="Weekly changelog" status="done" />
+          </Sidebar>
+          <div className="main">
+            <div className="feed bw-feed">
+              <div className="msg-user">
+                Chart weekly signups by plan for the last six weeks.
+              </div>
+              <div className="msg-step">
+                <ChevronRight className="step-chev" />
+                Queried <code>analytics.signups</code>
+              </div>
+              <div className="msg-say">
+                Signups are up 38% in six weeks, and Team drove most of it.
+              </div>
+              <Spot id="chart" lit={lit} className="bw-chart">
+                <div className="bw-chart-head">
+                  <span>Weekly signups</span>
+                  <span className="bw-legend">
+                    <i className="bw-key bw-key-team" />
+                    Team
+                    <i className="bw-key bw-key-pro" />
+                    Pro
+                  </span>
+                </div>
+                <div className="bw-bars">
+                  {SIGNUP_WEEKS.map((week, index) => (
+                    <span key={index} className="bw-bar-col">
+                      <span
+                        className="bw-bar bw-bar-team"
+                        style={{ height: `${week.team * 0.8}%` }}
+                      />
+                      <span
+                        className="bw-bar bw-bar-pro"
+                        style={{ height: `${week.pro * 0.4}%` }}
+                      />
+                    </span>
+                  ))}
+                </div>
+              </Spot>
+            </div>
+            <ComposerBox
+              placeholder="Ask for a follow-up"
+              model="Opus 5.5"
+              modelIcon={ClaudeIcon}
+              banner={
+                <Spot id="banner" lit={lit} className="pr-bar bw-banner">
+                  <ClockIcon className="pr-ic" />
+                  <span className="pr-strong">Send later</span>
+                  <span className="pr-dim">· Tomorrow at 9:00 AM</span>
+                  <span className="bw-banner-edit">Edit</span>
+                </Spot>
+              }
+            />
+          </div>
+          <Spot id="issues" lit={lit} className="diff-panel bw-panel">
+            <div className="diff-head">
+              <GitHubMark className="diff-ic" />
+              <span className="diff-title">GitHub</span>
+            </div>
+            <div className="bw-tabs">
+              <span className="bw-tab is-on">
+                Issues <span className="bw-tab-n">12</span>
+              </span>
+              <span className="bw-tab">
+                Pull requests <span className="bw-tab-n">4</span>
+              </span>
+            </div>
+            <div className="bw-issues">
+              {GITHUB_ISSUES.map((issue) => (
+                <div key={issue.n} className="bw-issue">
+                  <IssueIcon className="bw-issue-ic" />
+                  <span className="bw-issue-text">
+                    <span className="bw-issue-title">{issue.title}</span>
+                    <span className="bw-issue-meta">
+                      #{issue.n}
+                      <span className="bw-label">{issue.label}</span>
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Spot>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const DELEGATION_LEAD = "Ship the checkout fix";
+
+const DELEGATION_CHILDREN = [
+  {
+    icon: ClaudeIcon,
+    title: "Plan the fix",
+    landsAt: 0.8,
+    then: [{ status: "done", at: 2.2 }],
+  },
+  {
+    icon: CursorIcon,
+    title: "Build it",
+    landsAt: 3.4,
+    then: [
+      { status: "waiting", at: 4.8 },
+      { status: "running", at: 6.4 },
+      { status: "done", at: 7.8 },
+    ],
+  },
+  {
+    icon: OpenAiIcon,
+    title: "Review the diff",
+    landsAt: 9,
+    then: [{ status: "waiting", at: 10.4 }],
+  },
+] as const;
+
+function SpawnLine({ title, provider }: { title: string; provider: string }) {
+  return (
+    <div className="msg-step msg-spawn">
+      <SubagentIcon className="step-chev" />
+      Started <strong>{title}</strong> in {provider}
+    </div>
+  );
+}
+
+function ChildUpdate({
+  icon: Icon,
+  children,
+}: {
+  icon: RowIcon;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bw-update">
+      <span className="bw-update-head">Child thread updates</span>
+      <span className="bw-update-body">
+        <Icon className="bw-update-ic" />
+        <span>{children}</span>
+      </span>
+    </div>
+  );
+}
+
+const DELEGATION_PING = "Review the diff needs your approval";
+
+export function DelegationTree() {
+  const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
+  const { cycle, leaving, paused } = useCycle(14800, 700, ref);
+  return (
+    <div
+      ref={ref}
+      className="bw bw-lead"
+      role="img"
+      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows each Child thread update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
+    >
+      <div className="mock bw-window">
+        <WindowBar title={DELEGATION_LEAD} />
+        <div
+          className={stageClass("mock-body bw-body", leaving, paused)}
+          key={cycle}
+        >
+          <Sidebar>
+            <div className="side-label">Threads</div>
+            <ThreadRow title="Bump the SDK" icon={ClaudeIcon} status="done" />
+            <ThreadRow
+              title={DELEGATION_LEAD}
+              icon={GrokIcon}
+              status="running"
+              active
+            />
+            <div className="thread-kids bw-kids">
+              {DELEGATION_CHILDREN.map((child) => (
+                <Reveal key={child.title} at={child.landsAt}>
+                  <ThreadRow
+                    title={child.title}
+                    icon={child.icon}
+                    status="running"
+                    then={child.then}
+                    kid
+                  />
+                </Reveal>
+              ))}
+            </div>
+            <ThreadRow
+              title="Refactor auth"
+              icon={CursorIcon}
+              status="waiting"
+            />
+            <ThreadRow
+              title="Weekly changelog"
+              icon={OpenAiIcon}
+              status="done"
+            />
+          </Sidebar>
+          <div className="main">
+            <div className="feed bw-feed bw-feed-live">
+              <div className="msg-user">
+                Ship the checkout timeout fix. Plan it, build it and get it
+                reviewed.
+              </div>
+              <Reveal at={0.6}>
+                <SpawnLine title="Plan the fix" provider="Claude Code" />
+              </Reveal>
+              <Reveal at={2.4}>
+                <ChildUpdate icon={ClaudeIcon}>
+                  <strong>Plan the fix</strong> finished: three steps in{" "}
+                  <code>plan.md</code>
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={3.2}>
+                <SpawnLine title="Build it" provider="Cursor" />
+              </Reveal>
+              <Reveal at={5}>
+                <ChildUpdate icon={CursorIcon}>
+                  <strong>Build it</strong> asked: keep the 30s timeout, or make
+                  it configurable?
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={6.2}>
+                <div className="msg-say">
+                  Replied to <strong>Build it</strong>: make it configurable,
+                  default 30s.
+                </div>
+              </Reveal>
+              <Reveal at={8}>
+                <ChildUpdate icon={CursorIcon}>
+                  <strong>Build it</strong> finished: PR #482 is open
+                </ChildUpdate>
+              </Reveal>
+              <Reveal at={8.8}>
+                <SpawnLine title="Review the diff" provider="Codex" />
+              </Reveal>
+              <Reveal at={10.6}>
+                <ChildUpdate icon={OpenAiIcon}>
+                  <strong>Review the diff</strong> is waiting on your approval
+                </ChildUpdate>
+              </Reveal>
+            </div>
+            <ComposerBox
+              placeholder="Ask for a follow-up"
+              model="Grok Build"
+              modelIcon={GrokIcon}
+            />
+          </div>
+          <div className="bw-toast" style={at(11.4)}>
+            <BbGlyph className="bw-toast-mark" />
+            <span className="bw-toast-text">
+              <span className="bw-toast-app">bb · now</span>
+              <span className="bw-toast-body">{DELEGATION_PING}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const START_PROMPT = "Hand this off to bb: fix the checkout bug";
+
+const FileReadIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={File01Icon} className={className} />
+);
+const SearchIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Search01Icon} className={className} />
+);
+const EditFileIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Edit04Icon} className={className} />
+);
+const CommandIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ComputerTerminal01Icon} className={className} />
+);
+
+type StartStep =
+  | { at: number; say: string }
+  | {
+      at: number;
+      say?: undefined;
+      icon: RowIcon;
+      verb: string;
+      object: string;
+      live?: boolean;
+    };
+
+const START_STEPS: readonly StartStep[] = [
+  { at: 2.4, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
+  { at: 2.9, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
+  {
+    at: 3.5,
+    say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
+  },
+  { at: 4.4, icon: EditFileIcon, verb: "Edited", object: "2 files" },
+  {
+    at: 5.2,
+    icon: CommandIcon,
+    verb: "Running",
+    object: "pnpm test checkout",
+    live: true,
+  },
+];
+
+function PhoneStatusBar() {
+  return (
+    <div className="bw-phone-status">
+      <span>9:41</span>
+      <span className="bw-phone-sys">
+        <svg viewBox="0 0 18 12" width="18" height="12">
+          <rect x="0" y="8" width="3" height="4" rx="1" />
+          <rect x="5" y="5.5" width="3" height="6.5" rx="1" />
+          <rect x="10" y="3" width="3" height="9" rx="1" />
+          <rect x="15" y="0" width="3" height="12" rx="1" />
+        </svg>
+        <svg viewBox="0 0 16 12" width="16" height="12">
+          <path d="M8 2.6c2.2 0 4.2.8 5.7 2.2l1.2-1.3A10 10 0 0 0 8 .8a10 10 0 0 0-6.9 2.7l1.2 1.3A8.2 8.2 0 0 1 8 2.6Z" />
+          <path d="M8 6.2c1.2 0 2.3.4 3.2 1.2l1.2-1.3A6.5 6.5 0 0 0 8 4.4a6.5 6.5 0 0 0-4.4 1.7l1.2 1.3c.9-.8 2-1.2 3.2-1.2Z" />
+          <path d="M8 9.7 10 7.6a3 3 0 0 0-4 0Z" />
+        </svg>
+        <svg viewBox="0 0 27 12" width="27" height="12">
+          <rect
+            x="0.5"
+            y="0.5"
+            width="23"
+            height="11"
+            rx="3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.4"
+          />
+          <rect x="2" y="2" width="16" height="8" rx="2" />
+          <path d="M25 4v4a2 2 0 0 0 0-4Z" fillOpacity="0.4" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
+export function StartAnywhere() {
+  const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
+  const { cycle, leaving, paused } = useCycle(11800, 700, ref);
+  return (
+    <div
+      ref={ref}
+      className="bw bw-start"
+      role="img"
+      aria-label="A ChatGPT chat says Hand this off to bb: fix the checkout bug and Used Control bb, with Claude and Grok behind it. The thread lands in the bb sidebar, grouped by machine under linux-box, the server, next to a thread from CI and one from a schedule. An iPhone shows the same thread in the bb mobile app, still working: it explored the code, edited two files and is running the tests."
+    >
+      <div
+        className={stageClass("bw-start-stage", leaving, paused)}
+        key={cycle}
+      >
+        <div className="mock bw-window">
+          <WindowBar title="Fix the checkout bug" />
+          <div className="mock-body bw-body">
+            <Sidebar>
+              <div className="side-label bw-group">
+                <LinuxIcon className="bw-group-ic" />
+                linux-box
+                <span className="bw-chip">server</span>
+              </div>
+              <Reveal at={1.4}>
+                <ThreadRow
+                  title="Fix the checkout bug"
+                  icon={OpenAiIcon}
+                  status="running"
+                  active
+                />
+              </Reveal>
+              <Reveal at={6.4}>
+                <ThreadRow
+                  title="Fix CI on main"
+                  icon={TerminalIcon}
+                  status="running"
+                />
+              </Reveal>
+              <Reveal at={7.6}>
+                <ThreadRow
+                  title="Daily changelog"
+                  icon={ClockIcon}
+                  status="running"
+                />
+              </Reveal>
+              <div className="side-label bw-group">
+                <LaptopGlyph className="bw-group-ic" />
+                MacBook
+              </div>
+              <ThreadRow
+                title="Refactor auth"
+                icon={BbGlyph}
+                status="waiting"
+              />
+              <ThreadRow
+                title="Fix flaky login test"
+                icon={PhoneIcon}
+                status="done"
+              />
+            </Sidebar>
+            <div className="main">
+              <div className="feed bw-feed">
+                <Reveal at={1.8}>
+                  <div className="msg-user">{START_PROMPT}</div>
+                </Reveal>
+                {START_STEPS.map((step) => (
+                  <Reveal key={step.at} at={step.at}>
+                    {step.say !== undefined ? (
+                      <div className="msg-say">{step.say}</div>
+                    ) : (
+                      <div className="msg-step">
+                        <ChevronRight className="step-chev" />
+                        {step.verb} {step.object}
+                      </div>
+                    )}
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="bw-chat-stack">
+          <div className="bw-chat-back bw-chat-back-2">
+            <GrokIcon className="bw-chat-back-ic" />
+            Grok
+          </div>
+          <div className="bw-chat-back bw-chat-back-1">
+            <ClaudeIcon className="bw-chat-back-ic" />
+            Claude
+          </div>
+          <div className="bw-chat">
+            <div className="bw-chat-head">
+              <OpenAiIcon className="bw-chat-ic" />
+              ChatGPT
+            </div>
+            <div className="bw-chat-body">
+              <span className="bw-bubble">{START_PROMPT}</span>
+              <span className="bw-used bw-fade" style={at(0.8)}>
+                <BbGlyph className="bw-used-mark" />
+                Used <b>Control bb</b>
+                <CheckGlyph className="bw-used-check" />
+              </span>
+              <span className="bw-chat-say bw-fade" style={at(1.2)}>
+                Started <b>Fix the checkout bug</b> in bb on linux-box.
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="bw-phone" aria-hidden>
+          <div className="bw-phone-screen">
+            <div className="bw-phone-ui">
+              <PhoneStatusBar />
+              <div className="bw-m-head">
+                <PanelIcon className="bw-m-head-ic" />
+                <span className="bw-m-title">Fix the checkout bug</span>
+                <MoreIcon className="bw-m-head-ic" />
+                <PanelRightIcon className="bw-m-head-ic bw-m-head-end" />
+              </div>
+              <div className="bw-m-feed">
+                <Reveal at={1.8}>
+                  <div className="bw-m-user">{START_PROMPT}</div>
+                </Reveal>
+                {START_STEPS.map((step) => (
+                  <Reveal key={step.at} at={step.at}>
+                    {step.say !== undefined ? (
+                      <div className="bw-m-say">{step.say}</div>
+                    ) : (
+                      <div
+                        className={step.live ? "bw-m-row is-live" : "bw-m-row"}
+                      >
+                        <step.icon className="bw-m-row-ic" />
+                        <span className="bw-m-verb">{step.verb}</span>
+                        <span className="bw-m-object">{step.object}</span>
+                        {step.live ? (
+                          <span className="bw-m-timer">14s</span>
+                        ) : null}
+                        <ChevronRight className="bw-m-chev" />
+                      </div>
+                    )}
+                  </Reveal>
+                ))}
+                <div className="bw-m-working bw-fade" style={at(5.6)}>
+                  Working...
+                </div>
+              </div>
+              <div className="bw-m-composer">
+                <span className="bw-m-placeholder">Ask a follow-up</span>
+                <MicIcon className="bw-m-mic" />
+                <span className="bw-m-stop">
+                  <i />
+                </span>
+              </div>
+              <span className="bw-phone-home" />
+            </div>
+            <span className="bw-phone-island" />
           </div>
         </div>
       </div>
