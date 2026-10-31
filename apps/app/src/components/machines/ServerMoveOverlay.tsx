@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ServerMoveHealth } from "@bb/host-daemon-contract";
+import {
+  fetchServerHealth,
+  type ServerMoveHealth,
+} from "@bb/host-daemon-contract";
 import type { ServerMoveStatus } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateQueriesAfterServerMove } from "@/hooks/cache-owners/server-move-cache-owner";
@@ -20,7 +23,6 @@ import {
   serverMoveDestinationProbeUrl,
   serverMoveOverlayPollIntervalMs,
 } from "./server-move";
-import { fetchServerMoveDestinationHealth } from "./server-move-destination";
 import { defineSplit } from "@/lib/define-split";
 
 const ServerMoveOverlayView = defineSplit<
@@ -56,14 +58,18 @@ function useServerMoveDestinationHealth(
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async (): Promise<void> => {
-      const health = await fetchServerMoveDestinationHealth(
+      const health = await fetchServerHealth({
         url,
-        controller.signal,
-      );
+        init: {
+          cache: "no-store",
+          credentials: "omit",
+          signal: controller.signal,
+        },
+      });
       if (controller.signal.aborted) {
         return;
       }
-      setReading({ health, url });
+      setReading({ health: health?.serverMove ?? null, url });
       timer = setTimeout(() => {
         void poll();
       }, intervalMs);
@@ -213,4 +219,3 @@ export function ServerMoveOverlay({
     />
   );
 }
-

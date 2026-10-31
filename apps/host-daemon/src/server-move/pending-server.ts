@@ -4,6 +4,7 @@ import {
 } from "@bb/process-utils";
 import {
   serverHealthResponseSchema,
+  serverHealthUrl,
   type ServerMoveHealth,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
@@ -167,7 +168,7 @@ export async function readServerMoveHealth(
   const health = serverHealthResponseSchema.parse(
     await fetchJson({
       fetchFn: args.fetchFn,
-      url: `${baseUrl(args.serverUrl)}/health`,
+      url: serverHealthUrl(args.serverUrl),
       signal: args.signal,
       timeoutMs: args.timeoutMs,
     }),

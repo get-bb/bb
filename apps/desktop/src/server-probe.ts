@@ -104,7 +104,7 @@ async function sleep(args: SleepArgs): Promise<void> {
 }
 
 function endpointUrl(serverUrl: string, path: string): string {
-  return new URL(path, serverUrl).toString();
+  return `${serverUrl.replace(/\/+$/u, "")}${path}`;
 }
 
 async function fetchJson<TValue>(
