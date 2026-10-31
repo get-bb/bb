@@ -81,6 +81,7 @@ it("reads ChatGPT credentials with the account id from the access token claims",
     "https://api.openai.com/auth": {
       chatgpt_account_id: "account-123",
       chatgpt_account_is_fedramp: true,
+      chatgpt_plan_type: "pro",
     },
   })}.sig`;
   const codexHome = path.join(homeDir, ".codex");
@@ -98,6 +99,7 @@ it("reads ChatGPT credentials with the account id from the access token claims",
     accessToken,
     accountId: "account-123",
     accountEmail: "codex@example.com",
+    planType: "pro",
     expired: false,
     isFedrampAccount: true,
   });

@@ -18,6 +18,7 @@ export interface CodexChatGptAuthCredentials {
   accessToken: string;
   accountId: string;
   accountEmail: string | null;
+  planType: string | null;
   expired: boolean;
   isFedrampAccount: boolean;
 }
@@ -156,6 +157,9 @@ function classifyAuthJson(value: JsonValue): ClassifiedAuthJson {
       accountEmail:
         accountEmail(accessToken) ??
         (idToken === null ? null : accountEmail(idToken)),
+      planType:
+        nonEmptyString(claims?.chatgpt_plan_type) ??
+        nonEmptyString(idTokenClaims?.chatgpt_plan_type),
       expired: tokenExpired(accessToken),
       isFedrampAccount:
         claims?.chatgpt_account_is_fedramp === true ||
