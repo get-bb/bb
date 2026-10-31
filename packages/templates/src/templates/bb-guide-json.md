@@ -117,7 +117,7 @@ the most-parsed commands ends with the same shape.
     one object keyed by settings area (generalSettings, serverAccess, keybindings, experiments, appearance, ...)
 
   bb guide commands [group] --json
-    {chapter, commands: [{path, aliases, arguments, options, description}]}
+    {chapter, commands: [{path, aliases, arguments, options, optionDetails: [{flags, description}], description}]}
 
 Commands contributed by plugins document their own JSON in `bb <command> --help`
 and the plugin's skill.

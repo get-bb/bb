@@ -41,6 +41,31 @@ describe("bb guide command output", () => {
     expect(output).not.toContain("bb thread ");
   }, 30_000);
 
+  it("bb guide commands --json gives each option its description", async () => {
+    await runCommand(
+      ["guide", "commands", "terminal", "--json"],
+      registerGuideCommand,
+    );
+
+    const { commands } = JSON.parse(
+      collectLogLines(vi.mocked(console.log)).join("\n"),
+    ) as {
+      commands: {
+        path: string;
+        options: string[];
+        optionDetails: { flags: string; description: string }[];
+      }[];
+    };
+    const output = commands.find((entry) => entry.path === "terminal output");
+    expect(output?.optionDetails.map((option) => option.flags)).toEqual(
+      output?.options,
+    );
+    expect(
+      output?.optionDetails.find((option) => option.flags === "--json")
+        ?.description,
+    ).toMatch(/\S/u);
+  }, 30_000);
+
   it("bb guide commands without a group leaves options out and says how to get them", async () => {
     await runCommand(["guide", "commands"], registerGuideCommand);
 

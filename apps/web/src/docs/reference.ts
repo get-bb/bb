@@ -19,13 +19,20 @@ import { PLUGIN_SDK_SLUG } from "./nav";
 export const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
 export const SOURCES_HEADING = "Where this list comes from";
 
+interface CliOption {
+  flags: string;
+  description: string;
+}
+
 interface CliCommandEntry {
   aliases: string[];
   arguments: string;
   description: string;
-  options: string[];
+  optionDetails: CliOption[];
   path: string;
 }
+
+export type ReferenceLayout = "default" | "cli";
 
 interface ReferencePageData {
   title: string;
@@ -33,6 +40,7 @@ interface ReferencePageData {
   type: "reference";
   sources: string[];
   editPath: string;
+  layout: ReferenceLayout;
   markdown: string;
   structuredData: StructuredData;
 }
@@ -94,7 +102,7 @@ function searchLines(markdown: string): string[] {
     .filter((line) => !/^\|?\s*-{3}/u.test(line))
     .map((line) =>
       plainText(line)
-        .replace(/^\s*[-|]\s*/u, "")
+        .replace(/^\s*(?:[-|]|#{3,6})\s*/u, "")
         .replace(/\s*\|\s*/gu, " · ")
         .replace(/[\s·]+$/u, "")
         .trim(),
@@ -108,6 +116,7 @@ function pageData(input: {
   intro: string;
   sources: string[];
   editPath: string;
+  layout?: ReferenceLayout;
   sections: ReferenceSection[];
 }): ReferencePageData {
   const markdown = [
@@ -122,6 +131,7 @@ function pageData(input: {
     type: "reference",
     sources: input.sources,
     editPath: input.editPath,
+    layout: input.layout ?? "default",
     markdown,
     structuredData: {
       headings: input.sections.map((section) => ({
@@ -155,10 +165,65 @@ function cliGroups(
   return groups;
 }
 
-function cliUsage(command: CliCommandEntry): string {
-  return ["bb", command.path, command.arguments]
-    .filter((part) => part.length > 0)
-    .join(" ");
+function sameOption(left: CliOption, right: CliOption): boolean {
+  return left.flags === right.flags && left.description === right.description;
+}
+
+function commonOptions(entries: readonly CliCommandEntry[]): CliOption[] {
+  const [first, ...rest] = entries;
+  if (!first || rest.length === 0) return [];
+  return first.optionDetails.filter((option) =>
+    rest.every((entry) =>
+      entry.optionDetails.some((candidate) => sameOption(candidate, option)),
+    ),
+  );
+}
+
+function optionTable(options: readonly CliOption[]): string {
+  return table(
+    ["Flag", "What it does"],
+    options.map((option) => [
+      codeCell(option.flags),
+      tableCell(option.description),
+    ]),
+  );
+}
+
+function cliCommandBlock(
+  entry: CliCommandEntry,
+  common: readonly CliOption[],
+): string {
+  const heading = [`\`bb ${entry.path}\``];
+  if (entry.arguments.length > 0) heading.push(codeCell(entry.arguments));
+  const description = tableCell(entry.description);
+  const aliases =
+    entry.aliases.length > 0
+      ? `${/[.!?]$/u.test(description) ? "" : "."} Also ${entry.aliases
+          .map((alias) =>
+            codeCell(
+              ["bb", ...entry.path.split(" ").slice(0, -1), alias].join(" "),
+            ),
+          )
+          .join(", ")}.`
+      : "";
+  const own = entry.optionDetails.filter(
+    (option) => !common.some((shared) => sameOption(shared, option)),
+  );
+  return [
+    `### ${heading.join(" ")}`,
+    `${description}${aliases}`,
+    ...(own.length > 0 ? [optionTable(own)] : []),
+  ].join("\n\n");
+}
+
+function cliGroupBody(group: string, entries: CliCommandEntry[]): string {
+  const common = commonOptions(entries);
+  return [
+    ...(common.length > 0
+      ? [`Common flags on every \`bb ${group}\` command:`, optionTable(common)]
+      : []),
+    ...entries.map((entry) => cliCommandBlock(entry, common)),
+  ].join("\n\n");
 }
 
 export function cliReferencePage(
@@ -166,26 +231,17 @@ export function cliReferencePage(
 ): ReferencePageData {
   const sections = [...cliGroups(commands)].map(([group, entries]) => ({
     heading: `bb ${group}`,
-    body: table(
-      ["Command", "What it does", "Flags"],
-      entries.map((entry) => [
-        codeCell(cliUsage(entry)) +
-          (entry.aliases.length > 0
-            ? ` (also ${entry.aliases.map((alias) => codeCell(alias)).join(", ")})`
-            : ""),
-        tableCell(entry.description),
-        entry.options.map((option) => codeCell(option)).join(" "),
-      ]),
-    ),
+    body: cliGroupBody(group, entries),
   }));
   return pageData({
     title: "CLI",
     description:
       "Every core bb command, its arguments and its flags, generated from the CLI itself.",
     intro:
-      "Every core `bb` command with its arguments and flags. Run `bb <command> --help` for the full help of one command. Plugins add their own commands; `bb plugin list` shows which plugins are installed.",
+      "Run `bb <command> --help` for the full help of one command. Plugins add their own commands; `bb plugin list` shows which plugins are installed.",
     sources: ["apps/cli/src/commands/**", "apps/cli/src/command-groups.ts"],
     editPath: "apps/cli/src/command-groups.ts",
+    layout: "cli",
     sections: [
       ...sections,
       sourcesSection(
@@ -224,7 +280,7 @@ function keyboardReferencePage(): ReferencePageData {
     description:
       "Every bb keyboard shortcut with its default keys on Mac, Windows and Linux.",
     intro:
-      "Every action you can bind to a key, with bb's default keys. Change any of them in Settings → Keyboard. Actions marked Not assigned have no default key; you can give them one there.",
+      "Change any shortcut in Settings → Keyboard. Actions marked Not assigned have no default key; you can give them one there.",
     sources: KEYBOARD_SOURCES,
     editPath: "packages/domain/src/app-default-keybindings.ts",
     sections: [...sections, sourcesSection(KEYBOARD_SOURCES)],
@@ -293,7 +349,7 @@ function surfacePage(
   return pageData({
     title: surface.title,
     description: plainText(summary),
-    intro: `${surface.experimental ? "**Experimental.** Names and behavior may change before this surface is stable.\n\n" : ""}In the [Plugin Guide](/plugin-guide?slide=${group.id}), this surface is under ${group.title}: ${group.blurb}`,
+    intro: `${surface.experimental ? "**Experimental.** Names and behavior may change before this surface is stable.\n\n" : ""}See it in place under ${group.title} in the [Plugin Guide](/plugin-guide?slide=${group.id}).`,
     sources: [SURFACES_PATH],
     editPath: SURFACES_PATH,
     sections,
@@ -316,7 +372,7 @@ function pluginSdkIndexPage(): ReferencePageData {
     description:
       "Every place a bb plugin can add to the app, with one page per plugin surface and its SDK symbols.",
     intro:
-      "A plugin surface is a place in bb a plugin can add to, like a sidebar badge or a thread tab. Each surface below has its own page with what a plugin can do there and the `@get-bb/plugin-sdk` symbols it uses. To see where each one sits in the app, open the [Plugin Guide](/plugin-guide).",
+      "Surfaces are grouped by where they appear, like a sidebar badge or a thread tab. Open the [Plugin Guide](/plugin-guide) to see each one in the app.",
     sources: [SURFACES_PATH],
     editPath: SURFACES_PATH,
     sections: [...sections, sourcesSection([SURFACES_PATH])],
