@@ -769,54 +769,76 @@ describe("Docs nav panel", () => {
     expect(slot.queryByText("Remote Mac")).toBeNull();
   });
 
-  it("renders and autosaves editable Markdown tables", async () => {
-    const saveDocument = vi.fn((rawInput: unknown) =>
-      saved((rawInput as { path: string }).path),
-    );
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "personal/status.md" },
-      {
-        rpc: {
-          listNotes: () =>
-            listNotesResult([
-              {
-                path: "status.md",
-                title: "Status",
-                preview: "Docs Ready",
-                modifiedAtMs: 1,
-              },
-            ]),
-          readDocument: (rawInput: unknown) =>
-            documentResult(
-              (rawInput as { path: string }).path,
-              "# Status\n\n| Project | State |\n| --- | --- |\n| Docs | Ready |",
-              "sha",
-            ),
-          saveDocument,
+  it.each([
+    {
+      name: "tables",
+      markdown: "| Project | State |\n| --- | --- |\n| Docs | Ready |",
+      selector: "td p",
+      expected: "| Plans | Ready |",
+    },
+    {
+      name: "table code pipes and image-only cells",
+      markdown:
+        "| Project | Code | Image |\n| --- | --- | --- |\n| Docs | `a\\|b` | ![icon](https://example.com/icon.png) |",
+      selector: "td p",
+      expected: "| Plans | `a\\|b` | ![icon](https://example.com/icon.png) |",
+    },
+    {
+      name: "tight task lists",
+      markdown: "- [ ] Docs\n- [x] Ready",
+      selector: "li p",
+      expected: "- [ ] Plans\n- [x] Ready",
+    },
+  ])(
+    "renders and autosaves $name",
+    async ({ name, markdown, selector, expected }) => {
+      const saveDocument = vi.fn((rawInput: unknown) =>
+        saved((rawInput as { path: string }).path),
+      );
+      const slot = renderSlot(
+        app.navPanels[0]!,
+        { subPath: `personal/${name}.md` },
+        {
+          rpc: {
+            listNotes: () =>
+              listNotesResult([
+                {
+                  path: `${name}.md`,
+                  title: "Status",
+                  preview: "Docs Ready",
+                  modifiedAtMs: 1,
+                },
+              ]),
+            readDocument: (rawInput: unknown) =>
+              documentResult(
+                (rawInput as { path: string }).path,
+                `# Status\n\n${markdown}`,
+                "sha",
+              ),
+            saveDocument,
+          },
         },
-      },
-    );
+      );
 
-    await slot.findByText("Ready");
-    const table = slot.container.querySelector("table");
-    expect(table).toBeTruthy();
-    expect(table?.querySelector("th")?.textContent).toBe("Project");
-    expect(table?.querySelector("td")?.textContent).toBe("Docs");
-    expect(table?.closest(".tableWrapper")).toBeTruthy();
-    expect(table?.closest('[contenteditable="true"]')).toBeTruthy();
-
-    const firstBodyCell = table?.querySelector("td p");
-    expect(firstBodyCell).toBeTruthy();
-    firstBodyCell!.textContent = "Plans";
-    fireEvent.input(firstBodyCell!);
-    await waitFor(() => expect(saveDocument).toHaveBeenCalled(), {
-      timeout: 2_000,
-    });
-    expect(saveDocument.mock.calls.at(-1)?.[0]).toMatchObject({
-      content: expect.stringContaining("| Plans | Ready |"),
-    });
-  });
+      await slot.findByText("Docs");
+      const table = slot.container.querySelector("table");
+      if (table) {
+        expect(table.querySelector("th")?.textContent).toBe("Project");
+        expect(table.closest(".tableWrapper")).toBeTruthy();
+        expect(table.closest('[contenteditable="true"]')).toBeTruthy();
+      }
+      const firstBodyCell = slot.container.querySelector(selector);
+      expect(firstBodyCell).toBeTruthy();
+      firstBodyCell!.textContent = "Plans";
+      fireEvent.input(firstBodyCell!);
+      await waitFor(() => expect(saveDocument).toHaveBeenCalled(), {
+        timeout: 2_000,
+      });
+      expect(saveDocument.mock.calls.at(-1)?.[0]).toMatchObject({
+        content: expect.stringContaining(expected),
+      });
+    },
+  );
 
   it("preserves video HTML when autosaving an unrelated prose edit", async () => {
     const video = `<div style="margin-block: 1rem;">
