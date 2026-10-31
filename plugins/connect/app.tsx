@@ -23,7 +23,7 @@ import {
   loginPollOutputSchema,
   loginViewSchema,
   type LoginView,
-} from "./src/account-client.js";
+} from "bb-plugin-bb-account/src/schemas.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
 import {
