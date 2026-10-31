@@ -376,8 +376,8 @@ function AgentRow({
           ) : null}
           {state.status === "ready" ? (
             quiet ? (
-              <span className="flex items-center gap-1 text-2xs text-subtle-foreground">
-                <Icon name="CircleCheck" aria-hidden className="size-3" />
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Icon name="CircleCheck" aria-hidden className="size-3.5" />
                 Ready
               </span>
             ) : (
@@ -503,12 +503,11 @@ export function AgentStep({
           ))}
         </ul>
       )}
-      {quiet ? null : (
-        <p className="text-xs text-muted-foreground">
-          Don't see your agent? bb picks up other ACP agents, such as opencode,
-          once they are installed.
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground">
+        {quiet
+          ? "Don't see your agent? bb picks up other ACP agents once you have them installed."
+          : "Don't see your agent? bb picks up other ACP agents, such as opencode, once they are installed."}
+      </p>
     </div>
   );
 }
@@ -1211,7 +1210,7 @@ export function AgentSignInPanel({
           }
         : { kind: "waiting" };
   return (
-    <div className="mt-3 pl-9">
+    <div className="mt-3">
       <SignInPanel
         status={
           codeSubmitted

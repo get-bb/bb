@@ -550,7 +550,7 @@ function AgentStepContainer({
           ? "bb runs the agents you already use. You need one that is installed and signed in on this computer."
           : hostName === null
             ? "Waiting for this computer to connect…"
-            : `Agents run on ${hostName}. bb needs one installed and signed in.`
+            : `Agents run on your machine, ${hostName}. bb needs one installed and signed in.`
       }
       footerNote={
         agentBlocked && !redesign

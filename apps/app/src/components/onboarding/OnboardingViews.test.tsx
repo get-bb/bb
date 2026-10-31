@@ -85,6 +85,11 @@ describe("AgentStep in the redesigned guide", () => {
     expect(screen.getByRole("button", { name: /Retry/u })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "View log" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(
+      screen.getByText(
+        "Don't see your agent? bb picks up other ACP agents once you have them installed.",
+      ),
+    ).toBeTruthy();
   });
 });
 
