@@ -247,6 +247,7 @@ export interface PluginCatalogSearchEntry {
   installs: number | null;
   compatible: boolean;
   incompatibleReason: string | null;
+  marketplacePageUrl: string | null;
 }
 
 function toPluginCatalogSearchEntry(
@@ -282,6 +283,7 @@ function toPluginCatalogSearchEntry(
     installs: data.installs,
     compatible: data.compatible,
     incompatibleReason: data.incompatibleReason ?? null,
+    marketplacePageUrl: data.marketplacePageUrl,
   };
 }
 

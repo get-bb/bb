@@ -263,10 +263,68 @@ describe("client telemetry events", () => {
           name: "plugin_creation_started",
           properties: { pluginName: "bb-plugin-secret" },
         },
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "docs",
+            marketplace: "bb-official",
+            share_method: "email",
+          },
+        },
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "docs",
+            marketplace: "bb-official",
+            share_method: "cli",
+            plugin_id: "simple-notes",
+          },
+        },
       ]) {
         expect((await post(harness, event)).status).toBe(400);
       }
       expect(capture).not.toHaveBeenCalled();
     });
   });
+
+  it.each([
+    {
+      label: "an official entry by built-in name",
+      sent: { entry_id: "docs", marketplace: "bb-official" },
+      recorded: {
+        plugin_id: "simple-notes",
+        entry_id: "simple-notes",
+        marketplace: "bb-official",
+      },
+    },
+    {
+      label: "an unlisted official entry",
+      sent: { entry_id: "provider-codex", marketplace: "bb-official" },
+      recorded: { plugin_id: null, entry_id: null, marketplace: null },
+    },
+    {
+      label: "a typed-in entry no catalog lists",
+      sent: { entry_id: "my-secret-plugin", marketplace: "acme-internal" },
+      recorded: { plugin_id: null, entry_id: null, marketplace: null },
+    },
+  ])(
+    "records plugin_link_shared for $label with checked identifiers",
+    async ({ sent, recorded }) => {
+      await withTestHarness(async (harness) => {
+        const capture = vi.fn<TelemetryService["capture"]>();
+        harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+
+        const response = await post(harness, {
+          name: "plugin_link_shared",
+          properties: { ...sent, share_method: "copy_link" },
+        });
+
+        expect(response.status).toBe(200);
+        expect(capture).toHaveBeenCalledExactlyOnceWith({
+          name: "plugin_link_shared",
+          properties: { ...recorded, share_method: "copy_link" },
+        });
+      });
+    },
+  );
 });

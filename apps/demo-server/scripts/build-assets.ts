@@ -63,6 +63,7 @@ for (const id of ["navigation", "thread-list"]) {
     version: pkg.version,
     provenance: "builtin",
     isOrphanedBuiltin: false,
+    marketplacePageUrl: null,
     publisherLabel: "BB Official",
     sourceDisplay: "Built-in demo frontend",
     updateState: {},

@@ -37,6 +37,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     installs: null,
     compatible: true,
     incompatibleReason: null,
+    marketplacePageUrl: null,
   };
 }
 

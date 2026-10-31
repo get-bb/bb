@@ -61,6 +61,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   installs: 4_210,
   compatible: true,
   incompatibleReason: null,
+  marketplacePageUrl: null,
 };
 
 const SECURITY_ENTRY: PluginCatalogSearchEntry = {

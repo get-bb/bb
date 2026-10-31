@@ -53,6 +53,7 @@ const catalogBlockSchema = z
       "must be a built-in category id",
     ),
     screenshots: z.array(screenshotSchema).max(6),
+    unlisted: z.literal(true).optional(),
   })
   .strict();
 
@@ -298,6 +299,7 @@ export async function generateBbOfficialMarketplace(args: {
         screenshots: catalog.screenshots,
         ...(overview === undefined ? {} : { overview }),
         ...(gitDates === undefined ? {} : gitDates),
+        ...(catalog.unlisted === true ? { unlisted: true } : {}),
       };
     }),
   );

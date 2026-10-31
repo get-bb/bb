@@ -1,7 +1,6 @@
 import { PluginNameTag } from "@/components/plugin/management/PluginNameTag";
 import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
-import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
 import { useSyncExternalStore } from "react";
 import {
   ResourceActionButton,
@@ -50,6 +49,12 @@ import {
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import { PluginCatalogInstallControl } from "@/components/plugin/management/PluginCatalogInstallControl";
 import {
+  catalogEntryLinkTarget,
+  installedPluginLinkTarget,
+} from "@bb/client-core";
+import { Separator } from "@bb/shared-ui/separator";
+import { PluginCopyLinkButton } from "@/components/plugin/management/PluginCopyLinkButton";
+import {
   useCancelPluginInstallJob,
   useCatalogEntryInstallJob,
 } from "@/hooks/queries/plugin-install-job-queries";
@@ -79,37 +84,7 @@ import {
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
-
-function pluginMarketplaceUrl({
-  marketplace,
-  entryId,
-}: {
-  marketplace: string | null;
-  entryId: string | null;
-}): string | null {
-  if (marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME || entryId === null) {
-    return null;
-  }
-  return `https://getbb.app/marketplace/${encodeURIComponent(entryId)}`;
-}
-
-function copyMarketplaceLinkItems(
-  url: string | null,
-): ResourceOverflowMenuItem[] {
-  if (url === null) return [];
-  return [
-    {
-      label: "Copy marketplace link",
-      icon: "Copy",
-      onSelect: () =>
-        void copyToClipboardWithToast(url, {
-          successMessage: "Marketplace link copied",
-          errorMessage: "Failed to copy marketplace link.",
-        }),
-    },
-  ];
-}
+import { useClipboardCopy } from "@/lib/clipboard";
 
 export function pluginIsLocalSource(plugin: PluginListItem): boolean {
   return plugin.source.startsWith("path:");
@@ -206,7 +181,6 @@ export function CatalogPluginDetail({
   const installBlocker = catalogEntryInstallBlocker(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const { mutate: cancelInstall } = useCancelPluginInstallJob();
-  const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   const entryTitle = splitPluginDisplayName(entry.displayName);
   return (
     <ResourceDetailPage
@@ -220,25 +194,23 @@ export function CatalogPluginDetail({
       metadataLeading={<PluginCardAuthorAvatar entry={entry} />}
       metadata={<PluginMarketplaceByline entry={entry} />}
       actions={
-        <PluginCatalogInstallControl
-          displayName={entry.displayName}
-          installed={false}
-          showLabel
-          disabled={installBlocker !== null}
-          unavailableReason={installBlocker}
-          count={count}
-          onInstall={() => onInstall(entry)}
-          installJob={installJob}
-          onCancelInstall={cancelInstall}
-        />
-      }
-      overflowMenu={
-        overflowItems.length === 0 ? undefined : (
-          <ResourceOverflowMenu
-            label={`${entry.displayName} actions`}
-            items={overflowItems}
+        <>
+          <PluginCopyLinkButton
+            target={catalogEntryLinkTarget(entry)}
+            displayName={entry.displayName}
           />
-        )
+          <PluginCatalogInstallControl
+            displayName={entry.displayName}
+            installed={false}
+            showLabel
+            disabled={installBlocker !== null}
+            unavailableReason={installBlocker}
+            count={count}
+            onInstall={() => onInstall(entry)}
+            installJob={installJob}
+            onCancelInstall={cancelInstall}
+          />
+        </>
       }
     >
       <ResourceDetailStack>
@@ -445,14 +417,22 @@ export function PluginDetail({
 
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);
-  const marketplaceUrl = pluginMarketplaceUrl(
-    catalogEntry ?? {
-      marketplace: plugin.catalogMarketplaceName,
-      entryId: plugin.catalogEntryId,
-    },
-  );
+  const linkTarget = installedPluginLinkTarget(plugin);
   const overflowItems: ResourceOverflowMenuItem[] = [
-    ...copyMarketplaceLinkItems(marketplaceUrl),
+    ...(hasConfiguration
+      ? [
+          {
+            label: "Settings",
+            icon: "Settings" as const,
+            onSelect: () =>
+              onConfigure
+                ? onConfigure()
+                : navigate(
+                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
+                  ),
+          },
+        ]
+      : []),
     ...(canEditSource
       ? [
           {
@@ -500,20 +480,12 @@ export function PluginDetail({
         )
       }
       actions={
-        hasConfiguration ? (
-          <ResourceActionButton
-            label={`${pluginName} settings`}
-            tooltipLabel="Settings"
-            icon="Settings"
-            onClick={() =>
-              onConfigure
-                ? onConfigure()
-                : navigate(
-                    getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-                  )
-            }
-          />
-        ) : undefined
+        linkTarget === null ? undefined : (
+          <>
+            <PluginCopyLinkButton target={linkTarget} displayName={pluginName} />
+            <Separator orientation="vertical" className="h-4" />
+          </>
+        )
       }
       lifecycleControl={
         <Switch

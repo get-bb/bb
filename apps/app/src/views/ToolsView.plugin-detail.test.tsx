@@ -142,6 +142,7 @@ const GITHUB_CATALOG_ENTRY = {
   installs: null,
   compatible: true,
   incompatibleReason: null,
+  marketplacePageUrl: null,
 } satisfies PluginCatalogSearchEntry;
 
 function RoutedPluginsView() {
@@ -190,6 +191,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete window.bbDesktop;
+  Reflect.deleteProperty(navigator, "share");
 });
 
 function ClosePluginCommand({
@@ -820,54 +822,61 @@ describe("PluginDetail official catalog lifecycle", () => {
     ).not.toHaveLength(0);
   });
 
-  it("copies the public marketplace link for a BB Community catalog entry", async () => {
+  const PAGE_URL =
+    "https://getbb.app/marketplace/acme-github?utm_source=bb&utm_medium=share";
+
+  function stubTelemetryFetch() {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ ok: true }, { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return () =>
+      fetchMock.mock.calls
+        .filter(([input]: unknown[]) =>
+          String(input).endsWith("/api/v1/system/telemetry/events"),
+        )
+        .map(([, init]: unknown[]) =>
+          JSON.parse(String((init as RequestInit | undefined)?.body)),
+        );
+  }
+
+  function stubClipboard() {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
-    const entry = {
-      ...GITHUB_CATALOG_ENTRY,
-      entryId: "acme github",
-      pluginId: "acme-github",
-      marketplace: "bb-community",
-      marketplaceDisplayName: "BB Community",
-      official: false,
-    } satisfies PluginCatalogSearchEntry;
-    renderWithQueryClient(
-      <CatalogPluginDetail
-        entry={entry}
-        onInstall={() => {}}
-        catalogEntries={[entry]}
-        onOpenPlugin={() => undefined}
-      />,
-    );
+    return writeText;
+  }
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "GitHub actions" }),
+  function stubTouchShareSheet() {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: query === "(pointer: coarse)",
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) satisfies MediaQueryList,
     );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy marketplace link" }),
-    );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        "https://getbb.app/marketplace/acme%20github",
-      ),
-    );
-  });
+    const shareMock = vi.fn(async () => {});
+    Object.defineProperty(navigator, "share", {
+      value: shareMock,
+      configurable: true,
+    });
+    return shareMock;
+  }
 
-  it("copies the marketplace link for an installed BB Community plugin without a loaded catalog entry", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+  function renderInstalledPlugin(plugin: PluginListItem) {
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
+    return render(
       <MemoryRouter>
         <QueryClientWrapper>
           <PluginDetail
             isLoading={false}
-            plugin={{
-              ...GITHUB_PLUGIN,
-              source: "github:acme/bb-github",
-              catalogEntryId: "acme-github",
-              catalogMarketplaceName: "bb-community",
-            }}
+            plugin={plugin}
             pending={false}
             openSourceDisabled
             onToggle={() => {}}
@@ -880,42 +889,151 @@ describe("PluginDetail official catalog lifecycle", () => {
         </QueryClientWrapper>
       </MemoryRouter>,
     );
+  }
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "GitHub actions" }),
+  const COMMUNITY_ENTRY = {
+    ...GITHUB_CATALOG_ENTRY,
+    entryId: "acme-github",
+    pluginId: "acme-github",
+    marketplace: "bb-community",
+    marketplaceDisplayName: "BB Community",
+    official: false,
+    marketplacePageUrl: PAGE_URL,
+  } satisfies PluginCatalogSearchEntry;
+
+  it("copies a catalog entry's page link from the header and drops the ⋯ menu", async () => {
+    const telemetry = stubTelemetryFetch();
+    const writeText = stubClipboard();
+    renderWithQueryClient(
+      <CatalogPluginDetail
+        entry={COMMUNITY_ENTRY}
+        onInstall={() => {}}
+        catalogEntries={[COMMUNITY_ENTRY]}
+        onOpenPlugin={() => undefined}
+      />,
     );
+
+    expect(
+      screen.queryByRole("button", { name: "GitHub actions" }),
+    ).toBeNull();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy marketplace link" }),
+      screen.getByRole("button", { name: "Copy link to GitHub" }),
     );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
     await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        "https://getbb.app/marketplace/acme-github",
-      ),
+      expect(telemetry()).toEqual([
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "acme-github",
+            marketplace: "bb-community",
+            share_method: "copy_link",
+          },
+        },
+      ]),
     );
   });
 
-  it("offers no marketplace link for plugins outside BB Community", async () => {
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    render(
-      <MemoryRouter>
-        <QueryClientWrapper>
-          <PluginDetail
-            isLoading={false}
-            plugin={GITHUB_PLUGIN}
-            pending={false}
-            openSourceDisabled
-            onToggle={() => {}}
-            onEdit={() => {}}
-            onOpenSource={() => {}}
-            onDelete={() => {}}
-            catalogEntry={GITHUB_CATALOG_ENTRY}
-            catalogEntries={[GITHUB_CATALOG_ENTRY]}
-            onOpenPlugin={() => undefined}
-          />
-        </QueryClientWrapper>
-      </MemoryRouter>,
-    );
+  it("puts Copy link before the switch and Settings first in ⋯ on an installed built-in plugin", async () => {
+    const telemetry = stubTelemetryFetch();
+    const writeText = stubClipboard();
+    renderInstalledPlugin({
+      ...GITHUB_PLUGIN,
+      id: "simple-notes",
+      name: "Simple Notes",
+      source: "builtin:docs",
+      provenance: "builtin",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+      hasSettings: true,
+      marketplacePageUrl: PAGE_URL,
+    });
 
+    expect(
+      screen.queryByRole("button", { name: "Simple Notes settings" }),
+    ).toBeNull();
+    const copyLink = screen.getByRole("button", {
+      name: "Copy link to Simple Notes",
+    });
+    const toggle = screen.getByRole("switch", {
+      name: "Disable Simple Notes",
+    });
+    expect(
+      copyLink.compareDocumentPosition(toggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Simple Notes actions" }),
+    );
+    await screen.findByRole("menuitem", { name: "Uninstall" });
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+    ).toEqual(["Settings", "Uninstall"]);
+    expect(
+      screen.queryByRole("menuitem", { name: "Copy marketplace link" }),
+    ).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+
+    fireEvent.click(copyLink);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
+    await waitFor(() =>
+      expect(telemetry()).toEqual([
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "simple-notes",
+            marketplace: "bb-official",
+            share_method: "copy_link",
+          },
+        },
+      ]),
+    );
+  });
+
+  it("copies instead of opening the share sheet on touch devices", async () => {
+    const telemetry = stubTelemetryFetch();
+    const writeText = stubClipboard();
+    const share = stubTouchShareSheet();
+    renderInstalledPlugin({
+      ...GITHUB_PLUGIN,
+      catalogEntryId: "acme-github",
+      catalogMarketplaceName: "bb-community",
+      marketplacePageUrl: PAGE_URL,
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy link to GitHub" }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PAGE_URL));
+    await waitFor(() =>
+      expect(telemetry()).toEqual([
+        {
+          name: "plugin_link_shared",
+          properties: {
+            entry_id: "acme-github",
+            marketplace: "bb-community",
+            share_method: "copy_link",
+          },
+        },
+      ]),
+    );
+    expect(share).not.toHaveBeenCalled();
+  });
+
+  it("offers no Copy link when the plugin has no page", async () => {
+    renderInstalledPlugin({
+      ...GITHUB_PLUGIN,
+      catalogEntryId: "acme-github",
+      catalogMarketplaceName: "bb-community",
+      marketplacePageUrl: null,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Copy link to GitHub" }),
+    ).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "GitHub actions" }),
     );
@@ -1085,7 +1203,7 @@ describe("BB Official plugin detail routing", () => {
         name: "GitHub",
         level: 1,
       });
-      const header = title.parentElement?.parentElement;
+      const header = title.parentElement?.parentElement?.parentElement;
       expect(header).not.toBeNull();
       if (!header) throw new Error("Plugin header missing");
       const authorLink = await within(header).findByRole("link", {
@@ -1360,7 +1478,7 @@ describe("BB Official plugin detail routing", () => {
       );
     });
     const title = screen.getByRole("heading", { name: "GitHub", level: 1 });
-    const header = title.parentElement?.parentElement;
+    const header = title.parentElement?.parentElement?.parentElement;
     if (!header) throw new Error("Plugin header missing");
     expect(within(header).queryByText("Partner Catalog")).toBeNull();
     const source = screen.getByRole("link", {
@@ -2776,7 +2894,10 @@ describe("plugin detail source and settings", () => {
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Configuration" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",
@@ -2893,7 +3014,10 @@ describe("plugin detail source and settings", () => {
     expect(
       await screen.findByRole("heading", { name: "Details" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "GitHub settings" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
     expect(await screen.findByLabelText("Repository")).toHaveProperty(
       "value",
       "get-bb/bb",

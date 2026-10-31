@@ -55,6 +55,7 @@ import {
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
+  CURATED_PLUGIN_MARKETPLACE_NAME,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type InstalledPlugin,
   type PluginCapabilitySummary,
@@ -103,6 +104,12 @@ import {
   parseStoredMarketplaceManifest,
   type MarketplaceManifest,
 } from "../plugin-catalog/marketplace-manifest.js";
+import { BUNDLED_MARKETPLACE_NAME } from "../plugin-catalog/bundled-marketplace-paths.js";
+import {
+  findBuiltinMarketplacePage,
+  findMarketplacePage,
+  type MarketplacePageCatalogs,
+} from "../plugin-catalog/marketplace-pages.js";
 import {
   getLastThreadErrorMessage,
   getLastThreadOutput,
@@ -1067,6 +1074,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogMarketplaceName === null
             ? {}
             : { catalogMarketplaceName: row.catalogMarketplaceName }),
+          marketplacePageUrl: catalogData.pageUrls.get(row.id) ?? null,
           publisherLabel: pluginPublisherLabel({
             sourceKind: row.sourceKind,
             provenance: row.provenance,
@@ -1171,12 +1179,41 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     return manifest;
   }
 
+  function marketplacePageFor(
+    row: InstalledPluginRow,
+    catalogs: MarketplacePageCatalogs,
+  ): string | null {
+    if (row.provenance === "builtin" && row.sourceBuiltinName !== null) {
+      return (
+        findBuiltinMarketplacePage(catalogs, row.sourceBuiltinName)?.url ?? null
+      );
+    }
+    if (
+      row.provenance === "catalog" &&
+      row.catalogMarketplaceName !== null &&
+      row.catalogEntryId !== null
+    ) {
+      return (
+        findMarketplacePage(
+          catalogs,
+          row.catalogMarketplaceName,
+          row.catalogEntryId,
+        )?.url ?? null
+      );
+    }
+    return null;
+  }
+
   function installedCatalogData(rows: readonly InstalledPluginRow[]): {
     metadataByPluginId: ReadonlyMap<string, InstalledCatalogMetadata>;
     publisherLabels: ReadonlyMap<string, string>;
+    pageUrls: ReadonlyMap<string, string>;
   } {
     const rowsByMarketplace = new Map<string, InstalledPluginRow[]>();
-    const marketplaceNamesInUse = new Set<string>();
+    const marketplaceNamesInUse = new Set<string>([
+      BUNDLED_MARKETPLACE_NAME,
+      CURATED_PLUGIN_MARKETPLACE_NAME,
+    ]);
     for (const row of rows) {
       if (row.catalogMarketplaceName === null) continue;
       marketplaceNamesInUse.add(row.catalogMarketplaceName);
@@ -1189,10 +1226,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     const metadataByPluginId = new Map<string, InstalledCatalogMetadata>();
     const publisherLabels = new Map<string, string>();
-    if (marketplaceNamesInUse.size === 0) {
-      marketplaceManifestCache.clear();
-      return { metadataByPluginId, publisherLabels };
-    }
+    const manifestsByName = new Map<string, MarketplaceManifest>();
     const marketplaces = listPluginMarketplaces(deps.db);
     const marketplaceByName = new Map(
       marketplaces.map((marketplace) => [marketplace.name, marketplace]),
@@ -1213,6 +1247,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }),
       );
       if (manifest === null) continue;
+      manifestsByName.set(marketplaceName, manifest);
       const marketplaceRows = rowsByMarketplace.get(marketplaceName) ?? [];
       const entriesById = new Map<
         string,
@@ -1244,7 +1279,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         }
       }
     }
-    return { metadataByPluginId, publisherLabels };
+    const pageCatalogs = {
+      official: manifestsByName.get(BUNDLED_MARKETPLACE_NAME) ?? null,
+      community: manifestsByName.get(CURATED_PLUGIN_MARKETPLACE_NAME) ?? null,
+    };
+    const pageUrls = new Map<string, string>();
+    for (const row of rows) {
+      const url = marketplacePageFor(row, pageCatalogs);
+      if (url !== null) pageUrls.set(row.id, url);
+    }
+    return { metadataByPluginId, publisherLabels, pageUrls };
   }
 
   function pluginProviderCatalog(
