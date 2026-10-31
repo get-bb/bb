@@ -1,0 +1,101 @@
+---
+title: Open files, previews and links
+description: Click a file link to preview it in the side panel, or right-click to open it elsewhere. Web links open in bb's browser. Set viewers in Settings → Files.
+type: how-to
+sources:
+  - apps/app/src/lib/thread-local-file-links.ts
+  - apps/app/src/components/ui/markdown-local-file-link.ts
+  - apps/app/src/components/ui/markdown-preview.tsx
+  - apps/app/src/views/thread-detail/ThreadDetailView.tsx
+  - apps/app/src/components/secondary-panel/FilePreview.tsx
+  - apps/app/src/components/secondary-panel/info/ThreadStorageSection.tsx
+  - apps/app/src/components/settings/FileOpenersSettingsSection.tsx
+  - apps/app/src/lib/in-app-browser-link-preference.ts
+  - apps/app/src/views/SettingsView.tsx
+  - plugins/monaco-editor/package.json
+  - plugins/inline-vis/app.tsx
+  - apps/cli/src/commands/thread/open.ts
+since: 0.40.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| To | Do this |
+| --- | --- |
+| Preview a file | Click its link in a message |
+| Open it in another app | Right-click the link → **Open in** |
+| Change the viewer for a file type | **Settings → Files → File openers** |
+| Open web links in your default browser | Turn off **Open links in the in-app browser** in **Settings → General** |
+
+## Preview a file from a thread
+
+Click a file link in a message to open it as a tab in the side panel.
+
+| File | Shows as |
+| --- | --- |
+| Code and text | Syntax highlighted |
+| Markdown, HTML, CSV | Rendered, with **Preview** and **Raw** |
+| Images, video, PDFs | Their own viewers |
+| Anything else | A **Download** button |
+
+A link with a line number, such as `src/app.ts:42`, jumps to that line. Links work only in threads with a folder.
+
+```sh
+bb thread open <thread-id> src/app.ts --line 42
+```
+
+## Open a file in another app
+
+Right-click a file link and choose:
+
+- **Open in**, then an app such as VS Code, Cursor, Finder or Terminal.
+- **Open with built-in preview**, or **Open with** a plugin viewer.
+- **Copy file path** or **Copy file name**.
+
+Set default apps under **Settings → Files → File preferences**.
+
+## Choose a viewer for each file type
+
+1. Open **Settings → Files**.
+2. Under **File openers**, find the type, such as **.md files**.
+3. Choose **Built-in preview**, a plugin, or **Automatic**.
+
+<Screenshot
+  src="/docs-images/open-files-previews-and-links/file-openers"
+  alt="Settings, Files shows the File openers viewer picker for .pdf files outlined."
+  width={760}
+  height={312}
+/>
+
+| Plugin | Opens | On by default |
+| --- | --- | --- |
+| **File Editor** | Code and text, saving when you click **Save** | No; turn it on in **Settings → Installed plugins** |
+| **PDF preview** | PDFs | Yes |
+| **Docs** | Markdown | Install it from the marketplace |
+
+## Open web links
+
+On desktop, web links open in bb's browser in the side panel. In the web app and on a phone, they open in your normal browser.
+
+From another device, `localhost` links are rewritten to bb's address unless you turn off **Rewrite localhost links** in **Settings → General**.
+
+## Find files an agent saved for the thread
+
+Files an agent makes for you, such as reports and screenshots, are under **Thread storage** in the side panel's **Info** tab.
+
+## View visualizations and diagrams
+
+- **Mermaid** blocks render as diagrams.
+- **Math** in `$…$` and `$$…$$` renders as formulas.
+- **Inline visualizations** render in the message; the expand button opens one from a file in the side panel.
+
+## Check it worked
+
+- Clicking a file link opens a tab named after the file.
+- Right-clicking a file link shows **Open in** with your apps.
+
+## Related troubleshooting
+
+- "Failed to open file locally": the thread has no folder, or the link isn't an absolute file path.
+- **Settings → Files** is missing: turn on a plugin that opens files, such as **File Editor**.
+- A file opens in a plugin: set its type to **Built-in preview** under **File openers**, or right-click → **Open with built-in preview**.
