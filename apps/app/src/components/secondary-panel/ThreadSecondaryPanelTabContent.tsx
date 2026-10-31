@@ -133,6 +133,7 @@ export function WorkspaceFilePreviewTabContent({
     source,
     { enabled: isPanelOpen },
   );
+  const environmentHostId = environmentQuery.data?.hostId ?? null;
   const environmentRootPath = environmentQuery.data?.path ?? null;
   const { openLink } = useThreadFileLinkOpener({
     environment: environmentQuery.data,
@@ -142,6 +143,7 @@ export function WorkspaceFilePreviewTabContent({
   const markdownLinkRouting = useMemo(() => {
     if (source === null || !environmentId) return undefined;
     return buildMarkdownFileRouting({
+      hostId: environmentHostId,
       path: activePath,
       rootPath: environmentRootPath,
       threadId: threadId ?? null,
@@ -151,6 +153,7 @@ export function WorkspaceFilePreviewTabContent({
     });
   }, [
     activePath,
+    environmentHostId,
     environmentId,
     environmentRootPath,
     openLink,
@@ -201,6 +204,7 @@ export function ProjectFilePreviewTabContent({
   const markdownLinkRouting = useMemo(
     () =>
       buildMarkdownFileRouting({
+        hostId,
         path: activePath,
         rootPath,
         threadId,
@@ -256,9 +260,11 @@ export function HostFilePreviewTabContent({
     activePath,
     { enabled: isPanelOpen },
   );
+  const environmentHostId = environment?.hostId ?? null;
   const workspaceRootPath = environment?.path ?? null;
   const markdownLinkRouting = useMemo(() => {
     return buildMarkdownFileRouting({
+      hostId: environmentHostId,
       path: activePath,
       rootPath:
         workspaceRootPath !== null &&
@@ -273,7 +279,7 @@ export function HostFilePreviewTabContent({
         buildThreadHostFileContentUrl(threadId, path),
       openLink,
     });
-  }, [activePath, openLink, threadId, workspaceRootPath]);
+  }, [activePath, environmentHostId, openLink, threadId, workspaceRootPath]);
 
   return (
     <SecondaryPanelFilePreview
@@ -311,6 +317,7 @@ export function HostScopedFilePreviewTabContent({
   const markdownLinkRouting = useMemo(
     () =>
       buildMarkdownFileRouting({
+        hostId,
         path: activePath,
         rootPath: getAbsoluteDirname({ path: activePath }),
         threadId: null,
@@ -345,10 +352,11 @@ export function ThreadStorageFilePreviewTabContent({
 }: ThreadStorageFilePreviewTabContentProps) {
   const navigation = useAppNavigationHost();
   const storageLocation = useThreadStorageLocation(threadId).data;
+  const storageHostId = storageLocation?.hostId ?? null;
   const storageRootPath = storageLocation?.storageRootPath ?? null;
   const { openLink } = useLocalFileLinkOpener({
     canOpenInEditor: true,
-    hostId: storageLocation?.hostId ?? null,
+    hostId: storageHostId,
     openFilePreview: navigation.openFilePreview,
     threadStorage:
       storageRootPath === null ? null : { rootPath: storageRootPath, threadId },
@@ -362,6 +370,7 @@ export function ThreadStorageFilePreviewTabContent({
   const markdownLinkRouting = useMemo(
     () =>
       buildMarkdownFileRouting({
+        hostId: storageHostId,
         path: activePath,
         rootPath: storageRootPath,
         threadId,
@@ -369,7 +378,7 @@ export function ThreadStorageFilePreviewTabContent({
           buildThreadStorageRawContentUrl(threadId, path),
         openLink,
       }),
-    [activePath, openLink, storageRootPath, threadId],
+    [activePath, openLink, storageHostId, storageRootPath, threadId],
   );
 
   return (

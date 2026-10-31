@@ -105,6 +105,7 @@ function SkillDetailPage({
   const markdownLinkRouting = useMemo(() => {
     if (skill === null || previewHostId === null) return undefined;
     return buildMarkdownFileRouting({
+      hostId: previewHostId,
       path: selectedPath,
       rootPath: getAbsoluteDirname({ path: skill.filePath }),
       threadId: null,

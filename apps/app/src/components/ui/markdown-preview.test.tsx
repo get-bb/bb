@@ -7,6 +7,10 @@ import { ApplicationUrlDialog } from "@/components/ApplicationUrlDialog";
 import { resolveApplicationUrlConfirmation } from "@/lib/application-url";
 import { LazyMarkdownHtml } from "./lazy-markdown-html";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  LOCAL_FILE_TEST_HOST_ID,
+  createMarkdownLocalFileHostTestWrapper,
+} from "@/test/fixtures/markdown-local-file-host";
 
 import {
   act,
@@ -31,11 +35,19 @@ const workspaceLinkRouting = {
     absoluteLinks: {
       kind: "trusted-host",
     },
+    hostId: null,
     relativeLinks: {
       baseDir: "/workspace",
       rootPath: "/workspace",
     },
     onOpenLink: vi.fn(() => true),
+  },
+} satisfies MarkdownLinkRouting;
+
+const inlineCodeLinkRouting = {
+  localFile: {
+    ...workspaceLinkRouting.localFile,
+    hostId: LOCAL_FILE_TEST_HOST_ID,
   },
 } satisfies MarkdownLinkRouting;
 
@@ -371,15 +383,17 @@ describe("MarkdownPreview", () => {
     ["C:\\repo\\src\\app.ts:12:3", "C:\\repo\\src\\app.ts", 12],
   ])(
     "opens inline-code file reference %s at its line",
-    (reference, path, line) => {
+    async (reference, path, line) => {
+      const { wrapper } = createMarkdownLocalFileHostTestWrapper(() => true);
       render(
         <MarkdownPreview
           content={`Read \`${reference}\`.`}
-          linkRouting={workspaceLinkRouting}
+          linkRouting={inlineCodeLinkRouting}
         />,
+        { wrapper },
       );
 
-      const link = screen.getByRole("link", { name: reference });
+      const link = await screen.findByRole("link", { name: reference });
       expect(link.getAttribute("href")).toBe(
         `${path.startsWith("C:") ? "file:///C:/repo/src/app.ts" : `file://${path}`}${line === null ? "" : `#L${line}`}`,
       );
@@ -409,15 +423,62 @@ describe("MarkdownPreview", () => {
     "../outside.ts:4",
     "src/app.ts?raw",
   ])("keeps non-file inline code %s literal", (reference) => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      () => true,
+    );
     render(
       <MarkdownPreview
         content={`Read \`${reference}\`.`}
-        linkRouting={workspaceLinkRouting}
+        linkRouting={inlineCodeLinkRouting}
       />,
+      { wrapper },
     );
 
     expect(screen.queryByRole("link", { name: reference })).toBeNull();
     expect(screen.getByText(reference).tagName).toBe("CODE");
+    expect(pathsExist).not.toHaveBeenCalled();
+  });
+
+  it("links only inline-code file references that exist on the host, checked in one batch", async () => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      (path) => path === "/workspace/src/app.ts",
+    );
+    render(
+      <MarkdownPreview
+        content="Edit `src/app.ts:4`, `scheduler.py`, `thread.idle`, and `bb.app`."
+        linkRouting={inlineCodeLinkRouting}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      (await screen.findByRole("link", { name: "src/app.ts:4" })).getAttribute(
+        "href",
+      ),
+    ).toBe("file:///workspace/src/app.ts#L4");
+    for (const reference of ["scheduler.py", "thread.idle", "bb.app"]) {
+      expect(screen.queryByRole("link", { name: reference })).toBeNull();
+      expect(screen.getByText(reference).tagName).toBe("CODE");
+    }
+    expect(pathsExist).toHaveBeenCalledOnce();
+    expect([...pathsExist.mock.calls[0]![0].paths].sort()).toEqual([
+      "/workspace/bb.app",
+      "/workspace/scheduler.py",
+      "/workspace/src/app.ts",
+      "/workspace/thread.idle",
+    ]);
+  });
+
+  it("keeps inline-code file references as code without a host to check them on", () => {
+    render(
+      <MarkdownPreview
+        content="Read `README.md`."
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
   it("preserves inline commands ending in Markdown paths as code", () => {
@@ -490,6 +551,7 @@ describe("MarkdownPreview", () => {
           content="See [notes](/workspace/notes/todo.md) and [app](/workspace/src/app.ts)."
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: vi.fn(() => true),
             },
@@ -773,6 +835,7 @@ describe("MarkdownPreview", () => {
         content="Open [review](devin://file/Users/me/.bb/artifacts/thr_1/review.diff) or [cursor](Cursor://file/workspace/My%20App.ts:12:3)."
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -827,6 +890,7 @@ describe("MarkdownPreview", () => {
           content="[review](devin://file/tmp/review.diff:3) [app](vscode://file/tmp/app.ts) [plain](/tmp/notes.md)"
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: () => true,
             },
@@ -858,6 +922,7 @@ describe("MarkdownPreview", () => {
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -892,6 +957,7 @@ describe("MarkdownPreview", () => {
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },

@@ -67,9 +67,10 @@ function PluginDocumentMarkdown({
   const navigation = useAppNavigationHost();
   const { rootPath, target, threadId } = document;
   const root = useResolvedLiveFileRoot(target);
+  const hostId = root.status === "available" ? root.hostId : null;
   const { openLink } = useLocalFileLinkOpener({
     canOpenInEditor: true,
-    hostId: root.status === "available" ? root.hostId : null,
+    hostId,
     openFilePreview: navigation.openFilePreview,
     threadStorage:
       target.kind === "thread-storage" ? { rootPath, threadId } : null,
@@ -87,6 +88,7 @@ function PluginDocumentMarkdown({
   const linkRouting = useMemo(
     () =>
       buildMarkdownFileRouting({
+        hostId,
         path: target.path,
         rootPath,
         threadId,
@@ -101,7 +103,7 @@ function PluginDocumentMarkdown({
         openLink,
         openOutsideRoot: messageRouting?.localFile?.onOpenLink ?? (() => false),
       }),
-    [messageRouting, openLink, rootPath, target, threadId],
+    [hostId, messageRouting, openLink, rootPath, target, threadId],
   );
   return (
     <MarkdownPreview

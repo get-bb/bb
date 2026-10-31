@@ -6,6 +6,7 @@ import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ThreadTimelineNavigation {
   environmentId: string | null;
+  hostId: string | null;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
   resolveMentionLink: PromptMentionLinkResolver;
   threadId?: string;
@@ -18,6 +19,7 @@ const ThreadTimelineNavigationContext =
 export function ThreadTimelineNavigationProvider({
   children,
   environmentId,
+  hostId,
   onOpenLocalFileLink,
   resolveMentionLink,
   threadId,
@@ -26,6 +28,7 @@ export function ThreadTimelineNavigationProvider({
   const navigation = useMemo<ThreadTimelineNavigation>(
     () => ({
       environmentId,
+      hostId,
       onOpenLocalFileLink,
       resolveMentionLink,
       threadId,
@@ -33,6 +36,7 @@ export function ThreadTimelineNavigationProvider({
     }),
     [
       environmentId,
+      hostId,
       onOpenLocalFileLink,
       resolveMentionLink,
       threadId,
@@ -55,6 +59,7 @@ export function useMessageLinkRouting(
   threadId: string | undefined,
 ): MarkdownLinkRouting | undefined {
   const navigation = useThreadTimelineNavigation();
+  const hostId = navigation?.hostId ?? null;
   const onOpenLocalFileLink = navigation?.onOpenLocalFileLink;
   const workspaceRootPath = navigation?.workspaceRootPath;
   return useMemo(() => {
@@ -76,6 +81,7 @@ export function useMessageLinkRouting(
     if (onOpenLocalFileLink !== undefined) {
       routing.localFile = {
         absoluteLinks: { kind: "trusted-host" },
+        hostId,
         onOpenLink: onOpenLocalFileLink,
         ...(relativePaths === undefined
           ? {}
@@ -83,5 +89,5 @@ export function useMessageLinkRouting(
       };
     }
     return routing;
-  }, [onOpenLocalFileLink, threadId, workspaceRootPath]);
+  }, [hostId, onOpenLocalFileLink, threadId, workspaceRootPath]);
 }
