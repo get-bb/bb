@@ -772,12 +772,14 @@ function PluginCardContainer({
   enabled,
   onChanged,
   onSelected,
+  onDeselected,
 }: {
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
   onChanged: () => Promise<void>;
   onSelected: () => void;
+  onDeselected: () => void;
 }) {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
@@ -800,6 +802,7 @@ function PluginCardContainer({
 
   const toggle = async (next: boolean) => {
     if (next) onSelected();
+    else onDeselected();
     setTarget(next);
     setWorking(true);
     try {
@@ -902,7 +905,7 @@ function PluginsStepContainer({
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
-    (pluginId: string, action: "shown" | "selected") => {
+    (pluginId: string, action: "shown" | "selected" | "deselected") => {
       let recommendationId = recommendationIds.get(pluginId);
       if (recommendationId === undefined) {
         recommendationId = nanoid();
@@ -963,6 +966,9 @@ function PluginsStepContainer({
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
+              }
+              onDeselected={() =>
+                recordRecommendation(entry.pluginId, "deselected")
               }
             />
           ))

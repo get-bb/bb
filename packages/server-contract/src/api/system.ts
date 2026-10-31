@@ -242,7 +242,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           resource_type: z.enum(["plugin"]),
           resource_id: telemetryResourceIdSchema,
           recommendation_id: z.string().regex(/^[A-Za-z0-9_-]{21}$/),
-          action: z.enum(["shown", "selected"]),
+          action: z.enum(["shown", "selected", "deselected"]),
           surface: z.enum(["onboarding"]),
           entry: onboardingEntryTelemetrySchema,
         })
