@@ -15,10 +15,6 @@ import {
   LOGO,
   renderEmail,
 } from "../../../scripts/monthly-email/render-email.mjs";
-import {
-  imageSizeProblems,
-  parseResendArgs,
-} from "../../../scripts/monthly-email/browser-scripts.mjs";
 
 const spec = {
   month: "November 2026",
@@ -163,28 +159,5 @@ describe("hosted images", () => {
     const { current, unreachable } = await checkHosted(folder);
     expect([...current.keys()]).toEqual([]);
     expect([...unreachable.keys()]).toEqual([LOGO]);
-  });
-
-  it("refuses graphics too big for one browser message", () => {
-    const folder = tempDir();
-    writeFileSync(join(folder, "small.png"), Buffer.alloc(1000));
-    writeFileSync(join(folder, "big.png"), Buffer.alloc(750_000));
-    expect(imageSizeProblems(folder, ["small.png", "big.png"])).toHaveLength(1);
-  });
-});
-
-describe("parseResendArgs", () => {
-  it("needs a spec and an output folder, with an optional preview base", () => {
-    expect(
-      parseResendArgs(["s.json", "out", "--preview-base", "https://x"]),
-    ).toEqual({
-      specPath: "s.json",
-      outDir: "out",
-      previewBase: "https://x",
-    });
-    expect(
-      parseResendArgs(["s.json", "--preview-base", "https://x"]),
-    ).toBeNull();
-    expect(parseResendArgs(["s.json", "out", "--preview-base"])).toBeNull();
   });
 });

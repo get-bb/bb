@@ -103,7 +103,7 @@ Final PNGs go one level up.
    - For states you can't stage safely (a child thread waiting with a question),
      render the real component in Ladle with realistic fixture data, in a
      local-only story (step 7).
-4. **Capture** with `bb browser-automation` (local headless):
+4. **Capture** with a headless browser:
    - Set the viewport (`{width, height, deviceScaleFactor: 3}`) before loading,
      and capture with `page.screenshot({clip, captureBeyondViewport: false})`.
      Without `false`, the layout reflows.
@@ -116,9 +116,6 @@ Final PNGs go one level up.
      node scripts/monthly-email/annotate-design.mjs <config.json> <out.html>
      ```
 
-   - Runs fail after about 30 seconds in practice, and a failed run ends the
-     session. Navigate in one run (don't await `goto`; sleep a few seconds),
-     then capture in the next.
    - Narrow crops stay readable at half width: open the right panel or shrink
      the viewport so the chat column narrows, or set a Ladle story's width to
      about 340 px.
@@ -163,16 +160,9 @@ watch, in about 3 minutes on a Mac.
 ## Rendering
 
 - Serve the design folder on this machine only (for example
-  `python3 -m http.server --bind 127.0.0.1` in it). Then write a script that
-  renders each `.c` canvas at 3× with the browser cache off, at most five
-  designs per script so a run stays under 30 seconds:
-
-  ```sh
-  node scripts/monthly-email/browser-scripts.mjs designs <base-url> <out-dir> <design-name…> > scripts/monthly-email/browser/render.js
-  ```
-
-  The cache is off because a stale cached `design-base.css` once dropped the
-  Inter font.
+  `python3 -m http.server --bind 127.0.0.1` in it), then render each design's
+  `.c` canvas at 3× with the browser cache off. A stale cached `design-base.css`
+  once dropped the Inter font.
 
 - Copy the final PNGs to `issues/<yyyy-mm>/`, and look at every one before using
   it.

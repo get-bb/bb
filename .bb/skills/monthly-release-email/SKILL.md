@@ -19,8 +19,6 @@ root.
   issue spec `issues/<yyyy-mm>.json`, and `issues/<yyyy-mm>/` with the logo, the
   final PNGs, `hosted.json` (their Resend URLs) and `design/` (graphic sources
   and captures).
-- **Browser scripts** go in `scripts/monthly-email/browser/` (gitignored),
-  because they can hold private share links and paths.
 
 `release-themes` writes the themes and items, and owns the voice and bb's UI
 terms. This skill owns the template, subject, preview, opening, graphics,
@@ -30,9 +28,8 @@ verification, Resend and the shareable screenshot.
 
 - **Resend.** A login to the Resend team that sends from mail.getbb.app, with
   access to broadcasts and contacts. Ask an admin of that team to invite you.
-- **Browser Automation.** Install it from Plugins → Browse plugins, then turn it
-  on in Settings → Installed plugins. The Resend steps drive the bb desktop
-  app's browser while it's signed in to Resend.
+- **Your tools.** Ask the user what they use to work with Resend and to drive a
+  browser, and check their setup before starting.
 - **Analytics.** Access to getbb.app's PostHog project, to confirm test links
   arrive with their UTM tags.
 - **The reviewer** is whoever owns that month's email. They approve the copy and
