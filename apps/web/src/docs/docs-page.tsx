@@ -8,6 +8,7 @@ import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast } from "../guides/guide-blocks";
 import { docs } from "./content";
 import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
+import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 
 function DocsNav({ view }: { view: DocsPageView }) {
@@ -149,6 +150,7 @@ export function DocsPage({ view }: { view: DocsPageView }) {
                 Docs
               </a>
               <MobileNav view={view} />
+              <DocsSearch />
             </div>
             <div className="docs-shell">
               <aside className="docs-sidebar">
