@@ -1,4 +1,7 @@
-import { experimental_execHostFile } from "@get-bb/plugin-sdk/process";
+import {
+  experimental_hostToolchain as hostToolchain,
+  experimental_execHostFile,
+} from "@get-bb/plugin-sdk/process";
 import { open, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +21,12 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  managedPiInstallCommand,
+  managedPiExecutable,
+  managedPiEnvironment,
+  managedPiLoginCommand,
+} from "./managed-pi.js";
 import { resolvePiLaunch, resolvePiProcessLaunch } from "./rpc-child.js";
 
 const execFileAsync = experimental_execHostFile;
@@ -123,6 +132,8 @@ async function isBunManagedPi(executablePath: string | null): Promise<boolean> {
 async function piGlobalInstallCommand(
   executablePath: string | null,
 ): Promise<ProviderInstallationCommand> {
+  if (executablePath === null || executablePath === managedPiExecutable())
+    return managedPiInstallCommand(PI_NPM_PACKAGE);
   return (await isBunManagedPi(executablePath))
     ? bunGlobalInstallCommand(PI_NPM_PACKAGE)
     : npmGlobalInstallCommand(PI_NPM_PACKAGE);
@@ -138,6 +149,7 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
       [...launch.args, "--version"],
       {
         timeout: VERSION_PROBE_TIMEOUT_MS,
+        env: managedPiEnvironment(process.env, launch.command),
       },
     ));
   } catch (error) {
@@ -173,11 +185,24 @@ export async function getPiProviderInstallationStatus(
   checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
   const launch = resolvePiLaunch(process.env);
+  const managed =
+    launch.command === managedPiExecutable() ||
+    (launch.command === "pi" &&
+      (await resolveExecutablePath(launch.command)) === null);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
       resolveExecutablePath(launch.command),
       probePiVersion(),
-      checkUpdates ? npmLatestVersion(PI_NPM_PACKAGE) : null,
+      checkUpdates
+        ? managed
+          ? commandOutput(hostToolchain.node(), [
+              hostToolchain.bundledNpmCli(),
+              "view",
+              PI_NPM_PACKAGE,
+              "version",
+            ]).then(versionFrom)
+          : npmLatestVersion(PI_NPM_PACKAGE)
+        : null,
       checkUpdates
         ? probeNpmGlobalPackage(PI_NPM_PACKAGE)
         : { npmBin: null, npmGlobalPackageVersion: null },
@@ -268,7 +293,10 @@ export function piHealthResult(
       minimumSupportedVersion: PI_MINIMUM_SUPPORTED_VERSION,
       canInstall: true,
       canUpdate: status !== "not_installed",
-      loginCommand: "pi",
+      loginCommand:
+        resolvePiLaunch(process.env).command === managedPiExecutable()
+          ? (managedPiLoginCommand() ?? "pi")
+          : "pi",
     },
   };
 }

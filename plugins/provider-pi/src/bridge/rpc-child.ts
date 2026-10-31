@@ -1,3 +1,9 @@
+import { experimental_hostToolchain as hostToolchain } from "@get-bb/plugin-sdk/process";
+import {
+  managedPiEntry,
+  managedPiExecutable,
+  managedPiEnvironment,
+} from "./managed-pi.js";
 import type { ChildProcess } from "node:child_process";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
@@ -72,7 +78,14 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
 } {
   const command = env[PI_BRIDGE_COMMAND_ENV];
   if (!command) {
-    return { command: "pi", args: [] };
+    return {
+      command:
+        hostToolchain.resolve("pi", { env }) !== null ||
+        managedPiEntry() === null
+          ? "pi"
+          : managedPiExecutable(),
+      args: [],
+    };
   }
   const rawArgs = env[PI_BRIDGE_ARGS_ENV];
   if (!rawArgs) {
@@ -94,6 +107,10 @@ export function resolvePiProcessLaunch(
   cwd = process.cwd(),
 ): { command: string; args: string[] } {
   const launch = resolvePiLaunch(configEnv);
+  const entry =
+    launch.command === managedPiExecutable() ? managedPiEntry() : null;
+  if (entry !== null)
+    return { command: hostToolchain.node(), args: [entry, ...launch.args] };
   return resolveWindowsPiProcessLaunch(launch, childEnv, cwd);
 }
 
@@ -134,7 +151,7 @@ export class PiRpcChild {
       command: launch.command,
       args: [...launch.args, ...args.args],
       cwd: args.cwd,
-      env: args.env,
+      env: managedPiEnvironment(args.env, launch.command),
       stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
     });
     experimental_recordProviderChildIo(this.child, {

@@ -290,6 +290,7 @@ export async function smokePackagedNpm(appBinary) {
     console.log(
       `Packaged npm ${result.version}: ${result.directDependencies} direct dependencies, ${result.packages} bundled packages, ${result.resolutions} CJS/ESM dependency edges; offline plugin dependency install/update passed with Electron ${result.electron} (Node ${result.node}) and empty PATH; packaged resources unchanged.`,
     );
+    return result.npmCli;
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }

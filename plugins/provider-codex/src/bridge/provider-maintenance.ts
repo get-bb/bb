@@ -1,5 +1,7 @@
+import path from "node:path";
 import {
   type ProviderHealthResult,
+  type ProviderInstallationCommand,
   type ProviderInstallationRunResult,
   type ProviderInstallationStatus,
   type ProviderUsage,
@@ -10,7 +12,6 @@ import {
   experimental_compareVersions as compareVersions,
   experimental_formatCommand as formatCommand,
   experimental_installationVerification as installationVerification,
-  experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
   experimental_npmGlobalInstallSource as npmGlobalInstallSource,
   experimental_npmLatestVersion as npmLatestVersion,
   experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
@@ -20,12 +21,16 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { fetchChatGpt } from "../ai/chatgpt-fetch.js";
+import { resolveCodexCommand } from "./codex-executable.js";
 import {
   readCodexAuthFile,
   type CodexAuthCredentials,
 } from "../ai/codex-auth.js";
 
 const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
+const CODEX_INSTALL_SCRIPT_URL = "https://chatgpt.com/codex/install.sh";
+const CODEX_POWERSHELL_INSTALL_SCRIPT_URL =
+  "https://chatgpt.com/codex/install.ps1";
 const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
@@ -74,12 +79,51 @@ function codexUpdateCommand(): {
   args: string[];
   displayCommand: string;
 } {
+  const command = resolveCodexCommand();
   const args = ["update"];
   return {
-    command: "codex",
+    command,
     args,
-    displayCommand: formatCommand("codex", args),
+    displayCommand: formatCommand(command, args),
   };
+}
+
+export function codexLoginCommand(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === "win32") {
+    const text = [command, ...args]
+      .map((part) =>
+        /^[A-Za-z0-9_./:@+-]+$/u.test(part)
+          ? part
+          : `'${part.replaceAll("'", "''")}'`,
+      )
+      .join(" ");
+    return path.win32.isAbsolute(command) ? `& ${text}` : text;
+  }
+  return formatCommand(command, args);
+}
+
+export function codexInstallerCommand(
+  platform: NodeJS.Platform = process.platform,
+): ProviderInstallationCommand {
+  if (platform === "win32") {
+    const script = `$env:CODEX_NON_INTERACTIVE='1'; irm ${CODEX_POWERSHELL_INSTALL_SCRIPT_URL} | iex`;
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+      displayCommand: script,
+    };
+  }
+  const script = [
+    'tmp=$(mktemp "${TMPDIR:-/tmp}/provider-installation.XXXXXX")',
+    "trap 'rm -f \"$tmp\"' EXIT",
+    `curl -fsSL ${CODEX_INSTALL_SCRIPT_URL} -o "$tmp"`,
+    'CODEX_NON_INTERACTIVE=1 sh "$tmp"',
+  ].join(" && ");
+  return { command: "sh", args: ["-c", script], displayCommand: script };
 }
 
 export async function getCodexProviderInstallationStatus(
@@ -88,10 +132,11 @@ export async function getCodexProviderInstallationStatus(
 ): Promise<ProviderInstallationStatus> {
   const minimumSupportedVersion =
     minimumSupportedVersionForRequirement(requirement);
+  const command = resolveCodexCommand();
   const [resolvedExecutable, versionOutput, latestVersion, npmGlobal] =
     await Promise.all([
-      resolveExecutablePath("codex"),
-      commandOutput("codex", ["--version"]),
+      resolveExecutablePath(command),
+      commandOutput(command, ["--version"]),
       checkUpdates ? npmLatestVersion(CODEX_NPM_PACKAGE) : null,
       checkUpdates
         ? probeNpmGlobalPackage(CODEX_NPM_PACKAGE)
@@ -137,7 +182,7 @@ export async function getCodexProviderInstallationStatus(
             label: actionKind === "install" ? "Install" : "Update",
             command:
               actionKind === "install"
-                ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE).displayCommand
+                ? codexInstallerCommand().displayCommand
                 : codexUpdateCommand().displayCommand,
           },
     needsUpdate,
@@ -165,9 +210,7 @@ function buildCodexProviderInstallationRun(
   return {
     available: true,
     command:
-      action === "install"
-        ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE)
-        : codexUpdateCommand(),
+      action === "install" ? codexInstallerCommand() : codexUpdateCommand(),
     verification: installationVerification(status, action),
   };
 }
@@ -186,6 +229,7 @@ function healthResult(
     statusMessage?: string | null;
   } = {},
 ): ProviderHealthResult {
+  const command = resolveCodexCommand();
   return {
     supported: true,
     health: {
@@ -197,17 +241,18 @@ function healthResult(
       minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
       canInstall: true,
       canUpdate: status !== "not_installed",
-      loginCommand: "codex login --device-auth",
-      localLoginCommand: "codex login",
+      loginCommand: codexLoginCommand(command, ["login", "--device-auth"]),
+      localLoginCommand: codexLoginCommand(command, ["login"]),
     },
   };
 }
 
 export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
-  if ((await resolveExecutablePath("codex")) === null) {
+  const command = resolveCodexCommand();
+  if ((await resolveExecutablePath(command)) === null) {
     return healthResult("not_installed");
   }
-  const version = await readCliVersion("codex");
+  const version = await readCliVersion(command);
   if (
     version !== null &&
     compareVersions(version, CODEX_MINIMUM_SUPPORTED_VERSION) < 0
@@ -320,7 +365,7 @@ function normalizeUsage(raw: unknown, email: string | null): ProviderUsage {
 }
 
 export async function getCodexProviderUsage(): Promise<ProviderUsageResult> {
-  if ((await resolveExecutablePath("codex")) === null) {
+  if ((await resolveExecutablePath(resolveCodexCommand())) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
   let credentials: CodexAuthCredentials | null;

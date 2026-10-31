@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveAppServerLaunch } from "./bridge.js";
 
@@ -60,4 +63,25 @@ describe("Codex Account Pool isolation", () => {
       );
     },
   );
+});
+
+describe("Codex native launch", () => {
+  it("discovers native Codex using the launch environment", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-launch-"));
+    try {
+      const executable = path.join(
+        root,
+        process.platform === "win32" ? "codex.exe" : "codex",
+      );
+      await fs.writeFile(executable, "", { mode: 0o755 });
+      const launch = resolveAppServerLaunch({
+        PATH: "",
+        CODEX_INSTALL_DIR: root,
+      });
+      expect(launch.command).toBe(executable);
+      expect(launch.args).toEqual(["app-server"]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });
