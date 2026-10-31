@@ -3,6 +3,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  SERVER_CREDENTIAL_CACHE_TTL_MS,
+  ServerCredentialCache,
   aiRequestLog,
   aiUsageDay,
   schema,
@@ -47,6 +49,14 @@ const NOON = Date.UTC(2026, 8, 22, 12);
 let sqlite: Database.Database;
 let db: ReturnType<typeof drizzle>;
 let clock: number;
+let background: Promise<unknown>[];
+
+async function settled(): Promise<void> {
+  for (let seen = -1; seen !== background.length; ) {
+    seen = background.length;
+    await Promise.all(background);
+  }
+}
 
 interface UpstreamCall {
   url: string;
@@ -76,10 +86,13 @@ function harness(
   } = {},
 ) {
   const calls: UpstreamCall[] = [];
-  const extended: Promise<unknown>[] = [];
   const upstream = over.upstream ?? (() => okCompletion(0.00085));
   const deps: GatewayDeps = {
     db,
+    credentials: new ServerCredentialCache(
+      SERVER_CREDENTIAL_CACHE_TTL_MS,
+      () => clock,
+    ),
     config: {
       dailyBudgetMicros: 2_000_000,
       models: MODELS,
@@ -106,10 +119,10 @@ function harness(
     upstreamTimeoutMs: over.upstreamTimeoutMs ?? 4_000,
     transcribeTimeoutMs: over.transcribeTimeoutMs ?? 8_000,
     waitUntil: (promise) => {
-      extended.push(promise);
+      background.push(promise);
     },
   };
-  return { deps, calls, extended };
+  return { deps, calls };
 }
 
 function complete(
@@ -196,6 +209,7 @@ beforeEach(async () => {
   }
   db = drizzle(sqlite, { schema });
   clock = NOON;
+  background = [];
   for (const id of ["u1", "u2"]) {
     db.insert(user)
       .values({
@@ -253,6 +267,7 @@ describe("POST /api/ai/v1/complete", () => {
     });
 
     const day = utcDay(NOON);
+    await settled();
     expect(usageRow("u1", day)).toEqual({
       userId: "u1",
       day,
@@ -328,6 +343,34 @@ describe("POST /api/ai/v1/complete", () => {
     ).toBe(200);
   });
 
+  it("reports today's spend from the reservation without waiting for the settle", async () => {
+    const { deps } = harness();
+    db.insert(aiUsageDay)
+      .values({ userId: "u1", day: utcDay(NOON), spentMicros: 1_000 })
+      .run();
+    const response = await complete(deps, { prompt: "a" });
+    expect(await response.json()).toMatchObject({
+      usage: { costMicros: 850, spentTodayMicros: 1_850 },
+    });
+    await settled();
+    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+      spentMicros: 1_850,
+      reservedMicros: 0,
+    });
+  });
+
+  it("honors a revoked credential once its cached lookup expires", async () => {
+    const { deps } = harness();
+    expect((await complete(deps, { prompt: "a" })).status).toBe(200);
+    db.update(server)
+      .set({ revokedAt: new Date(NOON) })
+      .where(eq(server.id, "s1"))
+      .run();
+    expect((await complete(deps, { prompt: "a" })).status).toBe(200);
+    clock += SERVER_CREDENTIAL_CACHE_TTL_MS;
+    expect((await complete(deps, { prompt: "a" })).status).toBe(401);
+  });
+
   it("rejects revoked, unknown, and missing credentials", async () => {
     const { deps, calls } = harness();
     const attempts: Record<string, string>[] = [
@@ -366,6 +409,7 @@ describe("POST /api/ai/v1/complete", () => {
       });
     }
     expect(calls).toHaveLength(1);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))?.reservedMicros).toBe(0);
   });
 
@@ -400,6 +444,7 @@ describe("POST /api/ai/v1/complete", () => {
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
     expect(statuses.filter((status) => status === 402)).toHaveLength(7);
     expect(calls).toHaveLength(5);
+    await settled();
     expect(usageRow("u1", day)).toMatchObject({
       spentMicros: 20_000,
       reservedMicros: 0,
@@ -458,6 +503,7 @@ describe("POST /api/ai/v1/complete", () => {
       .run();
 
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
+    await settled();
     expect(usageRow("u1", "2026-09-22")).toMatchObject({
       spentMicros: 1_991_000,
       reservedMicros: 0,
@@ -465,6 +511,7 @@ describe("POST /api/ai/v1/complete", () => {
     expect(usageRow("u1", "2026-09-23")).toBeUndefined();
 
     expect((await complete(deps, { prompt: "a" })).status).toBe(200);
+    await settled();
     expect(usageRow("u1", "2026-09-23")).toMatchObject({
       spentMicros: 1_000,
       reservedMicros: 0,
@@ -524,6 +571,7 @@ describe("POST /api/ai/v1/complete", () => {
         error: { code: "unavailable" },
       });
     }
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 100 + 2 * RESERVE_MICROS,
       reservedMicros: 0,
@@ -560,6 +608,7 @@ describe("POST /api/ai/v1/complete", () => {
     expect(await response.json()).toMatchObject({
       error: { code: "timeout" },
     });
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: RESERVE_MICROS,
       reservedMicros: 0,
@@ -576,7 +625,7 @@ describe("POST /api/ai/v1/complete", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const { deps, calls, extended } = harness({
+    const { deps, calls } = harness({
       upstream: async () => {
         await gate;
         return okCompletion(0.002);
@@ -586,10 +635,10 @@ describe("POST /api/ai/v1/complete", () => {
     await vi.waitFor(() => expect(calls).toHaveLength(1));
     const day = utcDay(NOON);
     expect(usageRow("u1", day)?.reservedMicros).toBe(RESERVE_MICROS);
-    expect(extended).toHaveLength(1);
+    expect(background).toHaveLength(1);
 
     release();
-    await extended[0];
+    await settled();
     expect(usageRow("u1", day)).toMatchObject({
       spentMicros: 2_000,
       reservedMicros: 0,
@@ -602,6 +651,7 @@ describe("POST /api/ai/v1/complete", () => {
     sqlite.exec("DROP TABLE ai_request_log");
     const response = await complete(deps, { prompt: "a" });
     expect(response.status).toBe(200);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 850,
       reservedMicros: 0,
@@ -645,6 +695,7 @@ describe("POST /api/ai/v1/complete", () => {
       error: { code: "rate_limited" },
     });
     expect(calls).toHaveLength(0);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toBeUndefined();
     expect(db.select().from(aiRequestLog).all()).toEqual([
       expect.objectContaining({
@@ -686,6 +737,7 @@ describe("POST /api/ai/v1/transcribe", () => {
         options: { groq: { prompt: "useVoiceInput, bb-ai" } },
       },
     });
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toEqual({
       userId: "u1",
       day: utcDay(NOON),
@@ -778,6 +830,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     });
     const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
     expect(response.status).toBe(503);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: TRANSCRIBE_RESERVE_MICROS,
       reservedMicros: 0,
@@ -797,6 +850,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
     expect(response.status).toBe(504);
     expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: TRANSCRIBE_RESERVE_MICROS,
       reservedMicros: 0,
@@ -810,6 +864,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     const response = await transcribe(deps, { audio: AUDIO, format: "mp3" });
     expect(response.status).toBe(503);
     expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
+    await settled();
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
       spentMicros: 0,
       reservedMicros: 0,
@@ -887,6 +942,7 @@ describe("GET /api/ai/v1/usage", () => {
   it("reports today's spend for the account across its servers", async () => {
     const { deps } = harness();
     await complete(deps, { prompt: "a" });
+    await settled();
     const response = await usage(deps, "bbcred_u1_desktop");
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({

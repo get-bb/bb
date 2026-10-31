@@ -6,6 +6,8 @@ import {
   type CodexDeviceAccount,
 } from "./codex-device-login.js";
 
+const NEW_ACCOUNT = { kind: "add", label: null, priority: 100 } as const;
+
 type Handler = (
   request: IncomingMessage,
   response: ServerResponse,
@@ -125,7 +127,8 @@ function createPollingHarness(args?: {
       }
       throw new Error(`Unexpected request to ${url}`);
     },
-    addAccount: async (account) => summary(account),
+    validateTarget: async () => {},
+    saveLogin: async (account) => summary(account),
   });
   return { clock, login, tokenPolls: () => tokenPolls };
 }
@@ -194,13 +197,14 @@ describe("Codex device login", () => {
     const login = new CodexDeviceLogin({
       authBaseUrl,
       now: () => now,
-      addAccount: async (account) => {
+      validateTarget: async () => {},
+      saveLogin: async (account) => {
         added.push(account);
         return summary(account);
       },
     });
 
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     expect(started).toMatchObject({
       verificationUri: `${authBaseUrl}/codex/device`,
       userCode: "USER-SECRET",
@@ -263,7 +267,7 @@ describe("Codex device login", () => {
         ),
       ],
     });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     clock.now += 5_000;
 
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
@@ -288,7 +292,7 @@ describe("Codex device login", () => {
         Response.json({ error: { code: "deviceauth_slow_down" } }),
       ],
     });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     clock.now += 5_000;
 
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
@@ -302,7 +306,7 @@ describe("Codex device login", () => {
     const { clock, login, tokenPolls } = createPollingHarness({
       tokenResponses: [new Response(null, { status: 500 })],
     });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     clock.now += 5_000;
 
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
@@ -317,7 +321,7 @@ describe("Codex device login", () => {
 
   it("removes a cancelled session", async () => {
     const { login } = createPollingHarness();
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
 
     expect(login.cancel({ sessionId: started.sessionId })).toBe(true);
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
@@ -329,7 +333,7 @@ describe("Codex device login", () => {
   it("removes an expired session with its timer", async () => {
     vi.useFakeTimers();
     const { login } = createPollingHarness({ expiresIn: 1 });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
@@ -341,7 +345,7 @@ describe("Codex device login", () => {
   it("clears session timers and state on dispose", async () => {
     vi.useFakeTimers();
     const { login } = createPollingHarness();
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     expect(vi.getTimerCount()).toBe(1);
 
     login.dispose();
@@ -375,9 +379,10 @@ describe("Codex device login", () => {
     const login = new CodexDeviceLogin({
       authBaseUrl,
       now: () => now,
-      addAccount: async (account) => summary(account),
+      validateTarget: async () => {},
+      saveLogin: async (account) => summary(account),
     });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     now += 10 * 60 * 1_000;
     expect(await login.poll({ sessionId: started.sessionId })).toEqual({
       status: "error",
@@ -424,9 +429,10 @@ describe("Codex device login", () => {
     const login = new CodexDeviceLogin({
       authBaseUrl,
       now: () => now,
-      addAccount: async (account) => summary(account),
+      validateTarget: async () => {},
+      saveLogin: async (account) => summary(account),
     });
-    const started = await login.start();
+    const started = await login.start(NEW_ACCOUNT);
     now += 5_000;
     const result = await login.poll({ sessionId: started.sessionId });
     expect(result).toEqual({

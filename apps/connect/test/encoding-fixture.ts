@@ -81,11 +81,16 @@ export default {
     const fetchOrigin = async (originRequest: Request): Promise<Response> => {
       if (!workerHeld) return stub.fetch(originRequest);
       return (
-        (await fetchThroughRelay(stub, originRequest, {
-          stage: "routing",
-          tunnelObjectAttempts: 0,
-          routingKey: null,
-        })) ?? stub.fetch(originRequest)
+        (await fetchThroughRelay(
+          stub,
+          originRequest,
+          {
+            stage: "routing",
+            tunnelObjectAttempts: 0,
+            routingKey: null,
+          },
+          new AbortController().signal,
+        )) ?? stub.fetch(originRequest)
       );
     };
     const response = (

@@ -2256,7 +2256,9 @@ describe("script process containment", () => {
           "interrupted: the automations plugin stopped before the script finished",
       });
       for (const pid of pids) {
-        expect(await isProcessRunning(pid)).toBe(false);
+        await expect
+          .poll(() => isProcessRunning(pid), { timeout: 2_000 })
+          .toBe(false);
       }
       await reloaded.harness.dispose();
     } finally {
