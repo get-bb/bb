@@ -225,6 +225,7 @@ function followUpSurface({
           compactPromptPlaceholder: "Ask a follow-up",
           promptPlaceholder: "Ask for a follow-up",
           canModifierSubmit: true,
+          sendsEmptyDraft: false,
           steerActiveThreadOnEnter: submitMode === "steer",
           submitMode:
             submitMode === "steer"

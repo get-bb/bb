@@ -7,6 +7,7 @@ import {
 } from "./thread-entity-store";
 import type { QueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
+import { isBlankPromptInput } from "@bb/domain";
 import type {
   Environment,
   PromptHistoryEntry,
@@ -570,6 +571,7 @@ function prependThreadPromptHistory(
   threadId: string,
   entry: PromptHistoryEntry,
 ): void {
+  if (isBlankPromptInput(entry.input)) return;
   queryClient.setQueryData<PromptHistoryResponse>(
     threadPromptHistoryQueryKey(threadId),
     (currentEntries) => prependPromptHistoryEntry(currentEntries, entry),
@@ -897,7 +899,9 @@ export async function beginSendThreadMessageTransaction({
     threadId: request.id,
     threadStatus: previousThread?.status ?? null,
   });
-  insertOptimisticTimelineRow(queryClient, request.id, optimisticRow);
+  if (!isBlankPromptInput(request.input)) {
+    insertOptimisticTimelineRow(queryClient, request.id, optimisticRow);
+  }
 
   return {
     kind: "accepted-turn",
@@ -984,17 +988,19 @@ export function applySendThreadMessageSuccess({
         queryClient,
         threadId: request.id,
       }).confirm([], readThreadBack(queryClient));
-      insertOptimisticTimelineRow(
-        queryClient,
-        request.id,
-        buildOptimisticUserMessageRow({
-          createdAt: optimisticCreatedAt,
-          input: request.input,
-          mode: request.mode,
-          threadId: request.id,
-          threadStatus: transaction.previousThreadStatus,
-        }),
-      );
+      if (!isBlankPromptInput(request.input)) {
+        insertOptimisticTimelineRow(
+          queryClient,
+          request.id,
+          buildOptimisticUserMessageRow({
+            createdAt: optimisticCreatedAt,
+            input: request.input,
+            mode: request.mode,
+            threadId: request.id,
+            threadStatus: transaction.previousThreadStatus,
+          }),
+        );
+      }
     }
     invalidateThreadQueuedMessageListQuery({
       queryClient,

@@ -1,4 +1,5 @@
 import {
+  isBlankPromptInput,
   isStandaloneBuiltinClearCommand,
   isStandaloneBuiltinCompactCommand,
   type Thread,
@@ -9,6 +10,7 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { continueTurnInput } from "./continue-turn-input.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -29,7 +31,12 @@ export async function acceptThreadSendRequest(
     input: args.payload.input,
     providerId: args.thread.providerId,
   });
-  const { compactFirst, ...request } = args.payload;
+  const { compactFirst, ...submitted } = args.payload;
+  const request: Omit<SendMessageRequest, "compactFirst"> = isBlankPromptInput(
+    submitted.input,
+  )
+    ? { ...submitted, input: continueTurnInput() }
+    : submitted;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
     const environment = await requireThreadCommandEnvironment(deps, {

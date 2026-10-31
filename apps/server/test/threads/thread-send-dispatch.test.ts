@@ -2142,3 +2142,42 @@ describe("turn held open for background work", () => {
     });
   });
 });
+
+describe("blank follow-up input", () => {
+  it.each([
+    ["empty text", textInput("")],
+    ["whitespace", textInput("  \n ")],
+  ])(
+    "asks the provider to continue with an agent-only nudge for %s",
+    async (_label, input) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedProviderThreadFixture({
+          harness,
+          status: "idle",
+          value: 2001,
+        });
+
+        await expect(
+          acceptThreadSendRequest(harness.deps, {
+            payload: { input, mode: "queue-if-active" },
+            thread,
+          }),
+        ).resolves.toEqual({ ok: true, delivery: "sent" });
+
+        const [command] = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(command?.type === "turn.submit" ? command.input : null).toEqual([
+          {
+            type: "text",
+            text: "Please continue.",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ]);
+      });
+    },
+  );
+});

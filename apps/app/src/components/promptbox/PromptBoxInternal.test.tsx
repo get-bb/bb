@@ -1912,6 +1912,50 @@ describe("ComposerBox submit shortcuts", () => {
     });
   });
 
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    "sends an empty draft only where the send continues the thread (sendsEmptyDraft %s)",
+    (sendsEmptyDraft, disabled) => {
+      const onSubmit = vi.fn();
+      render(
+        <ComposerBox
+          {...createPromptBoxProps({
+            onSubmit,
+            submission: { sendsEmptyDraft },
+          })}
+        />,
+      );
+
+      expect(
+        screen
+          .getByRole("button", { name: "Submit (Enter)" })
+          .hasAttribute("disabled"),
+      ).toBe(disabled);
+      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+      expect(onSubmit).toHaveBeenCalledTimes(sendsEmptyDraft ? 1 : 0);
+    },
+  );
+
+  it("keeps Stop for an empty draft while a run steers on Enter", () => {
+    render(
+      <ComposerBox
+        {...createPromptBoxProps({
+          submission: {
+            isRunning: true,
+            onStop: vi.fn(),
+            onModifierSubmit: vi.fn(),
+            sendsEmptyDraft: true,
+            swapSubmitActions: true,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Stop/ })).not.toBeNull();
+  });
+
   it("continues to submit unmodified Enter on a fine-pointer device", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {

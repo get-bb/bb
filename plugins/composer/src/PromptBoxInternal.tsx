@@ -2773,7 +2773,10 @@ export function PromptBoxInternal({
   const canSubmitVoiceTranscript =
     hasSubmittableInput && canSubmitActionAfterVoice(primarySubmitAction);
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
-  const canSubmit = hasSubmittableInput && canPrimarySubmit;
+  const primarySendsEmptyDraft =
+    primarySubmitAction.kind === "send" && !primarySubmitAction.requiresInput;
+  const canSubmit =
+    (hasSubmittableInput || primarySendsEmptyDraft) && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
   const submittingBlockedReason = composerSubmittingBlockedReason({
     canSubmit: canPrimarySubmit,

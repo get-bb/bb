@@ -38,6 +38,12 @@ Messaging:
   its `id`, `waitingOn`, and `sendAt`. A deferred message waits for a thread
   that failed while it was deferred, and delivers when the thread is retried.
 
+  An empty message (`bb thread tell <id> ""`) asks the agent to continue from
+  where it stopped: the provider receives an agent-only "Please continue." and
+  the timeline shows no user message for it. Pressing Enter in an idle
+  thread's empty composer does the same. SDK callers send `input` made only of
+  blank text.
+
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
   Code and Codex threads). Providers without a declared plan action reject

@@ -13,6 +13,7 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { continueTurnInput } from "./continue-turn-input.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import {
   loadFailedTurn,
@@ -88,8 +89,6 @@ export interface RetryFailedTurnArgs {
   request: RetryTurnRequest;
 }
 
-const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
-
 /**
  * What the re-attempt sends, decided by the provider's own acceptance record.
  *
@@ -110,16 +109,7 @@ function retryInput(
   args: { threadId: string; failed: FailedTurnRecord },
 ): { input: PromptInput[]; inputGroups?: PromptInput[][] } {
   if (wasFailedTurnInputAccepted(deps.db, args)) {
-    return {
-      input: [
-        {
-          type: "text",
-          text: CONTINUE_ACCEPTED_TURN_TEXT,
-          mentions: [],
-          visibility: "agent-only",
-        },
-      ],
-    };
+    return { input: continueTurnInput() };
   }
   const agentOnly = (block: PromptInput): PromptInput => ({
     ...block,

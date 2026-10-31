@@ -2645,7 +2645,8 @@ export interface ExperimentalComposerAction {
   kind: "send" | "queue" | "steer";
   /**
    * The action needs a non-empty draft. A steer does not: with an empty
-   * draft it steers the next queued message.
+   * draft it steers the next queued message. Neither does a send in an idle
+   * thread: with an empty draft it asks the agent to continue.
    */
   requiresInput: boolean;
   /** The key that runs it, formatted for display. */

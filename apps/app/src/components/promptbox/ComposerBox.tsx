@@ -183,6 +183,7 @@ export interface PromptBoxSubmissionConfig extends Omit<
 > {
   onModifierSubmit?: (extras?: ComposerSubmitExtras) => void | Promise<void>;
   queuesDraft?: boolean;
+  sendsEmptyDraft?: boolean;
   swapSubmitActions?: boolean;
   showModifierSubmitAction?: boolean;
 }
@@ -229,6 +230,7 @@ function composerSubmission(
   const {
     onModifierSubmit,
     queuesDraft = false,
+    sendsEmptyDraft = false,
     swapSubmitActions = false,
     showModifierSubmitAction = false,
     ...state
@@ -240,7 +242,7 @@ function composerSubmission(
     };
   const draft = {
     kind: queuesDraft || swapSubmitActions ? "queue" : "send",
-    requiresInput: true,
+    requiresInput: !sendsEmptyDraft,
     run: runReported(() => onSubmit()),
   } as const;
   const steer =
