@@ -19,7 +19,10 @@ vi.mock("@get-bb/plugin-sdk/process", () => ({
       return callback(null, "ok", "");
     expect(options).toEqual({ timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
     const name = args.find((arg) => arg.startsWith("name="))?.slice(5);
-    const response = fake.responses.get(name ?? "");
+    const after = args.find((arg) => arg.startsWith("after="))?.slice(6);
+    const response = fake.responses.get(
+      after === undefined ? (name ?? "") : `${name}@${after}`,
+    );
     if (response === undefined)
       return callback(new Error("unexpected command"), "", "");
     if (response instanceof Error)
@@ -41,16 +44,20 @@ function node(number: number, state = "OPEN") {
     updatedAt: "2026-09-10T00:00:00Z",
   };
 }
+const lastPage = { hasNextPage: false, endCursor: null };
+function nextPage(endCursor: string) {
+  return { hasNextPage: true, endCursor };
+}
 function repository() {
   return {
     hasIssuesEnabled: true,
-    openIssues: { nodes: [node(1)] },
+    openIssues: { nodes: [node(1)], pageInfo: lastPage },
     closedIssues: { nodes: [node(2, "CLOSED")] },
-    openPrs: { nodes: [node(3)] },
+    openPrs: { nodes: [node(3)], pageInfo: lastPage },
     closedPrs: { nodes: [node(4, "CLOSED"), node(5, "MERGED")] },
   };
 }
-function response(repo = repository()) {
+function response(repo: object = repository()) {
   return JSON.stringify({ data: { repository: repo } });
 }
 const hosts: ReturnType<typeof createFakePluginHost>[] = [];
@@ -122,6 +129,7 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
   const repo = {
     ...repository(),
     hasIssuesEnabled: false,
+    openIssues: { nodes: [node(1)], pageInfo: nextPage("c1") },
     openPrs: {
       nodes: [
         {
@@ -131,6 +139,7 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
           assignees: { nodes: [] },
         },
       ],
+      pageInfo: lastPage,
     },
     closedPrs: { nodes: [] },
   };
@@ -146,9 +155,9 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
     "one",
     response({
       hasIssuesEnabled: true,
-      openIssues: { nodes: [] },
+      openIssues: { nodes: [], pageInfo: lastPage },
       closedIssues: { nodes: [] },
-      openPrs: { nodes: [] },
+      openPrs: { nodes: [], pageInfo: lastPage },
       closedPrs: { nodes: [] },
     }),
   );
@@ -161,7 +170,7 @@ it("accepts deleted authors and empty connections, discards disabled issues, and
   });
 });
 
-it.each([
+it.each<[string, Error | string, string?]>([
   ["process failure", new Error("timeout")],
   ["invalid JSON", "broken"],
   ["null repository", JSON.stringify({ data: { repository: null } })],
@@ -190,18 +199,70 @@ it.each([
     "malformed node",
     response({
       ...repository(),
-      openIssues: { nodes: [{ ...node(1), number: -1 }] },
+      openIssues: { nodes: [{ ...node(1), number: -1 }], pageInfo: lastPage },
+    }),
+  ],
+  [
+    "missing first-page cursor",
+    response({
+      ...repository(),
+      openIssues: {
+        nodes: [node(1)],
+        pageInfo: { hasNextPage: true, endCursor: null },
+      },
+    }),
+  ],
+  [
+    "failed follow-up page",
+    response({
+      ...repository(),
+      openPrs: { nodes: [node(3)], pageInfo: nextPage("unanswered") },
+    }),
+  ],
+  [
+    "follow-up GraphQL error",
+    response({
+      ...repository(),
+      openPrs: { nodes: [node(3)], pageInfo: nextPage("c1") },
+    }),
+    JSON.stringify({
+      data: {
+        repository: { openPrs: { nodes: [node(7)], pageInfo: lastPage } },
+      },
+      errors: [{ message: "resource limit", path: ["repository", "openPrs"] }],
+    }),
+  ],
+  [
+    "follow-up null repository",
+    response({
+      ...repository(),
+      openPrs: { nodes: [node(3)], pageInfo: nextPage("c1") },
+    }),
+    JSON.stringify({ data: { repository: null } }),
+  ],
+  [
+    "missing follow-up cursor",
+    response({
+      ...repository(),
+      openPrs: { nodes: [node(3)], pageInfo: nextPage("c1") },
+    }),
+    response({
+      openPrs: {
+        nodes: [node(7)],
+        pageInfo: { hasNextPage: true, endCursor: null },
+      },
     }),
   ],
 ])(
   "retains repository rows and cursor after %s, then allows another repository to succeed",
-  async (_name, failed) => {
+  async (_name, failed, followUp) => {
     fake.responses.set("one", response());
     const { harness, bb } = await start();
     await harness.behavior.callRpc("refresh");
     const before = await harness.behavior.callRpc("listItems", {});
     const cursor = await bb.storage.kv.get("sync-cursor");
     fake.responses.set("one", failed);
+    if (followUp !== undefined) fake.responses.set("one@c1", followUp);
     await expect(harness.behavior.callRpc("refresh")).rejects.toThrow();
     expect(await harness.behavior.callRpc("listItems", {})).toEqual(before);
     expect(await bb.storage.kv.get("sync-cursor")).toEqual(cursor);
@@ -217,5 +278,109 @@ it.each([
     expect(
       bb.storage.database().prepare("SELECT count(*) AS n FROM items").get(),
     ).toEqual({ n: 10 });
+  },
+);
+
+it("stores open issues beyond the first page", async () => {
+  fake.responses.set(
+    "one",
+    response({
+      ...repository(),
+      openIssues: { nodes: [node(1)], pageInfo: nextPage("c1") },
+    }),
+  );
+  fake.responses.set(
+    "one@c1",
+    response({ openIssues: { nodes: [node(6)], pageInfo: lastPage } }),
+  );
+  const { harness } = await start();
+  await harness.behavior.callRpc("refresh");
+  const { items } = githubRpcContract.listItems.output.parse(
+    await harness.behavior.callRpc("listItems", {
+      kind: "issue",
+      state: "open",
+    }),
+  );
+  expect(items.map((item: { number: number }) => item.number).sort()).toEqual([
+    1, 6,
+  ]);
+});
+
+it("pages open pull requests and keeps one row when an item moves between lists", async () => {
+  fake.responses.set(
+    "one",
+    response({
+      ...repository(),
+      openPrs: {
+        nodes: [node(3)],
+        pageInfo: nextPage(
+          "Y3Vyc29yOnYyOpK0MjAyNi0wNy0wOVQwNzo1NzoyNVrPAAAAASC_YbE=",
+        ),
+      },
+    }),
+  );
+  fake.responses.set(
+    "one@Y3Vyc29yOnYyOpK0MjAyNi0wNy0wOVQwNzo1NzoyNVrPAAAAASC_YbE=",
+    response({
+      openPrs: { nodes: [node(4), node(7)], pageInfo: lastPage },
+    }),
+  );
+  const { harness } = await start();
+  expect(await harness.behavior.callRpc("refresh")).toEqual({
+    repos: 1,
+    items: 6,
+  });
+  const { items } = githubRpcContract.listItems.output.parse(
+    await harness.behavior.callRpc("listItems", { kind: "pr" }),
+  );
+  expect(
+    items
+      .map((item: { number: number; state: string }) => [
+        item.number,
+        item.state,
+      ])
+      .sort(),
+  ).toEqual([
+    [3, "OPEN"],
+    [4, "OPEN"],
+    [5, "MERGED"],
+    [7, "OPEN"],
+  ]);
+});
+
+it.each([
+  ["openIssues", "issue", "open issues"],
+  ["openPrs", "pr", "open pull requests"],
+] as const)(
+  "keeps the newest 1000 %s and warns when more remain",
+  async (alias, kind, label) => {
+    const page = (index: number) => ({
+      nodes: Array.from({ length: 100 }, (_, i) => node(index * 100 + i + 10)),
+      pageInfo: nextPage(`p${index + 1}`),
+    });
+    fake.responses.set("one", response({ ...repository(), [alias]: page(0) }));
+    for (let index = 1; index < 11; index += 1)
+      fake.responses.set(`one@p${index}`, response({ [alias]: page(index) }));
+    const { harness } = await start();
+    await harness.behavior.callRpc("refresh");
+    const { items } = githubRpcContract.listItems.output.parse(
+      await harness.behavior.callRpc("listItems", {
+        kind,
+        state: "open",
+      }),
+    );
+    expect(items).toHaveLength(1000);
+    expect(
+      Math.max(...items.map((item: { number: number }) => item.number)),
+    ).toBe(1009);
+    expect(fake.calls.filter((args) => args[1] === "graphql")).toHaveLength(10);
+    expect(
+      harness.inspection.logEntries.filter((entry) => entry.level === "warn"),
+    ).toEqual([
+      {
+        level: "warn",
+        message: `acme/one has more than 1000 ${label}; keeping the newest 1000`,
+      },
+    ]);
   },
 );

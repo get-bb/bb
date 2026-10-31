@@ -16,9 +16,9 @@ import { z } from "zod";
 const SYNC_INTERVAL_MS = 15 * 60_000;
 const SYNC_RETRY_MAX_MS = 5 * 60_000;
 const SYNC_RETRY_BASE_MS = 30_000;
-const ISSUE_PAGE = 100;
+const OPEN_PAGE = 100;
+const OPEN_PAGE_LIMIT = 10;
 const CLOSED_ISSUE_PAGE = 50;
-const PR_PAGE = 50;
 const CLOSED_PR_PAGE = 30;
 
 const GH_HINT =
@@ -438,25 +438,26 @@ const listNodeSchema = z.object({
   body: z.string(),
   updatedAt: z.string(),
 });
+const openListSchema = z.object({
+  nodes: z
+    .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
+    .max(OPEN_PAGE),
+  pageInfo: z.union([
+    z.object({ hasNextPage: z.literal(true), endCursor: z.string() }),
+    z.object({ hasNextPage: z.literal(false) }),
+  ]),
+});
 const repositoryListsSchema = z.object({
   data: z.object({
     repository: z.object({
       hasIssuesEnabled: z.boolean(),
-      openIssues: z.object({
-        nodes: z
-          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
-          .max(ISSUE_PAGE),
-      }),
+      openIssues: openListSchema,
       closedIssues: z.object({
         nodes: z
           .array(listNodeSchema.extend({ state: z.literal("CLOSED") }))
           .max(CLOSED_ISSUE_PAGE),
       }),
-      openPrs: z.object({
-        nodes: z
-          .array(listNodeSchema.extend({ state: z.literal("OPEN") }))
-          .max(PR_PAGE),
-      }),
+      openPrs: openListSchema,
       closedPrs: z.object({
         nodes: z
           .array(listNodeSchema.extend({ state: z.enum(["CLOSED", "MERGED"]) }))
@@ -475,13 +476,15 @@ const listFields = `
 const repositoryListsQuery = `query RepositoryLists($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     hasIssuesEnabled
-    openIssues: issues(first: ${ISSUE_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+    openIssues: issues(first: ${OPEN_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
       nodes { ${listFields} }
     }
     closedIssues: issues(first: ${CLOSED_ISSUE_PAGE}, states: [CLOSED], orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${listFields} }
     }
-    openPrs: pullRequests(first: ${PR_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+    openPrs: pullRequests(first: ${OPEN_PAGE}, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
       nodes { ${listFields} }
     }
     closedPrs: pullRequests(first: ${CLOSED_PR_PAGE}, states: [CLOSED, MERGED], orderBy: {field: CREATED_AT, direction: DESC}) {
@@ -489,27 +492,66 @@ const repositoryListsQuery = `query RepositoryLists($owner: String!, $name: Stri
     }
   }
 }`;
+const openLists = {
+  openIssues: { field: "issues", label: "open issues" },
+  openPrs: { field: "pullRequests", label: "open pull requests" },
+} as const;
 
 async function fetchRepoItems(
   gh: GhRunner,
   repo: string,
+  log: Pick<BbPluginApi["log"], "warn">,
 ): Promise<CachedItem[]> {
   const [owner, name] = repoNameSchema.parse(repo).split("/");
-  const raw = await gh([
-    "api",
-    "graphql",
-    "--hostname",
-    GH_HOST,
-    "-f",
-    `query=${repositoryListsQuery}`,
-    "-f",
-    `owner=${owner}`,
-    "-f",
-    `name=${name}`,
-  ]);
+  const graphql = (query: string, ...fields: string[]) =>
+    gh([
+      "api",
+      "graphql",
+      "--hostname",
+      GH_HOST,
+      "-f",
+      `query=${query}`,
+      "-f",
+      `owner=${owner}`,
+      "-f",
+      `name=${name}`,
+      ...fields.flatMap((field) => ["-f", field]),
+    ]);
   const {
     data: { repository },
-  } = repositoryListsSchema.parse(JSON.parse(raw));
+  } = repositoryListsSchema.parse(
+    JSON.parse(await graphql(repositoryListsQuery)),
+  );
+  const openNodes = async (alias: keyof typeof openLists) => {
+    const { field, label } = openLists[alias];
+    const query = `query OpenList($owner: String!, $name: String!, $after: String!) {
+  repository(owner: $owner, name: $name) {
+    ${alias}: ${field}(first: ${OPEN_PAGE}, after: $after, states: [OPEN], orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes { ${listFields} }
+    }
+  }
+}`;
+    const schema = z.object({
+      data: z.object({ repository: z.object({ [alias]: openListSchema }) }),
+      errors: z.array(z.unknown()).max(0).optional(),
+    });
+    let page = repository[alias];
+    const nodes = [...page.nodes];
+    for (let pages = 1; page.pageInfo.hasNextPage; pages += 1) {
+      if (pages === OPEN_PAGE_LIMIT) {
+        log.warn(
+          `${repo} has more than ${nodes.length} ${label}; keeping the newest ${nodes.length}`,
+        );
+        break;
+      }
+      page = schema.parse(
+        JSON.parse(await graphql(query, `after=${page.pageInfo.endCursor}`)),
+      ).data.repository[alias];
+      nodes.push(...page.nodes);
+    }
+    return nodes;
+  };
   const toItems = (
     nodes: z.infer<typeof listNodeSchema>[],
     kind: "issue" | "pr",
@@ -529,16 +571,23 @@ async function fetchRepoItems(
       body: entry.body,
       updatedAt: entry.updatedAt,
     }));
-  return [
+  const items = [
     ...(repository.hasIssuesEnabled
       ? [
-          ...toItems(repository.openIssues.nodes, "issue"),
+          ...toItems(await openNodes("openIssues"), "issue"),
           ...toItems(repository.closedIssues.nodes, "issue"),
         ]
       : []),
-    ...toItems(repository.openPrs.nodes, "pr"),
+    ...toItems(await openNodes("openPrs"), "pr"),
     ...toItems(repository.closedPrs.nodes, "pr"),
   ];
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.kind}:${item.number}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default async function plugin(bb: BbPluginApi) {
@@ -856,6 +905,7 @@ export default async function plugin(bb: BbPluginApi) {
         const items = await fetchRepoItems(
           (args) => gh(args, undefined, "background"),
           repo,
+          bb.log,
         );
         replaceRepoRows(repo, items);
         total += items.length;
@@ -1528,7 +1578,10 @@ export default async function plugin(bb: BbPluginApi) {
       const match = stdout.trim().match(/\/issues\/(\d+)\s*$/);
       const number = match !== null ? Number(match[1]) : null;
       try {
-        replaceRepoRows(input.repo, await fetchRepoItems(gh, input.repo));
+        replaceRepoRows(
+          input.repo,
+          await fetchRepoItems(gh, input.repo, bb.log),
+        );
         bb.realtime.publish("data-changed", {});
       } catch {}
       return { number, url: stdout.trim() };

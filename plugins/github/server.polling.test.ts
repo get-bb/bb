@@ -30,9 +30,9 @@ vi.mock("@get-bb/plugin-sdk/process", () => ({
           data: {
             repository: {
               hasIssuesEnabled: true,
-              openIssues: { nodes: [] },
+              openIssues: { nodes: [], pageInfo: { hasNextPage: false } },
               closedIssues: { nodes: [] },
-              openPrs: { nodes: [] },
+              openPrs: { nodes: [], pageInfo: { hasNextPage: false } },
               closedPrs: { nodes: [] },
             },
           },
@@ -109,7 +109,7 @@ it("uses one bounded GraphQL request for each repository", async () => {
     const query = args.find((arg) => arg.startsWith("query="))!;
     expect(query).toContain("openIssues: issues(first: 100, states: [OPEN]");
     expect(query).toContain("closedIssues: issues(first: 50, states: [CLOSED]");
-    expect(query).toContain("openPrs: pullRequests(first: 50, states: [OPEN]");
+    expect(query).toContain("openPrs: pullRequests(first: 100, states: [OPEN]");
     expect(query).toContain(
       "closedPrs: pullRequests(first: 30, states: [CLOSED, MERGED]",
     );
