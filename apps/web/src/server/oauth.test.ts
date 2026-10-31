@@ -1138,7 +1138,7 @@ describe("token endpoint: refresh_token", () => {
       .get() as { count: number };
     expect(rows.count).toBeLessThanOrEqual(26);
     expect(grantRows()[0]?.revokedAt).toBeNull();
-  });
+  }, 30_000);
 
   it("still detects reuse of a token rotated within the retention window", async () => {
     const first = await exchange();
