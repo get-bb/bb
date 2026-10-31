@@ -34,7 +34,7 @@ import {
 } from "@/components/plugin/file-opener-tabs";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
-import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { getFilePreviewLineRangeStart } from "@bb/client-core";
 import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
@@ -382,7 +382,8 @@ function RootComposeFilePreviewTabContent({
                 path: projectPreviewPath,
               }
             : null;
-  const canOpenFileExternally = useCanOpenFileExternally(externalFileTarget);
+  const canOpenFileExternally =
+    useLiveFileOpenTargets(externalFileTarget).canOpenExternally;
   const { openFileExternally } = useAppNavigationHost();
   const hostFileLineNumber = getFilePreviewLineRangeStart({
     lineRange: tab.kind === "host-file-preview" ? tab.lineRange : null,

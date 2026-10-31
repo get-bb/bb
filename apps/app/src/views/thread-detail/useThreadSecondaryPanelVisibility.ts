@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
-  HostFileTabState,
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
 } from "@bb/client-core";
@@ -21,17 +20,12 @@ export type ThreadSecondaryPanelStorageFileOpenHandler = (
   file: ThreadStorageFileTabState,
   options?: ThreadSecondaryPanelFileOpenOptions,
 ) => void;
-export type ThreadSecondaryPanelHostFileOpenHandler = (
-  file: HostFileTabState,
-  options?: ThreadSecondaryPanelFileOpenOptions,
-) => void;
 
 export interface UseThreadSecondaryPanelVisibilityArgs {
   closePersistedPanel: () => void;
   drawerVisibility: ThreadSecondaryPanelDrawerVisibility;
   isCompactViewport: boolean;
   isPersistedOpen: boolean;
-  openPersistedHostFile: ThreadSecondaryPanelHostFileOpenHandler;
   openPersistedPanel: ThreadSecondaryPanelOpenHandler;
   openPersistedStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
   openPersistedWorkspaceFile: ThreadSecondaryPanelWorkspaceFileOpenHandler;
@@ -54,7 +48,6 @@ interface ThreadSecondaryPanelVisibility {
   closePanel: () => void;
   isOpen: boolean;
   openCompactDrawer: () => void;
-  openHostFile: ThreadSecondaryPanelHostFileOpenHandler;
   openPanel: ThreadSecondaryPanelOpenHandler;
   openStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
   openWorkspaceFile: ThreadSecondaryPanelWorkspaceFileOpenHandler;
@@ -142,7 +135,6 @@ export function useThreadSecondaryPanelVisibility({
   drawerVisibility,
   isCompactViewport,
   isPersistedOpen,
-  openPersistedHostFile,
   openPersistedPanel,
   openPersistedStorageFile,
   openPersistedWorkspaceFile,
@@ -184,15 +176,6 @@ export function useThreadSecondaryPanelVisibility({
       [openCompactDrawer, openPersistedStorageFile],
     );
 
-  const openHostFile = useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
-    (file, options) => {
-      if (options !== undefined) openPersistedHostFile(file, options);
-      else openPersistedHostFile(file);
-      openCompactDrawer();
-    },
-    [openCompactDrawer, openPersistedHostFile],
-  );
-
   const closePanel = useCallback(() => {
     if (isCompactViewport) {
       closeDrawer();
@@ -214,7 +197,6 @@ export function useThreadSecondaryPanelVisibility({
       closePanel,
       isOpen,
       openCompactDrawer,
-      openHostFile,
       openPanel,
       openStorageFile,
       openWorkspaceFile,
@@ -224,7 +206,6 @@ export function useThreadSecondaryPanelVisibility({
       closePanel,
       isOpen,
       openCompactDrawer,
-      openHostFile,
       openPanel,
       openStorageFile,
       openWorkspaceFile,

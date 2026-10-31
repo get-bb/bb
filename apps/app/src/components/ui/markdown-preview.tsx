@@ -74,12 +74,15 @@ import "./markdown-code-highlight.css";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
-  parseLocalFileHref,
-  resolveRelativeLocalFileHref,
   type MarkdownAbsoluteLocalFileLinkRouting,
-  type MarkdownPreviewLocalFileLink,
   type MarkdownRelativeLocalFileLinkRouting,
 } from "./markdown-local-file-link.js";
+import {
+  openMarkdownLinkTarget,
+  remarkHeadingIds,
+  resolveMarkdownLinkTarget,
+  resolveMarkdownLocalFileTarget,
+} from "./markdown-link-target.js";
 import {
   MarkdownLocalFileContextMenuContext,
   MarkdownLocalFileOpenTargetsContext,
@@ -132,7 +135,7 @@ import {
   rewriteLocalhostLinkHref,
   useRewriteLocalhostLinksPreference,
 } from "@/lib/localhost-link-rewrite-preference";
-import { resolveRouteHref } from "@/lib/route-paths";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
@@ -169,10 +172,6 @@ interface MarkdownAnchorProps
   rewriteLocalhostLinks?: boolean;
 }
 
-interface IsMarkdownAppRouteHrefArgs {
-  href: string | undefined;
-}
-
 interface BuildMarkdownComponentsArgs {
   tableLayout: "breakout" | "contained";
   hasThreadMentions: boolean;
@@ -195,12 +194,6 @@ interface BuildLocalAwareUrlTransformArgs {
   fallbackUrlTransform: UrlTransform | undefined;
   localFileRouting: MarkdownLocalFileLinkRouting | undefined;
   localImageRouting: MarkdownLocalImageRouting | undefined;
-}
-
-interface ResolvedMarkdownLocalFileTarget {
-  href: string;
-  link: MarkdownPreviewLocalFileLink;
-  sourceKind: "absolute" | "relative";
 }
 
 interface MarkdownImageRendererArgs {
@@ -480,66 +473,6 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
     previous: previous.linkRouting,
   });
 
-function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
-  if (!href || typeof window === "undefined") {
-    return false;
-  }
-
-  return (
-    resolveRouteHref({
-      currentOrigin: window.location.origin,
-      href,
-    }) !== null
-  );
-}
-
-function resolveMarkdownLocalFileTarget(
-  value: string,
-  absolute: MarkdownAbsoluteLocalFileLinkRouting,
-  relative: MarkdownRelativeLocalFileLinkRouting | undefined,
-): ResolvedMarkdownLocalFileTarget | null {
-  const absoluteLink =
-    parseLocalFileHref({ absoluteLinks: absolute, href: value }) ??
-    (absolute.kind === "trusted-host" && relative !== undefined
-      ? parseLocalFileHref({
-          absoluteLinks: { kind: "contained", rootPath: relative.rootPath },
-          href: value,
-        })
-      : null);
-  if (absoluteLink !== null) {
-    return {
-      href: value,
-      link: absoluteLink,
-      sourceKind: "absolute",
-    };
-  }
-  if (relative === undefined) {
-    return null;
-  }
-
-  const resolvedHref = resolveRelativeLocalFileHref({
-    href: value,
-    ...relative,
-  });
-  if (resolvedHref === null) {
-    return null;
-  }
-  const relativeLink = parseLocalFileHref({
-    absoluteLinks:
-      absolute.kind === "trusted-host"
-        ? { kind: "contained", rootPath: relative.rootPath }
-        : absolute,
-    href: resolvedHref,
-  });
-  return relativeLink === null
-    ? null
-    : {
-        href: resolvedHref,
-        link: relativeLink,
-        sourceKind: "relative",
-      };
-}
-
 function buildLocalAwareUrlTransform({
   applicationLinksEnabled,
   fallbackUrlTransform,
@@ -680,28 +613,28 @@ function MarkdownAnchor({
   rewriteLocalhostLinks,
   ...anchorProps
 }: MarkdownAnchorProps) {
-  const localFileRouting = linkRouting?.localFile;
-  const onOpenLocalFileLink = localFileRouting?.onOpenLink;
+  const navigation = useAppNavigationHost();
   const rewrittenHref = rewriteLocalhostLinkHref({
     currentHostname:
       typeof window === "undefined" ? undefined : window.location.hostname,
     enabled: rewriteLocalhostLinks ?? false,
     href,
   });
-  const isAppRouteHref = isMarkdownAppRouteHref({ href: rewrittenHref });
+  const linkTarget = rewrittenHref
+    ? resolveMarkdownLinkTarget({
+        currentOrigin:
+          typeof window === "undefined" ? null : window.location.origin,
+        href: rewrittenHref,
+        localFileRouting: linkRouting?.localFile,
+      })
+    : null;
   const localFileLink =
-    !isAppRouteHref && localFileRouting && rewrittenHref
-      ? (resolveMarkdownLocalFileTarget(
-          rewrittenHref,
-          localFileRouting.absoluteLinks,
-          localFileRouting.relativeLinks,
-        )?.link ?? null)
-      : null;
+    linkTarget?.kind === "local-file" ? linkTarget.link : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
   const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
-  if (!anchorHref) {
-    return <span>{children}</span>;
+  if (!anchorHref || linkTarget === null) {
+    return <span id={anchorProps.id}>{children}</span>;
   }
   const contextMenuItems =
     localFileLink !== null && getContextMenuItems !== null
@@ -712,31 +645,13 @@ function MarkdownAnchor({
       ? undefined
       : openTargets.find((target) => target.id === localFileLink.openTargetId);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
-    if (localFileLink && onOpenLocalFileLink) {
-      if (onOpenLocalFileLink(localFileLink)) {
-        event.preventDefault();
-      }
-      return;
-    }
-
-    if (isAppRouteHref) {
-      return;
-    }
-
-    if (parseApplicationUrl(rewrittenHref) !== null && rewrittenHref) {
-      event.preventDefault();
-      openApplicationUrl(rewrittenHref);
-      return;
-    }
-
-    if (
-      linkRouting?.onOpenLink &&
-      rewrittenHref &&
-      linkRouting.onOpenLink({ href: rewrittenHref })
-    ) {
-      event.preventDefault();
-      return;
-    }
+    openMarkdownLinkTarget({
+      event,
+      linkRouting,
+      openApplicationUrl,
+      openUrl: ({ href: url }) => navigation.openUrl({ url }),
+      target: linkTarget,
+    });
   };
 
   const anchor = (
@@ -750,11 +665,11 @@ function MarkdownAnchor({
       className={cn(
         "break-words [overflow-wrap:anywhere] underline underline-offset-2",
       )}
-      target="_blank"
+      target={linkTarget.kind === "fragment" ? undefined : "_blank"}
       rel="noopener noreferrer"
       onClick={handleAnchorClick}
       onAuxClick={(event) => {
-        if (event.button === 1 && parseApplicationUrl(rewrittenHref) !== null)
+        if (event.button === 1 && linkTarget.kind === "application-url")
           handleAnchorClick(event);
       }}
     >
@@ -972,49 +887,67 @@ function MarkdownPre({ children }: MarkdownPreProps) {
   return <>{children}</>;
 }
 
-function MarkdownH1({ children }: MarkdownHeadingProps) {
+function MarkdownH1({ children, id }: MarkdownHeadingProps) {
   return (
-    <h1 className="mb-2 mt-4 text-lg font-semibold text-foreground first:mt-0">
+    <h1
+      id={id}
+      className="mb-2 mt-4 text-lg font-semibold text-foreground first:mt-0"
+    >
       {children}
     </h1>
   );
 }
 
-function MarkdownH2({ children }: MarkdownHeadingProps) {
+function MarkdownH2({ children, id }: MarkdownHeadingProps) {
   return (
-    <h2 className="mb-2 mt-4 text-base font-semibold text-foreground first:mt-0">
+    <h2
+      id={id}
+      className="mb-2 mt-4 text-base font-semibold text-foreground first:mt-0"
+    >
       {children}
     </h2>
   );
 }
 
-function MarkdownH3({ children }: MarkdownHeadingProps) {
+function MarkdownH3({ children, id }: MarkdownHeadingProps) {
   return (
-    <h3 className="mb-2 mt-3 text-sm font-semibold text-foreground first:mt-0">
+    <h3
+      id={id}
+      className="mb-2 mt-3 text-sm font-semibold text-foreground first:mt-0"
+    >
       {children}
     </h3>
   );
 }
 
-function MarkdownH4({ children }: MarkdownHeadingProps) {
+function MarkdownH4({ children, id }: MarkdownHeadingProps) {
   return (
-    <h4 className="mb-1 mt-3 text-sm font-medium text-foreground first:mt-0">
+    <h4
+      id={id}
+      className="mb-1 mt-3 text-sm font-medium text-foreground first:mt-0"
+    >
       {children}
     </h4>
   );
 }
 
-function MarkdownH5({ children }: MarkdownHeadingProps) {
+function MarkdownH5({ children, id }: MarkdownHeadingProps) {
   return (
-    <h5 className="mb-1 mt-2 text-sm font-semibold uppercase text-muted-foreground first:mt-0">
+    <h5
+      id={id}
+      className="mb-1 mt-2 text-sm font-semibold uppercase text-muted-foreground first:mt-0"
+    >
       {children}
     </h5>
   );
 }
 
-function MarkdownH6({ children }: MarkdownHeadingProps) {
+function MarkdownH6({ children, id }: MarkdownHeadingProps) {
   return (
-    <h6 className="mb-1 mt-2 text-xs font-semibold uppercase text-muted-foreground first:mt-0">
+    <h6
+      id={id}
+      className="mb-1 mt-2 text-xs font-semibold uppercase text-muted-foreground first:mt-0"
+    >
       {children}
     </h6>
   );
@@ -1937,6 +1870,7 @@ function MarkdownPreviewComponent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       remarkInlineDollarMath,
+      remarkHeadingIds,
     ];
     if (
       threadMentions?.preserveSoftBreaks === true ||
@@ -2060,7 +1994,7 @@ function MarkdownPreviewComponent({
       <div
         data-markdown-preview=""
         className={cn(
-          "max-w-none break-words text-sm leading-relaxed text-foreground",
+          "max-w-none break-words text-sm leading-relaxed text-foreground [&_[id]]:scroll-mt-12",
           className,
         )}
       >

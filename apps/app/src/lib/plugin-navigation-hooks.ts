@@ -33,7 +33,7 @@ import {
   createPluginPanelController,
   createRetiredOpenPanel,
 } from "@/lib/plugin-panel-controller";
-import { useCanOpenFileExternally } from "@/hooks/useCanOpenFileExternally";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
@@ -51,7 +51,8 @@ export function useSdk(): PluginBrowserBbSdk {
 export function usePluginCanOpenFileExternally(
   target: ExperimentalLiveFileTarget,
 ): boolean {
-  return useCanOpenFileExternally(normalizeExperimentalLiveFileTarget(target));
+  return useLiveFileOpenTargets(normalizeExperimentalLiveFileTarget(target))
+    .canOpenExternally;
 }
 
 export function useBbNavigate(): BbNavigate {

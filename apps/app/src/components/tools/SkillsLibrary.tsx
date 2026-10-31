@@ -30,7 +30,8 @@ import { isSkillEditable } from "@/components/tools/skill-taxonomy";
 import { CREATE_SKILL_PROMPT } from "@bb/client-core";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { getAbsoluteDirname } from "@bb/shared-ui/lib/absolute-file-path";
-import { buildMarkdownHostFileImageRouting } from "@/components/ui/markdown-file-image-routing";
+import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
+import { buildHostFileContentUrl } from "@/lib/file-content-urls";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
@@ -102,11 +103,13 @@ function SkillDetailPage({
   const editableScope: EditableSkillScope | null =
     skill && isSkillEditable(skill) ? skill.scope : null;
   const markdownLinkRouting = useMemo(() => {
-    if (skill === null) return undefined;
-    return buildMarkdownHostFileImageRouting({
+    if (skill === null || previewHostId === null) return undefined;
+    return buildMarkdownFileRouting({
       path: selectedPath,
       rootPath: getAbsoluteDirname({ path: skill.filePath }),
-      hostId: previewHostId,
+      threadId: null,
+      resolveRelativeSrc: (_relativePath, path) =>
+        buildHostFileContentUrl(previewHostId, path),
     });
   }, [previewHostId, selectedPath, skill]);
 

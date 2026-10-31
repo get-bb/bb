@@ -19,6 +19,7 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types";
 import { ConversationMessageContent } from "./ConversationMessageContent";
+import { ThreadTimelineNavigationProvider } from "./ThreadTimelineNavigationContext";
 
 const mentionedThread = makeThreadListEntry({
   id: "thr_mentioned",
@@ -45,6 +46,20 @@ function assistant(
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler,
   showActions = false,
 ) {
+  const message = (
+    <ConversationMessageContent
+      role="assistant"
+      attachments={null}
+      id="msg_stream"
+      threadId="thr_stream"
+      turnId="turn_stream"
+      streaming={streaming}
+      showActions={showActions}
+      mobileActionDisplay="inline"
+      text={text}
+      timestamp={0}
+    />
+  );
   return (
     <MemoryRouter>
       <RouteNavigationProvider>
@@ -54,19 +69,19 @@ function assistant(
           threadById={new Map([[mentionedThread.id, mentionedThread]])}
         >
           <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_stream"
-              threadId="thr_stream"
-              turnId="turn_stream"
-              streaming={streaming}
-              showActions={showActions}
-              mobileActionDisplay="inline"
-              onOpenLocalFileLink={onOpenLocalFileLink}
-              text={text}
-              timestamp={0}
-            />
+            {onOpenLocalFileLink === undefined ? (
+              message
+            ) : (
+              <ThreadTimelineNavigationProvider
+                environmentId={null}
+                onOpenLocalFileLink={onOpenLocalFileLink}
+                resolveMentionLink={() => null}
+                threadId="thr_stream"
+                workspaceRootPath={undefined}
+              >
+                {message}
+              </ThreadTimelineNavigationProvider>
+            )}
           </MessageDirectiveRegistryProvider>
         </ThreadTitleMentionResourcesProvider>
       </RouteNavigationProvider>

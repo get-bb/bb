@@ -23,7 +23,6 @@ function TimelineStage({ children }: TimelineStageProps) {
 
 const baseProps: TimelineRowsBaseProps = {
   threadRuntimeDisplayStatus: "idle",
-  workspaceRootPath: undefined,
 };
 
 const questions: TimelineQuestionRow["questions"] = [

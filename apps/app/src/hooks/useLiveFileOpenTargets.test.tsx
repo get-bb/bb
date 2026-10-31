@@ -6,7 +6,7 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useCanOpenFileExternally } from "./useCanOpenFileExternally";
+import { useLiveFileOpenTargets } from "./useLiveFileOpenTargets";
 import type { LiveFileRoot } from "./useResolvedLiveFileTarget";
 
 const mocks = vi.hoisted(() => ({
@@ -57,7 +57,8 @@ function renderCanOpen(initialRoot: LiveFileRoot) {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
   return renderHook(
-    ({ root }: { root: LiveFileRoot }) => useCanOpenFileExternally(root),
+    ({ root }: { root: LiveFileRoot }) =>
+      useLiveFileOpenTargets(root).canOpenExternally,
     { wrapper, initialProps: { root: initialRoot } },
   );
 }
@@ -67,7 +68,7 @@ afterEach(() => {
   mocks.getEnvironment.mockReset();
 });
 
-describe("useCanOpenFileExternally", () => {
+describe("useLiveFileOpenTargets", () => {
   it("re-renders from false to true once a workspace target resolves", async () => {
     mocks.getEnvironment.mockResolvedValue(ENVIRONMENT);
     const { result } = renderCanOpen({

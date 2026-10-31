@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { useEffect } from "react";
+import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -615,21 +616,27 @@ describe("ConversationMessageContent assistant directives", () => {
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="charts/demo.html"}'}
-              timestamp={0}
-              projectId="proj_a"
-              workspaceRootPath="/workspace/project"
-              onOpenLocalFileLink={onOpenLocalFileLink}
-            />
-          </MessageDirectiveRegistryProvider>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={() => null}
+            threadId="thr_a"
+            workspaceRootPath="/workspace/project"
+          >
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="charts/demo.html"}'}
+                timestamp={0}
+                projectId="proj_a"
+              />
+            </MessageDirectiveRegistryProvider>
+          </ThreadTimelineNavigationProvider>
         </RouteNavigationProvider>
       </MemoryRouter>,
     );
@@ -702,20 +709,26 @@ describe("ConversationMessageContent assistant directives", () => {
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="../secret.html"}'}
-              timestamp={0}
-              workspaceRootPath="/workspace/project"
-              onOpenLocalFileLink={onOpenLocalFileLink}
-            />
-          </MessageDirectiveRegistryProvider>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={() => null}
+            threadId="thr_a"
+            workspaceRootPath="/workspace/project"
+          >
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="../secret.html"}'}
+                timestamp={0}
+              />
+            </MessageDirectiveRegistryProvider>
+          </ThreadTimelineNavigationProvider>
         </RouteNavigationProvider>
       </MemoryRouter>,
     );
@@ -794,7 +807,6 @@ describe("ThreadTimelineRows message directive subscription", () => {
               }),
             ]}
             threadRuntimeDisplayStatus="active"
-            workspaceRootPath={undefined}
           />
         </MemoryRouter>
       </QueryClientProvider>,
@@ -837,7 +849,6 @@ describe("ThreadTimelineRows message directive subscription", () => {
               }),
             ]}
             threadRuntimeDisplayStatus="idle"
-            workspaceRootPath={undefined}
           />
         </MemoryRouter>,
       );

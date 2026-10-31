@@ -742,7 +742,6 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
-            onOpenLocalFileLink={() => false}
             onAddToChat={handleAddToChat}
           />
         </TimelineStage>

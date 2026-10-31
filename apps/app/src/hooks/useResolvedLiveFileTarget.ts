@@ -1,20 +1,8 @@
-import { useMemo } from "react";
-import type { ExperimentalLiveFileTarget } from "@get-bb/plugin-sdk";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type { Environment } from "@bb/domain";
 import type { ThreadStorageLocationResponse } from "@bb/server-contract";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
-
-type ResolvedLiveFileTarget =
-  | { status: "loading" }
-  | { status: "unavailable" }
-  | {
-      status: "available";
-      absolutePath: string;
-      openContext: OpenInTargetContext;
-    };
 
 function buildAbsoluteHostPath(rootPath: string, relativePath: string): string {
   const usesWindowsSeparators =
@@ -116,40 +104,13 @@ export function getLiveFileOpenContext({
     : { kind: "remote-ssh", hostId, serverOrigin };
 }
 
-export function resolveLiveFileTarget({
-  target,
-  enabled,
-  environmentQuery,
-  storageQuery,
-  isLocalDaemonHost,
-  serverOrigin,
-}: {
-  target: ExperimentalLiveFileTarget | null;
-  enabled: boolean;
-  environmentQuery: LookupState<Environment>;
-  storageQuery: LookupState<ThreadStorageLocationResponse>;
-  isLocalDaemonHost: (hostId: string) => boolean;
-  serverOrigin: string;
-}): ResolvedLiveFileTarget {
-  if (!enabled || target === null) return { status: "unavailable" };
-  const root = resolveLiveFileRoot({
-    root: target,
-    environmentQuery,
-    storageQuery,
-  });
-  if (root.status !== "available") return root;
-  return {
-    status: "available",
-    absolutePath:
-      root.rootPath === null
-        ? target.path
-        : buildAbsoluteHostPath(root.rootPath, target.path),
-    openContext: getLiveFileOpenContext({
-      hostId: root.hostId,
-      isLocalDaemonHost,
-      serverOrigin,
-    }),
-  };
+export function resolveLiveFilePath(
+  root: Extract<ResolvedLiveFileRoot, { status: "available" }>,
+  path: string,
+): string {
+  return root.rootPath === null
+    ? path
+    : buildAbsoluteHostPath(root.rootPath, path);
 }
 
 function useLiveFileRootQueries(root: LiveFileRoot | null, enabled: boolean) {
@@ -173,42 +134,4 @@ export function useResolvedLiveFileRoot(
   return root === null
     ? { status: "unavailable" }
     : resolveLiveFileRoot({ root, environmentQuery, storageQuery });
-}
-
-export function useResolvedLiveFileTarget(
-  target: ExperimentalLiveFileTarget | null,
-  options: { enabled: boolean },
-): ResolvedLiveFileTarget {
-  const { environmentQuery, storageQuery } = useLiveFileRootQueries(
-    target,
-    options.enabled,
-  );
-  const { isLocalDaemonHost } = useHostDaemon();
-
-  return useMemo(
-    () =>
-      resolveLiveFileTarget({
-        target,
-        enabled: options.enabled,
-        environmentQuery: {
-          data: environmentQuery.data,
-          isLoading: environmentQuery.isLoading,
-        },
-        storageQuery: {
-          data: storageQuery.data,
-          isLoading: storageQuery.isLoading,
-        },
-        isLocalDaemonHost,
-        serverOrigin: window.location.origin,
-      }),
-    [
-      environmentQuery.data,
-      environmentQuery.isLoading,
-      isLocalDaemonHost,
-      options.enabled,
-      storageQuery.data,
-      storageQuery.isLoading,
-      target,
-    ],
-  );
 }

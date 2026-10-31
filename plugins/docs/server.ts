@@ -778,7 +778,15 @@ export default async function plugin(
       return {
         path: normalized,
         rootPath: pathApi.dirname(normalized),
-        hostId: source.experimental_hostId ?? null,
+        hostId:
+          source.experimental_hostId ??
+          (source.environmentId === null
+            ? null
+            : (
+                await bb.sdk.environments.get({
+                  environmentId: source.environmentId,
+                })
+              ).hostId),
       };
     }
     if (source.kind === "workspace" && source.environmentId) {
