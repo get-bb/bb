@@ -933,6 +933,17 @@ export async function createHostDaemonApp(
         );
       }
       await watchManager.replaceAuthoritativeWatchSet(session.watchSet);
+      void interactiveRequestRegistry
+        .reconcilePendingRequests()
+        .catch((error) => {
+          options.logger.warn(
+            {
+              sessionId: session.sessionId,
+              ...runtimeErrorLogFields(error),
+            },
+            "Failed to reconcile pending interactive requests after session opened",
+          );
+        });
       void eventSink.flush().catch((error) => {
         options.logger.warn(
           {

@@ -59,6 +59,139 @@ function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
 }
 
 describe("InteractiveRequestRegistry", () => {
+  it.each(["response", "failure"] as const)(
+    "reconciles an in-flight registration without a late %s affecting its replacement",
+    async (completion) => {
+      const request = createCommandApprovalRequest();
+      const initial =
+        createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+      let registrations = 0;
+      const registry = createRegistry({
+        registerRequest: async () => {
+          registrations += 1;
+          if (registrations === 1) return initial.promise;
+          if (registrations === 2)
+            return { outcome: "rejected", reason: "Already ended" };
+          return {
+            outcome: "created",
+            interactionId: "pint_registry",
+            status: "pending",
+          };
+        },
+      });
+      const pending = registry.registerAndWait(request);
+      const rejected = expect(pending).rejects.toThrow("Already ended");
+      await registry.reconcilePendingRequests();
+      await rejected;
+      const replacement = registry.registerAndWait(request);
+      if (completion === "failure")
+        initial.reject(new Error("Late network failure"));
+      else
+        initial.resolve({
+          outcome: "created",
+          interactionId: "old_interaction",
+          status: "pending",
+        });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const resolution = createCommandApprovalResolution();
+      registry.resolve({
+        ...request,
+        interactionId: "pint_registry",
+        resolution,
+      });
+      await expect(replacement).resolves.toEqual(resolution);
+    },
+  );
+
+  it.each(["pending", "resolving"] as const)(
+    "keeps a %s request deliverable after reconciliation",
+    async (status) => {
+      const request = createCommandApprovalRequest();
+      let registrations = 0;
+      const registry = createRegistry({
+        registerRequest: async () => ({
+          outcome: registrations++ === 0 ? "created" : "existing",
+          interactionId: "pint_registry",
+          status,
+        }),
+      });
+      const pending = registry.registerAndWait(request);
+      await registry.reconcilePendingRequests();
+      const resolution = createCommandApprovalResolution();
+      registry.resolve({
+        ...request,
+        interactionId: "pint_registry",
+        resolution,
+      });
+      await expect(pending).resolves.toEqual(resolution);
+      expect(registrations).toBe(2);
+    },
+  );
+
+  it("keeps a provider wait deliverable after a transient reconciliation failure", async () => {
+    const request = createCommandApprovalRequest();
+    let registrations = 0;
+    const registry = createRegistry({
+      registerRequest: async () => {
+        if (registrations++ > 0) {
+          throw new Error("Temporary connection failure");
+        }
+        return {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        };
+      },
+    });
+    const pending = registry.registerAndWait(request);
+    await expect(registry.reconcilePendingRequests()).rejects.toThrow(
+      "Temporary connection failure",
+    );
+    const resolution = createCommandApprovalResolution();
+    registry.resolve({
+      ...request,
+      interactionId: "pint_registry",
+      resolution,
+    });
+    await expect(pending).resolves.toEqual(resolution);
+  });
+
+  it("does not let a late reconciliation reject a replacement wait", async () => {
+    const request = createCommandApprovalRequest();
+    const recheck =
+      createDeferredPromise<HostDaemonInteractiveRequestResponse>();
+    let registrations = 0;
+    const registry = createRegistry({
+      registerRequest: async () => {
+        if (++registrations === 2) return recheck.promise;
+        return {
+          outcome: "created",
+          interactionId: "pint_registry",
+          status: "pending",
+        };
+      },
+    });
+    const first = registry.registerAndWait(request);
+    const firstRejection = expect(first).rejects.toThrow("Provider exited");
+    const reconciliation = registry.reconcilePendingRequests();
+    registry.interruptThreads({
+      providerId: request.providerId,
+      threadIds: [request.threadId],
+      reason: "Provider exited",
+    });
+    await firstRejection;
+    const replacement = registry.registerAndWait(request);
+    recheck.resolve({ outcome: "rejected", reason: "Old request ended" });
+    await reconciliation;
+    const resolution = createCommandApprovalResolution();
+    registry.resolve({
+      ...request,
+      interactionId: "pint_registry",
+      resolution,
+    });
+    await expect(replacement).resolves.toEqual(resolution);
+  });
+
   it("deduplicates registration retries for the same live provider request", async () => {
     const request = createCommandApprovalRequest();
     const registration =

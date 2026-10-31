@@ -11,6 +11,7 @@ import {
 import {
   hostDaemonEventBatchRequestSchema,
   hostDaemonInteractiveInterruptRequestSchema,
+  hostDaemonInteractiveRequestSchema,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonContributedEnvEntry,
   type HostDaemonOnlineRpcCommand,
@@ -55,6 +56,7 @@ interface CreateFetchRecorderArgs {
   inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
+  interactiveRequestResponses?: HostDaemonInteractiveRequestResponse[];
   interruptResponses?: Array<() => Response>;
   retiredEnvironmentIds?: string[];
   sessionIds?: string[];
@@ -113,6 +115,7 @@ function createFetchRecorder(
   let eventPostCount = 0;
   let interruptCount = 0;
   let sessionOpenCount = 0;
+  let interactiveRequestCount = 0;
   const fetchFn: FetchFn = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
@@ -166,7 +169,8 @@ function createFetchRecorder(
       if (args.interactiveRequestError) {
         throw args.interactiveRequestError;
       }
-      const response: HostDaemonInteractiveRequestResponse =
+      const response: HostDaemonInteractiveRequestResponse = args
+        .interactiveRequestResponses?.[interactiveRequestCount++] ??
         args.interactiveRequestResponse ?? {
           outcome: "created",
           interactionId: "pint_app_test",
@@ -421,6 +425,88 @@ async function createAppFixture(
 }
 
 describe("createHostDaemonApp", () => {
+  it("releases a provider wait when a reconnected session rejects its request", async () => {
+    let socket: ReconnectingWebSocketLike | undefined;
+    const { app, runtimeOptions, fetchRecorder } = await createAppFixture(
+      {
+        sessionIds: ["session-before", "session-after"],
+        interactiveRequestResponses: [
+          {
+            outcome: "created",
+            interactionId: "pint_app_test",
+            status: "pending",
+          },
+          {
+            outcome: "rejected",
+            reason: "Provider request was already handled",
+          },
+        ],
+      },
+      {
+        createWebSocket: createOpeningWebSocket((created) => {
+          socket = created;
+        }),
+      },
+    );
+    try {
+      await app.daemon.start();
+      await app.runtimeManager.ensureEnvironment({
+        environmentId: "env-reconnect",
+        workspacePath: await makeTempDir("bb-reconnect-workspace-"),
+      });
+      const onInteractiveRequest = runtimeOptions.current?.onInteractiveRequest;
+      if (!onInteractiveRequest || !socket) {
+        throw new Error("Expected runtime callback and socket");
+      }
+      const request = createCommandApprovalRequest();
+      const outcome = onInteractiveRequest(request).then(
+        () => "resolved",
+        (error: Error) => error.message,
+      );
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (record) =>
+              record.pathname === "/internal/session/interactive-request",
+          ),
+        ).toHaveLength(1);
+      });
+      socket.reconnect();
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (record) => record.pathname === "/internal/session/open",
+          ),
+        ).toHaveLength(2);
+      });
+      await expect(
+        Promise.race([
+          outcome,
+          new Promise<string>((resolve) =>
+            setTimeout(() => resolve("still waiting"), 300),
+          ),
+        ]),
+      ).resolves.toBe("Provider request was already handled");
+      const registrations = fetchRecorder.requests.filter(
+        (record) => record.pathname === "/internal/session/interactive-request",
+      );
+      expect(registrations).toHaveLength(2);
+      const registration = registrations[1];
+      if (!registration?.body) {
+        throw new Error("Expected replayed interactive request body");
+      }
+      const replay = hostDaemonInteractiveRequestSchema.parse(
+        JSON.parse(registration.body),
+      );
+      expect(replay).toEqual({
+        sessionId: "session-after",
+        interaction: request,
+      });
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
+
   it("installs machine variables into the daemon and child processes before work, then removes overrides live", async () => {
     vi.stubEnv("MACHINE_DAEMON_TEST", "original");
     let socket: ReconnectingWebSocketLike | undefined;
