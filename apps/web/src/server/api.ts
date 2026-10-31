@@ -140,7 +140,7 @@ async function hasMachineCapacity(
   userId: string,
 ): Promise<boolean> {
   const active = await db
-    .select({ id: machine.id, name: machine.name })
+    .select({ id: machine.id })
     .from(machine)
     .where(and(eq(machine.userId, userId), isNull(machine.revokedAt)))
     .all();
@@ -448,7 +448,7 @@ async function retryPendingMachineRevocations(
   userId: string,
 ): Promise<void> {
   const pending = await deps.db
-    .select({ id: machine.id, name: machine.name })
+    .select({ id: machine.id })
     .from(machine)
     .where(
       and(
