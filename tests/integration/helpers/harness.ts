@@ -46,6 +46,7 @@ import { createAppVersionService } from "../../../apps/server/src/services/syste
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
 import { createProviderLiveCommandsCache } from "../../../apps/server/src/services/providers/provider-live-commands.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
+import { createSetupGuideExperiment } from "../../../apps/server/src/services/system/setup-guide-experiment.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
 import type {
@@ -302,6 +303,14 @@ async function startIntegrationServer(
     pendingInteractions,
     sharedPorts,
     skillTreeRegistry,
+    setupGuideExperiment: await createSetupGuideExperiment({
+      dataDir: serverDataDir,
+      fetch: () => Promise.reject(new Error("no PostHog in tests")),
+      flagTimeoutMs: 1_000,
+      logger: testLogger,
+      override: null,
+      telemetry,
+    }),
     telemetry,
     terminalSessions,
     watchInterests,
