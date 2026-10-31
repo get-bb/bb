@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
-import { getRelativeHostPathSegments, normalizeHostPath } from "@bb/domain";
+import {
+  getRelativeHostPathSegments,
+  normalizeHostPath,
+  splitHostPathRoot,
+} from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -45,7 +49,6 @@ const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
 const FILE_PREVIEW_TTL_MS = 10 * 60 * 1000;
 const REVISION_REF_PATTERN = /^(?:HEAD|[0-9a-f]{4,40})$/iu;
-const WINDOWS_DRIVE_PREFIX_PATTERN = /^([A-Za-z]:)\//u;
 
 interface FilePreviewLease {
   hostId: string;
@@ -80,14 +83,11 @@ function parseAbsoluteHostFile(rawPath: string): {
   segments: string[];
 } {
   const filePath = rawPath.replace(/\\/g, "/");
-  const drive = WINDOWS_DRIVE_PREFIX_PATTERN.exec(filePath);
-  if (drive === null) {
-    return { rootPath: "/", segments: parseRelativeFileSegments(filePath) };
-  }
-  return {
-    rootPath: `${drive[1]}\\`,
-    segments: parseRelativeFileSegments(filePath.slice(drive[0].length)),
+  const { root, relativePath } = splitHostPathRoot(filePath) ?? {
+    root: "/",
+    relativePath: filePath,
   };
+  return { rootPath: root, segments: parseRelativeFileSegments(relativePath) };
 }
 
 function parseRevisionRef(ref: string): string {
