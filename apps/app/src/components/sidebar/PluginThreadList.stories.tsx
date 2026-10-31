@@ -290,6 +290,7 @@ const ACTION_THREADS = ACTION_TITLES.flatMap(([length, title]) => [
 const ACTION_PREFERENCES = {
   organizationMode: "chronological",
   groupByReadStatus: false,
+  showProviderIcons: false,
   collapsedThreads: [
     "thr_actions_short_collapsed",
     "thr_actions_long_collapsed",

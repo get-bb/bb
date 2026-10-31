@@ -204,6 +204,7 @@ export interface CollapsedChildActivity {
   threadIds: readonly string[];
   pending: boolean;
   working: boolean;
+  workingCount: number;
   runtimeWorking: boolean;
   workflow: boolean;
   backgroundAgent: boolean;
@@ -218,6 +219,7 @@ export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   threadIds: [],
   pending: false,
   working: false,
+  workingCount: 0,
   runtimeWorking: false,
   workflow: false,
   backgroundAgent: false,
@@ -238,6 +240,7 @@ export function getCollapsedChildActivity(
   const threadIds: string[] = [];
   let pending = false;
   let working = false;
+  let workingCount = 0;
   let runtimeWorking = false;
   let workflow = false;
   let backgroundAgent = false;
@@ -258,7 +261,10 @@ export function getCollapsedChildActivity(
     if (thread.hasPendingInteraction) {
       pending = true;
     }
-    if (isBusyThread(thread)) working = true;
+    if (isBusyThread(thread)) {
+      working = true;
+      workingCount += 1;
+    }
     if (isRuntimeBusyThread(thread)) runtimeWorking = true;
     if (hasActiveWorkflowActivity(thread)) workflow = true;
     if (hasActiveBackgroundAgentActivity(thread)) backgroundAgent = true;
@@ -270,6 +276,7 @@ export function getCollapsedChildActivity(
     threadIds,
     pending,
     working,
+    workingCount,
     runtimeWorking,
     workflow,
     backgroundAgent,

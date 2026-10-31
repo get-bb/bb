@@ -69,6 +69,7 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
   kind: "default",
   depth: 1,
   isCompact: false,
+  isSubThread: false,
 };
 
 function createThread(
@@ -88,6 +89,54 @@ function activity(
     goals: 0,
     ...overrides,
   };
+}
+
+function parentOptions(
+  overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
+): ThreadRowOptions {
+  return {
+    kind: "parent",
+    depth: 1,
+    isCompact: false,
+    isSubThread: false,
+    isCollapsed: true,
+    childCount: 1,
+    childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+    onToggleCollapsed: vi.fn(),
+    ...overrides,
+  };
+}
+
+const PARENT_THREAD = createThread({
+  title: "Parent thread",
+  displayTitle: "Parent thread",
+  lastReadAt: 1,
+  latestAttentionAt: 1,
+});
+
+const TEST_PROVIDER: PluginProvidersState["providers"][number] = {
+  id: "provider-test",
+  pluginId: "provider-test",
+  displayName: "Test Provider",
+  logoUrl: "/provider-test.svg",
+  available: true,
+  maintenance: { health: false, usage: false, installation: false },
+  capabilities: {
+    supportsThreadArchive: true,
+    supportsThreadRename: true,
+    supportsServiceTier: false,
+    supportsNativeUserQuestion: false,
+    supportsFork: true,
+    supportsSessionRewind: false,
+    modelCatalogScope: "workspace",
+    permissionModes: ["accept-edits", "auto", "full"],
+  },
+  composerActions: [],
+  completedTurnDisplay: "collapse",
+};
+
+function subThreadCount(): Element | null {
+  return document.querySelector("[data-sidebar-sub-thread-count]");
 }
 
 interface HarnessProps {
@@ -382,27 +431,7 @@ afterEach(() => {
 
 describe("ThreadRow", () => {
   it("shows the registered provider icon by default and keeps it visible during inline rename", async () => {
-    const provider: PluginProvidersState["providers"][number] = {
-      id: "provider-test",
-      pluginId: "provider-test",
-      displayName: "Test Provider",
-      logoUrl: "/provider-test.svg",
-      available: true,
-      maintenance: { health: false, usage: false, installation: false },
-      capabilities: {
-        supportsThreadArchive: true,
-        supportsThreadRename: true,
-        supportsServiceTier: false,
-        supportsNativeUserQuestion: false,
-        supportsFork: true,
-        supportsSessionRewind: false,
-        modelCatalogScope: "workspace",
-        permissionModes: ["accept-edits", "auto", "full"],
-      },
-      composerActions: [],
-      completedTurnDisplay: "collapse",
-    };
-    const slot = renderThreadRow({ providers: [provider] });
+    const slot = renderThreadRow({ providers: [TEST_PROVIDER] });
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
     expect(
       slot.container.querySelector('[data-provider-logo="/provider-test.svg"]'),
@@ -904,20 +933,11 @@ describe("ThreadRow", () => {
       thread: createThread(),
     },
     {
-      label: "collapsed child workflow",
-      expectedStatus: "Workflow running",
-      options: {
-        kind: "parent" as const,
-        depth: 1,
-        isCompact: false,
-        isCollapsed: true,
-        childCount: 1,
-        childActivity: {
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          workflow: true,
-        },
-        onToggleCollapsed: vi.fn(),
-      },
+      label: "collapsed child input",
+      expectedStatus: "Thread needs user input",
+      options: parentOptions({
+        childActivity: { ...NO_COLLAPSED_CHILD_ACTIVITY, pending: true },
+      }),
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
     },
   ])(
@@ -932,6 +952,38 @@ describe("ThreadRow", () => {
       ).toBe(`Thread — open in split; ${expectedStatus}`);
     },
   );
+
+  it("leaves hidden child work out of a parent's split map and names it on the disclosure", () => {
+    renderSplitThreadRow({
+      thread: createThread({
+        title: "Parent thread",
+        displayTitle: "Parent thread",
+        lastReadAt: 1,
+        latestAttentionAt: 1,
+      }),
+      options: parentOptions({
+        childCount: 2,
+        childActivity: {
+          ...NO_COLLAPSED_CHILD_ACTIVITY,
+          working: true,
+          workingCount: 1,
+          workflow: true,
+        },
+      }),
+    });
+
+    expect(
+      screen
+        .getByRole("img", { name: /open in split/ })
+        .getAttribute("aria-label"),
+    ).toBe("Parent thread — open in split");
+    expect(
+      screen.getByRole("button", {
+        name: "Expand Parent thread threads",
+        description: "2 threads, 1 working",
+      }),
+    ).toBeTruthy();
+  });
 
   it("puts the draft glyph in the trailing status slot", () => {
     renderThreadRow({
@@ -1207,48 +1259,46 @@ describe("ThreadRow", () => {
   });
 
   it.each([true, false])(
-    "reserves quick-action space after parent disclosure (collapsed: %s)",
+    "lays out a parent row with a provider icon like a leaf, its disclosure ahead of Archive and the menu (collapsed: %s)",
     (isCollapsed) => {
-      const onToggleCollapsed = vi.fn();
+      getDefaultStore().set(preferenceValueAtom("rowActions"), [
+        "bb--core/archive",
+      ]);
+      const layout = () => {
+        const link = screen.getByRole("link", { name: /^Open / });
+        const trigger = screen.getByRole("button", { name: "Thread actions" });
+        const actions = trigger.closest(".bb-sidebar-hover-actions");
+        return {
+          content: link.parentElement?.className,
+          inset: link.parentElement?.getAttribute("style"),
+          title: link.nextElementSibling?.className,
+          actions: actions?.className,
+          actionsStyle: actions?.getAttribute("style"),
+          trigger: trigger.className,
+          archive: screen.getByRole("button", { name: "Archive" }).className,
+        };
+      };
+      const leaf = renderThreadRow({ providers: [TEST_PROVIDER] });
+      const leafLayout = layout();
+      leaf.unmount();
+
       renderThreadRow({
-        thread: createThread({
-          title: "Nested discussion with enough text to fill the sidebar width",
-          displayTitle:
-            "Nested discussion with enough text to fill the sidebar width",
-        }),
-        options: {
-          kind: "parent",
-          depth: 1,
-          isCompact: false,
-          isCollapsed,
-          childCount: 1,
-          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-          onToggleCollapsed,
-        },
+        providers: [TEST_PROVIDER],
+        options: parentOptions({ isCollapsed }),
       });
-      const toggle = screen.getByRole("button", {
-        name: /(?:Expand|Collapse) Nested discussion/,
-      });
-      const link = screen.getByRole("link", {
-        name: "Open Nested discussion with enough text to fill the sidebar width",
-      });
-      expect(
-        link.parentElement?.classList.contains(
-          "pr-(--bb-sidebar-hover-actions-inset)",
-        ),
-      ).toBe(true);
-      const row = link.closest("[data-sidebar-rename-row]");
+      expect(layout()).toEqual(leafLayout);
+      const row = screen
+        .getByRole("link", { name: /^Open / })
+        .closest("[data-sidebar-rename-row]");
       expect(
         Array.from(row?.querySelectorAll("button") ?? [], (button) =>
           button.getAttribute("aria-label"),
         ),
       ).toEqual([
-        toggle.getAttribute("aria-label"),
+        `${isCollapsed ? "Expand" : "Collapse"} Thread threads`,
         "Archive",
         "Thread actions",
       ]);
-      fireEvent.click(toggle);
-      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
     },
   );
 
@@ -1324,60 +1374,164 @@ describe("ThreadRow", () => {
     expect(clickLink).not.toHaveBeenCalled();
   });
 
-  it("keeps the parent-thread disclosure caret visible on mobile", () => {
-    renderThreadRow({
-      thread: createThread({
-        title: "Parent thread",
-        displayTitle: "Parent thread",
-      }),
-      options: {
-        kind: "parent",
-        depth: 1,
-        isCompact: false,
-        isCollapsed: false,
-        childCount: 1,
-        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-        onToggleCollapsed: vi.fn(),
-      },
-    });
-
-    expect(
-      screen
-        .getByRole("button", { name: "Collapse Parent thread threads" })
-        .getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBe("always");
-  });
-
-  it.each([
-    { isCollapsed: true, expectedHoverReveal: false },
-    { isCollapsed: false, expectedHoverReveal: true },
-  ])(
-    "sets parent-thread disclosure hover reveal to $expectedHoverReveal when collapsed is $isCollapsed",
-    ({ expectedHoverReveal, isCollapsed }) => {
-      renderThreadRow({
-        thread: createThread({
-          title: "Parent thread",
-          displayTitle: "Parent thread",
-        }),
-        options: {
-          kind: "parent",
-          depth: 1,
-          isCompact: false,
+  it.each([true, false])(
+    "puts a parent's disclosure in its icon slot, ahead of the title (collapsed: %s)",
+    (isCollapsed) => {
+      const onToggleCollapsed = vi.fn();
+      const slot = renderThreadRow({
+        thread: PARENT_THREAD,
+        providers: [TEST_PROVIDER],
+        options: parentOptions({
           isCollapsed,
-          childCount: 1,
-          childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-          onToggleCollapsed: vi.fn(),
-        },
+          childCount: 3,
+          onToggleCollapsed,
+        }),
       });
 
       const toggle = screen.getByRole("button", {
         name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
+        description: "3 threads, Test Provider",
       });
-      expect(toggle.classList.contains("bb-sidebar-hover-actions")).toBe(
-        expectedHoverReveal,
-      );
+      expect(toggle.getAttribute("aria-expanded")).toBe(String(!isCollapsed));
+      expect(toggle.getAttribute("data-sidebar-rename-anchor")).toBe("");
+      expect(toggle.closest(".bb-sidebar-hover-actions")).toBeNull();
+      expect(
+        toggle.nextElementSibling?.classList.contains("bb-thread-title"),
+      ).toBe(true);
+      expect(
+        slot.container.querySelector("[data-sidebar-thread-provider]"),
+      ).toBeNull();
+      const icon = toggle.firstElementChild;
+      const chevron = toggle.querySelector('[data-icon="ChevronRight"]');
+      expect(
+        icon?.querySelector('[data-provider-logo="/provider-test.svg"]'),
+      ).not.toBeNull();
+      for (const revealed of [
+        "group-hover/thread-row",
+        "group-has-[:focus-visible]/thread-row",
+        "[@media(hover:none)]",
+      ]) {
+        expect(icon?.classList.contains(`${revealed}:hidden`)).toBe(true);
+        expect(chevron?.classList.contains(`${revealed}:block`)).toBe(true);
+      }
+      expect(chevron?.classList.contains("hidden")).toBe(true);
+      fireEvent.click(toggle);
+      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
+      expect(slot.inspection.navigateCalls).toEqual([]);
     },
   );
+
+  it.each([true, false])(
+    "leads a parent's title with its disclosure, in the slot every leaf keeps, without provider icons (collapsed: %s)",
+    (isCollapsed) => {
+      getDefaultStore().set(preferenceValueAtom("showProviderIcons"), false);
+      getDefaultStore().set(preferenceValueAtom("rowActions"), [
+        "bb--core/archive",
+      ]);
+      const leading = (title: string) => {
+        const element = screen.getByTitle(title).previousElementSibling;
+        expect(element).not.toBeNull();
+        expect(element?.previousElementSibling).toBeNull();
+        return element;
+      };
+      const leaf = renderThreadRow({ providers: [TEST_PROVIDER] });
+      const leafSlot = leading("Thread");
+      expect(leafSlot?.getAttribute("aria-hidden")).toBe("true");
+      const leafSlotStyle = leafSlot?.getAttribute("style");
+      expect(leafSlotStyle).toBeTruthy();
+      leaf.unmount();
+
+      const onToggleCollapsed = vi.fn();
+      renderThreadRow({
+        thread: PARENT_THREAD,
+        providers: [TEST_PROVIDER],
+        options: parentOptions({ isCollapsed, onToggleCollapsed }),
+      });
+      const toggle = screen.getByRole("button", {
+        name: `${isCollapsed ? "Expand" : "Collapse"} Parent thread threads`,
+        description: "1 thread",
+      });
+      expect(leading("Parent thread")).toBe(toggle);
+      expect(toggle.getAttribute("style")).toBe(leafSlotStyle);
+      expect(toggle.querySelector("[data-provider-logo]")).toBeNull();
+      expect(
+        toggle
+          .querySelector('[data-icon="ChevronRight"]')
+          ?.classList.contains("hidden"),
+      ).toBe(false);
+      expect(
+        Array.from(
+          toggle
+            .closest("[data-sidebar-rename-row]")
+            ?.querySelectorAll("button") ?? [],
+          (button) => button.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        toggle.getAttribute("aria-label"),
+        "Archive",
+        "Thread actions",
+      ]);
+      fireEvent.click(toggle);
+      expect(onToggleCollapsed).toHaveBeenCalledWith("thr_test");
+    },
+  );
+
+  it.each([
+    { childCount: 3, workingCount: 0, text: "3", description: "3 threads" },
+    {
+      childCount: 3,
+      workingCount: 2,
+      text: "2/3",
+      description: "3 threads, 2 working",
+    },
+    {
+      childCount: 120,
+      workingCount: 0,
+      text: "99+",
+      description: "120 threads",
+    },
+  ])(
+    "counts sub-threads after the title as $text",
+    ({ childCount, workingCount, text, description }) => {
+      renderThreadRow({
+        thread: PARENT_THREAD,
+        options: parentOptions({
+          childCount,
+          childActivity: {
+            ...NO_COLLAPSED_CHILD_ACTIVITY,
+            working: workingCount > 0,
+            workingCount,
+            runtimeWorking: workingCount > 0,
+          },
+        }),
+      });
+
+      const count = subThreadCount();
+      expect(
+        screen.getByTitle("Parent thread").compareDocumentPosition(count!) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(count?.textContent).toBe(text);
+      expect(count?.getAttribute("aria-hidden")).toBe("true");
+      expect(renderedIndicators()).toEqual(workingCount > 0 ? ["runtime"] : []);
+      expect(
+        screen.getByRole("button", {
+          name: "Expand Parent thread threads",
+          description,
+        }),
+      ).toBeTruthy();
+    },
+  );
+
+  it("renders no disclosure or count on a leaf row", () => {
+    renderThreadRow({ providers: [TEST_PROVIDER] });
+
+    expect(
+      document.querySelector("[data-sidebar-sub-thread-toggle]"),
+    ).toBeNull();
+    expect(subThreadCount()).toBeNull();
+    expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
+  });
 
   it("renders a sticky parent tier with its guide line", () => {
     const { container } = renderThreadRow({
@@ -1385,6 +1539,7 @@ describe("ThreadRow", () => {
         kind: "parent",
         depth: 2,
         isCompact: false,
+        isSubThread: true,
         isCollapsed: false,
         childCount: 1,
         childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
@@ -1522,73 +1677,70 @@ describe("ThreadRow", () => {
     { flag: "planMode" as const, indicator: "plan-mode" },
     { flag: "goal" as const, indicator: "goal" },
   ])(
-    "shows the $indicator indicator for collapsed parent rows with hidden child activity",
+    "shows hidden $indicator work in the sub-thread count, not the parent's status",
     ({ flag, indicator }) => {
       renderThreadRow({
         thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-        options: {
-          kind: "parent",
-          depth: 1,
-          isCompact: false,
-          isCollapsed: true,
-          childCount: 1,
+        options: parentOptions({
+          childCount: 3,
           childActivity: {
             ...NO_COLLAPSED_CHILD_ACTIVITY,
             working: true,
+            workingCount: 2,
             [flag]: true,
           },
-          onToggleCollapsed: vi.fn(),
-        },
+        }),
       });
 
       expect(renderedIndicators()).toEqual([indicator]);
+      expect(
+        subThreadCount()
+          ?.querySelector("[data-thread-status-glyph]")
+          ?.getAttribute("data-thread-status-glyph"),
+      ).toBe(indicator);
+      expect(subThreadCount()?.textContent).toBe("2/3");
     },
   );
 
-  it("shows a working draft for collapsed descendants before named work", () => {
+  it("keeps a hidden draft on a collapsed parent and its descendants' work in the count", () => {
     renderThreadRow({
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
       hiddenDraftThreadIds: ["thr_hidden_child"],
-      options: {
-        kind: "parent",
-        depth: 1,
-        isCompact: false,
-        isCollapsed: true,
-        childCount: 1,
+      options: parentOptions({
         childActivity: {
           ...NO_COLLAPSED_CHILD_ACTIVITY,
           threadIds: ["thr_hidden_child"],
           working: true,
+          workingCount: 1,
           planMode: true,
           goal: true,
         },
-        onToggleCollapsed: vi.fn(),
-      },
+      }),
     });
 
-    expect(renderedIndicators()).toEqual(["working-draft"]);
+    expect(renderedIndicators()).toEqual(["plan-mode", "draft"]);
   });
 
-  it("ignores hidden child activity once the parent is expanded", () => {
-    renderThreadRow({
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
-      options: {
-        kind: "parent",
-        depth: 1,
-        isCompact: false,
-        isCollapsed: false,
-        childCount: 1,
-        childActivity: {
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          working: true,
-          workflow: true,
-        },
-        onToggleCollapsed: vi.fn(),
-      },
-    });
+  it.each([
+    { isCollapsed: true, expected: ["waiting-for-input"] },
+    { isCollapsed: false, expected: [] },
+  ])(
+    "rolls hidden child attention up to the parent only while collapsed ($isCollapsed)",
+    ({ isCollapsed, expected }) => {
+      renderThreadRow({
+        thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+        options: parentOptions({
+          isCollapsed,
+          childActivity: {
+            ...NO_COLLAPSED_CHILD_ACTIVITY,
+            pending: true,
+          },
+        }),
+      });
 
-    expect(renderedIndicators()).toEqual([]);
-  });
+      expect(renderedIndicators()).toEqual(expected);
+    },
+  );
 
   it("shows unread success for an already-unread successful thread on initial load", () => {
     renderThreadRow({

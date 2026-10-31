@@ -81,7 +81,12 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
+import {
+  SubThreadCount,
+  SubThreadDisclosureSlot,
+  SubThreadToggle,
+  getSubThreadGuideLeft,
+} from "./SubThreadToggle.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
 import {
@@ -151,6 +156,7 @@ export function resetSidebarTitleDoubleClickForTest(): void {
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
+  isSubThread: boolean;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   nestDrop?: ThreadRowNestDrop;
@@ -497,8 +503,9 @@ function ThreadRowComponent({
   const childActivity =
     parentOptions?.childActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
   const hasChildren = childCount > 0;
+  const showSubThreadToggle = isParentRow && hasChildren;
   const reserveActionSpace =
-    crossProjectLabel !== null || (isParentRow && hasChildren);
+    crossProjectLabel !== null || (showSubThreadToggle && !showProviderIcons);
   const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const hiddenChildrenHaveDraft = useThreadsHaveDraft(
     hasHiddenChildren ? childActivity.threadIds : NO_THREAD_IDS,
@@ -515,24 +522,13 @@ function ThreadRowComponent({
     hasUnreadSuccess:
       threadStatus.hasUnreadSuccess ||
       (hasHiddenChildren && childActivity.unread),
-    isBackgroundAgentActive:
-      threadStatus.isBackgroundAgentActive ||
-      (hasHiddenChildren && childActivity.backgroundAgent),
-    isBackgroundCommandActive:
-      threadStatus.isBackgroundCommandActive ||
-      (hasHiddenChildren && childActivity.backgroundCommand),
-    isGoalActive:
-      threadStatus.isGoalActive || (hasHiddenChildren && childActivity.goal),
+    isBackgroundAgentActive: threadStatus.isBackgroundAgentActive,
+    isBackgroundCommandActive: threadStatus.isBackgroundCommandActive,
+    isGoalActive: threadStatus.isGoalActive,
     queuedWork: threadStatus.queuedWork,
-    isPlanModeActive:
-      threadStatus.isPlanModeActive ||
-      (hasHiddenChildren && childActivity.planMode),
-    isRuntimeActive:
-      threadStatus.isRuntimeActive ||
-      (hasHiddenChildren && childActivity.runtimeWorking),
-    isWorkflowActive:
-      threadStatus.isWorkflowActive ||
-      (hasHiddenChildren && childActivity.workflow),
+    isPlanModeActive: threadStatus.isPlanModeActive,
+    isRuntimeActive: threadStatus.isRuntimeActive,
+    isWorkflowActive: threadStatus.isWorkflowActive,
   };
   const trailingIndicatorResolution = resolveThreadStatus(
     trailingIndicatorState,
@@ -582,7 +578,11 @@ function ThreadRowComponent({
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
-    options.depth > 0 ? getSidebarThreadGroupLineLeft(options.depth - 1) : null;
+    options.depth === 0
+      ? null
+      : options.isSubThread
+        ? getSubThreadGuideLeft(options.depth - 1, showProviderIcons)
+        : getSidebarThreadGroupLineLeft(options.depth - 1);
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
       if (!options.consumeClickSuppression?.()) {
@@ -707,13 +707,30 @@ function ThreadRowComponent({
           <span
             className={cn(
               "pointer-events-none relative flex min-w-0 items-center self-stretch",
-              ((crossProjectLabel === null &&
-                (!parentOptions || !hasChildren)) ||
-                isEditing) &&
-                "flex-1",
+              (!reserveActionSpace || isEditing) && "flex-1",
             )}
           >
-            {provider ? (
+            {showSubThreadToggle && parentOptions && !isEditing ? (
+              <SubThreadToggle
+                count={childCount}
+                working={childActivity.workingCount}
+                isCollapsed={isParentCollapsed}
+                expandLabel={`Expand ${labelTitle} threads`}
+                collapseLabel={`Collapse ${labelTitle} threads`}
+                slot={showProviderIcons ? "provider-icon" : "disclosure"}
+                icon={
+                  provider ? (
+                    <ProviderIcon
+                      providerKind="agent"
+                      provider={provider}
+                      className="size-3.5"
+                    />
+                  ) : null
+                }
+                iconLabel={provider?.displayName ?? null}
+                onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+              />
+            ) : provider ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
@@ -738,7 +755,9 @@ function ThreadRowComponent({
                   {provider.displayName}
                 </TooltipContent>
               </Tooltip>
-            ) : null}
+            ) : showProviderIcons ? null : (
+              <SubThreadDisclosureSlot />
+            )}
             {isEditing ? (
               <span className="pointer-events-auto relative z-10 min-w-0 flex-1 overflow-visible">
                 {editor}
@@ -755,6 +774,31 @@ function ThreadRowComponent({
                 <ThreadTitle threadId={thread.id} />
               </span>
             )}
+            {showSubThreadToggle && !isEditing ? (
+              <SubThreadCount
+                count={childCount}
+                working={childActivity.workingCount}
+                glyph={
+                  <ThreadStatusGlyph
+                    indicator={resolveThreadListIndicator({
+                      hasPendingInteraction: false,
+                      hasUnsubmittedDraft: false,
+                      hasUnreadError: false,
+                      hasUnreadSuccess: false,
+                      isBackgroundAgentActive: childActivity.backgroundAgent,
+                      isBackgroundCommandActive:
+                        childActivity.backgroundCommand,
+                      isGoalActive: childActivity.goal,
+                      queuedWork: "none",
+                      isPlanModeActive: childActivity.planMode,
+                      isRuntimeActive: childActivity.runtimeWorking,
+                      isWorkflowActive: childActivity.workflow,
+                    })}
+                    size="compact"
+                  />
+                }
+              />
+            ) : null}
           </span>
           {crossProjectLabel !== null ? (
             <Tooltip>
@@ -776,23 +820,14 @@ function ThreadRowComponent({
               <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
             </Tooltip>
           ) : null}
-          {parentOptions && hasChildren ? (
-            <SidebarChildToggleChevron
-              disabled={isEditing}
-              className={isEditing ? "hidden" : undefined}
-              isCollapsed={isParentCollapsed}
-              expandLabel={`Expand ${labelTitle} threads`}
-              collapseLabel={`Collapse ${labelTitle} threads`}
-              onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-              revealOnHover={!isParentCollapsed}
-            />
-          ) : null}
         </span>
         {!showRowMetadata || isEditing || isCustomizingActions ? null : (
           <span
             className={cn(
               "mt-px flex min-w-0 basis-full",
-              provider !== undefined && "pl-6",
+              showProviderIcons
+                ? (provider !== undefined || showSubThreadToggle) && "pl-6"
+                : "pl-3",
             )}
           >
             <ThreadRowMetadata thread={thread} />

@@ -460,6 +460,17 @@ describe("buildProjectThreadGroups", () => {
         parentThreadId: "parent",
       }),
       createThread({
+        id: "workflow-child",
+        parentThreadId: "parent",
+        activity: {
+          workflows: 1,
+          backgroundAgents: 0,
+          backgroundCommands: 0,
+          planMode: 0,
+          goals: 0,
+        },
+      }),
+      createThread({
         id: "busy-grandchild",
         parentThreadId: "quiet-child",
         status: "active",
@@ -476,13 +487,15 @@ describe("buildProjectThreadGroups", () => {
       childActivity: {
         threadIds: expect.arrayContaining([
           "quiet-child",
+          "workflow-child",
           "busy-grandchild",
           "pending-grandchild",
         ]),
         pending: true,
         working: true,
+        workingCount: 2,
         runtimeWorking: true,
-        workflow: false,
+        workflow: true,
         backgroundAgent: false,
         backgroundCommand: false,
         planMode: false,
@@ -490,7 +503,7 @@ describe("buildProjectThreadGroups", () => {
         unread: false,
         unreadError: false,
       },
-      childCount: 3,
+      childCount: 4,
     });
     expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
       childActivity: {
@@ -500,6 +513,7 @@ describe("buildProjectThreadGroups", () => {
         ]),
         pending: true,
         working: true,
+        workingCount: 1,
         runtimeWorking: true,
         workflow: false,
         backgroundAgent: false,
