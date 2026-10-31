@@ -467,7 +467,25 @@ vi.mock(
 );
 
 vi.mock("@/components/promptbox/banner/ThreadBackgroundCommandsCard", () => ({
-  ThreadBackgroundCommandsCard: () => null,
+  ThreadBackgroundCommandsCard: ({
+    commands,
+    isExpanded,
+    onToggle,
+  }: {
+    commands: TimelineWorkflowWorkRow[];
+    isExpanded: boolean;
+    onToggle: () => void;
+  }) =>
+    commands.length === 0 ? null : (
+      <button
+        type="button"
+        data-testid="background-commands-card"
+        data-expanded={isExpanded}
+        onClick={onToggle}
+      >
+        {commands.length}
+      </button>
+    ),
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({

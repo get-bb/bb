@@ -41,7 +41,10 @@ import {
   vi,
 } from "vitest";
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
-import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
+import {
+  backgroundCommandRow,
+  workflowRow,
+} from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@/lib/sdk";
 import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
@@ -136,6 +139,7 @@ function makePendingInteraction(): PendingInteraction {
 }
 
 interface RenderPromptAreaOptions {
+  activeBackgroundCommands?: TimelineWorkflowWorkRow[];
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   activeWorkflows?: TimelineWorkflowWorkRow[];
   childThreadsSection?: ComponentProps<
@@ -159,6 +163,7 @@ interface RenderPromptAreaOptions {
 let testQueryClient: QueryClient;
 
 function buildPromptAreaElement({
+  activeBackgroundCommands = [],
   activePromptMode = null,
   activeWorkflows = [],
   childThreadsSection = null,
@@ -175,7 +180,7 @@ function buildPromptAreaElement({
   return (
     <QueryClientProvider client={testQueryClient}>
       <ThreadDetailPromptArea
-        activeBackgroundCommands={[]}
+        activeBackgroundCommands={activeBackgroundCommands}
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
         childThreadsSection={childThreadsSection}
@@ -1431,6 +1436,61 @@ describe("ThreadDetailPromptArea", () => {
     expect(
       screen.queryByRole("button", { name: "Collapse 2 workflows" }),
     ).toBeNull();
+  });
+
+  it("re-collapses the background commands after fewer than two keep running", () => {
+    const newer = backgroundCommandRow({
+      id: "row-bg-newer",
+      status: "pending",
+      taskStatus: "running",
+    });
+    const older = backgroundCommandRow({
+      id: "row-bg-older",
+      status: "pending",
+      taskStatus: "running",
+    });
+    const card = () => screen.getByTestId("background-commands-card");
+    const { rerender } = renderPromptArea({
+      activeBackgroundCommands: [newer, older],
+    });
+
+    fireEvent.click(card());
+    expect(card().getAttribute("data-expanded")).toBe("true");
+
+    rerender(buildPromptAreaElement({ activeBackgroundCommands: [newer] }));
+    rerender(
+      buildPromptAreaElement({ activeBackgroundCommands: [newer, older] }),
+    );
+
+    expect(card().getAttribute("data-expanded")).toBe("false");
+  });
+
+  it("folds the background commands when the pane moves to another thread", () => {
+    const activeBackgroundCommands = [
+      backgroundCommandRow({
+        id: "row-bg-newer",
+        status: "pending",
+        taskStatus: "running",
+      }),
+      backgroundCommandRow({
+        id: "row-bg-older",
+        status: "pending",
+        taskStatus: "running",
+      }),
+    ];
+    const card = () => screen.getByTestId("background-commands-card");
+    const { rerender } = renderPromptArea({ activeBackgroundCommands });
+    fireEvent.click(card());
+
+    rerender(
+      buildPromptAreaElement({
+        activeBackgroundCommands,
+        thread: makeThread({ id: "thr_2" }),
+      }),
+    );
+    rerender(buildPromptAreaElement({ activeBackgroundCommands }));
+
+    expect(card().getAttribute("data-expanded")).toBe("false");
   });
 
   it("keeps the same child threads banner while the parent asks and answers its own question", () => {

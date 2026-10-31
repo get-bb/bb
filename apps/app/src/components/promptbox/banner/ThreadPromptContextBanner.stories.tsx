@@ -690,13 +690,13 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="answer child questions in the banner"
-        hint="rows read child: question; open one from a row, ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
+        hint="rows read child: question; open one from a row, even folded; ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
       >
         <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="thread with active child threads (collapsed)"
-        hint="icon, label, and total count; click to list every child thread"
+        hint="the first child's row; its count chip unfolds the others above it"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
@@ -708,7 +708,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent thread with many children (scrollable)"
-        hint="max-h-40 caps the list; rest scrolls"
+        hint="max-h-40 caps the unfolded rows; the list opens scrolled to the rows next to the chip"
       >
         <Row
           childThreads={childThreadsLargeFixture}

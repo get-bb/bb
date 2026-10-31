@@ -168,7 +168,11 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     rerender(bannerElement(section([newest, middle, oldest]), false));
 
-    expect(screen.getByText("Active child threads")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "4 active child threads" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
     expect(
       screen.getByRole("button", { name: /Child thr_b/ }).textContent,
     ).toBe("Child thr_b: Which size?");
@@ -195,20 +199,42 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
 
-  it("expands to the row list from the collapsed header without opening a question", () => {
+  it("unfolds the other child threads above the visible one from the count chip", () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    const toggle = screen.getByRole("button", {
+      name: "4 active child threads",
+    });
+    fireEvent.click(toggle);
+    expect(
+      screen.queryByRole("link", { name: /Investigate failing checks/ }),
+    ).toBe(null);
+    toggle.focus();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(toggle);
+    expect(openForm()).toBe(null);
+    expect(
+      [...document.querySelectorAll("[data-child-thread-row]")].map((row) =>
+        row.getAttribute("data-child-thread-row"),
+      ),
+    ).toEqual(["thr_working", "thr_a", "thr_c", "thr_b"]);
+  });
+
+  it("opens the visible child's question from the folded card in one click", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(
       screen.getByRole("button", { name: "4 active child threads" }),
     );
-    expect(openForm()).toBe(null);
 
-    const header = screen.getByRole("button", {
-      name: "4 active child threads, needs input: Child thr_b: Which size?",
-    });
-    fireEvent.click(header);
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
-    expect(openForm()).toBe(null);
-    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+    expect(shownSource()).toBe("Child thr_b");
+    expect(openForm()?.getAttribute("data-presentation")).toBe("inline");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -247,10 +273,10 @@ describe("ThreadPromptContextBanner child questions", () => {
     ).toBe(null);
   });
 
-  it("drops the stepper and the collapse row for a single open question", () => {
+  it("drops the stepper and the count toggle for a single open question", () => {
     render(bannerElement(section([newest])));
     expect(
-      screen.getByRole("button", { name: /^Collapse \d+ child threads?$/ }),
+      screen.getByRole("button", { name: "2 active child threads" }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
@@ -258,7 +284,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
     expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
     expect(
-      screen.queryByRole("button", { name: /^Collapse \d+ child threads?$/ }),
+      screen.queryByRole("button", { name: "2 active child threads" }),
     ).toBe(null);
   });
 
@@ -391,7 +417,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "1 active child thread" }),
+      screen.getByRole("link", { name: /Investigate failing checks/ }),
     );
   });
 });
