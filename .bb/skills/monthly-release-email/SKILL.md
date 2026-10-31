@@ -26,6 +26,22 @@ root.
 terms. This skill owns the template, subject, preview, opening, graphics,
 verification, Resend and the shareable screenshot.
 
+## Before you start
+
+- **Resend.** A login to the Resend team that sends from mail.getbb.app, with
+  access to broadcasts and contacts. Ask an admin of that team to invite you.
+- **Browser Automation.** Install it from Plugins → Browse plugins, then turn it
+  on in Settings → Installed plugins. The Resend steps drive the bb desktop
+  app's browser (Mac or Windows) while it's signed in to Resend.
+- **Analytics.** Access to getbb.app's PostHog project, to confirm test links
+  arrive with their UTM tags.
+- **The reviewer** is whoever owns that month's email. They approve the copy and
+  graphics, name the test recipients and the contact lists to send to, and give
+  the go-ahead to schedule.
+- **Two agents.** Steps 2 and 5 each use two agents working independently from
+  the same brief, for example two bb threads started with the same prompt.
+  Compare their results and resolve every difference before using them.
+
 ## Steps
 
 1. **Range.** `git fetch -q origin`, then take every release dated in the month

@@ -27,16 +27,17 @@ Read these fresh every run.
 
 ## Method
 
-1. **Inventory.** List every Highlight as `title · version · the notes'
-sentence`. Many releases have no Highlights section; for those, the notable
-   items are the bold-led bullets under "New features", "Built-in plugin
-   updates" and topical sections ("Working with agents", "Browser tools"), plus
-   the `changelog-metadata.ts` headline. Leave out Plugin API, CLI-only and
-   Fixes sections unless a change is user-facing. A release's notes can also
-   cover an earlier tag that shipped without notes ("These notes also cover
-   0.43.4"); credit those items to the release whose notes describe them. Note
-   each item's status (Experimental, Alpha, off by default, "Enable it in …") so
-   you don't overstate it, and keep the "Enable it in …" path.
+1. **Inventory.** List every Highlight as
+   `title · version · the notes' sentence`. Many releases have no Highlights
+   section; for those, the notable items are the bold-led bullets under "New
+   features", "Built-in plugin updates" and topical sections ("Working with
+   agents", "Browser tools"), plus the `changelog-metadata.ts` headline. Leave
+   out Plugin API, CLI-only and Fixes sections unless a change is user-facing. A
+   release's notes can also cover an earlier tag that shipped without notes
+   ("These notes also cover 0.43.4"); credit those items to the release whose
+   notes describe them. Note each item's status (Experimental, Alpha, off by
+   default, "Enable it in …") so you don't overstate it, and keep the "Enable it
+   in …" path.
 2. **Cluster by direction.** For each item, ask which VISION principle it moves
    forward, for example "agents can operate bb", "more of bb is built from
    plugins", "works wherever you are", "fast and understandable", or "flexible
@@ -161,8 +162,10 @@ Chosen from research on Supabase, Vercel, opencode and T3 Code.
 
 ## Verify
 
-Two independent agents draft the themes from the same neutral brief (range and
-sources, not your draft); compare and reconcile before anyone uses the result.
+Two independent agents draft the themes from the same neutral brief (the range
+and sources, not your draft), for example two bb threads started with the same
+prompt. Compare their drafts and resolve every difference before anyone uses the
+result.
 
 Then two more independent agents check the final copy against the shipped
 product, not just the notes, since the notes can be wrong (0.46.1's "Settings →
@@ -178,9 +181,8 @@ experimental reads as finished.
 
 For the monthly email, write straight into the issue JSON that
 `scripts/monthly-email/render-email.mjs` reads (the `monthly-release-email`
-skill lists every field). Otherwise return Markdown, or JSON shaped `{period,
-opening, themes: [{title, direction, items: [{title, body, versions}], image}],
-left_out: [{title, version, reason}]}`.
+skill lists every field). Otherwise return Markdown, or JSON shaped
+`{period, opening, themes: [{title, direction, items: [{title, body, versions}], image}], left_out: [{title, version, reason}]}`.
 
 ## Example of the voice
 

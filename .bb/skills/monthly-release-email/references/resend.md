@@ -5,9 +5,10 @@ or sending.
 
 ## Browser
 
-Use a bb desktop browser that's signed in to bb's Resend account (sending domain
-mail.getbb.app); no API key is needed. Find it with `bb machine list` and `bb
-browser instances --host <host>`, then open a session:
+Use the bb desktop app's browser, signed in to the Resend team that sends from
+mail.getbb.app; no API key is needed. `bb machine list` gives each machine's
+host ID, and `bb browser instances --host <host>` lists the desktop browser on
+it. Open a session:
 
 ```sh
 bb browser-automation open --backend desktop --machine <host> --desktop <instance>
@@ -22,13 +23,18 @@ Limits:
 - One browser message holds about 1 MB, so the generated scripts upload at most
   four images per run and refuse any graphic over 700 KB.
 
-Copy files back with `bb file read <path> --host <host> --json`.
+When the desktop app runs on the same machine as your checkout, `--script-host`
+and `--machine` are both that machine's host ID and files need no copying. When
+it runs on another machine, copy files back with
+`bb file read <path> --host <host> --json`.
 
 ## Build the draft
 
-Serve `scripts/monthly-email/issues/<yyyy-mm>/` through bb connect
-(`share-server-links`) so the browser can read the graphics. Then write the step
-scripts:
+Serve `scripts/monthly-email/issues/<yyyy-mm>/` so the browser can read the
+graphics. On the same machine, `python3 -m http.server --bind 127.0.0.1` in that
+folder is enough, and its `http://127.0.0.1:<port>/` is the preview base. From
+another machine, share it through bb connect (`share-server-links`, which needs
+`bb account login`). Then write the step scripts:
 
 ```sh
 node scripts/monthly-email/browser-scripts.mjs resend scripts/monthly-email/issues/<yyyy-mm>.json scripts/monthly-email/browser --preview-base <share URL>
@@ -97,9 +103,10 @@ bb browser-automation run <session> --timeout 28s --script-file scripts/monthly-
 
 ## Screenshot for sharing
 
-Render Resend's built HTML full length in a Mac's bb browser, which has Inter
-and the system fonts (Linux headless Chrome falls back to DejaVu). Write the
-script, run it in a desktop session, and copy the PNG back:
+Render Resend's built HTML full length in the bb desktop app's browser on a Mac
+or Windows machine, which has the system fonts the email falls back to. Headless
+Chrome on a Linux server may have no fonts at all and render blank text. Write
+the script, run it in a desktop session, and copy the PNG back:
 
 ```sh
 node scripts/monthly-email/browser-scripts.mjs slack-shot scripts/monthly-email/issues/<yyyy-mm>.resend.html /tmp/bb-email-<month>-<year>.png > scripts/monthly-email/browser/slack.js
@@ -119,7 +126,9 @@ It's 680 px wide at 2×. Check every section before sharing it.
   website signup list keeps growing, but the combined segment only changes when
   someone adds contacts to it, and the send usually comes days after scheduling.
   Do the update below before scheduling. When you schedule, also set up a bb
-  automation that repeats it within the hour before the send. To update:
+  automation that repeats it within the hour before the send. The automation
+  needs the bb desktop app open and signed in to Resend at that time; if it
+  won't be, do the update by hand in that hour. To update:
   1. In the dashboard's contact view, open each list in turn and add every
      contact to the combined segment: select the page, then bulk Edit → Add to
      segments. Re-adding a contact is harmless.

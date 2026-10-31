@@ -39,10 +39,10 @@ Final PNGs go one level up.
 - **Charts** are plain line or bar charts with labeled axes, before in grey and
   now in blue. The x-axis is what actually drives the cost (files written in
   threads you aren't viewing, not thread count). Measured values only.
-- **Annotations stay subtle:** 1 px outlines in `color-mix(in oklch, oklch(0.55
-0.1 250) 75%, transparent)` on the element's measured edges, small white pill
-  labels with blue text, and 1 px leader lines. Don't outline things that don't
-  need it.
+- **Annotations stay subtle:** 1 px outlines in
+  `color-mix(in oklch, oklch(0.55 0.1 250) 75%, transparent)` on the element's
+  measured edges, small white pill labels with blue text, and 1 px leader lines.
+  Don't outline things that don't need it.
 - **Labels** use the names bb's UI uses (check the element's `aria-label` at the
   tag), and:
   - Label only what the email says is new. Familiar parts stay unlabeled,
@@ -74,19 +74,21 @@ Final PNGs go one level up.
 ## Capturing real UI
 
 1. **Run bb at the newest tag in the month, isolated.** One build is enough; for
-   older items, check their components haven't changed with `git diff
-desktop-v<old> desktop-v<new> -- <dir>`. Make a worktree at `desktop-v<ver>`,
-   then run `pnpm install`, `pnpm build` and `pnpm start:worktree`. That gives a
-   fresh, empty data dir under `~/.bb-dev/<instance>` with its own ports. Pass
-   `BB_SERVER_URL=http://127.0.0.1:<port>` on every bb call, and confirm `bb
-status` shows the test data dir before writing anything. Never capture a real
-   user's bb.
-2. **Turn on only what the graphic needs**, for example `bb plugin enable
-bb--prompt-library`, and keep everything else at its default. To show what
-   plugins can add to a surface, install a tiny local plugin with `bb plugin
-install <dir>` that registers the slot with realistic sample content. Its
-   `package.json` needs `bb.name`, `bb.description`, `bb.branding` (an icon), a
-   `bb.server` entry (an empty default export is enough) and the `bb.app` entry.
+   older items, check their components haven't changed with
+   `git diff desktop-v<old> desktop-v<new> -- <dir>`. Make a worktree at
+   `desktop-v<ver>`, then run `pnpm install`, `pnpm build` and
+   `pnpm start:worktree`. That gives a fresh, empty data dir under
+   `~/.bb-dev/<instance>` with its own ports. Pass
+   `BB_SERVER_URL=http://127.0.0.1:<port>` on every bb call, and confirm
+   `bb status` shows the test data dir before writing anything. Never capture a
+   real user's bb.
+2. **Turn on only what the graphic needs**, for example
+   `bb plugin enable bb--prompt-library`, and keep everything else at its
+   default. To show what plugins can add to a surface, install a tiny local
+   plugin with `bb plugin install <dir>` that registers the slot with realistic
+   sample content. Its `package.json` needs `bb.name`, `bb.description`,
+   `bb.branding` (an icon), a `bb.server` entry (an empty default export is
+   enough) and the `bb.app` entry.
 3. **Sample data without running agents.** Check each command's `--help` at the
    tag; flags change.
    - Make a scratch git repo with a few uncommitted changes (October's was
@@ -94,9 +96,9 @@ install <dir>` that registers the slot with realistic sample content. Its
      thread right away (`bb thread stop`), because a spawned agent uses a real
      provider account.
    - Add more threads for the thread list with `bb thread fork <id>`, which
-     copies history without running anything, and rename them with `bb thread
-update <id> --title`. Forks add a "Forks" section to the Info tab; hide it
-     in the capture.
+     copies history without running anything, and rename them with
+     `bb thread update <id> --title`. Forks add a "Forks" section to the Info
+     tab; hide it in the capture.
    - Star prompts with `bb prompts star "<text>" --title "<title>"`.
    - For states you can't stage safely (a child thread waiting with a question),
      render the real component in Ladle with realistic fixture data, in a
@@ -132,18 +134,20 @@ update <id> --title`. Forks add a "Forks" section to the Info tab; hide it
    thread's run log.
 6. **Lists.** To show a few rows of a long list, hide the other rows of the list
    container.
-7. **Components in Ladle.** Run `pnpm exec ladle serve --port <p> --host
-127.0.0.1` from `apps/app` in the tag worktree. Story IDs are in
-   `http://127.0.0.1:<p>/meta.json`; open
+7. **Components in Ladle.** Run
+   `pnpm exec ladle serve --port <p> --host 127.0.0.1` from `apps/app` in the
+   tag worktree. Story IDs are in `http://127.0.0.1:<p>/meta.json`; open
    `?story=<id>&mode=preview&theme=light`. If every story renders blank,
    `.ladle/plugin-sdk-app.ts` is missing exports that
    `src/lib/plugin-sdk-app-impl.tsx` has; add them locally. Add local-only
    stories for realistic sample data and never commit them.
-8. **Mobile.** Load the thread at `{width: 390, height: 780, deviceScaleFactor:
-2, isMobile: true}`; the mobile apps wrap the same web app.
+8. **Mobile.** Load the thread at
+   `{width: 390, height: 780, deviceScaleFactor: 2, isMobile: true}`; the mobile
+   apps wrap the same web app.
 9. **Desktop-only surfaces** (the desktop browser tab, Agent Annotations) need
-   the desktop app. On Linux, run it under Xvfb and capture over its debugging
-   port. OS-level surfaces (a phone notification) can't be captured: show the bb
+   the desktop app. On a Mac, `pnpm desktop:worktree` launches it against the
+   test bb; on Linux, run it under Xvfb and capture over its debugging port.
+   OS-level surfaces (a phone notification) can't be captured: show the bb
    setting that controls them, or leave the item without a graphic.
 
 ## Measuring a number
@@ -158,10 +162,10 @@ watch, in about 3 minutes on a Mac.
 
 ## Rendering
 
-- Serve the design folder on this machine only (for example `python3 -m
-http.server --bind 127.0.0.1` in it). Then write a script that renders each
-  `.c` canvas at 3× with the browser cache off, at most five designs per script
-  so a run stays under 30 seconds:
+- Serve the design folder on this machine only (for example
+  `python3 -m http.server --bind 127.0.0.1` in it). Then write a script that
+  renders each `.c` canvas at 3× with the browser cache off, at most five
+  designs per script so a run stays under 30 seconds:
 
   ```sh
   node scripts/monthly-email/browser-scripts.mjs designs <base-url> <out-dir> <design-name…> > scripts/monthly-email/browser/render.js
