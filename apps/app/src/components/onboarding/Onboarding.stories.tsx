@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  AgentInstallErrorDetails,
   AgentSignInGuide,
+  AgentSignInPanel,
   AgentStep,
   DevicesStep,
   OnboardingLayout,
@@ -977,5 +979,128 @@ export function HomeAfterSkipping() {
         </StoryWindow>
       </Captioned>
     </Gallery>
+  );
+}
+
+function RedesignSignInPanel({
+  agentId,
+}: {
+  agentId: "claude-code" | "codex";
+}) {
+  const [code, setCode] = useState("");
+  const [terminalVisible, setTerminalVisible] = useState(false);
+  const codex = agentId === "codex";
+  return (
+    <AgentSignInPanel
+      agentName={codex ? "Codex" : "Claude Code"}
+      guide={{
+        url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
+        userCode: codex ? "JWMS-GLRCB" : null,
+        acceptsPastedCode: !codex,
+      }}
+      code={code}
+      codeSubmitted={false}
+      terminalVisible={terminalVisible}
+      terminal={
+        <FakeTerminal
+          command={codex ? "codex login --device-auth" : "claude auth login"}
+        />
+      }
+      alternate={codex ? "browser" : null}
+      onCodeChange={setCode}
+      onSubmitCode={noop}
+      onOpenUrl={noop}
+      onCopy={noop}
+      onToggleTerminal={() => setTerminalVisible((visible) => !visible)}
+      onUseAlternate={noop}
+    />
+  );
+}
+
+function RedesignAgentFrame({
+  signingIn,
+  installError = false,
+}: {
+  signingIn: "claude-code" | "codex" | null;
+  installError?: boolean;
+}) {
+  const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
+    const state: AgentSetupState =
+      agent.id === signingIn
+        ? { status: "signingIn" }
+        : installError && agent.id === "claude-code"
+          ? {
+              status: "installFailed",
+              message: "Couldn't install. Check your connection and retry.",
+              canInstall: true,
+            }
+          : agent.id === "pi"
+            ? INSTALL
+            : SIGNED_OUT;
+    return {
+      id: agent.id,
+      name: agent.name,
+      provider: { id: agent.id, logoUrl: agent.logoUrl },
+      state,
+      expanded:
+        agent.id === signingIn &&
+        (agent.id === "claude-code" || agent.id === "codex") ? (
+          <RedesignSignInPanel agentId={agent.id} />
+        ) : state.status === "installFailed" ? (
+          <AgentInstallErrorDetails
+            log={
+              "npm ERR! code ECONNRESET\nnpm ERR! network request to https://registry.npmjs.org failed"
+            }
+          />
+        ) : undefined,
+    };
+  });
+  return (
+    <OnboardingLayout
+      step="agent"
+      composition="centered"
+      showSkipAll={false}
+      title="Connect a coding agent"
+      description={`Agents run on ${MACHINE_NAME}. bb needs one installed and signed in.`}
+      primaryLabel="Continue"
+      onPrimary={noop}
+      onSelectStep={noop}
+      onSkipAll={noop}
+    >
+      <AgentStep
+        quiet
+        machineName={MACHINE_NAME}
+        agents={agents}
+        onSignIn={noop}
+        onInstall={noop}
+        onViewInstallLog={noop}
+        onCancelSignIn={noop}
+        onRecheck={noop}
+      />
+    </OnboardingLayout>
+  );
+}
+
+export function RedesignAgentClaudeSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn="claude-code" />
+    </div>
+  );
+}
+
+export function RedesignAgentCodexSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn="codex" />
+    </div>
+  );
+}
+
+export function RedesignAgentInstallError() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn={null} installError />
+    </div>
   );
 }

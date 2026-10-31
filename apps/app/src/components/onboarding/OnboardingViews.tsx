@@ -316,7 +316,11 @@ function AgentActionIcon({
   quiet: boolean;
 }) {
   return quiet ? (
-    <ProviderIcon providerKind="agent" provider={agent.provider} />
+    <ProviderIcon
+      providerKind="agent"
+      provider={agent.provider}
+      className="size-4"
+    />
   ) : (
     <Icon name="Download" aria-hidden />
   );
