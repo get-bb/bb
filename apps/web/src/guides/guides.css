@@ -747,6 +747,11 @@
   transform: translateX(-50%);
 }
 
+.gd-hero > .gd-shot {
+  margin-left: calc(50% - min(520px, 50vw - 24px));
+  transform: none;
+}
+
 .gd-shot-phone .cmp-phone {
   max-width: 300px;
   margin: 0 auto;
