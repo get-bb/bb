@@ -23,6 +23,7 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import {
+  sendMessageResponseSchema,
   threadResponseSchema,
   threadTimelineResponseSchema,
 } from "@bb/server-contract";
@@ -1005,6 +1006,63 @@ describe("public thread fork route", () => {
       );
       expect(requestData.input).toEqual(turn.command.input);
       expect(requestData.inputGroups).toEqual(turn.command.inputGroups);
+    });
+  });
+
+  it("starts the first turn sent while an inputless fork is still starting", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness);
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+      });
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (start.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(start.command.input).toEqual([]);
+      expect(getThread(harness.db, fork.id)?.status).toBe("starting");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: textInput("First turn sent during the fork start"),
+            mode: "start",
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      expect(
+        sendMessageResponseSchema.parse(await readJson(sendResponse)),
+      ).toMatchObject({
+        delivery: "queued",
+        queuedMessage: { waitingOn: { kind: "provisioning" } },
+      });
+
+      await reportQueuedCommandSuccess(harness, start, {
+        providerThreadId: "provider-inputless-fork",
+      });
+
+      const turn = await waitForQueuedCommandAfter(
+        harness,
+        start.row.cursor,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === fork.id,
+      );
+      if (turn.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit");
+      }
+      expect(turn.command.input).toEqual(
+        textInput("First turn sent during the fork start"),
+      );
     });
   });
 

@@ -923,6 +923,10 @@ export function settleThreadStartCommandResult(
             const { runQueuedMessageDispatch } =
               await import("./queued-message-dispatch.js");
             await runQueuedMessageDispatch(deps, {
+              kind: "workspace-ready",
+              threadId: currentThread.id,
+            });
+            await runQueuedMessageDispatch(deps, {
               kind: "thread-ready",
               threadId: currentThread.id,
             });
