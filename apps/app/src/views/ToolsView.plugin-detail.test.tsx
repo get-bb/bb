@@ -1196,7 +1196,7 @@ describe("BB Official plugin detail routing", () => {
         name: "GitHub",
         level: 1,
       });
-      const header = title.parentElement?.parentElement;
+      const header = title.parentElement?.parentElement?.parentElement;
       expect(header).not.toBeNull();
       if (!header) throw new Error("Plugin header missing");
       const authorLink = await within(header).findByRole("link", {
@@ -1471,7 +1471,7 @@ describe("BB Official plugin detail routing", () => {
       );
     });
     const title = screen.getByRole("heading", { name: "GitHub", level: 1 });
-    const header = title.parentElement?.parentElement;
+    const header = title.parentElement?.parentElement?.parentElement;
     if (!header) throw new Error("Plugin header missing");
     expect(within(header).queryByText("Partner Catalog")).toBeNull();
     const source = screen.getByRole("link", {

@@ -103,7 +103,7 @@ describe("Resource detail header", () => {
       name: "A long resource title",
     });
     const titleRow = heading.parentElement;
-    const titleColumn = titleRow?.parentElement;
+    const titleColumn = titleRow?.parentElement?.parentElement;
     const titleAndIcon = titleColumn?.parentElement;
     const leading = screen.getByText("Leading icon");
 
@@ -111,6 +111,40 @@ describe("Resource detail header", () => {
     expect(titleColumn?.contains(leading)).toBe(false);
     expect(titleAndIcon?.contains(leading)).toBe(true);
   });
+});
+
+describe("Resource detail header actions", () => {
+  it.each([
+    { label: "with a metadata avatar", metadataLeading: <span>Avatar</span> },
+    { label: "without a metadata avatar", metadataLeading: undefined },
+  ])(
+    "keeps actions on the title line so metadata spans the header $label",
+    ({ metadataLeading }) => {
+      render(
+        <ResourceDetailPage
+          leading={<span>Leading icon</span>}
+          title="A long resource title"
+          metadataLeading={metadataLeading}
+          metadata={<span>Publisher · Category</span>}
+          actions={<button type="button">Header action</button>}
+          overflowMenu={<button type="button">More</button>}
+        >
+          <div>Content</div>
+        </ResourceDetailPage>,
+      );
+
+      const heading = screen.getByRole("heading", {
+        name: "A long resource title",
+      });
+      const action = screen.getByRole("button", { name: "Header action" });
+      const titleLine = heading.parentElement?.parentElement;
+      const metadata = screen.getByText("Publisher · Category");
+
+      expect(titleLine?.contains(action)).toBe(true);
+      expect(titleLine?.contains(screen.getByRole("button", { name: "More" }))).toBe(true);
+      expect(titleLine?.contains(metadata)).toBe(false);
+    },
+  );
 });
 
 describe("Plugin detail recipe", () => {
