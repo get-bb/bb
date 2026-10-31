@@ -92,6 +92,21 @@ function parseAppSourceOriginEnvValue(args: EnvVarParseArgs): AppSourceOrigin {
   );
 }
 
+export const setupGuideVariantSchema = z.enum(["control", "new"]);
+export type SetupGuideVariant = z.infer<typeof setupGuideVariantSchema>;
+
+function parseSetupGuideVariantEnvValue(
+  args: EnvVarParseArgs,
+): SetupGuideVariant {
+  const parsed = setupGuideVariantSchema.safeParse(args.value.trim());
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    `${args.name} must be one of ${setupGuideVariantSchema.options.join(", ")}`,
+  );
+}
+
 function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
   if (args.value === "0") {
     return undefined;
@@ -301,6 +316,13 @@ export const BB_SKIP_ONBOARDING_ENV = defineEnvVar<boolean>({
     "Mark first-run setup as completed at server startup so the setup screen is skipped. Settings can still replay it.",
   name: "BB_SKIP_ONBOARDING",
   parse: parseBooleanEnvValue,
+});
+
+export const BB_SETUP_GUIDE_VARIANT_ENV = defineEnvVar<SetupGuideVariant>({
+  description:
+    "Forces the first-run setup guide variant (control or new) for QA, ignoring telemetry and the setup-guide-redesign experiment.",
+  name: "BB_SETUP_GUIDE_VARIANT",
+  parse: parseSetupGuideVariantEnvValue,
 });
 
 export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({

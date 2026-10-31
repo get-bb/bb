@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginDisplayName } from "./PluginNameTag";
 import {
   ResourceBrowseCard,
@@ -21,6 +22,7 @@ interface PluginCardProps {
   title: string;
   description: ReactNode;
   descriptionLines?: 2 | 3 | "expandable";
+  density?: "default" | "compact";
   disabled?: boolean;
   leading: ReactNode;
   byline: ReactNode;
@@ -32,15 +34,24 @@ interface PluginCardProps {
 export function PluginCard({
   byline,
   footerAction,
+  density = "default",
   ...props
 }: PluginCardProps) {
+  const compact = density === "compact";
   return (
     <ResourceBrowseCard
       {...props}
-      className="h-full min-h-36 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-xl p-3"
+      className={
+        compact
+          ? "h-full min-h-0 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-lg px-3.5 py-2.5"
+          : "h-full min-h-36 grid-cols-[minmax(0,1fr)_0px] gap-x-0 gap-y-2 rounded-xl p-3"
+      }
       leadingClassName="size-6"
+      descriptionAlign={compact ? "start" : "center"}
       description={
-        <span className="block min-h-[2lh]">{props.description}</span>
+        <span className={cn("block", !compact && "min-h-[2lh]")}>
+          {props.description}
+        </span>
       }
       title={
         <PluginDisplayName
@@ -49,7 +60,12 @@ export function PluginCard({
         />
       }
       footer={
-        <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs text-subtle-foreground">
+        <div
+          className={cn(
+            "flex min-w-0 items-center justify-between gap-2 border-t border-border/60 text-xs text-subtle-foreground",
+            compact ? "pt-1" : "pt-2",
+          )}
+        >
           <span className="min-w-0 truncate">{byline}</span>
           <span className="pointer-events-auto shrink-0">{footerAction}</span>
         </div>

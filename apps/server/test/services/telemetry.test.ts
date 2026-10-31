@@ -120,6 +120,50 @@ describe("telemetry service", () => {
     });
   });
 
+  it("adds shared properties such as a flag variant to later events", async () => {
+    const telemetry = await createTelemetryService({
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      telemetryEnabled: true,
+      enabled: true,
+      logger: createTestLogger(),
+    });
+    telemetry.capture({ name: "app_started" });
+    telemetry.setSharedProperty("$feature/setup-guide-redesign", "new");
+    telemetry.capture({
+      name: "turn_finished",
+      properties: {
+        outcome: "succeeded",
+        error_category: "none",
+        provider: "codex",
+        install_turn_number: 1,
+        execution_location: "server_machine",
+      },
+    });
+
+    const payloads = fetchMock.mock.calls.map((call) => {
+      const [, init] = call as [string, { body: string }];
+      return JSON.parse(init.body) as { properties: Record<string, unknown> };
+    });
+    expect(payloads[0]?.properties).not.toHaveProperty(
+      "$feature/setup-guide-redesign",
+    );
+    expect(payloads[1]?.properties).toMatchObject({
+      "$feature/setup-guide-redesign": "new",
+      install_turn_number: 1,
+      outcome: "succeeded",
+    });
+    expect(telemetry.featureFlagIdentity()).toEqual({
+      apiKey: "phc_test",
+      distinctId: (
+        await readFile(join(dataDir, "telemetry-id"), "utf8")
+      ).trim(),
+    });
+  });
+
   it("tags events with how bb was installed without sending any commits", async () => {
     const commit = "a".repeat(40);
     const installs = [

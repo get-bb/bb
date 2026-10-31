@@ -33,6 +33,7 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemProviderStatesResponse,
   SystemProvidersQuery,
+  SystemSetupGuideResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -106,6 +107,11 @@ export type SystemRecordTelemetryEventArgs = RecordTelemetryEventRequest;
 export interface SystemRecordTelemetryEventResult {
   ok: true;
 }
+
+export interface SystemSetupGuideArgs {
+  signal?: AbortSignal;
+}
+export type SystemSetupGuideResult = SystemSetupGuideResponse;
 
 export interface SystemAiServicesArgs {
   signal?: AbortSignal;
@@ -183,6 +189,9 @@ export interface SystemArea {
   experimental_recordTelemetryEvent(
     args: SystemRecordTelemetryEventArgs,
   ): Promise<SystemRecordTelemetryEventResult>;
+  experimental_setupGuide(
+    args?: SystemSetupGuideArgs,
+  ): Promise<SystemSetupGuideResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
   setAiServiceSelection(
     args: SystemSetAiServiceSelectionArgs,
@@ -352,6 +361,14 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async experimental_recordTelemetryEvent(input) {
       return transport.readJson(
         transport.api.v1.system.telemetry.events.$post({ json: input }),
+      );
+    },
+    async experimental_setupGuide(input) {
+      return transport.readJson(
+        transport.api.v1.system["setup-guide"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
       );
     },
     async reloadConfig() {

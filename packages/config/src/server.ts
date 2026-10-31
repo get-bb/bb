@@ -33,6 +33,7 @@ import {
   BB_TELEMETRY_ENV,
   BB_PERF_DIAGNOSTICS_ENV,
   BB_SKIP_ONBOARDING_ENV,
+  BB_SETUP_GUIDE_VARIANT_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
@@ -44,6 +45,7 @@ import {
   DEFAULT_BB_TELEMETRY,
   parseServerBindHost,
   type ServerBindHost,
+  type SetupGuideVariant,
 } from "./env-vars.js";
 import { loadFeatureFlags } from "./feature-flags.js";
 import { assignIfDefined } from "./objects.js";
@@ -72,6 +74,7 @@ export interface ServerConfig
   BB_TELEMETRY: boolean;
   BB_PERF_DIAGNOSTICS: boolean;
   BB_SKIP_ONBOARDING: boolean;
+  BB_SETUP_GUIDE_VARIANT?: SetupGuideVariant;
   featureFlags: FeatureFlags;
 }
 
@@ -244,6 +247,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_APP_SOURCE_COMMIT_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_SETUP_GUIDE_VARIANT",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_SETUP_GUIDE_VARIANT_ENV,
       env: loader.env,
     }),
   });

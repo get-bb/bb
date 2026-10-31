@@ -20,5 +20,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["src/**/*.ts", "app.tsx", "app.test.tsx"]
+  "include": ["src/**/*.ts", "ui/**/*.ts", "app.tsx", "app.test.tsx"]
 }
