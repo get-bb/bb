@@ -1,18 +1,13 @@
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
-import type { Environment } from "@bb/domain";
+import { joinHostPath, type Environment } from "@bb/domain";
 import type { ThreadStorageLocationResponse } from "@bb/server-contract";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
 
 function buildAbsoluteHostPath(rootPath: string, relativePath: string): string {
-  const usesWindowsSeparators =
-    /^[A-Za-z]:[\\/]/u.test(rootPath) || rootPath.startsWith("\\\\");
-  const separator = usesWindowsSeparators ? "\\" : "/";
-  const normalizedRelativePath = usesWindowsSeparators
-    ? relativePath.replaceAll("/", "\\")
-    : relativePath;
-  const trimmedRootPath = rootPath.replace(/[\\/]+$/u, "");
-  return `${trimmedRootPath}${separator}${normalizedRelativePath}`;
+  const path = joinHostPath({ rootPath, relativePath });
+  if (path === null) throw new Error("Invalid root directory.");
+  return path;
 }
 
 interface LiveFileTargetLookups {
