@@ -23,8 +23,43 @@ export const serverMoveHealthSchema = z.object({
 export type ServerMoveHealth = z.infer<typeof serverMoveHealthSchema>;
 
 export const serverHealthResponseSchema = z.object({
+  ok: z.literal(true),
   serverMove: serverMoveHealthSchema.optional(),
 });
+export type ServerHealth = z.infer<typeof serverHealthResponseSchema>;
+
+export function serverHealthUrl(serverUrl: string): string {
+  return `${serverUrl.replace(/\/+$/u, "")}/health`;
+}
+
+interface FetchServerHealthArgs {
+  fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
+  init: RequestInit;
+  url: string;
+}
+
+export async function fetchServerHealth(
+  args: FetchServerHealthArgs,
+): Promise<ServerHealth | null> {
+  try {
+    const response = await (args.fetchImpl ?? fetch)(args.url, args.init);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const parsed = serverHealthResponseSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isServerMoveReady(
+  serverMove: ServerMoveHealth | null,
+  moveId: string,
+): boolean {
+  return serverMove?.moveId === moveId && serverMove.state === "ready";
+}
 
 export const serverMoveCommandSchemas = {
   "server_move.inspect": z

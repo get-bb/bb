@@ -1638,6 +1638,7 @@ async function handleWatchedServerMove(move: DesktopServerMove): Promise<void> {
       fetchImpl: (input, init) => net.fetch(input, init),
       intervalMs: SERVER_MOVE_DESTINATION_INTERVAL_MS,
       isCancelled: () => quitting || serverTargetGeneration !== generation,
+      moveId: move.moveId,
       serverUrl: move.target.url,
       timeoutMs: SERVER_MOVE_DESTINATION_TIMEOUT_MS,
     });

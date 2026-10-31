@@ -19,6 +19,7 @@ import {
 } from "@bb/config/bb-app-managed-config";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import { isProcessRunning } from "@bb/config/verified-process-stop";
+import { fetchServerHealth, serverHealthUrl } from "@bb/host-daemon-contract";
 import {
   assertServerArchiveFormat,
   extractServerArchive,
@@ -50,11 +51,6 @@ const MOVED_SERVER_PROBE_TIMEOUT_MS = 5_000;
 const VERSION_PATTERN =
   /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u;
 const NUMERIC_IDENTIFIER_PATTERN = /^\d+$/u;
-
-const healthResponseSchema = z.object({
-  ok: z.literal(true),
-  serverMove: z.object({ state: z.string() }).optional(),
-});
 
 export interface ServerImportArgs {
   archivePath: string;
@@ -122,16 +118,11 @@ export interface ProbeMovedServerArgs {
 }
 
 async function isHealthyServer(serverUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${serverUrl}/health`, {
-      signal: AbortSignal.timeout(MOVED_SERVER_PROBE_TIMEOUT_MS),
-    });
-    if (response.status !== 200) return false;
-    const health = healthResponseSchema.safeParse(await response.json());
-    return health.success && health.data.serverMove?.state !== "pending";
-  } catch {
-    return false;
-  }
+  const health = await fetchServerHealth({
+    init: { signal: AbortSignal.timeout(MOVED_SERVER_PROBE_TIMEOUT_MS) },
+    url: serverHealthUrl(serverUrl),
+  });
+  return health !== null && health.serverMove?.state !== "pending";
 }
 
 async function readMovedServerHeaders(
