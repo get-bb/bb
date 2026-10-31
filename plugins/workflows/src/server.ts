@@ -1,3 +1,8 @@
+import {
+  retryConsentContract,
+  retryConsentMethod,
+  type RetryConsent,
+} from "./retry-consent.js";
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
@@ -98,6 +103,12 @@ export default async function plugin(bb: BbPluginApi) {
       ),
   );
   registerWorkflowCli(bb, service);
+  bb.rpc.register(retryConsentContract, {
+    [retryConsentMethod]: async ({ threadId }): Promise<RetryConsent> =>
+      (await bb.sdk.threads.get({ threadId })).originPluginId === bb.pluginId
+        ? { kind: "decline", reason: "Workflows owns worker retries" }
+        : { kind: "allow" },
+  });
 
   function workflowForThread(threadId: string, runId: string | null) {
     const run =
