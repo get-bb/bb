@@ -28,8 +28,14 @@ async function useFlagVariant(harness: TestAppHarness) {
             key: "setup-guide-redesign",
             enabled: true,
             variant: "new",
+            metadata: { id: 1, version: 1 },
+          },
+          "onboarding-featured-plugins": {
+            key: "onboarding-featured-plugins",
+            enabled: true,
+            variant: "new",
             metadata: {
-              id: 1,
+              id: 2,
               version: 1,
               payload: JSON.stringify({ plugins: ["memory", "tasks"] }),
             },
@@ -65,7 +71,7 @@ describe("setup guide route", () => {
     });
   });
 
-  it("serves the flag variant without exposing its source", async () => {
+  it("serves the guide variant and the plugin flag's list without exposing sources", async () => {
     await withTestHarness(async (harness) => {
       const { fetch } = await useFlagVariant(harness);
 
@@ -99,12 +105,24 @@ describe("setup guide route", () => {
           },
         },
         {
+          name: "$feature_flag_called",
+          properties: {
+            $feature_flag: "onboarding-featured-plugins",
+            $feature_flag_response: "new",
+          },
+        },
+        {
           name: "onboarding_exposed",
           properties: {
             entry: "first_run",
             setup_guide_variant: "new",
             setup_guide_source: "flag",
-            $set: { setup_guide_variant: "new" },
+            featured_plugins_variant: "new",
+            featured_plugins_source: "flag",
+            $set: {
+              setup_guide_variant: "new",
+              featured_plugins_variant: "new",
+            },
           },
         },
       ]);
@@ -136,6 +154,7 @@ describe("setup guide route", () => {
             surface: "onboarding",
             entry: "first_run",
             setup_guide_variant: "new",
+            featured_plugins_variant: "new",
           },
         },
         { name: "new_thread_submit", properties: { outcome: "accepted" } },

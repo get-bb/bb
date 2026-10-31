@@ -347,9 +347,11 @@ export function registerSystemRoutes(
   });
 
   get(routes.setupGuide, async (context) => {
-    const { variant, featuredPluginEntryIds } =
-      await deps.setupGuideExperiment.resolve();
-    return context.json({ variant, featuredPluginEntryIds });
+    const { guide, plugins } = await deps.setupGuideExperiment.resolve();
+    return context.json({
+      variant: guide.variant,
+      featuredPluginEntryIds: plugins.featuredPluginEntryIds,
+    });
   });
 
   post(routes.recordTelemetryEvent, async (context, payload) => {

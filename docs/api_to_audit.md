@@ -3936,15 +3936,16 @@ at all and, if so, how they are namespaced and rate limited.
 
 Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new",
 featuredPluginEntryIds: string[] | null }`, the first-run setup guide this
-install sees. The server resolves it once per process, on the first call:
-`BB_SETUP_GUIDE_VARIANT` wins; with telemetry off or unavailable (dev builds,
-no PostHog key, opt-out) it is `control`; otherwise the assignment saved in
-`<dataDir>/setup-guide-assignment.json`, else PostHog's `setup-guide-redesign`
-flag evaluated for the anonymous install id (3 s timeout). Any failure, a
-missing or disabled flag, or an unknown variant is `control`.
-`featuredPluginEntryIds` comes from the `new` variant's payload
-(`{"plugins": [...]}` of bb-official entry ids); `null` means use the default
-list. The assignment is saved when the app reports `onboarding_exposed`
+install sees. The server resolves it once per process, on the first call,
+from two independent PostHog flags evaluated in one request for the anonymous
+install id (3 s timeout): `setup-guide-redesign` sets `variant`, and
+`onboarding-featured-plugins` sets `featuredPluginEntryIds` from its `new`
+variant's payload (`{"plugins": [...]}` of bb-official entry ids; `null` means
+use the default list). Each flag is `control` on its own with telemetry off or
+unavailable (dev builds, no PostHog key, opt-out), on any failure, or for a
+missing, disabled, or unknown variant. Assignments saved in
+`<dataDir>/setup-guide-assignment.json` win over a new evaluation, and
+`BB_SETUP_GUIDE_VARIANT` forces only `variant`. Both assignments are saved when the app reports `onboarding_exposed`
 through `experimental_recordTelemetryEvent`. Core caller:
 `apps/app/src/components/onboarding/OnboardingGate.tsx`.
 
