@@ -7,8 +7,10 @@ import {
   type MarkdownThreadMentions,
 } from "@/components/ui/markdown-preview";
 import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
-import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
-import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import {
+  useMessageLinkRouting,
+  useThreadTimelineNavigation,
+} from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
   buildEnvironmentFileContentUrl,
@@ -51,19 +53,7 @@ type PluginMarkdownDocument = NonNullable<
 >;
 
 function usePluginMarkdownMessageRouting() {
-  const timelineNavigation = useThreadTimelineNavigation();
-  const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
-  const threadId = timelineNavigation?.threadId;
-  const workspaceRootPath = timelineNavigation?.workspaceRootPath;
-  return useMemo(
-    () =>
-      buildMarkdownMessageLinkRouting({
-        onOpenLocalFileLink,
-        threadId,
-        workspaceRootPath,
-      }),
-    [onOpenLocalFileLink, threadId, workspaceRootPath],
-  );
+  return useMessageLinkRouting(useThreadTimelineNavigation()?.threadId);
 }
 
 function PluginDocumentMarkdown({

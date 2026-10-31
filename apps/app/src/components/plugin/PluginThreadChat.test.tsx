@@ -55,12 +55,19 @@ vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ isLocalDaemonHost: () => true }),
 }));
 
-vi.mock("@/views/thread-detail/ThreadScreen", () => ({
-  ThreadScreen: (props: Record<string, unknown>) => {
-    mocks.threadScreenProps.push(props);
-    return <div data-testid="thread-screen" />;
-  },
-}));
+vi.mock("@/views/thread-detail/ThreadScreen", async () => {
+  const { useThreadTimelineNavigation } =
+    await import("@/components/thread/timeline/ThreadTimelineNavigationContext");
+  return {
+    ThreadScreen: function ThreadScreen(props: Record<string, unknown>) {
+      mocks.threadScreenProps.push({
+        ...props,
+        navigation: useThreadTimelineNavigation(),
+      });
+      return <div data-testid="thread-screen" />;
+    },
+  };
+});
 
 vi.mock("@/components/thread/timeline", () => ({
   useThreadTimelineController: () => ({ timelineRows: [] }),
@@ -147,7 +154,10 @@ describe("PluginThreadChat", () => {
       tone: "sidebar",
     });
     expect(props.composer).toEqual(
-      expect.objectContaining({ contextEnvironmentId: null, permissionPolicy: "snapshot" }),
+      expect.objectContaining({
+        contextEnvironmentId: null,
+        permissionPolicy: "snapshot",
+      }),
     );
   });
 
@@ -172,7 +182,6 @@ describe("PluginThreadChat", () => {
 
   it("uses the surrounding thread detail navigation for timeline links", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
-    const onOpenLink = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
     const workspaceMentionHandler = vi.fn();
     const resolveMentionLink = vi.fn(() => workspaceMentionHandler);
@@ -182,7 +191,6 @@ describe("PluginThreadChat", () => {
         <MemoryRouter>
           <ThreadTimelineNavigationProvider
             environmentId={null}
-            onOpenLink={onOpenLink}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={resolveMentionLink}
             workspaceRootPath="/workspace"
@@ -197,9 +205,8 @@ describe("PluginThreadChat", () => {
       expect(screen.getByTestId("thread-screen")).toBeTruthy(),
     );
     const props = mocks.threadScreenProps.at(-1)!;
-    expect(props.workspaceRootPath).toBe("/workspace");
-    expect(props.timelineHost).toEqual(
-      expect.objectContaining({ onOpenLink }),
+    expect(props.navigation).toEqual(
+      expect.objectContaining({ workspaceRootPath: "/workspace" }),
     );
 
     const embeddedResolveMentionLink = props.resolveMentionLink as (resource: {
@@ -247,11 +254,11 @@ describe("PluginThreadChat", () => {
     );
 
     await waitFor(() =>
-      expect(mocks.threadScreenProps.at(-1)?.workspaceRootPath).toBe(
-        "/workspace",
+      expect(mocks.threadScreenProps.at(-1)?.navigation).toEqual(
+        expect.objectContaining({ workspaceRootPath: "/workspace" }),
       ),
     );
-    const timelineHost = mocks.threadScreenProps.at(-1)!.timelineHost as {
+    const timelineHost = mocks.threadScreenProps.at(-1)!.navigation as {
       onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
     };
     const lineRange = { startLineNumber: 3, endLineNumber: 5 };

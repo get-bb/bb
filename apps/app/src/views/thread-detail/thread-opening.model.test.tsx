@@ -115,7 +115,6 @@ function OpenedThread() {
         timelineRows={timeline.timelineRows}
         unreadDividerAutoScroll={unreadDividerState.autoScroll}
         unreadDividerPlacement={unreadDividerState.placement}
-        workspaceRootPath={undefined}
       />
     </BottomAnchoredScrollBody>
   );

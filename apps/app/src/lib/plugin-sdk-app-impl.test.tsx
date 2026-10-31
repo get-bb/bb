@@ -90,7 +90,6 @@ describe("plugin SDK Markdown", () => {
   );
 
   it("uses the surrounding thread detail navigation for file and web links", async () => {
-    const onOpenLink = vi.fn(() => false);
     const openUrl = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
     const Markdown = pluginSdkAppImplementation.Markdown;
@@ -99,7 +98,6 @@ describe("plugin SDK Markdown", () => {
       <AppNavigationHostProvider capabilities={{ openUrl }}>
         <ThreadTimelineNavigationProvider
           environmentId={null}
-          onOpenLink={onOpenLink}
           onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={() => null}
           threadId="thr_plugin"
@@ -126,7 +124,6 @@ describe("plugin SDK Markdown", () => {
     expect(openUrl).toHaveBeenCalledWith({
       url: "https://example.com/docs",
     });
-    expect(onOpenLink).not.toHaveBeenCalled();
   });
 
   it.each(["workspace", "thread-storage"] as const)(
@@ -160,7 +157,6 @@ describe("plugin SDK Markdown", () => {
           >
             <ThreadTimelineNavigationProvider
               environmentId="env_other"
-              onOpenLink={() => false}
               onOpenLocalFileLink={() => {
                 throw new Error("Used ambient workspace");
               }}
@@ -214,7 +210,6 @@ describe("plugin SDK Markdown", () => {
         <AppNavigationHostProvider capabilities={{ openFilePreview }}>
           <ThreadTimelineNavigationProvider
             environmentId={null}
-            onOpenLink={() => false}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={() => null}
             threadId="thr_document"

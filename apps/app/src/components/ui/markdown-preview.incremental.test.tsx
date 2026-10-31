@@ -21,7 +21,8 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { RouteNavigationProvider } from "./app-route-anchor";
-import { buildMarkdownMessageLinkRouting } from "./markdown-message-link-routing";
+import type { MarkdownLinkRouting } from "./markdown-link-routing";
+import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import {
   buildMessageDirectiveRegistry,
   MESSAGE_DIRECTIVE_MOUNT_LIMIT,
@@ -108,11 +109,19 @@ const messageDirectives = {
   legacy: legMessageDirectives("legacy"),
 };
 
-const linkRouting = buildMarkdownMessageLinkRouting({
-  onOpenLocalFileLink: () => true,
-  threadId: "thr_stream",
-  workspaceRootPath: "/workspace",
-});
+const WORKSPACE_PATHS = { baseDir: "/workspace", rootPath: "/workspace" };
+const linkRouting: MarkdownLinkRouting = {
+  localFile: {
+    absoluteLinks: { kind: "trusted-host" },
+    onOpenLink: () => true,
+    relativeLinks: WORKSPACE_PATHS,
+  },
+  localImage: {
+    absolutePaths: { kind: "trusted-host" },
+    relativePaths: WORKSPACE_PATHS,
+    resolveSrc: ({ path }) => buildThreadHostFileContentUrl("thr_stream", path),
+  },
+};
 
 const threadMentions = { mentions: [], preserveSoftBreaks: false };
 const sectionNamesById = new Map<string, string>();

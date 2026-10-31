@@ -1547,13 +1547,10 @@ function ThreadDetailViewInternal(
         environmentHostName: threadEnvironmentHost?.name ?? null,
         includePluginMessageActions: true,
         onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-        onOpenLink: handleOpenTimelineLink,
-        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
         onTitleAction: handleTimelineTitleAction,
         unreadDividerAutoScroll: unreadDividerState.autoScroll,
         unreadDividerPlacement: unreadDividerState.placement,
       }}
-      workspaceRootPath={environment?.path ?? undefined}
     />
   );
   const renderSecondaryTabContent = (
@@ -1675,44 +1672,33 @@ function ThreadDetailViewInternal(
             ? undefined
             : renderSecondaryTabContent(originalTab);
         return (
-          <ThreadTimelineNavigationProvider
-            environmentId={thread.environmentId}
-            onOpenLink={handleOpenTimelineLink}
-            onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
-            resolveMentionLink={resolveMentionLink}
-            threadId={thread.id}
-            workspaceRootPath={environment?.path ?? undefined}
-          >
-            <PluginPanelTabContent
-              tab={tab}
-              context={{
-                kind: "thread",
-                threadId: thread.id,
-                environment: threadTabEnvironment,
-              }}
-              fileOpenerOriginal={fileOpenerOriginal}
-            />
-          </ThreadTimelineNavigationProvider>
+          <PluginPanelTabContent
+            tab={tab}
+            context={{
+              kind: "thread",
+              threadId: thread.id,
+              environment: threadTabEnvironment,
+            }}
+            fileOpenerOriginal={fileOpenerOriginal}
+          />
         );
       }
     }
   };
   const panelTabs: readonly SecondaryPanelRenderableTab[] =
-    syncedOrderedSecondaryFileTabs.map(
-      (tab): SecondaryPanelRenderableTab => ({
-        ...presentPanelTab(tab),
-        tab,
-        renderContent: () => renderSecondaryTabContent(tab),
-        onSelect:
-          tab.kind === "terminal"
-            ? () => terminals.select(tab.terminalId)
-            : () => handleActivateFileTab(tab.id),
-        onClose:
-          tab.kind === "terminal"
-            ? () => terminals.close(tab.terminalId)
-            : () => closeTab(tab.id),
-      }),
-    );
+    syncedOrderedSecondaryFileTabs.map((tab): SecondaryPanelRenderableTab => ({
+      ...presentPanelTab(tab),
+      tab,
+      renderContent: () => renderSecondaryTabContent(tab),
+      onSelect:
+        tab.kind === "terminal"
+          ? () => terminals.select(tab.terminalId)
+          : () => handleActivateFileTab(tab.id),
+      onClose:
+        tab.kind === "terminal"
+          ? () => terminals.close(tab.terminalId)
+          : () => closeTab(tab.id),
+    }));
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -1721,86 +1707,94 @@ function ThreadDetailViewInternal(
         browserTabs={browserTabs}
         threadId={thread.id}
       />
-      <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-        <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
-          <AppPanelTabsPublisher
-            publish={panel.publishTabs}
-            activeTabId={activeFixedSecondaryTabId}
-            actionContext={THREAD_TAB_CONTEXT}
-            fixedTabs={secondaryPanelFixedTabs}
-            isOpen={isSecondaryPanelOpen}
-            tabs={panelTabs}
-          />
-          {threadFixedTabs.observers}
-          <ThreadDetailSecondaryContent
-            header={timelineHeader}
-            main={threadScreen}
-            isMetadataLoading={
-              !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
-            }
-            isSecondaryPanelOpen={isSecondaryPanelOpen}
-            isConversationCollapsed={isConversationCollapsed}
-            isBoundedPane={isBoundedPane}
-            onToggleSecondaryPanel={toggleSecondaryPanel}
-            onToggleConversationCollapse={toggleConversationCollapse}
-            renderHostedPanel={(panel) => (
-              <MarkdownLocalFileContextMenuContext.Provider
-                value={getLocalFileContextMenuItems}
-              >
-                <MarkdownLocalFileOpenTargetsContext.Provider
-                  value={fileOpenTargets}
+      <ThreadTimelineNavigationProvider
+        environmentId={thread.environmentId}
+        onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+        resolveMentionLink={resolveMentionLink}
+        threadId={thread.id}
+        workspaceRootPath={environment?.path ?? undefined}
+      >
+        <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
+          <AppNavigationHostProvider capabilities={appNavigationCapabilities}>
+            <AppPanelTabsPublisher
+              publish={panel.publishTabs}
+              activeTabId={activeFixedSecondaryTabId}
+              actionContext={THREAD_TAB_CONTEXT}
+              fixedTabs={secondaryPanelFixedTabs}
+              isOpen={isSecondaryPanelOpen}
+              tabs={panelTabs}
+            />
+            {threadFixedTabs.observers}
+            <ThreadDetailSecondaryContent
+              header={timelineHeader}
+              main={threadScreen}
+              isMetadataLoading={
+                !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
+              }
+              isSecondaryPanelOpen={isSecondaryPanelOpen}
+              isConversationCollapsed={isConversationCollapsed}
+              isBoundedPane={isBoundedPane}
+              onToggleSecondaryPanel={toggleSecondaryPanel}
+              onToggleConversationCollapse={toggleConversationCollapse}
+              renderHostedPanel={(panel) => (
+                <MarkdownLocalFileContextMenuContext.Provider
+                  value={getLocalFileContextMenuItems}
                 >
-                  <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-                    {panel}
-                  </UrlOpenRoutingProvider>
-                </MarkdownLocalFileOpenTargetsContext.Provider>
-              </MarkdownLocalFileContextMenuContext.Provider>
-            )}
-            metadata={{
-              thread,
-              projectId,
-              parentThreadProjectId: parentThread?.projectId ?? null,
-              parentThreadDisplayName: parentThreadDisplayName ?? null,
-              parentThreads,
-              canAssignToParent,
-              canTakeOverThread,
-              isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
-              isParentThreadsError: parentThreadSubsetQuery.isError,
-              environment: environment ?? null,
-              environmentProvisioningFailure,
-              environmentDisplayHost: environmentDisplayHostContext,
-              threadEnvironmentId: threadTabEnvironmentId,
-              updateThreadPending:
-                updateThread.isPending || updateEnvironment.isPending,
-              storage: metadataStorage,
-              onAssignParent: handleAssignParent,
-              onParentSelectorOpenChange: handleParentSelectorOpenChange,
-              onRetryParentThreads: handleRetryParentThreads,
-            }}
-            secondaryPanel={{
-              canNavigateTabs: isFocused,
-              activeTab: activeFixedSecondaryTab,
-              areFixedTabsReady: threadFixedTabs.isReady,
-              environmentId: thread.environmentId ?? undefined,
-              workspaceRootPath: environment?.path,
-              tabs: panelTabs,
-              fixedTabs: secondaryPanelFixedTabs,
-              splitPanelStateId: thread.id,
-              renderBrowserDeck,
-              isOpen: isSecondaryPanelOpen,
-              showFullScreenShortcut: true,
-              onClose: panel.close,
-              onCollapse: panel.close,
-              onOpenFileInEditor: handleOpenFileInEditor,
-              onTabReorder: reorderTab,
-              onOpenNewTab: handleOpenNewTab,
-              onOpenFilePreview: handleOpenFilePreview,
-              onSelectionAddToChat: handleSelectionAddToChat,
-              onPanelFocus: touchFixedPanelTabsState,
-            }}
-          />
-        </AppNavigationHostProvider>
-      </UrlOpenRoutingProvider>
+                  <MarkdownLocalFileOpenTargetsContext.Provider
+                    value={fileOpenTargets}
+                  >
+                    <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
+                      {panel}
+                    </UrlOpenRoutingProvider>
+                  </MarkdownLocalFileOpenTargetsContext.Provider>
+                </MarkdownLocalFileContextMenuContext.Provider>
+              )}
+              metadata={{
+                thread,
+                projectId,
+                parentThreadProjectId: parentThread?.projectId ?? null,
+                parentThreadDisplayName: parentThreadDisplayName ?? null,
+                parentThreads,
+                canAssignToParent,
+                canTakeOverThread,
+                isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
+                isParentThreadsError: parentThreadSubsetQuery.isError,
+                environment: environment ?? null,
+                environmentProvisioningFailure,
+                environmentDisplayHost: environmentDisplayHostContext,
+                threadEnvironmentId: threadTabEnvironmentId,
+                updateThreadPending:
+                  updateThread.isPending || updateEnvironment.isPending,
+                storage: metadataStorage,
+                onAssignParent: handleAssignParent,
+                onParentSelectorOpenChange: handleParentSelectorOpenChange,
+                onRetryParentThreads: handleRetryParentThreads,
+              }}
+              secondaryPanel={{
+                canNavigateTabs: isFocused,
+                activeTab: activeFixedSecondaryTab,
+                areFixedTabsReady: threadFixedTabs.isReady,
+                environmentId: thread.environmentId ?? undefined,
+                workspaceRootPath: environment?.path,
+                tabs: panelTabs,
+                fixedTabs: secondaryPanelFixedTabs,
+                splitPanelStateId: thread.id,
+                renderBrowserDeck,
+                isOpen: isSecondaryPanelOpen,
+                showFullScreenShortcut: true,
+                onClose: panel.close,
+                onCollapse: panel.close,
+                onOpenFileInEditor: handleOpenFileInEditor,
+                onTabReorder: reorderTab,
+                onOpenNewTab: handleOpenNewTab,
+                onOpenFilePreview: handleOpenFilePreview,
+                onSelectionAddToChat: handleSelectionAddToChat,
+                onPanelFocus: touchFixedPanelTabsState,
+              }}
+            />
+          </AppNavigationHostProvider>
+        </UrlOpenRoutingProvider>
+      </ThreadTimelineNavigationProvider>
     </MarkdownLocalFileContextMenuContext.Provider>
   );
   return (

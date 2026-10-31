@@ -680,11 +680,11 @@ describe("MarkdownPreview", () => {
   it("scrolls in-page fragment links to their target inside the same preview", () => {
     const onOpenLink = vi.fn(() => true);
     const scrolled: string[] = [];
-    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (
-      this: Element,
-    ) {
-      scrolled.push(this.id);
-    });
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(
+      function (this: Element) {
+        scrolled.push(this.id);
+      },
+    );
     render(
       <>
         <MarkdownPreview content="## Plain heading" />
