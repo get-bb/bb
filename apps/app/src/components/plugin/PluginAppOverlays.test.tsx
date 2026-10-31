@@ -35,10 +35,6 @@ vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
   ThreadDeleteDialog: () => null,
 }));
 
-vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
-  ThreadRenameDialog: () => null,
-}));
-
 vi.mock("@/hooks/mutations/thread-state-mutations", () => {
   const mutation = () => ({
     isPending: false,

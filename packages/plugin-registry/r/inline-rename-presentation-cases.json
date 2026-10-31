@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "inline-rename-presentation-cases",
+  "type": "registry:ui",
+  "title": "inline-rename-presentation-cases",
+  "description": "BB ui \"inline-rename-presentation-cases\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/inline-rename-presentation-cases.ts",
+      "content": "export type RenamePresentationOutcome = \"inline\" | \"dialog\" | \"none\";\n\nexport interface RenamePresentationCase {\n  compact: boolean;\n  coarse: boolean;\n  menu: RenamePresentationOutcome;\n  direct: RenamePresentationOutcome;\n  doubleClick: RenamePresentationOutcome;\n}\n\nexport const RENAME_PRESENTATION_CASES: readonly RenamePresentationCase[] = [\n  {\n    compact: false,\n    coarse: false,\n    menu: \"inline\",\n    direct: \"inline\",\n    doubleClick: \"inline\",\n  },\n  {\n    compact: true,\n    coarse: false,\n    menu: \"dialog\",\n    direct: \"dialog\",\n    doubleClick: \"inline\",\n  },\n  {\n    compact: false,\n    coarse: true,\n    menu: \"dialog\",\n    direct: \"dialog\",\n    doubleClick: \"none\",\n  },\n  {\n    compact: true,\n    coarse: true,\n    menu: \"dialog\",\n    direct: \"dialog\",\n    doubleClick: \"none\",\n  },\n];\n",
+      "type": "registry:ui",
+      "target": "components/ui/inline-rename-presentation-cases.ts"
+    }
+  ]
+}

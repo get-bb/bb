@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "rename-session-dialog",
+  "type": "registry:ui",
+  "title": "rename-session-dialog",
+  "description": "BB ui \"rename-session-dialog\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/dialog",
+    "@bb/inline-rename",
+    "@bb/input",
+    "@bb/rename-dialog"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/rename-session-dialog.tsx",
+      "content": "import { useId, type FormEvent, type RefObject } from \"react\";\nimport { Button } from \"./button\";\nimport {\n  DialogDescription,\n  DialogFooter,\n  DialogHeader,\n  DialogTitle,\n} from \"./dialog\";\nimport { Input } from \"./input\";\nimport { RenameDialog } from \"./rename-dialog\";\nimport {\n  useRenameSession,\n  type RenameController,\n  type RenameSession,\n} from \"./inline-rename\";\n\nexport function RenameSessionDialog({\n  controller,\n}: {\n  controller: RenameController;\n}) {\n  const session = useRenameSession(controller);\n  const open = session?.presentation === \"dialog\";\n  return (\n    <RenameDialog\n      open={open}\n      onOpenChange={(nextOpen) => {\n        if (!nextOpen) controller.cancel();\n      }}\n      shellClassName=\"max-w-[24rem] sm:gap-3 sm:p-5\"\n    >\n      {(inputRef) =>\n        session?.presentation === \"dialog\" ? (\n          <RenameSessionDialogContent\n            session={session}\n            controller={controller}\n            inputRef={inputRef}\n          />\n        ) : null\n      }\n    </RenameDialog>\n  );\n}\n\nfunction RenameSessionDialogContent({\n  session,\n  controller,\n  inputRef,\n}: {\n  session: RenameSession;\n  controller: RenameController;\n  inputRef: RefObject<HTMLInputElement | null>;\n}) {\n  const inputId = useId();\n  const errorId = useId();\n  const isPending = Boolean(session.pending);\n  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {\n    event.preventDefault();\n    void controller.save();\n  };\n\n  return (\n    <>\n      <DialogHeader>\n        <DialogTitle>Rename {session.kind}</DialogTitle>\n        <DialogDescription>\n          Choose a new name for this {session.kind}.\n        </DialogDescription>\n      </DialogHeader>\n      <form className=\"space-y-3\" onSubmit={handleSubmit}>\n        <div className=\"space-y-1.5\">\n          <Input\n            ref={inputRef}\n            id={inputId}\n            aria-label={session.label}\n            aria-invalid={Boolean(session.error)}\n            aria-describedby={session.error ? errorId : undefined}\n            value={session.draft}\n            placeholder={session.placeholder}\n            autoCapitalize=\"sentences\"\n            autoCorrect=\"off\"\n            spellCheck={false}\n            readOnly={isPending || session.cannotRetry}\n            onChange={(event) => controller.change(event.target.value)}\n          />\n          {session.error ? (\n            <p id={errorId} role=\"alert\" className=\"text-sm text-destructive\">\n              {session.error}\n            </p>\n          ) : null}\n        </div>\n        <DialogFooter>\n          {session.onClear && session.name ? (\n            <Button\n              type=\"button\"\n              variant=\"outline\"\n              disabled={isPending || session.cannotRetry}\n              onClick={() => void controller.save(true)}\n            >\n              Clear custom name\n            </Button>\n          ) : null}\n          <Button type=\"submit\" disabled={isPending || session.cannotRetry}>\n            Rename {session.kind}\n          </Button>\n        </DialogFooter>\n      </form>\n    </>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/rename-session-dialog.tsx"
+    }
+  ]
+}

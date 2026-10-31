@@ -1,20 +1,20 @@
 import { useId, type FormEvent, type RefObject } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "./button";
 import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { RenameDialog } from "@/components/ui/rename-dialog";
+} from "./dialog";
+import { Input } from "./input";
+import { RenameDialog } from "./rename-dialog";
 import {
   useRenameSession,
   type RenameController,
   type RenameSession,
-} from "@/components/ui/inline-rename";
+} from "./inline-rename";
 
-export function SidebarRenameDialog({
+export function RenameSessionDialog({
   controller,
 }: {
   controller: RenameController;
@@ -31,7 +31,7 @@ export function SidebarRenameDialog({
     >
       {(inputRef) =>
         session?.presentation === "dialog" ? (
-          <SidebarRenameDialogContent
+          <RenameSessionDialogContent
             session={session}
             controller={controller}
             inputRef={inputRef}
@@ -42,7 +42,7 @@ export function SidebarRenameDialog({
   );
 }
 
-function SidebarRenameDialogContent({
+function RenameSessionDialogContent({
   session,
   controller,
   inputRef,
