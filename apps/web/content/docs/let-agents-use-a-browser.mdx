@@ -1,0 +1,92 @@
+---
+title: Let agents use a browser or your computer
+description: Install the Browser Automation plugin, then ask an agent to use a desktop or headless browser. Claude in Chrome and Codex Computer Use are the agents' own.
+type: how-to
+sources:
+  - plugins/browser-automation/**
+  - apps/cli/src/commands/browser.ts
+  - apps/app/src/components/settings/BrowserSettingsSection.tsx
+  - apps/app/src/components/secondary-panel/BrowserTabContent.tsx
+  - apps/desktop/src/browser-import/sources.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/provider-codex/src/mcp-elicitation.ts
+since: 0.43.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+Agents drive a browser through the **Browser Automation** plugin. It comes with bb but isn't installed until you install it. The browser in a thread's side panel is for you.
+
+## Turn on Browser Automation
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar and search for **Browser Automation** (listed by BB Official).
+2. Click it, click **Install**, then confirm. It turns on when installed.
+3. To turn it off or on later, use its switch under **Plugins → Installed plugins**.
+
+<Screenshot
+  src="/docs-images/let-agents-use-a-browser/browse-plugins"
+  alt="Searching Plugins for Browser Automation shows its card, listed by BB Official."
+  width={924}
+  height={216}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin install browser-automation --yes
+```
+
+If you turned it off earlier: `bb plugin enable browser-automation`.
+
+</Tab>
+</Tabs>
+
+You can also ask an agent in any thread to turn it on.
+
+## Ask an agent to use the browser
+
+Say which browser you want. The plugin never picks one for you.
+
+| Browser | What it is | Needs | What you see |
+| --- | --- | --- | --- |
+| **Desktop** | A tab in the bb desktop app's browser, with your signed-in cookies | The bb desktop app open on that machine | The tab in the thread's side panel, with **Stop** and **Take over** while the agent controls it |
+| **Local headless** | A separate Chrome with an empty profile | Chrome or Chromium on that machine | A live preview in the thread that you can expand |
+
+```text title="Prompt"
+Start the dev server, then open http://localhost:3000 in a local headless browser on this machine and take a screenshot of the sign-up page.
+```
+
+Sessions end after 30 minutes (headless: without activity; desktop: at most). Ask the agent to open a new one.
+
+## Sign the bb browser in to your sites
+
+Desktop sessions use the bb browser's own profile. To copy your logins from another browser:
+
+1. Quit the other browser.
+2. Open **Settings → Browser** in the bb desktop app.
+3. Choose the browser and profile to copy cookies from.
+
+The import is a one-time copy, desktop app only, on macOS and Linux. From a terminal: `bb browser import-sources`, then `bb browser import-cookies`.
+
+## Use Claude in Chrome or Codex Computer Use
+
+These come from the agents, not from bb:
+
+- **Claude in Chrome:** turn it on in **Settings → Claude Code provider**. It needs the Claude in Chrome extension in your Chrome and a claude.ai login on that machine.
+- **Codex Computer Use:** bb shows an "Allow Codex to use …?" card. macOS also asks for Accessibility and Screen Recording access the first time.
+
+## Check it worked
+
+- **Plugins → Installed plugins** shows Browser Automation switched on, or `bb plugin list` shows it enabled.
+- Ask an agent to screenshot `https://example.com` in a local headless browser. A live preview appears in the thread.
+
+## Related troubleshooting
+
+- **The agent says no desktop browser is connected:** open the bb desktop app on that machine, or ask for a local headless browser.
+- **A headless session fails to start:** install Chrome or Chromium on that machine.
+- **Settings → Browser says "Only available in the BB desktop app.":** cookie import works only in the desktop app.
+- **A browser is missing from the import list:** quit it, then press **Refresh**.

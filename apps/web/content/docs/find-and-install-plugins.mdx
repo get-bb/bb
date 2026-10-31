@@ -1,0 +1,117 @@
+---
+title: Find and install plugins
+description: Browse plugins in the sidebar or at getbb.app/marketplace, or install from a repository, npm or a folder. Plugins get full access, so install trusted ones.
+type: how-to
+sources:
+  - apps/app/src/components/plugin/**
+  - apps/app/src/components/settings/MarketplacesSettingsSection.tsx
+  - apps/cli/src/commands/plugin.ts
+  - apps/cli/src/commands/marketplace.ts
+  - apps/server/src/services/plugins/builtin-registry.ts
+since: 0.38.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+:::warning
+Plugins run inside the bb server as your user, with access to your computer and all local bb data, including other plugins' secrets. There is no sandbox and no permission list.
+:::
+
+| Source | Reviewed by |
+| --- | --- |
+| **BB Official** | Ships with bb |
+| **BB Community** | The bb team, before it is listed |
+| A marketplace you added | Its owner, not bb |
+| **Direct install** (repository, npm package or folder) | Nobody. Read the code first |
+
+## Install from the marketplace
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar. **Browse plugins** opens.
+2. Search, or filter by **Category**.
+3. Click a plugin, then **Install**.
+4. Check the source the dialog names, and confirm.
+
+The same catalog is at [getbb.app/marketplace](https://getbb.app/marketplace).
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin search "sidebar"
+bb plugin install <name> --yes
+bb plugin install <name>@<marketplace> --yes
+```
+
+</Tab>
+</Tabs>
+
+## Install a plugin that isn't in the marketplace
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Click **Plugins** in the sidebar.
+2. Open the menu next to **New plugin** and choose **Install from source**.
+3. Enter a GitHub repository URL, `npm:package[@version]` or a local path, then click **Install plugin**.
+
+<Screenshot
+  src="/docs-images/find-and-install-plugins/add-plugin"
+  alt="The Add plugin dialog takes a GitHub repository URL, npm package or local path, and warns that plugins run as full-trust code."
+  width={480}
+  height={281}
+/>
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin install https://github.com/owner/bb-plugin-name --yes
+bb plugin install git:https://github.com/owner/bb-plugin-name.git@v1.2.0 --yes
+bb plugin install npm:bb-plugin-name@1.2.0 --yes
+bb plugin install ./path/to/plugin --yes
+```
+
+Add `--subdirectory <path>` for a repository with several plugins. A `git:` source takes a tag, branch, commit or semver range such as `@^1.2.0`.
+
+</Tab>
+</Tabs>
+
+You can also give an agent the repository link and ask it to install the plugin.
+
+## Manage installed plugins
+
+**Plugins → Installed plugins** lists every plugin with an on/off switch. Some that come with bb, such as Workflows, are off until you turn them on.
+
+| Task | Command |
+| --- | --- |
+| List | `bb plugin list` |
+| Turn on or off | `bb plugin enable <id>`, `bb plugin disable <id>` |
+| Update | `bb plugin outdated`, then `bb plugin update <id> --yes` |
+| Uninstall, deleting its settings, secrets and schedules | `bb plugin remove <id>` |
+| Stop every plugin you installed, keeping bb's own | `bb plugin safe-mode on` (`off` to restart them) |
+
+## Add or remove a marketplace
+
+**Settings → Plugin marketplaces** lists the marketplaces bb reads. Adding one only reads its catalog; it never installs or runs code.
+
+```sh
+bb marketplace add git:https://github.com/owner/marketplace.git
+bb marketplace list
+bb marketplace remove <name>
+```
+
+BB Official and BB Community can't be removed. Plugins from a removed marketplace keep running as direct installs.
+
+## Check it worked
+
+- The plugin shows under **Plugins → Installed plugins** switched on.
+- `bb plugin list` lists it as enabled.
+
+## Related troubleshooting
+
+- **The install fails with a version error:** the plugin needs a newer bb. Update bb, or install an older version of the plugin.
+- **"Refusing to install without confirmation":** add `--yes`, or run it in a terminal where you can answer the prompt.
+- **bb stops working after you installed a plugin:** run `bb plugin safe-mode on`, then turn plugins back on one at a time.

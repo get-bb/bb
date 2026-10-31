@@ -1,0 +1,86 @@
+---
+title: View diffs and pull requests
+description: Press Mod+D to see a thread's changes in the Diff tab. The pull request for the thread's branch, and what it is waiting on, shows above the composer.
+type: how-to
+sources:
+  - plugins/git/app.tsx
+  - plugins/git/ui/diff/**
+  - plugins/github-pr-status/**
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+The **Git** plugin shows changes and **GitHub PR Status** shows pull requests; both are on by default.
+
+## See what a thread changed
+
+1. Open the thread.
+2. Press **Mod+D**, or choose the **Diff** tab in the side panel.
+3. Pick what to compare from the menu at the top of the tab:
+
+| Option | Shows |
+| --- | --- |
+| **All changes** | Everything on the branch since its merge base, committed or not |
+| **Committed changes** | Only commits since the merge base |
+| **Uncommitted changes** | Only what isn't committed yet |
+| A single commit | That commit alone |
+
+<Screenshot
+  src="/docs-images/view-diffs-and-pull-requests/diff-tab"
+  alt="The Diff tab shows the All changes menu above each changed file's added and removed lines."
+  width={464}
+  height={344}
+/>
+
+From a terminal: `bb thread show <thread-id> --git-diff`.
+
+## See the thread's pull request
+
+bb shows the pull request for the branch the thread's environment has checked out:
+
+- **Above the composer:** a **Pull request** segment with its number, state and actions such as **Merge**.
+- **Info tab:** a **Pull request** row.
+- **Sidebar:** the PR number on the thread's row, with its check status.
+
+It needs the GitHub CLI signed in on the thread's machine: install `gh` and run `gh auth login`.
+
+From a terminal, pass the environment ID from `bb thread show <thread-id> --json`:
+
+```sh
+bb pull-request show <environment-id>
+bb pull-request ready <environment-id>
+bb pull-request merge <environment-id> --method squash
+```
+
+To hide the segment, turn off **Show pull request above the composer** in the plugin's settings, or run `bb plugin config bb--github-pr-status set showPullRequest false`.
+
+### What the status means
+
+Next to the state, bb shows the first of these that applies:
+
+| Status | Meaning |
+| --- | --- |
+| **Conflicts with** *base* | The branch conflicts with its base branch |
+| **Checks failing** | A check failed, was cancelled or timed out |
+| **Changes requested** | A reviewer requested changes |
+| **Queued to merge** | It is in GitHub's merge queue |
+| **Review required** / **Review requested** | It needs an approving review |
+| **Checks running** | Checks are still running |
+| **Behind** *base* | The branch must be updated with its base |
+| **Blocked by rules** / **Blocked by hooks** | Branch rules or a merge hook block it |
+| **Ready to merge** | Mergeable, with passing checks |
+| **Checks passing**, **No checks**, **Checks unknown** | Nothing else is pending |
+
+**Auto-merge** shows when auto-merge is on.
+
+## Check it worked
+
+- The **Diff** tab lists the changed files for the option you chose.
+- After you push a branch with a pull request, the **Pull request** segment shows its number.
+
+## Related troubleshooting
+
+- **No pull request shows:** run `gh auth status` on the thread's machine, and check the thread's branch is the pull request's head.
+- **The wrong pull request shows:** bb picks it like `gh pr view`. Run `gh repo set-default` if the base repository is wrong, or check out the branch you want.
+- **A file says "No renderable diff for this file.":** use **Open file** to view it.

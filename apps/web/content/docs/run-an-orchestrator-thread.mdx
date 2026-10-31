@@ -1,0 +1,71 @@
+---
+title: Run an orchestrator thread
+description: An orchestrator is a long-lived thread that hands work to child threads and checks it. Give it standing instructions, pin it, and pick models per role.
+type: how-to
+sources:
+  - apps/cli/src/commands/thread/spawn.ts
+  - apps/cli/src/commands/thread/actions.ts
+  - plugins/bb-guide/skills/bb-cli/SKILL.md
+  - plugins/concurrency-limit/**
+  - plugins/workflows/PLUGIN_OVERVIEW.md
+since: 0.47.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+An orchestrator is an ordinary bb thread with standing instructions; no special mode. Use one for a stream of work, such as a backlog of issues or PRs to review.
+
+## Set up the orchestrator
+
+1. Start a thread in the project and give it its role. Say explicitly that it delegates:
+
+   ```text title="Prompt"
+   You coordinate work in this project. For each task I give you:
+   - Start one bb child thread per independent part with bb thread spawn --parent-self, each in its own worktree.
+   - Use Codex with medium reasoning for implementation and Claude Code for review.
+   - Never write code yourself. Read each child's result, start a reviewer child for it, and send fixes back to the child that did the work.
+   - When a part is done and reviewed, tell me in one line, and ask me only for decisions you can't make.
+   ```
+
+2. Pin it to the top of the sidebar: choose **Pin** from its thread actions menu, or run `bb thread pin <thread-id>`.
+3. Send it tasks as messages.
+
+<Screenshot
+  src="/docs-images/run-an-orchestrator-thread/orchestrator-sidebar"
+  alt="A pinned orchestrator thread sits at the top of the sidebar with its child threads nested under it."
+  width={272}
+  height={150}
+/>
+
+To give every orchestrator the same rules, put them in the project's `.bb/AGENTS.md` or a skill.
+
+## Patterns that work
+
+| Pattern | How |
+| --- | --- |
+| **Builder and reviewer** | A reviewer child in the builder's environment sees the same files: pass `--environment <environment-id>` (from `bb thread show <thread-id> --json`) to `bb thread spawn` |
+| **Cross-model review** | Name a different agent and model for the reviewer |
+| **One child per PR or issue** | Each child gets its own worktree, so parallel children don't touch each other's files |
+| **Quiet workers** | Start chatty workers with `--parent-notifications stuck` |
+
+For the same steps over many files, use a workflow instead: `bb plugin enable workflows`, then ask the orchestrator to run one. See [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows).
+
+## Keep cost under control
+
+Every child is a full agent session billed to that agent's account, so an orchestrator uses your plan's limits much faster than one thread.
+
+- **Pick models per role:** a cheaper model for routine work, the strongest for review and hard parts.
+- **Limit how many run at once:** the **Concurrency limit** plugin, on by default, holds new turns when a machine already runs one thread per processor. Change it in **Settings → Concurrency limit** or with `bb concurrency-limit global <limit>`.
+- **Limit depth:** say whether children may start children. bb allows at most 4 levels.
+- **Keep its context small:** ask children to end with a short summary, since their final answer is what the orchestrator reads.
+
+## Check it worked
+
+- Child threads appear under the orchestrator in the sidebar, and **Active child threads** above its composer lists the working ones.
+- Its timeline shows a row each time a child finishes, and it reports to you without doing the work.
+
+## Related troubleshooting
+
+- **The orchestrator does the work itself:** restate "never write code yourself" and turn on **Disable provider subagents** for its agent.
+- **Children wait to start:** the concurrency limit is holding them. Raise it or let running threads finish.
+- **It loses track over a long session:** have it keep open tasks in a file, and start a fresh orchestrator from that file.
