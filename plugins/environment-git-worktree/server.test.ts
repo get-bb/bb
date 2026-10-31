@@ -249,6 +249,21 @@ describe("worktree resource operations", () => {
   });
 });
 
+describe("worktree branch naming", () => {
+  it.each([
+    [{ branch: { kind: "default" } }, true],
+    [{ kind: "existing", path: "/elsewhere/bb" }, false],
+  ] as const)(
+    "waits for the generated title for %j: %s",
+    async (inputs, expected) => {
+      const { provider } = await setup();
+      expect(provider.experimental_usesSuggestedBranchName?.(inputs)).toBe(
+        expected,
+      );
+    },
+  );
+});
+
 describe("adopting an existing worktree", () => {
   const EXISTING_PATH = "/code/bb-feature";
 

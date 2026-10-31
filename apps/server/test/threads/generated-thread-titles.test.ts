@@ -1,20 +1,25 @@
 import {
   createThread,
+  getNonDestroyedHostByLaunchKey,
+  getPreparingEnvironment,
   getThread,
   listEvents,
   setAiServiceSelection,
+  setProjectGitRemoteUrlIfMissing,
 } from "@bb/db";
 import {
+  type JsonValue,
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
   threadSchema,
   turnScope,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
+  reportNextEnvironmentAttachSuccess,
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -26,6 +31,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedSession,
   seedThread,
   seedThreadIdentity,
   seedTurnStarted,
@@ -35,7 +41,15 @@ import {
   type TestAppHarness,
 } from "../helpers/test-app.js";
 import { registerFakeAiService } from "../helpers/ai-services.js";
-import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
+import {
+  checkoutProviderInputsSchema,
+  installFakeEnvironmentProvider,
+  installFakeGitWorktreeProvider,
+} from "../helpers/environment-provider.js";
+import { installMachineProvider } from "../helpers/machine-provider.js";
+import type { TestProviderDecision } from "../helpers/provider-decisions.js";
+import type { PluginEnvironmentCompositionRecord } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { setPluginMachineProviderBridge } from "../../src/services/plugins/plugin-machine-provider-registry.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
@@ -155,6 +169,170 @@ function provisioningEntries(harness: TestAppHarness, threadId: string) {
     );
 }
 
+function provisioningKeys(harness: TestAppHarness, threadId: string) {
+  return provisioningEntries(harness, threadId).map((entry) => entry.key);
+}
+
+function namesNewBranch(inputs: unknown): boolean {
+  return checkoutProviderInputsSchema.parse(inputs).branch?.kind === "new";
+}
+
+function installFakeCheckoutProvider(args: {
+  usesSuggestedBranchName: (inputs: unknown) => boolean;
+  compositions?: PluginEnvironmentCompositionRecord[];
+  decision?: TestProviderDecision;
+}) {
+  const decision = args.decision ?? {
+    action: "wait",
+    reason: "Checking out",
+  };
+  return installFakeEnvironmentProvider({
+    id: "project-checkout",
+    pluginId: "environment-project-checkout",
+    displayName: "Project checkout",
+    requires: {
+      projectCheckout: true,
+      gitCheckout: false,
+      gitRemote: false,
+      projectless: false,
+    },
+    inputs: checkoutProviderInputsSchema,
+    usesSuggestedBranchName: args.usesSuggestedBranchName,
+    ...(args.compositions === undefined
+      ? {}
+      : { compositions: args.compositions }),
+    decide: () => decision,
+  });
+}
+
+async function startComposedCheckoutThread(harness: TestAppHarness) {
+  onTestFinished(() => setPluginMachineProviderBridge(undefined));
+  const source = seedHostSession(harness.deps, {
+    id: "host-composed-title-source",
+  });
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: source.host.id,
+  });
+  const remoteUrl = "https://example.test/composed-title.git";
+  const path = "/tmp/composed-title-checkout";
+  setProjectGitRemoteUrlIfMissing(
+    harness.db,
+    harness.hub,
+    project.id,
+    remoteUrl,
+  );
+  const createMachine = vi.fn(async ({ key }: { key: string }) => {
+    const host = getNonDestroyedHostByLaunchKey(harness.db, key);
+    if (host === null) throw new Error("Missing creating machine");
+    seedSession(harness.deps, host.id);
+    return {
+      status: "created" as const,
+      name: "Composed machine",
+      resource: { key },
+    };
+  });
+  const machine = installMachineProvider({ create: createMachine });
+  const provider = installFakeCheckoutProvider({
+    usesSuggestedBranchName: namesNewBranch,
+    compositions: [
+      {
+        pluginId: machine.pluginId,
+        composition: {
+          id: "test-sandbox",
+          displayName: "Test sandbox",
+          description: "Prepare a workspace for this thread.",
+          icon: "Cloud",
+          machineProviderId: machine.provider.id,
+          environmentProviderId: "project-checkout",
+        },
+      },
+    ],
+  });
+
+  const thread = await createThreadFromRequest(harness.deps, {
+    projectId: project.id,
+    environment: {
+      type: "provider",
+      environmentProviderId: "test-sandbox",
+      inputs: { branch: { kind: "new", baseBranch: "main" } },
+    },
+    input: textInput("Launch the sandbox while the title is generated"),
+    providerId: "codex",
+    model: "gpt-5",
+    origin: "app",
+    startedOnBehalfOf: null,
+  });
+
+  await vi.waitFor(() => {
+    expect(createMachine).toHaveBeenCalledTimes(1);
+  });
+  const defaultPath = await waitForQueuedCommand(
+    harness,
+    ({ command }) => command.type === "project.clone_default_path",
+    5_000,
+  );
+  await reportQueuedCommandSuccess(harness, defaultPath, { path });
+  const exists = await waitForQueuedCommand(
+    harness,
+    ({ command }) => command.type === "host.paths_exist",
+  );
+  await reportQueuedCommandSuccess(harness, exists, {
+    existence: { [path]: false },
+  });
+  const clone = await waitForQueuedCommand(
+    harness,
+    ({ command }) => command.type === "project.clone",
+  );
+  await reportQueuedCommandSuccess(harness, clone, {
+    path,
+    gitRemoteUrl: remoteUrl,
+  });
+  await vi.waitFor(() => {
+    expect(completeTitle).toHaveBeenCalledTimes(1);
+    expect(provisioningKeys(harness, thread.id)).toContain("metadata-started");
+  });
+  return { createMachine, provider, thread };
+}
+
+function provisionCheckoutThread(
+  harness: TestAppHarness,
+  args: {
+    hostId: string;
+    inputs: JsonValue;
+    projectId: string;
+    text: string;
+    title?: string;
+  },
+) {
+  const thread = createThread(harness.db, harness.hub, {
+    projectId: args.projectId,
+    environmentId: null,
+    providerId: "codex",
+    status: "starting",
+    title: args.title ?? null,
+    titleFallback: args.text,
+  });
+  requestThreadProvision(harness.deps, {
+    environmentIntent: {
+      type: "provider",
+      environmentProviderId: "project-checkout",
+      machine: { type: "existing", hostId: args.hostId },
+      inputs: args.inputs,
+      selectionResolved: true,
+    },
+    execution: THREAD_START_EXECUTION,
+    fork: null,
+    input: textInput(args.text),
+    startedOnBehalfOf: null,
+    thread,
+    titleProvided: false,
+  });
+  return {
+    thread,
+    advance: advanceThreadProvisioning(harness.deps, { threadId: thread.id }),
+  };
+}
+
 describe("generated thread titles", () => {
   beforeEach(() => {
     completeTitle.mockReset();
@@ -238,8 +416,10 @@ describe("generated thread titles", () => {
         hostId: host.id,
         path: "/tmp/stop-during-metadata-project",
       });
-      const thread = seedThread(harness.deps, {
+      const thread = createThread(harness.db, harness.hub, {
         projectId: project.id,
+        environmentId: null,
+        providerId: "codex",
         status: "starting",
         title: null,
         titleFallback: "Stop during metadata inference",
@@ -366,6 +546,215 @@ describe("generated thread titles", () => {
       );
       expect(completeTitle).toHaveBeenCalledTimes(1);
       expect(cloud.completeCalls).toHaveLength(1);
+    });
+  });
+
+  it("starts a provider that names no branch before its title, then renames the running agent", async () => {
+    const resolveMetadata = pendingThreadMetadata();
+
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-no-branch-title",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/no-branch-title-project",
+      });
+      const provider = installFakeCheckoutProvider({
+        usesSuggestedBranchName: () => false,
+        decision: {
+          action: "ready",
+          environment: {
+            type: "host",
+            hostId: host.id,
+            path: "/tmp/no-branch-title-workspace",
+          },
+        },
+      });
+
+      const { thread, advance } = provisionCheckoutThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        inputs: { branch: { kind: "existing", name: "main" } },
+        text: "Fix the flaky login test on main",
+      });
+
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBeNull();
+      await vi.waitFor(() => {
+        expect(completeTitle).toHaveBeenCalledTimes(1);
+      });
+      await reportNextEnvironmentAttachSuccess(harness, thread.id);
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        start,
+        { providerThreadId: "provider-no-branch-title" },
+        { hostId: host.id },
+      );
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+
+      resolveMetadata({ title: "Fix Flaky Login Test" });
+
+      const rename = await waitForQueuedCommandAfter(
+        harness,
+        start.row.cursor,
+        ({ command }) =>
+          command.type === "thread.rename" && command.threadId === thread.id,
+      );
+      expect(rename.command).toMatchObject({
+        type: "thread.rename",
+        threadId: thread.id,
+        title: "Fix Flaky Login Test",
+      });
+      expect(provisioningKeys(harness, thread.id)).not.toContain(
+        "metadata-started",
+      );
+      await advance;
+    });
+  });
+
+  it("does not generate a title again for a retried thread that already has one", async () => {
+    mockThreadMetadata({ title: "Regenerated Title" });
+
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-retried-title",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/retried-title-project",
+      });
+      const provider = installFakeCheckoutProvider({
+        usesSuggestedBranchName: namesNewBranch,
+      });
+
+      const { thread, advance } = provisionCheckoutThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        inputs: { branch: { kind: "new", baseBranch: "main" } },
+        text: "Retry provisioning a thread that already has a title",
+        title: "Existing Title",
+      });
+
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBe("Existing Title");
+      expect(completeTitle).not.toHaveBeenCalled();
+      expect(provisioningKeys(harness, thread.id)).not.toContain(
+        "metadata-started",
+      );
+      await advance;
+    });
+  });
+
+  it.each([
+    { label: "names a new branch", usesSuggestedBranchName: namesNewBranch },
+    {
+      label: "cannot say whether it names a branch",
+      usesSuggestedBranchName: (): boolean => {
+        throw new Error("Branch use is unknown");
+      },
+    },
+  ])(
+    "waits for the title before create when the provider $label",
+    async ({ usesSuggestedBranchName }) => {
+      const resolveMetadata = pendingThreadMetadata();
+
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-branch-title-wait",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/branch-title-wait-project",
+        });
+        const provider = installFakeCheckoutProvider({
+          usesSuggestedBranchName,
+        });
+
+        const { thread, advance } = provisionCheckoutThread(harness, {
+          hostId: host.id,
+          projectId: project.id,
+          inputs: { branch: { kind: "new", baseBranch: "main" } },
+          text: "Add retries to the upload worker",
+        });
+
+        await vi.waitFor(() => {
+          expect(completeTitle).toHaveBeenCalledTimes(1);
+          expect(provisioningKeys(harness, thread.id)).toContain(
+            "metadata-started",
+          );
+        });
+        expect(provider.contexts).toHaveLength(0);
+
+        resolveMetadata({ title: "Retry Upload Worker" });
+
+        const context = await provider.waitForProvision();
+        expect(context.thread.title).toBe("Retry Upload Worker");
+        expect(provisioningEntries(harness, thread.id)).toContainEqual(
+          expect.objectContaining({
+            key: "metadata-completed",
+            text: "Generated title",
+          }),
+        );
+        await advance;
+      });
+    },
+  );
+
+  it("launches a composed machine while the title is generated, then waits for it to name the new branch", async () => {
+    const resolveMetadata = pendingThreadMetadata();
+
+    await withTestHarness(async (harness) => {
+      const { createMachine, provider, thread } =
+        await startComposedCheckoutThread(harness);
+      expect(createMachine).toHaveBeenCalledTimes(1);
+      expect(getThread(harness.db, thread.id)?.title).toBeNull();
+      expect(provider.contexts).toHaveLength(0);
+
+      resolveMetadata({ title: "Sandbox Branch Title" });
+
+      const context = await provider.waitForProvision();
+      expect(context.thread.title).toBe("Sandbox Branch Title");
+    });
+  });
+
+  it("removes a composed environment stopped during the title wait without waiting for the title", async () => {
+    const resolveMetadata = pendingThreadMetadata();
+
+    await withTestHarness(async (harness) => {
+      const { provider, thread } = await startComposedCheckoutThread(harness);
+      await runEnvironmentProvisioningSweep(harness.deps);
+      await vi.waitFor(() => {
+        expect(
+          provisioningKeys(harness, thread.id).filter(
+            (key) => key === "metadata-started",
+          ),
+        ).toHaveLength(2);
+      });
+      const startingThread = getThread(harness.db, thread.id);
+      if (startingThread === null) {
+        throw new Error("Expected the starting thread");
+      }
+
+      requestThreadStopForCurrentState(harness.deps, startingThread, null);
+
+      await vi.waitFor(() => {
+        expect(getPreparingEnvironment(harness.db, thread.id)).toMatchObject({
+          teardownStatus: "removed",
+        });
+      });
+      resolveMetadata({ title: "Stopped Sandbox Title" });
+      await vi.waitFor(() => {
+        expect(getThread(harness.db, thread.id)?.title).toBe(
+          "Stopped Sandbox Title",
+        );
+      });
+      expect(provider.contexts).toHaveLength(0);
     });
   });
 

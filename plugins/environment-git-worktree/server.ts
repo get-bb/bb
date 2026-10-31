@@ -181,6 +181,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
     policy: { pathKeys: "per-attempt" },
     experimental_existingPath: (inputs) =>
       "kind" in inputs ? inputs.path : null,
+    experimental_usesSuggestedBranchName: (inputs) => !("kind" in inputs),
     async create(context) {
       if ("kind" in context.inputs) {
         return adoptExistingWorktree(context, context.inputs.path);

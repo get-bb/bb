@@ -686,6 +686,8 @@ Docs: `backend-events.md`.
    or not the provider uses them. Decide whether both belong on the context
    for everyone or behind a declaration flag, and whether a path is all a
    provider needs to know about a checkout it did not make.
+   `experimental_usesSuggestedBranchName` already lets a provider say when
+   create ignores the name, so core does not wait on the title for it.
 4. **Durable operations.** Audit cancellation races, provider reload during
    work, and restart checkpoints against the environment-provider contract
    below.
@@ -3738,6 +3740,26 @@ Other projects' managed paths remain forbidden.
 
 Stabilization requires lifecycle coverage for reuse, missing paths, cleanup in
 progress, cross-project ownership, and concurrent creation before binding.
+
+## Environment provider suggested-branch-name use
+
+`PluginEnvironmentProviderDefinition.experimental_usesSuggestedBranchName(inputs)`
+says, from parsed inputs and without mutating anything, whether `create` names
+a branch from `suggestedBranchName`. Core generates a new thread's title in the
+background from the start of provisioning. It waits for that title only right
+before `create`, after any machine launch and checkout setup, and only when the
+provider answers true or does not declare the method; a throw or a non-boolean
+answer counts as true. On false, `create` starts at once, its
+`suggestedBranchName` comes from the prompt unless the title already landed,
+and the title reaches the started agent through the existing rename. Cancelling
+a create that is waiting stops the wait without calling `create`. Core asks it
+in `resolveProviderOperationContext`, the path that builds every create
+context; the first-party Worktree, Project checkout and Personal workspace
+providers declare it, and compositions use their environment provider's answer.
+
+Stabilization requires deciding whether this belongs in `requires` with the
+other undeclared facts, and whether the wait needs its own timeout below the
+AI task timeouts.
 
 ## Composer editing: `insert` and `replace`
 

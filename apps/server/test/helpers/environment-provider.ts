@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 import {
   setPluginEnvironmentProviderBridge,
+  type PluginEnvironmentCompositionRecord,
   type PluginEnvironmentProviderRecord,
 } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../../src/services/environments/environment-provider-ids.js";
@@ -38,6 +39,8 @@ export interface InstallFakeEnvironmentProviderArgs {
     context: PluginEnvironmentProviderValidateContext,
   ) => PluginEnvironmentValidateDecision;
   availability?: () => PluginEnvironmentProviderAvailability;
+  usesSuggestedBranchName?: (inputs: unknown) => boolean;
+  compositions?: PluginEnvironmentCompositionRecord[];
   decide: (context: TestEnvironmentProviderContext) => TestProviderDecision;
 }
 
@@ -121,6 +124,11 @@ export function installFakeEnvironmentProvider(
     ...(args.availability === undefined
       ? {}
       : { availability: args.availability }),
+    ...(args.usesSuggestedBranchName === undefined
+      ? {}
+      : {
+          experimental_usesSuggestedBranchName: args.usesSuggestedBranchName,
+        }),
     ...providerOperations((context) => {
       contexts.push(context);
       return args.decide(context);
@@ -130,7 +138,11 @@ export function installFakeEnvironmentProvider(
     pluginId: args.pluginId,
     provider: normalized,
   };
+  const compositions = args.compositions;
   setPluginEnvironmentProviderBridge({
+    ...(compositions === undefined
+      ? {}
+      : { listEnvironmentCompositions: () => compositions }),
     listEnvironmentProviders: () => [record],
     getEnvironmentProvider: (id) => (id === args.id ? record : undefined),
     invokeProvider: (_pluginId, _label, run) => invokePluginInline(run),
@@ -197,6 +209,7 @@ export function installFakePersonalWorkspaceProvider(
       gitRemote: false,
       projectless: true,
     },
+    usesSuggestedBranchName: () => false,
     decide,
   });
 }

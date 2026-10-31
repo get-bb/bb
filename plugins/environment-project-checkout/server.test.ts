@@ -409,6 +409,32 @@ describe("checkout provider existing path", () => {
   );
 });
 
+describe("checkout provider branch naming", () => {
+  it.each([
+    [{}, false],
+    [{ path: CHECKOUT_PATH }, false],
+    [{ branch: { kind: "existing", name: "main" } }, false],
+    [
+      { path: CHECKOUT_PATH, branch: { kind: "new", baseBranch: "main" } },
+      true,
+    ],
+  ] as const)(
+    "waits for the generated title for %j: %s",
+    async (inputs, expected) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+      });
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      expect(provider?.experimental_usesSuggestedBranchName?.(inputs)).toBe(
+        expected,
+      );
+    },
+  );
+});
+
 describe("checkout provider merge base", () => {
   it.each([
     [

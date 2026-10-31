@@ -2051,6 +2051,7 @@ export async function advanceEnvironmentProvisioning(
                   owner,
                   context.request.environmentIntent,
                   record,
+                  signal,
                 )
               : null);
         } catch (error) {

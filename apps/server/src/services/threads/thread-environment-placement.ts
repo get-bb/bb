@@ -47,6 +47,10 @@ import {
   type ProviderOperationContext,
 } from "../environments/environment-engine.js";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
+import {
+  isThreadTitlePending,
+  waitForThreadTitle,
+} from "./thread-metadata-inference.js";
 import { scheduleEnvironmentProvisioning } from "./thread-environment-providers.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -603,6 +607,7 @@ export async function resolveProviderOperationContext(
     { type: "provider" }
   >,
   record: NonNullable<ReturnType<typeof getEnvironmentProvider>>,
+  signal?: AbortSignal,
 ): Promise<ProviderOperationContext | null> {
   const project = requirePublicProject(deps.db, thread.projectId);
   let selection;
@@ -720,6 +725,18 @@ export async function resolveProviderOperationContext(
   intent.machine = selection.machine;
   intent.inputs = selection.inputs;
   intent.selectionResolved = true;
+  const provisioning = getThreadProvisionContext(deps.db, thread.id);
+  if (
+    provisioning !== null &&
+    isThreadTitlePending(thread.id) &&
+    (await providerUsesSuggestedBranchName(deps, record, selection.inputs))
+  )
+    await waitForThreadTitle(deps, {
+      provisioningId: provisioning.state.provisioningId,
+      ...(signal === undefined ? {} : { signal }),
+      threadId: thread.id,
+    });
+  if (signal?.aborted) return null;
   return buildProviderOperationContext(deps, {
     host,
     inputs: selection.inputs,
@@ -727,8 +744,36 @@ export async function resolveProviderOperationContext(
     project,
     projectCheckout,
     record,
-    thread,
+    thread: getThread(deps.db, thread.id) ?? thread,
   });
+}
+
+async function providerUsesSuggestedBranchName(
+  deps: ThreadProvisioningDeps,
+  record: PluginEnvironmentProviderRecord,
+  inputs: ProviderOperationContext["inputs"],
+): Promise<boolean> {
+  const usesSuggestedBranchName =
+    record.provider.experimental_usesSuggestedBranchName;
+  if (usesSuggestedBranchName === null) return true;
+  const invocation = await invokeEnvironmentProvider(
+    record,
+    "environment suggested branch name use",
+    async () => usesSuggestedBranchName(inputs),
+  );
+  const parsed = invocation.ok ? z.boolean().safeParse(invocation.value) : null;
+  if (parsed?.success) return parsed.data;
+  deps.logger.warn(
+    {
+      environmentProviderId: record.provider.id,
+      pluginId: record.pluginId,
+      error: invocation.ok
+        ? "experimental_usesSuggestedBranchName did not return a boolean"
+        : invocation.error,
+    },
+    "Waiting for the thread title because the environment provider could not say whether it names a branch",
+  );
+  return true;
 }
 
 function buildProviderOperationContext(

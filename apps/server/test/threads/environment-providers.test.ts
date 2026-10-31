@@ -1000,7 +1000,8 @@ describe("environment providers are asked inside provisioning", () => {
         inputs: "2",
       });
 
-      await expect.poll(() => inputs).toEqual([2]);
+      await expect.poll(() => inputs[0]).toBe(2);
+      expect(new Set(inputs)).toEqual(new Set([2]));
     });
   });
 
