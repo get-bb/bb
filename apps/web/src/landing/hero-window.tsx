@@ -38,7 +38,7 @@ export function HeroWindow({
       <div
         className="mock rhb-win"
         role="img"
-        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, a Codex child thread started to write tests for a CSV export and the two threads messaging each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
+        aria-label="Animated preview of one bb session: the agent adds CSV export to a reports page and starts a Codex child thread to write the tests, the two threads message each other until the tests pass, then the agent writes a Linear issues panel plugin that opens beside the thread with your open issues"
       >
         <div className="rhb-band rhb-band-left" aria-hidden>
           <span className="mock-dots">

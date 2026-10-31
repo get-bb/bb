@@ -2046,7 +2046,7 @@
 .rhb .rhb-turn-stack.is-swap {
   overflow: hidden;
   width: var(--rhb-wa);
-  animation: rhb-turn-slot 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: rhb-turn-slot 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 @keyframes rhb-turn-slot {
@@ -2062,7 +2062,7 @@
 .rhb .rhb-swap-a,
 .rhb .rhb-fix-idle.is-timed {
   opacity: 0;
-  animation: rhb-swap-out 0.3s ease both;
+  animation: rhb-swap-out 0.25s ease both;
 }
 
 .rhb .rhb-turn-w.is-live {
@@ -2071,7 +2071,7 @@
 }
 
 .rhb .rhb-turn-d {
-  animation: rhb-fade-in 0.35s ease backwards;
+  animation: rhb-fade-in 0.25s ease backwards;
 }
 
 @keyframes rhb-swap-out {
@@ -2380,7 +2380,7 @@
 }
 
 .rhb .rhb-swap-b {
-  animation: rhb-fade-in 0.35s ease backwards;
+  animation: rhb-fade-in 0.25s ease backwards;
 }
 
 .rhb .rhb-work-swap {
@@ -2446,7 +2446,7 @@
   opacity: 1;
   transform: none;
   animation-name: rhb-reveal, rhb-rise-in;
-  animation-duration: 0s, 0.45s;
+  animation-duration: 0s, 0.25s;
   animation-timing-function: linear, cubic-bezier(0.22, 0.61, 0.36, 1);
   animation-fill-mode: backwards, backwards;
 }
@@ -2478,7 +2478,7 @@
 .rhb .rhb-feed .rhb-chart.customize-msg,
 .rhb .rhb-feed .rhb-fix-card.customize-msg {
   animation-name: rhb-reveal, rhb-card-in;
-  animation-duration: 0s, 0.8s;
+  animation-duration: 0s, 0.3s;
 }
 
 .rhb .rhb-chart-bar {
@@ -2489,7 +2489,7 @@
 .rhb .rhb-kids-late {
   overflow: visible;
   animation-name: rhb-reveal, rhb-rise-in;
-  animation-duration: 0s, 0.45s;
+  animation-duration: 0s, 0.25s;
   animation-timing-function: linear, cubic-bezier(0.22, 0.61, 0.36, 1);
   animation-fill-mode: backwards, backwards;
 }
@@ -2609,7 +2609,7 @@
 }
 
 .rhb .rhb-has-panel .plugin-task {
-  animation: rhb-rise-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  animation: rhb-rise-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 
 .rhb .rhb-has-strip .rhb-rail > .rhb-rail-new {
@@ -2631,11 +2631,11 @@
 }
 
 .rhb .rhb-feed-layer.is-out {
-  animation-duration: 0.7s;
+  animation-duration: 0.3s;
 }
 
 .rhb .rhb-feed-layer:not(.is-out) {
-  animation: rhb-fade-in 0.7s ease backwards;
+  animation: rhb-fade-in 0.3s ease backwards;
 }
 
 .rhb .rhb-title-stack {
@@ -2832,9 +2832,9 @@
   top: 0;
   left: 0;
   overflow: visible;
-  animation: rhb-ghost-out 0.3s ease forwards;
+  animation: rhb-ghost-out 0.2s ease forwards;
 }
-.rhb .rhb-title-stack > .rhb-title-swap { animation: rhb-fade-in 0.35s ease 0.3s backwards; }
+.rhb .rhb-title-stack > .rhb-title-swap { animation: rhb-fade-in 0.25s ease 0.15s backwards; }
 .rhb .rhb-stage-out + .rhb-stage { animation: none; }
 .rhb .rhb-stage.rhb-stage-out { animation: rhb-wrap-out 0.7s linear forwards; }
 @keyframes rhb-wrap-out {
