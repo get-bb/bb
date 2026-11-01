@@ -14,6 +14,7 @@ import { forkClaudeSession } from "./session-fork.js";
 vi.mock("node:fs/promises", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs/promises")>()),
   readFile: () => Promise.reject(new RangeError("Invalid string length")),
+  writeFile: () => Promise.reject(new RangeError("Invalid string length")),
 }));
 
 describe("forkClaudeSession", () => {
@@ -25,7 +26,7 @@ describe("forkClaudeSession", () => {
     }
   });
 
-  it("forks a transcript that Node cannot read into one string", async () => {
+  it("forks a transcript that Node cannot read or write as one string", async () => {
     const configDirectory = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
     tempDirs.push(configDirectory);
     const transcriptDir = join(configDirectory, "projects", "-tmp-worktree");
@@ -54,17 +55,27 @@ describe("forkClaudeSession", () => {
         .join("\n") + "\n",
     );
 
-    const forkedSessionId = await forkClaudeSession({
+    const checkpointSessionId = await forkClaudeSession({
       configDirectory,
       sourceSessionId,
       upToMessageId: messageIds[1],
     });
+    const fullSessionId = await forkClaudeSession({
+      configDirectory,
+      sourceSessionId,
+      upToMessageId: undefined,
+    });
 
-    const forked = readFileSync(
-      join(transcriptDir, `${forkedSessionId}.jsonl`),
+    const checkpoint = readFileSync(
+      join(transcriptDir, `${checkpointSessionId}.jsonl`),
       "utf8",
     );
-    expect(forked).toContain("first answer");
-    expect(forked).not.toContain("discarded follow-up");
+    expect(checkpoint).toContain("first answer");
+    expect(checkpoint).not.toContain("discarded follow-up");
+    const full = readFileSync(
+      join(transcriptDir, `${fullSessionId}.jsonl`),
+      "utf8",
+    );
+    expect(full).toContain("discarded follow-up");
   });
 });
