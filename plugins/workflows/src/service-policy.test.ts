@@ -51,6 +51,7 @@ function model() {
     model: "gpt-test",
     displayName: "GPT Test",
     description: "test",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "test" },
     ],
@@ -271,6 +272,81 @@ describe("workflow service policy integration", () => {
     await Promise.all(harnesses.map((harness) => harness.dispose()));
     harnesses.length = 0;
   });
+
+  it.each([
+    { parentReasoning: "medium", discovery: "known", explicit: false },
+    { parentReasoning: "high", discovery: "known", explicit: false },
+    { parentReasoning: "medium", discovery: "known", explicit: true },
+    { parentReasoning: "medium", discovery: "unknown", explicit: false },
+  ] as const)(
+    "handles native reasoning defaults: $discovery/$parentReasoning/explicit=$explicit",
+    async ({ parentReasoning, discovery, explicit }) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      test.harness.sdk.stub("providers.models", async () => ({
+        providers: [],
+        models: [
+          {
+            ...model(),
+            reasoningDiscovery: discovery,
+            supportedReasoningEfforts: [],
+          },
+        ],
+        selectedOnlyModels: [],
+        modelLoadError: null,
+      }));
+      test.harness.sdk.stub("threads.defaultExecutionOptions", async () => ({
+        model: "gpt-test",
+        reasoningLevel: parentReasoning,
+        permissionMode: "full",
+        serviceTier: "default",
+        source: "default",
+      }));
+      const run = await test.start(
+        source(
+          explicit
+            ? 'return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "medium" });'
+            : 'return await agent("review");',
+        ),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        if (discovery === "unknown") {
+          await eventually(() =>
+            expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+          );
+          expect(getRunRequired(test.db, run.id).error).toContain(
+            "not supported",
+          );
+          expect(test.childCount()).toBe(0);
+          expect(getCall(test.db, run.id, 0)).toBeNull();
+          return;
+        }
+        await eventually(() => {
+          expect(getRunRequired(test.db, run.id).error).toBeNull();
+          expect(test.childCount()).toBe(1);
+        });
+        expect(test.harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject(
+          {
+            providerId: "codex",
+            model: "gpt-test",
+            reasoningLevel: "medium",
+          },
+        );
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          resolvedReasoningLevel: "medium",
+        });
+        test.service.onThreadIdle("child-1", "completed");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
 
   it("applies live settings to future run snapshots without mutating existing runs", async () => {
     const initial = {
