@@ -934,7 +934,17 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));
-    const formData = await context.req.formData();
+    let formData: FormData;
+    try {
+      formData = await context.req.formData();
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Attachment upload body could not be read",
+      );
+    }
     const fields = [...formData.keys()];
     if (fields.length === 0) {
       throw new ApiError(400, "invalid_request", "Attachment file is required");
