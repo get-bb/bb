@@ -28,14 +28,6 @@ afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()?.();
 });
 
-function testJwt(payload: object): string {
-  return [
-    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
-    Buffer.from(JSON.stringify(payload)).toString("base64url"),
-    "signature",
-  ].join(".");
-}
-
 async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
   const dataDir = await fs.mkdtemp(
     path.join(tmpdir(), "bb-account-pool-rejection-"),
@@ -85,11 +77,7 @@ async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
   );
   const refreshTokens: string[] = [];
   const authorizations: string[] = [];
-  const accepted = new Set<string>();
-  const unavailable = new Set<string>();
-  const issued = new Map<string, string>();
   const rejectedAccessTokens = new Set<string>();
-  let beforeRefreshResponse = async (_refreshToken: string) => {};
   let accountsChanged = 0;
   const transport: typeof fetch = async (input, init) => {
     const url = String(input);
@@ -98,25 +86,14 @@ async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
         .object({ refresh_token: z.string() })
         .parse(JSON.parse(String(init?.body)));
       refreshTokens.push(refresh_token);
-      await beforeRefreshResponse(refresh_token);
-      if (accepted.has(refresh_token)) {
-        const accessToken = testJwt({
-          exp: Math.floor(time / 1_000) + 3_600,
-          sub: refresh_token,
-        });
-        issued.set(refresh_token, accessToken);
-        return Response.json({
-          access_token: accessToken,
-          refresh_token: `next-${refresh_token}`,
-          expires_in: 3_600,
-        });
-      }
-      const status = unavailable.has(refresh_token)
-        ? 503
-        : refreshFailureStatus;
       return Response.json(
-        { error: status === 400 ? "invalid_grant" : "temporarily_unavailable" },
-        { status },
+        {
+          error:
+            refreshFailureStatus === 400
+              ? "invalid_grant"
+              : "temporarily_unavailable",
+        },
+        { status: refreshFailureStatus },
       );
     }
     if (url === USAGE_URL) return Response.json({});
@@ -179,9 +156,6 @@ async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
     kv: host.bb.storage.kv,
     refreshTokens,
     authorizations,
-    accepted,
-    unavailable,
-    issued,
     rejectedAccessTokens,
     accountsChanged: () => accountsChanged,
     advance: (milliseconds: number) => {
@@ -193,11 +167,8 @@ async function createPool(provider: PoolProvider, refreshFailureStatus = 400) {
       await active.stop();
       active = await startHub(stores());
     },
-    beforeRefreshResponse: (hook: (refreshToken: string) => Promise<void>) => {
-      beforeRefreshResponse = hook;
-    },
-    replaceSecret: (accessToken: string, refreshToken: string, ttl: number) =>
-      initial.accounts.writeSecret(account.id, {
+    signInAgain: (accessToken: string, refreshToken: string, ttl: number) =>
+      active.hub.replaceSecret(account.id, {
         kind: "oauth",
         accessToken,
         refreshToken,
@@ -320,84 +291,7 @@ describe.each(["claude", "codex"] as const)(
       expect(pool.error()).toBe(REJECTED);
     });
 
-    it("uses a credential replaced during the rejected refresh instead of erroring", async () => {
-      const pool = await createPool(provider);
-      pool.advance(11 * MINUTE);
-      pool.beforeRefreshResponse(() =>
-        pool.replaceSecret(
-          "access-replacement",
-          "refresh-replacement",
-          60 * MINUTE,
-        ),
-      );
-
-      expect(await pool.request()).toBe(200);
-
-      expect(pool.refreshTokens).toEqual(["refresh-original"]);
-      expect(pool.authorizations).toEqual(["Bearer access-replacement"]);
-      expect(pool.error()).toBeNull();
-    });
-
-    it("recovers an errored account on the next background tick after its refresh token is replaced", async () => {
-      const pool = await createPool(provider);
-      pool.advance(7 * MINUTE);
-      await pool.tick();
-      pool.advance(5 * MINUTE);
-      await pool.tick();
-      expect(pool.error()).toBe(REJECTED);
-      const changes = pool.accountsChanged();
-
-      pool.accepted.add("refresh-replacement");
-      await pool.replaceSecret(
-        "access-replacement",
-        "refresh-replacement",
-        MINUTE,
-      );
-      pool.advance(5 * MINUTE);
-      await pool.tick();
-
-      expect(pool.refreshTokens).toEqual([
-        "refresh-original",
-        "refresh-replacement",
-      ]);
-      expect(pool.error()).toBeNull();
-      expect(pool.accountsChanged()).toBe(changes + 1);
-      expect(await pool.request()).toBe(200);
-      expect(pool.authorizations).toEqual([
-        `Bearer ${pool.issued.get("refresh-replacement")}`,
-      ]);
-    });
-
-    it.each([400, 503])(
-      "serves a replaced login whose refresh fails with HTTP %i while its access token is valid",
-      async (status) => {
-        const pool = await createPool(provider);
-        pool.advance(7 * MINUTE);
-        await pool.tick();
-        pool.advance(5 * MINUTE);
-        await pool.tick();
-        expect(pool.error()).toBe(REJECTED);
-
-        if (status === 503) pool.unavailable.add("refresh-replacement");
-        pool.advance(5 * MINUTE);
-        await pool.replaceSecret(
-          "access-replacement",
-          "refresh-replacement",
-          2 * MINUTE,
-        );
-        await pool.tick();
-
-        expect(pool.refreshTokens).toEqual([
-          "refresh-original",
-          "refresh-replacement",
-        ]);
-        expect(pool.error()).toBeNull();
-        expect(await pool.request()).toBe(200);
-        expect(pool.authorizations).toEqual(["Bearer access-replacement"]);
-      },
-    );
-
-    it("adopts a replaced credential that is not due for refresh without contacting the token endpoint", async () => {
+    it("clears the failure and the stored rejection when the account signs in again", async () => {
       const pool = await createPool(provider);
       pool.advance(7 * MINUTE);
       await pool.tick();
@@ -405,18 +299,13 @@ describe.each(["claude", "codex"] as const)(
       await pool.tick();
       expect(pool.error()).toBe(REJECTED);
 
-      await pool.replaceSecret(
-        "access-replacement",
-        "refresh-replacement",
-        60 * MINUTE,
-      );
-      pool.advance(5 * MINUTE);
-      await pool.tick();
+      await pool.signInAgain("access-new", "refresh-new", 60 * MINUTE);
 
-      expect(pool.refreshTokens).toEqual(["refresh-original"]);
       expect(pool.error()).toBeNull();
+      expect(await pool.kv.list("rejected-refresh:")).toEqual([]);
       expect(await pool.request()).toBe(200);
-      expect(pool.authorizations).toEqual(["Bearer access-replacement"]);
+      expect(pool.authorizations).toEqual(["Bearer access-new"]);
+      expect(pool.refreshTokens).toEqual(["refresh-original"]);
     });
 
     it("keeps serving and retrying after a transient refresh failure", async () => {

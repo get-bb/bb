@@ -193,8 +193,9 @@ export class AccountPoolHub {
         kind: "replacement",
         result: this.options.accounts
           .writeSecret(accountId, secret)
-          .then(() => {
+          .then(async () => {
             this.refreshBackoffs.delete(accountId);
+            await this.options.accounts.clearRejectedRefresh(accountId);
             const quota = this.options.quotas.get(accountId);
             this.options.quotas.put({ ...quota, error: null });
           })
@@ -1072,116 +1073,100 @@ export class AccountPoolHub {
         use,
         result: this.options.accounts
           .readSecret(account.id)
-          .then(async (stored) => {
-            let secret = stored;
-            while (true) {
-              let backoff = this.refreshBackoffs.get(account.id);
-              if (
-                secret.kind !== "oauth" ||
-                backoff?.accessToken !== secret.accessToken
-              ) {
-                this.refreshBackoffs.delete(account.id);
-                backoff = undefined;
-              }
-              const explicitlyRejected =
-                secret.kind === "oauth" &&
-                use.kind === "rejected" &&
-                secret.accessToken === use.accessToken;
-              const forceRefresh =
-                recover || explicitlyRejected || backoff?.kind === "rejected";
-              if (forceRefresh && secret.kind === "oauth") {
-                flight.use = {
-                  kind: "rejected",
-                  accessToken: secret.accessToken,
-                };
-              }
-              const rejection =
-                secret.kind === "oauth"
-                  ? await this.options.accounts.rejectedRefresh(
-                      account.id,
-                      secret.refreshToken,
-                    )
-                  : null;
-              if (rejection !== null && !rejection.sameToken)
-                this.setError(account.id, null);
-              const error = this.options.quotas.get(account.id).error;
-              if (error !== null && !recover) throw new Error(error);
-              if (rejection?.sameToken && !recover && secret.kind === "oauth") {
-                if (
-                  !forceRefresh &&
-                  accessTokenUnexpired(secret, this.options.now())
-                )
-                  return secret;
-                throw new OAuthRefreshError(rejection.message);
-              }
-              if (
-                !recover &&
-                backoff !== undefined &&
-                this.options.now() < backoff.retryAt &&
-                (!explicitlyRejected || backoff.kind !== "proactive")
-              ) {
-                if (
-                  backoff.kind === "proactive" &&
-                  !forceRefresh &&
-                  secret.kind === "oauth" &&
-                  secret.expiresAt !== null &&
-                  secret.expiresAt > this.options.now()
-                ) {
-                  return secret;
-                }
-                throw backoff.error;
-              }
-              try {
-                const result = await adapter.refreshSecret({
-                  account,
-                  secret,
-                  accounts: this.options.accounts,
-                  quotas: this.options.quotas,
-                  fetch: this.options.fetch,
-                  now: this.options.now,
-                  forceRefresh,
-                });
-                this.refreshBackoffs.delete(account.id);
-                if (result.refreshed) {
-                  this.options.onOAuthRefresh(
-                    account.provider,
+          .then(async (secret) => {
+            let backoff = this.refreshBackoffs.get(account.id);
+            if (
+              secret.kind !== "oauth" ||
+              backoff?.accessToken !== secret.accessToken
+            ) {
+              this.refreshBackoffs.delete(account.id);
+              backoff = undefined;
+            }
+            const explicitlyRejected =
+              secret.kind === "oauth" &&
+              use.kind === "rejected" &&
+              secret.accessToken === use.accessToken;
+            const forceRefresh =
+              recover || explicitlyRejected || backoff?.kind === "rejected";
+            if (forceRefresh && secret.kind === "oauth") {
+              flight.use = {
+                kind: "rejected",
+                accessToken: secret.accessToken,
+              };
+            }
+            const rejection =
+              secret.kind === "oauth"
+                ? await this.options.accounts.rejectedRefresh(
                     account.id,
-                    "succeeded",
-                    `previousExpiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, expiresAt=${result.secret.kind === "oauth" ? result.secret.expiresAt : null}, forced=${forceRefresh}.`,
-                  );
-                }
-                if (rejection !== null)
-                  await this.options.accounts.clearRejectedRefresh(account.id);
-                if (result.refreshed || rejection !== null)
-                  this.setError(account.id, null);
-                return result.secret;
-              } catch (error) {
+                    secret.refreshToken,
+                  )
+                : null;
+            const error = this.options.quotas.get(account.id).error;
+            if (error !== null && !recover) throw new Error(error);
+            if (rejection?.sameToken && !recover && secret.kind === "oauth") {
+              if (
+                !forceRefresh &&
+                accessTokenUnexpired(secret, this.options.now())
+              )
+                return secret;
+              throw new OAuthRefreshError(rejection.message);
+            }
+            if (
+              !recover &&
+              backoff !== undefined &&
+              this.options.now() < backoff.retryAt &&
+              (!explicitlyRejected || backoff.kind !== "proactive")
+            ) {
+              if (
+                backoff.kind === "proactive" &&
+                !forceRefresh &&
+                secret.kind === "oauth" &&
+                secret.expiresAt !== null &&
+                secret.expiresAt > this.options.now()
+              ) {
+                return secret;
+              }
+              throw backoff.error;
+            }
+            try {
+              const result = await adapter.refreshSecret({
+                account,
+                secret,
+                accounts: this.options.accounts,
+                quotas: this.options.quotas,
+                fetch: this.options.fetch,
+                now: this.options.now,
+                forceRefresh,
+              });
+              this.refreshBackoffs.delete(account.id);
+              if (result.refreshed) {
                 this.options.onOAuthRefresh(
                   account.provider,
                   account.id,
-                  "failed",
-                  `${error instanceof OAuthRefreshError ? error.message : "Stored credential refresh failed."} expiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, forced=${forceRefresh}.`,
+                  "succeeded",
+                  `previousExpiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, expiresAt=${result.secret.kind === "oauth" ? result.secret.expiresAt : null}, forced=${forceRefresh}.`,
                 );
+                this.setError(account.id, null);
+              }
+              if (rejection !== null)
+                await this.options.accounts.clearRejectedRefresh(account.id);
+              return result.secret;
+            } catch (error) {
+              this.options.onOAuthRefresh(
+                account.provider,
+                account.id,
+                "failed",
+                `${error instanceof OAuthRefreshError ? error.message : "Stored credential refresh failed."} expiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, forced=${forceRefresh}.`,
+              );
+              if (
+                !(error instanceof TransientOAuthRefreshError) ||
+                secret.kind !== "oauth"
+              ) {
+                this.refreshBackoffs.delete(account.id);
                 if (
-                  !(error instanceof TransientOAuthRefreshError) ||
-                  secret.kind !== "oauth"
+                  error instanceof OAuthRefreshError &&
+                  secret.kind === "oauth"
                 ) {
-                  this.refreshBackoffs.delete(account.id);
-                  if (
-                    !(error instanceof OAuthRefreshError) ||
-                    secret.kind !== "oauth"
-                  )
-                    throw error;
-                  const current = await this.options.accounts
-                    .readSecret(account.id)
-                    .catch(() => secret);
-                  if (
-                    current.kind === "oauth" &&
-                    current.refreshToken !== secret.refreshToken
-                  ) {
-                    secret = current;
-                    continue;
-                  }
                   await this.options.accounts.recordRejectedRefresh(
                     account.id,
                     secret.refreshToken,
@@ -1192,36 +1177,36 @@ export class AccountPoolHub {
                     accessTokenUnexpired(secret, this.options.now())
                   )
                     return secret;
-                  throw error;
-                }
-                const delayMs = Math.min(
-                  MAX_REFRESH_BACKOFF_MS,
-                  Math.max(
-                    backoff === undefined ? 1_000 : backoff.delayMs * 2,
-                    error.retryAfterMs,
-                  ),
-                );
-                this.refreshBackoffs.delete(account.id);
-                this.refreshBackoffs.set(account.id, {
-                  kind: forceRefresh ? "rejected" : "proactive",
-                  accessToken: secret.accessToken,
-                  retryAt: this.options.now() + delayMs,
-                  delayMs,
-                  error,
-                });
-                while (this.refreshBackoffs.size > MAX_REFRESH_BACKOFFS) {
-                  const oldest = this.refreshBackoffs.keys().next();
-                  if (!oldest.done) this.refreshBackoffs.delete(oldest.value);
-                }
-                if (
-                  !forceRefresh &&
-                  secret.expiresAt !== null &&
-                  secret.expiresAt > this.options.now()
-                ) {
-                  return secret;
                 }
                 throw error;
               }
+              const delayMs = Math.min(
+                MAX_REFRESH_BACKOFF_MS,
+                Math.max(
+                  backoff === undefined ? 1_000 : backoff.delayMs * 2,
+                  error.retryAfterMs,
+                ),
+              );
+              this.refreshBackoffs.delete(account.id);
+              this.refreshBackoffs.set(account.id, {
+                kind: forceRefresh ? "rejected" : "proactive",
+                accessToken: secret.accessToken,
+                retryAt: this.options.now() + delayMs,
+                delayMs,
+                error,
+              });
+              while (this.refreshBackoffs.size > MAX_REFRESH_BACKOFFS) {
+                const oldest = this.refreshBackoffs.keys().next();
+                if (!oldest.done) this.refreshBackoffs.delete(oldest.value);
+              }
+              if (
+                !forceRefresh &&
+                secret.expiresAt !== null &&
+                secret.expiresAt > this.options.now()
+              ) {
+                return secret;
+              }
+              throw error;
             }
           })
           .finally(() => {

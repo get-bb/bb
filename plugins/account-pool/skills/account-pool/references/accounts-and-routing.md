@@ -91,14 +91,11 @@ When the token endpoint rejects an OAuth refresh token (HTTP 400 or 401), the
 pool stores a SHA-256 fingerprint of that token, never sends it again on its
 own, even after a restart, and keeps serving the stored access token. The
 account enters error once that access token expires or upstream rejects it; an
-API key enters error when it is rejected. While an account is in error because
-its refresh token was rejected, each five-minute background refresh rereads the
-stored credential locally. When the refresh token has changed, for example
-because a newer login was copied into the account's secret file, the pool
-switches to it, refreshing first if the access token is due, and clears the
-error without a manual command. `bb pool account enable` clears the error, but
-an unchanged rejected refresh token puts the account back in error as soon as
-its access token has expired; `refresh` is the command that retries it. A 401
+API key enters error when it is rejected. `bb pool account login <id>` replaces
+the login and clears both the error and the stored fingerprint.
+`bb pool account enable` clears the error, but an unchanged rejected refresh
+token puts the account back in error as soon as its access token has expired;
+`refresh` is the command that retries it. A 401
 or 403 on a freshly refreshed OAuth token is treated as an upstream failure
 instead: the request gets HTTP 503, and that token is held out of routing for
 one minute.
