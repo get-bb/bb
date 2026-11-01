@@ -5,6 +5,7 @@ import { Editor } from "@tiptap/core";
 import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
 import { createEditorExtensions } from "./extensions.js";
 import { TasksEditor } from "./tasks-editor.js";
+import { markdownStorage } from "./markdown-storage.js";
 
 afterEach(cleanup);
 
@@ -39,7 +40,7 @@ function roundTrip(markdown: string): string {
     content: markdown,
   });
   try {
-    return editor.storage.markdown.getMarkdown() as string;
+    return markdownStorage(editor).getMarkdown() as string;
   } finally {
     editor.destroy();
   }
@@ -160,7 +161,7 @@ describe("mention extension", () => {
       expect(pill?.textContent).toBe("TSK-42");
       editor.commands.setContent("[docs](https://example.com)");
       expect(findMentions()).toEqual([]);
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         "[docs](https://example.com)",
       );
     } finally {
@@ -283,7 +284,7 @@ describe("thread mention extension", () => {
       expect(pill?.classList.contains("bb-tasks-thread-mention")).toBe(true);
       expect(pill?.textContent).toBe("Fix login flow");
       expect(pill?.querySelector("svg.bb-tasks-mention-icon")).toBeTruthy();
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         "See [Fix login flow](bbthread://thr_a82u8wp8qq).",
       );
     } finally {
@@ -434,7 +435,7 @@ describe("TasksEditor component", () => {
     );
     editor!.chain().focus("end").insertContent("caption").run();
     await waitFor(() => {
-      const markdown = editor!.storage.markdown.getMarkdown() as string;
+      const markdown = markdownStorage(editor!).getMarkdown() as string;
       expect(markdown).toContain("![shot](https://example.com/a.png)");
       expect(markdown).toContain("caption");
     });

@@ -2,7 +2,7 @@
 import { Editor } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
-import Table from "@tiptap/extension-table";
+import { Table } from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
@@ -13,6 +13,7 @@ import { Markdown } from "tiptap-markdown";
 import { describe, expect, it } from "vitest";
 import { loadMarkdownBlocks, saveMarkdownBlocks } from "./markdown-blocks";
 import { HtmlBlock, HtmlSource } from "./raw-html";
+import { markdownStorage } from "./markdown-storage.js";
 
 const VIDEO = `<div style="margin-block: 1rem;">
   <video src="/a.mp4" autoplay loop muted playsinline></video>
@@ -38,7 +39,7 @@ const DOCUMENT = `${[
 function open(markdown: string) {
   const editor = new Editor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ trailingNode: false }),
       Link.configure({ openOnClick: false, autolink: true }),
       Image,
       TaskList,
@@ -58,10 +59,15 @@ function open(markdown: string) {
     ],
     content: "",
   });
-  const blocks = loadMarkdownBlocks(editor, markdown, (source) => source, false);
+  const blocks = loadMarkdownBlocks(
+    editor,
+    markdown,
+    (source) => source,
+    false,
+  );
   const save = () =>
     saveMarkdownBlocks(editor, blocks, (nodes) =>
-      editor.storage.markdown.serializer.serialize(
+      markdownStorage(editor).serializer.serialize(
         editor.schema.topNodeType.create(null, nodes),
       ),
     );
@@ -135,7 +141,10 @@ describe("markdown blocks", () => {
             ),
           ),
         ),
-      DOCUMENT.replace("# Release notes\n\n", "# Release notes\n\nInserted.\n\n"),
+      DOCUMENT.replace(
+        "# Release notes\n\n",
+        "# Release notes\n\nInserted.\n\n",
+      ),
     ],
   ])("rewrites only %s", (_name, edit, expected) => {
     const { editor, save } = open(DOCUMENT);
@@ -174,7 +183,7 @@ describe("markdown blocks", () => {
     [
       "a reference title ending in a backslash",
       'See [x][r].\n\n[r]: https://e.com "a\\\\"\n',
-      'ZSee [x](https://e.com).\n\n[r]: https://e.com "a\\\\"\n',
+      'ZSee [x](https://e.com "a\\").\n\n[r]: https://e.com "a\\\\"\n',
     ],
     [
       "an unclosed fence after a reference",

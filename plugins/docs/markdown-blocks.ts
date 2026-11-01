@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { DOMParser, type Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { markdownStorage } from "./markdown-storage.js";
 
 interface Block {
   source: string;
@@ -40,7 +41,7 @@ function parseMarkdownBlocks(
   markdown: string,
   display: (source: string) => string,
 ): MarkdownBlocks {
-  const tokens: BlockToken[] = editor.storage.markdown.parser.md.parse(
+  const tokens: BlockToken[] = markdownStorage(editor).parser.md.parse(
     markdown,
     {},
   );
@@ -88,16 +89,21 @@ function parseMarkdownBlocks(
       return block.source + block.after + gap;
     })
     .join(`\n<!--${marker}-->\n\n`);
-  const html: string = editor.storage.markdown.parser.parse(
+  const html: string = markdownStorage(editor).parser.parse(
     display(leading + marked),
   );
   const body = new window.DOMParser().parseFromString(
     `<body>${html}</body>`,
     "text/html",
   ).body;
+  const markerText = `<!--${marker}-->`;
   const groups: ChildNode[][] = [[]];
   for (const child of [...body.childNodes]) {
-    if (child.textContent === `<!--${marker}-->`) groups.push([]);
+    const text =
+      child instanceof Comment
+        ? `<!--${child.textContent}-->`
+        : child.textContent;
+    if (text === markerText) groups.push([]);
     else groups.at(-1)!.push(child);
   }
   if (groups.length !== Math.max(starts.length, 1))

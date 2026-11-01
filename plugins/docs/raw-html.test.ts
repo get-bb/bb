@@ -7,11 +7,12 @@ import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
 import { describe, expect, it } from "vitest";
 import { HtmlBlock, HtmlSource } from "./raw-html";
+import { markdownStorage } from "./markdown-storage.js";
 
 function createEditor(content: string) {
   return new Editor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ trailingNode: false }),
       Link.configure({ openOnClick: false, autolink: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -52,7 +53,7 @@ describe("raw HTML", () => {
       expect(editor.view.dom.querySelector("strong")?.textContent).toBe("bold");
       expect(editor.view.dom.textContent).toContain("<kbd>Ctrl</kbd>");
       editor.commands.insertContentAt(1, "Now ");
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         "Now Press <kbd>Ctrl</kbd> and **bold**.",
       );
     } finally {
@@ -67,7 +68,7 @@ describe("raw HTML", () => {
     try {
       expect(editor.view.dom.querySelector("video")).toBeNull();
       editor.commands.insertContentAt(textPosition(editor, "/a.mp4") + 1, "b");
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         'Intro.\n\n<div>\n  <video src="/ba.mp4"></video>\n</div>\n\n> <div>\n> <video src="/q.mp4"></video>\n> </div>',
       );
     } finally {
@@ -80,7 +81,7 @@ describe("raw HTML", () => {
     try {
       editor.commands.setTextSelection(editor.state.doc.content.size - 1);
       type(editor, " Press <kbd>K</kbd> if a < b.");
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         "Escaped &lt;kbd&gt; stays. Press <kbd>K</kbd> if a &lt; b.",
       );
     } finally {
@@ -96,7 +97,7 @@ describe("raw HTML", () => {
           item.getAttribute("data-checked"),
         ),
       ).toEqual(["true", "false"]);
-      expect(editor.storage.markdown.getMarkdown()).not.toContain("<input");
+      expect(markdownStorage(editor).getMarkdown()).not.toContain("<input");
     } finally {
       editor.destroy();
     }
@@ -108,7 +109,7 @@ describe("raw HTML", () => {
     );
     try {
       editor.commands.insertContentAt(1, "Z");
-      expect(editor.storage.markdown.getMarkdown()).toBe(
+      expect(markdownStorage(editor).getMarkdown()).toBe(
         'ZA <strong style="color:red">W</strong> and <a href="x" target="_self">l</a> and <a name="top"></a> and **ok** <b>open',
       );
     } finally {

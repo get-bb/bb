@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Table from "@tiptap/extension-table";
+import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
@@ -14,7 +14,8 @@ const editors: Editor[] = [];
 afterEach(() => {
   for (const editor of editors.splice(0)) {
     editor.destroy();
-    editor.options.element.remove();
+    const element = editor.options.element;
+    if (element instanceof Element) element.remove();
   }
 });
 
@@ -25,7 +26,7 @@ function fixture(before: string, after: string) {
   const editor = new Editor({
     element,
     extensions: [
-      StarterKit,
+      StarterKit.configure({ trailingNode: false }),
       Table,
       TableRow,
       TableCell,
