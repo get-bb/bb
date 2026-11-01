@@ -34,7 +34,10 @@ Spawning:
     --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --lifecycle-owner-thread <id>  Archive/delete with this owner
-    --provider <id>                Provider override
+    --provider <id>                Provider override: a provider id from `bb provider list --all`,
+                                   such as codex or pi. An unknown id fails before anything is
+                                   created; a model route such as vercel-ai-gateway/... belongs
+                                   in --model under its provider (--provider pi)
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)

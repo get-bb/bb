@@ -5,9 +5,11 @@ import {
 
 import {
   createProjectSource,
+  environments,
   getProjectExecutionDefaults,
   listThreadsWithPendingInteractionState,
   setExperiments,
+  threads,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
 import { defaultExperiments, threadSchema } from "@bb/domain";
@@ -658,6 +660,56 @@ describe("public thread default routes", () => {
         code: "invalid_request",
         message: expect.stringContaining('expected one of "app"|"cli"'),
       });
+    });
+  });
+
+  it("rejects an unknown provider before creating a thread or environment", async () => {
+    await withTestHarness(async (harness) => {
+      const provider = installFakeGitWorktreeProvider();
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-unknown-provider",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          providerId: "vercel-ai-gateway",
+          model: "anthropic/claude-opus-5.5",
+          input: [{ type: "text", text: "Create with a model route" }],
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await readJson(response);
+      expect(body).toMatchObject({ code: "provider_not_found" });
+      expect(body).toHaveProperty(
+        "message",
+        expect.stringMatching(
+          /^Unknown provider "vercel-ai-gateway"\. Known providers: .*\bcodex\b.*\.$/,
+        ),
+      );
+      expect(harness.db.select({ id: threads.id }).from(threads).all()).toEqual(
+        [],
+      );
+      expect(
+        harness.db.select({ id: environments.id }).from(environments).all(),
+      ).toEqual([]);
+      expect(provider.contexts).toEqual([]);
     });
   });
 

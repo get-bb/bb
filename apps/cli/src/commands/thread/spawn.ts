@@ -44,7 +44,7 @@ import { parseSpawnSessionOptions } from "./session-state.js";
 import { SEND_AT_HELP, parseSendAt } from "./send-time.js";
 
 const PROVIDER_HELP =
-  "Provider ID for the thread. Omit to use the project's remembered provider choice";
+  "Provider ID for the thread, from `bb provider list --all` (a model route such as vercel-ai-gateway/... goes in --model). Omit to use the project's remembered provider choice";
 
 interface ThreadSpawnCommandOptions {
   prompt?: string;
@@ -209,6 +209,21 @@ function parseJsonFlag(
     throw new Error(`${flagName} must be valid JSON.`);
   }
   return jsonValueSchema.parse(parsed);
+}
+
+async function resolveSpawnProviderId(
+  serverUrl: string,
+  provider: string | undefined,
+): Promise<string | undefined> {
+  const requested = provider?.trim();
+  if (!requested) return undefined;
+  const catalog = await createCliBbSdk(serverUrl).providers.catalog();
+  if (catalog.some((entry) => entry.id === requested)) return requested;
+  throw new Error(
+    `Unknown provider '${requested}'. Known providers: ${catalog
+      .map((entry) => entry.id)
+      .join(", ")}.`,
+  );
 }
 
 async function buildProviderSpawnEnvironment(args: {
@@ -584,7 +599,10 @@ export function registerSpawnCommand(
         }
         const sendAt =
           opts.sendAt === undefined ? undefined : parseSendAt(opts.sendAt);
-        const providerId = opts.provider?.trim();
+        const providerId = await resolveSpawnProviderId(
+          getUrl(),
+          opts.provider,
+        );
 
         let thread: Thread;
         try {

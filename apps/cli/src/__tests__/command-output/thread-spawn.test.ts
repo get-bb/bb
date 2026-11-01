@@ -1,4 +1,7 @@
-import { createThreadRequestSchema } from "@bb/server-contract";
+import {
+  createThreadRequestSchema,
+  type SystemProviderCatalogEntry,
+} from "@bb/server-contract";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -23,6 +26,30 @@ describe("bb thread spawn command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  function providerCatalogEntry(id: string): SystemProviderCatalogEntry {
+    return {
+      id,
+      displayName: id,
+      pluginId: `provider-${id}`,
+      pluginName: id,
+      pluginEnabled: true,
+      enabled: true,
+      available: true,
+      logoUrl: null,
+      info: null,
+    };
+  }
+
+  function stubSpawnApi(post: Parameters<typeof stubServerApi>[0][string]) {
+    stubServerApi({
+      "v1.threads.$post": post,
+      "v1.system.providers.catalog.$get": vi.fn(async () => [
+        providerCatalogEntry("codex"),
+        providerCatalogEntry("pi"),
+      ]),
+    });
+  }
+
   function captureCommanderErrors() {
     return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   }
@@ -36,7 +63,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
       });
     });
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
     await expect(
       runCommand(
         [
@@ -70,7 +97,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
       });
     });
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     try {
       await runCommand(
@@ -90,7 +117,7 @@ describe("bb thread spawn command output", () => {
 
   it("bb thread spawn refuses a prompt given both inline and as a file", async () => {
     const post = vi.fn();
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -125,7 +152,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -174,7 +201,7 @@ describe("bb thread spawn command output", () => {
           providerId: "codex",
         });
         const post = vi.fn(async () => thread);
-        stubServerApi({ "v1.threads.$post": post });
+        stubSpawnApi(post);
         vi.mocked(globalThis.fetch).mockResolvedValue(
           new Response(
             JSON.stringify({
@@ -246,7 +273,7 @@ describe("bb thread spawn command output", () => {
           failure === "directory" ? clientDir : join(clientDir, "report.pdf");
         if (failure === "upload") await writeFile(filePath, "report");
         const post = vi.fn(async () => ({ ok: true }));
-        stubServerApi({ "v1.threads.$post": post });
+        stubSpawnApi(post);
         vi.mocked(globalThis.fetch).mockResolvedValue(
           new Response(JSON.stringify({ error: "Upload rejected" }), {
             status: 400,
@@ -287,7 +314,7 @@ describe("bb thread spawn command output", () => {
       providerId: "claude-code",
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -329,7 +356,7 @@ describe("bb thread spawn command output", () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-env");
     const post = vi.fn();
     const stderrWrite = captureCommanderErrors();
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(["thread", "spawn", "--prompt", "hello"], register),
@@ -354,7 +381,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -393,7 +420,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -434,6 +461,68 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn rejects an unknown provider before creating anything", async () => {
+    const post = vi.fn();
+    stubSpawnApi(post);
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--provider",
+          "vercel-ai-gateway",
+          "--model",
+          "anthropic/claude-opus-5.5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Unknown provider 'vercel-ai-gateway'. Known providers: codex, pi.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn forwards a model route under its provider", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-model-route",
+        projectId: "proj-1",
+        providerId: "pi",
+      }),
+    );
+    stubSpawnApi(post);
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--provider",
+        "pi",
+        "--model",
+        "vercel-ai-gateway/anthropic/claude-opus-5.5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        providerId: "pi",
+        model: "vercel-ai-gateway/anthropic/claude-opus-5.5",
+      }),
+    });
+  });
+
   it("bb thread spawn forwards hidden visibility", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-hidden",
@@ -442,7 +531,7 @@ describe("bb thread spawn command output", () => {
       visibility: "hidden",
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -475,7 +564,7 @@ describe("bb thread spawn command output", () => {
       visibility: "hidden",
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -539,7 +628,7 @@ describe("bb thread spawn command output", () => {
       providerId: "codex",
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -571,7 +660,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -602,7 +691,7 @@ describe("bb thread spawn command output", () => {
         "HTTP 503: Unable to load codex models to resolve the default",
       );
     });
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -628,7 +717,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -676,7 +765,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -722,7 +811,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -759,7 +848,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
       }),
     );
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -795,7 +884,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
       }),
     );
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -832,7 +921,7 @@ describe("bb thread spawn command output", () => {
         providerId: "codex",
       }),
     );
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -872,7 +961,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -919,7 +1008,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -961,7 +1050,7 @@ describe("bb thread spawn command output", () => {
   it("bb thread spawn rejects invalid non-path --environment IDs", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const post = vi.fn();
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(
@@ -1001,7 +1090,7 @@ describe("bb thread spawn command output", () => {
       updatedAt: 1,
     });
     const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await runCommand(
       [
@@ -1194,7 +1283,7 @@ describe("bb thread spawn command output", () => {
 
   it("bb thread spawn rejects selecting a machine for a reused environment", async () => {
     const post = vi.fn();
-    stubServerApi({ "v1.threads.$post": post });
+    stubSpawnApi(post);
 
     await expect(
       runCommand(

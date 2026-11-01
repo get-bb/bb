@@ -215,6 +215,9 @@ export function resolveCreateThreadExecutionDefaults(
     );
   }
   const registration = registry.get(providerId);
+  if (registration === null && providerId === args.requestedProviderId) {
+    throw unknownProviderError(registry, providerId);
+  }
   if (registration !== null && !registration.info.available) {
     throw new ApiError(
       409,
@@ -232,6 +235,22 @@ export function resolveCreateThreadExecutionDefaults(
       (id) => id !== providerId,
     ),
   };
+}
+
+function unknownProviderError(
+  registry: ProviderRegistryService,
+  providerId: string,
+): ApiError {
+  const disabled = registry.disabledProviderIds();
+  const known = registry
+    .list()
+    .map((entry) => entry.info.id)
+    .filter((id) => !disabled.has(id));
+  return new ApiError(
+    400,
+    "provider_not_found",
+    `Unknown provider "${providerId}".${known.length > 0 ? ` Known providers: ${known.join(", ")}.` : ""}`,
+  );
 }
 
 export function buildProviderThreadExecutionDefaults(
