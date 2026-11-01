@@ -73,6 +73,7 @@ async function createFixture(
     protocolVersion?: number;
     installFailure?: Error;
     now?: () => number;
+    serverHeaders?: Record<string, string>;
     serverUrl?: string;
     useDefaultInstaller?: boolean;
   } = {},
@@ -110,6 +111,7 @@ async function createFixture(
     ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
     logger: testLogger,
     now: args.now,
+    serverHeaders: args.serverHeaders,
     serverUrl: args.serverUrl ?? "https://server.example.test",
   });
   return {
@@ -306,6 +308,39 @@ describe("protocol self-update", () => {
       { artifactDigest: digest },
       expect.stringContaining("already installed"),
     );
+  });
+
+  it("sends the server headers with the version check and the download, also on a requested retry", async () => {
+    const serverHeaders = { "x-proxy-key": "proxy-key-test" };
+    const test = await createFixture({ serverHeaders });
+    const requests: { headers: HeadersInit | undefined; path: string }[] = [];
+    test.fetchFn.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        requests.push({ headers: init?.headers, path });
+        return path === "/install/version"
+          ? versionResponse()
+          : tarballResponse("tarball");
+      },
+    );
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    await expect(
+      test.updater.handleProtocolMismatch({ force: true }),
+    ).resolves.toBe("updated");
+
+    const digest = createHash("sha256").update("tarball").digest("hex");
+    expect(requests).toEqual([
+      { headers: serverHeaders, path: "/install/version" },
+      { headers: serverHeaders, path: "/install/bb-app.tgz" },
+      { headers: serverHeaders, path: "/install/version" },
+      {
+        headers: { ...serverHeaders, "if-none-match": `"sha256-${digest}"` },
+        path: "/install/bb-app.tgz",
+      },
+    ]);
   });
 
   it("finds npm beside the running Node executable when the service PATH omits it", async () => {
