@@ -25,6 +25,39 @@ afterEach(async () => {
 });
 
 describe("resolveAcpNativeRoots", () => {
+  it.each(["workspace", "workspace/nested"])(
+    "exposes OpenCode project commands before a session exists in %s",
+    async (workspace) => {
+      const cwd = path.join(tempRoot, workspace);
+      const answer = await resolveAcpNativeRoots({
+        agentId: "acp-opencode",
+        cwd,
+        homeDir: path.join(tempRoot, "home"),
+        env: {},
+      });
+
+      expect(answer.commands).toEqual([
+        {
+          path: path.join(cwd, ".opencode", "commands"),
+          origin: "project",
+          shape: "commands",
+          ancestors: true,
+        },
+      ]);
+    },
+  );
+
+  it("omits OpenCode project command roots without a workspace", async () => {
+    const answer = await resolveAcpNativeRoots({
+      agentId: "acp-opencode",
+      cwd: null,
+      homeDir: path.join(tempRoot, "home"),
+      env: {},
+    });
+
+    expect(answer.commands).toEqual([]);
+  });
+
   it("lists Cursor plugin skills", async () => {
     const homeDir = path.join(tempRoot, "home");
     const pluginRoot = path.join(tempRoot, "plugins", "review-tools");
