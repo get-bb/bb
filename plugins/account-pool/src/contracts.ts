@@ -276,19 +276,29 @@ export type PoolStatusReport = z.infer<typeof statusReportSchema>;
 
 export const accountAddInputSchema = z
   .object({
-    provider: providerSchema,
-    source: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("import") }).strict(),
-      z
-        .object({ kind: z.literal("api-key"), apiKey: z.string().min(1) })
-        .strict(),
-    ]),
+    provider: z.literal("claude"),
+    apiKey: z.string().min(1),
     label: z.string().min(1).nullable(),
     priority: z.number().int(),
   })
   .strict();
 
 export type AccountAddInput = z.infer<typeof accountAddInputSchema>;
+
+export const loginTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("add"),
+      label: z.string().min(1).nullable(),
+      priority: z.number().int(),
+    })
+    .strict(),
+  z
+    .object({ kind: z.literal("relogin"), accountId: z.string().uuid() })
+    .strict(),
+]);
+
+export type LoginTarget = z.infer<typeof loginTargetSchema>;
 
 export const loginStartSchema = z
   .object({

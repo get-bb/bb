@@ -138,6 +138,7 @@ function parentSystemTurnRequestFields(
     input: args.input,
     execution: args.execution,
     initiator: "system",
+    originPluginId: null,
     senderThreadId: null,
     systemMessageKind: args.systemMessageKind,
     systemMessageSubject: args.systemMessageSubject,
@@ -285,6 +286,7 @@ async function queueActiveParentSystemMessage(
           kind: args.systemMessageKind,
           subject: args.systemMessageSubject,
         },
+        deliveryMode: "steer",
       },
       threadId: args.thread.id,
     });
@@ -598,6 +600,7 @@ async function attemptParentSystemMessageDelivery(
       execution,
       initiator: "system",
       input: args.input,
+      originPluginId: null,
       senderThreadId: null,
       systemMessageKind: args.systemMessageKind,
       systemMessageSubject: args.systemMessageSubject,

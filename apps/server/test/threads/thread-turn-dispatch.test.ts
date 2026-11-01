@@ -51,6 +51,7 @@ it("leaves reprovision unstarted when dispatch admission rejects the request", a
 
     await expect(
       dispatchTurnDuringReprovision({
+        originPluginId: null,
         deps: harness.deps,
         environment,
         execution,

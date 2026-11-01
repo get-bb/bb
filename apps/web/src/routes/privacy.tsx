@@ -9,7 +9,7 @@ const PAGE_TITLE = "Privacy — bb";
 const PAGE_DESCRIPTION =
   "What bb collects, what stays on your own machines, and what bb connect can see.";
 
-const LAST_UPDATED = "October 12, 2026";
+const LAST_UPDATED = "October 30, 2026";
 const CONTACT_EMAIL = "support@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
@@ -29,7 +29,7 @@ function PrivacyRoute() {
 
       <article className="post article">
         <div className="post-body">
-          <time className="date-pill" dateTime="2026-10-12">
+          <time className="date-pill" dateTime="2026-10-30">
             Last updated {LAST_UPDATED}
           </time>
           <h1>Privacy</h1>
@@ -205,6 +205,16 @@ function PrivacyRoute() {
             referrer and any campaign parameters in the URL, and a small set of
             named events, such as a click on a download link or a copy of the
             install command.
+          </p>
+
+          <p>
+            When you click a download link, the link carries the random visitor
+            and session IDs that PostHog gave your browser, the first page you
+            opened on this site in that tab, and the site that sent you to it.
+            We record the download under that visitor ID, so it joins the page
+            views from the same visit and we can count which pages and searches
+            lead to downloads. If your browser sends Global Privacy Control, we
+            drop Google ad click IDs from these records.
           </p>
 
           <p>

@@ -6,7 +6,8 @@ import {
   CHATGPT_PROFILE_CLAIM,
   codexAccessTokenExpiresAt,
 } from "./credentials.js";
-import type { AccountSummary } from "./contracts.js";
+import type { AccountSummary, LoginTarget } from "./contracts.js";
+import { LoginTargetError } from "./operations.js";
 
 const LOGIN_SESSION_TTL_MS = 10 * 60 * 1_000;
 const DEVICE_CALLBACK_PATH = "/deviceauth/callback";
@@ -79,6 +80,7 @@ interface DeviceLoginSession {
   expiresAt: number;
   nextPollAt: number;
   polling: boolean;
+  target: LoginTarget;
 }
 
 export interface CodexDeviceAccount {
@@ -95,7 +97,11 @@ export interface CodexDeviceLoginOptions {
   fetch?: typeof fetch;
   now?: () => number;
   authBaseUrl?: string;
-  addAccount: (authenticated: CodexDeviceAccount) => Promise<AccountSummary>;
+  validateTarget: (target: LoginTarget) => Promise<void>;
+  saveLogin: (
+    authenticated: CodexDeviceAccount,
+    target: LoginTarget,
+  ) => Promise<AccountSummary>;
 }
 
 export interface CodexDeviceLoginStart {
@@ -174,7 +180,8 @@ export class CodexDeviceLogin {
     );
   }
 
-  async start(): Promise<CodexDeviceLoginStart> {
+  async start(target: LoginTarget): Promise<CodexDeviceLoginStart> {
+    await this.options.validateTarget(target);
     const pruneBefore = this.now();
     for (const [sessionId, session] of this.sessions) {
       if (pruneBefore >= session.expiresAt) this.deleteSession(sessionId);
@@ -211,6 +218,7 @@ export class CodexDeviceLogin {
       expiresAt: expiresAt(parsed.data, now),
       nextPollAt: now + intervalMs,
       polling: false,
+      target,
     };
     this.sessions.set(session.sessionId, session);
     this.scheduleExpiry(session);
@@ -313,7 +321,7 @@ export class CodexDeviceLogin {
         };
       }
       this.deleteSession(session.sessionId);
-      return await this.exchange(parsed.data);
+      return await this.exchange(parsed.data, session.target);
     } catch {
       if (this.now() < session.expiresAt) return { status: "pending" };
       this.deleteSession(session.sessionId);
@@ -357,6 +365,7 @@ export class CodexDeviceLogin {
 
   private async exchange(
     authorized: z.infer<typeof deviceTokenResponseSchema>,
+    target: LoginTarget,
   ): Promise<CodexDeviceLoginPoll> {
     const response = await this.fetch(`${this.authBaseUrl}/oauth/token`, {
       method: "POST",
@@ -390,23 +399,28 @@ export class CodexDeviceLogin {
     }
     try {
       const claims = idTokenClaims(parsed.data.id_token);
-      const account = await this.options.addAccount({
-        label: claims.email ?? "Codex account",
-        email: claims.email,
-        accountId: claims.accountId,
-        accessToken: parsed.data.access_token,
-        refreshToken: parsed.data.refresh_token,
-        idToken: parsed.data.id_token,
-        expiresAt: codexAccessTokenExpiresAt(parsed.data.access_token),
-      });
+      const account = await this.options.saveLogin(
+        {
+          label: claims.email ?? "Codex account",
+          email: claims.email,
+          accountId: claims.accountId,
+          accessToken: parsed.data.access_token,
+          refreshToken: parsed.data.refresh_token,
+          idToken: parsed.data.id_token,
+          expiresAt: codexAccessTokenExpiresAt(parsed.data.access_token),
+        },
+        target,
+      );
       return { status: "complete", account };
     } catch (error) {
       return {
         status: "error",
         message:
-          error instanceof Error && error.message.startsWith("Codex ")
-            ? `${error.message} Start again.`
-            : "Codex account could not be saved. Start again.",
+          error instanceof LoginTargetError
+            ? error.message
+            : error instanceof Error && error.message.startsWith("Codex ")
+              ? `${error.message} Start again.`
+              : "Codex account could not be saved. Start again.",
       };
     }
   }

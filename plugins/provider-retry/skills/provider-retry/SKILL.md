@@ -25,6 +25,13 @@ account for the failed request's model, including parent pools, so a generic
 provider 429 without quota windows can still schedule a retry. Unknown resets,
 authentication failures, and unavailable pool sources do not schedule retries.
 
+Before scheduling a retry, the plugin asks the plugin that sent the failed
+message, when that plugin answers the `provider-retry.v1.consent` RPC. A
+decline skips the retry, and `explain` reports `declined-by-sender` with the
+plugin's reason. A failing or slow answer counts as consent. Automations
+declines retries of turns that scheduled runs of recurring automations
+started, because those run again on their own schedule.
+
 A turn gets at most four automatic retries. The `maximumWait` setting
 (`6 hours` by default, or `24 hours` or `No limit`) skips a subscription-limit
 retry whose reset is farther away:

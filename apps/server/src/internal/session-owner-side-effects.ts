@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   closeSession,
+  getSessionById,
   hostDaemonSessions,
   listActiveHostThreads,
   listHostThreadIds,
@@ -77,39 +78,48 @@ export async function handleHostSessionOpened(
 
   const sameDaemonInstance =
     args.previousSession?.instanceId === args.openedSession.instanceId;
-  if (
-    args.previousSession &&
-    args.previousSession.id !== args.openedSession.id
-  ) {
-    deps.hub.cancelPendingDaemonDisconnect(args.previousSession.id);
+  const replacedSession =
+    args.previousSession?.id === args.openedSession.id
+      ? null
+      : args.previousSession;
+  if (replacedSession) {
+    deps.hub.cancelPendingDaemonDisconnect(replacedSession.id);
 
-    if (args.previousSession.status === "active") {
+    if (replacedSession.status === "active") {
       if (sameDaemonInstance) {
-        deps.hub.closeDaemonSessionSocket(args.previousSession.id, "replaced");
+        deps.hub.closeDaemonSessionSocket(replacedSession.id, "replaced");
       } else {
-        deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+        deps.hub.closeDaemonSession(replacedSession.id, "replaced");
       }
       deps.terminalSessions.handleDaemonSessionClosed({
-        sessionId: args.previousSession.id,
+        sessionId: replacedSession.id,
       });
     }
+  }
 
-    if (!sameDaemonInstance) {
-      interruptEnvironmentProvisioningForHost(deps, {
-        hostId: args.hostId,
-        reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
-      });
-      interruptPendingInteractionsForHostThreads(deps, {
-        hostId: args.hostId,
-        reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
-      });
-      interruptActiveThreadsForHost(deps, {
-        includeStopping: false,
-        hostId: args.hostId,
-        reason: "host-daemon-restarted",
-      });
-      settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
-    }
+  await deps.providerRegistry.whenRegistrationsSettled();
+  if (
+    getSessionById(deps.db, { sessionId: args.openedSession.id })?.status !==
+    "active"
+  ) {
+    return;
+  }
+
+  if (replacedSession && !sameDaemonInstance) {
+    interruptEnvironmentProvisioningForHost(deps, {
+      hostId: args.hostId,
+      reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
+    });
+    interruptPendingInteractionsForHostThreads(deps, {
+      hostId: args.hostId,
+      reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
+    });
+    interruptActiveThreadsForHost(deps, {
+      includeStopping: false,
+      hostId: args.hostId,
+      reason: "host-daemon-restarted",
+    });
+    settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   }
 
   await reconcileDaemonReportedThreads(deps, {

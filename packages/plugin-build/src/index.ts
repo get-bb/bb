@@ -9,6 +9,10 @@ export {
 } from "./build-plugin-server.js";
 export { buildPluginHost } from "./build-plugin-host.js";
 export { pluginBuildCodeDigest } from "./code-digest.js";
+export {
+  findPluginSdkInstallImports,
+  type PluginSdkInstallImport,
+} from "./plugin-sdk-install-imports.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,

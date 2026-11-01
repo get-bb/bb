@@ -16,10 +16,10 @@ import {
   makeProviderCliStatus,
 } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { ReleaseNotesPanel } from "./ReleaseNotesPanel";
 import {
   BbAppUpdateRows,
   BbUpdatesCard,
-  ChangelogPreviewCard,
   MachineUpdateRow,
   PluginUpdatesSection,
   ProviderCliUpdatesSection,
@@ -30,6 +30,15 @@ export default {
 };
 
 const noop = () => {};
+
+function storyReleaseNotes(version: string, expanded = false) {
+  return {
+    version,
+    panelId: `story-release-notes-${version}`,
+    expanded,
+    onToggle: noop,
+  };
+}
 const NO_JOBS: ReadonlySet<string> = new Set();
 const NO_FAILURES: ReadonlyMap<string, ProviderCliInstallFailure> = new Map();
 const STORY_NOW = 1_800_000_000_000;
@@ -319,7 +328,7 @@ export function RowVariations() {
         <h2 className="px-4 py-3 text-sm font-semibold">Server and desktop</h2>
         <StoryRow
           label="Up to date"
-          hint="Nothing to do. The settled state stays visually quiet."
+          hint="Nothing to do. The settled state stays visually quiet; Changelog opens the installed version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>
@@ -329,6 +338,7 @@ export function RowVariations() {
                 isDesktop={false}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
+                releaseNotes={storyReleaseNotes(NPM_VERSION.currentVersion)}
               />
             </BbUpdatesCard>
           </div>
@@ -353,20 +363,25 @@ export function RowVariations() {
 
         <StoryRow
           label="Update available"
-          hint="A web install cannot replace itself, so its action copies the upgrade command."
+          hint="A web install cannot replace itself, so its action copies the upgrade command. Changelog opens the new version's changes below the row."
         >
           <div className="w-full">
             <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
-                  latestVersion: "0.39.0",
+                  latestVersion: "0.48.0",
                   updateAvailable: true,
                 }}
                 desktopInfo={null}
                 isDesktop={false}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
+                releaseNotes={storyReleaseNotes("0.48.0", true)}
+              />
+              <ReleaseNotesPanel
+                id="story-release-notes-0.48.0"
+                version="0.48.0"
               />
             </BbUpdatesCard>
           </div>
@@ -387,6 +402,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
+                releaseNotes={storyReleaseNotes("0.39.0")}
               />
             </BbUpdatesCard>
           </div>
@@ -1177,16 +1193,6 @@ export function SectionVariations() {
               ])
             }
           />
-        </div>
-      </StoryRow>
-      <StoryRow
-        label="Changelog preview"
-        hint="The optional release preview appears above the update cards."
-      >
-        <div className="w-full space-y-6">
-          <ChangelogPreviewCard />
-          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
-          <StoryProviderClis machines={[workstation]} />
         </div>
       </StoryRow>
     </StoryCard>

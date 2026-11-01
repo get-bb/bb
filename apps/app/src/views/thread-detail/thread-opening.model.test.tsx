@@ -358,8 +358,22 @@ async function runSeed(seed: number): Promise<void> {
     );
   };
   const topRowOnScreen = (): { id: string; top: number } | null => {
+    const scrollElement = getScrollElement();
+    if (scrollElement === null) return null;
+    const elements = new Map<string | null, HTMLElement>();
+    for (const element of document.querySelectorAll<HTMLElement>(
+      "[data-timeline-row-id]",
+    )) {
+      const id = element.getAttribute("data-timeline-row-id");
+      if (!elements.has(id)) elements.set(id, element);
+    }
     for (const entry of history) {
-      const top = rowTop(entry.row.id);
+      const element = elements.get(entry.row.id);
+      const top =
+        element === undefined
+          ? null
+          : element.getBoundingClientRect().top -
+            scrollElement.getBoundingClientRect().top;
       if (top !== null && top + entry.height > 1) {
         return { id: entry.row.id, top };
       }

@@ -39,7 +39,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     if (typeof completedAt === "string") rememberOnboardingSeen();
   }, [completedAt]);
 
-  if (firstRunClosed && typeof completedAt === "string") {
+  if (
+    firstRunClosed &&
+    typeof completedAt === "string" &&
+    !updateSettings.isPending
+  ) {
     setFirstRunClosed(false);
   }
 
@@ -61,10 +65,13 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             entry={seenBefore ? "replay" : "first_run"}
             onClose={() => {
               setFirstRunClosed(true);
-              updateSettings.mutate({
-                ...settings,
-                onboardingCompletedAt: new Date().toISOString(),
-              });
+              updateSettings.mutate(
+                {
+                  ...settings,
+                  onboardingCompletedAt: new Date().toISOString(),
+                },
+                { onError: () => setFirstRunClosed(false) },
+              );
             }}
           />
         </Suspense>

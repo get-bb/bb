@@ -23,7 +23,7 @@ import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
-import type { QueryClient } from "@tanstack/react-query";
+import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import { createPluginToast } from "@/lib/notifications/plugin-toast";
@@ -268,14 +268,24 @@ const lazyRuntimeGroups = [
   load: () => Promise<Partial<BbPluginRuntime>>;
 }[];
 
+async function fetchEnabledPluginList(queryClient: QueryClient) {
+  for (;;) {
+    try {
+      return await queryClient.fetchQuery(
+        pluginListQueryOptions({ enabled: true }),
+      );
+    } catch (error) {
+      if (!isCancelledError(error)) throw error;
+    }
+  }
+}
+
 export async function fetchFrontendCandidates(
   queryClient: QueryClient = appQueryClient,
 ): Promise<PluginFrontendCandidate[]> {
   let plugins;
   try {
-    plugins = await queryClient.fetchQuery(
-      pluginListQueryOptions({ enabled: true }),
-    );
+    plugins = await fetchEnabledPluginList(queryClient);
   } catch (error) {
     setServerPluginsStarting(false);
     if (
@@ -1045,11 +1055,15 @@ let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
   new Map();
 const browserDiagnosticsListeners = new Set<() => void>();
 
-function publishBrowserDiagnostics(): void {
-  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+function publishLoadFailed(): void {
   setPluginFrontendLoadFailed(
     [...state.records.values()].some((record) => record.status !== "loaded"),
   );
+}
+
+function publishBrowserDiagnostics(): void {
+  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+  publishLoadFailed();
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
@@ -1136,7 +1150,9 @@ export function bootPluginFrontends(): Promise<void> {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
+    publishLoadFailed();
   })().catch((error: unknown) => {
+    setPluginFrontendLoadFailed(true);
     console.warn(
       `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -1158,6 +1174,7 @@ async function runLiveReconcile(): Promise<void> {
     await reconcilePluginFrontends(state, browserReconcileDeps, () =>
       setPluginFrontendReconcilePending(true),
     );
+    publishLoadFailed();
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,

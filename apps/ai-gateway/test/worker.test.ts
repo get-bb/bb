@@ -137,12 +137,18 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     expect(upstreamBodies.at(-1)).not.toHaveProperty("models");
 
     const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-    const row = await db
-      .prepare(
-        "SELECT spent_micros, reserved_micros, requests FROM ai_usage_day WHERE user_id = 'u1'",
-      )
-      .first();
-    expect(row).toEqual({ spent_micros: 10, reserved_micros: 0, requests: 1 });
+    await vi.waitFor(async () => {
+      const row = await db
+        .prepare(
+          "SELECT spent_micros, reserved_micros, requests FROM ai_usage_day WHERE user_id = 'u1'",
+        )
+        .first();
+      expect(row).toEqual({
+        spent_micros: 10,
+        reserved_micros: 0,
+        requests: 1,
+      });
+    });
 
     const usage = await mf.dispatchFetch("https://getbb.app/api/ai/v1/usage", {
       headers: { "x-bb-connect-machine": CREDENTIAL },
@@ -198,14 +204,16 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
       error: { code: "rate_limited" },
     });
     const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-    const logged = await db
-      .prepare(
-        "SELECT COUNT(*) AS refused FROM ai_request_log WHERE outcome = 'rate_limited' AND cost_micros = 0",
-      )
-      .first<{ refused: number }>();
-    expect(logged?.refused).toBe(
-      statuses.filter((status) => status === 429).length + 1,
-    );
+    await vi.waitFor(async () => {
+      const logged = await db
+        .prepare(
+          "SELECT COUNT(*) AS refused FROM ai_request_log WHERE outcome = 'rate_limited' AND cost_micros = 0",
+        )
+        .first<{ refused: number }>();
+      expect(logged?.refused).toBe(
+        statuses.filter((status) => status === 429).length + 1,
+      );
+    });
   });
 
   it("holds concurrent D1 reservations to the daily limit", async () => {
@@ -239,13 +247,15 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     await Promise.all(pending);
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
     const db = (await tight.getD1Database("DB")) as unknown as D1Database;
-    expect(
-      await db
-        .prepare(
-          "SELECT spent_micros, reserved_micros FROM ai_usage_day WHERE user_id = 'u1'",
-        )
-        .first(),
-    ).toEqual({ spent_micros: 50, reserved_micros: 0 });
+    await vi.waitFor(async () => {
+      expect(
+        await db
+          .prepare(
+            "SELECT spent_micros, reserved_micros FROM ai_usage_day WHERE user_id = 'u1'",
+          )
+          .first(),
+      ).toEqual({ spent_micros: 50, reserved_micros: 0 });
+    });
   });
 
   it("answers unavailable without an OpenRouter key", async () => {
