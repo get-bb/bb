@@ -303,6 +303,27 @@ export function registerPoolCli(
         "Manage Claude and Codex accounts and inspect the Account Pooler hub",
       description: DESCRIPTION,
       commands: {
+        ping: cliCommand({
+          summary:
+            "Send one tiny Haiku request through exactly one local Claude account",
+          description:
+            "Consumes quota. Never fails over or changes the routing cursor. Refuses unavailable targets and parent proxy mode. Prints no upstream response content.",
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              const result = await operations.ping(id);
+              return {
+                exitCode: result.ok ? 0 : 1,
+                stdout: input.options.json
+                  ? json(result)
+                  : `Account ${result.accountId}: HTTP ${result.status} (${result.model}).\n`,
+              };
+            }),
+        }),
         "account add": cliCommand({
           summary:
             "Sign in to a Claude or Codex account, or add an Anthropic API key",

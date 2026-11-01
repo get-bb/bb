@@ -86,6 +86,10 @@ export class PoolOperations {
     > = async () => null,
   ) {}
 
+  ping(id: string) {
+    return this.hub.ping(id);
+  }
+
   async add(input: AccountAddInput): Promise<Account> {
     const account = await this.accounts.add(
       {

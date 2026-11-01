@@ -2,6 +2,7 @@ import { defineRpcContract, type PluginRpcHandlers } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   accountAddInputSchema,
+  accountPingResultSchema,
   accountPoolConfigSchema,
   accountPoolConfigSetInputSchema,
   accountIdInputSchema,
@@ -29,6 +30,10 @@ import type { ClaudeOAuthLogin } from "./oauth-login.js";
 import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 export const accountPoolRpcContract = defineRpcContract({
+  "account.ping": {
+    input: accountIdInputSchema,
+    output: accountPingResultSchema,
+  },
   "account.add": {
     input: accountAddInputSchema,
     output: accountSchema,
@@ -120,6 +125,7 @@ export function createRpcHandlers(
   config: AccountPoolConfigController,
 ): PluginRpcHandlers<typeof accountPoolRpcContract> {
   return {
+    "account.ping": ({ id }) => operations.ping(id),
     "account.add": (input) => operations.add(input),
     "account.list": () => operations.list(),
     "account.remove": async ({ id }) => ({

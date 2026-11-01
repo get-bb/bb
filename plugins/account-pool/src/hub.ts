@@ -5,6 +5,7 @@ import {
 import { HUB_TOKEN_HEADER } from "./parent-pool.js";
 import type {
   Account,
+  AccountPingResult,
   AccountPoolConfig,
   AccountQuota,
   AccountSecret,
@@ -233,6 +234,111 @@ export class AccountPoolHub {
       adapter,
       hostId,
     );
+  }
+
+  async ping(accountId: string): Promise<AccountPingResult> {
+    if (!this.accepting)
+      throw new Error("Account Pooler is not accepting requests.");
+    if (this.options.getParentRoute() !== null)
+      throw new Error("Ping requires a local pool, not parent proxy mode.");
+    const account = await this.options.accounts.get(accountId);
+    if (account === null || account.provider !== "claude" || !account.enabled) {
+      throw new Error("Ping requires an enabled local Claude account.");
+    }
+    const signal = AbortSignal.any([
+      AbortSignal.timeout(30_000),
+      this.stopped.signal,
+    ]);
+    await abortable(this.refreshUsage(accountId), signal);
+    const quota = this.options.quotas.get(accountId);
+    const now = this.options.now();
+    if (
+      quota.error !== null ||
+      isUsageRestricted(quota, now) ||
+      (quota.heldUntil !== null && quota.heldUntil > now) ||
+      isQuotaExhausted(
+        quota,
+        "haiku",
+        this.options.getSettings().switchThreshold,
+        now,
+      )
+    ) {
+      throw new Error("The target account is unavailable for a Haiku ping.");
+    }
+    const current = await this.options.accounts.get(accountId);
+    if (
+      !this.accepting ||
+      current === null ||
+      !current.enabled ||
+      current.provider !== "claude"
+    ) {
+      throw new Error("The target account is no longer available.");
+    }
+    const adapter = this.adapter("claude");
+    const secret = await abortable(
+      this.freshSecret(current, adapter, { kind: "normal" }),
+      signal,
+    );
+    const model = "claude-haiku-5-5";
+    const request = new Request("http://localhost/v1/messages", {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        ...(secret.kind === "oauth"
+          ? { "anthropic-beta": "oauth-2025-04-20" }
+          : {}),
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1,
+        stream: false,
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    });
+    const parsed = adapter.parseRequest(
+      new Uint8Array(await request.arrayBuffer()),
+      request.headers,
+    );
+    const upstream = await this.fetchUpstream(
+      request,
+      parsed.forAccount(current),
+      current,
+      secret,
+      adapter,
+    );
+    try {
+      const observed = adapter.quotaFromHeaders(
+        accountId,
+        upstream.response.headers,
+        this.options.quotas.get(accountId),
+        "haiku",
+        this.options.now(),
+      );
+      this.options.quotas.put(
+        upstream.response.status === 429 &&
+          !adapter.isQuotaRejection(upstream.response.headers)
+          ? {
+              ...observed,
+              heldUntil:
+                this.options.now() +
+                retryAfterMilliseconds(
+                  upstream.response.headers.get("retry-after"),
+                  this.options.now(),
+                ),
+            }
+          : observed,
+      );
+      return {
+        accountId,
+        model,
+        status: upstream.response.status,
+        ok: upstream.response.ok,
+      };
+    } finally {
+      await this.discardUpstream(upstream, false);
+    }
   }
 
   private trackRequest(

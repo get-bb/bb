@@ -344,6 +344,16 @@ export const accountIdInputSchema = z
   .object({ id: z.string().uuid() })
   .strict();
 
+export const accountPingResultSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    model: z.string(),
+    status: z.number().int(),
+    ok: z.boolean(),
+  })
+  .strict();
+export type AccountPingResult = z.infer<typeof accountPingResultSchema>;
+
 export const accountPriorityInputSchema = z
   .object({ accountId: z.string().uuid(), priority: z.number().int() })
   .strict();

@@ -21,3 +21,5 @@ Pooled rate-limit failures can be retried by Provider Retry using the pool’s
 earliest usable account, even if the provider omits structured quota events.
 Inspect `bb provider-retry explain <thread-id> --json` for the last decision
 and `bb provider-retry status <thread-id> --json` for pending retries.
+
+For a tiny request through one specified local Claude account, use `bb pool ping <account-uuid> [--json]`; see the targeted ping section in the routing reference. It consumes quota and never fails over.

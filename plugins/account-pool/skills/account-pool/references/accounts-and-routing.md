@@ -178,3 +178,21 @@ instance.
 Provider Retry discovers Account Pooler’s `provider-retry.v1.availability` RPC. It accepts `{ threadId, requestId }` and reports `not-routed`, `ready`, `blocked` with `retryAt` in epoch milliseconds, or `unavailable` with a reason. Pool routing must have been recorded when the provider environment was prepared. The request must still be the thread’s latest request; its recorded model determines which quota windows apply. The pool uses the same recovery calculation for its HTTP 429 response and this RPC. Parent pools expose the authenticated `/retry-availability?provider=claude|codex&family=<family>` endpoint.
 
 The retry plugin remains responsible for queueing, maximum waits, and attempt limits. Inspect a skipped decision with `bb provider-retry explain <thread-id>` and pending work with `bb provider-retry status <thread-id>`.
+
+## Targeted Claude ping
+
+`bb pool ping <account-uuid> [--json]` sends one fixed, non-streaming
+`claude-haiku-5-5` Messages request (`Hi`, `max_tokens: 1`) through exactly that
+local Claude account. It consumes quota. The matching plugin RPC is
+`account.ping`, input `{ "id": "<account-uuid>" }`; output is
+`{ accountId, model, status, ok }`. CLI exits nonzero when unavailable or HTTP
+fails; response content and credentials are never returned.
+
+Ping rejects parent proxy mode, stopped hubs, unknown/disabled/non-Claude
+accounts, credential errors, usage restrictions, unexpired holds, and exhausted
+shared or Haiku quota. Extra usage does not make a ping eligible. It refreshes
+only target usage/credentials, observes target quota/temporary holds. An inference authentication
+rejection alone never marks the account as errored. It never fails over, retries inference,
+creates session affinity or changes the ordinary routing cursor. Each ping has
+a 30-second deadline. A successful HTTP request alone does not prove a
+subscription reset moved; inspect fresh provider usage separately.

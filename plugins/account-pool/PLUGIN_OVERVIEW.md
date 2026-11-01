@@ -38,3 +38,11 @@ Experimental: routing, storage, and CLI may change.
 ## Automatic retries
 
 Provider Retry uses pool recovery times. Inspect `bb provider-retry status` or `bb provider-retry explain <thread-id>`.
+
+## Targeted Claude ping
+
+`bb pool ping <account-uuid> [--json]` sends one tiny Haiku request through
+exactly one local Claude account. It consumes quota, refuses unavailable
+accounts and parent proxy mode, never fails over, and preserves routing
+cursor and session affinity. CLI and `account.ping` RPC return only status,
+account id and model. See the account-pool skill reference for limitations.

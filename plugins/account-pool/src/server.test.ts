@@ -31,7 +31,12 @@ import {
 } from "./contracts.js";
 import { z } from "zod";
 import { PARENT_TOKEN_ENV, PARENT_URL_ENV } from "./parent-pool.js";
-import { AccountStore, HubTokenStore } from "./store.js";
+import {
+  AccountStore,
+  HubTokenStore,
+  PoolAffinityStore,
+  QuotaStore,
+} from "./store.js";
 import {
   createAccountPoolPlugin,
   helloResponse,
@@ -1403,6 +1408,277 @@ describe("Account Pool plugin", () => {
     expect(
       await fixture.host.harness.behavior.callRpc("account.list", null),
     ).toEqual([]);
+  });
+
+  describe("targeted account ping", () => {
+    it("pings only the specified account via CLI and RPC without moving routing state", async () => {
+      const calls: { key: string | undefined; body: unknown }[] = [];
+      const upstream = await startUpstream(async (request, response) => {
+        calls.push({
+          key: request.headers["x-api-key"] as string | undefined,
+          body: JSON.parse((await readRequestBody(request)).toString()),
+        });
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            content: [{ type: "text", text: "secret upstream content" }],
+          }),
+        );
+      });
+      const fixture = await createFixture({ upstreamUrl: upstream.url });
+      const second = accountSchema.parse(
+        await fixture.host.harness.behavior.callRpc("account.add", {
+          provider: "claude",
+          apiKey: "sk-second",
+          label: "C2",
+          priority: 100,
+        }),
+      );
+      const ordinary = async () => {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          {
+            headers: authHeaders(fixture.key),
+            body: JSON.stringify({
+              model: "claude-haiku-5-5",
+              messages: [{ role: "user", content: "hi" }],
+              metadata: { user_id: "session-test" },
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+      };
+      await ordinary();
+      const affinity = new PoolAffinityStore(
+        fixture.host.bb.storage.database(),
+      );
+      const before = {
+        active: affinity.loadActiveAccounts(),
+        bindings: affinity.loadBindings(0, 4096),
+      };
+      const otherBefore = new QuotaStore(
+        fixture.host.bb.storage.database(),
+      ).get(fixture.account.id);
+      const cli = await fixture.host.harness.behavior.runCli([
+        "ping",
+        second.id,
+        "--json",
+      ]);
+      expect(cli.exitCode).toBe(0);
+      expect(JSON.parse(cli.stdout)).toEqual({
+        accountId: second.id,
+        model: "claude-haiku-5-5",
+        status: 200,
+        ok: true,
+      });
+      expect(cli.stdout).not.toContain("secret upstream content");
+      expect(calls[1]).toEqual({
+        key: "sk-second",
+        body: {
+          model: "claude-haiku-5-5",
+          max_tokens: 1,
+          stream: false,
+          messages: [{ role: "user", content: "Hi" }],
+        },
+      });
+      expect(
+        await fixture.host.harness.behavior.callRpc("account.ping", {
+          id: second.id,
+        }),
+      ).toEqual({
+        accountId: second.id,
+        model: "claude-haiku-5-5",
+        status: 200,
+        ok: true,
+      });
+      expect({
+        active: affinity.loadActiveAccounts(),
+        bindings: affinity.loadBindings(0, 4096),
+      }).toEqual(before);
+      expect(
+        new QuotaStore(fixture.host.bb.storage.database()).get(
+          fixture.account.id,
+        ),
+      ).toEqual(otherBefore);
+      await ordinary();
+      expect(calls.map((c) => c.key)).toEqual([
+        "sk-account",
+        "sk-second",
+        "sk-second",
+        "sk-account",
+      ]);
+    });
+
+    it.each([401, 403])(
+      "keeps ordinary routing available after a ping HTTP %s rejection",
+      async (rejection) => {
+        let calls = 0;
+        const upstream = await startUpstream((_request, response) => {
+          response.writeHead(calls++ === 0 ? rejection : 200);
+          response.end("{}");
+        });
+        const fixture = await createFixture({ upstreamUrl: upstream.url });
+        const ping = await fixture.host.harness.behavior.runCli([
+          "ping",
+          fixture.account.id,
+          "--json",
+        ]);
+        expect(ping.exitCode).toBe(1);
+        expect(
+          new QuotaStore(fixture.host.bb.storage.database()).get(
+            fixture.account.id,
+          ).error,
+        ).toBeNull();
+        const ordinary = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          { headers: authHeaders(fixture.key), body: "{}" },
+        );
+        expect(ordinary.status).toBe(200);
+        await ordinary.text();
+        expect(calls).toBe(2);
+      },
+    );
+
+    it("uses the target OAuth credential and beta header", async () => {
+      let imported = 0;
+      const calls: {
+        authorization: string | undefined;
+        beta: string | string[] | undefined;
+      }[] = [];
+      const upstream = await startUpstream((request, response) => {
+        calls.push({
+          authorization: request.headers.authorization,
+          beta: request.headers["anthropic-beta"],
+        });
+        response.end("{}");
+      });
+      const fixture = await createFixture({
+        upstreamUrl: upstream.url,
+        source: "oauth",
+        options: {
+          claudeLogin: async () =>
+            claudeCredentials({
+              accessToken: `oauth-${++imported}`,
+              accountUuid:
+                imported === 1
+                  ? "11111111-1111-4111-8111-111111111111"
+                  : "22222222-2222-4222-8222-222222222222",
+            }),
+        },
+      });
+      const second = await addExistingAccount(fixture, "claude", {
+        label: "C2",
+      });
+      const result = await fixture.host.harness.behavior.runCli([
+        "ping",
+        second.id,
+        "--json",
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(calls).toEqual([
+        { authorization: "Bearer oauth-2", beta: "oauth-2025-04-20" },
+      ]);
+    });
+
+    it.each([429, 500, 503])(
+      "does not fail over or repeat an HTTP %s ping",
+      async (status) => {
+        let calls = 0;
+        const upstream = await startUpstream((_request, response) => {
+          calls++;
+          response.writeHead(status);
+          response.end("upstream detail");
+        });
+        const fixture = await createFixture({ upstreamUrl: upstream.url });
+        await fixture.host.harness.behavior.callRpc("account.add", {
+          provider: "claude",
+          apiKey: "sk-fallback",
+          label: "C2",
+          priority: 100,
+        });
+        const result = await fixture.host.harness.behavior.runCli([
+          "ping",
+          fixture.account.id,
+          "--json",
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, status });
+        expect(result.stdout).not.toContain("upstream detail");
+        expect(calls).toBe(1);
+        expect(
+          statusSchema.parse(
+            await fixture.host.harness.behavior.callRpc("status.get", null),
+          ).inFlight,
+        ).toBe(0);
+      },
+    );
+
+    it.each([
+      "disabled",
+      "unknown",
+      "codex",
+      "quota",
+      "hold",
+      "error",
+      "family",
+    ])("rejects %s targets without inference", async (state) => {
+      let calls = 0;
+      const upstream = await startUpstream((_request, response) => {
+        calls++;
+        response.end("{}");
+      });
+      const fixture = await createFixture({ upstreamUrl: upstream.url });
+      let id = fixture.account.id;
+      if (state === "disabled")
+        await fixture.host.harness.behavior.callRpc("account.disable", { id });
+      if (state === "unknown") id = "11111111-1111-4111-8111-111111111111";
+      if (state === "codex") {
+        const accounts = await fixture.host.bb.storage.kv.get("accounts:v1");
+        await fixture.host.bb.storage.kv.set(
+          "accounts:v1",
+          z
+            .array(accountSchema)
+            .parse(accounts)
+            .map((a) => ({ ...a, provider: "codex" })),
+        );
+      }
+      const quotas = new QuotaStore(fixture.host.bb.storage.database());
+      const quota = quotas.get(id);
+      if (state === "quota")
+        quotas.put({
+          ...quota,
+          fiveHourUtilization: 1,
+          fiveHourResetAt: Date.now() + 3600000,
+        });
+      if (state === "hold")
+        quotas.put({ ...quota, heldUntil: Date.now() + 3600000 });
+      if (state === "error")
+        quotas.put({ ...quota, error: "credential unavailable" });
+      if (state === "family")
+        quotas.put({
+          ...quota,
+          familyWeekly: {
+            ...quota.familyWeekly,
+            haiku: {
+              utilization: 1,
+              resetAt: Date.now() + 3600000,
+              status: "rejected",
+              source: "header",
+              observedAt: Date.now(),
+            },
+          },
+        });
+      const result = await fixture.host.harness.behavior.runCli([
+        "ping",
+        id,
+        "--json",
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(calls).toBe(0);
+    });
   });
 
   it("refuses unusable pool invocations instead of guessing", async () => {
