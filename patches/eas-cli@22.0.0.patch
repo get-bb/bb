@@ -1,0 +1,26 @@
+diff --git a/build/commandUtils/new/projectFiles.js b/build/commandUtils/new/projectFiles.js
+index 290f1fd4bc1ced033aa1e6ec364ecdd84814a96d..4b38d2cf2f00390aef8e46eee2a2c5c4ac93cc61 100644
+--- a/build/commandUtils/new/projectFiles.js
++++ b/build/commandUtils/new/projectFiles.js
+@@ -56,7 +56,7 @@ async function generateAppConfigAsync(projectDir, app) {
+             package: bundleIdentifier,
+         },
+     };
+-    const mergedConfig = (0, ts_deepmerge_1.default)(baseExpoConfig, expoConfig);
++    const mergedConfig = (0, ts_deepmerge_1.merge)(baseExpoConfig, expoConfig);
+     const appJsonPath = path_1.default.join(projectDir, 'app.json');
+     await fs_extra_1.default.writeJson(appJsonPath, { expo: mergedConfig }, { spaces: 2 });
+ }
+diff --git a/build/credentials/ios/validators/validateProvisioningProfile.js b/build/credentials/ios/validators/validateProvisioningProfile.js
+index 0a642f77217eacc1922328faaf5bb786310e96da..77a0c27d023457975f0d915019f5defbc520d195 100644
+--- a/build/credentials/ios/validators/validateProvisioningProfile.js
++++ b/build/credentials/ios/validators/validateProvisioningProfile.js
+@@ -106,7 +106,7 @@ function validateBundleIdentifier(plistData, expectedBundleIdentifier) {
+         log_1.default.warn('Malformed application-identifier field in provisioning profile');
+         return false;
+     }
+-    if (!(0, minimatch_1.default)(expectedBundleIdentifier, actualBundleIdentifier)) {
++    if (!(0, minimatch_1.minimatch)(expectedBundleIdentifier, actualBundleIdentifier)) {
+         log_1.default.warn(`Wrong bundleIdentifier found in provisioning profile; expected: ${expectedBundleIdentifier}, found (in provisioning profile): ${actualBundleIdentifier}`);
+         return false;
+     }

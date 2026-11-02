@@ -1,0 +1,22 @@
+diff --git a/lib/asar.js b/lib/asar.js
+index fd94e84b62e474470f1dee1f7e5e96d66e3723e7..9271acdf993ad6eb7ae1ce65879757f4bd14cf94 100644
+--- a/lib/asar.js
++++ b/lib/asar.js
+@@ -51,7 +51,7 @@ const crawlfs_1 = require("./crawlfs");
+  * @param unpackDirs - Array of directory paths previously marked as unpacked
+  */
+ function isUnpackedDir(dirPath, pattern, unpackDirs) {
+-    if (dirPath.startsWith(pattern) || (0, minimatch_1.default)(dirPath, pattern)) {
++    if (dirPath.startsWith(pattern) || (0, minimatch_1.minimatch)(dirPath, pattern)) {
+         if (!unpackDirs.includes(dirPath)) {
+             unpackDirs.push(dirPath);
+         }
+@@ -144,7 +144,7 @@ async function createPackageFromFiles(src, dest, filenames, metadata = {}, optio
+         const shouldUnpackPath = function (relativePath, unpack, unpackDir) {
+             let shouldUnpack = false;
+             if (unpack) {
+-                shouldUnpack = (0, minimatch_1.default)(filename, unpack, { matchBase: true });
++                shouldUnpack = (0, minimatch_1.minimatch)(filename, unpack, { matchBase: true });
+             }
+             if (!shouldUnpack && unpackDir) {
+                 shouldUnpack = isUnpackedDir(relativePath, unpackDir, unpackDirs);

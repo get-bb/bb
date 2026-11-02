@@ -1,0 +1,13 @@
+diff --git a/build/src/FilterHandler/defaultFilterHandler.js b/build/src/FilterHandler/defaultFilterHandler.js
+index b71877eb239ebb0a5d649bc15f88d0127d116ba6..df816a93e8df87e59c18d77f3dac9a39d6ff5b65 100644
+--- a/build/src/FilterHandler/defaultFilterHandler.js
++++ b/build/src/FilterHandler/defaultFilterHandler.js
+@@ -27,7 +27,7 @@ function match(path, pattern) {
+     const patternArray = pattern.split(',');
+     for (let i = 0; i < patternArray.length; i++) {
+         const pat = patternArray[i];
+-        if ((0, minimatch_1.default)(path, pat, { dot: true, matchBase: true })) { //nocase
++        if ((0, minimatch_1.minimatch)(path, pat, { dot: true, matchBase: true })) { //nocase
+             return true;
+         }
+     }

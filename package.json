@@ -81,7 +81,10 @@
     },
     "overrides": {
       "zod": "4.6.5",
-      "@expo/metro-config>lightningcss": "1.30.1"
+      "@expo/metro-config>lightningcss": "1.30.1",
+      "glob@>=9 <14.0.2": "14.0.3",
+      "minimatch@<11.0.1": "11.0.3",
+      "ts-deepmerge@<8.0.0": "8.0.0"
     },
     "patchedDependencies": {
       "app-builder-lib@26.15.7": "patches/app-builder-lib@26.15.7.patch",
@@ -93,7 +96,11 @@
       "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch",
       "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch",
       "mermaid@11.15.0": "patches/mermaid@11.15.0.patch",
-      "react-native-webview@14.0.1": "patches/react-native-webview@14.0.1.patch"
+      "react-native-webview@14.0.1": "patches/react-native-webview@14.0.1.patch",
+      "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch",
+      "@electron/asar@3.4.1": "patches/@electron__asar@3.4.1.patch",
+      "dir-compare@4.2.0": "patches/dir-compare@4.2.0.patch",
+      "eas-cli@22.0.0": "patches/eas-cli@22.0.0.patch"
     }
   }
 }
