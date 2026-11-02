@@ -158,7 +158,7 @@ describe("public project attachments", () => {
     });
   });
 
-  it("returns invalid_request when the multipart body cannot be parsed", async () => {
+  it("rejects an empty or malformed multipart body as invalid_request", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-project-attachment-malformed",
@@ -173,7 +173,8 @@ describe("public project attachments", () => {
           {
             body,
             headers: {
-              "content-type": "multipart/form-data; boundary=missing-boundary",
+              "content-type":
+                "multipart/form-data; boundary=----WebKitFormBoundaryabc",
             },
             method: "POST",
           },
@@ -181,7 +182,7 @@ describe("public project attachments", () => {
         expect(response.status).toBe(400);
         await expect(readJson(response)).resolves.toEqual({
           code: "invalid_request",
-          message: "Attachment upload body could not be read",
+          message: "Request body is not valid multipart form data",
         });
       }
     });

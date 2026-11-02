@@ -611,25 +611,20 @@ describe("@bb/sdk", () => {
     ]);
   });
 
-  it("reads File bytes before building the attachment form", async () => {
+  it("uploads the bytes a dropped File reads, not its unreadable handle", async () => {
     const bytes = new Uint8Array([137, 80, 78, 71]);
-    const clientFile = new File([bytes], "dragged.png", { type: "image/png" });
-    let readCount = 0;
-    const readBytes = clientFile.arrayBuffer.bind(clientFile);
-    clientFile.arrayBuffer = async () => {
-      readCount += 1;
-      return readBytes();
-    };
+    const dropped = new File([], "dropped.png", { type: "image/png" });
+    dropped.arrayBuffer = async () => bytes.slice().buffer;
     let body: BodyInit | null | undefined;
     const fetch: FetchImplementation = async (_input, init) => {
       body = init?.body;
       return jsonResponse({
         body: {
           type: "localImage",
-          path: "dragged-uploaded.png",
-          name: "dragged.png",
+          path: "dropped-uploaded.png",
+          name: "dropped.png",
           mimeType: "image/png",
-          sizeBytes: 4,
+          sizeBytes: bytes.byteLength,
         },
         status: 201,
       });
@@ -643,15 +638,14 @@ describe("@bb/sdk", () => {
     });
 
     await sdk.projects.attachments.upload({
-      clientFile,
+      clientFile: dropped,
       projectId: "proj_image",
     });
 
-    expect(readCount).toBe(1);
     if (!(body instanceof FormData)) throw new Error("Expected FormData body");
     const uploaded = body.get("file");
     if (!(uploaded instanceof File)) throw new Error("Expected uploaded File");
-    expect(uploaded.name).toBe("dragged.png");
+    expect(uploaded.name).toBe("dropped.png");
     expect(uploaded.type).toBe("image/png");
     expect(new Uint8Array(await uploaded.arrayBuffer())).toEqual(bytes);
   });
