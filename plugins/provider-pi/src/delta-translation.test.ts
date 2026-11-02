@@ -582,6 +582,11 @@ describe("pi delta translation equivalence", () => {
         scope: turnScope(turnId),
         message: "Provider error",
         detail: quotaMessage,
+        errorInfo: {
+          category: "bad-request",
+          providerCode: null,
+          httpStatusCode: 400,
+        },
       },
       {
         type: "turn/completed",
@@ -2170,6 +2175,11 @@ describe("pi delta translation equivalence", () => {
         kind: "provider.error",
         message: "Provider error",
         detail: "original prompt failed",
+        errorInfo: {
+          category: "unknown",
+          providerCode: null,
+          httpStatusCode: null,
+        },
       },
     ]);
   });
