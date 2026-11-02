@@ -217,6 +217,7 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `DROP TABLE IF EXISTS automation_thread_marks;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -607,9 +608,6 @@ export function deleteAutomation(
   db.prepare(`DELETE FROM automation_runs WHERE automation_id = ?`).run(
     args.automationId,
   );
-  db.prepare(`DELETE FROM automation_thread_marks WHERE automation_id = ?`).run(
-    args.automationId,
-  );
   db.prepare(`DELETE FROM automations WHERE id = ? AND project_id = ?`).run(
     args.automationId,
     args.projectId,
@@ -942,30 +940,6 @@ export function setAutomationRunThread(
     args.runId,
   );
   return getAutomationRun(db, args.runId);
-}
-
-export function markAutomationThread(
-  db: Db,
-  args: { threadId: string; automationId: string; runId: string; now: number },
-): void {
-  db.prepare(
-    `INSERT OR REPLACE INTO automation_thread_marks (
-       thread_id, automation_id, run_id, created_at
-     ) VALUES (?, ?, ?, ?)`,
-  ).run(args.threadId, args.automationId, args.runId, args.now);
-}
-
-export function isAutomationSpawnedThread(db: Db, threadId: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT thread_id FROM automation_thread_marks WHERE thread_id = ? LIMIT 1`,
-      )
-      .get(threadId) !== undefined ||
-    db
-      .prepare(`SELECT id FROM automation_runs WHERE thread_id = ? LIMIT 1`)
-      .get(threadId) !== undefined
-  );
 }
 
 export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
