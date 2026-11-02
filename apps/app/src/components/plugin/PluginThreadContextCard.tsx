@@ -56,7 +56,7 @@ type ThreadContextCardSectionEntry =
   | { owner: "core"; slot: CoreThreadContextCardSection }
   | { owner: "plugin"; slot: PluginThreadContextCardSectionSlot };
 
-export type ThreadContextCardLayout = "gutter" | "shift" | "overlay";
+export type ThreadContextCardLayout = "gutter" | "shift" | "banner";
 
 const TRANSCRIPT_MAX_WIDTH_PX = 760;
 const CARD_WIDTH_PX = 288;
@@ -72,7 +72,7 @@ export function resolveThreadContextCardLayout(
     TRANSCRIPT_MAX_WIDTH_PX
   )
     return "shift";
-  return "overlay";
+  return "banner";
 }
 
 const pinnedAtom = createSyncedPreferenceAtom("threadContextCard.pinned");
@@ -126,7 +126,7 @@ export function ThreadContextCardProvider({
   children: ReactNode;
 }) {
   const { threadContextCardRows, threadContextCardSections } = usePluginSlots();
-  const [layout, setLayout] = useState<ThreadContextCardLayout>("overlay");
+  const [layout, setLayout] = useState<ThreadContextCardLayout>("banner");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [cardHasContent, setCardHasContent] = useState(false);
   const [cardRevealedForThreadId, setCardRevealedForThreadId] = useState<
@@ -216,7 +216,8 @@ function usePaneState(): ThreadContextCardPaneState | null {
 }
 
 export function useThreadContextKind(): ExperimentalThreadContextKind {
-  return usePaneState() === null ? "banner" : "card";
+  const state = usePaneState();
+  return state === null || state.layout === "banner" ? "banner" : "card";
 }
 
 function isCardShown(
@@ -376,7 +377,7 @@ export function ThreadContextCard() {
   return (
     <>
       <span ref={probeRef} aria-hidden className="hidden" />
-      {state.layout !== "overlay" ? (
+      {state.layout !== "banner" ? (
         <div
           role="group"
           aria-label="Thread context"
@@ -407,7 +408,7 @@ export function ThreadContextCardHeaderButton() {
   const state = usePaneState();
   const [pinned, setPinned] = useAtom(pinnedAtom);
   if (state === null) return null;
-  if (state.layout !== "overlay") {
+  if (state.layout !== "banner") {
     const shown = isCardShown(state, pinned);
     const label = shown ? "Unpin thread context" : "Pin thread context";
     return (

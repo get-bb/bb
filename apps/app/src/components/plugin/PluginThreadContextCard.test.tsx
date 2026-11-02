@@ -57,7 +57,9 @@ function Empty() {
 }
 
 function Inset() {
-  return <output aria-label="Inset">{useThreadContextCardContentInset()}</output>;
+  return (
+    <output aria-label="Inset">{useThreadContextCardContentInset()}</output>
+  );
 }
 
 function Crashes(): never {
@@ -141,8 +143,8 @@ describe("resolveThreadContextCardLayout", () => {
     [1384, "gutter"],
     [1383, "shift"],
     [1072, "shift"],
-    [1071, "overlay"],
-    [390, "overlay"],
+    [1071, "banner"],
+    [390, "banner"],
   ] as const)("lays out a %ipx pane as %s", (width, layout) => {
     expect(resolveThreadContextCardLayout(width)).toBe(layout);
   });
@@ -321,7 +323,10 @@ describe("useThreadContextKind", () => {
     }).result.current;
   }
 
-  function pane(enabled: boolean, children: ReactNode) {
+  function pane(enabled: boolean, paneWidth: number, children: ReactNode) {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
+      paneWidth,
+    );
     return (
       <ThreadContextCardProvider
         enabled={enabled}
@@ -331,18 +336,38 @@ describe("useThreadContextKind", () => {
         projectId="proj_1"
         environment={null}
       >
+        <div data-scroll-overlay="">
+          <ThreadContextCard />
+        </div>
         {children}
       </ThreadContextCardProvider>
     );
   }
 
   it.each([
-    ["a pane with the card", (c: ReactNode) => pane(true, c), "card"],
-    ["a pane with the card off", (c: ReactNode) => pane(false, c), "banner"],
+    [
+      "a wide pane with the card",
+      (c: ReactNode) => pane(true, 1600, c),
+      "card",
+    ],
+    [
+      "a pane too narrow for the card",
+      (c: ReactNode) => pane(true, 900, c),
+      "banner",
+    ],
+    [
+      "a pane with the card off",
+      (c: ReactNode) => pane(false, 1600, c),
+      "banner",
+    ],
     [
       "a thread nested in a card pane's panel",
       (c: ReactNode) =>
-        pane(true, <WithoutThreadContextCard>{c}</WithoutThreadContextCard>),
+        pane(
+          true,
+          1600,
+          <WithoutThreadContextCard>{c}</WithoutThreadContextCard>,
+        ),
       "banner",
     ],
     ["no thread pane", (c: ReactNode) => c, "banner"],

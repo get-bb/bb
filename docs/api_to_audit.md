@@ -2856,11 +2856,13 @@ A thread pane shows its thread context one of two ways, its
 or `card`, the thread context card at the pane's upper-right.
 `experimental_useThreadContextKind()` returns the kind of the pane the calling
 component renders in, `banner` outside a thread pane. A pane is `card` while
-the `threadContextCard` experiment is on, for a thread opened as a page,
-except on phones (a compact viewport with a coarse pointer, the rule
-`MessageActionBar` uses). Threads shown inside a panel or as a transcript are
-`banner`: `ThreadScreen` wraps those presentations in
-`WithoutThreadContextCard`.
+the `threadContextCard` experiment is on, for a thread opened as a page whose
+pane is wide enough to fit the card beside the transcript (the `gutter` or
+`shift` layout `ThreadContextCard` measures), except on phones (a compact
+viewport with a coarse pointer, the rule `MessageActionBar` uses). A narrower
+pane is `banner` and its header button opens the card as a popover. Threads
+shown inside a panel or as a transcript are `banner`: `ThreadScreen` wraps
+those presentations in `WithoutThreadContextCard`.
 
 The card's counterparts of the Info tab's row and section slots. A row
 registration is `{ id, group, order?, component }` and draws in the card's top
