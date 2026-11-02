@@ -48,8 +48,10 @@ jobs:
           $failed = @($before.testResults.assertionResults | Where-Object { $_.status -eq 'failed' })
           if ($beforeExit -eq 0 -or $before.numFailedTests -ne 3 -or $before.numPassedTests -ne 1) { throw "Baseline did not fail the expected three cleanup regressions" }
           foreach ($test in $failed) {
-            if ($test.fullName -notmatch 'relocates a real Pi session' -or ($test.failureMessages -join '') -notmatch 'shutdown') { throw "Unexpected baseline failure" }
+            if ($test.fullName -notmatch 'relocates a real Pi session' -or ($test.failureMessages -join '') -notmatch 'to deeply equal') { throw "Unexpected baseline failure" }
           }
+          $beforeLog = Get-Content "$out/before.log" -Raw
+          if ([regex]::Matches($beforeLog, '"event": "shutdown"').Count -ne 3) { throw "Expected missing helper shutdown in all three diffs" }
           Copy-Item ../../scripts/ci-nov2-pi-snapshots/rpc-after.txt src/bridge/rpc-session.ts
           cmd /c "pnpm exec vitest run --config vitest.config.ts src/bridge/bridge.relocation.test.ts src/bridge/bridge.lifecycle.test.ts > `"$out/after-focused.log`" 2>&1"
           if ($LASTEXITCODE -ne 0) { throw "Fixed lifecycle tests failed" }

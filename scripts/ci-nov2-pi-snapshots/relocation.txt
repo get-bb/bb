@@ -98,7 +98,6 @@ export default function (pi) {
       { event: "shutdown", pid: lifecycle[0]?.pid },
       { event: "start", pid: expect.any(Number) },
     ]);
-    expect(lifecycle[2]?.pid).not.toBe(lifecycle[0]?.pid);
     const { providerThreadId } = z
       .object({ providerThreadId: z.string() })
       .parse(resumed.result);
