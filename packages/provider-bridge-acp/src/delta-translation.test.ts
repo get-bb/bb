@@ -2894,12 +2894,118 @@ describe("acp delta translation (bb-injected tools)", () => {
 });
 
 describe("acp dialect tool call event normalization", () => {
-  function normalizingTranslator(dialect: AcpDialect) {
-    return createAcpDeltaTranslator({ cwd: SESSION_CWD, dialect });
+  function dropArgumentEcho(
+    event: AcpToolCallUpdateEvent,
+    call: AcpToolCallUpdateEvent,
+  ): AcpToolCallUpdateEvent {
+    const text = event.content?.find((part) => part.type === "content");
+    if (text?.type !== "content" || text.content.type !== "text") {
+      return event;
+    }
+    if (
+      call.rawInput !== undefined &&
+      text.content.text !== JSON.stringify(call.rawInput)
+    ) {
+      return event;
+    }
+    const { content: _content, ...rest } = event;
+    return rest;
   }
 
-  function openAgentCall(translator: AcpDeltaTranslator) {
-    translator.translateAcpEvent(
+  const argumentEchoDialect: AcpDialect = {
+    id: "argument-echo",
+    normalizeCommandEvent: dropArgumentEcho,
+    normalizeToolCallEvent: dropArgumentEcho,
+  };
+
+  function translateAll(updates: Record<string, unknown>[]) {
+    const translator = createAcpDeltaTranslator({
+      cwd: SESSION_CWD,
+      dialect: argumentEchoDialect,
+    });
+    return updates.flatMap((update) =>
+      translator.translateAcpEvent(updateEvent(update), {
+        threadId: THREAD_ID,
+      }),
+    );
+  }
+
+  function textUpdate(
+    toolCallId: string,
+    text: string,
+    fields: Record<string, unknown> = {},
+  ) {
+    return {
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      status: "in_progress",
+      content: [{ type: "content", content: { type: "text", text } }],
+      ...fields,
+    };
+  }
+
+  function visibleText(deltas: ReturnType<typeof translateAll>) {
+    return deltas.flatMap((delta) => {
+      switch (delta.kind) {
+        case "item.progress":
+          return [delta.message];
+        case "command.outputSnapshot":
+          return [delta.text];
+        case "item.close":
+          return delta.resultText === undefined ? [] : [delta.resultText];
+        default:
+          return [];
+      }
+    });
+  }
+
+  it("hides a subagent's argument snapshots and keeps its output once the call's rawInput is known", () => {
+    const rawInput = { prompt: "Compute 2+2", description: "Arithmetic" };
+    expect(
+      visibleText(
+        translateAll([
+          {
+            sessionUpdate: "tool_call",
+            toolCallId: "call-agent",
+            title: "Agent",
+            kind: "other",
+            status: "pending",
+          },
+          textUpdate("call-agent", '{"prompt": "Compute'),
+          textUpdate("call-agent", JSON.stringify(rawInput), { rawInput }),
+          textUpdate("call-agent", "Thinking about it"),
+          textUpdate("call-agent", "2", { status: "completed" }),
+        ]),
+      ),
+    ).toEqual(["Thinking about it", "2"]);
+  });
+
+  it("hides a command's argument snapshots and keeps JSON the command prints", () => {
+    const rawInput = { command: "br list --json" };
+    expect(
+      visibleText(
+        translateAll([
+          {
+            sessionUpdate: "tool_call",
+            toolCallId: "call-bash",
+            title: "Bash",
+            kind: "execute",
+            status: "pending",
+          },
+          textUpdate("call-bash", '{"command":"br list'),
+          textUpdate("call-bash", JSON.stringify(rawInput), { rawInput }),
+          textUpdate("call-bash", '{"issues":[]}'),
+        ]),
+      ),
+    ).toEqual(['{"issues":[]}']);
+  });
+
+  it("closes a call left open mid-arguments without its argument snapshot", () => {
+    const translator = createAcpDeltaTranslator({
+      cwd: SESSION_CWD,
+      dialect: argumentEchoDialect,
+    });
+    const deltas = [
       updateEvent({
         sessionUpdate: "tool_call",
         toolCallId: "call-agent",
@@ -2907,90 +3013,13 @@ describe("acp dialect tool call event normalization", () => {
         kind: "other",
         status: "pending",
       }),
-      { threadId: THREAD_ID },
-    );
-  }
-
-  function argumentEchoUpdate(text: string) {
-    return updateEvent({
-      sessionUpdate: "tool_call_update",
-      toolCallId: "call-agent",
-      status: "in_progress",
-      content: [{ type: "content", content: { type: "text", text } }],
-    });
-  }
-
-  it("suppresses non-command progress text the dialect filters out", () => {
-    const translator = normalizingTranslator({
-      id: "test",
-      normalizeToolCallEvent: (event) => {
-        const { content: _content, ...rest } = event;
-        return rest;
-      },
-    });
-    openAgentCall(translator);
-    const deltas = translator.translateAcpEvent(
-      argumentEchoUpdate('{"prompt": "Compute'),
-      { threadId: THREAD_ID },
-    );
-    expect(
-      deltas.filter((delta) => delta.kind === "item.progress"),
-    ).toEqual([]);
-  });
-
-  it("emits progress text the dialect rewrites", () => {
-    const translator = normalizingTranslator({
-      id: "test",
-      normalizeToolCallEvent: (event) => ({
-        ...event,
-        content: [
-          {
-            type: "content",
-            content: { type: "text", text: "Launching subagent" },
-          },
-        ],
-      }),
-    });
-    openAgentCall(translator);
-    const deltas = translator.translateAcpEvent(
-      argumentEchoUpdate('{"prompt": "Compute'),
-      { threadId: THREAD_ID },
-    );
-    expect(deltas).toContainEqual(
-      expect.objectContaining({
-        kind: "item.progress",
-        message: "Launching subagent",
-      }),
-    );
-  });
-
-  it("applies the hook to generic close result text", () => {
-    const translator = normalizingTranslator({
-      id: "test",
-      normalizeToolCallEvent: (event) => {
-        const { content: _content, ...rest } = event;
-        return rest;
-      },
-    });
-    openAgentCall(translator);
-    const deltas = translator.translateAcpEvent(
-      updateEvent({
-        sessionUpdate: "tool_call_update",
-        toolCallId: "call-agent",
-        status: "completed",
-        content: [
-          {
-            type: "content",
-            content: { type: "text", text: '{"prompt": "Compute 2+2"}' },
-          },
-        ],
-      }),
-      { threadId: THREAD_ID },
+      updateEvent(textUpdate("call-agent", '{"prompt": "Compute')),
+      turnCompletedEvent("end_turn"),
+    ].flatMap((event) =>
+      translator.translateAcpEvent(event, { threadId: THREAD_ID }),
     );
     const close = deltas.find((delta) => delta.kind === "item.close");
-    expect(close).toBeDefined();
-    expect(
-      (close as { resultText?: string }).resultText,
-    ).toBeUndefined();
+    expect(close).toMatchObject({ status: "completed" });
+    expect(close).not.toHaveProperty("resultText");
   });
 });
