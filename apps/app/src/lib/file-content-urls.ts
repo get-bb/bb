@@ -1,4 +1,4 @@
-import { isAbsoluteHostPath } from "@bb/domain";
+import { isAbsoluteHostPath, isWindowsUncHostPath } from "@bb/domain";
 import {
   getEnvironmentFilePreviewSourceRef,
   type EnvironmentFilePreviewSource,
@@ -10,8 +10,9 @@ function encodePathSegments(path: string): string {
 }
 
 function encodeHostFilePath(absolutePath: string): string {
+  const root = isWindowsUncHostPath(absolutePath) ? "\\\\" : "";
   return encodePathSegments(
-    absolutePath.replace(/\\/gu, "/").replace(/^\/+/u, ""),
+    absolutePath.replace(/\\/gu, "/").replace(/^\/+/u, root),
   );
 }
 
