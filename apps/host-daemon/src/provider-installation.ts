@@ -1,8 +1,12 @@
 import { PassThrough, type Readable } from "node:stream";
 import {
-  prepareHostPtyCommand,
+  hostProcessOwner,
   hostToolchain,
+  killProcessGroup,
+  prepareHostPtyCommand,
+  readChildStartId,
   resolvePortableCommand,
+  supportsProcessGroups,
 } from "@bb/process-utils";
 import type { ProviderInstallationCommand } from "@bb/provider-bridge-protocol";
 import {
@@ -70,6 +74,17 @@ function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProc
         name: "xterm-256color",
         rows: 30,
       });
+      let installerExited = false;
+      pty.onExit(() => {
+        installerExited = true;
+      });
+      hostProcessOwner.trackProcess({
+        pid: pty.pid,
+        processGroup: supportsProcessGroups(),
+        label: args.command,
+        startId: () => readChildStartId(pty.pid, () => installerExited),
+        exited: new Promise((resolve) => pty.onExit(() => resolve())),
+      });
       pty.onData((data) => stdout.write(data));
       pty.onExit(({ exitCode }) => {
         hostToolchain.invalidateFailure(exitCode);
@@ -80,7 +95,13 @@ function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProc
         stdout,
         stderr,
         kill(signal) {
-          pty.kill(signal);
+          killProcessGroup({
+            child: {
+              pid: pty.pid,
+              kill: (groupSignal) => pty.kill(groupSignal),
+            },
+            signal,
+          });
           return true;
         },
         onError(listener) {

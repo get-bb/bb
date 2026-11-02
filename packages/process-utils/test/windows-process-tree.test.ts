@@ -69,6 +69,18 @@ it("rejects within a deadline when taskkill and root termination both fail", asy
   );
 }, 3_000);
 
+it("treats a terminated root whose exit event is late as stopped", async () => {
+  const child = await startChild();
+  const once = child.once.bind(child);
+  Object.assign(child, {
+    once: (event: string, listener: () => void) =>
+      event === "exit" ? child : once(event, listener),
+  });
+  await expect(stopWindowsProcessTree(child)).resolves.toEqual({
+    treeTermination: "unverified",
+  });
+}, 3_000);
+
 it("does not target a recycled PID after the root has exited", async () => {
   const child = await startChild();
   const exited = once(child, "exit");

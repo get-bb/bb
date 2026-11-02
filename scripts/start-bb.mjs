@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  stopProcessGroupLeaderFirst,
+  createProcessStop,
   supportsProcessGroups,
 } from "../packages/process-utils/src/index.ts";
 
@@ -13,7 +13,6 @@ const repoRoot = resolve(scriptDir, "..");
 const requireFromRoot = createRequire(resolve(repoRoot, "package.json"));
 const WORKTREE_RUNTIME_POLICY_ARG = "--worktree-runtime-policy";
 const BUILD_TERMINATION_TIMEOUT_MS = 5_000;
-const BUILD_KILL_GRACE_MS = 1_000;
 
 function waitForProcess(child) {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -28,11 +27,9 @@ export async function runBuildProcess(request) {
   let child;
   let stopPromise;
   const stopChild = () => {
-    stopPromise ??= stopProcessGroupLeaderFirst({
-      child,
-      timeoutMs: BUILD_TERMINATION_TIMEOUT_MS,
-      killGraceMs: BUILD_KILL_GRACE_MS,
-    });
+    stopPromise ??= createProcessStop(child)({
+      gracePeriodMs: BUILD_TERMINATION_TIMEOUT_MS,
+    }).catch(() => undefined);
   };
   const handleSigint = () => stopChild();
   const handleSigterm = () => stopChild();

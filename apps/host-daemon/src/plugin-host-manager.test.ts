@@ -14,6 +14,7 @@ import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -52,6 +53,7 @@ export default {
     watch: { input: anySchema, output: anySchema },
     retain: { input: anySchema, output: anySchema },
     hangDispose: { input: anySchema, output: anySchema },
+    spawnChildren: { input: anySchema, output: anySchema },
   },
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
@@ -137,6 +139,13 @@ export default {
       hangOnDispose = true;
       return { enabled: true };
     },
+    async spawnChildren() {
+      const { spawn } = await import("node:child_process");
+      const child = spawn("sleep", ["60"], { stdio: "ignore" });
+      const detached = spawn("sleep", ["60"], { detached: true, stdio: "ignore" });
+      detached.unref();
+      return { child: child.pid, detached: detached.pid };
+    },
   },
   async dispose() {
     if (hangOnDispose) await new Promise(() => {});
@@ -166,6 +175,21 @@ function callCommand(overrides: Partial<PluginCall> = {}): PluginCall {
     timeoutMs: 10_000,
     ...overrides,
   };
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killQuietly(pid: number): void {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
 }
 
 describe("PluginHostManager", () => {
@@ -198,6 +222,7 @@ describe("PluginHostManager", () => {
     const dataDir = await mkdtemp(join(tmpdir(), "bb-plugin-host-test-"));
     tempDirs.push(dataDir);
     const manager = new PluginHostManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
       fetchArtifact: vi.fn(async () => artifactBody(artifactSource)),
@@ -500,6 +525,34 @@ describe("PluginHostManager", () => {
           initial.output,
         );
       } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("force-kills a handler that ignores cancellation after the wall clock jumps", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const realNow = Date.now();
+      const dateNow = vi.spyOn(Date, "now");
+      try {
+        const { manager, command, cancel, waitForStart, onWorkerExit } =
+          await fixture();
+        await manager.call(callCommand());
+        dateNow.mockImplementation(() => realNow + 60 * 60_000);
+        const hung = manager
+          .call({
+            ...command("hung", "first"),
+            input: { id: "hung", hang: true },
+          })
+          .catch((error: unknown) => error);
+        await waitForStart("hung");
+        cancel("hung");
+        for (let step = 0; step < 20; step += 1) {
+          await vi.advanceTimersByTimeAsync(1_000);
+        }
+        await expect(hung).resolves.toMatchObject({ name: "AbortError" });
+        expect(onWorkerExit).toHaveBeenCalledOnce();
+      } finally {
+        dateNow.mockRestore();
         vi.useRealTimers();
       }
     });
@@ -892,6 +945,32 @@ describe("PluginHostManager", () => {
         ).rejects.toThrow(/exceeded its deadline/u);
       } finally {
         dateNow.mockRestore();
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "stops every process a plugin started when the plugin is disposed",
+    async () => {
+      const manager = await createManager();
+      const command = callCommand({ method: "spawnChildren" });
+      const { output } = await manager.call(command);
+      const pids = [
+        Number(Reflect.get(Object(output), "child")),
+        Number(Reflect.get(Object(output), "detached")),
+      ];
+      try {
+        expect(pids.map(processAlive)).toEqual([true, true]);
+
+        await manager.dispose({
+          type: "plugin.host.dispose",
+          pluginId: command.pluginId,
+          generation: command.generation,
+        });
+
+        expect(pids.map(processAlive)).toEqual([false, false]);
+      } finally {
+        for (const pid of pids) killQuietly(pid);
       }
     },
   );

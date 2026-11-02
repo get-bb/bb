@@ -15,4 +15,13 @@ export * from "./performance-diagnostics.js";
 export * from "./vcs-process-scheduler.js";
 export * from "./host-toolchain.js";
 export * from "./host-process.js";
+export {
+  bindHostProcessOwner,
+  hostProcessOwner,
+  type ProcessOwner,
+} from "./process-owner.js";
+export { processesOwnedBy, type OwnedProcesses } from "./owned-processes.js";
 export { inheritedNodeNetworkArgs, nodeNetworkArgs } from "./node-network.js";
+export * from "./recorded-process.js";
+export { probeProcessStart, type ProcessStartProbe } from "./process-start.js";
+export * from "./tracked-process.js";

@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   sanitizeInheritedChildProcessEnv,
-  spawnManagedProcess,
   type ManagedProcess,
+  processesOwnedBy,
+  hostProcessOwner,
 } from "@bb/process-utils";
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
@@ -69,6 +70,7 @@ interface RuntimeProviderProcessManagerArgs {
   handleDeferredEvents: (args: RuntimeProviderDeferredEventsArgs) => void;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
+  processOwner?: AgentRuntimeOptions["processOwner"];
   onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
@@ -381,7 +383,9 @@ export class RuntimeProviderProcessManager {
       env[PROVIDER_BRIDGE_RECORD_DIR_ENV] = join(recordRoot, args.providerId);
     }
 
-    const managed = spawnManagedProcess({
+    const managed = processesOwnedBy(
+      this.args.processOwner ?? hostProcessOwner,
+    ).spawnManagedProcess({
       command: processConfig.command,
       args: processConfig.args,
       cwd: this.args.workspacePath,

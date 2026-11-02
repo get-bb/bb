@@ -1,4 +1,4 @@
-import { hostToolchain } from "@bb/process-utils";
+import { bindHostProcessOwner, hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
@@ -26,6 +26,7 @@ import {
   resolveLocalBbExecutablePath,
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
+import { ResourceLedger, resourceLedgerDirectory } from "./resource-ledger.js";
 import {
   startMachineAuthProxy,
   type MachineAuthProxy,
@@ -137,8 +138,24 @@ export async function startHostDaemon(
         serverUrl,
       });
     }
+    const resourceLedger = new ResourceLedger({
+      directory: resourceLedgerDirectory(dataDir),
+      instanceId,
+      logger,
+    });
+    await resourceLedger.reconcile();
+    const hostCommandResource = resourceLedger.open({
+      owner: { kind: "host-command" },
+      deadline: { kind: "owner" },
+    });
+    bindHostProcessOwner(hostCommandResource.adoptProcess);
+    const fileWatcherResource = resourceLedger.open({
+      owner: { kind: "file-watcher" },
+      deadline: { kind: "owner" },
+    });
     setParcelWatcherBackend(
       createSubprocessParcelWatcherBackend({
+        processOwner: fileWatcherResource,
         log: (level, message, fields) => {
           if (level === "error") {
             logger.error(fields ?? {}, message);
@@ -167,6 +184,7 @@ export async function startHostDaemon(
     const runtimeShellEnvResolvedAtMs = Date.now();
     app = await createHostDaemonApp({
       dataDir,
+      resourceLedger,
       serverUrl,
       hostKey,
       serverHeaders: options.serverHeaders,

@@ -62,6 +62,7 @@ import {
   type HostWatcher,
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import type { ResourceLedger } from "./resource-ledger.js";
 import type { SkillTreeTransport } from "./skill-trees.js";
 import { writeMachineSuspensionMarker } from "./suspension-marker.js";
 import {
@@ -77,6 +78,7 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS = 60_000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
+const PROVIDER_INSTALLATION_RUN_DEADLINE_MS = 16 * 60 * 1000;
 
 interface IdleProviderSessionReaperTimer {
   clear(): void;
@@ -108,6 +110,7 @@ interface StartIdleProviderSessionReaperArgs {
 
 interface CreateHostDaemonAppOptions {
   dataDir: string;
+  resourceLedger: ResourceLedger;
   serverUrl: string;
   hostKey: string;
   bridgeBundleDir?: string;
@@ -516,8 +519,13 @@ export async function createHostDaemonApp(
       );
     },
   });
+  const machineNextTunnelResource = options.resourceLedger.open({
+    owner: { kind: "connect-next-tunnel" },
+    deadline: { kind: "owner" },
+  });
   const machineNextTunnel = new MachineNextTunnel({
     frpDir: machineNextFrpDir(options.dataDir),
+    processOwner: machineNextTunnelResource,
     trustedBaseDomain: () => {
       try {
         return resolveTrustedConnectGate(options.serverUrl).baseDomain;
@@ -551,6 +559,7 @@ export async function createHostDaemonApp(
       }),
   };
   runtimeManager = new RuntimeManager({
+    resourceLedger: options.resourceLedger,
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
@@ -711,10 +720,14 @@ export async function createHostDaemonApp(
   const withMaintenanceRuntime = async <TResult>(
     shellEnv: RuntimeShellEnvRefreshArgs,
     request: (runtime: AgentRuntime) => Promise<TResult>,
+    deadlineMs?: number,
   ): Promise<TResult> => {
     await runtimeShellEnvCache.refresh(shellEnv);
     return runtimeManager.withProviderMaintenanceRuntime(
-      { dataDir: options.dataDir },
+      {
+        dataDir: options.dataDir,
+        ...(deadlineMs === undefined ? {} : { deadlineMs }),
+      },
       request,
     );
   };
@@ -741,6 +754,7 @@ export async function createHostDaemonApp(
   });
   const pluginHostManager = new PluginHostManager({
     dataDir: options.dataDir,
+    resourceLedger: options.resourceLedger,
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: () => runtimeManager.getShellEnv(),
@@ -832,8 +846,10 @@ export async function createHostDaemonApp(
         runtime.providerInstallationStatus(args),
       ),
     providerInstallationRun: (args) =>
-      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
-        runtime.providerInstallationRun(args),
+      withMaintenanceRuntime(
+        { allowStale: false },
+        (runtime) => runtime.providerInstallationRun(args),
+        PROVIDER_INSTALLATION_RUN_DEADLINE_MS,
       ),
     refreshShellEnv: async (args) => {
       await runtimeShellEnvCache.refresh(args);
@@ -1016,6 +1032,7 @@ export async function createHostDaemonApp(
       await eventSink.dispose();
       await connection.shutdown();
       machineEnvironment.replace([]);
+      options.resourceLedger.shutdown();
     },
     onStart: async () => {
       options.logger.info(

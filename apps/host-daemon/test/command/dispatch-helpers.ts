@@ -18,6 +18,8 @@ import type { HostWorkspace, ProvisionWorkspaceArgs } from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import type { CommandDispatchOptions } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
+import { createTestResourceLedger } from "../resource-ledger-fixture.js";
+import type { ResourceLedger } from "../../src/resource-ledger.js";
 
 const execFileAsync = promisify(execFile);
 export const noopEventSink: CommandDispatchOptions["eventSink"] = {
@@ -357,6 +359,7 @@ export function createHarness(
     workspacePath?: string;
     currentBranch?: string;
     isWorktree?: boolean;
+    resourceLedger?: ResourceLedger;
   } = {},
 ) {
   const { workspace, state: workspaceState } = createFakeWorkspace(
@@ -368,6 +371,7 @@ export function createHarness(
   const { runtime, state: runtimeState, threadControls } = createFakeRuntime();
   const provisions: ProvisionWorkspaceArgs[] = [];
   const manager = new RuntimeManager({
+    resourceLedger: args.resourceLedger ?? createTestResourceLedger(),
     provisionWorkspace: async (options) => {
       provisions.push(options);
       if ("path" in options && options.path !== workspace.path) {

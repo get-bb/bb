@@ -1,3 +1,4 @@
+import { hostProcessOwner } from "@bb/process-utils";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -6,9 +7,16 @@ import {
   assertScriptProcessTreeStopped,
   buildLifecycleScriptCommand,
   LifecycleScriptTerminationUnverifiedError,
+  runEnvironmentHookOperation,
   runSetupScript,
   runTeardownScript,
 } from "./environment-lifecycle-script.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
+
+const scriptOwner = {
+  ...hostProcessOwner,
+  captureTree: async () => undefined,
+};
 
 const directories: string[] = [];
 async function workspace(
@@ -32,6 +40,59 @@ afterEach(async () => {
 });
 
 describe("core environment scripts", () => {
+  it.skipIf(process.platform === "win32").each(["setup", "teardown"] as const)(
+    "stops descendants a timed-out %s hook moved out of its process group",
+    async (kind) => {
+      const spawnEscaped = [
+        "const { spawn } = require('node:child_process');",
+        "const escaped = spawn('sleep', ['60'], { detached: true, stdio: 'ignore' });",
+        "require('node:fs').writeFileSync('escaped.pid', String(escaped.pid));",
+        "setInterval(() => {}, 1000);",
+      ].join(" ");
+      const workspacePath = await workspace(
+        kind,
+        `'${process.execPath}' -e "${spawnEscaped}"\n`,
+      );
+      const run = kind === "setup" ? runSetupScript : runTeardownScript;
+      const hook = runEnvironmentHookOperation({
+        ledger: createTestResourceLedger(),
+        operationId: `environment:env-1:${kind}`,
+        kind,
+        workspacePath,
+        timeoutMs: 1_500,
+        run: (control) =>
+          run({
+            processOwner: control.processOwner,
+            workspacePath,
+            timeoutMs: 1_500,
+          }),
+      });
+      const settled = Promise.allSettled([hook]);
+      await expect
+        .poll(async () =>
+          readFile(join(workspacePath, "escaped.pid"), "utf8").catch(() => ""),
+        )
+        .not.toBe("");
+      const escaped = Number(
+        await readFile(join(workspacePath, "escaped.pid"), "utf8"),
+      );
+      const alive = (): boolean => {
+        try {
+          process.kill(escaped, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      try {
+        await settled;
+        await expect.poll(alive).toBe(false);
+      } finally {
+        if (alive()) process.kill(escaped, "SIGKILL");
+      }
+    },
+  );
+
   it.each(["setup", "teardown"] as const)(
     "supplies stdin EOF so %s continues to completion",
     async (kind) => {
@@ -42,6 +103,7 @@ describe("core environment scripts", () => {
       const output: string[] = [];
       const run = kind === "setup" ? runSetupScript : runTeardownScript;
       const result = await run({
+        processOwner: scriptOwner,
         workspacePath,
         timeoutMs: 1000,
         env:
@@ -66,6 +128,7 @@ describe("core environment scripts", () => {
     );
     const output: string[] = [];
     await runSetupScript({
+      processOwner: scriptOwner,
       workspacePath,
       timeoutMs: 5000,
       onProgress: (entry) => output.push(entry.text),
@@ -88,6 +151,7 @@ describe("core environment scripts", () => {
     const output: string[] = [];
     await expect(
       runSetupScript({
+        processOwner: scriptOwner,
         workspacePath,
         timeoutMs: 5000,
         onProgress: (entry) => output.push(entry.text),
@@ -106,6 +170,7 @@ describe("core environment scripts", () => {
       const output: string[] = [];
       const run = kind === "setup" ? runSetupScript : runTeardownScript;
       const result = run({
+        processOwner: scriptOwner,
         workspacePath,
         timeoutMs: 100,
         onProgress: (entry) => output.push(entry.text),
@@ -127,6 +192,7 @@ describe("core environment scripts", () => {
     const output: string[] = [];
     await expect(
       runTeardownScript({
+        processOwner: scriptOwner,
         workspacePath,
         timeoutMs: 5000,
         onProgress: (entry) => output.push(entry.text),
@@ -141,6 +207,7 @@ describe("core environment scripts", () => {
     const controller = new AbortController();
     await expect(
       runSetupScript({
+        processOwner: scriptOwner,
         workspacePath,
         timeoutMs: 5000,
         signal: controller.signal,
@@ -173,6 +240,7 @@ describe("core environment scripts", () => {
       let pids: number[] = [];
       await expect(
         runSetupScript({
+          processOwner: scriptOwner,
           workspacePath,
           timeoutMs: 15_000,
           signal: controller.signal,
@@ -255,7 +323,11 @@ describe("core environment scripts", () => {
   it("skips absent scripts", async () => {
     const workspacePath = await workspace("setup", "exit 0\n");
     await expect(
-      runTeardownScript({ workspacePath, timeoutMs: 5000 }),
+      runTeardownScript({
+        processOwner: scriptOwner,
+        workspacePath,
+        timeoutMs: 5000,
+      }),
     ).resolves.toEqual({ ran: false });
   });
 });

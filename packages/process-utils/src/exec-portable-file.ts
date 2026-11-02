@@ -7,6 +7,11 @@ import { basename } from "node:path";
 import { hostToolchain } from "./host-toolchain.js";
 import { createProcessStop } from "./managed-process.js";
 import {
+  hostProcessOwner,
+  recordOwnedProcess,
+  type ProcessOwner,
+} from "./process-owner.js";
+import {
   supportsProcessGroups,
   type ProcessStopResult,
 } from "./process-group.js";
@@ -20,6 +25,7 @@ interface ExecPortableFileOptions {
   signal?: AbortSignal;
   input?: string;
   onStderr?: (chunk: string) => void;
+  owner?: ProcessOwner;
 }
 
 export function resolvePortableCommand(
@@ -83,6 +89,11 @@ async function execPortableFileUnbounded(
     forceKillAfterDelay: 1_000,
     reject: false,
   });
+  recordOwnedProcess(
+    subprocess,
+    { command, detached: true },
+    options.owner ?? hostProcessOwner,
+  );
   const stopProcess = createProcessStop(subprocess);
   let stopPromise: Promise<ProcessStopResult> | undefined;
   let canceled = false;

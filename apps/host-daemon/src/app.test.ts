@@ -37,6 +37,7 @@ import type { FetchFn } from "./server-client.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
 import { MACHINE_SUSPENSION_MARKER } from "./suspension-marker.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
 
 interface RecordedFetchRequest {
   body: string | null;
@@ -390,6 +391,7 @@ async function createAppFixture(
   const logger = createLogger();
   const runtimeOptions: RuntimeOptionsRef = { current: null };
   const app = await createHostDaemonApp({
+    resourceLedger: createTestResourceLedger(),
     dataDir,
     serverUrl: "http://127.0.0.1:3334",
     hostKey: "host-key-app-test",
@@ -535,6 +537,7 @@ describe("createHostDaemonApp", () => {
       BB_SERVER_URL: "http://127.0.0.1:3334",
     }));
     const app = await createHostDaemonApp({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-app-test",
@@ -642,6 +645,7 @@ describe("createHostDaemonApp", () => {
       BB_SERVER_URL: "http://127.0.0.1:3334",
     }));
     const app = await createHostDaemonApp({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-app-test",
@@ -808,6 +812,7 @@ describe("createHostDaemonApp", () => {
       hostName: "App Test Host",
       instanceId: "instance-app-test",
       logger: createLogger(),
+      resourceLedger: createTestResourceLedger(),
       releaseLock: async () => undefined,
       localApiConfig: null,
       runtimeShellEnv: { PATH: "/last-resolved/bin:/usr/bin" },
@@ -1102,6 +1107,7 @@ describe("createHostDaemonApp", () => {
       watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const app = await createHostDaemonApp({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       serverUrl: "http://127.0.0.1:3334",
       hostKey: "host-key-retired-env",

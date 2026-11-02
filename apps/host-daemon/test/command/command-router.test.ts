@@ -30,6 +30,7 @@ import {
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
+import { createTestResourceLedger } from "../resource-ledger-fixture.js";
 
 type EnvironmentProvisionCommand = Extract<
   HostDaemonCommand,
@@ -221,6 +222,7 @@ describe("CommandRouter", () => {
       warn: vi.fn(),
     };
     const runtimeManager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => harness.runtime,
       provisionWorkspace: async () => {
         throw new WorkspaceError(
@@ -329,6 +331,7 @@ describe("CommandRouter", () => {
     const provisionStarted = createDeferredPromise<void>();
     const releaseProvision = createDeferredPromise<void>();
     const runtimeManager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => harness.runtime,
       provisionWorkspace: async () => {
         provisionStarted.resolve();
@@ -499,6 +502,7 @@ describe("CommandRouter", () => {
     const newRuntime = newHarness.runtime;
     const runtimes = [oldRuntime, newRuntime];
     const runtimeManager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => {
         const runtime = runtimes.shift();
         if (!runtime) {

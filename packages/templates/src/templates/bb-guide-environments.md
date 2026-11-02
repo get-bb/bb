@@ -42,8 +42,13 @@ Making your repo work with bb:
 
   Hooks run only in paths bb created and owns, such as new worktrees and
   checkouts bb cloned; attached project checkouts and personal workspaces never
-  run hooks. A server restart does not interrupt a running hook, but a daemon
-  restart leaves its outcome unknown.
+  run hooks. A server restart does not interrupt a running hook. The daemon
+  records each hook's process group in `<dataDir>/host-daemon-resources/`; when
+  a restarted daemon finds a hook its previous instance left running, it stops
+  the hook's processes and reports the hook as interrupted. Interrupted
+  teardown continues with removal, and interrupted setup fails provisioning so
+  it can be retried. A hook whose processes the daemon cannot confirm stopped
+  keeps an unknown outcome.
 
   A non-zero exit, timeout (15 minutes), signal, or cancellation fails provisioning and bb
   removes the new worktree after confirming the script has stopped. An unknown
@@ -64,6 +69,20 @@ Making your repo work with bb:
   worktree once the script has stopped. An unreachable daemon leaves cleanup
   pending for retry; a hook whose outcome is unknown blocks cleanup with an
   explicit error.
+
+  The same record covers the processes the daemon starts: provider bridges,
+  hooks, host plugin workers, the connect-next frpc tunnel, the file watcher
+  and short host commands. Stopping one of them stops everything it started
+  that is still running, including tool shells and jobs that moved to their
+  own process group: stopping a provider bridge or host plugin stops the
+  processes they launched. Processes a successful setup or teardown hook
+  leaves running are kept. Closing a terminal hangs up its shell's process
+  group only, so jobs you detached with nohup or disown keep running. On
+  macOS and Linux, the daemon stops on startup whatever a previous instance
+  left running, after checking each process's start time so it never signals
+  a reused PID. Provider maintenance work (model lists, health, usage,
+  installs) stops its bridge when a request runs past its deadline, and 60
+  seconds after the last request ends.
 
   New worktrees do not contain untracked files such as .env.local. To copy
   them from the source checkout, commit a .worktreeinclude file at the repo
@@ -166,7 +185,8 @@ Making your repo work with bb:
   after inspecting a failed environment. It marks interrupted hooks finished,
   resets the retry budget, and retries removal. It also handles interrupted
   setup without a recorded hook operation. A teardown hook that never started
-  still runs. A daemon reboot alone never proves a detached hook has stopped.
+  still runs. A daemon restart proves a hook stopped only when the daemon's
+  process record shows its processes are gone.
 
   Recovery currently requires Linux. It refuses while a setup/hook is still
   active, while any process owned by the daemon UID has its cwd or a mapped

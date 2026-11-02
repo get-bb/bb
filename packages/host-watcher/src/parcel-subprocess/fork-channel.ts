@@ -1,4 +1,4 @@
-import { forkHostProcess as fork } from "@bb/process-utils";
+import { processesOwnedBy, type ProcessOwner } from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -78,10 +78,11 @@ export function createChildChannel(child: ChildProcess): ChildChannel {
   };
 }
 
-export function createForkChannel(): ChildChannel {
-  return createChildChannel(
-    fork(resolveChildEntry(), [], {
-      stdio: ["ignore", "inherit", "inherit", "ipc"],
-    }),
+export function createForkChannel(processOwner: ProcessOwner): ChildChannel {
+  const child = processesOwnedBy(processOwner).forkHostProcess(
+    resolveChildEntry(),
+    [],
+    { stdio: ["ignore", "inherit", "inherit", "ipc"] },
   );
+  return createChildChannel(child);
 }

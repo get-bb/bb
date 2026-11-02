@@ -1,3 +1,4 @@
+import type { ProcessOwner } from "@bb/process-utils";
 import type {
   PermissionMode,
   AvailableModel,
@@ -87,6 +88,8 @@ export interface AgentRuntimeOptions {
   onStderr?: (line: string, threadId?: string) => void;
 
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
+
+  processOwner?: ProcessOwner;
 
   onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
 }

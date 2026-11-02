@@ -1,3 +1,4 @@
+import type { ProcessOwner } from "@bb/process-utils";
 import { createForkChannel } from "./parcel-subprocess/fork-channel.js";
 import {
   createParcelWatcherProxy,
@@ -83,12 +84,13 @@ export type ParcelWatcherBackendLogger = (
   fields?: Record<string, unknown>,
 ) => void;
 
-export function createSubprocessParcelWatcherBackend(options?: {
+export function createSubprocessParcelWatcherBackend(options: {
   log?: ParcelWatcherBackendLogger;
+  processOwner: ProcessOwner;
 }): ParcelWatcherProxy {
   return createParcelWatcherProxy({
-    spawnChannel: createForkChannel,
-    log: options?.log,
+    spawnChannel: () => createForkChannel(options.processOwner),
+    log: options.log,
   });
 }
 

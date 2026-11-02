@@ -19,6 +19,7 @@ import {
   SkillCatalogConflictError,
 } from "./runtime-manager.js";
 import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
+import { createTestResourceLedger } from "../test/resource-ledger-fixture.js";
 
 type GetCurrentBranchArgs = Parameters<HostWorkspace["getCurrentBranch"]>;
 type GetLocalStateFingerprintResult = Awaited<
@@ -267,6 +268,7 @@ describe("RuntimeManager", () => {
       .mockResolvedValueOnce(plainWorkspace)
       .mockResolvedValueOnce(gitWorkspace);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime: () => createFakeRuntime(),
     });
@@ -321,6 +323,7 @@ describe("RuntimeManager", () => {
       return runtime;
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
       createRuntime,
     });
@@ -385,6 +388,7 @@ describe("RuntimeManager", () => {
       return { reapedSessions: released ? [released] : [] };
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
       createRuntime: () => runtime,
     });
@@ -417,6 +421,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const runtimeOptions: RuntimeOptionsRef = { current: null };
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime: (options) => {
@@ -467,6 +472,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(firstRuntime)
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -514,6 +520,7 @@ describe("RuntimeManager", () => {
       return runtime;
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -565,6 +572,7 @@ describe("RuntimeManager", () => {
         return runtime;
       });
       const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         dataDir,
         createRuntime,
         provisionWorkspace: createProvisionWorkspaceMock("/tmp/race-workspace"),
@@ -632,6 +640,7 @@ describe("RuntimeManager", () => {
       return runtime;
     });
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -688,6 +697,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -748,6 +758,7 @@ describe("RuntimeManager", () => {
       },
     );
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime: vi.fn(() => createFakeRuntime()),
@@ -810,6 +821,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(runtime)
       .mockImplementation(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -872,6 +884,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -908,6 +921,7 @@ describe("RuntimeManager", () => {
     const runtime = createFakeRuntime();
     const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       dataDir,
       provisionWorkspace,
       createRuntime,
@@ -947,6 +961,7 @@ describe("RuntimeManager", () => {
     });
     const runtimeOptions: RuntimeOptionsRef = { current: null };
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime: (options) => {
         runtimeOptions.current = options;
@@ -982,6 +997,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const runtimeOptions: RuntimeOptionsRef = { current: null };
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       threadStorageRootPath: "/tmp/bb-thread-storage",
       createRuntime: (options) => {
@@ -1005,6 +1021,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime,
       shellEnv: {
@@ -1031,6 +1048,7 @@ describe("RuntimeManager", () => {
   it("passes the resolved shell PATH to unmanaged workspace Git", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       shellEnv: {
         PATH: "/resolved/user/bin:/usr/bin:/bin",
@@ -1055,6 +1073,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime,
       shellEnv: {
@@ -1092,6 +1111,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(firstRuntime)
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime,
       shellEnv: {
         PATH: "/old/bin:/usr/bin",
@@ -1132,6 +1152,7 @@ describe("RuntimeManager", () => {
       const request = createDeferredPromise<void>();
       const requestStarted = createDeferredPromise<void>();
       const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         createRuntime: () => runtime,
         providerMaintenanceIdleTimeoutMs: 100,
       });
@@ -1167,6 +1188,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(firstRuntime)
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime,
       shellEnv: { PATH: "/old/bin:/usr/bin" },
     });
@@ -1205,6 +1227,7 @@ describe("RuntimeManager", () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-shutdown-");
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime: () => runtime,
       shellEnv: { PATH: "/old/bin:/usr/bin" },
     });
@@ -1233,6 +1256,7 @@ describe("RuntimeManager", () => {
     const runtime = createFakeRuntime();
     const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime,
       shellEnv: {
         PATH: "/Users/me/Library/Caches/fnm_multishells/123_1/bin:/usr/bin",
@@ -1256,12 +1280,42 @@ describe("RuntimeManager", () => {
     expect(runtime.shutdown).toHaveBeenCalledOnce();
   });
 
+  it("shuts down provider maintenance workers when a request never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const dataDir = await makeTempDir("bb-provider-maintenance-hung-");
+      const runtime = createFakeRuntime();
+      const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
+        createRuntime: () => runtime,
+        providerMaintenanceIdleTimeoutMs: 100,
+      });
+
+      const requestStarted = createDeferredPromise<void>();
+      void manager.withProviderMaintenanceRuntime(
+        { dataDir, deadlineMs: 1_000 },
+        () => {
+          requestStarted.resolve();
+          return new Promise<never>(() => undefined);
+        },
+      );
+      await requestStarted.promise;
+      await vi.advanceTimersByTimeAsync(999);
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.shutdown).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not let stale provider maintenance creation replace a newer runtime", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-race-");
     const staleRuntime = createFakeRuntime();
     const currentRuntime = createFakeRuntime();
     const staleCreation = createDeferredPromise<AgentRuntime>();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       shellEnv: {
         PATH: "/old/bin:/usr/bin",
       },
@@ -1304,6 +1358,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(firstRuntime)
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime,
       shellEnv: {
@@ -1349,6 +1404,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(firstRuntime)
       .mockReturnValueOnce(secondRuntime);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
       createRuntime,
       shellEnv: { PATH: "/old/bin" },
@@ -1415,6 +1471,7 @@ describe("RuntimeManager", () => {
         .mockReturnValueOnce(firstRuntime)
         .mockReturnValueOnce(secondRuntime);
       const manager = new RuntimeManager({
+        resourceLedger: createTestResourceLedger(),
         provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
         createRuntime,
         shellEnv: { PATH: "/old/bin" },
@@ -1457,6 +1514,7 @@ describe("RuntimeManager", () => {
     const workspace = createDeferredPromise<HostWorkspace>();
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: async () => {
         provisionStarted.resolve();
         return workspace.promise;
@@ -1485,6 +1543,7 @@ describe("RuntimeManager", () => {
   it("waits for an old-environment thread command before releasing a moved thread", async () => {
     const oldRuntime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
       createRuntime: () => oldRuntime,
     });
@@ -1518,6 +1577,7 @@ describe("RuntimeManager", () => {
   it("releases a moved thread while another environment control waits", async () => {
     const oldRuntime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
       createRuntime: () => oldRuntime,
     });
@@ -1560,6 +1620,7 @@ describe("RuntimeManager", () => {
   it("keeps an old-environment turn when a control declines to interrupt it", async () => {
     const oldRuntime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
       createRuntime: () => oldRuntime,
     });
@@ -1585,6 +1646,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime: () => runtime,
       shellEnv: {
@@ -1618,6 +1680,7 @@ describe("RuntimeManager", () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime,
     });
@@ -1655,6 +1718,7 @@ describe("RuntimeManager", () => {
       },
     );
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       createRuntime,
       provisionWorkspace,
     });
@@ -1681,6 +1745,7 @@ describe("RuntimeManager", () => {
     const workspace = createFakeWorkspace("/tmp/env-retired");
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-retired").mockResolvedValue(
           workspace,
@@ -1703,6 +1768,7 @@ describe("RuntimeManager", () => {
       await fs.mkdtemp(path.join(os.tmpdir(), "bb-forget-env-")),
     );
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock(directory),
       createRuntime: vi.fn(() => createFakeRuntime()),
     });
@@ -1745,6 +1811,7 @@ describe("RuntimeManager", () => {
       watchThreadStorage: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       hostWatcher,
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-read"),
       createRuntime: vi.fn(() => createFakeRuntime()),
@@ -1762,6 +1829,7 @@ describe("RuntimeManager", () => {
   it("lists live threads for session reconciliation before the first turn event", async () => {
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
       createRuntime: vi.fn(() => runtime),
     });
@@ -1794,6 +1862,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-exit").mockResolvedValue(
           workspace,
@@ -1838,6 +1907,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-shared").mockResolvedValue(
           workspace,
@@ -1887,6 +1957,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock(
         "/tmp/env-provider-exit",
       ).mockResolvedValue(createFakeWorkspace("/tmp/env-provider-exit")),
@@ -1986,6 +2057,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock(
         "/tmp/env-idle-exit",
       ).mockResolvedValue(createFakeWorkspace("/tmp/env-idle-exit")),
@@ -2035,6 +2107,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock(
         "/tmp/env-pending-turn-exit",
       ).mockResolvedValue(createFakeWorkspace("/tmp/env-pending-turn-exit")),
@@ -2097,6 +2170,7 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace: createProvisionWorkspaceMock(
         "/tmp/env-expected-exit",
       ).mockResolvedValue(createFakeWorkspace("/tmp/env-expected-exit")),
@@ -2158,6 +2232,7 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(runtimeA)
       .mockReturnValueOnce(runtimeB);
     const manager = new RuntimeManager({
+      resourceLedger: createTestResourceLedger(),
       provisionWorkspace,
       createRuntime,
     });

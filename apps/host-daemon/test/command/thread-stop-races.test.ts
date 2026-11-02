@@ -41,6 +41,7 @@ import {
   unexpectedProviderMaintenance,
   fetchDispatchTestArtifact,
 } from "./dispatch-helpers.js";
+import { createTestResourceLedger } from "../resource-ledger-fixture.js";
 
 const ENVIRONMENT_ID = "env-stop-race";
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
@@ -157,6 +158,7 @@ async function createRaceHarness(): Promise<RaceHarness> {
   );
   let runtime: AgentRuntime | null = null;
   const manager = new RuntimeManager({
+    resourceLedger: createTestResourceLedger(),
     provisionWorkspace: async () =>
       createFakeWorkspace(workspacePath).workspace,
     createRuntime: (options) => {

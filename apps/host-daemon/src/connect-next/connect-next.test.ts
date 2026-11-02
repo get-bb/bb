@@ -1,3 +1,4 @@
+import { hostProcessOwner } from "@bb/process-utils";
 import * as fs from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -113,6 +114,7 @@ function fakeRunner(
   const supervisors: FakeSupervisor[] = [];
   const statuses: HostDaemonConnectNextStatus[] = [];
   const runner = new MachineNextTunnel({
+    processOwner: hostProcessOwner,
     frpDir: "/unused",
     trustedBaseDomain: () =>
       overrides.trustedBaseDomain === undefined
@@ -401,6 +403,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
     const statuses: HostDaemonConnectNextStatus[] = [];
     const prepared: FrpcPrepared[] = [];
     const runner = new MachineNextTunnel({
+      processOwner: hostProcessOwner,
       frpDir,
       createSupervisor: (options) =>
         new FrpcSupervisor({

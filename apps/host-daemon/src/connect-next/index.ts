@@ -15,6 +15,7 @@ import type {
   HostDaemonConnectNextStatus,
   HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
+import type { ProcessOwner } from "@bb/process-utils";
 import type { HostDaemonLogger } from "../logger.js";
 
 export const MACHINE_SHARE_PROXY_PREFIX = "share-";
@@ -39,6 +40,7 @@ export interface MachineNextTunnelOptions {
   lastShareLingerMs?: number;
   sessionLossGraceMs?: number;
   createSupervisor?: (options: FrpcSupervisorOptions) => MachineNextSupervisor;
+  processOwner: ProcessOwner;
 }
 
 interface Session {
@@ -293,6 +295,7 @@ export class MachineNextTunnel {
       onStatusChange: () => {
         if (this.session === session) this.publish();
       },
+      processOwner: this.options.processOwner,
       ...(this.options.timing === undefined
         ? {}
         : { timing: this.options.timing }),
