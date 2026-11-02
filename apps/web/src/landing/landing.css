@@ -4587,10 +4587,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-width: 0;
 }
 
-.tm-wide {
-  grid-column: span 2;
-}
-
 .tm-card {
   display: flex;
   flex-direction: column;
