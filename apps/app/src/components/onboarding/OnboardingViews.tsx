@@ -1295,6 +1295,7 @@ export function AgentSignInPanel({
     <div className="mt-3">
       <SignInPanel
         flush
+        flushBottom
         status={
           connect
             ? "bb continues automatically once a model is connected."

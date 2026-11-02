@@ -155,11 +155,13 @@ export function DisclosureToggle({
 
 export function InlinePanel({
   flush = false,
+  flushBottom = false,
   children,
   toggles,
   expanded,
 }: {
   flush?: boolean;
+  flushBottom?: boolean;
   children: ReactNode;
   toggles?: ReactNode;
   expanded?: ReactNode;
@@ -169,7 +171,10 @@ export function InlinePanel({
       className={cn(
         "overflow-hidden bg-surface-recessed text-xs text-muted-foreground",
         flush
-          ? "-mx-3 border-y border-border-hairline"
+          ? cn(
+              "-mx-3 border-t border-border-hairline",
+              flushBottom ? "-mb-3" : "border-b",
+            )
           : "rounded-md border border-border",
       )}
     >
@@ -204,6 +209,7 @@ export type SignInPanelVariant =
 
 export function SignInPanel({
   flush = false,
+  flushBottom = false,
   status,
   instruction,
   variant,
@@ -211,6 +217,7 @@ export function SignInPanel({
   expanded,
 }: {
   flush?: boolean;
+  flushBottom?: boolean;
   status: string;
   instruction?: ReactNode;
   variant: SignInPanelVariant;
@@ -218,7 +225,12 @@ export function SignInPanel({
   expanded?: ReactNode;
 }) {
   return (
-    <InlinePanel flush={flush} toggles={toggles} expanded={expanded}>
+    <InlinePanel
+      flush={flush}
+      flushBottom={flushBottom}
+      toggles={toggles}
+      expanded={expanded}
+    >
       <p role="status" className="flex items-center gap-2">
         <Icon
           name="Spinner"
