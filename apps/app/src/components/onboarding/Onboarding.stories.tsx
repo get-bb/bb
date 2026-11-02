@@ -1104,3 +1104,48 @@ export function RedesignAgentInstallError() {
     </div>
   );
 }
+
+export function RedesignProjects() {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    new Set(DEFAULT_REPO_IDS),
+  );
+  const selectable = REPOS.filter((repo) => !repo.added).map((repo) => repo.id);
+  return (
+    <div className="flex h-screen flex-col">
+      <OnboardingLayout
+        step="projects"
+        composition="centered"
+        showSkipAll={false}
+        skippedSteps={new Set()}
+        title="Add your projects"
+        description="Choose local Git repos used in the last 30 days."
+        primaryLabel={
+          selected.size === 0 ? "Continue" : `Import ${selected.size} projects`
+        }
+        onPrimary={noop}
+        onBack={noop}
+        onSelectStep={noop}
+        onSkipAll={noop}
+      >
+        <ProjectsStep
+          selection="header"
+          status={{ kind: "results", truncated: false }}
+          repos={REPOS}
+          selectedIds={selected}
+          onToggle={(id) =>
+            setSelected((current) => {
+              const next = new Set(current);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+          onSelectAll={() => setSelected(new Set(selectable))}
+          onSelectNone={() => setSelected(new Set())}
+          onAddFolder={noop}
+          onRetry={noop}
+        />
+      </OnboardingLayout>
+    </div>
+  );
+}

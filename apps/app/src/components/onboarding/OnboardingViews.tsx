@@ -690,6 +690,7 @@ type ProjectsStepStatus =
   | { kind: "results"; truncated: boolean };
 
 interface ProjectsStepProps {
+  selection?: "line" | "header";
   status: ProjectsStepStatus;
   repos: readonly OnboardingRepo[];
   selectedIds: ReadonlySet<string>;
@@ -701,6 +702,7 @@ interface ProjectsStepProps {
 }
 
 export function ProjectsStep({
+  selection = "line",
   status,
   repos,
   selectedIds,
@@ -759,28 +761,64 @@ export function ProjectsStep({
   }
 
   const selectableCount = repos.filter((repo) => !repo.added).length;
+  const selectedCount = repos.filter(
+    (repo) => !repo.added && selectedIds.has(repo.id),
+  ).length;
+  const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1">
-          {selectedIds.size} of {selectableCount} selected
-        </span>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectAll}
-        >
-          Select all
-        </button>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectNone}
-        >
-          Select none
-        </button>
-      </div>
+      {selection === "header" ? null : (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">
+            {selectedIds.size} of {selectableCount} selected
+          </span>
+          <button
+            type="button"
+            className="hover:text-foreground"
+            onClick={onSelectAll}
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            className="hover:text-foreground"
+            onClick={onSelectNone}
+          >
+            Select none
+          </button>
+        </div>
+      )}
       <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+        {selection === "header" ? (
+          <li>
+            <label
+              className={cn(
+                "flex items-center gap-3 rounded-t-lg bg-surface-recessed px-3 py-2 text-xs text-muted-foreground",
+                selectableCount > 0 && "cursor-pointer hover:text-foreground",
+              )}
+            >
+              <Checkbox
+                aria-label={
+                  allSelected
+                    ? "Clear project selection"
+                    : "Select all projects"
+                }
+                checked={
+                  allSelected
+                    ? true
+                    : selectedCount > 0
+                      ? "indeterminate"
+                      : false
+                }
+                disabled={selectableCount === 0}
+                onCheckedChange={() =>
+                  allSelected ? onSelectNone() : onSelectAll()
+                }
+              />
+              Select all
+            </label>
+          </li>
+        ) : null}
         {repos.map((repo) => (
           <li key={repo.id}>
             <label
