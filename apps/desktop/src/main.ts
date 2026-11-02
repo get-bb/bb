@@ -296,11 +296,16 @@ import {
   type RuntimeOwnership,
   type WindowStateKey,
 } from "./types.js";
+import {
+  createWindowsInstallerWaitCommand,
+  waitForWindowsInstaller,
+} from "./windows-installer.js";
 
 const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
 const FOREIGN_RUNTIME_STOP_TIMEOUT_MS = 15_000;
 const FOREIGN_RUNTIME_KILL_TIMEOUT_MS = 3_000;
+const WINDOWS_INSTALLER_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const CONNECT_ACCOUNT_API_HANDLE = "connect";
 
@@ -1485,11 +1490,13 @@ function connectMovedMachine(args: {
         desktopLogger.info(message);
       },
       async startLocalRuntime() {
-        await spawnOwnedRuntime({
-          bridgePath: args.bridgePath,
-          serverUrl: builtinServerUrl,
-          userDataPath: args.userDataPath,
-        });
+        reportOwnedRuntimeExit(
+          await spawnOwnedRuntime({
+            bridgePath: args.bridgePath,
+            serverUrl: builtinServerUrl,
+            userDataPath: args.userDataPath,
+          }),
+        );
       },
     });
     refreshApplicationMenu();
@@ -2211,6 +2218,19 @@ async function loadLoadingView(): Promise<void> {
   });
 }
 
+async function loadWindowsInstallerWaitView(): Promise<void> {
+  bbAppLoaded = false;
+  await loadWindowUrl({
+    url: createLocalViewUrl({
+      viewModel: {
+        kind: "loading",
+        message: "bb opens when the installer is done.",
+        title: "Finishing the bb update",
+      },
+    }),
+  });
+}
+
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   desktopLogger.error(
     args.logs.length === 0
@@ -2583,9 +2603,14 @@ async function spawnOwnedRuntime(
     userDataPath: args.userDataPath,
   });
   setCurrentRuntime(runtime);
-
-  void bbProcess.exit.then((exit) => {
+  void bbProcess.exit.then(() => {
     void clearOwnedRuntimePidFile({ userDataPath: args.userDataPath });
+  });
+  return { bbProcess, runtime };
+}
+
+function reportOwnedRuntimeExit({ bbProcess, runtime }: OwnedRuntime): void {
+  void bbProcess.exit.then((exit) => {
     if (quitting || currentRuntime !== runtime) {
       return;
     }
@@ -2605,13 +2630,37 @@ async function spawnOwnedRuntime(
       title: "bb stopped",
     });
   });
-  return { bbProcess, runtime };
+}
+
+async function waitForWindowsInstallerToFinish(): Promise<boolean> {
+  if (!app.isPackaged || process.platform !== "win32") {
+    return false;
+  }
+  const result = await waitForWindowsInstaller({
+    command: createWindowsInstallerWaitCommand({
+      appId: DESKTOP_RELEASE_INFO.appId,
+      systemRoot: process.env.SystemRoot,
+      timeoutMs: WINDOWS_INSTALLER_WAIT_TIMEOUT_MS,
+    }),
+    onWaiting: () => {
+      desktopLogger.info(
+        "[desktop] bb-app exited while a bb installer is running; waiting for it to finish",
+      );
+      void loadWindowsInstallerWaitView();
+    },
+    timeoutMs: WINDOWS_INSTALLER_WAIT_TIMEOUT_MS,
+  });
+  if (result !== "not-running") {
+    desktopLogger.info(`[desktop] bb installer wait ended: ${result}`);
+  }
+  return result === "finished" && !quitting;
 }
 
 async function startOwnedRuntime(
   args: StartOwnedRuntimeArgs,
 ): Promise<DesktopRuntime | null> {
-  const { bbProcess, runtime } = await spawnOwnedRuntime(args);
+  const ownedRuntime = await spawnOwnedRuntime(args);
+  const { bbProcess, runtime } = ownedRuntime;
 
   const raceResult = await Promise.race<StartupRaceResult>([
     waitForCompatibleServer({
@@ -2629,6 +2678,10 @@ async function startOwnedRuntime(
   ]);
 
   if (raceResult.kind === "process-exited") {
+    setCurrentRuntime(null);
+    if (await waitForWindowsInstallerToFinish()) {
+      return startOwnedRuntime(args);
+    }
     await loadStartupError({
       details: `bb-app exited before the server was ready with ${formatExitResult(
         raceResult.exit,
@@ -2637,11 +2690,11 @@ async function startOwnedRuntime(
       actions: [],
       title: "Could not start bb",
     });
-    setCurrentRuntime(null);
     return null;
   }
 
   if (raceResult.result.kind === "compatible") {
+    reportOwnedRuntimeExit(ownedRuntime);
     return runtime;
   }
 
