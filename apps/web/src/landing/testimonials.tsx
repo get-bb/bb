@@ -4,9 +4,10 @@ import NewTwitterIcon from "@hugeicons/core-free-icons/NewTwitterIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import banesAvatar from "../assets/testimonials/chris-banes.jpg";
+import durukAvatar from "../assets/testimonials/can-duruk.jpg";
+import ishanAvatar from "../assets/testimonials/ishan.jpg";
 import bornszteinAvatar from "../assets/testimonials/bruno-bornsztein.jpg";
 import ajiboyeAvatar from "../assets/testimonials/timi-ajiboye.jpg";
-import haisfieldAvatar from "../assets/testimonials/rob-haisfield.jpg";
 import lutkeAvatar from "../assets/testimonials/tobi-lutke.jpg";
 import ondrejAvatar from "../assets/testimonials/david-ondrej.jpg";
 import frostAvatar from "../assets/testimonials/steve-frost.jpg";
@@ -24,7 +25,6 @@ type Testimonial = {
   source: TestimonialSource;
   url: string;
   quote: string;
-  wide?: boolean;
 };
 
 const SOURCE_ICON = {
@@ -77,6 +77,14 @@ const TESTIMONIALS: readonly Testimonial[] = [
       "…no AI dev tool … became my daily driver as quickly as bb",
   },
   {
+    author: "Can Duruk",
+    byline: "@can",
+    avatar: durukAvatar,
+    source: "x",
+    url: "https://x.com/can/status/2085579967833002246",
+    quote: "this is the most interesting agentic dev environment ive used so far.",
+  },
+  {
     author: "Timi Ajiboye",
     byline: "@timigod",
     avatar: ajiboyeAvatar,
@@ -119,14 +127,13 @@ const TESTIMONIALS: readonly Testimonial[] = [
       "How is bb everything I’ve ever wanted from codex? Customizable like pi, first-class css overrides… I never want this to end.",
   },
   {
-    author: "Rob Haisfield",
-    byline: "@RobertHaisfield",
-    avatar: haisfieldAvatar,
+    author: "ishan",
+    byline: "Inference engineer, NVIDIA",
+    avatar: ishanAvatar,
     source: "x",
-    url: "https://x.com/RobertHaisfield/status/2110471735573401921",
+    url: "https://x.com/0xishand/status/2098304763368767697",
     quote:
-      "I use child threads… and I highly recommend them… child threads are more like teammates that build up their own context over many tasks and collaborate",
-    wide: true,
+      "bb is one of the most impressive tools I’ve used in a very long time. … This is exactly how adaptive UIs should act and feel.",
   },
 ];
 
@@ -142,7 +149,7 @@ function initials(name: string): string {
 function TestimonialCard({ t }: { t: Testimonial }) {
   const source = SOURCE_ICON[t.source];
   return (
-    <li className={`tm-item${t.wide ? " tm-wide" : ""}`}>
+    <li className="tm-item">
       <a
         className="tm-card"
         href={t.url}
