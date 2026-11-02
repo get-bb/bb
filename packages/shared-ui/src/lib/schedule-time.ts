@@ -92,6 +92,42 @@ export function defaultCustomSchedule(now: number): CustomScheduleFields {
   };
 }
 
+export function customScheduleAt(at: number): CustomScheduleFields {
+  const date = new Date(at);
+  return {
+    date: formatDateInputValue(at),
+    time: [
+      String(date.getHours()).padStart(2, "0"),
+      String(date.getMinutes()).padStart(2, "0"),
+    ].join(":"),
+  };
+}
+
+export const CUSTOM_SCHEDULE_OPTION_ID = "custom";
+export type ScheduleOptionId =
+  | SchedulePresetId
+  | typeof CUSTOM_SCHEDULE_OPTION_ID;
+
+export function isScheduleOptionId(value: string): value is ScheduleOptionId {
+  return value === CUSTOM_SCHEDULE_OPTION_ID || isSchedulePresetId(value);
+}
+
+export function resolveScheduleOption(
+  optionId: ScheduleOptionId,
+  custom: CustomScheduleFields,
+  now: number,
+): ScheduleTimeParse {
+  if (optionId === CUSTOM_SCHEDULE_OPTION_ID) {
+    return parseCustomScheduleTime(custom, now);
+  }
+  const preset = listSchedulePresets(now).find(
+    (candidate) => candidate.id === optionId,
+  );
+  return preset === undefined
+    ? { ok: false, message: "That option has passed. Choose another time." }
+    : { ok: true, at: preset.at };
+}
+
 export function formatDateInputValue(at: number): string {
   const date = new Date(at);
   return [

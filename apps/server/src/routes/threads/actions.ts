@@ -29,6 +29,7 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import {
   emitPluginMessageCancelled,
+  emitPluginMessageQueued,
   emitPluginThreadUnarchived,
 } from "../../services/plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -49,8 +50,10 @@ import {
   holdQueuedMessageForEdit,
   releaseQueuedMessageEditHold,
   requestEditReleasedQueuedMessageDispatch,
+  resolveQueuedMessageExecutionChange,
   sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
+import { requestQueuedMessageDispatch } from "../../services/threads/queued-message-dispatch.js";
 import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
@@ -294,15 +297,38 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
-    const input = await resolvePromptAttachmentReferences({
-      db: deps.db,
-      dataDir: deps.config.dataDir,
-      input: payload.input,
-      projectId: thread.projectId,
-      hostId: threadTargetHostId(deps, thread),
+    if (
+      payload.sendAt !== undefined &&
+      payload.sendAt !== null &&
+      payload.sendAt <= Date.now()
+    ) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "sendAt must be in the future; pass null to clear the send time",
+      );
+    }
+    const content =
+      payload.input === undefined
+        ? null
+        : await resolvePromptAttachmentReferences({
+            db: deps.db,
+            dataDir: deps.config.dataDir,
+            input: payload.input,
+            projectId: thread.projectId,
+            hostId: threadTargetHostId(deps, thread),
+          });
+    const execution = await resolveQueuedMessageExecutionChange(deps, {
+      expectedUpdatedAt: payload.expectedUpdatedAt,
+      queuedMessageId: context.req.param("queuedMessageId"),
+      request: payload,
+      thread,
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
-      content: input,
+      content,
+      execution,
+      reschedule:
+        payload.sendAt === undefined ? null : { sendAt: payload.sendAt },
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,
@@ -324,13 +350,29 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Queued message changed since editing began",
       );
     }
+    if (result.kind === "invalid_execution_options") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "This queued message is grouped with messages that use different execution options; ungroup it first",
+      );
+    }
+    const queuedMessage = toThreadQueuedMessage(result.queuedMessage);
+    if (result.rescheduled) {
+      emitPluginMessageQueued(queuedMessage);
+    }
     if (result.releasedEditHold) {
       requestEditReleasedQueuedMessageDispatch(deps, {
-        queuedMessageId: result.queuedMessage.id,
+        queuedMessageId: queuedMessage.id,
+        threadId: thread.id,
+      });
+    } else if (result.rescheduled && queuedMessage.sendAt === null) {
+      requestQueuedMessageDispatch(deps, {
+        kind: "thread-ready",
         threadId: thread.id,
       });
     }
-    return context.json(toThreadQueuedMessage(result.queuedMessage));
+    return context.json(queuedMessage);
   });
 
   post(routes.holdQueuedMessageForEdit, (context) => {

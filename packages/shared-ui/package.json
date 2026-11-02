@@ -194,6 +194,11 @@
       "types": "./src/components/ui/responsive-overlay.tsx",
       "default": "./src/components/ui/responsive-overlay.tsx"
     },
+    "./schedule-time-fields": {
+      "source": "./src/components/ui/schedule-time-fields.tsx",
+      "types": "./src/components/ui/schedule-time-fields.tsx",
+      "default": "./src/components/ui/schedule-time-fields.tsx"
+    },
     "./select": {
       "source": "./src/components/ui/select.tsx",
       "types": "./src/components/ui/select.tsx",
@@ -248,6 +253,11 @@
       "source": "./src/components/ui/hooks/use-pointer-coarse.ts",
       "types": "./src/components/ui/hooks/use-pointer-coarse.ts",
       "default": "./src/components/ui/hooks/use-pointer-coarse.ts"
+    },
+    "./lib/schedule-time": {
+      "source": "./src/lib/schedule-time.ts",
+      "types": "./src/lib/schedule-time.ts",
+      "default": "./src/lib/schedule-time.ts"
     },
     "./lib/utils": {
       "source": "./src/lib/utils.ts",

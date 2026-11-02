@@ -314,8 +314,10 @@ held back, and explicit send-now still claims it. Calling again renews the
 lease; an unrenewed hold lapses after `leaseMs` and the periodic sweep
 dispatches the row. It answers 409 once a dispatch claimed the row and 404
 for a missing row. Holding never changes `updatedAt`, so a pre-hold
-`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` clears
-the hold. `experimental_releaseEditHold` (`DELETE`, same path) cancels
+`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` that
+changes `input` clears the hold, while one that changes only `sendAt` or the
+execution options keeps it, so a plugin moving a row cannot release someone's
+edit. `experimental_releaseEditHold` (`DELETE`, same path) cancels
 without saving and is a no-op for an unheld row; releasing or saving
 re-attempts dispatch immediately. The app's inline editor holds on open,
 renews every quarter lease, and releases on close. Any client may renew or
