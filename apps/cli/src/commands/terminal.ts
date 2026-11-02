@@ -30,11 +30,9 @@ import {
   type TerminalObservePlan,
 } from "./terminal-wait.js";
 
-const DEFAULT_COLS = 80;
-const DEFAULT_ROWS = 24;
-const RUN_COLS = 200;
-const RUN_ROWS = 50;
-const RUN_POLL_DELAYS_MS = [100, 200, 400, 800, 1000] as const;
+const DEFAULT_COLS = 200;
+const DEFAULT_ROWS = 50;
+const WAIT_POLL_DELAYS_MS = [100, 200, 400, 800, 1000] as const;
 const RUN_USAGE_EXAMPLE =
   "For example: bb terminal run --machine <id-or-name> --cwd /path/to/repo -- pnpm test";
 
@@ -64,10 +62,12 @@ interface TerminalStartOptions
 }
 
 interface TerminalRunOptions extends TerminalJsonOptions, TerminalScopeOptions {
+  cols?: string;
   contains?: string;
   id?: string;
   maxOutputBytes: string;
   regex?: string;
+  rows?: string;
   timeout: string;
   title?: string;
 }
@@ -98,7 +98,7 @@ interface TerminalWaitOptions extends TerminalOutputOptions {
   exit?: boolean;
   fromStart?: boolean;
   maxOutputBytes: string;
-  pollInterval: string;
+  pollInterval?: string;
   regex?: string;
   timeout: string;
 }
@@ -152,8 +152,11 @@ export function registerTerminalCommands(
         "--command <command>",
         "Command to run instead of an interactive shell",
       )
-      .option("--cols <n>", "Initial terminal columns")
-      .option("--rows <n>", "Initial terminal rows")
+      .option(
+        "--cols <n>",
+        `Initial terminal columns (default: ${DEFAULT_COLS})`,
+      )
+      .option("--rows <n>", `Initial terminal rows (default: ${DEFAULT_ROWS})`)
       .option("--attach", "Attach after creating")
       .option("--json", "Print machine-readable JSON output"),
   ).action(
@@ -211,6 +214,11 @@ export function registerTerminalCommands(
         "Run in a terminal with this ID (term_ plus 10 characters); a retry with the same ID fails instead of running twice",
       )
       .option("--title <title>", "Terminal title (default: the command)")
+      .option(
+        "--cols <n>",
+        `Initial terminal columns (default: ${DEFAULT_COLS})`,
+      )
+      .option("--rows <n>", `Initial terminal rows (default: ${DEFAULT_ROWS})`)
       .option("--json", "Print machine-readable JSON output"),
   ).action(
     action(async (commandParts: string[], opts: TerminalRunOptions) => {
@@ -225,14 +233,18 @@ export function registerTerminalCommands(
         condition: parseTerminalOutputCondition(opts),
         maxOutputBytes: parseMaxOutputBytes(opts.maxOutputBytes),
         outputBounds: {},
-        pollDelaysMs: RUN_POLL_DELAYS_MS,
+        pollDelaysMs: WAIT_POLL_DELAYS_MS,
         sinceSeq: 0,
         timeoutMs: parseTimeout(opts.timeout),
       };
+      const cols = parsePositiveInteger(opts.cols, DEFAULT_COLS, "--cols");
+      const rows = parsePositiveInteger(opts.rows, DEFAULT_ROWS, "--rows");
       const sdk = createCliBbSdk(getUrl());
       const session = await createRunTerminal({
         argv: commandParts,
+        cols,
         id: opts.id,
+        rows,
         scope: await resolveTerminalCreateScope(opts, getUrl()),
         sdk,
         title: opts.title,
@@ -397,8 +409,7 @@ export function registerTerminalCommands(
     )
     .option(
       "--poll-interval <duration>",
-      `Polling interval as ${durationHelp("ms")}`,
-      "500ms",
+      `Polling interval as ${durationHelp("ms")} (default: starts at 100ms and backs off to 1s)`,
     )
     .option(
       "--max-output-bytes <n>",
@@ -826,16 +837,18 @@ function parseTimeout(value: string): number {
 
 async function createRunTerminal(args: {
   argv: string[];
+  cols: number;
   id: string | undefined;
+  rows: number;
   scope: TerminalCreateScope;
   sdk: BbSdk;
   title: string | undefined;
 }): Promise<TerminalSession> {
   try {
     return await args.sdk.terminals.create({
-      cols: RUN_COLS,
+      cols: args.cols,
       id: args.id,
-      rows: RUN_ROWS,
+      rows: args.rows,
       scope: args.scope,
       start: { mode: "argv", argv: args.argv },
       title: args.title,
@@ -884,14 +897,17 @@ async function resolveTerminalWaitPlan(args: {
     condition,
     maxOutputBytes: parseMaxOutputBytes(opts.maxOutputBytes),
     outputBounds: terminalOutputBounds(opts),
-    pollDelaysMs: [
-      parseDurationMs({
-        allowZero: false,
-        defaultUnit: "ms",
-        label: "--poll-interval",
-        value: opts.pollInterval,
-      }),
-    ] as const,
+    pollDelaysMs:
+      opts.pollInterval === undefined
+        ? WAIT_POLL_DELAYS_MS
+        : ([
+            parseDurationMs({
+              allowZero: false,
+              defaultUnit: "ms",
+              label: "--poll-interval",
+              value: opts.pollInterval,
+            }),
+          ] as const),
     timeoutMs: parseTimeout(opts.timeout),
   };
   if (opts.sinceSeq !== undefined) {

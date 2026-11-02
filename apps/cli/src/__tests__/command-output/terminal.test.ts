@@ -115,8 +115,8 @@ describe("bb terminal command output", () => {
 
       expect(create).toHaveBeenCalledWith({
         json: {
-          cols: 80,
-          rows: 24,
+          cols: 200,
+          rows: 50,
           title: undefined,
           start: { mode: "command", command: "echo hi" },
           target,
@@ -171,8 +171,8 @@ describe("bb terminal command output", () => {
 
     expect(create).toHaveBeenCalledWith({
       json: {
-        cols: 80,
-        rows: 24,
+        cols: 200,
+        rows: 50,
         title: undefined,
         start: { mode: "shell" },
         target: { kind: "host_path", hostId: "host-1", cwd: null },

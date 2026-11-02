@@ -23,8 +23,8 @@ List and create require exactly one explicit scope:
     --host <id-or-name>                   Alias for --machine
     --title <title>                       Display title
     --id <terminal-id>                    Use this ID (term_ plus 10 characters); fails if it exists
-    --cols <n>                            Initial terminal columns
-    --rows <n>                            Initial terminal rows
+    --cols <n>                            Initial terminal columns (default: 200)
+    --rows <n>                            Initial terminal rows (default: 50)
     --attach                              Attach after creating
     --json                                Print machine-readable output
 
@@ -73,7 +73,7 @@ runs:
     --since-seq <n>                       Start from this sequence (default: the current end for --contains or --regex, 0 otherwise)
     --from-start                          Start from sequence 0
     --timeout <duration>                  Stop waiting after this long; the terminal keeps running. Seconds, or a duration with a unit: 90s, 5m (default: 30s)
-    --poll-interval <duration>            Milliseconds, or a duration with a unit (default: 500ms)
+    --poll-interval <duration>            Milliseconds, or a duration with a unit (default: starts at 100ms and backs off to 1s)
     --max-output-bytes <n>                Return the last N bytes of output (default: 65536)
     --json                                Print terminalId, status, observation, exitCode, closeReason, output, truncated, and nextSeq
 
@@ -105,6 +105,7 @@ output and exit code in one call. It takes the same scope flags as `create`:
     --max-output-bytes <n>                Return the last N bytes of output (default: 65536)
     --id <terminal-id>                    Run under this ID (term_ plus 10 characters); a retry with it fails instead of running twice
     --title <title>                       Terminal title (default: the command)
+    --cols <n>, --rows <n>                As for create
     --json                                Same shape as terminal wait --json
 
 Pass the program and its arguments after `--`; the machine quotes them for its
