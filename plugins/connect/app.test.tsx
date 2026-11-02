@@ -895,7 +895,12 @@ describe("connect setup guide section", () => {
       method: "openUrl",
       url: "https://getbb.app/link?code=K7QP-2M4X",
     });
-    slot.getByText("bb connect turns on automatically after you sign in.");
+    expect(
+      slot.queryByText("bb connect turns on automatically after you sign in."),
+    ).toBeNull();
+    expect(
+      slot.getByText(/Finish signing in on/u).closest("[role=status]"),
+    ).not.toBeNull();
     expect(
       (slot.getByRole("link", { name: "getbb.app" }) as HTMLAnchorElement).href,
     ).toBe("https://getbb.app/link?code=K7QP-2M4X");

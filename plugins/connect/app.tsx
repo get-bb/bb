@@ -1954,7 +1954,7 @@ function setupGuideLoginPanel(
   return (
     <SignInPanel
       flush
-      status="bb connect turns on automatically after you sign in."
+      instructionBusy
       instruction={
         <>
           Finish signing in on{" "}

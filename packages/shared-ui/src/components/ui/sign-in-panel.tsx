@@ -156,12 +156,14 @@ export function DisclosureToggle({
 export function InlinePanel({
   flush = false,
   flushBottom = false,
+  hasBody = true,
   children,
   toggles,
   expanded,
 }: {
   flush?: boolean;
   flushBottom?: boolean;
+  hasBody?: boolean;
   children: ReactNode;
   toggles?: ReactNode;
   expanded?: ReactNode;
@@ -178,7 +180,9 @@ export function InlinePanel({
           : "rounded-md border border-border",
       )}
     >
-      <div className="flex flex-col gap-3 p-3">{children}</div>
+      {hasBody ? (
+        <div className="flex flex-col gap-3 p-3">{children}</div>
+      ) : null}
       {toggles === undefined ? null : (
         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 border-t border-border-hairline px-2 py-1.5">
           {toggles}
@@ -212,14 +216,16 @@ export function SignInPanel({
   flushBottom = false,
   status,
   instruction,
+  instructionBusy = false,
   variant,
   toggles,
   expanded,
 }: {
   flush?: boolean;
   flushBottom?: boolean;
-  status: string;
+  status?: string;
   instruction?: ReactNode;
+  instructionBusy?: boolean;
   variant: SignInPanelVariant;
   toggles?: ReactNode;
   expanded?: ReactNode;
@@ -228,18 +234,34 @@ export function SignInPanel({
     <InlinePanel
       flush={flush}
       flushBottom={flushBottom}
+      hasBody={
+        status !== undefined ||
+        instruction !== undefined ||
+        variant.kind !== "waiting"
+      }
       toggles={toggles}
       expanded={expanded}
     >
-      <p role="status" className="flex items-center gap-2">
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        {status}
-      </p>
-      {instruction === undefined ? null : (
+      {status === undefined ? null : (
+        <p role="status" className="flex items-center gap-2">
+          <Icon
+            name="Spinner"
+            aria-hidden
+            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+          />
+          {status}
+        </p>
+      )}
+      {instruction === undefined ? null : instructionBusy ? (
+        <p role="status" className="flex items-center gap-2 text-foreground">
+          <Icon
+            name="Spinner"
+            aria-hidden
+            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+          />
+          <span>{instruction}</span>
+        </p>
+      ) : (
         <p className="text-foreground">{instruction}</p>
       )}
       {variant.kind === "code" ? (

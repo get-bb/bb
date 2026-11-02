@@ -276,9 +276,58 @@ describe("AgentSignInPanel", () => {
     );
   });
 
+  it("starts with the instruction instead of a waiting line", () => {
+    renderPanel("https://www.cursor.com/login");
+
+    expect(screen.queryByText(/continues automatically/u)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("falls back to the browser when the URL has no website", () => {
     renderPanel("file:///tmp/sign-in");
 
     expect(screen.getByText("Finish signing in in your browser.")).toBeTruthy();
+  });
+});
+
+describe("AgentStep progress", () => {
+  it("puts a spinner beside in-progress subtitles in the redesign only", () => {
+    const { container, rerender } = render(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[agent("pi", { status: "signingIn" })]}
+          onSignIn={vi.fn()}
+          onInstall={vi.fn()}
+          onViewInstallLog={vi.fn()}
+          onCancelSignIn={vi.fn()}
+          onRecheck={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const subtitle = screen.getByText("Finish signing in below");
+    expect(
+      subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
+    ).not.toBeNull();
+
+    rerender(
+      <AgentStep
+        machineName="bee"
+        agents={[agent("pi", { status: "installing" })]}
+        onSignIn={vi.fn()}
+        onInstall={vi.fn()}
+        onViewInstallLog={vi.fn()}
+        onCancelSignIn={vi.fn()}
+        onRecheck={vi.fn()}
+      />,
+    );
+    expect(
+      screen
+        .getByText("Installing…")
+        .closest("span.flex")
+        ?.querySelector('[data-icon="Spinner"]') ?? null,
+    ).toBeNull();
+    expect(container.querySelectorAll('[data-icon="Spinner"]')).toHaveLength(1);
   });
 });

@@ -358,6 +358,10 @@ function AgentRow({
 }: AgentRowHandlers & { agent: OnboardingAgent; quiet: boolean }) {
   const { state } = agent;
   const loudFailure = state.status === "installFailed" && !quiet;
+  const inProgress =
+    state.status === "checking" ||
+    state.status === "installing" ||
+    state.status === "signingIn";
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
       <div
@@ -378,19 +382,29 @@ function AgentRow({
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium">{agent.name}</span>
-          <ExpandableText
-            expandLabel="Show details"
-            className={cn(
-              "text-xs text-muted-foreground",
-              quiet && state.status === "ready" && "text-subtle-foreground",
-              loudFailure && "text-destructive-text",
-            )}
-          >
-            {agentSubline(state, agent.setup ?? "signIn")}
-          </ExpandableText>
+          <span className="flex min-w-0 items-center gap-1.5">
+            {quiet && inProgress ? (
+              <Icon
+                name="Spinner"
+                aria-hidden
+                className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+              />
+            ) : null}
+            <ExpandableText
+              expandLabel="Show details"
+              className={cn(
+                "min-w-0 text-xs text-muted-foreground",
+                quiet && state.status === "ready" && "text-subtle-foreground",
+                loudFailure && "text-destructive-text",
+              )}
+            >
+              {agentSubline(state, agent.setup ?? "signIn")}
+            </ExpandableText>
+          </span>
         </div>
         <div className="col-start-2 flex shrink-0 items-center justify-end gap-2">
-          {state.status === "checking" || state.status === "installing" ? (
+          {!quiet &&
+          (state.status === "checking" || state.status === "installing") ? (
             <Icon
               name="Spinner"
               aria-hidden
@@ -1302,13 +1316,11 @@ export function AgentSignInPanel({
         flush
         flushBottom
         status={
-          connect
-            ? "bb continues automatically once a model is connected."
-            : codeSubmitted
-              ? "Finishing sign-in…"
-              : starting
-                ? `Starting ${agentName} sign-in…`
-                : "bb continues automatically after you sign in."
+          codeSubmitted
+            ? "Finishing sign-in…"
+            : starting && !connect
+              ? `Starting ${agentName} sign-in…`
+              : undefined
         }
         instruction={instruction}
         variant={variant}
