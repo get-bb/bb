@@ -157,7 +157,7 @@ type Follow = {
   clicks: number[];
 };
 
-const ALL_SCENES: Scene[] = [
+const SCENES: Scene[] = [
   {
     id: "sentry",
     hold: 2.5,
@@ -203,7 +203,7 @@ const ALL_SCENES: Scene[] = [
   },
   {
     id: "spawn",
-    hold: 2,
+    hold: 2.5,
     title: "CSV export",
     prompt:
       "Add CSV export to the reports page. Have Codex write the tests in parallel.",
@@ -424,20 +424,12 @@ const ALL_SCENES: Scene[] = [
   },
 ];
 
-// One play-through (~15.5s) that tells one story, then holds on the finished
-// frame: the agent works and hands tests to a Codex child thread, the turn
-// settles, then a Linear issues panel plugin opens beside the thread and
-// stays open as the end frame. The other scenes stay defined for later
-// cuts.
-const PLAY = ["spawn", "linear"];
-const SCENES: Scene[] = PLAY.map((id) => ALL_SCENES.find((x) => x.id === id)!);
-
 const PERSIST = new Set<string>(["spawn", "composer", "strip", "grouped"]);
 const RAIL: Record<string, string> = {
   sentry: "rail-sentry",
   linear: "rail-linear",
 };
-const CLOSES = new Set<string>(["sentry"]);
+const CLOSES = new Set<string>(["sentry", "linear"]);
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
@@ -2008,10 +2000,12 @@ type ShellProps = {
   idx: number;
   n: number;
   reduced: boolean;
+  ghost?: boolean;
+  pre?: boolean;
   nextFeed?: number | null;
 };
 
-function Shell({ idx, n, reduced, nextFeed }: ShellProps) {
+function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
   const scene = SCENES[idx];
   const tablet = useMedia(TABLET_QUERY);
   const t = timing(scene, tablet);
@@ -2037,17 +2031,13 @@ function Shell({ idx, n, reduced, nextFeed }: ShellProps) {
     }
   });
   if (scene.id === "sentry" && (n === 5 || n === 1)) hasSet.add("collapsed");
-  if (
-    scene.id === "linear" &&
-    tablet &&
-    (n === 5 || n === 1 || n === 3 || n === 4)
-  )
+  if (scene.id === "linear" && tablet && (n === 5 || n === 1 || n === 3))
     hasSet.add("panel-collapsed");
   const has = (x: string) => hasSet.has(x);
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
-  const chart = ALL_SCENES.find((x) => x.id === "chart")!;
+  const chart = SCENES[chartIdx];
   const chartF =
     chart.follow && timing(chart).f
       ? { ...chart.follow, at: timing(chart).f! }
@@ -2152,6 +2142,8 @@ function Shell({ idx, n, reduced, nextFeed }: ShellProps) {
     n >= 1 && "rhb-on",
     n === 4 && "rhb-final",
     reduced && "rhb-still",
+    ghost && "rhb-stage-out",
+    pre && "rhb-stage-pre",
     ...[...hasSet].map((x) => `rhb-has-${x}`),
     ...[...usesSet].map((x) => `rhb-uses-${x}`),
     (n >= 1 && scene.sideView) || n === 4 ? "rhb-side-view" : "",
@@ -2540,6 +2532,8 @@ function Shell({ idx, n, reduced, nextFeed }: ShellProps) {
   );
 }
 
+const FINAL_HOLD = 2.2;
+
 type Clock = {
   at: (sec: number, fn: () => void) => () => void;
   setPaused: (paused: boolean) => void;
@@ -2585,13 +2579,15 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
   const tablet = useMedia(TABLET_QUERY);
   const reduced = useMedia("(prefers-reduced-motion: reduce)");
   const last = SCENES.length - 1;
-  // The clock starts paused until the window is first in view, so the story
-  // plays from its first frame; it plays once and holds on the end frame.
   const [clock] = useState(() => createClock(paused));
   useEffect(() => clock.setPaused(paused), [clock, paused]);
 
+  const [loop, setLoop] = useState(0);
   const [pos, setPos] = useState<{ idx: number; n: number }>({ idx: 0, n: 0 });
+
   const [nextFeed, setNextFeed] = useState<number | null>(null);
+  const [ghost, setGhost] = useState<number | null>(null);
+  const [pre, setPre] = useState<number | null>(null);
   useEffect(() => {
     if (reduced) return;
     const idx = pos.idx;
@@ -2602,25 +2598,56 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     if (t.collapseAt !== null)
       ids.push(at(t.collapseAt, () => setPos({ idx, n: 5 })));
     if (t.then) ids.push(at(t.then.at, () => setPos({ idx, n: 2 })));
+    const closes = CLOSES.has(scene.id);
+    if (closes) ids.push(at(t.end, () => setPos({ idx, n: 3 })));
+    const sequentialClose = scene.id === "linear" && tablet;
+    if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
+    const next =
+      t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
+    if (idx === 0) ids.push(at(XFADE + 0.05, () => setGhost(null)));
     if (idx < last) {
-      const closes = CLOSES.has(scene.id);
-      if (closes) ids.push(at(t.end, () => setPos({ idx, n: 3 })));
-      const sequentialClose = closes && scene.id === "linear" && tablet;
-      if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
-      const next =
-        t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
       ids.push(
         at(next - 0.8, () => startTransition(() => setNextFeed(idx + 1))),
       );
       ids.push(at(next, () => setPos({ idx: idx + 1, n: 0 })));
     } else {
       ids.push(at(t.end, () => setPos({ idx, n: 4 })));
+      ids.push(
+        at(t.end + FINAL_HOLD - 1.6, () =>
+          startTransition(() => setPre(loop + 1)),
+        ),
+      );
+      ids.push(
+        at(t.end + FINAL_HOLD, () => {
+          setGhost(loop);
+          setPre(null);
+          setNextFeed(null);
+          setLoop((l) => l + 1);
+          setPos({ idx: 0, n: 0 });
+        }),
+      );
     }
     return () => ids.forEach((cancel) => cancel());
-  }, [clock, pos.idx, reduced, last, tablet]);
+  }, [clock, loop, pos.idx, reduced, last, tablet]);
 
   if (reduced) {
     return <Shell key="still" idx={last} n={4} reduced />;
   }
-  return <Shell idx={pos.idx} n={pos.n} reduced={false} nextFeed={nextFeed} />;
+  return (
+    <>
+      {ghost != null ? (
+        <Shell key={ghost} idx={last} n={4} reduced={false} ghost />
+      ) : null}
+      <Shell
+        key={loop}
+        idx={pos.idx}
+        n={pos.n}
+        reduced={false}
+        nextFeed={nextFeed}
+      />
+      {pre != null ? (
+        <Shell key={pre} idx={0} n={0} reduced={false} pre />
+      ) : null}
+    </>
+  );
 }
