@@ -6,7 +6,6 @@ import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
-import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
@@ -18,8 +17,6 @@ import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
-import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
-import RecordIcon from "@hugeicons/core-free-icons/RecordIcon";
 import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
@@ -30,7 +27,11 @@ import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import Download04Icon from "@hugeicons/core-free-icons/Download04Icon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
+import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+import PlusMinus01Icon from "@hugeicons/core-free-icons/PlusMinus01Icon";
+import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
@@ -635,9 +636,6 @@ const DoneIcon = ({ className }: IconProps) => (
 const WaitingIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
 );
-const GitHubMark = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={GithubIcon} className={className} />
-);
 const PhoneIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={SmartPhone01Icon} className={className} />
 );
@@ -658,12 +656,6 @@ const NewThreadIcon = ({ className }: IconProps) => (
 );
 const PanelRightIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={SidebarRightIcon} className={className} />
-);
-const PullRequestIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={GitPullRequestIcon} className={className} />
-);
-const IssueIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={RecordIcon} className={className} />
 );
 const PluginIcon = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Plug02Icon} className={className} />
@@ -874,9 +866,11 @@ function NavRail({ children }: { children?: ReactNode }) {
 
 function Sidebar({
   rail,
+  foot,
   children,
 }: {
   rail?: ReactNode;
+  foot?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -891,6 +885,7 @@ function Sidebar({
         <div className="side-foot bw-side-foot" aria-hidden>
           <PhoneIcon className="bw-foot-ic" />
           <BugIcon className="bw-foot-ic" />
+          {foot}
         </div>
       </aside>
     </>
@@ -970,14 +965,262 @@ function ComposerBox({
   );
 }
 
-const PLUGIN_SPOTS = [
-  { id: "issues", label: "GitHub · Issues panel" },
-  { id: "pr", label: "GitHub PR Status" },
-  { id: "chart", label: "Inline visualizations" },
-  { id: "banner", label: "Send later" },
+/* Four real BB Community plugins, in install order. Names and descriptions
+   are the marketplace's own (getbb.app/marketplace); each piece below is what
+   that plugin draws in bb, per its listing, README and screenshots. */
+const PLUGIN_INSTALLS = [
+  {
+    id: "usage-tracker",
+    name: "Usage Tracker",
+    description: "See subscription limits without leaving BB.",
+    icon: UsageTrackerGlyph,
+  },
+  {
+    id: "bb-recap",
+    name: "Recap",
+    description:
+      "Generates concise, display-only summaries for BB threads on demand or after they become idle.",
+    icon: RecapGlyph,
+  },
+  {
+    id: "genui",
+    name: "Generative UI",
+    description:
+      "Turns agent replies into charts, diagrams, maps, plans and forms you can use, right in the chat.",
+    icon: GenUiGlyph,
+  },
+  {
+    id: "burn",
+    name: "Burn",
+    description:
+      "See what every agent thread costs in dollars while it runs, per prompt and across all your threads.",
+    icon: BurnGlyph,
+  },
 ] as const;
 
-type PluginSpot = (typeof PLUGIN_SPOTS)[number]["id"];
+/* One plugin every INSTALL_STEP seconds: the Install press, Installing… for
+   INSTALL_BUSY seconds, Installed, then its piece eases into the window. */
+const INSTALL_START = 0.8;
+const INSTALL_STEP = 3.2;
+const INSTALL_PRESS = 0.2;
+const INSTALL_BUSY = 1.4;
+const PIECE_DELAY = 0.15;
+const PIECE_SETTLE = 0.65;
+const FINAL_HOLD = 2;
+
+function installAt(index: number) {
+  return INSTALL_START + index * INSTALL_STEP;
+}
+
+function pieceAt(id: (typeof PLUGIN_INSTALLS)[number]["id"]) {
+  const index = PLUGIN_INSTALLS.findIndex((plugin) => plugin.id === id);
+  return installAt(index) + INSTALL_PRESS + INSTALL_BUSY + PIECE_DELAY;
+}
+
+const PLUGIN_LOOP_MS = Math.round(
+  (pieceAt("burn") + PIECE_SETTLE + FINAL_HOLD) * 1000,
+);
+
+function UsageTrackerGlyph({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect x="3" y="4" width="4" height="10" rx="2" fill="#7c3aed" />
+      <rect x="10" y="4" width="4" height="16" rx="2" fill="#7c3aed" />
+      <rect x="17" y="4" width="4" height="6" rx="2" fill="#7c3aed" />
+    </svg>
+  );
+}
+
+function RecapGlyph({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6.25 4.75h11.5A2.25 2.25 0 0 1 20 7v7.25a2.25 2.25 0 0 1-2.25 2.25h-6.5L7 19.75V16.5H6.25A2.25 2.25 0 0 1 4 14.25V7a2.25 2.25 0 0 1 2.25-2.25Z" />
+      <path d="M8.25 9h7.5M8.25 12h5.25" />
+    </svg>
+  );
+}
+
+function GenUiGlyph({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M8 13v-2" />
+      <path d="M12 13V7" />
+      <path d="M16 13v-4" />
+    </svg>
+  );
+}
+
+function BurnGlyph({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </svg>
+  );
+}
+
+function SparkGlyph({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <path
+        d="M12 4c.5 4.4 3.6 7.5 8 8-4.4.5-7.5 3.6-8 8-.5-4.4-3.6-7.5-8-8 4.4-.5 7.5-3.6 8-8Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+const DownloadGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Download04Icon} className={className} />
+);
+const SearchGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Search01Icon} className={className} />
+);
+const InfoGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={InformationCircleIcon} className={className} />
+);
+const DiffGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={PlusMinus01Icon} className={className} />
+);
+const ArrowUpGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ArrowUp02Icon} className={className} />
+);
+
+/* bb's catalog install control (PluginCatalogInstallControl, with its label):
+   Install, then Installing… while the install job runs, then Installed. */
+function InstallButton({ at: start }: { at: number }) {
+  const busyAt = start + INSTALL_PRESS;
+  const doneAt = busyAt + INSTALL_BUSY;
+  return (
+    <span className="bw-inst" aria-hidden>
+      <span
+        className="bw-inst-phase bw-inst-idle"
+        style={phaseStyle(start, busyAt)}
+      >
+        <DownloadGlyph className="bw-inst-ic" />
+        Install
+      </span>
+      <span
+        className="bw-inst-phase bw-inst-busy"
+        style={phaseStyle(busyAt, doneAt)}
+      >
+        <Spinner className="bw-inst-ic bw-inst-spin" />
+        Installing…
+      </span>
+      <span className="bw-inst-phase bw-inst-done" style={at(doneAt)}>
+        <CheckGlyph className="bw-inst-ic" />
+        Installed
+      </span>
+    </span>
+  );
+}
+
+function PluginCatalogCard() {
+  return (
+    <div className="bw-catalog" aria-hidden>
+      <div className="bw-cat-head">
+        <span className="bw-cat-title">Plugins</span>
+        <span className="bw-cat-search">
+          <SearchGlyph className="bw-cat-search-ic" />
+          Search plugins...
+        </span>
+      </div>
+      <div className="bw-cat-list">
+        {PLUGIN_INSTALLS.map((plugin, index) => (
+          <div key={plugin.id} className="bw-cat-row">
+            <span className="bw-cat-chip">
+              <plugin.icon className="bw-cat-chip-ic" />
+            </span>
+            <span className="bw-cat-name">{plugin.name}</span>
+            <InstallButton at={installAt(index)} />
+            <span className="bw-cat-desc">{plugin.description}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const USAGE_READINGS = [
+  { provider: "claude", icon: ClaudeIcon, percent: 62 },
+] as const;
+
+/* Usage Tracker's compact strip beside the sidebar's footer icons: a mark, a
+   progress rail and the weekly reading for each provider shown. */
+function UsageStrip() {
+  return (
+    <span className="bw-usage" style={at(pieceAt("usage-tracker"))}>
+      <span className="bw-usage-inner">
+        {USAGE_READINGS.map((reading) => (
+          <span key={reading.provider} className="bw-usage-prov">
+            <reading.icon
+              className={`bw-usage-mark bw-usage-mark-${reading.provider}`}
+            />
+            <span className="bw-usage-rail">
+              <i style={{ width: `${reading.percent}%` }} />
+            </span>
+            <span className="bw-usage-pct">{reading.percent}%</span>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/* Recap's compact banner in the composer. */
+function RecapBanner() {
+  return (
+    <Reveal at={pieceAt("bb-recap")} className="bw-recap-reveal">
+      <div className="bw-recap">
+        <span className="bw-recap-ic">
+          <SparkGlyph className="bw-recap-spark" />
+        </span>
+        <span className="bw-recap-text">
+          <span className="bw-recap-head">
+            <b>Recap</b>
+            Automatic · 5:11 PM
+          </span>
+          <span className="bw-recap-sum">
+            Loaded six weeks of signups, explained the Pro dip and charted them
+            by plan: up 38%, mostly Team.
+          </span>
+        </span>
+        <span className="bw-recap-expand">
+          Expand
+          <ArrowUpGlyph className="bw-recap-arrow" />
+        </span>
+        <span className="bw-recap-btn">Refresh</span>
+      </div>
+    </Reveal>
+  );
+}
 
 const SIGNUP_WEEKS = [
   { team: 34, pro: 40 },
@@ -988,36 +1231,130 @@ const SIGNUP_WEEKS = [
   { team: 72, pro: 52 },
 ];
 
-const GITHUB_ISSUES = [
-  { n: 512, title: "Checkout times out on slow networks", label: "bug" },
-  { n: 508, title: "Export invoices as CSV", label: "feature" },
-  { n: 503, title: "Promo codes ignore the cart minimum", label: "bug" },
-  { n: 497, title: "Retry failed webhooks with backoff", label: "infra" },
-  { n: 491, title: "Dark mode for the billing page", label: "design" },
-];
-
-function Spot({
-  id,
-  lit,
-  className,
-  children,
-}: {
-  id: PluginSpot;
-  lit: PluginSpot;
-  className?: string;
-  children: ReactNode;
-}) {
-  const label = PLUGIN_SPOTS.find((spot) => spot.id === id)?.label;
-  const classes = ["bw-spot"];
-  if (className) classes.push(className);
-  if (id === lit) classes.push("is-lit");
+/* Generative UI's Chart component in the agent's reply, with the source line
+   its charts carry. */
+function SignupsChart() {
   return (
-    <div className={classes.join(" ")}>
-      {children}
-      <span className="bw-spot-tag" aria-hidden>
-        <PluginIcon className="bw-spot-ic" />
-        {label}
-      </span>
+    <Reveal at={pieceAt("genui")}>
+      <div className="bw-chart">
+        <div className="bw-chart-head">
+          <span>Weekly signups by plan</span>
+          <span className="bw-legend">
+            <i className="bw-key bw-key-team" />
+            Team
+            <i className="bw-key bw-key-pro" />
+            Pro
+          </span>
+        </div>
+        <div className="bw-bars">
+          {SIGNUP_WEEKS.map((week, index) => (
+            <span
+              key={index}
+              className="bw-bar-col"
+              style={{ "--bw-bar-i": index } as CSSProperties}
+            >
+              <span
+                className="bw-bar bw-bar-team"
+                style={{ height: `${week.team * 0.8}%` }}
+              />
+              <span
+                className="bw-bar bw-bar-pro"
+                style={{ height: `${week.pro * 0.4}%` }}
+              />
+            </span>
+          ))}
+        </div>
+        <div className="bw-chart-source">Source: analytics.signups</div>
+      </div>
+    </Reveal>
+  );
+}
+
+const BURN_STATS = [
+  { label: "This thread", value: "$1.84", note: "No budget" },
+  { label: "Per call", value: "$0.11", note: "17 calls · 41s" },
+  { label: "Cache", value: "94%", note: "hit rate" },
+  { label: "Speed", value: "1.1k tok/s", note: "output, timed calls" },
+] as const;
+
+const BURN_TURNS = [
+  {
+    n: 4,
+    time: "17:09",
+    prompt: "Chart weekly signups by plan for the last six weeks.",
+    cost: "$0.52",
+    share: 62,
+  },
+  {
+    n: 3,
+    time: "17:06",
+    prompt: "Split the funnel by acquisition channel",
+    cost: "$0.84",
+    share: 100,
+  },
+  {
+    n: 2,
+    time: "17:03",
+    prompt: "Why did Pro dip in week three?",
+    cost: "$0.31",
+    share: 37,
+  },
+  {
+    n: 1,
+    time: "16:58",
+    prompt: "Load the signups table from analytics",
+    cost: "$0.17",
+    share: 20,
+  },
+] as const;
+
+/* Burn's tab in the thread's side panel: cost cards and the cost of each
+   prompt. */
+function BurnPanel() {
+  return (
+    <div className="bw-burn" style={at(pieceAt("burn"))}>
+      <div className="bw-burn-inner">
+        <div className="bw-burn-tabs">
+          <span className="bw-burn-tab">
+            <InfoGlyph className="bw-burn-tab-ic" />
+          </span>
+          <span className="bw-burn-tab">
+            <DiffGlyph className="bw-burn-tab-ic" />
+          </span>
+          <span className="bw-burn-tab is-on">
+            <BurnGlyph className="bw-burn-tab-ic" />
+            Burn
+          </span>
+        </div>
+        <div className="bw-burn-stats">
+          {BURN_STATS.map((stat) => (
+            <span key={stat.label} className="bw-burn-stat">
+              <span className="bw-burn-label">{stat.label}</span>
+              <span className="bw-burn-value">{stat.value}</span>
+              <span className="bw-burn-note">{stat.note}</span>
+            </span>
+          ))}
+        </div>
+        <div className="bw-burn-head">
+          <span>Turns</span>
+          <span className="bw-burn-seg">
+            <span className="is-on">Newest</span>
+            <span>Costliest</span>
+          </span>
+        </div>
+        <div className="bw-burn-turns">
+          {BURN_TURNS.map((turn) => (
+            <span key={turn.n} className="bw-burn-turn">
+              <span className="bw-burn-n">{turn.n}</span>
+              <span className="bw-burn-prompt">{turn.prompt}</span>
+              <span className="bw-burn-cost">{turn.cost}</span>
+              <span className="bw-burn-rail">
+                <i style={{ width: `${turn.share}%` }} />
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1025,136 +1362,62 @@ function Spot({
 export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
   useFitWindow(ref);
-  const { cycle, paused } = useCycle(2800, 400, ref);
-  const lit = PLUGIN_SPOTS[cycle % PLUGIN_SPOTS.length].id;
+  const { cycle, leaving, paused } = useCycle(PLUGIN_LOOP_MS, 700, ref);
+  const stageStyle = {
+    "--bw-panel-at": `${pieceAt("burn")}s`,
+  } as CSSProperties;
   return (
     <div
       ref={ref}
-      className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
+      className="bw bw-plugins"
       role="img"
-      aria-label="The bb app with plugin UI in place: a GitHub Issues panel open on the right, pull request status under thread titles in the sidebar, a chart of weekly signups inside an agent reply, and a Send later banner above the composer."
+      aria-label="A bb window next to its Plugins list. Four community plugins install one at a time, and each one's piece appears in bb: Usage Tracker adds Claude usage to the sidebar footer, Recap adds a summary of the thread above the composer, Generative UI draws a chart of weekly signups in the agent's reply, and Burn opens a panel with the thread's cost per prompt."
     >
-      <div className="mock bw-window">
-        <WindowBar title="Signups by plan" panelOpen />
-        <div className="mock-body bw-body">
-          <Sidebar
-            rail={
-              <span className="bw-rail-btn">
-                <GitHubMark className="bw-rail-ic" />
-                <span className="bw-rail-badge">5</span>
-              </span>
-            }
-          >
-            <div className="side-label">Threads</div>
-            <ThreadRow title="Signups by plan" status="running" active />
-            <Spot id="pr" lit={lit} className="bw-spot-rows">
-              <ThreadRow
-                title="Fix the checkout bug"
-                status="done"
-                meta={
-                  <>
-                    <PullRequestIcon className="bw-meta-ic" />
-                    #482
-                    <CheckGlyph className="bw-meta-ic bw-ok" />
-                    Checks passed
-                  </>
-                }
-              />
-              <ThreadRow
-                title="Bump the SDK"
-                status="done"
-                meta={
-                  <>
-                    <PullRequestIcon className="bw-meta-ic" />
-                    #479 · Merged
-                  </>
-                }
-              />
-            </Spot>
-            <ThreadRow title="Refactor auth" status="waiting" />
-            <ThreadRow title="Weekly changelog" status="done" />
-          </Sidebar>
-          <div className="main">
-            <div className="feed bw-feed">
-              <div className="msg-user">
-                Chart weekly signups by plan for the last six weeks.
-              </div>
-              <div className="msg-step">
-                <ChevronRight className="step-chev" />
-                Queried <code>analytics.signups</code>
-              </div>
-              <div className="msg-say">
-                Signups are up 38% in six weeks, and Team drove most of it.
-              </div>
-              <Spot id="chart" lit={lit} className="bw-chart">
-                <div className="bw-chart-head">
-                  <span>Weekly signups</span>
-                  <span className="bw-legend">
-                    <i className="bw-key bw-key-team" />
-                    Team
-                    <i className="bw-key bw-key-pro" />
-                    Pro
-                  </span>
+      <div
+        className={stageClass("bw-plugins-stage", leaving, paused)}
+        key={cycle}
+        style={stageStyle}
+      >
+        <div className="mock bw-window">
+          <WindowBar title="Signups by plan" panelOpen />
+          <div className="mock-body bw-body">
+            <Sidebar foot={<UsageStrip />}>
+              <div className="side-label">Threads</div>
+              <ThreadRow title="Signups by plan" status="done" active />
+              <ThreadRow title="Fix the checkout bug" status="done" />
+              <ThreadRow title="Bump the SDK" status="done" />
+              <ThreadRow title="Refactor auth" status="waiting" />
+            </Sidebar>
+            <div className="main">
+              <div className="feed bw-feed bw-feed-live">
+                <div className="msg-user">Why did Pro dip in week three?</div>
+                <div className="msg-say">
+                  A pricing-page test ran that week. Pro trials fell 12% while
+                  it was live, then recovered.
                 </div>
-                <div className="bw-bars">
-                  {SIGNUP_WEEKS.map((week, index) => (
-                    <span key={index} className="bw-bar-col">
-                      <span
-                        className="bw-bar bw-bar-team"
-                        style={{ height: `${week.team * 0.8}%` }}
-                      />
-                      <span
-                        className="bw-bar bw-bar-pro"
-                        style={{ height: `${week.pro * 0.4}%` }}
-                      />
-                    </span>
-                  ))}
+                <div className="msg-user">
+                  Chart weekly signups by plan for the last six weeks.
                 </div>
-              </Spot>
+                <div className="msg-step">
+                  <ChevronRight className="step-chev" />
+                  Queried <code>analytics.signups</code>
+                </div>
+                <div className="msg-say">
+                  Signups are up 38% in six weeks, and Team drove most of it.
+                </div>
+                <SignupsChart />
+              </div>
+              <ComposerBox
+                placeholder="Ask for a follow-up"
+                model="Opus 5.5"
+                modelIcon={ClaudeIcon}
+                banner={<RecapBanner />}
+              />
             </div>
-            <ComposerBox
-              placeholder="Ask for a follow-up"
-              model="Opus 5.5"
-              modelIcon={ClaudeIcon}
-              banner={
-                <Spot id="banner" lit={lit} className="pr-bar bw-banner">
-                  <ClockIcon className="pr-ic" />
-                  <span className="pr-strong">Send later</span>
-                  <span className="pr-dim">· Tomorrow at 9:00 AM</span>
-                  <span className="bw-banner-edit">Edit</span>
-                </Spot>
-              }
-            />
+            <BurnPanel />
           </div>
-          <Spot id="issues" lit={lit} className="diff-panel bw-panel">
-            <div className="diff-head">
-              <GitHubMark className="diff-ic" />
-              <span className="diff-title">GitHub</span>
-            </div>
-            <div className="bw-tabs">
-              <span className="bw-tab is-on">
-                Issues <span className="bw-tab-n">12</span>
-              </span>
-              <span className="bw-tab">
-                Pull requests <span className="bw-tab-n">4</span>
-              </span>
-            </div>
-            <div className="bw-issues">
-              {GITHUB_ISSUES.map((issue) => (
-                <div key={issue.n} className="bw-issue">
-                  <IssueIcon className="bw-issue-ic" />
-                  <span className="bw-issue-text">
-                    <span className="bw-issue-title">{issue.title}</span>
-                    <span className="bw-issue-meta">
-                      #{issue.n}
-                      <span className="bw-label">{issue.label}</span>
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Spot>
         </div>
+        <PluginCatalogCard />
       </div>
     </div>
   );

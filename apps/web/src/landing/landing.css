@@ -2738,88 +2738,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* Plugin callouts: a soft ring and a quiet tag, so the plugin UI stays the
-   subject. Every ring uses the same radius, inset panels included. */
-.bw-spot {
-  --bw-spot-ring: color-mix(in oklab, var(--accent) 42%, transparent);
-  --bw-spot-inset: -4px;
-  position: relative;
-}
-
-.bw-spot::after {
-  position: absolute;
-  z-index: 1;
-  inset: var(--bw-spot-inset);
-  border: 1.5px solid transparent;
-  border-radius: 12px;
-  content: "";
-  transition: border-color 0.6s ease;
-  pointer-events: none;
-}
-
-.bw-spot.is-lit::after {
-  border-color: var(--bw-spot-ring);
-}
-
-.bw-spot-tag {
-  position: absolute;
-  z-index: 2;
-  top: -12px;
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--bg));
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  color: color-mix(in oklab, var(--accent) 80%, var(--ink));
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateY(3px);
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
-  pointer-events: none;
-}
-
-/* The chart and the banner run past the right edge of narrow crops, so
-   their tags sit on the left where they always stay in view. */
-.bw-chart .bw-spot-tag,
-.bw-banner .bw-spot-tag {
-  right: auto;
-  left: 12px;
-}
-
-.bw-banner .bw-spot-tag {
-  top: -21px;
-}
-
-.bw-spot.is-lit .bw-spot-tag {
-  opacity: 1;
-  transform: none;
-}
-
-.bw-spot-ic {
-  width: 13px;
-  height: 13px;
-  opacity: 0.85;
-}
-
-/* Room above the PR rows for their tag, so it never covers a thread title. */
-.bw-spot-rows {
-  margin: 22px 0 2px;
-}
-
-.bw-spot-rows .bw-spot-tag {
-  top: -24px;
-  right: 4px;
-}
-
 .bw-row-meta {
   padding-top: 6px;
   padding-bottom: 6px;
@@ -2858,7 +2776,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 2px;
 }
 
-/* Green, not the callout blue, so the chart never reads blue on blue. */
 .bw-key-team,
 .bw-bar-team {
   background: color-mix(in oklab, var(--ok) 88%, var(--ink));
@@ -2891,101 +2808,662 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 3px 3px 0 0;
 }
 
-.bw-banner {
-  margin-bottom: 10px;
-  flex-wrap: nowrap;
+/* Make bb yours: a Plugins card installs four plugins one at a time, and each
+   one's piece eases into the window. Every piece's resting style is the
+   installed state, and its animation plays it in from plain bb, so reduced
+   motion shows the finished frame.
+
+   The window keeps its desktop layout, but the side panel always opens at
+   the visible edge of the window (--bw-fit-slice), so it never lands in the
+   cropped part. The thread column has one fixed width that fits beside the
+   open panel, so opening the panel moves the column without rewrapping it. */
+.bw-plugins {
+  --bw-visible-width: 760px;
+  --bw-move-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --bw-panel-w: clamp(232px, var(--bw-fit-slice) * 0.303, 280px);
+  --bw-col: clamp(
+    220px,
+    var(--bw-fit-slice) - 260px - var(--bw-panel-w),
+    384px
+  );
 }
 
-.bw-banner-edit {
+.bw-plugins-stage {
+  position: relative;
+}
+
+.bw-plugins .bw-body {
+  padding-right: calc(var(--bw-width) - var(--bw-fit-slice));
+}
+
+.bw-plugins .bw-feed,
+.bw-plugins .composer {
+  width: var(--bw-col);
+  margin-inline: auto;
+}
+
+.bw-plugins .bw-feed {
+  padding: 18px 0 12px;
+}
+
+.bw-plugins .composer {
+  padding: 0 0 14px;
+  border-top: 0;
+}
+
+.bw-plugins .bw-side-foot {
+  align-items: center;
+  min-height: 28px;
+}
+
+.bw-plugins .bar-toggle.active {
+  animation: bw-toggle-on 0.3s ease var(--bw-panel-at, 0s) both;
+}
+
+.bw-plugins .leaving .bar-toggle.active {
+  animation: bw-toggle-off 0.3s ease forwards;
+}
+
+@keyframes bw-toggle-on {
+  from {
+    background: transparent;
+  }
+}
+
+@keyframes bw-toggle-off {
+  to {
+    background: transparent;
+  }
+}
+
+.bw-plugins .bw-reveal {
+  animation-duration: 0.65s;
+  animation-timing-function: var(--bw-move-ease);
+}
+
+/* Usage Tracker: its strip joins the sidebar footer icons. */
+.bw-usage {
+  display: grid;
+  grid-template-columns: 1fr;
   margin-left: auto;
+  animation: bw-usage-in 0.5s var(--bw-move-ease) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-usage {
+  animation: bw-usage-out 0.65s var(--bw-move-ease) forwards;
+}
+
+@keyframes bw-usage-in {
+  from {
+    grid-template-columns: 0fr;
+    opacity: 0;
+  }
+}
+
+@keyframes bw-usage-out {
+  to {
+    grid-template-columns: 0fr;
+    opacity: 0;
+  }
+}
+
+.bw-usage-inner {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.bw-usage-prov {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.bw-usage-mark {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.bw-usage-mark-claude {
+  color: #d97757;
+}
+
+.bw-usage-rail {
+  position: relative;
+  width: 20px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--subtle) 22%, transparent);
+}
+
+.bw-usage-rail i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--dim);
+  transform-origin: left;
+  animation: bw-fill 0.5s var(--bw-move-ease) calc(var(--fw-at, 0s) + 0.3s)
+    both;
+}
+
+@keyframes bw-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Recap: its compact banner in the composer. */
+.bw-recap-reveal .bw-reveal-inner {
+  padding-bottom: 8px;
+}
+
+.bw-recap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.bw-recap-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--ink) 8%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-recap-spark {
+  width: 11px;
+  height: 11px;
+}
+
+.bw-recap-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bw-recap-head {
+  display: block;
+  overflow: hidden;
+  font-size: 10.5px;
+  color: var(--subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-recap-head b {
+  margin-right: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bw-recap-sum {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-recap-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.bw-recap-arrow {
+  width: 12px;
+  height: 12px;
+}
+
+.bw-recap-btn {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+/* Generative UI: its chart in the reply. The bars rise once the card is in. */
+.bw-plugins .bw-chart {
+  padding: 13px 14px 10px;
+  border-color: var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.bw-plugins .bw-bar {
+  transform-origin: bottom;
+  animation: bw-bar-rise 0.5s var(--fw-ease)
+    calc(var(--fw-at, 0s) + 0.3s + var(--bw-bar-i, 0) * 0.05s) both;
+}
+
+@keyframes bw-bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.bw-chart-source {
+  margin-top: 7px;
+  font-size: 11px;
   color: var(--subtle);
 }
 
-.bw-panel {
-  --bw-spot-inset: 6px;
-  position: relative;
-  width: 300px;
-}
-
-.bw-panel .bw-spot-tag {
-  top: 14px;
-  right: 16px;
-}
-
-.bw-tabs {
+/* Burn: its tab in the side panel. The panel opens from zero width at the
+   right, so the thread column glides left to make room. */
+.bw-burn {
   display: flex;
-  gap: 4px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-soft);
+  justify-content: flex-start;
+  width: var(--bw-panel-w);
+  flex-shrink: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border-soft);
+  background: var(--bg);
+  animation: bw-panel-open 0.65s var(--bw-move-ease) var(--fw-at, 0s) both;
 }
 
-.bw-tab {
-  padding: 4px 8px;
-  border-radius: 6px;
+.leaving .bw-burn {
+  animation: bw-panel-close 0.65s var(--bw-move-ease) forwards;
+}
+
+@keyframes bw-panel-open {
+  from {
+    width: 0;
+    border-left-color: transparent;
+  }
+}
+
+@keyframes bw-panel-close {
+  to {
+    width: 0;
+    border-left-color: transparent;
+  }
+}
+
+.bw-burn-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: var(--bw-panel-w);
+  flex-shrink: 0;
+  padding: 8px 12px;
+  animation: bw-burn-in 0.3s ease calc(var(--fw-at, 0s) + 0.25s) both;
+}
+
+.leaving .bw-burn-inner {
+  animation: fw-fade-out 0.25s ease forwards;
+}
+
+@keyframes bw-burn-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+.bw-burn-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bw-burn-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
   font-size: 12.5px;
   color: var(--dim);
 }
 
-.bw-tab.is-on {
-  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+.bw-burn-tab.is-on {
+  background: color-mix(in oklab, var(--ink) 8%, var(--bg));
   color: var(--ink);
 }
 
-.bw-tab-n {
-  margin-left: 3px;
-  color: var(--subtle);
+.bw-burn-tab-ic {
+  width: 14px;
+  height: 14px;
 }
 
-.bw-issues {
+.bw-burn-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.bw-burn-stat {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px;
-}
-
-.bw-issue {
-  display: flex;
-  gap: 9px;
-  padding: 8px;
-  border-radius: 7px;
-}
-
-.bw-issue-ic {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--ok);
-}
-
-.bw-issue-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  white-space: nowrap;
 }
 
-.bw-issue-title {
-  font-size: 13px;
-  line-height: 1.35;
+.bw-burn-label,
+.bw-burn-note {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--dim);
+  text-overflow: ellipsis;
+}
+
+.bw-burn-value {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
-.bw-issue-meta {
+.bw-burn-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.bw-burn-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bw-burn-seg span {
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.bw-burn-seg .is-on {
+  background: color-mix(in oklab, var(--ink) 8%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-burn-turns {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+
+.bw-burn-turn {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.bw-burn-turn + .bw-burn-turn {
+  border-top: 1px solid var(--border-soft);
+}
+
+.bw-burn-n {
   color: var(--subtle);
 }
 
-.bw-label {
-  padding: 0 7px;
-  border: 1px solid var(--border);
+.bw-burn-prompt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-burn-cost {
+  font-weight: 600;
+}
+
+.bw-burn-rail {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
   border-radius: 999px;
-  font-size: 11.5px;
-  line-height: 17px;
+  background: color-mix(in oklab, var(--subtle) 22%, transparent);
+}
+
+.bw-burn-rail i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--ok) 88%, var(--ink));
+}
+
+/* The Plugins card, sized in em so phones can set it larger. It floats over
+   the empty lower half of the sidebar, below the thread rows and above the
+   footer, and overlaps the window's left edge. */
+.bw-catalog {
+  position: absolute;
+  z-index: 3;
+  bottom: 42px;
+  left: -14px;
+  width: 20.75em;
+  padding: 0.45em;
+  border: 1px solid var(--border);
+  border-radius: 1em;
+  background: var(--bg);
+  font-size: 12.5px;
+  box-shadow: 0 24px 48px -22px
+    color-mix(in oklab, var(--shade) 50%, transparent);
+}
+
+.bw-cat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+  padding: 0.25em 0.3em 0.55em 0.5em;
+}
+
+.bw-cat-title {
+  font-size: 1.08em;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.bw-cat-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  height: 2.15em;
+  padding: 0 0.6em;
+  border: 1px solid var(--border);
+  border-radius: 0.55em;
+  font-size: 0.88em;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.bw-cat-search-ic {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+
+.bw-cat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.bw-cat-row {
+  display: grid;
+  grid-template-columns: 1.85em minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 0.7em;
+  row-gap: 0.05em;
+  align-items: center;
+  padding: 0.42em 0.55em 0.5em;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.7em;
+}
+
+.bw-cat-chip {
+  display: inline-flex;
+  grid-row: 1 / 3;
+  align-self: start;
+  align-items: center;
+  justify-content: center;
+  width: 1.85em;
+  height: 1.85em;
+  margin-top: 0.2em;
+  border: 1px solid color-mix(in oklab, var(--ink) 14%, var(--bg));
+  border-radius: 0.35em;
+  background: color-mix(in oklab, var(--ink) 5%, var(--bg));
+  color: color-mix(in oklab, var(--ink) 55%, var(--bg));
+}
+
+.bw-cat-chip-ic {
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.bw-cat-name {
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-cat-desc {
+  grid-column: 2 / 4;
+  overflow: hidden;
+  font-size: 0.88em;
+  line-height: 1.35;
   color: var(--dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* bb's catalog install control: an outline Install button, then a quiet
+   Installing… with a spinner, then Installed at half strength. All three
+   share one grid cell, so the swap never shifts the row. */
+.bw-inst {
+  display: inline-grid;
+  justify-items: end;
+}
+
+.bw-inst-phase {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 0.45em;
+  height: 2.15em;
+  padding: 0 0.6em;
+  border: 1px solid transparent;
+  border-radius: 0.5em;
+  font-size: 0.92em;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.bw-inst-ic {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+
+.bw-inst-idle {
+  border-color: color-mix(in oklab, var(--border) 80%, transparent);
+  background: var(--bg);
+  font-weight: 500;
+  color: var(--ink);
+  opacity: 0;
+  animation:
+    bw-press 0.2s ease var(--fw-at, 0s),
+    bw-hide 0.2s ease var(--fw-out, 0s) both;
+}
+
+.bw-inst-busy {
+  opacity: 0;
+  animation:
+    bw-show 0.2s ease var(--fw-at, 0s) both,
+    bw-hide 0.2s ease var(--fw-out, 0s) forwards;
+}
+
+.bw-inst-spin {
+  animation: bw-spin 0.9s linear infinite;
+}
+
+.bw-inst-done {
+  opacity: 0.5;
+  animation: bw-show-half 0.25s ease var(--fw-at, 0s) both;
+}
+
+.leaving .bw-inst-idle {
+  animation: bw-show 0.3s ease 0.3s both;
+}
+
+.leaving .bw-inst-busy {
+  animation: none;
+}
+
+.leaving .bw-inst-done {
+  animation: fw-fade-out 0.3s ease forwards;
+}
+
+@keyframes bw-press {
+  50% {
+    background: color-mix(in oklab, var(--ink) 8%, var(--bg));
+    transform: scale(0.94);
+  }
+}
+
+@keyframes bw-show-half {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bw-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .bw-kids {
@@ -3563,6 +4041,21 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     --bw-fit-slice: var(--bw-slice, var(--bw-visible-width));
     zoom: var(--bw-scale, 0.62);
   }
+  /* The whole 760px slice of the plugins window at 0.47x, so the side panel
+     stays in view. The Plugins card leaves the window and sits under it, as
+     wide as the window and in larger type, so it stays readable. */
+  .bw.bw-plugins {
+    zoom: var(--bw-scale, 0.47);
+  }
+
+  .bw-catalog {
+    position: relative;
+    bottom: auto;
+    left: 0;
+    width: var(--bw-fit-slice);
+    margin-top: 22px;
+    font-size: 24px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3571,11 +4064,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .bw *::after {
     animation: none !important;
     transition: none !important;
-  }
-
-  .bw .bw-spot-tag {
-    opacity: 1;
-    transform: none;
   }
 }
 

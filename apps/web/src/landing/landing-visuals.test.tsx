@@ -175,20 +175,31 @@ describe("StartAnywhere", () => {
 });
 
 describe("PluginMap", () => {
-  it("shows plugin UI in place in one bb window", () => {
+  it("installs four marketplace plugins and shows each one's piece in one bb window", () => {
     const html = renderToStaticMarkup(<PluginMap />);
     for (const text of [
-      "Checks passed",
-      "#482",
-      "Weekly signups",
-      "Send later",
-      "Pull requests",
-      "Checkout times out on slow networks",
+      ">Plugins<",
+      "Search plugins...",
+      "Usage Tracker",
+      "Recap",
+      "Generative UI",
+      "Burn",
+      "Install<",
+      "Installing…",
+      "Installed<",
+      "62%",
+      "Automatic · 5:11 PM",
+      "Weekly signups by plan",
+      "Source: analytics.signups",
+      "This thread",
+      "$1.84",
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/class="bw-spot-tag"/g)).toHaveLength(4);
+    expect(html.match(/class="bw-cat-row"/g)).toHaveLength(4);
+    expect(html.match(/class="bw-inst"/g)).toHaveLength(4);
     expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/bw-spot/);
   });
 });
 
