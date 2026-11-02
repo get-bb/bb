@@ -51,7 +51,6 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
 import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
 import { SetupOptionRow } from "@bb/shared-ui/setup-option-row";
 import {
@@ -1652,26 +1651,27 @@ function AppInstallToggles({
   onOpenPlatformChange: (platform: MobilePlatform | null) => void;
 }) {
   return (
-    <p className="flex flex-wrap items-center gap-x-1 gap-y-1">
-      <span className="mr-1">Install the mobile app:</span>
-      {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
-        const expanded = openPlatform === option.platform;
-        return (
-          <Fragment key={option.platform}>
-            {index > 0 ? <span aria-hidden="true">·</span> : null}
-            <DisclosureToggle
-              expanded={expanded}
-              leading={<MobilePlatformIcon platform={option.platform} />}
-              onToggle={() =>
-                onOpenPlatformChange(expanded ? null : option.platform)
-              }
-            >
-              {option.label}
-            </DisclosureToggle>
-          </Fragment>
-        );
-      })}
-    </p>
+    <div className="flex flex-col items-start gap-1">
+      <span>Install the mobile app:</span>
+      <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
+        {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
+          const expanded = openPlatform === option.platform;
+          return (
+            <Fragment key={option.platform}>
+              {index > 0 ? <span aria-hidden="true">·</span> : null}
+              <DisclosureToggle
+                expanded={expanded}
+                onToggle={() =>
+                  onOpenPlatformChange(expanded ? null : option.platform)
+                }
+              >
+                {option.label}
+              </DisclosureToggle>
+            </Fragment>
+          );
+        })}
+      </p>
+    </div>
   );
 }
 
@@ -1946,33 +1946,37 @@ function ConnectOffInstallLinks() {
   );
 }
 
-function setupGuideLoginContent(
+function setupGuideLoginPanel(
   login: AccountLogin["login"],
   openUrl: (url: string) => boolean,
 ): ReactNode {
+  if (login?.state !== "pending") return null;
+  return (
+    <SignInPanel
+      flush
+      status="bb connect turns on automatically after you sign in."
+      instruction={
+        <>
+          Finish signing in on{" "}
+          <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
+            {hostOf(login.verificationUrl)}
+          </InlineTextLink>
+          .
+        </>
+      }
+      variant={{
+        kind: "code",
+        code: login.userCode,
+        label: "bb connect sign-in code",
+        onCopyCode: (code) => void copyTextWithSdkToast(code),
+      }}
+    />
+  );
+}
+
+function setupGuideLoginContent(login: AccountLogin["login"]): ReactNode {
   if (login === null) return null;
-  if (login.state === "pending") {
-    return (
-      <SignInPanel
-        status="bb connect turns on automatically after you sign in."
-        instruction={
-          <>
-            Finish signing in on{" "}
-            <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
-              {hostOf(login.verificationUrl)}
-            </InlineTextLink>
-            .
-          </>
-        }
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "bb connect sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
-      />
-    );
-  }
+  if (login.state === "pending") return null;
   if (login.state === "signed-in") {
     return (
       <p role="status" className="flex items-center gap-2">
@@ -2059,6 +2063,7 @@ function ConnectSetupGuideSection({
       icon="ComputerCloud"
       title="bb connect"
       description={SETUP_GUIDE_DESCRIPTION}
+      panel={connecting ? null : setupGuideLoginPanel(login, navigate.openUrl)}
       action={
         connecting || signingIn ? undefined : (
           <Button
@@ -2090,7 +2095,7 @@ function ConnectSetupGuideSection({
                 : "bb connect is starting…"}
             </p>
           ) : (
-            setupGuideLoginContent(login, navigate.openUrl)
+            setupGuideLoginContent(login)
           )}
           {error !== null ? <SetupGuideError>{error}</SetupGuideError> : null}
           {turnOnError !== null ? (

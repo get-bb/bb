@@ -154,16 +154,25 @@ export function DisclosureToggle({
 }
 
 export function InlinePanel({
+  flush = false,
   children,
   toggles,
   expanded,
 }: {
+  flush?: boolean;
   children: ReactNode;
   toggles?: ReactNode;
   expanded?: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-surface-recessed text-xs text-muted-foreground">
+    <div
+      className={cn(
+        "overflow-hidden bg-surface-recessed text-xs text-muted-foreground",
+        flush
+          ? "-mx-3 border-y border-border-hairline"
+          : "rounded-md border border-border",
+      )}
+    >
       <div className="flex flex-col gap-3 p-3">{children}</div>
       {toggles === undefined ? null : (
         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 border-t border-border-hairline px-2 py-1.5">
@@ -194,12 +203,14 @@ export type SignInPanelVariant =
   | { kind: "waiting" };
 
 export function SignInPanel({
+  flush = false,
   status,
   instruction,
   variant,
   toggles,
   expanded,
 }: {
+  flush?: boolean;
   status: string;
   instruction?: ReactNode;
   variant: SignInPanelVariant;
@@ -207,7 +218,7 @@ export function SignInPanel({
   expanded?: ReactNode;
 }) {
   return (
-    <InlinePanel toggles={toggles} expanded={expanded}>
+    <InlinePanel flush={flush} toggles={toggles} expanded={expanded}>
       <p role="status" className="flex items-center gap-2">
         <Icon
           name="Spinner"

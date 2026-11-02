@@ -17,6 +17,7 @@ import {
   SetupOptionRow,
 } from "@bb/shared-ui/setup-option-row";
 import { Switch } from "@bb/shared-ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PluginAuthorByline,
@@ -31,6 +32,7 @@ import {
 } from "@/lib/bb-desktop";
 import {
   ONBOARDING_STEPS,
+  signInSiteName,
   type AgentSetupState,
   type OnboardingStepId,
   type SignInGuide,
@@ -293,6 +295,7 @@ function agentSubline(
         : "Installed · no model connected";
     }
     if (state.status === "signingIn") return "Finish connecting below";
+    if (state.status === "ready") return state.detail ?? "Model connected";
   }
   switch (state.status) {
     case "checking":
@@ -444,13 +447,30 @@ function AgentRow({
             </Button>
           ) : null}
           {state.status === "signingIn" ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onCancelSignIn(agent.id)}
-            >
-              Cancel
-            </Button>
+            quiet ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 text-muted-foreground"
+                    aria-label={`Cancel signing in to ${agent.name}`}
+                    onClick={() => onCancelSignIn(agent.id)}
+                  >
+                    <Icon name="X" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Cancel</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onCancelSignIn(agent.id)}
+              >
+                Cancel
+              </Button>
+            )
           ) : null}
         </div>
       </div>
@@ -1212,8 +1232,9 @@ export function AgentSignInPanel({
   const userCode = guide?.userCode ?? null;
   const acceptsPastedCode = guide?.acceptsPastedCode ?? false;
   const starting = url === null && !terminalVisible;
-  const page =
-    url === null ? null : (
+  const siteName = url === null ? null : signInSiteName(url);
+  const site =
+    url === null || siteName === null ? null : (
       <InlineTextLink
         href={url}
         onOpen={(href) => {
@@ -1221,7 +1242,7 @@ export function AgentSignInPanel({
           return true;
         }}
       >
-        {agentName} page
+        {siteName}
       </InlineTextLink>
     );
   const alternateAction =
@@ -1236,20 +1257,22 @@ export function AgentSignInPanel({
     terminalVisible ? (
       `Sign in to ${agentName} in the terminal below.`
     ) : undefined
+  ) : site === null ? (
+    "Finish signing in in your browser."
   ) : userCode !== null ? (
     alternateAction === null ? (
-      <>Enter this code on the {page}.</>
+      <>Enter this code on {site}.</>
     ) : (
       <>
-        Enter this code on the {page}, or {alternateAction}.
+        Enter this code on {site}, or {alternateAction}.
       </>
     )
   ) : acceptsPastedCode ? (
-    <>Sign in on the {page}, then paste the code it shows you.</>
+    <>Sign in on {site}, then paste the code it shows you.</>
   ) : alternate === "code" ? (
     <>Sign in with your browser, or {alternateAction}.</>
   ) : (
-    <>Finish signing in on the {page}.</>
+    <>Finish signing in on {site}.</>
   );
   const variant: SignInPanelVariant =
     url !== null && userCode !== null
@@ -1271,6 +1294,7 @@ export function AgentSignInPanel({
   return (
     <div className="mt-3">
       <SignInPanel
+        flush
         status={
           connect
             ? "bb continues automatically once a model is connected."

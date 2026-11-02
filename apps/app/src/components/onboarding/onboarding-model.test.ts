@@ -16,6 +16,7 @@ import {
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
+  signInSiteName,
 } from "./onboarding-model";
 
 function health(
@@ -586,5 +587,24 @@ describe("agentContinueDisabled", () => {
         statesLoading: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("signInSiteName", () => {
+  it("names the sign-in website without www", () => {
+    expect(signInSiteName("https://www.cursor.com/loginDeepControl?x=1")).toBe(
+      "cursor.com",
+    );
+    expect(signInSiteName("https://auth.openai.com/codex/device")).toBe(
+      "auth.openai.com",
+    );
+    expect(signInSiteName("https://claude.ai/oauth/authorize?code=true")).toBe(
+      "claude.ai",
+    );
+  });
+
+  it("returns null when the URL has no usable host", () => {
+    expect(signInSiteName("not a url")).toBeNull();
+    expect(signInSiteName("file:///tmp/sign-in")).toBeNull();
   });
 });

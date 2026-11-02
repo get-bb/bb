@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   AgentInstallErrorDetails,
@@ -1057,28 +1058,30 @@ function RedesignAgentFrame({
     };
   });
   return (
-    <OnboardingLayout
-      step="agent"
-      composition="centered"
-      showSkipAll={false}
-      title="Connect a coding agent"
-      description={`Agents run on ${MACHINE_NAME}. bb needs one installed and signed in.`}
-      primaryLabel="Continue"
-      onPrimary={noop}
-      onSelectStep={noop}
-      onSkipAll={noop}
-    >
-      <AgentStep
-        quiet
-        machineName={MACHINE_NAME}
-        agents={agents}
-        onSignIn={noop}
-        onInstall={noop}
-        onViewInstallLog={noop}
-        onCancelSignIn={noop}
-        onRecheck={noop}
-      />
-    </OnboardingLayout>
+    <TooltipProvider>
+      <OnboardingLayout
+        step="agent"
+        composition="centered"
+        showSkipAll={false}
+        title="Connect a coding agent"
+        description={`Agents run on ${MACHINE_NAME}. bb needs one installed and signed in.`}
+        primaryLabel="Continue"
+        onPrimary={noop}
+        onSelectStep={noop}
+        onSkipAll={noop}
+      >
+        <AgentStep
+          quiet
+          machineName={MACHINE_NAME}
+          agents={agents}
+          onSignIn={noop}
+          onInstall={noop}
+          onViewInstallLog={noop}
+          onCancelSignIn={noop}
+          onRecheck={noop}
+        />
+      </OnboardingLayout>
+    </TooltipProvider>
   );
 }
 
