@@ -15,13 +15,13 @@ describe("AgentRow", () => {
       <AgentRow registryIds={["claude-acp", "goose", "kiro", "cline"]} />,
     );
     expect(html.match(/class="plogo/g)).toHaveLength(10);
-    expect(html).toContain('aria-label="3 more agents">+<!-- -->3<!-- --> more');
-    expect(html).toContain('aria-label="10 more agents">+<!-- -->10<!-- --> more');
+    expect(html).toContain('aria-label="3 more agents">+3 more');
+    expect(html).toContain('aria-label="10 more agents">+10 more');
   });
 
   it("drops the desktop count when the registry couldn't be read", () => {
     const html = renderToStaticMarkup(<AgentRow registryIds={null} />);
     expect(html).not.toContain("agent-more");
-    expect(html).toContain("+<!-- -->7<!-- --> more");
+    expect(html).toContain("+7 more");
   });
 });
