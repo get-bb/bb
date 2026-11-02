@@ -228,6 +228,15 @@ export function connectAccessUrl(
   return { status: "off" };
 }
 
+export function signInSiteName(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./u, "");
+    return host === "" ? null : host;
+  } catch {
+    return null;
+  }
+}
+
 export interface SignInGuide {
   url: string | null;
   userCode: string | null;

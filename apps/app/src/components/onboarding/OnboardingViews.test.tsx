@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  AgentSignInPanel,
   AgentStep,
   OnboardingLayout,
   ProjectsStep,
@@ -66,28 +68,32 @@ describe("AgentStep in the redesigned guide", () => {
   it("keeps a failed install quiet and keeps a way out of signing in", () => {
     const onCancelSignIn = vi.fn();
     render(
-      <AgentStep
-        quiet
-        machineName="bee"
-        agents={[
-          agent("codex", {
-            status: "installFailed",
-            message: "Couldn't install. Check your connection and retry.",
-            canInstall: true,
-          }),
-          agent("claude-code", { status: "signingIn" }),
-        ]}
-        onSignIn={vi.fn()}
-        onInstall={vi.fn()}
-        onViewInstallLog={vi.fn()}
-        onCancelSignIn={onCancelSignIn}
-        onRecheck={vi.fn()}
-      />,
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            agent("codex", {
+              status: "installFailed",
+              message: "Couldn't install. Check your connection and retry.",
+              canInstall: true,
+            }),
+            agent("claude-code", { status: "signingIn" }),
+          ]}
+          onSignIn={vi.fn()}
+          onInstall={vi.fn()}
+          onViewInstallLog={vi.fn()}
+          onCancelSignIn={onCancelSignIn}
+          onRecheck={vi.fn()}
+        />
+      </TooltipProvider>,
     );
 
     expect(screen.getByRole("button", { name: /Retry/u })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "View log" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel signing in to claude-code" }),
+    );
     expect(onCancelSignIn).toHaveBeenCalledExactlyOnceWith("claude-code");
     expect(
       screen.getByText(
@@ -221,5 +227,58 @@ describe("ProjectsStep selection", () => {
     });
     expect(header.getAttribute("data-state")).toBe("unchecked");
     expect(header.hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("AgentSignInPanel", () => {
+  function renderPanel(
+    url: string,
+    overrides: { userCode?: string; paste?: boolean } = {},
+  ) {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Cursor"
+        guide={{
+          url,
+          userCode: overrides.userCode ?? null,
+          acceptsPastedCode: overrides.paste ?? false,
+        }}
+        code=""
+        codeSubmitted={false}
+        terminalVisible={false}
+        terminal={null}
+        alternate={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onOpenUrl={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        onUseAlternate={vi.fn()}
+      />,
+    );
+  }
+
+  it("names the website to finish signing in on", () => {
+    renderPanel("https://www.cursor.com/login");
+
+    expect(screen.getByRole("link", { name: "cursor.com" })).toBeTruthy();
+    expect(screen.getByText(/Finish signing in on/u).textContent).toBe(
+      "Finish signing in on cursor.com.",
+    );
+  });
+
+  it("names the website for code and paste sign-ins", () => {
+    renderPanel("https://claude.ai/oauth/authorize", { paste: true });
+
+    expect(screen.getByText(/paste the code/u).textContent).toBe(
+      "Sign in on claude.ai, then paste the code it shows you.",
+    );
+  });
+
+  it("falls back to the browser when the URL has no website", () => {
+    renderPanel("file:///tmp/sign-in");
+
+    expect(screen.getByText("Finish signing in in your browser.")).toBeTruthy();
   });
 });

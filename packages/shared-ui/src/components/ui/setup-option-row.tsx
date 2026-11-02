@@ -8,6 +8,7 @@ export function SetupOptionRow({
   description,
   action,
   actionStaysInline = false,
+  panel,
   children,
   footer,
 }: {
@@ -16,6 +17,7 @@ export function SetupOptionRow({
   description?: string;
   action?: ReactNode;
   actionStaysInline?: boolean;
+  panel?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
 }) {
@@ -49,8 +51,11 @@ export function SetupOptionRow({
             {action}
           </span>
         )}
+        {panel === undefined || panel === null ? null : (
+          <div className="col-start-1 col-end-4 row-start-4 mt-3">{panel}</div>
+        )}
         {children === undefined || children === null ? null : (
-          <div className="col-start-2 col-end-4 row-start-4 mt-3 flex flex-col gap-2 text-xs text-muted-foreground">
+          <div className="col-start-2 col-end-4 row-start-5 mt-3 flex flex-col gap-2 text-xs text-muted-foreground">
             {children}
           </div>
         )}
