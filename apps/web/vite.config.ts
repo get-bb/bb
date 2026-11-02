@@ -9,10 +9,11 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { unstable_readConfig } from "wrangler";
+import { fetchAcpRegistryAgentIds } from "./src/server/acp-registry.js";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
 
-export default defineConfig(({ command }) => {
+export default defineConfig(async ({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
   const siteOrigin = resolveSiteOrigin(
     cloudDev?.vars.APP_URL ??
@@ -36,8 +37,15 @@ export default defineConfig(({ command }) => {
       : {}),
   };
 
+  // Read once per build and inlined in both bundles, so SSR and hydration
+  // agree. A failed read builds the agent row without a registry count.
+  const acpAgentIds = await fetchAcpRegistryAgentIds();
+
   return {
-    define: { __SITE_ORIGIN__: JSON.stringify(siteOrigin) },
+    define: {
+      __SITE_ORIGIN__: JSON.stringify(siteOrigin),
+      __ACP_AGENT_IDS__: JSON.stringify(acpAgentIds),
+    },
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
       dedupe: ["react", "react-dom"],

@@ -157,44 +157,60 @@ export function ProviderChips() {
   );
 }
 
-// Homepage hero: the agents bb runs on the visitor's own subscription.
-const AGENT_ROW_ICONS = [
-  ClaudeIcon,
-  OpenAiIcon,
-  GeminiIcon,
-  CursorIcon,
-  CopilotIcon,
-  PiIcon,
-  OpencodeIcon,
-  GrokIcon,
-  OmpIcon,
-  HermesAgentIcon,
+declare const __ACP_AGENT_IDS__: string[] | null | undefined;
+
+// Homepage hero: the agents bb runs on the visitor's own subscription, each
+// with the ACP registry ids its mark stands for.
+const AGENT_ROW = [
+  { Icon: ClaudeIcon, registry: ["claude-acp"] },
+  { Icon: OpenAiIcon, registry: ["codex-acp"] },
+  { Icon: GeminiIcon, registry: ["gemini"] },
+  { Icon: CursorIcon, registry: ["cursor"] },
+  { Icon: CopilotIcon, registry: ["github-copilot-cli"] },
+  { Icon: PiIcon, registry: ["pi-acp"] },
+  { Icon: OpencodeIcon, registry: ["opencode", "opencode-v2"] },
+  { Icon: GrokIcon, registry: ["grok-build"] },
+  { Icon: OmpIcon, registry: [] },
+  { Icon: HermesAgentIcon, registry: [] },
 ] as const;
 
-// The hero row shows the first marks and counts the rest; phones show fewer.
-const AGENT_ROW_DESKTOP_VISIBLE = 5;
+/** Registry agents the row's marks don't already show, or null without a registry read. */
+export function moreRegistryAgents(
+  ids: readonly string[] | null | undefined,
+): number | null {
+  if (!ids) return null;
+  const shown = new Set<string>(AGENT_ROW.flatMap((agent) => agent.registry));
+  return ids.filter((id) => !shown.has(id)).length;
+}
 
-export function AgentRow() {
-  const desktopExtra = AGENT_ROW_ICONS.length - AGENT_ROW_DESKTOP_VISIBLE;
-  const mobileExtra = AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE;
+export function AgentRow({
+  registryIds = typeof __ACP_AGENT_IDS__ === "undefined"
+    ? null
+    : __ACP_AGENT_IDS__,
+}: {
+  registryIds?: readonly string[] | null;
+}) {
+  const more = moreRegistryAgents(registryIds);
+  const mobileMore =
+    AGENT_ROW.length - PROVIDER_ICONS_MOBILE_VISIBLE + (more ?? 0);
   return (
     <div className="providers agent-row">
       <span className="label">Bring your own subscription</span>
-      {AGENT_ROW_ICONS.map((Icon, i) =>
-        i < AGENT_ROW_DESKTOP_VISIBLE ? (
-          <Icon
-            key={i}
-            className={
-              i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
-            }
-          />
-        ) : null,
-      )}
-      <span className="agent-more" aria-label={`${desktopExtra} more agents`}>
-        +{desktopExtra} more
-      </span>
-      <span className="pmore" aria-label={`${mobileExtra} more agents`}>
-        +{mobileExtra} more
+      {AGENT_ROW.map(({ Icon }, i) => (
+        <Icon
+          key={i}
+          className={
+            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+          }
+        />
+      ))}
+      {more ? (
+        <span className="agent-more" aria-label={`${more} more agents`}>
+          +{more} more
+        </span>
+      ) : null}
+      <span className="pmore" aria-label={`${mobileMore} more agents`}>
+        +{mobileMore} more
       </span>
     </div>
   );
