@@ -626,6 +626,206 @@ describe.concurrent("worktree host entry", () => {
     },
   );
 
+  it.for([
+    "tracked",
+    "staged",
+    "untracked",
+    "ignored",
+    "assume-unchanged",
+    "skip-worktree",
+  ])(
+    "preserves a worktree with %s files during removal",
+    async (kind, { onTestFinished }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      await writeFile(join(sourcePath, ".gitignore"), "ignored.txt\n");
+      await git(sourcePath, "add", ".gitignore");
+      await git(sourcePath, "commit", "-m", "ignore fixture");
+      const harness = createHarness(dataDir);
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-preserved",
+          sourcePath,
+          pathKey: "preserved",
+          branchName: "bb/preserved",
+        }),
+      );
+      if (created.status !== "created") throw new Error(created.message);
+      const filename =
+        kind === "ignored"
+          ? "ignored.txt"
+          : kind === "untracked"
+            ? "untracked.txt"
+            : "README.md";
+      await writeFile(join(created.path, filename), "recoverable fixture\n");
+      if (kind === "staged") await git(created.path, "add", filename);
+      if (kind === "assume-unchanged" || kind === "skip-worktree") {
+        await git(created.path, "update-index", `--${kind}`, filename);
+      }
+      await git(created.path, "config", "status.showUntrackedFiles", "no");
+      const removed = await harness.experimental_call("remove", {
+        operationId: "remove-preserved",
+        pathKey: "preserved",
+        path: created.path,
+      });
+      expect(removed).toMatchObject({ status: "failed" });
+      expect(await readFile(join(created.path, filename), "utf8")).toBe(
+        "recoverable fixture\n",
+      );
+      expect(existsSync(`${created.path}.completed`)).toBe(true);
+      expect(
+        await git(sourcePath, "worktree", "list", "--porcelain"),
+      ).toContain(created.path);
+      await harness.experimental_dispose();
+    },
+  );
+
+  it("preserves work when Git metadata cannot be inspected", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-unknown",
+        sourcePath,
+        pathKey: "unknown",
+        branchName: "bb/unknown",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await rm(join(created.path, ".git"));
+    const removed = await harness.experimental_call("remove", {
+      operationId: "remove-unknown",
+      pathKey: "unknown",
+      path: created.path,
+    });
+    expect(removed).toMatchObject({ status: "failed" });
+    expect(await readFile(join(created.path, "README.md"), "utf8")).toBe(
+      "hello\n",
+    );
+    expect(existsSync(`${created.path}.completed`)).toBe(true);
+    await harness.experimental_dispose();
+  });
+
+  it.for([
+    "refs/worktree/recovery",
+    "refs/bisect/recovery",
+    "refs/rewritten/recovery",
+  ])(
+    "preserves private refs at %s during removal",
+    async (ref, { onTestFinished }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const harness = createHarness(dataDir);
+      const created = await harness.experimental_call(
+        "create",
+        createInput({
+          operationId: "create-private",
+          sourcePath,
+          pathKey: "private",
+          branchName: "bb/private",
+        }),
+      );
+      if (created.status !== "created") throw new Error(created.message);
+      const commit = (
+        await git(
+          created.path,
+          "commit-tree",
+          "HEAD^{tree}",
+          "-p",
+          "HEAD",
+          "-m",
+          "private recovery work",
+        )
+      ).trim();
+      await git(created.path, "update-ref", ref, commit);
+      expect((await git(created.path, "status", "--porcelain")).trim()).toBe(
+        "",
+      );
+      const removed = await harness.experimental_call("remove", {
+        operationId: "remove-private",
+        pathKey: "private",
+        path: created.path,
+      });
+      expect(removed).toMatchObject({ status: "failed" });
+      expect((await git(created.path, "rev-parse", ref)).trim()).toBe(commit);
+      expect(existsSync(`${created.path}.completed`)).toBe(true);
+      await harness.experimental_dispose();
+    },
+  );
+
+  it("preserves an unfinished merge with a clean working tree", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-merge",
+        sourcePath,
+        pathKey: "merge",
+        branchName: "bb/merge",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await git(created.path, "checkout", "-b", "bb/side");
+    await git(created.path, "commit", "--allow-empty", "-m", "same tree");
+    await git(created.path, "checkout", "bb/merge");
+    await git(created.path, "merge", "--no-ff", "--no-commit", "bb/side");
+    expect((await git(created.path, "status", "--porcelain")).trim()).toBe("");
+    const gitDir = (
+      await git(created.path, "rev-parse", "--absolute-git-dir")
+    ).trim();
+    expect(existsSync(join(gitDir, "MERGE_HEAD"))).toBe(true);
+    const removed = await harness.experimental_call("remove", {
+      operationId: "remove-merge",
+      pathKey: "merge",
+      path: created.path,
+    });
+    expect(removed).toMatchObject({ status: "failed" });
+    expect(existsSync(join(gitDir, "MERGE_HEAD"))).toBe(true);
+    expect(existsSync(created.path)).toBe(true);
+    await harness.experimental_dispose();
+  });
+
+  it("preserves detached commits without a retained local branch", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-detached",
+        sourcePath,
+        pathKey: "detached",
+        branchName: "bb/detached",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await git(created.path, "checkout", "--detach");
+    await writeFile(join(created.path, "README.md"), "detached fixture\n");
+    await git(created.path, "commit", "-am", "detached work");
+    const removed = await harness.experimental_call("remove", {
+      operationId: "remove-detached",
+      pathKey: "detached",
+      path: created.path,
+    });
+    expect(removed).toMatchObject({ status: "failed" });
+    expect(await readFile(join(created.path, "README.md"), "utf8")).toBe(
+      "detached fixture\n",
+    );
+    expect(existsSync(`${created.path}.completed`)).toBe(true);
+    await harness.experimental_dispose();
+  });
+
   it("creates a bounded worktree path for a long repository name", async ({
     skip,
     onTestFinished,
@@ -820,6 +1020,42 @@ describe.concurrent("worktree host entry", () => {
     expect(existsSync(join(first.path, "survives.txt"))).toBe(true);
     await restartedHarness.experimental_dispose();
   });
+
+  it.for(["abandoned-path", "branch-mismatch"])(
+    "preserves task commits when retrying a %s",
+    async (kind, { onTestFinished }) => {
+      const { sourcePath, dataDir } =
+        await createSourceRepository(onTestFinished);
+      const harness = createHarness(dataDir);
+      const input = createInput({
+        operationId: "initial",
+        sourcePath,
+        pathKey: "initial",
+        branchName: "bb/retry",
+      });
+      const first = await harness.experimental_call("create", input);
+      if (first.status !== "created") throw new Error(first.message);
+      await writeFile(join(first.path, "README.md"), "unique task work\n");
+      await git(first.path, "commit", "-am", "unique task work");
+      const head = (await git(first.path, "rev-parse", "HEAD")).trim();
+      if (kind === "branch-mismatch")
+        await git(first.path, "checkout", "-b", "bb/other");
+      const retry = await harness.experimental_call("create", {
+        ...input,
+        operationId: "retry",
+        pathKey: kind === "abandoned-path" ? "retry" : input.pathKey,
+      });
+      expect(retry).toMatchObject({ status: "failed" });
+      expect((await git(sourcePath, "rev-parse", "bb/retry")).trim()).toBe(
+        head,
+      );
+      expect(await readFile(join(first.path, "README.md"), "utf8")).toBe(
+        "unique task work\n",
+      );
+      expect(existsSync(`${first.path}.completed`)).toBe(true);
+      await harness.experimental_dispose();
+    },
+  );
 
   it("completes a recovered worktree without running core setup", async ({
     onTestFinished,

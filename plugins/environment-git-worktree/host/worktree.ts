@@ -58,6 +58,7 @@ interface CreateWorktreeArgs {
 
 interface RemoveWorktreeArgs {
   path: string;
+  completionPath?: string | undefined;
   onProgress?: ProgressCallback | undefined;
   signal?: AbortSignal | undefined;
 }
@@ -515,11 +516,45 @@ async function finishWorktreeSetup(args: CreateWorktreeArgs): Promise<void> {
 }
 
 async function removeCreateTarget(args: CreateWorktreeArgs): Promise<void> {
-  await fs.rm(args.completionPath, { force: true });
   await removeWorktree({
     path: args.targetPath,
+    completionPath: args.completionPath,
     ...(args.signal !== undefined ? { signal: args.signal } : {}),
   });
+}
+
+async function hasTaskBranch(args: CreateWorktreeArgs): Promise<boolean> {
+  const result = await runGit(
+    ["show-ref", "--verify", "--quiet", `refs/heads/${args.branchName}`],
+    { cwd: args.sourcePath, ...signalOptions(args.signal), allowFailure: true },
+  );
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new WorkspaceError(
+    "worktree_branch_unverified",
+    "Cannot verify the task branch. Existing work has been preserved.",
+  );
+}
+
+async function assertResetBranchSafe(args: CreateWorktreeArgs): Promise<void> {
+  if (args.branchMode !== "reset" || !(await hasTaskBranch(args))) return;
+  const base = args.baseBranch;
+  if (!base) {
+    throw new WorkspaceError(
+      "worktree_reset_unverified",
+      "Cannot verify the existing task branch against its base. It has been preserved.",
+    );
+  }
+  const relation = await runGit(
+    ["merge-base", "--is-ancestor", `refs/heads/${args.branchName}`, base.ref],
+    { cwd: args.sourcePath, ...signalOptions(args.signal), allowFailure: true },
+  );
+  if (relation.exitCode !== 0) {
+    throw new WorkspaceError(
+      "worktree_reset_unverified",
+      "The existing task branch cannot be safely reset to its base. Preserve its commits or reuse the branch.",
+    );
+  }
 }
 
 export async function createWorktree(
@@ -544,8 +579,6 @@ export async function createWorktree(
     }
   }
 
-  await removeCreateTarget(args);
-
   throwIfProvisionAborted(args.signal);
   switch (
     await readGitRepositoryState(args.sourcePath, signalOptions(args.signal))
@@ -564,6 +597,9 @@ export async function createWorktree(
       break;
   }
 
+  await assertResetBranchSafe(args);
+  await removeCreateTarget(args);
+
   throwIfProvisionAborted(args.signal);
   await removeAbandonedAttemptWorktree({
     sourcePath: args.sourcePath,
@@ -578,8 +614,7 @@ export async function createWorktree(
 
   throwIfProvisionAborted(args.signal);
   const reuseExistingBranch =
-    args.branchMode === "reuse-existing" &&
-    (await hasRef(args.sourcePath, `refs/heads/${args.branchName}`));
+    args.branchMode === "reuse-existing" && (await hasTaskBranch(args));
 
   let gitArgs: string[];
   if (reuseExistingBranch) {
@@ -600,6 +635,7 @@ export async function createWorktree(
       onProgress: args.onProgress,
       signal: args.signal,
     });
+    await assertResetBranchSafe(args);
     gitArgs = [
       "worktree",
       "add",
@@ -670,60 +706,201 @@ async function removeDirectoryIfEmpty(pathToRemove: string): Promise<void> {
   }
 }
 
+async function inspectRemovableWorktree(
+  workspacePath: string,
+  signal: AbortSignal | undefined,
+): Promise<{ commonDir: string; head: string }> {
+  const inspect = async (args: string[]): Promise<string> => {
+    const result = await runGit(args, {
+      cwd: workspacePath,
+      ...signalOptions(signal),
+      allowFailure: true,
+    }).catch((error: unknown) => {
+      if (signal?.aborted) throw createProvisionCancelledError(error);
+      throw new WorkspaceError(
+        "worktree_inspection_failed",
+        "Cannot inspect the worktree for cleanup. It has been preserved.",
+      );
+    });
+    if (result.exitCode !== 0) {
+      throw new WorkspaceError(
+        "worktree_inspection_failed",
+        "Cannot verify the worktree for cleanup. It has been preserved.",
+      );
+    }
+    return result.stdout.trim();
+  };
+  const root = await inspect(["rev-parse", "--show-toplevel"]);
+  const commonDir = path.resolve(
+    workspacePath,
+    await inspect(["rev-parse", "--git-common-dir"]),
+  );
+  if (
+    (await realpathOrResolved(root)) !==
+      (await realpathOrResolved(workspacePath)) ||
+    commonDir === workspacePath ||
+    (await isPathInside(workspacePath, commonDir))
+  ) {
+    throw new WorkspaceError(
+      "worktree_scope_unknown",
+      "Cannot verify an independent linked worktree. It has been preserved.",
+    );
+  }
+  const head = await inspect(["rev-parse", "--verify", "HEAD"]);
+  const gitDir = await inspect(["rev-parse", "--absolute-git-dir"]);
+  for (const marker of [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "REBASE_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "sequencer",
+    "BISECT_START",
+  ]) {
+    const entry = await fs
+      .lstat(path.join(gitDir, marker))
+      .catch((error: unknown) => {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return null;
+        throw new WorkspaceError(
+          "worktree_inspection_failed",
+          "Cannot verify Git operation state. The worktree has been preserved.",
+        );
+      });
+    if (entry !== null) {
+      throw new WorkspaceError(
+        "worktree_operation_in_progress",
+        "A Git operation is in progress. Complete or preserve it before cleanup.",
+      );
+    }
+  }
+  const privateRefs = await inspect([
+    "for-each-ref",
+    "--format=%(refname)",
+    "refs/worktree/",
+    "refs/bisect/",
+    "refs/rewritten/",
+  ]);
+  if (privateRefs !== "") {
+    throw new WorkspaceError(
+      "worktree_private_refs",
+      "The worktree has private recovery references. Preserve them before cleanup.",
+    );
+  }
+  const retainedRefs = await inspect([
+    "for-each-ref",
+    "--format=%(refname)",
+    "--contains=HEAD",
+    "refs/heads/",
+  ]);
+  if (retainedRefs === "") {
+    throw new WorkspaceError(
+      "worktree_unreferenced_head",
+      "The worktree has commits without a retained local branch. Preserve them before cleanup.",
+    );
+  }
+  const status = await inspect([
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=normal",
+    "--ignored=matching",
+    "--ignore-submodules=none",
+    "-z",
+  ]);
+  if (status !== "") {
+    throw new WorkspaceError(
+      "worktree_preservation_required",
+      "The worktree has uncommitted or ignored files. Preserve them before retrying cleanup.",
+    );
+  }
+  const indexFlags = await inspect(["ls-files", "-v", "-z"]);
+  if (indexFlags.split("\0").some((entry) => /^[a-zS] /u.test(entry))) {
+    throw new WorkspaceError(
+      "worktree_inspection_incomplete",
+      "The worktree index suppresses file inspection. It has been preserved.",
+    );
+  }
+  return { commonDir, head };
+}
+
 export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
   throwIfProvisionAborted(args.signal);
   const workspacePath = path.resolve(args.path);
   const parentPath = path.dirname(workspacePath);
   try {
     await fs.access(workspacePath);
-  } catch {
+  } catch (error) {
+    if (
+      !(error instanceof Error && "code" in error && error.code === "ENOENT")
+    ) {
+      throw new WorkspaceError(
+        "worktree_inspection_failed",
+        "Cannot access the worktree for cleanup. It has been preserved.",
+      );
+    }
+    if (args.completionPath) await fs.rm(args.completionPath, { force: true });
     await removeDirectoryIfEmpty(parentPath);
     return;
   }
-
-  await experimental_killProcessesWithCwdUnder({
-    directories: [workspacePath],
-  });
-  throwIfProvisionAborted(args.signal);
-
-  const commonDirResult = await runGit(["rev-parse", "--git-common-dir"], {
-    cwd: workspacePath,
-    ...(args.signal !== undefined ? { signal: args.signal } : {}),
-    allowFailure: true,
-  });
-
-  if (commonDirResult.exitCode === 0) {
-    const commonDir = path.resolve(
-      workspacePath,
-      commonDirResult.stdout.trim(),
-    );
-    await tryWithCheckoutMutationLock(
-      workspacePath,
-      () =>
-        withWorktreeMetadataLock(commonDir, () =>
-          runGit(
-            [
-              "--git-dir",
-              commonDir,
-              "worktree",
-              "remove",
-              workspacePath,
-              "--force",
-            ],
-            {
-              cwd: path.dirname(workspacePath),
-              ...(args.signal !== undefined ? { signal: args.signal } : {}),
-              allowFailure: true,
-            },
-          ),
-        ),
-      args.signal,
-      signalOptions(args.signal),
+  if ((await fs.readdir(workspacePath)).length === 0) {
+    await fs.rmdir(workspacePath);
+    if (args.completionPath) await fs.rm(args.completionPath, { force: true });
+    await removeDirectoryIfEmpty(parentPath);
+    return;
+  }
+  const before = await inspectRemovableWorktree(workspacePath, args.signal);
+  const removed = await tryWithCheckoutMutationLock(
+    workspacePath,
+    () =>
+      withWorktreeMetadataLock(before.commonDir, async () => {
+        await experimental_killProcessesWithCwdUnder({
+          directories: [workspacePath],
+        });
+        throwIfProvisionAborted(args.signal);
+        const current = await inspectRemovableWorktree(
+          workspacePath,
+          args.signal,
+        );
+        if (
+          current.commonDir !== before.commonDir ||
+          current.head !== before.head
+        ) {
+          throw new WorkspaceError(
+            "worktree_changed",
+            "The worktree changed during cleanup. It has been preserved.",
+          );
+        }
+        const result = await runGit(
+          ["--git-dir", before.commonDir, "worktree", "remove", workspacePath],
+          {
+            cwd: path.dirname(workspacePath),
+            ...(args.signal !== undefined ? { signal: args.signal } : {}),
+            allowFailure: true,
+          },
+        );
+        if (result.exitCode !== 0) {
+          throw new WorkspaceError(
+            "worktree_removal_failed",
+            "Git refused worktree removal. It has been preserved; inspect it before retrying.",
+          );
+        }
+        return true;
+      }),
+    args.signal,
+    signalOptions(args.signal),
+  );
+  if (removed !== true) {
+    throw new WorkspaceError(
+      "worktree_inspection_failed",
+      "Cannot lock the worktree for cleanup. It has been preserved.",
     );
   }
-
-  throwIfProvisionAborted(args.signal);
-  await fs.rm(workspacePath, { recursive: true, force: true });
+  if (args.completionPath) await fs.rm(args.completionPath, { force: true });
   await removeDirectoryIfEmpty(parentPath);
 }
 

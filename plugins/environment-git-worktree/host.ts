@@ -1,5 +1,5 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
-import { readdir, rm } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { createHostProgress } from "bb-environment-provider-host/progress";
 import { worktreeHostContract, worktreeHostSignals } from "./contract.js";
 import { resolveWorktreeBaseBranch } from "./host/base-branch.js";
@@ -128,9 +128,9 @@ export function createWorktreeHostEntry() {
                 })
               : [input.path];
           for (const path of paths) {
-            await rm(completionPathForWorktree(path), { force: true });
             await removeWorktree({
               path,
+              completionPath: completionPathForWorktree(path),
               onProgress: createHostProgress({
                 operationId: input.operationId,
                 emit: (payload) =>

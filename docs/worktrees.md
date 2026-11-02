@@ -135,11 +135,28 @@ every process whose working directory is inside the worktree — the agent's
 provider process, its background jobs (dev servers, MCP servers, `nohup`
 jobs), and any process you started there yourself, such as a shell you `cd`'d
 into the worktree or an editor terminal. Each process gets `SIGTERM`, then
-`SIGKILL` after a short grace period. Then `git worktree remove --force` runs
-and the directory is deleted. The branch is left behind, so work you committed
-to it survives the worktree. If you want to keep uncommitted work, commit and
-push (or open a PR) from inside the worktree before letting the thread go, and
-move your own shells out of the worktree first if you want to keep them.
+`SIGKILL` after a short grace period. Before stopping those processes, removal
+checks for tracked changes, untracked files, and ignored files. It also checks
+that a local branch retains the current commits. It repeats the checks under
+the worktree mutation locks after the processes stop, then runs
+`git worktree remove` without force. A refused or failed check preserves the
+worktree and its recovery marker. There is no recursive-deletion fallback.
+
+Private worktree references and index flags that hide file changes also block
+removal, as does unfinished merge, rebase, cherry-pick or sequencer state even
+when the ordinary status is clean. A provisioning retry refuses to reset an existing task branch with
+commits outside its selected base; preserve those commits or reuse the branch.
+
+Ignored files can contain work or credentials, so an ignore rule does not prove
+they are disposable. Preserve required files and remove reproducible residue
+before cleanup. BB reports failed removal through the environment's teardown
+state and retry policy. The branch is left behind; retaining it locally does
+not prove a remote backup. Commit and push required work before archiving.
+Move your own shells out of the worktree first if you want to keep them.
+
+These checks do not prevent an unrelated process from writing new ignored files
+after the last inspection. Archive preflight and teardown scripts are not an
+atomic filesystem snapshot.
 
 ## Run teardown with `.bb-env-teardown.sh`
 

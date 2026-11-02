@@ -156,6 +156,13 @@ Making your repo work with bb:
   `bb environment show <id>` reports the lifecycle phase, deadline, teardown
   attempt, and failure message.
 
+  Worktree removal refuses tracked changes, untracked or ignored files, commits
+  without a retained local branch, and failed Git inspection. A refusal preserves
+  the worktree and reports teardown failure. Preserve required files and remove
+  reproducible residue before retrying. The retained local branch is not proof
+  that commits were pushed. Removal uses Git without force and has no recursive
+  deletion fallback.
+
   `bb environment cleanup <id> [--json]` overrides retention and retry backoff
   to remove an unused provider-managed environment early. It is not a routine
   end-of-task step. It rejects live threads and unmanaged environments,

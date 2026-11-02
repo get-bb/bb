@@ -86,8 +86,11 @@ Lifecycle:
   idle with a live workspace (check `canRestoreEnvironment` on `bb thread show
   --json`). Unarchive the thread first; the command is refused while the thread
   is archived, while its workspace is still there, and when the provider does
-  not restore, is gone, or its machine is gone. Uncommitted changes in the
-  removed workspace are not recoverable.
+  not restore, is gone, or its machine is gone. The Worktree provider preserves
+  workspaces with tracked changes, untracked or ignored files, unreferenced
+  commits, or failed Git inspection and reports teardown failure. Other
+  environment providers define their own preservation policy. Archive success
+  alone does not prove workspace removal or remote preservation.
 
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
