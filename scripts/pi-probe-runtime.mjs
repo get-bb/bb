@@ -5,7 +5,7 @@ const dist = process.env.BB_PI_PROBE_DIST || realpathSync(resolve('plugins/provi
 const logger = String.raw`
 let __bbSequence = 0;
 function __bbLog(event, data = {}) {
-  const dir = process.env.BB_PI_RUNTIME_PROBE_DIR;
+  const dir = process.env.PI_RUNTIME_PROBE_DIR;
   if (!dir) return;
   try {
     __bbMkdir(dir, { recursive: true });

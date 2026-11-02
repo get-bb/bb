@@ -40,7 +40,7 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           PI_TIMING: '1'
-          BB_PI_RUNTIME_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
+          PI_RUNTIME_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
           PI_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
         run: |
           New-Item -ItemType Directory -Path $env:PI_PROBE_DIR -Force | Out-Null

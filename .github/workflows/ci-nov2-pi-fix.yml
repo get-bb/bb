@@ -1,0 +1,68 @@
+name: Temporary Pi helper cleanup proof
+on:
+  push:
+    branches: [bb/ci-nov2-infra]
+    paths: [.github/workflows/ci-nov2-pi-fix.yml, scripts/ci-nov2-pi-snapshots/**]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pi-startup:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - name: Restore dependency image
+        uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - uses: ./.github/actions/setup-bun
+        with:
+          version: "1.3.14"
+      - name: Build actual prerequisite modules
+        shell: cmd
+        run: pnpm exec turbo run test --filter=bb-plugin-provider-pi -- src/bridge/bridge.relocation.test.ts
+      - name: Prove old failure and repaired lifecycle
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          PI_TIMING: '1'
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "pi-helper-proof"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          Copy-Item scripts/ci-nov2-pi-snapshots/relocation.txt plugins/provider-pi/src/bridge/bridge.relocation.test.ts
+          Copy-Item scripts/ci-nov2-pi-snapshots/rpc-before.txt plugins/provider-pi/src/bridge/rpc-session.ts
+          Set-Location plugins/provider-pi
+          cmd /c "pnpm exec vitest run --config vitest.config.ts src/bridge/bridge.relocation.test.ts --reporter=default --reporter=json --outputFile=`"$out/before.json`" > `"$out/before.log`" 2>&1"
+          $beforeExit = $LASTEXITCODE
+          $before = Get-Content "$out/before.json" -Raw | ConvertFrom-Json
+          $failed = @($before.testResults.assertionResults | Where-Object { $_.status -eq 'failed' })
+          if ($beforeExit -eq 0 -or $before.numFailedTests -ne 3 -or $before.numPassedTests -ne 1) { throw "Baseline did not fail the expected three cleanup regressions" }
+          foreach ($test in $failed) {
+            if ($test.fullName -notmatch 'relocates a real Pi session' -or ($test.failureMessages -join '') -notmatch 'shutdown') { throw "Unexpected baseline failure" }
+          }
+          Copy-Item ../../scripts/ci-nov2-pi-snapshots/rpc-after.txt src/bridge/rpc-session.ts
+          cmd /c "pnpm exec vitest run --config vitest.config.ts src/bridge/bridge.relocation.test.ts src/bridge/bridge.lifecycle.test.ts > `"$out/after-focused.log`" 2>&1"
+          if ($LASTEXITCODE -ne 0) { throw "Fixed lifecycle tests failed" }
+          $failures = 0
+          foreach ($i in 1..5) {
+            cmd /c "pnpm exec vitest run --config vitest.config.ts > `"$out/after-package-$i.log`" 2>&1"
+            if ($LASTEXITCODE -ne 0) { $failures += 1 }
+          }
+          "Failed fixed repetitions: $failures" | Set-Content "$out/summary.txt"
+          if ($failures -gt 0) { exit 1 }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pi-helper-proof
+          path: ${{ runner.temp }}/pi-helper-proof
+          retention-days: 7
