@@ -161,6 +161,18 @@ export function resolveSignInCommand(
     : health.loginCommand;
 }
 
+export function agentContinueDisabled({
+  redesign,
+  agentReady,
+  statesLoading,
+}: {
+  redesign: boolean;
+  agentReady: boolean;
+  statesLoading: boolean;
+}): boolean {
+  return redesign ? statesLoading : !agentReady;
+}
+
 export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {

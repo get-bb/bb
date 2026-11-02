@@ -85,6 +85,7 @@ import {
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  agentContinueDisabled,
   featuredPluginEntryIds,
   hasReadyAgent,
   parseSignInOutput,
@@ -588,7 +589,12 @@ function AgentStepContainer({
           : null
       }
       primaryLabel="Continue"
-      primaryDisabled={!agentReady && !redesign}
+      primaryDisabled={agentContinueDisabled({
+        redesign,
+        agentReady,
+        statesLoading:
+          hostId !== null && states === undefined && !statesQuery.isError,
+      })}
       secondaryLabel={agentBlocked && !redesign ? "Skip for now" : undefined}
       onPrimary={onContinue}
       onSecondary={onContinue}
