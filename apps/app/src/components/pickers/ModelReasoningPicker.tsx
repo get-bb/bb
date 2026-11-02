@@ -56,9 +56,7 @@ import {
 } from "./model-picker-menu";
 import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import { searchPickerOptions } from "@bb/shared-ui/picker-search";
-import {
-  useResetPickerScroll,
-} from "@bb/shared-ui/hooks/use-reset-picker-scroll";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,
@@ -613,7 +611,6 @@ export function ModelReasoningPicker({
 
   const handleHandoffProviderSelect = useCallback(
     (providerId: string) => {
-      handoff?.onStart();
       setHandoffMode(true);
       setPreviewProviderId(
         providerId === selectedProviderId ? null : providerId,
@@ -624,7 +621,7 @@ export function ModelReasoningPicker({
       setSearchQuery("");
       setActiveIndex(-1);
     },
-    [handoff, selectedProviderId],
+    [selectedProviderId],
   );
   const handleProviderSelect = useCallback(
     (providerId: string) => {
@@ -653,8 +650,9 @@ export function ModelReasoningPicker({
     ],
   );
   const startHandoffMode = useCallback(() => {
+    handoff?.onStart();
     handleHandoffProviderSelect(selectedProviderId);
-  }, [handleHandoffProviderSelect, selectedProviderId]);
+  }, [handoff, handleHandoffProviderSelect, selectedProviderId]);
   const exitHandoffMode = useCallback(() => {
     setHandoffMode(false);
     setHandoffReasoningLevel(null);
