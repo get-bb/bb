@@ -242,24 +242,30 @@ const AGENT_ROW_ICONS = [
   HermesAgentIcon,
 ] as const;
 
+// The hero row shows the first marks and counts the rest; phones show fewer.
+const AGENT_ROW_DESKTOP_VISIBLE = 5;
+
 export function AgentRow() {
+  const desktopExtra = AGENT_ROW_ICONS.length - AGENT_ROW_DESKTOP_VISIBLE;
+  const mobileExtra = AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE;
   return (
     <div className="providers agent-row">
       <span className="label">Bring your own subscription</span>
-      {AGENT_ROW_ICONS.map((Icon, i) => (
-        <Icon
-          key={i}
-          className={
-            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
-          }
-        />
-      ))}
-      <span className="agent-more">and more</span>
-      <span
-        className="pmore"
-        aria-label={`${AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE} more agents`}
-      >
-        +{AGENT_ROW_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE} more
+      {AGENT_ROW_ICONS.map((Icon, i) =>
+        i < AGENT_ROW_DESKTOP_VISIBLE ? (
+          <Icon
+            key={i}
+            className={
+              i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+            }
+          />
+        ) : null,
+      )}
+      <span className="agent-more" aria-label={`${desktopExtra} more agents`}>
+        +{desktopExtra} more
+      </span>
+      <span className="pmore" aria-label={`${mobileExtra} more agents`}>
+        +{mobileExtra} more
       </span>
     </div>
   );
