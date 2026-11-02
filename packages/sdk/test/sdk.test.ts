@@ -611,6 +611,45 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("uploads the bytes a dropped File reads, not its unreadable handle", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const dropped = new File([], "dropped.png", { type: "image/png" });
+    dropped.arrayBuffer = async () => bytes.slice().buffer;
+    let body: BodyInit | null | undefined;
+    const fetch: FetchImplementation = async (_input, init) => {
+      body = init?.body;
+      return jsonResponse({
+        body: {
+          type: "localImage",
+          path: "dropped-uploaded.png",
+          name: "dropped.png",
+          mimeType: "image/png",
+          sizeBytes: bytes.byteLength,
+        },
+        status: 201,
+      });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "browser",
+      }),
+    });
+
+    await sdk.projects.attachments.upload({
+      clientFile: dropped,
+      projectId: "proj_image",
+    });
+
+    if (!(body instanceof FormData)) throw new Error("Expected FormData body");
+    const uploaded = body.get("file");
+    if (!(uploaded instanceof File)) throw new Error("Expected uploaded File");
+    expect(uploaded.name).toBe("dropped.png");
+    expect(uploaded.type).toBe("image/png");
+    expect(new Uint8Array(await uploaded.arrayBuffer())).toEqual(bytes);
+  });
+
   it("preserves project attachment error envelopes", async () => {
     const sdk = createBbSdk({
       transport: createHttpTransport({
