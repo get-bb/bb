@@ -3594,9 +3594,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   line-height: 16px;
 }
 
-/* The phone and the chat cards keep their size on wide screens and shrink
-   together as the visible slice of the window narrows (--bw-slice-ratio,
-   from useFitWindow), so they never collide. When the slice is too narrow
+/* The phone keeps its size on wide screens and shrinks as the visible slice
+   of the window narrows (--bw-slice-ratio, from useFitWindow). When the slice is too narrow
    to show the timeline beside the phone (--bw-drop flips from 0 to 1), the
    phone drops below the timeline instead of covering it. */
 .bw-start-stage {
@@ -3616,136 +3615,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     (1 - var(--bw-drop)) *
       min(386px, 968px - var(--bw-fit-slice) + 312px * var(--bw-overlay-scale))
   );
-}
-
-.bw-chat-stack {
-  position: absolute;
-  z-index: 2;
-  bottom: calc(var(--bw-stage-pad) - 150px);
-  left: clamp(
-    8px,
-    var(--bw-fit-slice) - 36px - 704px * var(--bw-overlay-scale),
-    150px
-  );
-  width: 392px;
-  transform: scale(var(--bw-overlay-scale));
-  transform-origin: left bottom;
-}
-
-.bw-chat-back {
-  position: absolute;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  height: 90px;
-  padding: 9px 16px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--dim);
-  box-shadow: 0 12px 30px -20px
-    color-mix(in oklab, var(--shade) 40%, transparent);
-}
-
-.bw-chat-back-1 {
-  top: -34px;
-  right: 14px;
-  left: 14px;
-}
-
-.bw-chat-back-2 {
-  top: -66px;
-  right: 28px;
-  left: 28px;
-}
-
-.bw-chat-back-ic {
-  width: 17px;
-  height: 17px;
-  margin-top: 1px;
-}
-
-.bw-chat {
-  position: relative;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg);
-  box-shadow: 0 28px 56px -26px
-    color-mix(in oklab, var(--shade) 50%, transparent);
-}
-
-.bw-chat-head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 48px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border-soft);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.bw-chat-ic {
-  width: 19px;
-  height: 19px;
-}
-
-.bw-chat-body {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
-}
-
-.bw-bubble {
-  align-self: flex-end;
-  max-width: 88%;
-  padding: 9px 14px;
-  border-radius: 18px;
-  background: var(--surface-recessed);
-  font-size: 15px;
-  line-height: 1.45;
-  color: var(--ink);
-}
-
-.bw-used {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--dim);
-}
-
-.bw-used b,
-.bw-chat-say b {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.bw-used-mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-}
-
-.bw-used-check {
-  width: 16px;
-  height: 16px;
-  color: var(--ok);
-}
-
-.bw-chat-say {
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--ink-strong);
 }
 
 /* An iPhone at 0.75x beside the window. The screen is laid out at the real

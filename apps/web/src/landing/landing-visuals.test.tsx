@@ -147,14 +147,10 @@ describe("useCycle", () => {
 });
 
 describe("StartAnywhere", () => {
-  it("shows a ChatGPT handoff, a sidebar grouped by machine and the bb mobile app", () => {
+  it("shows bb desktop grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
-      ">ChatGPT<",
-      "Claude<",
-      "Grok<",
       "Hand this off to bb: fix the checkout bug",
-      "Control bb",
       "linux-box",
       ">server<",
       "MacBook",
@@ -170,7 +166,7 @@ describe("StartAnywhere", () => {
     }
     expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
     expect(html.match(/class="bw-phone"/g)).toHaveLength(1);
-    expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto/);
+    expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto|bw-chat/);
   });
 });
 
