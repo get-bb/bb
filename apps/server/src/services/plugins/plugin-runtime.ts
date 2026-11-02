@@ -1682,11 +1682,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       return null;
     }
     const previous = loaded.get(row.id);
+    const isReload = previous !== undefined;
     function failBeforeFactory(
       status: PluginRuntimeStatus,
       detail: string,
     ): string {
-      if (previous !== undefined) {
+      if (isReload) {
         setStatus(row.id, "running", `reload failed: ${detail}`);
         logger.warn(
           `plugin ${row.id} reload failed (kept previous instance): ${detail}`,
