@@ -1326,7 +1326,7 @@ export function RedesignedDevicesStep({
         <SetupOptionRow
           icon="Laptop"
           title="Add another machine"
-          description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings → Machines.`}
+          description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings > Machines.`}
           action={
             <Button
               size="sm"

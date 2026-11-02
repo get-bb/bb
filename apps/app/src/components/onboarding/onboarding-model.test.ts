@@ -6,6 +6,7 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  agentContinueDisabled,
   connectAccessUrl,
   defaultSelectedRepoPaths,
   featuredPluginEntryIds,
@@ -549,5 +550,41 @@ describe("skippedStepIds", () => {
         ),
       ].sort(),
     ).toEqual(["agent", "plugins"]);
+  });
+});
+
+describe("agentContinueDisabled", () => {
+  it("holds Continue in the redesign only while agent states load", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: true,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps today's guide blocked until an agent is ready", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: true,
+        statesLoading: true,
+      }),
+    ).toBe(false);
   });
 });
