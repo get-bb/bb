@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { experimental_npmGlobalInstallCommand as npmGlobalInstallCommand } from "@get-bb/plugin-sdk/provider-bridge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const probeState = vi.hoisted(() => ({
@@ -106,16 +107,14 @@ const selfUpdate = {
   },
 };
 
+const npmInstall = npmGlobalInstallCommand("@earendil-works/pi-coding-agent");
 const npmUpdate = {
   action: {
     kind: "update",
     label: "Update",
-    command: "npm install -g @earendil-works/pi-coding-agent@latest",
+    command: npmInstall.displayCommand,
   },
-  command: {
-    command: "npm",
-    args: ["install", "-g", "@earendil-works/pi-coding-agent@latest"],
-  },
+  command: npmInstall,
 };
 
 describe("Pi provider update command by install source", () => {
