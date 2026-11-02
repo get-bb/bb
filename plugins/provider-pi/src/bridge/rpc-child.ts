@@ -92,7 +92,7 @@ export function resolvePiProcessLaunch(
   configEnv: NodeJS.ProcessEnv,
   childEnv: NodeJS.ProcessEnv = configEnv,
   cwd = process.cwd(),
-): { command: string; args: string[] } {
+): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
   const launch = resolvePiLaunch(configEnv);
   return resolveWindowsPiProcessLaunch(launch, childEnv, cwd);
 }
@@ -134,7 +134,7 @@ export class PiRpcChild {
       command: launch.command,
       args: [...launch.args, ...args.args],
       cwd: args.cwd,
-      env: args.env,
+      env: launch.env,
       stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
     });
     experimental_recordProviderChildIo(this.child, {

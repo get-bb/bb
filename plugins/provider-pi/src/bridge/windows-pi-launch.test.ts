@@ -10,13 +10,21 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   PiRpcChild,
   resolvePiLaunch,
   resolvePiProcessLaunch,
 } from "./rpc-child.js";
-import { resolvePiNpmShim } from "./windows-pi-launch.js";
+import {
+  resolvePiManagedLauncher,
+  resolvePiNpmShim,
+} from "./windows-pi-launch.js";
 import { npmNodeShim } from "./npm-shim.test-support.js";
+import {
+  piManagedCmdLauncher,
+  piManagedLauncherJs,
+} from "./pi-managed-install.test-support.js";
 
 const directories: string[] = [];
 
@@ -54,6 +62,106 @@ async function fixture(
   await writeFile(shim, npmNodeShim(cliPath));
   await writeFile(path.join(shimDirectory, "pi"), "#!/bin/sh\nexit 1\n");
   return { root, pkg, cli, shim, shimDirectory };
+}
+
+async function managedFixture(node: "path" | "standalone" = "path") {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "bb pi managed-")),
+  );
+  directories.push(root);
+  const bin = path.join(root, "agent", "bin");
+  const installRoot = path.join(root, "agent", "install");
+  const pkg = path.join(
+    installRoot,
+    "releases",
+    "1.4.0",
+    "node_modules",
+    "@earendil-works",
+    "pi-coding-agent",
+  );
+  await mkdir(path.join(pkg, "dist"), { recursive: true });
+  await mkdir(bin, { recursive: true });
+  const cli = path.join(pkg, "dist", "cli.cjs");
+  await writeFile(cli, "");
+  await writeFile(
+    path.join(pkg, "package.json"),
+    JSON.stringify({ bin: { pi: "dist/cli.cjs" } }),
+  );
+  const shim = path.join(bin, "pi.cmd");
+  await writeFile(shim, piManagedCmdLauncher(node));
+  await writeFile(path.join(bin, "pi-launcher.js"), piManagedLauncherJs);
+  await writeFile(
+    path.join(installRoot, "managed-install.json"),
+    "\uFEFF" +
+      JSON.stringify({
+        kind: "pi-managed-install",
+        schemaVersion: 1,
+        layout: "releases-v1",
+        entrypoint: { type: "script", path: shim },
+      }),
+  );
+  await writeFile(path.join(installRoot, "current-version"), "1.4.0\r\n");
+  return { root, bin, installRoot, pkg, cli, shim };
+}
+
+async function roundTrip(
+  cli: string,
+  binDirectory: string,
+  cwd: string,
+): Promise<unknown> {
+  await writeFile(
+    cli,
+    `
+const { Socket } = require("node:net");
+const { writeSync } = require("node:fs");
+const { createInterface } = require("node:readline");
+createInterface({ input: process.stdin }).on("line", line => {
+  const request = JSON.parse(line);
+  process.stdout.write(JSON.stringify({ type: "response", id: request.id, command: request.type, success: true, data: { payload: request.payload, managedRoot: process.env.PI_MANAGED_INSTALL_ROOT ?? null } }) + "\\n");
+});
+createInterface({ input: new Socket({ fd: 4, readable: true, writable: false }) }).on("line", line => {
+  writeSync(3, JSON.stringify({ type: "channel_reply", payload: JSON.parse(line).payload }) + "\\n");
+});
+`,
+  );
+  vi.stubEnv("BB_PI_BRIDGE_COMMAND", undefined);
+  vi.stubEnv("BB_PI_BRIDGE_ARGS", undefined);
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (["PATH", "PATHEXT"].includes(key.toUpperCase())) delete env[key];
+  }
+  env.Path = `${binDirectory}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ""}`;
+  env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+  const messages: Record<string, unknown>[] = [];
+  const child = new PiRpcChild({
+    cwd,
+    env,
+    args: [],
+    recordThreadId: null,
+    onEvent: () => undefined,
+    onChannelMessage: (message) => messages.push(message),
+    onExit: () => undefined,
+  });
+  try {
+    const response = z
+      .object({ payload: z.string(), managedRoot: z.string().nullable() })
+      .parse(
+        await child.requestOk({ type: "echo", payload: "ordinary RPC" }, 5_000),
+      );
+    expect(response.payload).toBe("ordinary RPC");
+    child.sendChannel({ type: "echo", payload: "extra pipes" });
+    await vi.waitFor(
+      () =>
+        expect(messages).toEqual([
+          { type: "channel_reply", payload: "extra pipes" },
+        ]),
+      { timeout: 5_000 },
+    );
+    return response.managedRoot;
+  } finally {
+    child.kill();
+    await child.waitForExit();
+  }
 }
 
 describe("Windows Pi npm launch", () => {
@@ -183,9 +291,59 @@ describe("Windows Pi npm launch", () => {
   it.skipIf(process.platform === "win32")(
     "preserves non-Windows process launches",
     () => {
-      expect(resolvePiProcessLaunch({})).toEqual({ command: "pi", args: [] });
+      expect(resolvePiProcessLaunch({})).toEqual({
+        command: "pi",
+        args: [],
+        env: {},
+      });
     },
   );
+
+  it("unwraps the Pi installer's managed launcher", async () => {
+    const { shim, cli, installRoot } = await managedFixture();
+    expect(resolvePiManagedLauncher(shim, {}, process.execPath)).toEqual({
+      command: process.execPath,
+      args: [cli],
+      installRoot,
+    });
+  });
+
+  it("uses the standalone Node the managed launcher selects", async () => {
+    const { root, shim } = await managedFixture("standalone");
+    const env = { LocalAppData: root };
+    expect(resolvePiManagedLauncher(shim, env, process.execPath)?.command).toBe(
+      process.execPath,
+    );
+    const node = path.join(root, "pi-node", "current", "node.exe");
+    await mkdir(path.dirname(node), { recursive: true });
+    await writeFile(node, "");
+    expect(resolvePiManagedLauncher(shim, env, process.execPath)?.command).toBe(
+      node,
+    );
+  });
+
+  it.each([
+    ["an unknown layout", "layout"],
+    ["no launcher script", "launcher"],
+    ["an escaping version", "version"],
+  ] as const)("preserves a managed launcher with %s", async (_, kind) => {
+    const { bin, installRoot, shim } = await managedFixture();
+    if (kind === "layout") {
+      await writeFile(
+        path.join(installRoot, "managed-install.json"),
+        JSON.stringify({
+          kind: "pi-managed-install",
+          schemaVersion: 1,
+          layout: "releases-v2",
+        }),
+      );
+    } else if (kind === "launcher") {
+      await rm(path.join(bin, "pi-launcher.js"));
+    } else {
+      await writeFile(path.join(installRoot, "current-version"), "..");
+    }
+    expect(resolvePiManagedLauncher(shim, {}, process.execPath)).toBeNull();
+  });
 
   it("rejects a bin symlink escaping the package", async () => {
     const { root, pkg, shim } = await fixture({ pi: "dist/escape/cli.cjs" });
@@ -215,7 +373,7 @@ describe("Windows Pi npm launch", () => {
       const childEnv = { Path: second.root, PATHEXT: ".EXE;.CMD" };
       expect(
         resolvePiProcessLaunch({ Path: first.root }, childEnv, first.pkg),
-      ).toEqual({ command: node, args: [second.cli] });
+      ).toEqual({ command: node, args: [second.cli], env: childEnv });
       const explicit = resolvePiProcessLaunch(
         {
           BB_PI_BRIDGE_COMMAND: first.shim,
@@ -229,6 +387,7 @@ describe("Windows Pi npm launch", () => {
       expect(resolvePiProcessLaunch({}, {}, first.pkg)).toEqual({
         command: "pi",
         args: [],
+        env: {},
       });
       await writeFile(path.join(second.root, "unrelated.cmd"), "");
       expect(
@@ -237,7 +396,7 @@ describe("Windows Pi npm launch", () => {
           childEnv,
           first.pkg,
         ),
-      ).toEqual({ command: "unrelated.cmd", args: [] });
+      ).toEqual({ command: "unrelated.cmd", args: [], env: childEnv });
       await writeFile(
         first.shim,
         `${npmNodeShim("node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.cjs").trim()}\r\nset POLICY=required\r\nnode custom-dispatcher.cjs %*\r\n`,
@@ -254,6 +413,7 @@ describe("Windows Pi npm launch", () => {
       ).toEqual({
         command: "pi",
         args: ["--flag", "value with spaces"],
+        env: { Path: first.root, PATHEXT: ".CMD" },
       });
     },
   );
@@ -290,58 +450,16 @@ describe("Windows Pi npm launch", () => {
         { pi: "dist/cli.cjs" },
         layout,
       );
-      await writeFile(
-        cli,
-        `
-const { Socket } = require("node:net");
-const { writeSync } = require("node:fs");
-const { createInterface } = require("node:readline");
-createInterface({ input: process.stdin }).on("line", line => {
-  const request = JSON.parse(line);
-  process.stdout.write(JSON.stringify({ type: "response", id: request.id, command: request.type, success: true, data: request.payload }) + "\\n");
-});
-createInterface({ input: new Socket({ fd: 4, readable: true, writable: false }) }).on("line", line => {
-  writeSync(3, JSON.stringify({ type: "channel_reply", payload: JSON.parse(line).payload }) + "\\n");
-});
-`,
-      );
-      vi.stubEnv("BB_PI_BRIDGE_COMMAND", undefined);
-      vi.stubEnv("BB_PI_BRIDGE_ARGS", undefined);
-      const env = { ...process.env };
-      for (const key of Object.keys(env)) {
-        if (["PATH", "PATHEXT"].includes(key.toUpperCase())) delete env[key];
-      }
-      env.Path = `${shimDirectory}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ""}`;
-      env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
-      const messages: Record<string, unknown>[] = [];
-      const child = new PiRpcChild({
-        cwd: pkg,
-        env,
-        args: [],
-        recordThreadId: null,
-        onEvent: () => undefined,
-        onChannelMessage: (message) => messages.push(message),
-        onExit: () => undefined,
-      });
-      try {
-        expect(
-          await child.requestOk(
-            { type: "echo", payload: "ordinary RPC" },
-            5_000,
-          ),
-        ).toBe("ordinary RPC");
-        child.sendChannel({ type: "echo", payload: "extra pipes" });
-        await vi.waitFor(
-          () =>
-            expect(messages).toEqual([
-              { type: "channel_reply", payload: "extra pipes" },
-            ]),
-          { timeout: 5_000 },
-        );
-      } finally {
-        child.kill();
-        await child.waitForExit();
-      }
+      expect(await roundTrip(cli, shimDirectory, pkg)).toBeNull();
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "round-trips RPC and extra pipes through the Pi installer's managed launcher",
+    async () => {
+      const { bin, cli, installRoot, root } = await managedFixture();
+      expect(await roundTrip(cli, bin, root)).toBe(installRoot);
     },
     20_000,
   );
