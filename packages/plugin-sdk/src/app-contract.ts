@@ -1256,7 +1256,9 @@ export interface ExperimentalSidebarFooter {
 /**
  * The one status bb would paint for a thread, already resolved through the
  * host's precedence (attention before work; plan and goal before the generic
- * spinner). Draw your own glyph for it — the SDK ships no status component.
+ * spinner). Draw it with {@link PluginSdkApp.experimental_ThreadStatusGlyph},
+ * or resolve a row that folds in more through
+ * {@link PluginSdkApp.experimental_resolveThreadStatus}.
  *
  * Treat an unrecognized value as "none": bb adds kinds over time, and an
  * older plugin must degrade to drawing nothing rather than throwing.
@@ -1606,10 +1608,72 @@ export interface PluginThreadTitleProps {
 }
 
 /**
+ * The fields of a {@link PluginSidebarThread} that
+ * {@link PluginSdkApp.experimental_resolveThreadStatus} reads.
+ */
+export type PluginThreadStatusThread = Pick<
+  PluginSidebarThread,
+  | "status"
+  | "runtimeStatus"
+  | "queuedWork"
+  | "hasPendingInteraction"
+  | "activity"
+  | "isUnread"
+  | "parentThreadId"
+>;
+
+/** Input for {@link PluginSdkApp.experimental_resolveThreadStatus}. */
+export interface PluginThreadStatusInput {
+  /**
+   * The row's own thread, or null for a group row (a collapsed section,
+   * project, or environment) that stands only for `hiddenThreads`.
+   */
+  thread: PluginThreadStatusThread | null;
+  /**
+   * Threads the row stands for while they are hidden, such as a collapsed
+   * parent's sub-threads. Their attention and work count toward the row;
+   * their queued messages do not. Pass an empty array when nothing is hidden.
+   */
+  hiddenThreads: readonly PluginThreadStatusThread[];
+  /**
+   * Whether the composer holds an unsent draft for `thread` or any of
+   * `hiddenThreads` (see {@link PluginSdkApp.useSidebarThreadDraft}).
+   */
+  hasUnsubmittedDraft: boolean;
+  /**
+   * The status another plugin set on the row (see
+   * {@link PluginSdkApp.useSidebarThreadRowStatus}), or null.
+   */
+  rowStatus: PluginSidebarThreadRowStatus | null;
+}
+
+/** What bb's lists draw for a row (see {@link PluginThreadStatusInput}). */
+export interface PluginThreadStatus {
+  indicator: PluginSidebarThreadIndicator;
+  /**
+   * The input `rowStatus` when it shows in place of `indicator`: it replaces
+   * every indicator except "runtime", "unread-error", and
+   * "waiting-for-input". Null otherwise.
+   */
+  rowStatus: PluginSidebarThreadRowStatus | null;
+  /**
+   * The accessible label for what shows: `rowStatus`'s label, else the
+   * indicator's; null when nothing shows.
+   */
+  label: string | null;
+  /**
+   * Whether the row's thread or a hidden thread is working, or the input
+   * `rowStatus` has the "running" tone.
+   */
+  isWorking: boolean;
+}
+
+/**
  * Props for {@link PluginSdkApp.experimental_ThreadStatusGlyph}: bb's thread
- * status glyph, the one its own lists draw. The caller resolves the
- * indicator, so a row can fold in state the host does not know about, such
- * as collapsed children or a client-local draft.
+ * status glyph, the one its own lists draw. Pass the `indicator` and
+ * `rowStatus` from {@link PluginSdkApp.experimental_resolveThreadStatus} to
+ * fold in state a sidebar thread's `indicator` leaves out, such as collapsed
+ * children or a client-local draft.
  */
 export interface PluginThreadStatusGlyphProps {
   /** The indicator to draw; "none" draws nothing unless `rowStatus` shows. */
@@ -5738,6 +5802,15 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
+  /**
+   * Resolves what bb's lists draw for a row through bb's own status
+   * precedence, folding in hidden threads, a draft, and another plugin's row
+   * status (see {@link PluginThreadStatusInput}). A pure function, not a
+   * hook. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_resolveThreadStatus(
+    input: PluginThreadStatusInput,
+  ): PluginThreadStatus;
   /**
    * Every `experimental_threadRowMetadata` contribution for one thread row (see
    * {@link ExperimentalThreadRowMetadataRegistration}), the items bb's sidebar

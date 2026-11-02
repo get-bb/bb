@@ -333,6 +333,7 @@ export const ThreadTitle = runtimeComponent("ThreadTitle");
 export const experimental_ThreadStatusGlyph = runtimeComponent(
   "experimental_ThreadStatusGlyph",
 );
+export { experimental_resolveThreadStatus } from "./internal/thread-status.js";
 export const experimental_ThreadRowMetadata = runtimeComponent(
   "experimental_ThreadRowMetadata",
 );
