@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { stripVTControlCharacters } from "node:util";
 import { Command, Option } from "commander";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import type { TerminalCreateScope, TerminalListScope } from "@bb/sdk";
@@ -256,10 +257,13 @@ export function registerTerminalCommands(
   terminal
     .command("wait <terminalId>")
     .description("Wait for terminal output or exit")
-    .option("--contains <text>", "Wait until output contains text")
+    .option(
+      "--contains <text>",
+      "Wait until output contains text, ignoring terminal escapes",
+    )
     .option(
       "--regex <pattern>",
-      "Wait until output matches a regular expression",
+      "Wait until output matches a regular expression, ignoring terminal escapes",
     )
     .option("--exit", "Wait until the terminal exits")
     .option("--from-start", "Include existing scrollback from sequence 0")
@@ -777,9 +781,10 @@ async function waitForTerminal(args: {
     nextSeq = output.nextSeq;
     const searched = `${seen}${decodeChunks(output.chunks)}`;
     seen = searched.slice(-TERMINAL_WAIT_MATCH_WINDOW_CHARS);
+    const plainText = stripVTControlCharacters(searched);
     if (
       args.opts.contains !== undefined &&
-      searched.includes(args.opts.contains)
+      plainText.includes(args.opts.contains)
     ) {
       return {
         exitCode: output.exitCode,
@@ -788,7 +793,7 @@ async function waitForTerminal(args: {
         terminalId: args.terminalId,
       };
     }
-    if (regex && regex.test(searched)) {
+    if (regex && regex.test(plainText)) {
       return {
         exitCode: output.exitCode,
         matched: args.opts.regex ?? "",
