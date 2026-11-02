@@ -20,11 +20,7 @@ interface ModelCatalog {
 
 export interface WorkflowCatalogDependencies {
   listProviders(environmentId: string): Promise<CatalogProvider[]>;
-  loadModels(
-    environmentId: string,
-    providerId: string,
-    requiredModel: string,
-  ): Promise<ModelCatalog>;
+  loadModels(environmentId: string, providerId: string): Promise<ModelCatalog>;
 }
 
 export interface WorkflowValidationSummary {
@@ -56,21 +52,16 @@ export async function validateWorkflowSource(
           `Unavailable provider for literal workflow selection ${tupleDescription(selection)}${selection.line === null ? "" : ` at line ${selection.line}`}`,
         );
       }
-      const catalogKey = `${provider.id}\0${selection.model}`;
-      let models = catalogs.get(catalogKey);
+      let models = catalogs.get(provider.id);
       if (models === undefined) {
         try {
-          models = await catalog.loadModels(
-            environmentId,
-            provider.id,
-            selection.model,
-          );
+          models = await catalog.loadModels(environmentId, provider.id);
         } catch (error) {
           throw new Error(
             `Model-load error for provider ${provider.id}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
-        catalogs.set(catalogKey, models);
+        catalogs.set(provider.id, models);
       }
       if (models.modelLoadError !== null) {
         throw new Error(

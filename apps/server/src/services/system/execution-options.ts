@@ -419,9 +419,13 @@ export function resolveSystemExecutionOptions(
   return resolveExecutionOptions(
     deps,
     query,
-    query.requiredModel === undefined
+    query.preferCached === "true"
       ? { kind: "picker", selectedModel: query.selectedModel }
-      : { kind: "validation", requiredModel: query.requiredModel },
+      : {
+          kind: "validation",
+          requiredModel: query.selectedModel ?? null,
+          selectedModel: query.selectedModel,
+        },
   );
 }
 

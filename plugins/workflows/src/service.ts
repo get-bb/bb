@@ -745,7 +745,6 @@ export function createWorkflowService(
     const catalog = await bb.sdk.providers.models({
       environmentId: run.environmentId,
       providerId: requested.provider,
-      requiredModel: requested.model,
     });
     throwIfCancelled(signal);
     if (catalog.modelLoadError !== null) {
