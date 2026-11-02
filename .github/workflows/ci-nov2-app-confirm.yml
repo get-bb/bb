@@ -1,0 +1,38 @@
+name: Temporary warmed app shard confirmation
+on:
+  push:
+    branches: [bb/ci-nov2-infra]
+    paths: [.github/workflows/ci-nov2-app-confirm.yml, scripts/ci-nov2-app-confirm.mjs]
+permissions:
+  contents: read
+jobs:
+  app-final:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Build prerequisites
+        shell: cmd
+        env:
+          VITEST_MAX_WORKERS: '4'
+        run: pnpm exec turbo run test --filter=@bb/app -- src/views/thread-detail/thread-opening.model.test.tsx
+      - name: Warm full shard then compare BAAB
+        env:
+          VITEST_MAX_WORKERS: '4'
+        run: node scripts/ci-nov2-app-confirm.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-nov2-app-confirm
+          path: ${{ runner.temp }}/ci-nov2-app-confirm
+          retention-days: 7
