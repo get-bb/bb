@@ -1,21 +1,21 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+  closeSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
+  openSync,
   rmSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { promisify } from "node:util";
+import { afterEach, describe, expect, it } from "vitest";
 import { forkClaudeSession } from "./session-fork.js";
 
-vi.mock("node:fs/promises", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:fs/promises")>()),
-  readFile: () => Promise.reject(new RangeError("Invalid string length")),
-  writeFile: () => Promise.reject(new RangeError("Invalid string length")),
-}));
+const execFileAsync = promisify(execFile);
 
 describe("forkClaudeSession", () => {
   const tempDirs: string[] = [];
@@ -26,56 +26,83 @@ describe("forkClaudeSession", () => {
     }
   });
 
-  it("forks a transcript that Node cannot read or write as one string", async () => {
+  function createConfigDirectory(): {
+    configDirectory: string;
+    transcriptDir: string;
+  } {
     const configDirectory = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
     tempDirs.push(configDirectory);
     const transcriptDir = join(configDirectory, "projects", "-tmp-worktree");
     mkdirSync(transcriptDir, { recursive: true });
+    return { configDirectory, transcriptDir };
+  }
+
+  it("rejects with the SDK's error when the source session does not exist", async () => {
+    const { configDirectory } = createConfigDirectory();
     const sourceSessionId = randomUUID();
-    const messageIds = [randomUUID(), randomUUID(), randomUUID()];
-    writeFileSync(
-      join(transcriptDir, `${sourceSessionId}.jsonl`),
-      [
-        { role: "user", text: "first question" },
-        { role: "assistant", text: "first answer" },
-        { role: "user", text: "discarded follow-up" },
-      ]
-        .map((message, index) =>
-          JSON.stringify({
-            type: message.role,
-            uuid: messageIds[index],
-            parentUuid: index === 0 ? null : messageIds[index - 1],
-            sessionId: sourceSessionId,
-            cwd: "/tmp/worktree",
-            isSidechain: false,
-            timestamp: `2026-10-31T00:00:0${index}.000Z`,
-            message: { role: message.role, content: message.text },
-          }),
-        )
-        .join("\n") + "\n",
-    );
 
-    const checkpointSessionId = await forkClaudeSession({
-      configDirectory,
-      sourceSessionId,
-      upToMessageId: messageIds[1],
-    });
-    const fullSessionId = await forkClaudeSession({
-      configDirectory,
-      sourceSessionId,
-      upToMessageId: undefined,
-    });
-
-    const checkpoint = readFileSync(
-      join(transcriptDir, `${checkpointSessionId}.jsonl`),
-      "utf8",
-    );
-    expect(checkpoint).toContain("first answer");
-    expect(checkpoint).not.toContain("discarded follow-up");
-    const full = readFileSync(
-      join(transcriptDir, `${fullSessionId}.jsonl`),
-      "utf8",
-    );
-    expect(full).toContain("discarded follow-up");
+    await expect(
+      forkClaudeSession({
+        configDirectory,
+        sourceSessionId,
+        upToMessageId: undefined,
+      }),
+    ).rejects.toThrow(`Session ${sourceSessionId} not found`);
   });
+
+  it("fails a fork that runs out of memory without stopping the calling thread", async () => {
+    const { configDirectory, transcriptDir } = createConfigDirectory();
+    const sourceSessionId = randomUUID();
+    const toolOutput = "x".repeat(64 * 1024);
+    const descriptor = openSync(
+      join(transcriptDir, `${sourceSessionId}.jsonl`),
+      "w",
+    );
+    let parentUuid: string | null = null;
+    for (let bytes = 0; bytes < 128 * 1024 * 1024;) {
+      const uuid = randomUUID();
+      const line = `${JSON.stringify({
+        type: "user",
+        uuid,
+        parentUuid,
+        sessionId: sourceSessionId,
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: uuid, content: toolOutput },
+          ],
+        },
+      })}\n`;
+      writeSync(descriptor, line);
+      bytes += line.length;
+      parentUuid = uuid;
+    }
+    closeSync(descriptor);
+    const sessionForkModule = new URL("./session-fork.ts", import.meta.url);
+
+    const callerScript = join(configDirectory, "fork-caller.mjs");
+    writeFileSync(
+      callerScript,
+      `import { forkClaudeSession } from ${JSON.stringify(sessionForkModule.href)};
+const callerState = Array.from({ length: 1000 }, (_, index) => index);
+try {
+  await forkClaudeSession(${JSON.stringify({ configDirectory, sourceSessionId })});
+  console.log("forked");
+} catch (error) {
+  console.log(error.message);
+}
+console.log("caller still running with " + callerState.length + " entries");
+`,
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--max-old-space-size=32",
+      "--no-warnings",
+      callerScript,
+    ]);
+
+    expect(stdout).toBe(
+      `Claude session ${sourceSessionId} is too large to fork: forking it ran out of memory\ncaller still running with 1000 entries\n`,
+    );
+  }, 30_000);
 });
