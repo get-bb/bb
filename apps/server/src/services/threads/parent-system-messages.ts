@@ -392,7 +392,7 @@ async function queueReadyParentSystemMessage(
     providerId: args.thread.providerId,
     syncGeneratedTitle: false,
   });
-  const activeThread: Thread | null = deps.db.transaction(
+  const { activeThread, request } = deps.db.transaction(
     (tx) => {
       const currentThread = getThread(tx, args.thread.id);
       if (
@@ -405,30 +405,36 @@ async function queueReadyParentSystemMessage(
         throw new ParentSystemMessageStateChangedError();
       }
       ensureThreadCanStartRequest(currentThread);
-      appendPreparedClientTurnRequestedEventWithNotificationInTransaction(tx, {
-        ...parentSystemTurnRequestFields(args),
-        target: { kind: "new-turn" },
-        requestId,
-      });
+      const request =
+        appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
+          tx,
+          {
+            ...parentSystemTurnRequestFields(args),
+            target: { kind: "new-turn" },
+            requestId,
+          },
+        );
       const dispatchKind = command.mode;
       if (dispatchKind !== "turn.submit") {
-        return null;
+        return { activeThread: null, request };
       }
-      return requireThreadLifecycleEventApplied(
-        applyLoggedThreadLifecycleEventInTransaction(
-          { db: tx, logger: deps.logger },
-          { event: { type: "run.started" }, threadId: args.thread.id },
+      return {
+        activeThread: requireThreadLifecycleEventApplied(
+          applyLoggedThreadLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            { event: { type: "run.started" }, threadId: args.thread.id },
+          ),
         ),
-      );
+        request,
+      };
     },
     { behavior: "immediate" },
   );
-  deps.hub.notifyThread(args.thread.id, ["events-appended"], {
-    timelineSequence: getLatestThreadSequence(deps.db, {
-      threadId: args.thread.id,
-    }),
-    eventTypes: ["client/turn/requested"],
-  });
+  deps.hub.notifyThread(
+    args.thread.id,
+    request.notificationChanges,
+    request.notificationMetadata,
+  );
   startLiveHostCommand(deps, {
     command: command.command,
     hostId: args.environment.hostId,

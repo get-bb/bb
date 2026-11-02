@@ -50,6 +50,9 @@ import {
  * - `plugin` — a plugin's dispatch gate returned `wait(reason)`. This is the
  *   only arm with an authored reason, because it is the only arm whose reason
  *   is not derivable from the kind (plus `sendAt`) by the renderer.
+ * - `superseded` — a retry of input the provider never accepted, overtaken by
+ *   a newer turn request. It is never sent automatically; the user sends or
+ *   deletes it.
  */
 export const queuedMessageWaitingOnKindValues = [
   "time",
@@ -60,6 +63,7 @@ export const queuedMessageWaitingOnKindValues = [
   "host-offline",
   "interaction",
   "plugin",
+  "superseded",
 ] as const;
 export const queuedMessageWaitingOnKindSchema = z.enum(
   queuedMessageWaitingOnKindValues,
@@ -101,6 +105,7 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
     pluginId: pluginIdSchema,
     reason: queuedMessageWaitReasonSchema,
   }),
+  z.object({ kind: z.literal("superseded") }),
 ]);
 export type QueuedMessageWaitingOn = z.infer<
   typeof queuedMessageWaitingOnSchema
