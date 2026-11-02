@@ -69,6 +69,31 @@ it.each([
   }
 });
 
+it("rejects a script file path that names no file", async () => {
+  const host = await bootAutomationsPlugin();
+  try {
+    const result = await host.harness.runCli(
+      [
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Root script",
+        "--in",
+        "30m",
+        "--script-file",
+        "/",
+      ],
+      { cwd: "/workspace" },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--script-file must name a file");
+    expect(host.harness.sdk.callsTo("files.read")).toEqual([]);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
 const rpcMethods = [
   "automations_overview",
   "automations_list",

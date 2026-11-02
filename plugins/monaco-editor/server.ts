@@ -225,8 +225,9 @@ export default async function plugin(bb: BbPluginApi) {
       rootPath: root,
       candidatePath: target,
     });
-    if (relative === null) throw new Error("File must stay inside its root");
-    return relative || getHostPathBasename(target)!;
+    const name = relative === "" ? getHostPathBasename(target) : relative;
+    if (name === null) throw new Error("File must stay inside its root");
+    return name;
   }
 
   bb.rpc.register(rpcContract, {

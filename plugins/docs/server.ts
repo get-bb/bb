@@ -214,6 +214,13 @@ function localFilePath(rootPath: string, relativePath: string): string {
   return joined;
 }
 
+function hostPathDirname(filePath: string): string {
+  const dirname = getHostPathDirname(filePath);
+  if (dirname === null)
+    throw new Error(`Invalid absolute host path: ${filePath}`);
+  return dirname;
+}
+
 function hostIdArgs(hostId: string | null | undefined): { hostId?: string } {
   return hostId ? { hostId } : {};
 }
@@ -780,7 +787,7 @@ export default async function plugin(
       const normalized = normalizeHostRoot(filePath);
       return {
         path: normalized,
-        rootPath: getHostPathDirname(normalized)!,
+        rootPath: hostPathDirname(normalized),
         hostId:
           source.experimental_hostId ??
           (source.environmentId === null
@@ -1733,6 +1740,12 @@ export default async function plugin(
     },
     async openFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
+      const previewPath = getRelativeHostPath({
+        rootPath: target.rootPath,
+        candidatePath: target.path,
+      });
+      if (previewPath === null)
+        throw new Error("Opened files must stay inside their root");
       const args = {
         ...hostIdArgs(target.hostId),
         path: target.path,
@@ -1748,10 +1761,7 @@ export default async function plugin(
       return {
         file,
         preview,
-        previewPath: getRelativeHostPath({
-          rootPath: target.rootPath,
-          candidatePath: target.path,
-        })!,
+        previewPath,
       };
     },
     async saveOpenedFile(input) {
@@ -2771,7 +2781,7 @@ export default async function plugin(
               const file = await bb.sdk.files.read({
                 ...hostIdArgs(hostId),
                 path: candidatePath,
-                rootPath: getHostPathDirname(candidatePath)!,
+                rootPath: hostPathDirname(candidatePath),
               });
               if (file.contentEncoding !== "utf8")
                 throw new CliUsageError(

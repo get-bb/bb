@@ -2875,11 +2875,12 @@ it("automatically removes missing-checkout data only when enabled and online, re
 });
 
 it.each([
-  ["C:/Work/Repo", "c:\\work\\repo\\"],
-  ["//SERVER/SHARE/Repo", "\\\\server\\share\\repo"],
+  [["C:/Work/Repo"], "c:\\work\\repo\\"],
+  [["//SERVER/SHARE/Repo"], "\\\\server\\share\\repo"],
+  [["relative/repo", "C:/Work/Repo"], "c:\\work\\repo"],
 ])(
   "protects a checkout acquired after scanning: %s",
-  async (ownedPath, scannedPath) => {
+  async (ownedPaths, scannedPath) => {
     const remove = vi.fn(async () => {
       throw new Error("Must not remove a live checkout");
     });
@@ -2899,7 +2900,12 @@ it.each([
         environments: { list: async () => [] },
         projects: {
           list: async () => [
-            { sources: [{ hostId: "host_test", path: ownedPath }] },
+            {
+              sources: ownedPaths.map((path) => ({
+                hostId: "host_test",
+                path,
+              })),
+            },
           ],
         },
       },

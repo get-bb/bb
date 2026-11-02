@@ -560,6 +560,7 @@ async function resolveScriptFileHostId(
 
 type ScriptFileSource = {
   path: string;
+  fileName: string;
   hostId: string | undefined;
   content: string;
 };
@@ -584,6 +585,10 @@ async function loadScriptFileSource(
       "invalid_value",
     );
   }
+  const fileName = getHostPathBasename(path);
+  if (!fileName) {
+    throw cliError(`--script-file must name a file: ${path}`, "invalid_value");
+  }
   const hostId = await resolveScriptFileHostId(bb, ctx, hostOverride);
   const file = await bb.sdk.files.read({
     ...(hostId !== undefined ? { hostId } : {}),
@@ -592,7 +597,7 @@ async function loadScriptFileSource(
   if (file.contentEncoding !== "utf8") {
     throw cliError(`--script-file is not UTF-8 text: ${path}`, "invalid_value");
   }
-  return { path, hostId, content: file.content };
+  return { path, fileName, hostId, content: file.content };
 }
 
 type BuiltExecution = {
@@ -707,9 +712,7 @@ async function buildExecution(
     execution: {
       mode: "script",
       script: content,
-      ...(scriptSource
-        ? { scriptFile: getHostPathBasename(scriptSource.path)! }
-        : {}),
+      ...(scriptSource ? { scriptFile: scriptSource.fileName } : {}),
       ...(interpreter ? { interpreter } : {}),
       ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
@@ -762,7 +765,7 @@ async function buildScriptExecutionUpdate(
   const update: ScriptExecutionUpdate = {};
   if (scriptSource !== undefined) {
     update.script = scriptSource.content;
-    update.scriptFile = getHostPathBasename(scriptSource.path)!;
+    update.scriptFile = scriptSource.fileName;
   } else if (options.script !== undefined) {
     update.script = options.script;
   }
