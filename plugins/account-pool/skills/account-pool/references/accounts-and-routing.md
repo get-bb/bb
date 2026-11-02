@@ -105,17 +105,20 @@ Accounts run sequentially per provider: lower priority numbers first, with ties
 following the order accounts were added. New conversations use the current
 account until it reaches the switch threshold or fails; the pool then advances
 to the next eligible account and wraps at the end. It keeps using that fallback
-even when an earlier account recovers. Existing conversations stay pinned while
-their account remains eligible. Short temporary rate limits wait on the same
+even when an earlier account recovers. Existing conversations stay pinned, even
+past the switch threshold, until the provider refuses their account; a
+conversation that inherits its parent's pin follows the same rule. Short temporary rate limits wait on the same
 account once; longer holds return Retry-After for pinned conversations while new
 conversations can advance. A model-family limit detours only requests for that
 family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
-The switch threshold is a preference, not a cutoff. When no account below it is
-available, accounts at or above it keep serving until the provider refuses
-them, alongside refused accounts with extra usage or Codex credits.
+The switch threshold is a preference, not a cutoff. New conversations go to
+accounts below it first, and existing conversations keep their account past it.
+When no account below it is available, accounts at or above it keep serving
+until the provider refuses them, alongside refused accounts with extra usage or
+Codex credits.
 Where the provider reports a window status, `rejected` decides whether it
 refused the window; a window without a status counts as refused from 100
 percent utilization. The pool answers with its own HTTP 429 only when no
@@ -127,8 +130,8 @@ Claude accounts with an exhausted subscription window remain eligible as a
 fallback when Anthropic reports extra usage enabled with remaining allowance,
 or an allowed overage response header. Accounts below the switch threshold
 are preferred, including for conversations pinned to an extra-usage fallback;
-those conversations return to subscription quota when it recovers. Before using extra
-usage, the pool rechecks OAuth accounts at or above the switch threshold (at
+those conversations return to subscription quota when it recovers. Before using
+extra usage, the pool rechecks OAuth accounts at or above the switch threshold (at
 most every 30 seconds).
 Disabled, spent, or unobserved extra usage does not override subscription limits.
 This does not enable extra usage or change spending limits on Claude.

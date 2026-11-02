@@ -6323,7 +6323,7 @@ describe("sequential pool recovery", () => {
     expect(attempts).toEqual(["sk-first", "sk-first", "sk-second", "sk-first"]);
   });
 
-  it("serves accounts past the switch threshold behind those below it until the provider refuses them", async () => {
+  it("sends new conversations to accounts past the switch threshold behind those below it until the provider refuses them", async () => {
     const now = 1_800_000_000_000;
     const resetAt = String((now + 60 * 60 * 1_000) / 1_000);
     const attempts: Array<string | null> = [];
@@ -6373,7 +6373,7 @@ describe("sequential pool recovery", () => {
       const response = await fixture.host.harness.behavior.fetchHttp(
         "POST",
         "/v1/messages",
-        { headers: authHeaders(fixture.key), body },
+        { headers: authHeaders(fixture.key), body: "{}" },
       );
       await response.text();
       return response.status;
@@ -6391,6 +6391,73 @@ describe("sequential pool recovery", () => {
     await addApiAccount(fixture, "sk-third");
     expect(await send()).toBe(200);
     expect(attempts.at(-1)).toBe("sk-third");
+  });
+
+  it("keeps a conversation on its account past the switch threshold until the provider refuses it", async () => {
+    const attempts: Array<string | null> = [];
+    let refused = false;
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      apiKey: "sk-first",
+      options: {
+        now: () => 1_800_000_000_000,
+        fetch: async (_input, init) => {
+          const key = new Headers(init?.headers).get("x-api-key");
+          attempts.push(key);
+          const rejected = refused && key === "sk-first";
+          return Response.json(
+            {},
+            {
+              status: rejected ? 429 : 200,
+              headers:
+                key === "sk-first"
+                  ? {
+                      "anthropic-ratelimit-unified-5h-utilization": "0.99",
+                      "anthropic-ratelimit-unified-5h-status": rejected
+                        ? "rejected"
+                        : "allowed",
+                      "anthropic-ratelimit-unified-5h-reset": "1800003600",
+                    }
+                  : {},
+            },
+          );
+        },
+      },
+    });
+    await addApiAccount(fixture, "sk-second");
+    const send = async (session: string) => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        {
+          headers: authHeaders(fixture.key),
+          body: JSON.stringify({
+            model: "claude-opus-4-1",
+            metadata: { user_id: JSON.stringify({ session_id: session }) },
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    };
+
+    await send("pinned");
+    await send("pinned");
+    await send("new");
+    await send("pinned");
+    refused = true;
+    await send("pinned");
+    await send("pinned");
+
+    expect(attempts).toEqual([
+      "sk-first",
+      "sk-first",
+      "sk-second",
+      "sk-first",
+      "sk-first",
+      "sk-second",
+      "sk-second",
+    ]);
   });
 
   it("reports an account past the switch threshold as exhausted only once the provider refuses it", async () => {

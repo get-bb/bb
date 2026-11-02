@@ -880,27 +880,28 @@ export class AccountPoolHub {
         ({ quota }) =>
           !isQuotaExhausted(quota, null, now) || hasExtraUsage(quota),
       );
-    let eligible = available.filter(
+    const usable = available.filter(
       ({ quota }) =>
         !isQuotaExhausted(quota, family, now) || hasExtraUsage(quota),
     );
-    const included = eligible.filter(
+    const isUnattempted = ({ account }: (typeof usable)[number]) =>
+      candidateIds.has(account.id) && !attempted.has(account.id);
+    const included = usable.filter(
       ({ quota }) => !isPastThreshold(quota, family, threshold, now),
     );
-    if (
-      included.some(
-        ({ account, quota }) =>
-          candidateIds.has(account.id) &&
-          !attempted.has(account.id) &&
-          (quota.heldUntil === null || quota.heldUntil <= now),
-      )
-    ) {
-      eligible = included;
-    }
-    const unattempted = eligible.filter(
-      ({ account }) =>
-        candidateIds.has(account.id) && !attempted.has(account.id),
-    );
+    const eligible = included.some(
+      (candidate) =>
+        isUnattempted(candidate) &&
+        (candidate.quota.heldUntil === null ||
+          candidate.quota.heldUntil <= now),
+    )
+      ? included
+      : usable;
+    const pinnable =
+      eligible === usable
+        ? usable
+        : usable.filter(({ quota }) => !isQuotaExhausted(quota, family, now));
+    const unattempted = eligible.filter(isUnattempted);
     const candidates = unattempted.filter(
       ({ quota }) => quota.heldUntil === null || quota.heldUntil <= now,
     );
@@ -912,7 +913,7 @@ export class AccountPoolHub {
         : null;
     const bound =
       boundAccountId !== null
-        ? eligible.find(({ account }) => account.id === boundAccountId)
+        ? pinnable.find(({ account }) => account.id === boundAccountId)
         : undefined;
     let inherited: (typeof candidates)[number] | undefined;
     if (bound === undefined && parentAffinityKey !== null) {
@@ -921,8 +922,10 @@ export class AccountPoolHub {
         parent !== undefined &&
         now - parent.lastUsedAt < AFFINITY_IDLE_TTL_MS
       ) {
-        inherited = unattempted.find(
-          ({ account }) => account.id === parent.accountId,
+        inherited = pinnable.find(
+          (candidate) =>
+            candidate.account.id === parent.accountId &&
+            isUnattempted(candidate),
         );
       }
     }
@@ -944,7 +947,7 @@ export class AccountPoolHub {
       )
       .find((candidate) => candidate !== undefined);
     const selected =
-      bound !== undefined && unattempted.includes(bound)
+      bound !== undefined && isUnattempted(bound)
         ? bound
         : (inherited ??
           (boundAccountId === null &&

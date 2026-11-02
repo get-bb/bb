@@ -37,7 +37,7 @@ import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 const DESCRIPTION = [
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
-  "switchThreshold is a preference, not a cutoff: accounts below it go first, and accounts at or above it keep serving until the provider refuses them. Status shows exhausted only for an account the provider refused.",
+  "switchThreshold is a preference, not a cutoff: new conversations go to accounts below it first, existing conversations keep their account past it, and accounts at or above it keep serving until the provider refuses them. Status shows exhausted only for an account the provider refused.",
   "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
