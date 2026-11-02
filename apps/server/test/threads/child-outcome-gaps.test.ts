@@ -373,16 +373,32 @@ describe("child parent-notification policy", () => {
           body: JSON.stringify({
             sessionId: session.id,
             eventGroups: groupHostDaemonEvents(
-              children.map(({ child, parentNotifications }) => ({
-                threadId: child.id,
-                event: {
-                  type: "turn/completed",
+              children.flatMap(({ child, parentNotifications }) => [
+                {
                   threadId: child.id,
-                  providerThreadId: `provider-${parentNotifications}`,
-                  scope: turnScope(`${parentNotifications}-turn`),
-                  status,
+                  event: {
+                    type: "item/completed",
+                    threadId: child.id,
+                    providerThreadId: `provider-${parentNotifications}`,
+                    scope: turnScope(`${parentNotifications}-turn`),
+                    item: {
+                      id: `${parentNotifications}-final`,
+                      type: "agentMessage",
+                      text: "Done.",
+                    },
+                  },
                 },
-              })),
+                {
+                  threadId: child.id,
+                  event: {
+                    type: "turn/completed",
+                    threadId: child.id,
+                    providerThreadId: `provider-${parentNotifications}`,
+                    scope: turnScope(`${parentNotifications}-turn`),
+                    status,
+                  },
+                },
+              ]),
             ),
           }),
         });

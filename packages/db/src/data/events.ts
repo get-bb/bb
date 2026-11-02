@@ -3578,6 +3578,34 @@ export function getLatestThreadOutputEventRow(
   );
 }
 
+interface GetTurnFinalAgentMessageEventRowArgs {
+  threadId: string;
+  turnId: string;
+}
+
+export function getTurnFinalAgentMessageEventRow(
+  db: DbConnection,
+  args: GetTurnFinalAgentMessageEventRowArgs,
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.turnId, args.turnId),
+          eq(events.type, "item/completed"),
+          eq(events.itemKind, "agentMessage"),
+          isNull(events.parentToolCallId),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 interface ListLatestTurnFinalAgentMessageEventRowsArgs {
   limit: number;
   threadId: string;

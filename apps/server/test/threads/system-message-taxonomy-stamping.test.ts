@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { events } from "@bb/db";
 import {
   turnRequestEventDataSchema,
+  turnScope,
   type SystemMessageKind,
   type SystemMessageSubject,
   type ThreadEventTurnStatus,
@@ -14,6 +15,7 @@ import {
 import { handleThreadOwnershipChange } from "../../src/services/threads/thread-ownership.js";
 import {
   seedEnvironment,
+  seedEvent,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
@@ -119,11 +121,20 @@ describe("Family B emit-site discriminator stamping", () => {
           title: "Worker child",
           parentThreadId: fixture.parentThreadId,
         });
+        seedEvent(harness.deps, {
+          threadId: child.id,
+          providerThreadId: "provider-child",
+          sequence: 1,
+          type: "item/completed",
+          scope: turnScope("child-turn"),
+          data: { item: { id: "final", type: "agentMessage", text: "Done." } },
+        });
 
         await queueChildThreadTurnNotificationBestEffort(harness.deps, {
           childThread: child,
           parentThreadId: fixture.parentThreadId,
           turnStatus,
+          turnId: "child-turn",
         });
 
         const stamped = await waitForStampedSystemMessage(
