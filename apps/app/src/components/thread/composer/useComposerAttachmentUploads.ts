@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 import { nanoid } from "nanoid";
-import { PROMPT_ATTACHMENT_MAX_BYTES } from "@bb/domain";
 import {
   usePendingAttachmentUploads,
   type PendingAttachmentUpload,
 } from "@/components/promptbox/usePendingAttachmentUploads";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { PromptAttachmentSizeError } from "@/lib/prompt-attachment-size";
 import { BbHttpError } from "@/lib/sdk";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
@@ -55,25 +55,11 @@ interface UseDraftAttachmentUploadsResult {
   pendingUploads: readonly PendingAttachmentUpload[];
 }
 
-function attachmentSizeDescription(file: File): string {
-  const sizeMb = Math.ceil((file.size / (1024 * 1024)) * 10) / 10;
-  const limitMb = PROMPT_ATTACHMENT_MAX_BYTES / (1024 * 1024);
-  return `${file.name} is ${sizeMb} MB; ${limitMb} MB attachment limit`;
-}
-
-function uploadRejectionReason(error: unknown, file: File): string | null {
-  if (!(error instanceof BbHttpError)) return null;
-  const reason = getMutationErrorMessage({ error, fallbackMessage: "" });
-  if (
-    error.status === 413 &&
-    (!reason ||
-      /^(413|payload too large|request entity too large|content too large|request failed(?: with status 413)?)$/iu.test(
-        reason,
-      ))
-  ) {
-    return `Upload rejected as too large (${attachmentSizeDescription(file)}). Trim or compress the file; a proxy may enforce a lower limit.`;
-  }
-  return reason || "Request failed";
+function uploadRejectionReason(error: unknown): string | null {
+  return error instanceof BbHttpError ||
+    error instanceof PromptAttachmentSizeError
+    ? getMutationErrorMessage({ error, fallbackMessage: "Request failed" })
+    : null;
 }
 
 function attachFailureMessage(
@@ -107,11 +93,6 @@ export async function uploadDraftAttachments({
   let rejectionReason: string | null = null;
   for (const pendingUpload of uploads) {
     try {
-      if (pendingUpload.file.size > PROMPT_ATTACHMENT_MAX_BYTES) {
-        failedFiles.push(pendingUpload.file.name);
-        rejectionReason ??= `${attachmentSizeDescription(pendingUpload.file)}. Trim or compress the file before attaching it.`;
-        continue;
-      }
       const uploaded = await upload(pendingUpload.file);
       target.addAttachment(uploaded);
       if (getCurrentTarget()?.key === target.key) {
@@ -119,7 +100,7 @@ export async function uploadDraftAttachments({
       }
     } catch (error) {
       failedFiles.push(pendingUpload.file.name);
-      rejectionReason ??= uploadRejectionReason(error, pendingUpload.file);
+      rejectionReason ??= uploadRejectionReason(error);
     } finally {
       onUploadSettled(pendingUpload);
     }

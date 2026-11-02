@@ -349,9 +349,8 @@ mimeType? })`; `clientFile` accepts `Uint8Array`, `ArrayBuffer`, `Blob`, or a
 File-like value (bare bytes/Blob require `filename`). The SDK sends multipart
 bytes and returns the stable uploaded-attachment DTO whose relative `path` can
 be used in `localFile`/`localImage` prompt input. Read an existing attachment
-with `bb.sdk.projects.attachments.read({ projectId, path })`. Image MIME types
-cap at 10 MB and other files at 25 MB. There is no attachment list or
-per-attachment remove operation.
+with `bb.sdk.projects.attachments.read({ projectId, path })`. Uploads cap at
+35 MB per file. There is no attachment list or per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`
