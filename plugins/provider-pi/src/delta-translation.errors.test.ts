@@ -20,11 +20,25 @@ it.each([
   ["turn/start timed out", "connection-failed", null],
   ["fetch failed", "connection-failed", null],
   ["422 invalid request", "bad-request", 422],
-  ["400 invalid request: overloaded", "bad-request", 400],
-  ["request 503 tokens failed", "unknown", null],
+  ["socket hang up", "connection-failed", null],
+  ["terminated", "connection-failed", null],
+  ["Connection error.", "connection-failed", null],
+  ["Service Unavailable", "connection-failed", null],
+  ["Anthropic stream ended before message_stop", "connection-failed", null],
+  [
+    "This model's maximum context length is 128000 tokens. However, your messages resulted in 130000 tokens.",
+    "context-window-exceeded",
+    null,
+  ],
+  [
+    "429 You exceeded your current quota: insufficient_quota",
+    "billing",
+    429,
+  ],
+  ["Monthly usage limit reached", "unknown", null],
   ["unrecognized failure", "unknown", null],
 ])(
-  "classifies Pi failure %s conservatively",
+  "classifies Pi failure %s",
   (detail, category, httpStatusCode) => {
     const translator = createPiDeltaTranslator({
       resolveModelContextWindow: () => null,

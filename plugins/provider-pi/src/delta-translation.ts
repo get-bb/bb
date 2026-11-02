@@ -2,6 +2,11 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import {
+  isContextOverflow,
+  isRetryableAssistantError,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
+import {
   ZERO_TOKEN_USAGE,
   addTokenUsage,
   bashArgsSchema,
@@ -163,42 +168,65 @@ function isPiCompactionNoop(errorMessage: string): boolean {
   return piCompactionNoopMessages.has(errorMessage.trim());
 }
 
+function piFailedAssistantMessage(errorMessage: string): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [],
+    api: "pi-messages",
+    provider: "pi",
+    model: "",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "error",
+    errorMessage,
+    timestamp: 0,
+  };
+}
+
 function piErrorInfo(message: string): ProviderErrorInfo {
   const status = message.match(
     /\b(?:HTTP(?:\/[\d.]+)?\s+|status(?:\s+code)?[=:\s]+)([45]\d{2})\b|(?:^|:\s*)([45]\d{2})(?=[\s:]|$)/i,
   );
   const httpStatusCode = status ? Number(status[1] ?? status[2]) : null;
+  const failed = piFailedAssistantMessage(message);
   const category = (): ProviderErrorInfo["category"] => {
-    if (httpStatusCode === 401 || httpStatusCode === 403) return "unauthorized";
-    if (httpStatusCode === 402) return "billing";
-    if (httpStatusCode === 429) return "rate-limit";
-    if (httpStatusCode === 529) return "overloaded";
     if (
+      httpStatusCode === 401 ||
+      httpStatusCode === 403 ||
       /unauthorized|authentication[_ ](?:error|failed)|invalid api key/i.test(
         message,
       )
     )
       return "unauthorized";
-    if (/insufficient[_ ]quota|\bbilling\b/i.test(message)) return "billing";
-    if (/rate[_ -]?limit(?:ed|_error)?\b|too many requests/i.test(message))
+    if (isContextOverflow(failed)) return "context-window-exceeded";
+    if (
+      httpStatusCode === 402 ||
+      /insufficient[_ ]quota|\bbilling\b/i.test(message)
+    )
+      return "billing";
+    if (
+      httpStatusCode === 429 ||
+      /rate[_ -]?limit(?:ed|_error)?\b|too many requests/i.test(message)
+    )
       return "rate-limit";
     if (
-      /context[_ -](?:window|length).*(?:exceed|limit|full)|too many tokens|prompt is too long/i.test(
-        message,
-      )
+      httpStatusCode !== 529 &&
+      !/\bE(?:CONNRESET|CONNREFUSED|PIPE|TIMEDOUT)\b/.test(message) &&
+      !isRetryableAssistantError(failed)
     )
-      return "context-window-exceeded";
-    if (httpStatusCode === 408) return "connection-failed";
-    if (httpStatusCode !== null && httpStatusCode < 500) return "bad-request";
-    if (/\boverloaded(?:_error)?\b/i.test(message)) return "overloaded";
+      return httpStatusCode !== null && httpStatusCode < 500
+        ? "bad-request"
+        : "unknown";
+    if (httpStatusCode === 529 || /\boverloaded(?:_error)?\b/i.test(message))
+      return "overloaded";
     if (httpStatusCode !== null && httpStatusCode >= 500) return "internal";
-    if (
-      /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed|network (?:error|failure)|connection (?:reset|closed|refused|failed)|timed out|timeout/i.test(
-        message,
-      )
-    )
-      return "connection-failed";
-    return "unknown";
+    return "connection-failed";
   };
   return { category: category(), providerCode: null, httpStatusCode };
 }
