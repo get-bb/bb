@@ -57,7 +57,11 @@ const storageLocation = {
 };
 
 describe("useResolvedLiveFileTarget", () => {
-  it("resolves a workspace revision target to the working copy", () => {
+  it.each([
+    ["/workspace", "/workspace/src/app.ts"],
+    ["C:/workspace", "C:\\workspace\\src\\app.ts"],
+    ["//server/share", "\\\\server\\share\\src\\app.ts"],
+  ])("resolves a workspace revision target under %s", (path, absolutePath) => {
     expect(
       resolveLiveFileTarget({
         target: {
@@ -66,14 +70,14 @@ describe("useResolvedLiveFileTarget", () => {
           path: "src/app.ts",
           experimental_ref: "HEAD",
         },
-        environmentQuery: { data: makeEnvironment(), isLoading: false },
+        environmentQuery: { data: makeEnvironment({ path }), isLoading: false },
         storageQuery: { data: undefined, isLoading: false },
         isLocalDaemonHost: () => true,
         serverOrigin: SERVER_ORIGIN,
       }),
     ).toEqual({
       status: "available",
-      absolutePath: "/workspace/src/app.ts",
+      absolutePath,
       openContext: { kind: "local" },
     });
   });
