@@ -443,7 +443,7 @@ function AgentRow({
                   : "Install"}
             </Button>
           ) : null}
-          {state.status === "signingIn" && !quiet ? (
+          {state.status === "signingIn" ? (
             <Button
               size="sm"
               variant="ghost"

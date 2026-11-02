@@ -63,7 +63,8 @@ describe("AgentStep", () => {
 });
 
 describe("AgentStep in the redesigned guide", () => {
-  it("keeps a failed install quiet: retry stays, the log button and sign-in cancel go", () => {
+  it("keeps a failed install quiet and keeps a way out of signing in", () => {
+    const onCancelSignIn = vi.fn();
     render(
       <AgentStep
         quiet
@@ -79,14 +80,15 @@ describe("AgentStep in the redesigned guide", () => {
         onSignIn={vi.fn()}
         onInstall={vi.fn()}
         onViewInstallLog={vi.fn()}
-        onCancelSignIn={vi.fn()}
+        onCancelSignIn={onCancelSignIn}
         onRecheck={vi.fn()}
       />,
     );
 
     expect(screen.getByRole("button", { name: /Retry/u })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "View log" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancelSignIn).toHaveBeenCalledExactlyOnceWith("claude-code");
     expect(
       screen.getByText(
         "Don't see your agent? bb picks up other ACP agents once you have them installed.",
