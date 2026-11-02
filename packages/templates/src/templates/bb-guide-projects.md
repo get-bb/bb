@@ -42,6 +42,8 @@ Global prompt history:
   Lists accepted prompts across projects and threads newest first. Pass the
   returned cursor to continue from the next page.
 
+  Prompt history omits prompts larger than 256 KiB.
+
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
