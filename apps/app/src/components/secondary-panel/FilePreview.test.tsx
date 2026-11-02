@@ -579,6 +579,16 @@ describe("FilePreview", () => {
       screen.queryByRole("button", { name: "Copy HTML source" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh file" })).toBeNull();
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open in external browser" }),
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      `${window.location.origin}/gallery.html`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openSpy.mockRestore();
     fireEvent.click(screen.getByRole("button", { name: "File actions" }));
     const refresh = await screen.findByRole("menuitem", {
       name: "Refresh file",
@@ -590,8 +600,8 @@ describe("FilePreview", () => {
       screen.getByRole("menuitem", { name: "Copy file path" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("menuitem", { name: "Open in external browser" }),
-    ).toBeTruthy();
+      screen.queryByRole("menuitem", { name: "Open in external browser" }),
+    ).toBeNull();
     expect(view.container.closest('[inert], [aria-hidden="true"]')).toBeNull();
     fireEvent.click(refresh);
     expect(onRefresh).toHaveBeenCalledOnce();
