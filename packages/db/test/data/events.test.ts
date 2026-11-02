@@ -76,6 +76,10 @@ import type {
 import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection } from "../../src/testing.js";
+import {
+  getThreadConversationOutlineRecord,
+  upsertThreadConversationOutlineRecord,
+} from "../../src/data/thread-conversation-outlines.js";
 
 function setup() {
   const db = createMigratedConnection();
@@ -2505,6 +2509,50 @@ describe("events", () => {
         kind: "provider-codex/goal",
       }),
     ).toEqual([]);
+  });
+
+  it("drops only the rewound thread's stored conversation outline", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const message = (threadId: string, sequence: number) => ({
+      threadId,
+      sequence,
+      type: "system/manager/user_message" as const,
+      ...threadEventFields,
+      data: JSON.stringify({ text: `message ${sequence}` }),
+    });
+    insertEvents(db, noopNotifier, [
+      message(thread.id, 1),
+      message(thread.id, 2),
+      message(otherThread.id, 1),
+    ]);
+    for (const threadId of [thread.id, otherThread.id]) {
+      upsertThreadConversationOutlineRecord(db, {
+        threadId,
+        itemsJson: "[]",
+        projectionKey: "key",
+      });
+    }
+    const rewind = (threadId: string, cutoffSequence: number) =>
+      db.transaction((tx) =>
+        deleteThreadEventSuffixInTransaction(tx, {
+          cutoffSequence,
+          oldMaxSequence: cutoffSequence + 1,
+          threadId,
+        }),
+      );
+
+    expect(rewind(otherThread.id, 5).deletedEventCount).toBe(0);
+    expect(rewind(thread.id, 2).deletedEventCount).toBe(1);
+
+    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
+    expect(getThreadConversationOutlineRecord(db, otherThread.id)).toEqual({
+      itemsJson: "[]",
+      projectionKey: "key",
+    });
   });
 
   describe("repeated latest-state lookups", () => {
