@@ -1369,7 +1369,7 @@ function RefreshedBelowFold() {
       </Band>
 
       <Band
-        title="Start anywhere. Pick up anywhere."
+        title="Start from anywhere. Pick up anywhere."
         stacked
         section="start-anywhere"
         visual={<StartAnywhere />}
