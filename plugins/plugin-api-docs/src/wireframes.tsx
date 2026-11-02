@@ -1415,7 +1415,7 @@ function ThreadContextCardMark({ compact }: { compact: boolean }) {
       id="thread-context-card"
       label={label}
       chip="corner-inset"
-      className="absolute right-4 top-4 block w-40 rounded-2xl border border-border bg-popover p-1 text-foreground"
+      className="absolute right-4 top-4 block w-40 rounded-md border border-border bg-popover p-1 text-foreground"
     >
       <span className="flex h-6.5 items-center gap-2 px-1.5">
         <MiniIcon icon="GitPullRequest" className="size-3.5" />

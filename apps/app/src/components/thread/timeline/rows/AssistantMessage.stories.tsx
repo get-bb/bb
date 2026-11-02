@@ -321,9 +321,9 @@ export function MobileActionsAndSelection() {
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
         Earlier user and agent messages: overflow menu. Latest user and agent
         messages: Copy and an overflow menu. Fork is in the agent overflow menu.
-        Use a compact touch viewport to review mobile actions. Drag-select with a
-        mouse or long-press agent text on touch to exercise the floating selection
-        menu.
+        Use a compact touch viewport to review mobile actions. Drag-select with
+        a mouse or long-press agent text on touch to exercise the floating
+        selection menu.
       </p>
       <ThreadTimelineRows
         canSpawnChild
@@ -332,7 +332,6 @@ export function MobileActionsAndSelection() {
         threadId={MOBILE_REVIEW_THREAD_ID}
         threadRuntimeDisplayStatus="idle"
         timelineRows={mobileReviewRows}
-        workspaceRootPath={undefined}
       />
     </div>
   );

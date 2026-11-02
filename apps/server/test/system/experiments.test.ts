@@ -39,7 +39,6 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         applicationLinks: false,
-        changelogPreview: false,
         compactExpiredCache: false,
         narrowPluginCss: false,
         serverMove: false,
@@ -77,7 +76,6 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           applicationLinks: true,
-          changelogPreview: true,
           compactExpiredCache: true,
           narrowPluginCss: true,
           serverMove: true,
@@ -95,7 +93,6 @@ describe("experiments settings", () => {
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: true,
-        changelogPreview: true,
         compactExpiredCache: true,
         narrowPluginCss: true,
         serverMove: true,
@@ -111,7 +108,6 @@ describe("experiments settings", () => {
       });
       expect(getExperiments(harness.db)).toEqual({
         applicationLinks: true,
-        changelogPreview: true,
         compactExpiredCache: true,
         narrowPluginCss: true,
         serverMove: true,
@@ -131,7 +127,6 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         applicationLinks: true,
-        changelogPreview: true,
         compactExpiredCache: true,
         narrowPluginCss: true,
         serverMove: true,
@@ -151,11 +146,10 @@ describe("experiments settings", () => {
   it("changes only the experiments a PUT names", async () => {
     await withTestHarness(async (harness) => {
       await putExperiments(harness, { serverMove: true });
-      const put = await putExperiments(harness, { changelogPreview: true });
+      const put = await putExperiments(harness, { timelinePush: true });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: false,
-        changelogPreview: true,
         compactExpiredCache: false,
         narrowPluginCss: false,
         serverMove: true,
@@ -165,7 +159,7 @@ describe("experiments settings", () => {
         skipFocusedThreadNotifications: false,
         threadContextCard: false,
         threadRowMetadata: false,
-        timelinePush: false,
+        timelinePush: true,
         unreadDividerAtAnswer: false,
         websocketCompression: false,
       });
@@ -176,7 +170,7 @@ describe("experiments settings", () => {
           )
           .all()
           .map((row) => row.key),
-      ).toEqual(["changelogPreview", "serverMove"]);
+      ).toEqual(["serverMove", "timelinePush"]);
     });
   });
 

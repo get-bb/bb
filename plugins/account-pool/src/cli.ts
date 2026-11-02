@@ -25,7 +25,9 @@ import {
   type AccountSummary,
   type FamilyQuota,
   type LimitWindow,
+  type LoginTarget,
   type ModelFamily,
+  type PoolProvider,
   type PoolStatus,
   type PoolStatusReport,
 } from "./contracts.js";
@@ -57,7 +59,8 @@ const SESSION_OPTION = {
   required: true,
   placeholder: "id",
   aliases: ["session-id", "sessionId"],
-  description: "Session ID printed by `bb pool account add --login`",
+  description:
+    "Session ID printed by `bb pool account add --login` or `bb pool account login`",
 } as const;
 
 const ACCOUNT_ID_POSITIONAL = {
@@ -254,6 +257,45 @@ export function registerPoolCli(
   codexLogin: CodexDeviceLogin,
   config: AccountPoolConfigController,
 ): void {
+  async function startLogin(
+    provider: PoolProvider,
+    target: LoginTarget,
+    asJson: boolean,
+  ): Promise<PluginCliResult> {
+    if (provider === "codex") {
+      const started = await codexLogin.start(target);
+      return {
+        exitCode: 0,
+        stdout: asJson
+          ? json({ ok: true, login: started })
+          : `${[
+              "Open this URL to sign in to Codex:",
+              started.verificationUri,
+              "",
+              `Enter this code: ${started.userCode}`,
+              `Session ID: ${started.sessionId}`,
+              "",
+              "After authorizing, wait for the login to be saved with:",
+              `bb pool account login-poll --session ${started.sessionId}`,
+            ].join("\n")}\n`,
+      };
+    }
+    const started = await login.start(target);
+    return {
+      exitCode: 0,
+      stdout: asJson
+        ? json({ ok: true, login: started })
+        : `${[
+            "Open this URL to sign in to Claude:",
+            started.authorizeUrl,
+            "",
+            `Session ID: ${started.sessionId}`,
+            "",
+            "After signing in, pipe the code shown on the final page into:",
+            `printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session ${started.sessionId} --code-stdin`,
+          ].join("\n")}\n`,
+    };
+  }
   bb.cli.register(
     defineCli({
       name: "pool",
@@ -263,9 +305,9 @@ export function registerPoolCli(
       commands: {
         "account add": cliCommand({
           summary:
-            "Sign in to Claude or Codex, import credentials, or add an Anthropic API key",
+            "Sign in to a Claude or Codex account, or add an Anthropic API key",
           description:
-            "--login prints the browser or device step and exits; finish it with `bb pool account login-complete` (Claude) or `bb pool account login-poll` (Codex).\n--import reads the provider's existing login on this bb server host (~/.claude or ~/.codex).",
+            "--login prints the browser or device step and exits; finish it with `bb pool account login-complete` (Claude) or `bb pool account login-poll` (Codex).\nThe pool keeps its own login, separate from this machine's Claude Code or Codex login, so neither signs the other out.",
           unexpectedPositionalHint:
             "the provider belongs in --provider <claude|codex>, not a bare argument",
           options: {
@@ -275,12 +317,6 @@ export function registerPoolCli(
               aliases: ["signin", "sign-in"],
               description:
                 "Start a browser (Claude) or device-code (Codex) login and print the next command",
-            },
-            import: {
-              type: "boolean",
-              aliases: ["import-local", "local"],
-              description:
-                "Import the provider's existing login from this bb server host",
             },
             "api-key": {
               type: "string",
@@ -309,51 +345,22 @@ export function registerPoolCli(
             },
             json: JSON_OPTION,
           },
-          constraints: [
-            { kind: "exactly-one", options: ["login", "import", "api-key"] },
-            { kind: "at-most-one", options: ["login", "label"] },
-            { kind: "at-most-one", options: ["login", "priority"] },
-          ],
+          constraints: [{ kind: "exactly-one", options: ["login", "api-key"] }],
           run: (input) =>
             attempt(async () => {
               const provider = input.options.provider;
               if (input.options.login) {
-                if (provider === "codex") {
-                  const started = await codexLogin.start();
-                  return {
-                    exitCode: 0,
-                    stdout: input.options.json
-                      ? json({ ok: true, login: started })
-                      : `${[
-                          "Open this URL to sign in to Codex:",
-                          started.verificationUri,
-                          "",
-                          `Enter this code: ${started.userCode}`,
-                          `Session ID: ${started.sessionId}`,
-                          "",
-                          "After authorizing, wait for the account to be added with:",
-                          `bb pool account login-poll --session ${started.sessionId}`,
-                        ].join("\n")}\n`,
-                  };
-                }
-                const started = login.start();
-                return {
-                  exitCode: 0,
-                  stdout: input.options.json
-                    ? json({ ok: true, login: started })
-                    : `${[
-                        "Open this URL to sign in to Claude:",
-                        started.authorizeUrl,
-                        "",
-                        `Session ID: ${started.sessionId}`,
-                        "",
-                        "After signing in, pipe the code shown on the final page into:",
-                        `printf '%s\\n' \"$CLAUDE_AUTH_CODE\" | bb pool account login-complete --session ${started.sessionId} --code-stdin`,
-                      ].join("\n")}\n`,
-                };
+                return startLogin(
+                  provider,
+                  {
+                    kind: "add",
+                    label: input.options.label ?? null,
+                    priority: input.options.priority,
+                  },
+                  input.options.json === true,
+                );
               }
-              const imported = input.options.import;
-              if (!imported && provider !== "claude") {
+              if (provider !== "claude") {
                 throw new PluginCliError(
                   "Anthropic API keys require --provider claude.",
                   { code: "invalid_value" },
@@ -361,9 +368,7 @@ export function registerPoolCli(
               }
               const parsed = accountAddInputSchema.parse({
                 provider,
-                source: imported
-                  ? { kind: "import" }
-                  : { kind: "api-key", apiKey: input.options["api-key"] },
+                apiKey: input.options["api-key"],
                 label: input.options.label ?? null,
                 priority: input.options.priority,
               });
@@ -374,6 +379,34 @@ export function registerPoolCli(
                   ? json({ ok: true, account })
                   : `Added ${account.label} (${account.id}).\n`,
               };
+            }),
+        }),
+        "account login": cliCommand({
+          summary:
+            "Sign in again to an existing account, keeping its id, priority, enabled state, and pinned conversations",
+          description:
+            "Use this when a login expired, was revoked, or was shared with another program. Prints the browser or device step and exits; finish it with `bb pool account login-complete` (Claude) or `bb pool account login-poll` (Codex). The new login must belong to the same account.",
+          aliases: ["account relogin", "account reauth"],
+          positionals: [ACCOUNT_ID_POSITIONAL],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attempt(async () => {
+              const { id } = accountIdInputSchema.parse({
+                id: input.positionals.id,
+              });
+              const account = (await operations.list()).find(
+                (candidate) => candidate.id === id,
+              );
+              if (account === undefined) {
+                throw new PluginCliError(`Account ${id} does not exist.`, {
+                  code: "account_not_found",
+                });
+              }
+              return startLogin(
+                account.provider,
+                { kind: "relogin", accountId: id },
+                input.options.json === true,
+              );
             }),
         }),
         "account login-poll": cliCommand({
@@ -413,7 +446,7 @@ export function registerPoolCli(
                       exitCode: 0,
                       stdout: input.options.json
                         ? json({ ok: true, account: result.account })
-                        : `Added ${result.account.label} (${result.account.id}).\n`,
+                        : `Signed in ${result.account.label} (${result.account.id}).\n`,
                     };
                   }
                   if (result.status === "error") {
@@ -458,7 +491,7 @@ export function registerPoolCli(
                 exitCode: 0,
                 stdout: input.options.json
                   ? json({ ok: true, account })
-                  : `Added ${account.label} (${account.id}).\n`,
+                  : `Signed in ${account.label} (${account.id}).\n`,
               };
             }),
         }),

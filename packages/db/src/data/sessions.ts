@@ -1,5 +1,10 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import { and, desc, eq, inArray, placeholder, sql } from "drizzle-orm";
+import {
+  prepareCachedQuery,
+  type DbConnection,
+  type DbQueryConnection,
+  type DbTransaction,
+} from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { hostDaemonSessions } from "../schema.js";
 import { createHostDaemonSessionId } from "../ids.js";
@@ -161,16 +166,21 @@ export function listLatestClosedSessionsForHosts(
     .all();
 }
 
+const prepareGetSessionById = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(hostDaemonSessions)
+    .where(eq(hostDaemonSessions.id, placeholder("id")))
+    .prepare();
+
 export function getSessionById(
   db: SessionReadConnection,
   args: GetSessionByIdArgs,
 ) {
   return (
-    db
-      .select()
-      .from(hostDaemonSessions)
-      .where(eq(hostDaemonSessions.id, args.sessionId))
-      .get() ?? null
+    prepareCachedQuery(db, prepareGetSessionById).get({
+      id: args.sessionId,
+    }) ?? null
   );
 }
 

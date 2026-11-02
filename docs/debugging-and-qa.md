@@ -136,14 +136,17 @@ embedded browser session is not implemented by this cache.
 
 ## bb Connect Gate Events
 
-The gate answers every proxied request within the response-head timeout (30 s,
-90 s for voice transcription) from when the Worker receives it; a miss gets a
-504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`,
-`response-head`, or `finishing`. Workers Logs keeps only about 1% of gate
+The gate answers every proxied request within the response-head timeout (30 s)
+from when the Worker receives it; a miss gets a 504 naming the stuck stage:
+`routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`.
+A relayed request still waiting in `response-head` at the deadline gets another
+30 s while the tunnel object reports a heartbeat under 45 s old, up to 10
+minutes from arrival. Workers Logs keeps only about 1% of gate
 requests, so the gate also writes these to the Analytics Engine dataset
 `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging):
 
-- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s);
+- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s, or a
+  relayed request first extended past the response-head timeout);
   `blob2` stage, `blob3` method, `blob4` host, `blob5` path; `double1` elapsed
   ms; `double2` tunnel-object attempts (above 1 means the object restarted and
   the dial was replayed).

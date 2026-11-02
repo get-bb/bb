@@ -4,7 +4,7 @@ Status: **2026-09-05: 7 partial/blocked**. See [the audit](../MAINTENANCE.md) an
 
 ## Setup and entry points
 
-Settings → Accounts; bb pool --help. Use disposable provider accounts, an isolated credential store, and synthetic threads. Never print imported credentials.
+Settings → Accounts; bb pool --help. Use disposable provider accounts, an isolated credential store, and synthetic threads. Never print account credentials.
 
 Use the main skill’s isolated targets and evidence rules. A plugin can be present
 in this checkout but disabled in an installation. Enable it only in the test
@@ -22,7 +22,8 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Import, login, and API-key accounts | Add a test account through each supported flow; cancel an incomplete login and submit invalid input. | Only completed valid accounts become available; secrets remain masked and absent from transcripts. |
+| Sign-in and API-key accounts | Add a test account through each supported flow; cancel an incomplete login and submit invalid input. | Only completed valid accounts become available; secrets remain masked and absent from transcripts. |
+| Sign in again | Re-login an existing (also a disabled) account from the CLI and Settings; try a login for a different account. | The account keeps its id, priority, enabled state, and pins and its error clears; a different account is refused and the stored login is kept. |
 | Enable, disable, remove, and priority | Add two fixtures, toggle one, reorder them, change priority, then remove one through settings and pool account commands. | Persisted availability and order agree across interfaces; disabled accounts receive no new allocation. |
 | Quota and status | Refresh quota/status for supported account types and inspect model-family windows and reset times. | Displayed availability matches returned provider data; unknown or failed fetches are distinguishable from zero usage. |
 | Routing and fallback | Enable routing, start a short authenticated turn, exhaust or disable the selected test account, and start another. | A usable account is selected according to routing policy; no failed allocation is reported as successful. |

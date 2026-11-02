@@ -5,7 +5,6 @@ import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
 import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
-  type ProjectExecutionDefaults,
   type Project,
   type SessionOptionSelections,
   type Thread,
@@ -51,10 +50,7 @@ import {
   requireEnvironmentPlacementHost,
   resolveThreadEnvironmentPlacement,
 } from "./thread-environment-placement.js";
-import {
-  buildProviderThreadExecutionDefaults,
-  resolveCreateThreadEnvironment,
-} from "./thread-default-policy.js";
+import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
 import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
@@ -78,9 +74,7 @@ type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
 interface CreateProvisioningThreadArgs {
   environmentId: string | null;
-  executionDefaults: Parameters<
-    typeof buildExecutionOptions
-  >[2]["projectDefaults"];
+  defaultModel: string | null;
   fork: ThreadForkPoint | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
@@ -93,9 +87,14 @@ interface ResolveForkPointArgs {
   sourceThread: Thread | null;
 }
 
-interface ResolveCatalogExecutionDefaultsArgs {
+interface CatalogDefaultModel {
+  model: string;
+  providerId: string;
+}
+
+interface ResolveCatalogDefaultModelArgs {
   cwd?: string;
-  executionDefaults: ProjectExecutionDefaults | null;
+  defaultModel: string | null;
   hostId: string | null;
   providerId: string;
   providerFallbackCandidates: readonly string[];
@@ -105,7 +104,7 @@ interface ResolveCatalogExecutionDefaultsArgs {
 async function loadCatalogDefaultForProvider(
   deps: ThreadCreateDeps,
   args: { cwd?: string; hostId: string; providerId: string },
-): Promise<ProjectExecutionDefaults | ApiError> {
+): Promise<CatalogDefaultModel | ApiError> {
   const catalog = await resolveSystemProviderModels(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
@@ -132,32 +131,29 @@ async function loadCatalogDefaultForProvider(
       true,
     );
   }
-  return buildProviderThreadExecutionDefaults(deps.providerRegistry, {
-    providerId: args.providerId,
-    model: defaultModel.model,
-  });
+  return { model: defaultModel.model, providerId: args.providerId };
 }
 
-interface ResolveSessionOptionExecutionDefaultsArgs {
+interface ResolveSessionOptionDefaultModelArgs {
   cwd?: string;
-  executionDefaults: ProjectExecutionDefaults | null;
+  defaultModel: string | null;
   hostId: string | null;
   providerId: string;
   requestedModel: string | null;
   selections: SessionOptionSelections;
 }
 
-async function resolveSessionOptionExecutionDefaults(
+async function resolveSessionOptionDefaultModel(
   deps: ThreadCreateDeps,
-  args: ResolveSessionOptionExecutionDefaultsArgs,
-): Promise<ProjectExecutionDefaults | null> {
-  const model = args.requestedModel ?? args.executionDefaults?.model ?? null;
+  args: ResolveSessionOptionDefaultModelArgs,
+): Promise<string | null> {
+  const model = args.requestedModel ?? args.defaultModel;
   if (
     model === null ||
     args.hostId === null ||
     Object.keys(args.selections).length === 0
   ) {
-    return args.executionDefaults;
+    return args.defaultModel;
   }
   const catalog = await resolveSystemProviderModels(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
@@ -165,7 +161,7 @@ async function resolveSessionOptionExecutionDefaults(
     providerId: args.providerId,
   });
   if (catalog.modelLoadError !== null) {
-    return args.executionDefaults;
+    return args.defaultModel;
   }
   const chosen = [...catalog.models, ...catalog.selectedOnlyModels].find(
     (candidate) => candidate.model === model,
@@ -181,7 +177,7 @@ async function resolveSessionOptionExecutionDefaults(
   const replacement =
     compatible.find((candidate) => candidate.isDefault) ?? compatible[0];
   if (chosen === undefined || conflict === null || replacement === undefined) {
-    return args.executionDefaults;
+    return args.defaultModel;
   }
   if (args.requestedModel !== null) {
     throw new ApiError(
@@ -190,17 +186,15 @@ async function resolveSessionOptionExecutionDefaults(
       `${chosen.displayName || chosen.model} cannot run with the chosen options: ${describeSessionOptionConflict(conflict)}. ${replacement.displayName || replacement.model} can.`,
     );
   }
-  return args.executionDefaults === null
-    ? null
-    : { ...args.executionDefaults, model: replacement.model };
+  return replacement.model;
 }
 
-async function resolveCatalogExecutionDefaults(
+async function resolveCatalogDefaultModel(
   deps: ThreadCreateDeps,
-  args: ResolveCatalogExecutionDefaultsArgs,
-): Promise<ProjectExecutionDefaults | null> {
-  if (args.executionDefaults !== null || args.requestedModel !== null) {
-    return args.executionDefaults;
+  args: ResolveCatalogDefaultModelArgs,
+): Promise<CatalogDefaultModel | null> {
+  if (args.defaultModel !== null || args.requestedModel !== null) {
+    return null;
   }
 
   if (args.hostId === null) {
@@ -472,7 +466,9 @@ async function createPendingThreadAndAttemptFirstDispatch(
       });
     }
     const executionPlanArgs = {
-      projectDefaults: args.executionDefaults,
+      ...(args.defaultModel !== null
+        ? { defaultModel: args.defaultModel }
+        : {}),
       hostId: hostIdForEnvironmentIntent(deps, args.environmentIntent),
       threadId: thread.id,
     };
@@ -680,7 +676,7 @@ export async function createThreadFromRequest(
   }
   await deps.providerRegistry.whenRegistrationsSettled();
   const {
-    executionDefaults,
+    defaultModel: inheritedDefaultModel,
     providerId,
     providerFallbackCandidates,
     requestedModel,
@@ -782,35 +778,29 @@ export async function createThreadFromRequest(
             request.environment.machine.hostId,
           )
         : undefined;
-  const catalogExecutionDefaults = await resolveCatalogExecutionDefaults(deps, {
+  const catalogDefault = await resolveCatalogDefaultModel(deps, {
     ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-    executionDefaults,
+    defaultModel: inheritedDefaultModel,
     hostId: childHostId,
     providerId,
     providerFallbackCandidates,
     requestedModel,
   });
-  if (
-    catalogExecutionDefaults !== null &&
-    catalogExecutionDefaults.providerId !== request.providerId
-  ) {
-    request.providerId = catalogExecutionDefaults.providerId;
+  if (catalogDefault !== null) {
+    request.providerId = catalogDefault.providerId;
   }
   assertProviderAcceptsPromptActions(deps.providerRegistry, {
     input: request.input,
     providerId: request.providerId,
   });
-  const resolvedExecutionDefaults = await resolveSessionOptionExecutionDefaults(
-    deps,
-    {
-      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults: catalogExecutionDefaults,
-      hostId: childHostId,
-      providerId: request.providerId,
-      requestedModel,
-      selections: request.sessionOptions ?? {},
-    },
-  );
+  const defaultModel = await resolveSessionOptionDefaultModel(deps, {
+    ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+    defaultModel: catalogDefault?.model ?? inheritedDefaultModel,
+    hostId: childHostId,
+    providerId: request.providerId,
+    requestedModel,
+    selections: request.sessionOptions ?? {},
+  });
 
   const { environmentId, environmentIntent } =
     await resolveThreadEnvironmentPlacement(deps, {
@@ -849,7 +839,7 @@ export async function createThreadFromRequest(
   const createArgs = {
     environmentId,
     environmentIntent,
-    executionDefaults: resolvedExecutionDefaults,
+    defaultModel,
     fork,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }

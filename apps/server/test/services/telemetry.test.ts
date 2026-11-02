@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appInstallFromServerConfig,
   createTelemetryService,
-  runWithTelemetryAppSurface,
+  runWithTelemetryRequest,
 } from "../../src/services/system/telemetry.js";
 
 function createTestLogger() {
@@ -50,15 +50,18 @@ describe("telemetry service", () => {
     });
 
     telemetry.capture({ name: "app_started" });
-    runWithTelemetryAppSurface("desktop", () => {
-      telemetry.capture({
-        name: "thread_created",
-        properties: {
-          is_child_thread: true,
-          provider: "claude-code",
-        },
-      });
-    });
+    runWithTelemetryRequest(
+      { appSurface: "desktop", accessRoute: "connect" },
+      () => {
+        telemetry.capture({
+          name: "thread_created",
+          properties: {
+            is_child_thread: true,
+            provider: "claude-code",
+          },
+        });
+      },
+    );
     telemetry.capture({
       name: "user_message_sent",
       properties: {
@@ -99,10 +102,12 @@ describe("telemetry service", () => {
       properties: {
         app_version: "1.2.3",
         app_surface: "desktop",
+        access_route: "connect",
         is_child_thread: true,
         provider: "claude-code",
       },
     });
+    expect(calls[2]?.payload.properties).not.toHaveProperty("access_route");
     expect(calls[2]?.payload).toMatchObject({
       event: "user_message_sent",
       properties: {

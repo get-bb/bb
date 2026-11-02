@@ -1,6 +1,6 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
+import { getRelativeHostPathSegments, normalizeHostPath } from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -21,6 +21,7 @@ import {
   remapDaemonFileRouteError,
 } from "../services/hosts/daemon-file-response.js";
 import { serveDaemonFileStream } from "../services/hosts/daemon-file-stream.js";
+import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { createRawFileHeaders } from "../services/hosts/raw-file-headers.js";
 import {
   assertUsableHostId,
@@ -44,7 +45,7 @@ const HOST_FILE_LIST_LIMIT_DEFAULT = 1000;
 
 const FILE_PREVIEW_TTL_MS = 10 * 60 * 1000;
 const REVISION_REF_PATTERN = /^(?:HEAD|[0-9a-f]{4,40})$/iu;
-const WINDOWS_DRIVE_SEGMENT_PATTERN = /^[A-Za-z]:$/u;
+const WINDOWS_DRIVE_PREFIX_PATTERN = /^([A-Za-z]:)\//u;
 
 interface FilePreviewLease {
   hostId: string;
@@ -58,44 +59,18 @@ interface FileRoot {
   ref: string | null;
 }
 
-function isAbsoluteHostPath(value: string): boolean {
-  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
-}
-
-function normalizeHostPath(value: string): string {
-  return path.win32.isAbsolute(value) && !path.posix.isAbsolute(value)
-    ? path.win32.normalize(value)
-    : path.posix.normalize(value);
-}
-
-function joinHostPath(rootPath: string, segments: string[]): string {
-  return path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
-    ? path.win32.join(rootPath, ...segments)
-    : path.posix.join(rootPath, ...segments);
-}
-
 function requireAbsoluteHostRoot(rootPath: string): string {
-  if (!isAbsoluteHostPath(rootPath)) {
+  const normalizedRootPath = normalizeHostPath(rootPath);
+  if (normalizedRootPath === null) {
     throw new ApiError(400, "invalid_path", "rootPath must be absolute", false);
   }
-  return normalizeHostPath(rootPath);
-}
-
-function createInvalidFilePathError(): ApiError {
-  return new ApiError(400, "invalid_path", "Invalid file path", false);
+  return normalizedRootPath;
 }
 
 function parseRelativeFileSegments(rawPath: string): string[] {
-  const normalizedPath = rawPath.replace(/\\/g, "/");
-  const segments = normalizedPath.split("/");
-  if (
-    normalizedPath.startsWith("/") ||
-    normalizedPath.includes("\0") ||
-    segments.some(
-      (segment) => segment === "" || segment === "." || segment === "..",
-    )
-  ) {
-    throw createInvalidFilePathError();
+  const segments = getRelativeHostPathSegments(rawPath.replace(/\\/g, "/"));
+  if (segments === null) {
+    throw new ApiError(400, "invalid_path", "Invalid file path", false);
   }
   return segments;
 }
@@ -104,18 +79,15 @@ function parseAbsoluteHostFile(rawPath: string): {
   rootPath: string;
   segments: string[];
 } {
-  const segments = parseRelativeFileSegments(rawPath);
-  const [firstSegment, ...rest] = segments;
-  if (
-    firstSegment === undefined ||
-    !WINDOWS_DRIVE_SEGMENT_PATTERN.test(firstSegment)
-  ) {
-    return { rootPath: "/", segments };
+  const filePath = rawPath.replace(/\\/g, "/");
+  const drive = WINDOWS_DRIVE_PREFIX_PATTERN.exec(filePath);
+  if (drive === null) {
+    return { rootPath: "/", segments: parseRelativeFileSegments(filePath) };
   }
-  if (rest.length === 0) {
-    throw createInvalidFilePathError();
-  }
-  return { rootPath: `${firstSegment}\\`, segments: rest };
+  return {
+    rootPath: `${drive[1]}\\`,
+    segments: parseRelativeFileSegments(filePath.slice(drive[0].length)),
+  };
 }
 
 function parseRevisionRef(ref: string): string {
@@ -131,7 +103,7 @@ async function serveRootedFile(
   root: FileRoot,
   segments: string[],
 ): Promise<Response> {
-  const filePath = joinHostPath(root.rootPath, segments);
+  const filePath = joinHostPathSegments(root.rootPath, ...segments);
   if (root.ref === null) {
     return serveDaemonFileStream(
       deps,
@@ -203,7 +175,6 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
       await next();
     });
   }
-
 
   const runHostFileMutationCommand = <TCommand extends HostDaemonRpcCommand>(
     hostId: string,

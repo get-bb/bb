@@ -40,6 +40,7 @@ import {
   listContextWindowUsageRows,
   listEvents,
   listLatestThreadStateEventRowsByThreadIds,
+  deleteThreadEventSuffixInTransaction,
   listStoredConversationOutlineEventRows,
   listTimelineWindowHintsDescending,
   listOpenTurnInputAcceptedRowsByThreadIds,
@@ -75,6 +76,10 @@ import type {
 import { upsertHost } from "../../src/data/hosts.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createMigratedConnection } from "../../src/testing.js";
+import {
+  getThreadConversationOutlineRecord,
+  upsertThreadConversationOutlineRecord,
+} from "../../src/data/thread-conversation-outlines.js";
 
 function setup() {
   const db = createMigratedConnection();
@@ -2504,6 +2509,178 @@ describe("events", () => {
         kind: "provider-codex/goal",
       }),
     ).toEqual([]);
+  });
+
+  it("drops only the rewound thread's stored conversation outline", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const message = (threadId: string, sequence: number) => ({
+      threadId,
+      sequence,
+      type: "system/manager/user_message" as const,
+      ...threadEventFields,
+      data: JSON.stringify({ text: `message ${sequence}` }),
+    });
+    insertEvents(db, noopNotifier, [
+      message(thread.id, 1),
+      message(thread.id, 2),
+      message(otherThread.id, 1),
+    ]);
+    for (const threadId of [thread.id, otherThread.id]) {
+      upsertThreadConversationOutlineRecord(db, {
+        threadId,
+        itemsJson: "[]",
+        projectionKey: "key",
+      });
+    }
+    const rewind = (threadId: string, cutoffSequence: number) =>
+      db.transaction((tx) =>
+        deleteThreadEventSuffixInTransaction(tx, {
+          cutoffSequence,
+          oldMaxSequence: cutoffSequence + 1,
+          threadId,
+        }),
+      );
+
+    expect(rewind(otherThread.id, 5).deletedEventCount).toBe(0);
+    expect(rewind(thread.id, 2).deletedEventCount).toBe(1);
+
+    expect(getThreadConversationOutlineRecord(db, thread.id)).toBeNull();
+    expect(getThreadConversationOutlineRecord(db, otherThread.id)).toEqual({
+      itemsJson: "[]",
+      projectionKey: "key",
+    });
+  });
+
+  describe("repeated latest-state lookups", () => {
+    function setupLatestState() {
+      const { db, thread } = setup();
+      const goalState = (sequence: number) => ({
+        threadId: thread.id,
+        sequence,
+        type: "thread/extensionState/updated" as const,
+        ...threadEventFields,
+        providerThreadId: "provider-thread-1",
+        data: JSON.stringify({
+          kind: "provider-codex/goal",
+          payload: { objective: `goal-${sequence}` },
+        }),
+      });
+      const otherState = (sequence: number) => ({
+        ...goalState(sequence),
+        data: JSON.stringify({ kind: "other-plugin/widget", payload: {} }),
+      });
+      const latestSequence = () =>
+        listLatestThreadStateEventRowsByThreadIds(db, {
+          threadIds: [thread.id],
+          kind: "provider-codex/goal",
+        }).map((row) => row.sequence);
+      const deleteSequences = (sequences: readonly number[]) => {
+        for (const sequence of sequences) {
+          db.$client
+            .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = ?")
+            .run(thread.id, sequence);
+        }
+      };
+      return {
+        db,
+        thread,
+        goalState,
+        otherState,
+        latestSequence,
+        deleteSequences,
+      };
+    }
+
+    it("picks up newer matching state and goal events", () => {
+      const { db, thread, goalState, otherState, latestSequence } =
+        setupLatestState();
+      insertEvents(db, noopNotifier, [goalState(1), otherState(2)]);
+      expect(latestSequence()).toEqual([1]);
+
+      insertEvents(db, noopNotifier, [otherState(3), goalState(4)]);
+      expect(latestSequence()).toEqual([4]);
+
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 5,
+          type: "thread/goal/cleared",
+          ...threadEventFields,
+          data: JSON.stringify({}),
+        },
+        otherState(6),
+      ]);
+      expect(latestSequence()).toEqual([5]);
+    });
+
+    it("rescans after a rewind replaces events at already-scanned sequences", () => {
+      const { db, thread, goalState, otherState, latestSequence } =
+        setupLatestState();
+      insertEvents(db, noopNotifier, [goalState(1), otherState(2)]);
+      expect(latestSequence()).toEqual([1]);
+
+      db.transaction((tx) =>
+        deleteThreadEventSuffixInTransaction(tx, {
+          cutoffSequence: 2,
+          oldMaxSequence: 2,
+          threadId: thread.id,
+        }),
+      );
+      insertEvents(db, noopNotifier, [goalState(2), otherState(3)]);
+
+      expect(latestSequence()).toEqual([2]);
+    });
+
+    it("falls back to an older row when the remembered latest row is gone", () => {
+      const { db, goalState, otherState, latestSequence, deleteSequences } =
+        setupLatestState();
+      insertEvents(db, noopNotifier, [
+        goalState(1),
+        goalState(2),
+        otherState(3),
+      ]);
+      expect(latestSequence()).toEqual([2]);
+
+      deleteSequences([2]);
+
+      expect(latestSequence()).toEqual([1]);
+    });
+
+    it("rescans when state rows were removed below the scanned sequence", () => {
+      const { db, goalState, otherState, latestSequence, deleteSequences } =
+        setupLatestState();
+      insertEvents(db, noopNotifier, [
+        goalState(1),
+        otherState(2),
+        otherState(3),
+      ]);
+      expect(latestSequence()).toEqual([1]);
+
+      deleteSequences([2, 3]);
+      insertEvents(db, noopNotifier, [goalState(2)]);
+
+      expect(latestSequence()).toEqual([2]);
+    });
+
+    it("does not remember state read from a rolled-back transaction", () => {
+      const { db, goalState, otherState, latestSequence } = setupLatestState();
+      insertEvents(db, noopNotifier, [goalState(1), otherState(2)]);
+
+      expect(() =>
+        db.transaction(() => {
+          insertEvents(db, noopNotifier, [goalState(3), otherState(4)]);
+          expect(latestSequence()).toEqual([3]);
+          throw new Error("roll back");
+        }),
+      ).toThrow("roll back");
+      insertEvents(db, noopNotifier, [goalState(3), goalState(4)]);
+
+      expect(latestSequence()).toEqual([4]);
+    });
   });
 
   it("batches latest goal lookups above the SQLite variable limit", () => {

@@ -254,6 +254,14 @@ export interface PluginTurnFailedEvent {
    * A policy caps its own retries by comparing against this.
    */
   attemptNumber: number;
+  /**
+   * The plugin that sent the failed turn's message through
+   * `bb.sdk.threads.send` or `bb.sdk.threads.spawn`, or null when a user, an
+   * agent, or core sent it. A retry is sent by core, so a retry's failure
+   * reports null. A retry policy uses this to ask the sender whether it
+   * wants the turn re-run.
+   */
+  originPluginId: string | null;
 }
 
 /**
@@ -2225,6 +2233,8 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Internal: counts one meaningful use of a first-party plugin's UI. */
+  internal_DO_NOT_USE_recordPluginUse(): void;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

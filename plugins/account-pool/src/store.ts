@@ -182,6 +182,22 @@ export class AccountStore {
     });
   }
 
+  async applyLogin(
+    id: string,
+    identity: Pick<
+      Account,
+      "email" | "accountUuid" | "subscriptionType" | "rateLimitTier"
+    >,
+  ): Promise<Account | null> {
+    return this.update(id, (account) => ({
+      ...account,
+      email: identity.email ?? account.email,
+      accountUuid: identity.accountUuid ?? account.accountUuid,
+      subscriptionType: identity.subscriptionType ?? account.subscriptionType,
+      rateLimitTier: identity.rateLimitTier ?? account.rateLimitTier,
+    }));
+  }
+
   async setAccountUuid(
     id: string,
     accountUuid: string,

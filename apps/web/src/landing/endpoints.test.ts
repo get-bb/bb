@@ -293,6 +293,103 @@ describe("marketing download", () => {
   );
 });
 
+describe("download visit attribution", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  const VISITOR_ID = "019a0000-0000-7000-8000-000000000001";
+  const SESSION_ID = "019a0000-0000-7000-8000-000000000002";
+
+  type CapturedEvent = {
+    distinct_id: string;
+    properties: Record<string, string | undefined>;
+  };
+
+  async function captureDownload(
+    query: string,
+    headers: Record<string, string> = {},
+  ): Promise<CapturedEvent> {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) => new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "00000000-0000-4000-8000-00000000ffff",
+    );
+    const waitUntil = vi.fn<(promise: Promise<void>) => void>();
+    await handleDownload(
+      "macos",
+      new Request(`https://getbb.app/download/macos?${query}`, { headers }),
+      { LANDING_POSTHOG_KEY: "phc_test" },
+      waitUntil,
+    );
+    await waitUntil.mock.calls[0]?.[0];
+    const captureCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("posthog"),
+    );
+    return JSON.parse(String(captureCall?.[1]?.body)) as CapturedEvent;
+  }
+
+  it("joins the download to the visitor, session and first touch", async () => {
+    const event = await captureDownload(
+      new URLSearchParams({
+        placement: "hero",
+        visitor_id: VISITOR_ID,
+        session_id: SESSION_ID,
+        first_page: "/compare/cursor-alternative",
+        first_referrer: "https://www.google.com/search?q=bb",
+      }).toString(),
+      { referer: "https://getbb.app/compare/cursor-alternative" },
+    );
+
+    expect(event.distinct_id).toBe(VISITOR_ID);
+    expect(event.properties).toEqual({
+      $current_url: "https://getbb.app/download/macos?placement=hero",
+      $referrer: "https://getbb.app/compare/cursor-alternative",
+      $session_id: SESSION_ID,
+      download_target: "macos",
+      first_page: "/compare/cursor-alternative",
+      first_referrer: "https://www.google.com",
+      placement: "hero",
+      tracking_source: "landing_worker_redirect",
+    });
+  });
+
+  it("falls back to a random id when the visit is absent", async () => {
+    const event = await captureDownload("placement=nav");
+
+    expect(event.distinct_id).toBe("00000000-0000-4000-8000-00000000ffff");
+    expect(event.properties.$session_id).toBeUndefined();
+    expect(event.properties.first_page).toBeUndefined();
+    expect(event.properties.first_referrer).toBeUndefined();
+  });
+
+  it.each([
+    ["visitor_id", `${VISITOR_ID}x`],
+    ["visitor_id", "user@example.com"],
+    ["session_id", "<script>"],
+    ["first_page", "//evil.example/path"],
+    ["first_page", "https://evil.example/"],
+    ["first_page", "/a?b=c"],
+    ["first_referrer", "javascript:alert(1)"],
+    ["first_referrer", "not a url"],
+  ])("drops an invalid %s of %s", async (name, value) => {
+    const event = await captureDownload(
+      new URLSearchParams({ [name]: value }).toString(),
+    );
+
+    expect(event.distinct_id).toBe("00000000-0000-4000-8000-00000000ffff");
+    expect(event.properties.$session_id).toBeUndefined();
+    expect(event.properties.first_page).toBeUndefined();
+    expect(event.properties.first_referrer).toBeUndefined();
+    expect(event.properties.$current_url).toBe(
+      "https://getbb.app/download/macos",
+    );
+  });
+});
+
 describe("marketing subscribe endpoint", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -237,8 +237,9 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
       if (
         url !== null &&
         store.currentUrl(environmentId) === url &&
-        lookedUpBranches.has(environmentId) &&
-        lookedUpBranches.get(environmentId) !== refs.branchName
+        (store.isSettled(environmentId) ||
+          (lookedUpBranches.has(environmentId) &&
+            lookedUpBranches.get(environmentId) !== refs.branchName))
       )
         url = null;
       lookedUpBranches.set(environmentId, refs.branchName);

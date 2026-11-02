@@ -1,4 +1,5 @@
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 
 export function PluginCreateButton({
   onCreate,
@@ -19,7 +20,13 @@ export function PluginCreateButton({
           onSelect: onInstallFromSource,
         },
       ]}
-      onCreate={onCreate}
+      onCreate={(prompt) => {
+        recordTelemetryEvent({
+          name: "plugin_creation_started",
+          properties: {},
+        });
+        onCreate(prompt);
+      }}
     />
   );
 }

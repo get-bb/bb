@@ -4,6 +4,7 @@ import {
   type StallWindowBatch,
 } from "./stall-windows.js";
 import { parentPort, workerData } from "node:worker_threads";
+import { setImmediate } from "node:timers/promises";
 import { Session } from "node:inspector/promises";
 import type { Profiler } from "node:inspector";
 import { mkdir, readdir, stat, rm, writeFile, rename } from "node:fs/promises";
@@ -33,6 +34,19 @@ async function runProfileWorker(): Promise<void> {
     }
   };
   const session = new Session();
+  const disconnect = async () => {
+    session.disconnect();
+    await new Promise<void>((resolve) => {
+      const onMessage = (value: unknown) => {
+        if (value !== "drained") return;
+        port.off("message", onMessage);
+        resolve();
+      };
+      port.on("message", onMessage);
+      port.postMessage("disconnected");
+    });
+    await setImmediate();
+  };
   let startedAt = "";
   let title = "";
   let finishedProfile: Profiler.Profile | undefined;
@@ -127,6 +141,7 @@ async function runProfileWorker(): Promise<void> {
         { bytes, startedAt: beginning, endedAt },
         "CPU profile exceeded size limit; discarded",
         "warn",
+        restart,
       );
       return;
     }
@@ -150,9 +165,12 @@ async function runProfileWorker(): Promise<void> {
         nativeFramesMayIncludeWaiting: true,
       },
       "Server CPU profile saved",
+      "info",
+      restart,
     );
   };
   port.on("message", async (command: unknown) => {
+    if (command === "drained") return;
     try {
       if (command === "start") await start();
       else if (
@@ -166,10 +184,15 @@ async function runProfileWorker(): Promise<void> {
           command.command === "capture",
           parseStallWindowBatch(command.stalls),
         );
-        if (command.command === "stop") session.disconnect();
+        if (command.command === "stop") {
+          await disconnect();
+          respond({}, "CPU profiling worker stopped");
+          port.close();
+        }
       } else throw new Error("Invalid profiling command");
     } catch (error) {
-      session.disconnect();
+      await disconnect();
+      port.close();
       await rm(pendingPath, { force: true }).catch(() => {});
       throw error;
     }

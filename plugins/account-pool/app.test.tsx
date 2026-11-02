@@ -402,6 +402,63 @@ describe("Account Pool settings", () => {
     ).toContain("ABCD-1234");
   });
 
+  it("signs an existing account in again in place and completes into it", async () => {
+    const slot = render([account({ label: "Reserve", enabled: false })], {
+      "login.start": () => ({
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        authorizeUrl: "https://claude.ai/oauth/authorize?state=state",
+      }),
+      "login.complete": () => account({ label: "Reserve", enabled: false }),
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "Reserve actions" }),
+    );
+    fireEvent.click(await slot.findByText("Sign in again…"));
+    expect(
+      await slot.findByRole("dialog", { name: "Sign in again to Reserve" }),
+    ).toBeTruthy();
+    expect(slot.rpcCalls).toContainEqual({
+      method: "login.start",
+      input: { kind: "relogin", accountId: account().id },
+    });
+    fireEvent.change(slot.getByLabelText("Claude authorization code"), {
+      target: { value: "code#state" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Complete" }));
+    expect(await slot.findByText("Signed in again to Reserve")).toBeTruthy();
+    expect(slot.queryByRole("button", { name: "Add another" })).toBeNull();
+  });
+
+  it("shows a refused Claude re-login inside the sign-in dialog", async () => {
+    const refusal =
+      "This login is for spouse@example.com, not person@example.com.";
+    const slot = render([account()], {
+      "login.start": () => ({
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        authorizeUrl: "https://claude.ai/oauth/authorize?state=state",
+      }),
+      "login.complete": () => {
+        throw new Error(refusal);
+      },
+    });
+    fireEvent.pointerDown(
+      await slot.findByRole("button", { name: "person@example.com actions" }),
+    );
+    fireEvent.click(await slot.findByText("Sign in again…"));
+    fireEvent.change(await slot.findByLabelText("Claude authorization code"), {
+      target: { value: "code#state" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Complete" }));
+    const dialog = await slot.findByRole("dialog", {
+      name: "Sign in again to person@example.com",
+    });
+    await waitFor(() => expect(dialog.textContent).toContain(refusal));
+    expect(
+      slot.getByRole("button", { name: "Complete" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(slot.getByRole("button", { name: "Start again" })).toBeTruthy();
+  });
+
   it("persists provider routing from the section switch", async () => {
     const slot = render([account()], {
       "routing.set": () => ({ provider: "claude", enabled: false }),
@@ -679,7 +736,7 @@ describe("Account Pool settings", () => {
     fireEvent.click(
       await slot.findByRole("button", { name: "Sign in to Codex" }),
     );
-    fireEvent.click(await slot.findByRole("button", { name: "Try again" }));
+    fireEvent.click(await slot.findByRole("button", { name: "Start again" }));
     await waitFor(() => expect(starts).toBe(2));
   });
   it.each(["claude", "codex"] as const)(

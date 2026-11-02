@@ -19,15 +19,10 @@ import {
   DEFAULT_CODEX_USAGE_URL,
 } from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
-import type { ImportedProviderAccount } from "./provider-adapter.js";
 import {
   OAuthRefreshError,
   TransientOAuthRefreshError,
 } from "./provider-adapter.js";
-import type {
-  ImportedClaudeCredentials,
-  ImportedCodexCredentials,
-} from "./credentials.js";
 import {
   accountStatus,
   blockingResetAt,
@@ -135,7 +130,7 @@ type SecretUse = { kind: "normal" } | { kind: "rejected"; accessToken: string };
 
 type SecretFlight =
   | { kind: "refresh"; use: SecretUse; result: Promise<AccountSecret> }
-  | { kind: "rejection-check"; result: Promise<void> };
+  | { kind: "rejection-check" | "replacement"; result: Promise<void> };
 
 interface FailureSummary {
   status: number;
@@ -184,10 +179,33 @@ export class AccountPoolHub {
     return this.options.hubTokens.authenticate(token);
   }
 
-  async importAccount(
-    provider: PoolProvider,
-  ): Promise<ImportedProviderAccount> {
-    return this.adapter(provider).importAccount();
+  async replaceSecret(accountId: string, secret: AccountSecret): Promise<void> {
+    while (true) {
+      const existing = this.refreshes.get(accountId);
+      if (existing !== undefined) {
+        await existing.result.then(
+          () => undefined,
+          () => undefined,
+        );
+        continue;
+      }
+      const flight: SecretFlight = {
+        kind: "replacement",
+        result: this.options.accounts
+          .writeSecret(accountId, secret)
+          .then(() => {
+            this.refreshBackoffs.delete(accountId);
+            const quota = this.options.quotas.get(accountId);
+            this.options.quotas.put({ ...quota, error: null });
+          })
+          .finally(() => {
+            if (this.refreshes.get(accountId) === flight)
+              this.refreshes.delete(accountId);
+          }),
+      };
+      this.refreshes.set(accountId, flight);
+      return flight.result;
+    }
   }
 
   async handle(
@@ -1014,7 +1032,7 @@ export class AccountPoolHub {
     while (true) {
       const existing = this.refreshes.get(account.id);
       if (existing !== undefined) {
-        if (existing.kind === "rejection-check") {
+        if (existing.kind !== "refresh") {
           await existing.result;
           continue;
         }
@@ -1429,8 +1447,6 @@ export function createHub(options: {
   refreshUrl?: string;
   codexRefreshUrl?: string;
   codexUsageUrl?: string;
-  importClaudeCredentials?: () => Promise<ImportedClaudeCredentials>;
-  importCodexCredentials?: () => Promise<ImportedCodexCredentials>;
   usageUrl?: string;
   profileUrl?: string;
   drainTimeoutMs?: number;
@@ -1447,7 +1463,6 @@ export function createHub(options: {
         refreshUrl: options.refreshUrl ?? DEFAULT_REFRESH_URL,
         usageUrl: options.usageUrl ?? DEFAULT_USAGE_URL,
         profileUrl: options.profileUrl ?? DEFAULT_PROFILE_URL,
-        importCredentials: options.importClaudeCredentials,
       }),
     ],
     [
@@ -1455,7 +1470,6 @@ export function createHub(options: {
       createCodexAdapter({
         refreshUrl: options.codexRefreshUrl ?? DEFAULT_CODEX_REFRESH_URL,
         usageUrl: options.codexUsageUrl ?? DEFAULT_CODEX_USAGE_URL,
-        importCredentials: options.importCodexCredentials,
       }),
     ],
   ]);

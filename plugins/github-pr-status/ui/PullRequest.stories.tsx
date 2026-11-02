@@ -611,7 +611,7 @@ export function ContextCardRow() {
           </span>
           <div
             data-story-card=""
-            className="w-72 shrink-0 rounded-2xl border border-border bg-popover p-2 text-popover-foreground"
+            className="w-72 shrink-0 rounded-md border border-border bg-popover p-2 text-popover-foreground"
           >
             <PullRequestContextCardRowView
               pullRequest={pullRequest}

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Account } from "./contracts.js";
+import type { Account, LoginTarget } from "./contracts.js";
 
 const OAUTH_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
@@ -49,6 +49,7 @@ interface LoginSession {
   codeVerifier: string;
   state: string;
   createdAt: number;
+  target: LoginTarget;
 }
 
 export interface ClaudeOAuthAccount {
@@ -68,7 +69,11 @@ export interface ClaudeOAuthLoginOptions {
   authorizeUrl?: string;
   tokenUrl?: string;
   profileUrl?: string;
-  addAccount: (authenticated: ClaudeOAuthAccount) => Promise<Account>;
+  validateTarget: (target: LoginTarget) => Promise<void>;
+  saveLogin: (
+    authenticated: ClaudeOAuthAccount,
+    target: LoginTarget,
+  ) => Promise<Account>;
 }
 
 export interface OAuthLoginStart {
@@ -134,7 +139,8 @@ export class ClaudeOAuthLogin {
     this.profileUrl = options.profileUrl ?? OAUTH_PROFILE_URL;
   }
 
-  start(): OAuthLoginStart {
+  async start(target: LoginTarget): Promise<OAuthLoginStart> {
+    await this.options.validateTarget(target);
     const codeVerifier = randomBytes(32).toString("base64url");
     const codeChallenge = createHash("sha256")
       .update(codeVerifier)
@@ -146,6 +152,7 @@ export class ClaudeOAuthLogin {
       codeVerifier,
       state,
       createdAt: this.now(),
+      target,
     };
     const authorizeUrl = new URL(this.authorizeUrl);
     authorizeUrl.searchParams.set("code", "true");
@@ -223,22 +230,25 @@ export class ClaudeOAuthLogin {
         : (profile.account.subscription_type ??
           profile.organization?.organization_type ??
           null);
-    return this.options.addAccount({
-      label:
-        profile.account.display_name ??
-        email ??
-        profile.organization?.name ??
-        "Claude account",
-      email,
-      accountUuid: profile.account.uuid ?? null,
-      subscriptionType,
-      rateLimitTier:
-        profile.account.rate_limit_tier ??
-        profile.organization?.rate_limit_tier ??
-        null,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: this.now() + tokens.expires_in * 1_000,
-    });
+    return this.options.saveLogin(
+      {
+        label:
+          profile.account.display_name ??
+          email ??
+          profile.organization?.name ??
+          "Claude account",
+        email,
+        accountUuid: profile.account.uuid ?? null,
+        subscriptionType,
+        rateLimitTier:
+          profile.account.rate_limit_tier ??
+          profile.organization?.rate_limit_tier ??
+          null,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: this.now() + tokens.expires_in * 1_000,
+      },
+      session.target,
+    );
   }
 }

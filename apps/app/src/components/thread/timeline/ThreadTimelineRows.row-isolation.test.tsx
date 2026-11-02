@@ -78,7 +78,6 @@ describe("ThreadTimelineRows row isolation", () => {
                 }),
               ]}
               threadRuntimeDisplayStatus="idle"
-              workspaceRootPath={undefined}
             />
           </QueryClientProvider>
         </MemoryRouter>,
@@ -125,7 +124,6 @@ describe("ThreadTimelineRows row isolation", () => {
                 }),
               ]}
               threadRuntimeDisplayStatus="idle"
-              workspaceRootPath={undefined}
             />
           </QueryClientProvider>
         </MemoryRouter>,
@@ -177,7 +175,6 @@ describe("ThreadTimelineRows row isolation", () => {
               }),
             ]}
             threadRuntimeDisplayStatus="active"
-            workspaceRootPath={undefined}
           />
         </QueryClientProvider>
       </MemoryRouter>
@@ -202,7 +199,6 @@ describe("ThreadTimelineRows row isolation", () => {
             threadId="thr_main"
             timelineRows={timelineRows}
             threadRuntimeDisplayStatus="idle"
-            workspaceRootPath={undefined}
           />
         </QueryClientProvider>
       </MemoryRouter>

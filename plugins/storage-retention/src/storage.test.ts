@@ -618,9 +618,89 @@ it("builds every machine's report from one thread listing", async () => {
     const listed = host.harness.sdk.callsTo("threads.list").length;
     await host.harness.callRpc("hosts", null);
     expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
+    await host.harness.callRpc("scanAll", null);
+    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(
+      listed + 1 + machineIds.length + 1,
+    );
   } finally {
     await host.harness.dispose();
     await worker.experimental_dispose();
+  }
+});
+
+it("rescans only the machine that reconnected when development cleanup is on", async () => {
+  const fakeHome = await directory();
+  const machineIds = ["host_a", "host_b", "host_c"];
+  const scannedHostIds: string[] = [];
+  const subscriptions = new Set<
+    Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+  >();
+  const options = {
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call: {
+      hostId: string;
+      method: string;
+    }) => {
+      if (call.method === "homeDirectory") return fakeHome;
+      if (call.method === "capacity") {
+        scannedHostIds.push(call.hostId);
+        return { totalBytes: 10000, freeBytes: 5000 };
+      }
+      if (call.method === "measure") return [];
+      if (call.method === "inspectDeveloperEntries") return [];
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      subscribe: (
+        subscription: Parameters<BbPluginApi["sdk"]["subscribe"]>[0],
+      ) => {
+        subscriptions.add(subscription);
+        return () => subscriptions.delete(subscription);
+      },
+      projects: { list: async () => [] },
+      environments: { list: async () => [] },
+      threads: { list: async () => [] },
+      hosts: {
+        list: async () =>
+          machineIds.map((id) => makeHostResponse({ id, status: "connected" })),
+        get: async ({ hostId }: { hostId: string }) => ({
+          ...makeHostResponse({ id: hostId, status: "connected" }),
+          threadStorageRootPath: path.join(fakeHome, "storage"),
+        }),
+      },
+    },
+  } satisfies Parameters<typeof createFakePluginHost>[0];
+  let host = createFakePluginHost(options);
+  try {
+    plugin(host.bb);
+    const saved = await host.harness.behavior.runCli([
+      "retention",
+      "--delete-dev-data-on-checkout-removal",
+      "true",
+      "--save",
+      "--yes",
+    ]);
+    expect(saved.exitCode).toBe(0);
+    host = await host.harness.lifecycle.reload(plugin);
+    host.harness.behavior.runService("development-storage-recovery");
+    await expect.poll(() => [...scannedHostIds].sort()).toEqual(machineIds);
+    const listed = host.harness.sdk.callsTo("threads.list").length;
+    scannedHostIds.length = 0;
+
+    for (const subscription of subscriptions)
+      if (subscription.event === "host:changed")
+        subscription.callback({
+          type: "changed",
+          entity: "host",
+          id: "host_b",
+          changes: ["host-connected"],
+        });
+
+    await expect.poll(() => scannedHostIds).toEqual(["host_b"]);
+    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
+  } finally {
+    await host.harness.dispose();
   }
 });
 

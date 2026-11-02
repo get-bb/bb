@@ -314,8 +314,10 @@ held back, and explicit send-now still claims it. Calling again renews the
 lease; an unrenewed hold lapses after `leaseMs` and the periodic sweep
 dispatches the row. It answers 409 once a dispatch claimed the row and 404
 for a missing row. Holding never changes `updatedAt`, so a pre-hold
-`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` clears
-the hold. `experimental_releaseEditHold` (`DELETE`, same path) cancels
+`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` that
+changes `input` clears the hold, while one that changes only `sendAt` or the
+execution options keeps it, so a plugin moving a row cannot release someone's
+edit. `experimental_releaseEditHold` (`DELETE`, same path) cancels
 without saving and is a no-op for an unheld row; releasing or saving
 re-attempts dispatch immediately. The app's inline editor holds on open,
 renews every quarter lease, and releases on close. Any client may renew or
@@ -629,7 +631,10 @@ whether this event needs matching resolved, cancelled, or interrupted events.
 These are observe-only announcements. `message.queued` (on first queue and on
 every rewritten wait) and `message.dispatched` carry the `ThreadQueuedMessage`
 DTO. `message.cancelled` fires when a queued row is deleted before dispatch.
-`turn.failed` carries ids and failure facts after a thread lands in `error`.
+`turn.failed` carries ids and failure facts after a thread lands in `error`,
+including `originPluginId`, the plugin that sent the failed message. Provider
+retry uses it to ask only that plugin whether to re-run the turn
+(`provider-retry.v1.consent`); Automations is the one sender that answers.
 
 Docs: `backend-events.md`.
 
@@ -1187,6 +1192,17 @@ Docs: `backend-foundation.md`.
 **Audit before stabilizing.** Decide whether `BB_EXTERNAL_URL` or the bb
 connect URL should supply this value when `BB_APP_URL` is empty. Confirm that
 one public URL has clear behavior when a server has several access paths.
+
+## `bb.internal_DO_NOT_USE_recordPluginUse`
+
+Internal to bb's first-party plugins whose meaningful use happens in their own
+UI rather than through an agent tool or CLI command: `monaco-editor` (a saved
+file), `prompt-library` (an inserted prompt) and `agent-annotations` (a saved
+annotation). It takes no arguments. The server counts it as one `plugin_use`
+of the calling plugin, exactly like a successful tool call or CLI command, and
+sends nothing for non-public plugins or when usage data is off. Each plugin's
+use is sent at most once per day. Forks of these plugins inherit the call, so
+removing it later means leaving a no-op stub.
 
 ## `bb.server.internal_DO_NOT_USE_openTunnelIngress`
 
@@ -3678,19 +3694,50 @@ The SDK test fake exposes the props as `data-*` attributes.
 **Core callers.** `ThreadStatusGlyph`
 (`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK export
 and the glyph in the thread search palette, the related threads info section,
-and mobile recents. The thread-list plugin draws its rows and collapsed-group
-rollups with it.
+the thread context card's sub-threads, and mobile recents. The thread-list
+plugin draws its rows and collapsed-group rollups with it. Its labels and the
+rule for when `rowStatus` replaces the indicator come from
+`packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
+`experimental_resolveThreadStatus`.
 
 Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
-1. **Indicator resolution.** The caller resolves the indicator, so the
-   thread-list plugin keeps its own copy of the indicator precedence and labels
-   that `@bb/client-core` holds for bb's surfaces. Decide whether the SDK should
-   export the resolver and labels instead.
-2. **Archived rows.** No plugin passes `archived` yet; confirm the archived
+1. **Archived rows.** No plugin passes `archived` yet; confirm the archived
    glyph belongs on this component rather than in the archived list.
+
+## `experimental_resolveThreadStatus` (`@get-bb/plugin-sdk/app`)
+
+A pure function from `PluginThreadStatusInput` (the row's thread or null for a
+group row, the threads it hides while collapsed, whether any of them holds a
+draft, and another plugin's row status) to `PluginThreadStatus`: the
+indicator, the row status when it shows in place of the indicator, the
+accessible label, and whether anything is working. Hidden threads add their
+attention and work; their queued messages do not count. The host installs the
+function from `packages/plugin-sdk/src/internal/thread-status.ts`, so a plugin
+built against an older SDK still resolves with the running host's precedence.
+
+**Core callers.** It is the only status resolver.
+`toPluginSidebarThread` (`apps/app/src/lib/plugin-sidebar-threads.ts`) fills
+`PluginSidebarThread.indicator` with it. `useThreadListEntryStatus`
+(`apps/app/src/hooks/useThreadListEntryStatus.ts`) resolves mobile recents
+(including a collapsed parent's descendants), the thread search palette, the
+related threads info section, and the thread context card through it, reading
+the same draft and row status the sidebar reads. The thread-list plugin
+resolves its thread rows and its collapsed parent, section, project,
+environment, and hidden-group rollups through it. `apps/app/src/lib/thread-status.test.ts`
+runs one case table through both the core and the plugin inputs.
+
+**Audit before stabilizing.**
+
+1. **Rollup scope.** A collapsed parent row folds in hidden threads' attention
+   and work but only its own row status; a collapsed group uses the first
+   hidden thread's row status. Decide whether the input should take hidden
+   threads' row statuses too (see #5810).
+2. **Unread grouping.** The thread-list plugin's read-status grouping keeps
+   its own "unread and done" predicate. Decide whether that predicate belongs
+   in the SDK next to this function.
 
 ## `HostsArea.experimental_reconcile`
 
@@ -3808,10 +3855,20 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide and new-thread-submit events; anything else is a 400. Core
-callers, all through `recordTelemetryEvent` in
-`apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
-(`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
+setup-guide, new-thread-submit, plugin-creation-started, and release notes
+events; anything else is a 400. App callers, all through `recordTelemetryEvent`
+in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
+(`OnboardingFlow`, `useOnboardingProjectImport`, and agent installs it starts
+through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
+`PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
+changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
+`plugin_creation_started` through the same SDK method. The setup guide's
+Plugins step reports `recommendation` `shown` and `selected` with a per-visit
+`recommendation_id`; `selected` also stores that id in server-owned settings
+until the plugin's next use, disable or uninstall. `NewThreadComposer` also
+reports `new_thread_blocker` once per blocker reason while a draft exists.
+`onboarding_operation` reports a guide action's started, succeeded or failed
+outcome with only a public agent id or counts.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.

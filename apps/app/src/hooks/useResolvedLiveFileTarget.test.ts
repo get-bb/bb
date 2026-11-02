@@ -1,12 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import type { ExperimentalLiveFileTarget } from "@get-bb/plugin-sdk";
+import type { Environment } from "@bb/domain";
+import type { ThreadStorageLocationResponse } from "@bb/server-contract";
 import {
+  getLiveFileOpenContext,
   getLiveFileTargetLookups,
+  resolveLiveFilePath,
   resolveLiveFileRoot,
-  resolveLiveFileTarget,
 } from "./useResolvedLiveFileTarget";
 
 const SERVER_ORIGIN = "http://localhost:3000";
+
+function resolveLiveFileTarget({
+  target,
+  environmentQuery,
+  storageQuery,
+  isLocalDaemonHost,
+  serverOrigin,
+}: {
+  target: ExperimentalLiveFileTarget;
+  environmentQuery: { data: Environment | undefined; isLoading: boolean };
+  storageQuery: {
+    data: ThreadStorageLocationResponse | undefined;
+    isLoading: boolean;
+  };
+  isLocalDaemonHost: (hostId: string) => boolean;
+  serverOrigin: string;
+}) {
+  const root = resolveLiveFileRoot({
+    root: target,
+    environmentQuery,
+    storageQuery,
+  });
+  if (root.status !== "available") return root;
+  return {
+    status: "available",
+    absolutePath: resolveLiveFilePath(root, target.path),
+    openContext: getLiveFileOpenContext({
+      hostId: root.hostId,
+      isLocalDaemonHost,
+      serverOrigin,
+    }),
+  };
+}
 
 const target = {
   kind: "thread-storage",
@@ -20,7 +57,11 @@ const storageLocation = {
 };
 
 describe("useResolvedLiveFileTarget", () => {
-  it("resolves a workspace revision target to the working copy", () => {
+  it.each([
+    ["/workspace", "/workspace/src/app.ts"],
+    ["C:/workspace", "C:\\workspace\\src\\app.ts"],
+    ["//server/share", "\\\\server\\share\\src\\app.ts"],
+  ])("resolves a workspace revision target under %s", (path, absolutePath) => {
     expect(
       resolveLiveFileTarget({
         target: {
@@ -29,15 +70,14 @@ describe("useResolvedLiveFileTarget", () => {
           path: "src/app.ts",
           experimental_ref: "HEAD",
         },
-        enabled: true,
-        environmentQuery: { data: makeEnvironment(), isLoading: false },
+        environmentQuery: { data: makeEnvironment({ path }), isLoading: false },
         storageQuery: { data: undefined, isLoading: false },
         isLocalDaemonHost: () => true,
         serverOrigin: SERVER_ORIGIN,
       }),
     ).toEqual({
       status: "available",
-      absolutePath: "/workspace/src/app.ts",
+      absolutePath,
       openContext: { kind: "local" },
     });
   });
@@ -61,7 +101,6 @@ describe("useResolvedLiveFileTarget", () => {
       expect(
         resolveLiveFileTarget({
           target,
-          enabled: true,
           environmentQuery: { data: undefined, isLoading: false },
           storageQuery: { data: storageLocation, isLoading: false },
           isLocalDaemonHost: () => isLocal,
@@ -96,7 +135,6 @@ describe("useResolvedLiveFileTarget", () => {
       expect(
         resolveLiveFileTarget({
           target,
-          enabled: true,
           environmentQuery: { data: undefined, isLoading: false },
           storageQuery: query,
           isLocalDaemonHost: () => false,

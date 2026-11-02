@@ -1,4 +1,9 @@
-import { hasQueuedRetryOfTurnRequest } from "@bb/db";
+import {
+  getFirstUnclaimedQueuedRetry,
+  hasQueuedRetryOfTurnRequest,
+  updateQueuedThreadMessage,
+  type QueuedThreadMessageRow,
+} from "@bb/db";
 import { permissionModeSchema } from "@bb/domain";
 import type {
   ClientTurnRequestId,
@@ -13,7 +18,9 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
+import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import {
   loadFailedTurn,
   retryChain,
@@ -162,6 +169,56 @@ function retryExecution(failed: FailedTurnRecord): {
   };
 }
 
+function moveWaitingRetry(
+  deps: Pick<TurnRetryDeps, "db" | "hub">,
+  args: { waiting: QueuedThreadMessageRow; sendAt: number },
+): QueuedThreadMessageRow | null {
+  const { waiting, sendAt } = args;
+  if (waiting.state !== "scheduled" || waiting.sendAt === sendAt) {
+    return waiting;
+  }
+  const result = updateQueuedThreadMessage(deps.db, deps.hub, {
+    content: null,
+    execution: null,
+    reschedule: { sendAt },
+    expectedUpdatedAt: waiting.updatedAt,
+    id: waiting.id,
+    threadId: waiting.threadId,
+  });
+  if (result.kind !== "updated") {
+    return null;
+  }
+  emitPluginMessageQueued(toThreadQueuedMessage(result.queuedMessage));
+  return result.queuedMessage;
+}
+
+function joinWaitingRetry(
+  deps: TurnRetryDeps,
+  args: { thread: Thread; sendAt: number },
+): RetryTurnResponse | null {
+  const waiting = getFirstUnclaimedQueuedRetry(deps.db, args.thread.id);
+  if (waiting === null) {
+    return null;
+  }
+  const moved = moveWaitingRetry(deps, { waiting, sendAt: args.sendAt });
+  if (moved === null) {
+    return null;
+  }
+  const entry = toThreadQueuedMessage(moved);
+  if (entry.payload.kind !== "retry") {
+    return null;
+  }
+  return {
+    ok: true,
+    delivery: "queued",
+    turnRequestId: entry.payload.retryOfTurnRequestId,
+    attempt: entry.payload.attempt,
+    queuedMessageId: entry.id,
+    waitingOn: entry.waitingOn ?? { kind: "thread-busy" },
+    sendAt: entry.sendAt,
+  };
+}
+
 /**
  * Originals with a retry currently being decided in this process.
  *
@@ -203,6 +260,18 @@ export async function retryFailedTurn(
       "retry_already_queued",
       `Turn ${originalRequestId} already has a retry waiting on thread ${thread.id}.`,
     );
+  }
+  if (
+    request.sendAt !== null &&
+    wasFailedTurnInputAccepted(deps.db, { threadId: thread.id, failed })
+  ) {
+    const joined = joinWaitingRetry(deps, {
+      thread,
+      sendAt: request.sendAt,
+    });
+    if (joined !== null) {
+      return joined;
+    }
   }
   retriesInFlight.add(inFlightKey);
   try {

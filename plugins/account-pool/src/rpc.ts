@@ -17,6 +17,7 @@ import {
   hubTokenSummarySchema,
   loginCompleteInputSchema,
   loginStartSchema,
+  loginTargetSchema,
   routedThreadStatusListSchema,
   statusSchema,
   tokenRotateInputSchema,
@@ -75,7 +76,7 @@ export const accountPoolRpcContract = defineRpcContract({
     output: accountPoolConfigSchema,
   },
   "login.start": {
-    input: z.null(),
+    input: loginTargetSchema,
     output: loginStartSchema,
   },
   "login.complete": {
@@ -83,7 +84,7 @@ export const accountPoolRpcContract = defineRpcContract({
     output: accountSchema,
   },
   "codexLogin.start": {
-    input: z.null(),
+    input: loginTargetSchema,
     output: codexLoginStartSchema,
   },
   "codexLogin.poll": {
@@ -146,9 +147,9 @@ export function createRpcHandlers(
     },
     "config.get": () => config.get(),
     "config.set": (input) => config.set(input),
-    "login.start": () => login.start(),
+    "login.start": (target) => login.start(target),
     "login.complete": (input) => login.complete(input),
-    "codexLogin.start": () => codexLogin.start(),
+    "codexLogin.start": (target) => codexLogin.start(target),
     "codexLogin.poll": (input) => codexLogin.poll(input),
     "codexLogin.cancel": (input) => ({
       cancelled: codexLogin.cancel(input),

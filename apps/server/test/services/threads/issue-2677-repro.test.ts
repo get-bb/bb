@@ -116,6 +116,7 @@ describe("child outcome reconciliation", () => {
     await withChildThreadNotificationClock(async (harness) => {
       const fixture = seedFamily(harness, "late-acceptance");
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment: fixture.environment,
         payload: {
           input: textInput("continue"),
@@ -187,6 +188,7 @@ describe("child outcome reconciliation", () => {
           childThread: fixture.child,
           parentThreadId: fixture.parent.id,
           turnStatus: "failed",
+          turnId: null,
         });
       }
 

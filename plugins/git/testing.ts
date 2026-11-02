@@ -42,11 +42,22 @@ export function makeWorkspaceMergeBase(
 export function makeWorkspaceStatus(
   overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
+  const workingTree = overrides.workingTree ?? makeWorkspaceWorkingTree();
+  const committed = overrides.mergeBase?.hasCommittedUnmergedChanges
+    ? overrides.mergeBase
+    : null;
   return {
-    workingTree: makeWorkspaceWorkingTree(),
+    workingTree,
     checkout: { kind: "branch", branchName: "main", headSha: null },
     branch: { currentBranch: "main", defaultBranch: "main" },
     mergeBase: null,
+    allChanges: {
+      insertions: workingTree.insertions + (committed?.insertions ?? 0),
+      deletions: workingTree.deletions + (committed?.deletions ?? 0),
+      lineStatsComplete:
+        workingTree.lineStatsComplete && (committed?.lineStatsComplete ?? true),
+      fileCount: workingTree.fileCount + (committed?.fileCount ?? 0),
+    },
     ...overrides,
   };
 }

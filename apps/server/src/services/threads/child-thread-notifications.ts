@@ -21,7 +21,7 @@ import {
   childOutcomeSystemMessageKind,
   systemMessageKindForTemplate,
 } from "./system-message-kind.js";
-import { getLastThreadOutput } from "./thread-data.js";
+import { getTurnFinalOutput } from "./thread-data.js";
 
 export type ChildThreadNotificationSource = ParentSystemThreadMentionSource;
 
@@ -65,6 +65,7 @@ interface QueueChildThreadTurnNotificationArgs {
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
+  turnId: string | null;
   failureContext?: string;
   interruption?: ChildThreadOutcome["interruption"];
 }
@@ -242,10 +243,13 @@ function getChildThreadCompletionOutput(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): string | null {
-  if (args.turnStatus !== "completed") {
+  if (args.turnStatus !== "completed" || args.turnId === null) {
     return null;
   }
-  return getLastThreadOutput(deps.db, args.childThread.id);
+  return getTurnFinalOutput(deps.db, {
+    threadId: args.childThread.id,
+    turnId: args.turnId,
+  });
 }
 
 function getChildThreadActiveWorkflowCount(

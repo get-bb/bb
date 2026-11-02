@@ -15,7 +15,6 @@ interface RenameDialogContentProps {
   initialName: string;
   pending: boolean;
   autoCapitalize: "words" | "sentences";
-  compact?: boolean;
   onRename: (name: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
@@ -25,7 +24,6 @@ export function RenameDialogContent({
   initialName,
   pending,
   autoCapitalize,
-  compact = false,
   onRename,
   inputRef,
 }: RenameDialogContentProps) {
@@ -54,10 +52,10 @@ export function RenameDialogContent({
         </DialogDescription>
       </DialogHeader>
       <form
-        className={compact ? "space-y-3" : "space-y-4"}
+        className="space-y-4"
         onSubmit={handleSubmit}
       >
-        <div className={compact ? "space-y-1.5" : "space-y-2"}>
+        <div className="space-y-2">
           <Input
             ref={inputRef}
             id={inputId}

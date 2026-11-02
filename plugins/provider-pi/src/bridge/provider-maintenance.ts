@@ -137,6 +137,7 @@ export async function probePiVersion(): Promise<PiVersionProbe> {
       launch.command,
       [...launch.args, "--version"],
       {
+        env: launch.env,
         timeout: VERSION_PROBE_TIMEOUT_MS,
       },
     ));

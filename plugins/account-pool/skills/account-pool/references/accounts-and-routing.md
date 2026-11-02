@@ -3,12 +3,11 @@ or Codex credentials, and inspect its proxy routes and account quota with:
 
 ```sh
 bb plugin enable account-pool
-bb pool account add --provider claude --login
+bb pool account add --provider claude --login [--label <text>] [--priority <n>]
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
-bb pool account add --provider codex --login
+bb pool account add --provider codex --login [--label <text>] [--priority <n>]
 bb pool account login-poll --session <id>
-bb pool account add --provider claude --import
-bb pool account add --provider codex --import
+bb pool account login <id>
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
 bb pool account list [--json]
@@ -41,6 +40,20 @@ URL, one-time code, session ID, and an `account login-poll` command that waits
 for authorization. The Claude code stays out of process arguments, and either
 browser may be on a different machine from the bb server. The plugin settings
 page offers the same flows as **Sign in to Claude** and **Sign in to Codex**.
+
+Each account holds its own login. Anthropic and OpenAI refresh tokens are single
+use and rotate, so two programs holding one login sign each other out at the
+next refresh; the pool therefore never copies this machine's Claude Code or
+Codex login, and signing in to the same account the machine uses gives the pool
+a separate login. `bb pool account login <id>` (settings: **Sign in again**,
+RPC `login.start` or `codexLogin.start` with `{ kind: "relogin", accountId }`)
+renews an existing account in place: finish it with `login-complete` or
+`login-poll` as above. The account keeps its id, label, priority, enabled
+state, pinned conversations, and quota observations; its error clears, and a
+disabled account stays disabled. A login for a different account (Claude
+account UUID or email, ChatGPT workspace and email) is refused and the stored
+login is kept. Use it when a login expires or is revoked, or for accounts
+added with the removed `--import`, which shared the machine's login.
 Newly added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, matching Claude
 Code or Codex sessions receive the pool route and a distinct secret token for
@@ -48,6 +61,13 @@ their machine. Claude Code also receives `ENABLE_TOOL_SEARCH=true`, so tool
 search stays on through the pool, and
 `_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`, so Opus keeps its 1M context
 window instead of the 200k fallback for custom base URLs.
+Routed Claude Code also receives `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1`, so it
+neither reads nor refreshes this machine's Claude login. Features that need
+that login (Claude in Chrome, claude.ai connectors, Remote Control) stay off in
+routed threads; use `bb pool bypass <thread-id>` for a thread that needs them.
+Claude Code removes `ANTHROPIC_AUTH_TOKEN` from tool subprocesses in this mode,
+so route a nested `claude` explicitly with
+`ANTHROPIC_AUTH_TOKEN="$BB_ACCOUNT_POOL_PARENT_TOKEN" claude ...`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
 Codex image generation and editing use the same authenticated pool route.
@@ -57,10 +77,9 @@ local Claude login before the pool can be disabled safely. Rotation keeps the
 prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key-stdin`;
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
-process arguments, shell history, and agent transcripts. Prefer `--import` for
-an existing Claude Code login. The CLI Codex import path reads
-`~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
-enable and every five minutes while an account is idle. When a request finds no
+process arguments, shell history, and agent transcripts. OAuth quota refreshes
+on add, enable, or re-login of an enabled account and every five minutes while
+an account is idle. When a request finds no
 eligible account, the pool first refreshes the OAuth accounts it considers
 exhausted, at most once every 30 seconds per account, so a plan upgrade or an
 early reset takes effect on the next turn. Use

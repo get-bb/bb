@@ -238,6 +238,7 @@ describe("bb git", () => {
       "checkout",
       "branch",
       "mergeBase",
+      "allChanges",
     ]);
     expect(Object.keys(parsed.workspace.workingTree)).toEqual([
       "insertions",

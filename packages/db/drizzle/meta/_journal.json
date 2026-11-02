@@ -1037,6 +1037,13 @@
       "when": 1793141159432,
       "tag": "0147_git_and_pr_status_plugin_show_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "6",
+      "when": 1793309187609,
+      "tag": "0148_queued_message_delivery_mode",
+      "breakpoints": true
     }
   ]
 }

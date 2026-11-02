@@ -926,7 +926,6 @@ function RootComposeSurface({
     drawerVisibility: secondaryPanelDrawerVisibility,
     isCompactViewport,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
-    openPersistedHostFile: panelFiles.openHostFile,
     openPersistedPanel: setRootSecondaryPanel,
     openPersistedStorageFile: panelFiles.openStorageFile,
     openPersistedWorkspaceFile: panelFiles.openWorkspaceFile,
@@ -1386,10 +1385,15 @@ function RootComposeSurface({
     autoFocus: !isProviderCliBlocked,
     mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
-    blockedReason:
+    blocker:
       blockingProviderCliStatus === null
         ? undefined
-        : providerCliBlockedReason(blockingProviderCliStatus),
+        : {
+            message: providerCliBlockedReason(blockingProviderCliStatus),
+            reason: blockingProviderCliStatus.installed
+              ? "agent_update"
+              : "agent_missing",
+          },
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,

@@ -163,6 +163,44 @@ describe("GitHub PR Status server", () => {
     await next.harness.dispose();
   });
 
+  it("rediscovers the branch instead of re-reading a settled link, so a newer PR replaces it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const merged = view({
+      state: "MERGED",
+      url: "https://github.com/acme/bb/pull/6",
+      number: 6,
+    });
+    let branchPullRequest = merged;
+    const fake = await setup({
+      callHost: (call) =>
+        call.method === "upstream"
+          ? { oid: null, branchName: "bb/pr" }
+          : (call.input as { reads: { url: string | null }[] }).reads.map(
+              (read) => ({
+                outcome: "found",
+                pullRequest: read.url === null ? branchPullRequest : merged,
+              }),
+            ),
+    });
+    await fake.harness.runCli(["show", "env-1"]);
+    branchPullRequest = view({ number: 8 });
+    vi.setSystemTime(Date.now() + 11_000);
+
+    await expect(
+      fake.harness.runCli(["show", "env-1", "--json"]),
+    ).resolves.toMatchObject({
+      stdout: expect.stringContaining('"number":8'),
+    });
+    expect(
+      fake.harness.experimental_hostRpcCalls
+        .filter((call) => call.method === "views")
+        .map((call) => call.input),
+    ).toEqual([
+      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
+      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
+    ]);
+  });
+
   it("serves cached rows without looking up the environment or machine again", async () => {
     const fake = await setup({});
     await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
