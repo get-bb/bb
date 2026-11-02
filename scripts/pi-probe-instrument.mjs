@@ -9,10 +9,11 @@ source = source.replace(marker, `${marker}
       if (probeDir) {
         mkdirSync(probeDir, { recursive: true });
         const child = message.process;
-        const probePath = join(probeDir, \`child-\${process.pid}-\${child.pid}.jsonl\`);
+        const probePath = join(probeDir, \`child-\${process.pid}-\${children.length}-\${Date.now()}.jsonl\`);
         const record = (event: string, data: Record<string, unknown>) => {
           appendFileSync(probePath, JSON.stringify({ at: new Date().toISOString(), event, ...data }) + "\\n");
         };
+        child.once("spawn", () => {
         record("spawn", { pid: child.pid, parentPid: process.pid });
         child.stdout?.on("data", (chunk: Buffer | string) => {
           const text = chunk.toString();
@@ -22,6 +23,7 @@ source = source.replace(marker, `${marker}
           const text = chunk.toString();
           const timings = text.split(/\\r?\\n/).filter((line) => /^\\s*(--- Startup Timings:|[\\w.]+:\\s*\\d+ms|TOTAL:\\s*\\d+ms)/.test(line));
           record("stderr", { bytes: Buffer.byteLength(text), timings });
+        });
         });
         child.on("exit", (code, signal) => record("exit", { code, signal }));
         child.on("error", (error) => record("error", { message: error.message }));
