@@ -65,6 +65,7 @@ interface QueueChildThreadTurnNotificationArgs {
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
+  turnId?: string;
   failureContext?: string;
   interruption?: ChildThreadOutcome["interruption"];
 }
@@ -242,10 +243,10 @@ function getChildThreadCompletionOutput(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): string | null {
-  if (args.turnStatus !== "completed") {
+  if (args.turnStatus !== "completed" || args.turnId === undefined) {
     return null;
   }
-  return getLastThreadOutput(deps.db, args.childThread.id);
+  return getLastThreadOutput(deps.db, args.childThread.id, args.turnId);
 }
 
 function getChildThreadActiveWorkflowCount(

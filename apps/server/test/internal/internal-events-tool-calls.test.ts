@@ -887,6 +887,102 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it.each(["empty message", "no message"])(
+    "does not reuse earlier child output after a turn with %s",
+    async (outputKind) => {
+      await withChildThreadNotificationClock(async (harness) => {
+        const { session } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: session.hostId,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: session.hostId,
+          projectId: project.id,
+        });
+        const parentThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          status: "active",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          inputText: "Coordinate work",
+          providerThreadId: "provider-parent",
+          threadId: parentThread.id,
+        });
+        const childThread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          parentThreadId: parentThread.id,
+          parentNotifications: "auto",
+          status: "active",
+        });
+
+        for (const turnIndex of [0, 1, 2]) {
+          const scope = turnScope(`child-turn-${turnIndex}`);
+          const eventContext = {
+            threadId: childThread.id,
+            providerThreadId: "provider-child",
+            scope,
+          };
+          const batch: HostDaemonEventEnvelope[] = [
+            {
+              threadId: childThread.id,
+              event: { ...eventContext, type: "turn/started" },
+            },
+          ];
+          if (turnIndex === 0 || outputKind === "empty message") {
+            batch.push({
+              threadId: childThread.id,
+              event: {
+                ...eventContext,
+                type: "item/completed",
+                item: {
+                  id: `reply-${turnIndex}`,
+                  type: "agentMessage",
+                  text: turnIndex === 0 ? "First turn result" : "",
+                },
+              },
+            });
+          }
+          batch.push({
+            threadId: childThread.id,
+            event: {
+              ...eventContext,
+              type: "turn/completed",
+              status: "completed",
+            },
+          });
+          const response = await postEventBatch({
+            harness,
+            sessionId: session.id,
+            events: batch,
+          });
+          expect(response.status).toBe(200);
+          await expect(readJson(response)).resolves.toMatchObject({
+            rejectedEvents: [],
+          });
+          await flushChildThreadNotifications();
+          await vi.waitFor(() => {
+            const notices = listQueuedThreadMessages(
+              harness.db,
+              parentThread.id,
+            );
+            expect(notices).toHaveLength(turnIndex + 1);
+            const notice = notices[turnIndex]?.content;
+            expect(notice).toContain("completed:");
+            if (turnIndex === 0) {
+              expect(notice).toContain("First turn result");
+            } else {
+              expect(notice).not.toContain("First turn result");
+              expect(notice).toContain("No final output was recorded.");
+            }
+          });
+        }
+      });
+    },
+  );
+
   it("does not notify a parent when a side-chat child root turn completes", async () => {
     await withChildThreadNotificationClock(async (harness) => {
       const { session } = seedHostSession(harness.deps);
