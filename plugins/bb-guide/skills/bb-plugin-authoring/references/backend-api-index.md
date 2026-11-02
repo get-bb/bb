@@ -7,6 +7,7 @@ Check imports here, behavior in the Plugin Guide, and signatures in the installe
 - `PLUGIN_CLI_OUTPUT_MAX_BYTES`
 - `defineRpcContract`
 - `experimental_defineHostEntry`
+- `experimental_joinHostPath`, `experimental_getHostPathDirname`, `experimental_getHostPathBasename`, `experimental_getRelativeHostPath`, `experimental_getHostPathComparisonKey`
 - `experimental_normalizeHostPath`, `experimental_resolveHostPath`, `experimental_isHostPathWithin`
 - `defineCli`
 - `cliCommand`

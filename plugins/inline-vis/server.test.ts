@@ -83,14 +83,20 @@ describe("resolveContainedPreviewPath", () => {
       "reports/summary.html",
       String.raw`\\fixture-host\bb-data\thread-storage\thr_test\reports\summary.html`,
     ],
+    [
+      "//server/share/repo",
+      "chart.html",
+      "\\\\server\\share\\repo\\chart.html",
+    ],
+    ["C:", "chart.html", "C:\\chart.html"],
   ])("resolves Windows host paths under %s", (root, file, expected) => {
     expect(resolveContainedPreviewPath(root, file)).toBe(expected);
   });
 
   it("rejects resolved paths outside the root", () => {
-    expect(() =>
-      resolveContainedPreviewPath(ROOT, "../outside.html"),
-    ).toThrow(/escape/);
+    expect(() => resolveContainedPreviewPath(ROOT, "../outside.html")).toThrow(
+      /escape/,
+    );
     expect(() =>
       resolveContainedPreviewPath(
         String.raw`C:\Users\fixture\project`,

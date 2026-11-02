@@ -1503,99 +1503,112 @@ describe("Docs vault operations", () => {
     ]);
   });
 
-  it("opens and saves thread-storage Markdown files on the thread's host", async () => {
-    const storageRootPath = String.raw`C:\bb\thread-storage\thread_1`;
-    const openedPath = String.raw`C:\bb\thread-storage\thread_1\reports\plan.md`;
-    const host = createFakePluginHost({
-      pluginId: "simple-notes",
-      sdk: {
-        files: {
-          mkdir: async () => ({ ok: true as const }),
-          read: async ({ path: filePath }) => ({
-            path: filePath,
-            content: "# Thread plan",
-            contentEncoding: "utf8" as const,
-            mimeType: "text/markdown",
-            sizeBytes: 13,
-            modifiedAtMs: 1,
-            sha256: "thread-sha",
-          }),
-          write: async () => ({
-            outcome: "written" as const,
-            sha256: "updated-thread-sha",
-            sizeBytes: 17,
-          }),
-          createPreview: async () => ({
-            baseUrl: "/api/v1/file-previews/thread-storage",
-            expiresAtMs: Date.now() + 60_000,
-          }),
+  it.each([
+    [
+      "C:\\bb\\thread-storage\\thread_1",
+      "C:\\bb\\thread-storage\\thread_1\\reports\\plan.md",
+      "C:\\bb\\thread-storage\\thread_1",
+    ],
+    [
+      "//server/share/thread_1",
+      "\\\\server\\share\\thread_1\\reports\\plan.md",
+      "\\\\server\\share\\thread_1",
+    ],
+    ["C:", "C:\\reports\\plan.md", "C:\\"],
+  ])(
+    "opens and saves thread-storage Markdown on %s",
+    async (storageRootPath, openedPath, canonicalRoot) => {
+      const host = createFakePluginHost({
+        pluginId: "simple-notes",
+        sdk: {
+          files: {
+            mkdir: async () => ({ ok: true as const }),
+            read: async ({ path: filePath }) => ({
+              path: filePath,
+              content: "# Thread plan",
+              contentEncoding: "utf8" as const,
+              mimeType: "text/markdown",
+              sizeBytes: 13,
+              modifiedAtMs: 1,
+              sha256: "thread-sha",
+            }),
+            write: async () => ({
+              outcome: "written" as const,
+              sha256: "updated-thread-sha",
+              sizeBytes: 17,
+            }),
+            createPreview: async () => ({
+              baseUrl: "/api/v1/file-previews/thread-storage",
+              expiresAtMs: Date.now() + 60_000,
+            }),
+          },
+          threads: {
+            storageLocation: async () => ({
+              hostId: "host_remote",
+              storageRootPath,
+            }),
+          },
         },
-        threads: {
-          storageLocation: async () => ({
-            hostId: "host_remote",
-            storageRootPath,
-          }),
-        },
-      },
-    });
-    await simpleNotes(host.bb);
-    host.harness.sdk.calls.length = 0;
-    const source = {
-      kind: "thread-storage",
-      threadId: "thread_1",
-      environmentId: "stale_environment",
-      projectId: "project_1",
-    };
+      });
+      await simpleNotes(host.bb);
+      host.harness.sdk.calls.length = 0;
+      const source = {
+        kind: "thread-storage",
+        threadId: "thread_1",
+        environmentId: "stale_environment",
+        projectId: "project_1",
+      };
 
-    await expect(
-      host.harness.callRpc("openFile", {
-        source,
-        path: "reports/plan.md",
-      }),
-    ).resolves.toMatchObject({
-      file: { content: "# Thread plan", sha256: "thread-sha" },
-      previewPath: "reports/plan.md",
-    });
-    await expect(
-      host.harness.callRpc("saveOpenedFile", {
-        source,
-        path: "reports/plan.md",
-        content: "# Updated thread",
-        expectedSha256: "thread-sha",
-      }),
-    ).resolves.toMatchObject({
-      outcome: "written",
-      sha256: "updated-thread-sha",
-    });
-
-    expect(host.harness.sdk.callsTo("threads.storageLocation")).toEqual([
-      [{ threadId: "thread_1" }],
-      [{ threadId: "thread_1" }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.read")).toEqual([
-      [
-        {
-          hostId: "host_remote",
-          path: openedPath,
-          rootPath: storageRootPath,
-        },
-      ],
-    ]);
-    expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
-      [{ hostId: "host_remote", rootPath: storageRootPath }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.write")).toEqual([
-      [
-        {
-          hostId: "host_remote",
-          path: openedPath,
-          rootPath: storageRootPath,
+      await expect(
+        host.harness.callRpc("openFile", {
+          source,
+          path: "reports/plan.md",
+        }),
+      ).resolves.toMatchObject({
+        file: { content: "# Thread plan", sha256: "thread-sha" },
+        previewPath: "reports/plan.md",
+      });
+      await expect(
+        host.harness.callRpc("saveOpenedFile", {
+          source,
+          path: "reports/plan.md",
           content: "# Updated thread",
           expectedSha256: "thread-sha",
-        },
-      ],
-    ]);
-  });
+        }),
+      ).resolves.toMatchObject({
+        outcome: "written",
+        sha256: "updated-thread-sha",
+      });
+
+      expect(host.harness.sdk.callsTo("threads.storageLocation")).toEqual([
+        [{ threadId: "thread_1" }],
+        [{ threadId: "thread_1" }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.read")).toEqual([
+        [
+          {
+            hostId: "host_remote",
+            path: openedPath,
+            rootPath: canonicalRoot,
+          },
+        ],
+      ]);
+      expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
+        [{ hostId: "host_remote", rootPath: canonicalRoot }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.write")).toEqual([
+        [
+          {
+            hostId: "host_remote",
+            path: openedPath,
+            rootPath: canonicalRoot,
+            content: "# Updated thread",
+            expectedSha256: "thread-sha",
+          },
+        ],
+      ]);
+    },
+  );
 
   it("rejects thread-storage paths that escape the confined root", async () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });

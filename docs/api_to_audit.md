@@ -26,7 +26,17 @@ drive-relative forms such as `C:foo`. Bare `C:` means the drive root. Windows
 paths accept either separator and containment is case-insensitive; POSIX
 backslashes within relative names stay literal. Resolution permits `..` escapes;
 containment is a separate lexical check, not a symlink or filesystem check.
-Workflows applies containment; Secrets deliberately allows outside destinations.
+`experimental_joinHostPath({ rootPath, relativePath })` appends relative segments;
+`experimental_getHostPathDirname(path)` / `experimental_getHostPathBasename(path)`
+extract components; `experimental_getRelativeHostPath({ rootPath, candidatePath })`
+returns slash-separated descendants (null outside the root); and
+`experimental_getHostPathComparisonKey(path)` normalizes keys with Windows case
+folding. These re-export the same domain functions used by core workspace paths,
+file-link resolution, and database host-path SQL. None accesses the filesystem.
+Workflows and Inline Vis apply containment; Secrets permits outside destinations.
+Docs and Monaco use joins and components for host-backed files; Tasks, Automations,
+and Browser Automation resolve CLI file paths. Storage Retention uses comparison
+keys and relative paths to protect live workspaces across Windows spellings.
 
 Core callers of the same parser include project-path normalization,
 `normalizeAbsoluteFilePath` / `isAbsoluteFilePathWithinRoot` in shared-ui,

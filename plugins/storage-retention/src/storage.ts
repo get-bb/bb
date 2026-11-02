@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_getHostPathComparisonKey as getHostPathComparisonKey,
+  experimental_getRelativeHostPath as getRelativeHostPath,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   diskCapacitySchema,
@@ -113,8 +117,11 @@ const clearableArchived = (
   thread.archivedAt + ARCHIVE_UNDO_GRACE_MS <= Date.now() &&
   thread.pinnedAt === null &&
   !["starting", "active", "stopping"].includes(thread.status);
-const hostPath = (value: string) =>
-  value.replaceAll("\\", "/").replace(/\/$/, "");
+function hostPath(value: string): string {
+  const key = getHostPathComparisonKey(value);
+  if (key === null) throw new Error(`Invalid absolute host path: ${value}`);
+  return key;
+}
 const liveEnvironment = (
   env: Environment,
 ): env is Environment & { path: string } =>
@@ -147,9 +154,11 @@ function linkedThreads(
       .filter((env) => env.path !== null && hostPath(env.path) === sourcePath)
       .map((env) => env.id),
   );
-  const encodedThreadId = sourcePath.match(
-    /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
-  )?.[1];
+  const encodedThreadId = sourcePath
+    .replaceAll("\\", "/")
+    .match(
+      /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
+    )?.[1];
   return threads
     .filter(
       (thread) =>
@@ -167,16 +176,18 @@ function entriesHoldingWorkspaces(
   rootPath: string,
   environments: Environment[],
 ) {
-  const root = `${hostPath(rootPath)}/`;
   const workspaces = new Map<string, string>();
+  const key = (name: string) => hostPath(`${rootPath}/${name}`);
   for (const env of environments) {
     if (!liveEnvironment(env)) continue;
-    const envPath = hostPath(env.path);
-    if (!envPath.startsWith(root)) continue;
-    const [name] = envPath.slice(root.length).split("/");
-    if (name && !workspaces.has(name)) workspaces.set(name, env.path);
+    const relative = getRelativeHostPath({ rootPath, candidatePath: env.path });
+    const name = relative?.split("/")[0];
+    if (name && !workspaces.has(key(name))) workspaces.set(key(name), env.path);
   }
-  return workspaces;
+  return {
+    has: (name: string) => workspaces.has(key(name)),
+    get: (name: string) => workspaces.get(key(name)),
+  };
 }
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
@@ -821,13 +832,11 @@ export function createStorage(
           for (const target of result.targets)
             measured.set(target.path, target);
           for (const file of result.largeFiles) {
-            const [name] = file.path.slice(rootPath.length + 1).split(/[\\/]/);
-            if (
-              !file.path.startsWith(rootPath) ||
-              name === undefined ||
-              !isStorageEntry(name)
-            )
-              continue;
+            const name = getRelativeHostPath({
+              rootPath,
+              candidatePath: file.path,
+            })?.split("/")[0];
+            if (name === undefined || !isStorageEntry(name)) continue;
             const total = largeFiles.get(name) ?? { sizeBytes: 0, count: 0 };
             total.sizeBytes += file.sizeBytes;
             total.count++;

@@ -1,3 +1,10 @@
+import {
+  experimental_normalizeHostPath as normalizeHostPath,
+  experimental_resolveHostPath as resolvePath,
+  experimental_joinHostPath as joinPath,
+  experimental_getHostPathDirname as getHostPathDirname,
+  experimental_getRelativeHostPath as getRelativeHostPath,
+} from "@get-bb/plugin-sdk";
 import { proposalSchema, type Proposal } from "./proposals.js";
 import os from "node:os";
 import path from "node:path";
@@ -180,8 +187,8 @@ function requireOptionalDirectory(value: unknown): string {
 function requireThreadStoragePath(value: unknown): string {
   const raw = requireString(value, "path").replace(/\\/g, "/");
   if (
-    path.posix.isAbsolute(raw) ||
-    path.win32.isAbsolute(raw) ||
+    isAbsoluteHostPath(raw) ||
+    resolvePath({ rootPath: "/", path: raw }) === null ||
     raw.includes("\0") ||
     raw.split("/").includes("..")
   ) {
@@ -191,21 +198,25 @@ function requireThreadStoragePath(value: unknown): string {
 }
 
 function absolutePath(vault: Vault, relativePath: string): string {
-  const parts = relativePath.split("/");
-  return /^[a-zA-Z]:[\\/]/.test(vault.rootPath) ||
-    vault.rootPath.startsWith("\\\\")
-    ? path.win32.join(vault.rootPath, ...parts)
-    : path.posix.join(vault.rootPath, ...parts);
+  return localFilePath(vault.rootPath, relativePath);
 }
 
 function isAbsoluteHostPath(value: string): boolean {
-  return path.posix.isAbsolute(value) || path.win32.isAbsolute(value);
+  return normalizeHostPath(value) !== null;
 }
 
 function normalizeHostRoot(value: string): string {
-  return path.win32.isAbsolute(value) && !path.posix.isAbsolute(value)
-    ? path.win32.normalize(value)
-    : path.posix.normalize(value);
+  const normalized = normalizeHostPath(value);
+  if (normalized === null)
+    throw new Error(`Invalid absolute host path: ${value}`);
+  return normalized;
+}
+
+function localFilePath(rootPath: string, relativePath: string): string {
+  const joined = joinPath({ rootPath, relativePath });
+  if (joined === null)
+    throw new Error(`Invalid absolute host path: ${rootPath}`);
+  return joined;
 }
 
 function hostIdArgs(hostId: string | null | undefined): { hostId?: string } {
@@ -772,12 +783,9 @@ export default async function plugin(
         throw new Error("Host file paths must be absolute");
       }
       const normalized = normalizeHostRoot(filePath);
-      const pathApi = path.win32.isAbsolute(normalized)
-        ? path.win32
-        : path.posix;
       return {
         path: normalized,
-        rootPath: pathApi.dirname(normalized),
+        rootPath: getHostPathDirname(normalized)!,
         hostId:
           source.experimental_hostId ??
           (source.environmentId === null
@@ -797,7 +805,7 @@ export default async function plugin(
         throw new Error("This environment has no workspace path");
       }
       return {
-        path: path.join(environment.path, filePath),
+        path: localFilePath(environment.path, filePath),
         rootPath: environment.path,
         hostId: environment.hostId,
       };
@@ -831,7 +839,7 @@ export default async function plugin(
         throw new Error("This project has no absolute workspace path");
       }
       return {
-        path: hostPathApi(rootPath).join(rootPath, ...filePath.split("/")),
+        path: localFilePath(rootPath, filePath),
         rootPath,
         hostId,
       };
@@ -849,7 +857,7 @@ export default async function plugin(
       }
       const rootPath = normalizeHostRoot(storage.storageRootPath);
       return {
-        path: hostPathApi(rootPath).join(rootPath, ...relativePath.split("/")),
+        path: localFilePath(rootPath, relativePath),
         rootPath,
         hostId: storage.hostId,
       };
@@ -1742,15 +1750,13 @@ export default async function plugin(
           rootPath: target.rootPath,
         }),
       ]);
-      const pathApi = path.win32.isAbsolute(target.rootPath)
-        ? path.win32
-        : path.posix;
       return {
         file,
         preview,
-        previewPath: pathApi
-          .relative(target.rootPath, target.path)
-          .replace(/\\/g, "/"),
+        previewPath: getRelativeHostPath({
+          rootPath: target.rootPath,
+          candidatePath: target.path,
+        })!,
       };
     },
     async saveOpenedFile(input) {
@@ -1839,21 +1845,11 @@ export default async function plugin(
 
   routeRpc("/list", docsRpcContract.listNotes.input, handlers.listNotes);
 
-  function hostPathApi(
-    rootPath: string,
-  ): typeof path.posix | typeof path.win32 {
-    return path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
-      ? path.win32
-      : path.posix;
-  }
-
   function resolveHostPath(rootPath: string, candidate: string): string {
-    if (isAbsoluteHostPath(candidate)) return normalizeHostRoot(candidate);
-    return hostPathApi(rootPath).resolve(rootPath, candidate);
-  }
-
-  function localFilePath(rootPath: string, relativePath: string): string {
-    return hostPathApi(rootPath).join(rootPath, ...relativePath.split("/"));
+    const resolved = resolvePath({ rootPath, path: candidate });
+    if (resolved === null)
+      throw new CliUsageError(`Invalid host path: ${candidate}`);
+    return resolved;
   }
 
   async function resolveWorkspaceHostId(
@@ -2780,11 +2776,7 @@ export default async function plugin(
               const file = await bb.sdk.files.read({
                 ...hostIdArgs(hostId),
                 path: candidatePath,
-                rootPath: (path.win32.isAbsolute(candidatePath) &&
-                !path.posix.isAbsolute(candidatePath)
-                  ? path.win32
-                  : path.posix
-                ).dirname(candidatePath),
+                rootPath: getHostPathDirname(candidatePath)!,
               });
               if (file.contentEncoding !== "utf8")
                 throw new CliUsageError(

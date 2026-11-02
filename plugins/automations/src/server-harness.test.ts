@@ -31,6 +31,44 @@ const THREAD_ID = "thr_target";
 const SECTION_ID = "sec_reviews";
 const FAILED_REQUEST_ID = "creq_failedturn";
 
+it.each([
+  [
+    "//server/share/scripts",
+    "check.sh",
+    "\\\\server\\share\\scripts\\check.sh",
+  ],
+  ["C:", "check.sh", "C:\\check.sh"],
+])("loads script files from remote cwd %s", async (cwd, file, expected) => {
+  const host = await bootAutomationsPlugin();
+  try {
+    host.harness.sdk.stub("files.read", async () => ({
+      content: "echo hello",
+      contentEncoding: "utf8",
+    }));
+    const result = await host.harness.runCli(
+      [
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Remote script",
+        "--in",
+        "30m",
+        "--script-file",
+        file,
+      ],
+      { cwd },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`${sep}check.sh`);
+    expect(host.harness.sdk.callsTo("files.read")).toEqual([
+      [expect.objectContaining({ path: expected })],
+    ]);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
 const rpcMethods = [
   "automations_overview",
   "automations_list",
