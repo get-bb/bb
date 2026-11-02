@@ -58,6 +58,7 @@ import {
   environments,
   events,
   promptHistoryEntries,
+  threadConversationOutlines,
   threadDynamicContextFileStates,
   threadSearchSegments,
   threads,
@@ -340,6 +341,9 @@ export function deleteThreadEventSuffixInTransaction(
     )
     .run();
   if (result.changes > 0) {
+    db.delete(threadConversationOutlines)
+      .where(eq(threadConversationOutlines.threadId, args.threadId))
+      .run();
     bumpThreadEventRewriteGeneration(args.threadId);
     markThreadPruningWork(db, [args.threadId]);
   }
