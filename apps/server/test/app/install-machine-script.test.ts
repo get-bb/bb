@@ -52,6 +52,21 @@ function writeExecutable(path: string, contents: string): void {
 
 type Fixture = ReturnType<typeof createFixture>;
 
+function writeRestartingSystemdUser(fixture: Fixture): void {
+  writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
+  writeExecutable(
+    join(fixture.binDir, "systemctl"),
+    `#!/bin/sh
+printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
+if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app-host-test.service" ]; then
+  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
+`,
+  );
+}
+
 function createScriptEnv(
   fixture: Fixture,
   env: Record<string, string | undefined>,
@@ -1624,22 +1639,11 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     );
   });
 
-  it("restarts an active Linux systemd user unit without retaining a temporary Node symlink", () => {
+  it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeServerInstallTools(fixture, 200);
-    writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
-    writeExecutable(
-      join(fixture.binDir, "systemctl"),
-      `#!/bin/sh
-printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
-if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app-host-test.service" ]; then
-  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
-  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
-  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
-fi
-`,
-    );
+    writeRestartingSystemdUser(fixture);
 
     const result = runScript(BOOTSTRAP_ARGS, fixture);
 
@@ -1659,6 +1663,7 @@ fi
       join(fixture.dataDir, "host-daemon-port"),
       "utf8",
     ).trim();
+    expect(unit).toContain(`ExecStart="${join(fixture.binDir, "node")}" `);
     expect(unit).toContain(
       `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
     );
@@ -1673,13 +1678,44 @@ fi
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user show-environment\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
     );
-    const serviceNode = /^ExecStart="([^"]+)"/m.exec(unit)?.[1] ?? "";
-    rmSync(join(fixture.binDir, "node"));
-    const nodeAfterSession = spawnSync(serviceNode, ["--version"], {
-      encoding: "utf8",
+  });
+
+  it("points the systemd unit at the target of fnm's per-shell Node link", () => {
+    const fixture = createFixture();
+    writeJoinedState(fixture);
+    writeServerInstallTools(fixture, 200);
+    writeRestartingSystemdUser(fixture);
+    const fnmDir = join(fixture.homeDir, ".local/share/fnm");
+    const installationDir = join(fnmDir, "node-versions/v24.0.0/installation");
+    mkdirSync(join(installationDir, "bin"), { recursive: true });
+    symlinkSync(process.execPath, join(installationDir, "bin/node"));
+    mkdirSync(join(fnmDir, "aliases"));
+    symlinkSync(installationDir, join(fnmDir, "aliases/default"));
+    const multishellsDir = join(fixture.homeDir, "run/fnm_multishells");
+    mkdirSync(multishellsDir, { recursive: true });
+    const sessionDir = join(multishellsDir, "476_1793101823158");
+    symlinkSync(join(fnmDir, "aliases/default"), sessionDir);
+
+    const result = runScript(BOOTSTRAP_ARGS, fixture, {
+      PATH: [join(sessionDir, "bin"), fixture.binDir, "/usr/bin", "/bin"].join(
+        delimiter,
+      ),
     });
-    expect(nodeAfterSession.status, nodeAfterSession.error?.message).toBe(0);
-    expect(nodeAfterSession.stdout.trim()).toBe(process.version);
+
+    expect(result.status, result.stderr).toBe(0);
+    const unit = readFileSync(
+      join(
+        fixture.homeDir,
+        ".config/systemd/user/bb-host-daemon-machine-getbb-app-host-test.service",
+      ),
+      "utf8",
+    );
+    expect(unit).toContain(
+      `ExecStart="${join(fnmDir, "aliases/default/bin/node")}" `,
+    );
+    expect(
+      readFileSync(join(fixture.homeDir, ".local/bin/bb"), "utf8"),
+    ).toContain(`PATH='${join(fnmDir, "aliases/default/bin")}':"$PATH"`);
   });
 
   it("recovers the current user's systemd runtime path when the installer has no session environment", () => {
