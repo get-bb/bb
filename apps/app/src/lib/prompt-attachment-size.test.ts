@@ -66,7 +66,7 @@ describe("uploadWithinPromptAttachmentLimit", () => {
 
     await expect(result).rejects.toThrow(
       new PromptAttachmentSizeError(
-        "clip.mp4 (3MB) was rejected as too large by a proxy in front of the bb server",
+        "clip.mp4 (3MB) is too large to upload over this connection",
       ),
     );
   });

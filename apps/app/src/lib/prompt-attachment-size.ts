@@ -32,7 +32,7 @@ export async function uploadWithinPromptAttachmentLimit<T>(
       error.body === null
     ) {
       throw new PromptAttachmentSizeError(
-        `${file.name} (${formatMegabytes(file.size)}MB) was rejected as too large by a proxy in front of the bb server`,
+        `${file.name} (${formatMegabytes(file.size)}MB) is too large to upload over this connection`,
       );
     }
     throw error;
