@@ -473,7 +473,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
 
 export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<ResourceBodyFallback />}>
           <PluginDetailToolView detailKey={pluginId} />
