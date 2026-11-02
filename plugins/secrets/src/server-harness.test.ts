@@ -83,46 +83,83 @@ describe("secrets plugin server", () => {
     });
   });
 
-  it("preserves an absolute dotenv destination outside the CLI working directory", async () => {
-    const host = createFakePluginHost({
-      pluginId: "secrets",
-      sdk: {
-        threads: {
-          async get() {
-            return { host: { id: "host-test" } };
+  it.each([
+    ["/workspace", "/var/plugin/.env", "/var/plugin/.env"],
+    ["/workspace", "../.env", "/.env"],
+    ["C:\\workspace", "//server/share/.env", "\\\\server\\share\\.env"],
+    ["//server/share/workspace", "..\\.env", "\\\\server\\share\\.env"],
+    ["C:", ".env", "C:\\.env"],
+    ["C:\\workspace", "D:", "D:\\"],
+  ])(
+    "resolves dotenv destination %s + %s without confinement",
+    async (cwd, requested, expected) => {
+      const host = createFakePluginHost({
+        pluginId: "secrets",
+        sdk: {
+          threads: {
+            async get() {
+              return { host: { id: "host-test" } };
+            },
+          },
+          files: {
+            async read() {
+              return {
+                content: "",
+                contentEncoding: "utf8",
+                sha256: "before",
+              };
+            },
           },
         },
-        files: {
-          async read() {
-            return {
-              content: "",
-              contentEncoding: "utf8",
-              sha256: "before",
-            };
+      });
+      plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+
+      const command = host.harness.runCli(
+        ["request", "API_KEY", "--write-env", requested],
+        { threadId: "thr-test", cwd },
+      );
+      await vi.waitFor(() =>
+        expect(host.harness.pendingInteractions).toHaveLength(1),
+      );
+
+      expect(host.harness.pendingInteractions[0]?.payload).toMatchObject({
+        destination: { kind: "dotenv", path: expected },
+      });
+      expect(host.harness.sdk.callsTo("files.read")[0]?.[0]).toEqual({
+        hostId: "host-test",
+        path: expected,
+      });
+      host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+      await command;
+      await host.harness.lifecycle.dispose();
+    },
+  );
+
+  it.each(["\\foo", "C:relative"])(
+    "rejects ambiguous destination %s before reading",
+    async (requested) => {
+      const host = createFakePluginHost({
+        pluginId: "secrets",
+        sdk: {
+          threads: {
+            async get() {
+              return { host: { id: "host-test" } };
+            },
           },
         },
-      },
-    });
-    plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
-
-    const command = host.harness.runCli(
-      ["request", "API_KEY", "--write-env", "/var/plugin/.env"],
-      { threadId: "thr-test", cwd: "/workspace" },
-    );
-    await vi.waitFor(() =>
-      expect(host.harness.pendingInteractions).toHaveLength(1),
-    );
-
-    expect(host.harness.pendingInteractions[0]?.payload).toMatchObject({
-      destination: { kind: "dotenv", path: "/var/plugin/.env" },
-    });
-    expect(host.harness.sdk.callsTo("files.read")[0]?.[0]).toEqual({
-      hostId: "host-test",
-      path: "/var/plugin/.env",
-    });
-    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
-    await command;
-  });
+      });
+      plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
+      const result = await host.harness.runCli(
+        ["request", "API_KEY", "--write-env", requested],
+        { threadId: "thr-test", cwd: "C:\\workspace" },
+      );
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Invalid host path");
+      expect(host.harness.sdk.callsTo("files.read")).toEqual([]);
+      expect(host.harness.pendingInteractions).toEqual([]);
+      await host.harness.lifecycle.dispose();
+    },
+  );
 
   it("requests secrets from a working directory with a long absolute path", async () => {
     const cwd = `/${"deep-directory/".repeat(20)}workspace`;
