@@ -84,7 +84,7 @@ async function runChildTurns(
   turns: ChildTurn[],
 ): Promise<string[]> {
   const { parent, child, environment, session } = seedParentAndChild(harness);
-  const parentNotices = () => {
+  const readNotices = () => {
     const delivered = listEvents(harness.db, { threadId: parent.id })
       .filter((row) => row.type === "client/turn/requested")
       .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
@@ -95,7 +95,7 @@ async function runChildTurns(
     );
     return [...delivered, ...queued];
   };
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers();
   for (const [index, turn] of turns.entries()) {
     seedTurnStarted(harness.deps, {
       environmentId: environment.id,
@@ -113,9 +113,9 @@ async function runChildTurns(
     });
     expect(response.status, await response.clone().text()).toBe(200);
     await vi.advanceTimersByTimeAsync(2_000);
-    await expect.poll(parentNotices).toHaveLength(index + 1);
+    await vi.waitFor(() => expect(readNotices()).toHaveLength(index + 1));
   }
-  return parentNotices();
+  return readNotices();
 }
 
 afterEach(() => vi.useRealTimers());

@@ -1,5 +1,7 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute } from "node:path";
 import {
+  experimental_resolveHostPath as resolveHostPath,
+  experimental_getHostPathBasename as getHostPathBasename,
   PluginCliError,
   cliCommand,
   defineCli,
@@ -558,6 +560,7 @@ async function resolveScriptFileHostId(
 
 type ScriptFileSource = {
   path: string;
+  fileName: string;
   hostId: string | undefined;
   content: string;
 };
@@ -575,17 +578,16 @@ async function loadScriptFileSource(
     }
     return undefined;
   }
-  let path: string;
-  if (isAbsolute(scriptFile)) {
-    path = scriptFile;
-  } else {
-    if (ctx.cwd === undefined || !isAbsolute(ctx.cwd)) {
-      throw cliError(
-        "Relative --script-file paths need the invoking CLI cwd; pass an absolute path.",
-        "invalid_value",
-      );
-    }
-    path = resolve(ctx.cwd, scriptFile);
+  const path = resolveHostPath({ rootPath: ctx.cwd ?? "", path: scriptFile });
+  if (path === null) {
+    throw cliError(
+      "Invalid --script-file path; relative paths need the invoking CLI cwd.",
+      "invalid_value",
+    );
+  }
+  const fileName = getHostPathBasename(path);
+  if (!fileName) {
+    throw cliError(`--script-file must name a file: ${path}`, "invalid_value");
   }
   const hostId = await resolveScriptFileHostId(bb, ctx, hostOverride);
   const file = await bb.sdk.files.read({
@@ -595,7 +597,7 @@ async function loadScriptFileSource(
   if (file.contentEncoding !== "utf8") {
     throw cliError(`--script-file is not UTF-8 text: ${path}`, "invalid_value");
   }
-  return { path, hostId, content: file.content };
+  return { path, fileName, hostId, content: file.content };
 }
 
 type BuiltExecution = {
@@ -710,7 +712,7 @@ async function buildExecution(
     execution: {
       mode: "script",
       script: content,
-      ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
+      ...(scriptSource ? { scriptFile: scriptSource.fileName } : {}),
       ...(interpreter ? { interpreter } : {}),
       ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
@@ -763,7 +765,7 @@ async function buildScriptExecutionUpdate(
   const update: ScriptExecutionUpdate = {};
   if (scriptSource !== undefined) {
     update.script = scriptSource.content;
-    update.scriptFile = scriptSource.path;
+    update.scriptFile = scriptSource.fileName;
   } else if (options.script !== undefined) {
     update.script = options.script;
   }

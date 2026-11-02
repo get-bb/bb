@@ -2873,3 +2873,127 @@ it("automatically removes missing-checkout data only when enabled and online, re
     await worker.experimental_dispose();
   }
 });
+
+it.each([
+  [["C:/Work/Repo"], "c:\\work\\repo\\"],
+  [["//SERVER/SHARE/Repo"], "\\\\server\\share\\repo"],
+  [["relative/repo", "C:/Work/Repo"], "c:\\work\\repo"],
+])(
+  "protects a checkout acquired after scanning: %s",
+  async (ownedPaths, scannedPath) => {
+    const remove = vi.fn(async () => {
+      throw new Error("Must not remove a live checkout");
+    });
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      experimental_hostEntry: true,
+      experimental_callHostRpc: remove,
+      sdk: {
+        hosts: {
+          get: async () =>
+            makeHostResponse({
+              id: "host_test",
+              type: "persistent",
+              status: "connected",
+            }),
+        },
+        environments: { list: async () => [] },
+        projects: {
+          list: async () => [
+            {
+              sources: ownedPaths.map((path) => ({
+                hostId: "host_test",
+                path,
+              })),
+            },
+          ],
+        },
+      },
+    });
+    plugin(host.bb);
+    try {
+      host.bb.storage
+        .database()
+        .prepare("INSERT INTO scans (host_id, result_json) VALUES (?, ?)")
+        .run(
+          "host_test",
+          JSON.stringify({
+            scannedAt: Date.now(),
+            entries: [],
+            worktrees: [],
+            externalWorktrees: [
+              {
+                projectId: "project",
+                repositoryPath: "C:\\repo",
+                path: scannedPath,
+                branch: "feature",
+                locked: false,
+                lastActivityAt: null,
+                sizeBytes: 1,
+              },
+            ],
+          }),
+        );
+      expect(
+        await host.harness.callRpc("startRemoveExternalWorktree", {
+          hostId: "host_test",
+          path: scannedPath,
+          force: true,
+        }),
+      ).toEqual({ state: "skipped", reasons: ["inUseByBb"] });
+      expect(remove).not.toHaveBeenCalled();
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  },
+);
+
+it("refuses to clear storage containing a live Windows workspace with different casing", async () => {
+  const worker = vi.fn(async () => {
+    throw new Error("Must not discard a live workspace");
+  });
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: worker,
+    sdk: {
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({
+            id: "host_test",
+            type: "persistent",
+            status: "connected",
+          }),
+          threadStorageRootPath: "C:\\Storage",
+        }),
+      },
+      threads: {
+        get: async () =>
+          makeThreadResponse({
+            id: "thr_owner",
+            status: "idle",
+            environmentId: "env_live",
+          }),
+        storageLocation: async () => ({ hostId: "host_test" }),
+      },
+      environments: {
+        list: async () => [
+          {
+            path: "c:/storage/THR_OWNER/repo",
+            status: "ready",
+            lifecycle: { teardown: null },
+          },
+        ],
+      },
+    },
+  });
+  plugin(host.bb);
+  try {
+    await expect(
+      host.harness.callRpc("clearThread", { threadId: "thr_owner" }),
+    ).rejects.toThrow("contains the workspace");
+    expect(worker).not.toHaveBeenCalled();
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});

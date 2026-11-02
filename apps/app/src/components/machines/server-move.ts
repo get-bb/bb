@@ -1,6 +1,7 @@
 import { toRecord } from "@bb/core-ui";
 import type { Host, LastServerMove, ServerMoveStepId } from "@bb/domain";
 import {
+  isServerMoveReady,
   SERVER_MOVED_ERROR_CODE,
   serverMovedErrorDetailsSchema,
   type ServerMoveHealth,
@@ -302,12 +303,16 @@ function destinationContent(
   destination: ServerMoveHealth | null,
   location: CurrentAppLocation,
 ): ServerMoveOverlayContent {
-  const reported =
-    destination !== null && destination.moveId === move.moveId
-      ? destination.state
-      : null;
-  if (move.destinationStatusUrl !== null && reported !== "ready") {
-    return { kind: "waiting", move, destinationState: reported };
+  if (
+    move.destinationStatusUrl !== null &&
+    !isServerMoveReady(destination, move.moveId)
+  ) {
+    return {
+      kind: "waiting",
+      move,
+      destinationState:
+        destination?.moveId === move.moveId ? destination.state : null,
+    };
   }
   return {
     kind: "redirecting",

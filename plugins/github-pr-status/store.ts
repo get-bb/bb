@@ -203,7 +203,11 @@ export function createPullRequestStore(options: {
           const snapshot = snapshots.get(url);
           if (snapshot !== undefined) snapshot.fetchedAt = fetchedAt;
         }
-        if (url === null || currentUrl(environmentId) === url) {
+        if (
+          url === null ||
+          (currentUrl(environmentId) === url &&
+            result.outcome !== "unavailable")
+        ) {
           lookups.set(environmentId, {
             lookup:
               result.outcome === "available"

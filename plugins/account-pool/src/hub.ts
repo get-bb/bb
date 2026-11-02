@@ -28,8 +28,8 @@ import {
   blockingResetAt,
   governingWeeklyResetAt,
   hasExtraUsage,
+  isPastThreshold,
   isQuotaExhausted,
-  isSharedQuotaExhausted,
   isUsageRestricted,
   retryAfterMilliseconds,
 } from "./quota.js";
@@ -193,8 +193,9 @@ export class AccountPoolHub {
         kind: "replacement",
         result: this.options.accounts
           .writeSecret(accountId, secret)
-          .then(() => {
+          .then(async () => {
             this.refreshBackoffs.delete(accountId);
+            await this.options.accounts.clearRejectedRefresh(accountId);
             const quota = this.options.quotas.get(accountId);
             this.options.quotas.put({ ...quota, error: null });
           })
@@ -339,7 +340,7 @@ export class AccountPoolHub {
         return false;
       const quota = this.options.quotas.get(account.id);
       return (
-        quota.error === null && isQuotaExhausted(quota, family, threshold, now)
+        quota.error === null && isPastThreshold(quota, family, threshold, now)
       );
     });
     await Promise.all(
@@ -370,8 +371,11 @@ export class AccountPoolHub {
         freshSecret: () =>
           this.freshSecret(account, adapter, { kind: "normal" }, recover).catch(
             (error: unknown) => {
-              if (recover && !(error instanceof TransientOAuthRefreshError))
-                this.markError(account.id, errorMessage(error));
+              if (
+                !(error instanceof TransientOAuthRefreshError) &&
+                (recover || error instanceof OAuthRefreshError)
+              )
+                this.setError(account.id, errorMessage(error));
               throw error;
             },
           ),
@@ -409,7 +413,6 @@ export class AccountPoolHub {
   }
 
   async status(): Promise<Omit<PoolStatus, "routing" | "parent">> {
-    const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = (await this.options.accounts.list()).sort(
       (left, right) => left.priority - right.priority,
@@ -428,7 +431,7 @@ export class AccountPoolHub {
           lastUsedHostName: null,
           ...quotaFields,
           inFlight: this.inFlightByAccount.get(account.id) ?? 0,
-          status: accountStatus(account, quota, settings.switchThreshold, now),
+          status: accountStatus(account, quota, now),
         };
       }),
     };
@@ -482,7 +485,7 @@ export class AccountPoolHub {
         if (
           !usageRefreshed &&
           (selected === null ||
-            isQuotaExhausted(
+            isPastThreshold(
               selected.quota,
               family,
               this.options.getSettings().switchThreshold,
@@ -561,7 +564,7 @@ export class AccountPoolHub {
           if (error instanceof TransientOAuthRefreshError) {
             failure = { status: 503, message: error.message, headers: {} };
           } else {
-            this.markError(selected.account.id, errorMessage(error));
+            this.setError(selected.account.id, errorMessage(error));
           }
           continue;
         }
@@ -692,7 +695,7 @@ export class AccountPoolHub {
                     selected.account,
                     secret,
                     signal,
-                    () => this.markError(selected.account.id, message),
+                    () => this.setError(selected.account.id, message),
                   );
                 }
                 break;
@@ -727,7 +730,7 @@ export class AccountPoolHub {
                 selected.account,
                 secret,
                 signal,
-                () => this.markError(selected.account.id, message),
+                () => this.setError(selected.account.id, message),
               );
             }
             break;
@@ -879,31 +882,31 @@ export class AccountPoolHub {
       )
       .filter(
         ({ quota }) =>
-          !isSharedQuotaExhausted(quota, threshold, now) ||
-          hasExtraUsage(quota),
+          !isQuotaExhausted(quota, null, now) || hasExtraUsage(quota),
       );
-    let eligible = available.filter(
+    const usable = available.filter(
       ({ quota }) =>
-        !isQuotaExhausted(quota, family, threshold, now) ||
-        hasExtraUsage(quota),
+        !isQuotaExhausted(quota, family, now) || hasExtraUsage(quota),
     );
-    const included = eligible.filter(
-      ({ quota }) => !isQuotaExhausted(quota, family, threshold, now),
+    const isUnattempted = ({ account }: (typeof usable)[number]) =>
+      candidateIds.has(account.id) && !attempted.has(account.id);
+    const included = usable.filter(
+      ({ quota }) => !isPastThreshold(quota, family, threshold, now),
     );
-    if (
-      included.some(
-        ({ account, quota }) =>
-          candidateIds.has(account.id) &&
-          !attempted.has(account.id) &&
-          (quota.heldUntil === null || quota.heldUntil <= now),
-      )
-    ) {
-      eligible = included;
-    }
-    const unattempted = eligible.filter(
-      ({ account }) =>
-        candidateIds.has(account.id) && !attempted.has(account.id),
+    const accepted = usable.filter(
+      ({ quota }) => !isQuotaExhausted(quota, family, now),
     );
+    const eligible =
+      [included, accepted].find((tier) =>
+        tier.some(
+          (candidate) =>
+            isUnattempted(candidate) &&
+            (candidate.quota.heldUntil === null ||
+              candidate.quota.heldUntil <= now),
+        ),
+      ) ?? usable;
+    const pinnable = eligible === usable ? usable : accepted;
+    const unattempted = eligible.filter(isUnattempted);
     const candidates = unattempted.filter(
       ({ quota }) => quota.heldUntil === null || quota.heldUntil <= now,
     );
@@ -915,7 +918,7 @@ export class AccountPoolHub {
         : null;
     const bound =
       boundAccountId !== null
-        ? eligible.find(({ account }) => account.id === boundAccountId)
+        ? pinnable.find(({ account }) => account.id === boundAccountId)
         : undefined;
     let inherited: (typeof candidates)[number] | undefined;
     if (bound === undefined && parentAffinityKey !== null) {
@@ -924,8 +927,10 @@ export class AccountPoolHub {
         parent !== undefined &&
         now - parent.lastUsedAt < AFFINITY_IDLE_TTL_MS
       ) {
-        inherited = unattempted.find(
-          ({ account }) => account.id === parent.accountId,
+        inherited = pinnable.find(
+          (candidate) =>
+            candidate.account.id === parent.accountId &&
+            isUnattempted(candidate),
         );
       }
     }
@@ -947,7 +952,7 @@ export class AccountPoolHub {
       )
       .find((candidate) => candidate !== undefined);
     const selected =
-      bound !== undefined && unattempted.includes(bound)
+      bound !== undefined && isUnattempted(bound)
         ? bound
         : (inherited ??
           (boundAccountId === null &&
@@ -988,8 +993,8 @@ export class AccountPoolHub {
       available.some(
         ({ account, quota }) =>
           account.id === accountId &&
-          !isSharedQuotaExhausted(quota, threshold, now) &&
-          isQuotaExhausted(quota, family, threshold, now),
+          !isPastThreshold(quota, null, threshold, now) &&
+          isPastThreshold(quota, family, threshold, now),
       );
     const rebind =
       affinityKey !== null &&
@@ -1090,8 +1095,23 @@ export class AccountPoolHub {
                 accessToken: secret.accessToken,
               };
             }
+            const rejection =
+              secret.kind === "oauth"
+                ? await this.options.accounts.rejectedRefresh(
+                    account.id,
+                    secret.refreshToken,
+                  )
+                : null;
             const error = this.options.quotas.get(account.id).error;
             if (error !== null && !recover) throw new Error(error);
+            if (rejection?.sameToken && !recover && secret.kind === "oauth") {
+              if (
+                !forceRefresh &&
+                accessTokenUnexpired(secret, this.options.now())
+              )
+                return secret;
+              throw new OAuthRefreshError(rejection.message);
+            }
             if (
               !recover &&
               backoff !== undefined &&
@@ -1127,9 +1147,10 @@ export class AccountPoolHub {
                   "succeeded",
                   `previousExpiresAt=${secret.kind === "oauth" ? secret.expiresAt : null}, expiresAt=${result.secret.kind === "oauth" ? result.secret.expiresAt : null}, forced=${forceRefresh}.`,
                 );
-                const quota = this.options.quotas.get(account.id);
-                this.options.quotas.put({ ...quota, error: null });
+                this.setError(account.id, null);
               }
+              if (rejection !== null)
+                await this.options.accounts.clearRejectedRefresh(account.id);
               return result.secret;
             } catch (error) {
               this.options.onOAuthRefresh(
@@ -1143,6 +1164,21 @@ export class AccountPoolHub {
                 secret.kind !== "oauth"
               ) {
                 this.refreshBackoffs.delete(account.id);
+                if (
+                  error instanceof OAuthRefreshError &&
+                  secret.kind === "oauth"
+                ) {
+                  await this.options.accounts.recordRejectedRefresh(
+                    account.id,
+                    secret.refreshToken,
+                    error.message,
+                  );
+                  if (
+                    !forceRefresh &&
+                    accessTokenUnexpired(secret, this.options.now())
+                  )
+                    return secret;
+                }
                 throw error;
               }
               const delayMs = Math.min(
@@ -1317,7 +1353,6 @@ export class AccountPoolHub {
     if (enabled.length === 0)
       return { kind: "unavailable", reason: "no-enabled-account" };
     const now = this.options.now();
-    const threshold = this.options.getSettings().switchThreshold;
     const resets: number[] = [];
     let unknown = false;
     for (const account of enabled) {
@@ -1328,11 +1363,8 @@ export class AccountPoolHub {
         continue;
       }
       const exhausted =
-        isQuotaExhausted(quota, family, threshold, now) &&
-        !hasExtraUsage(quota);
-      const resetAt = exhausted
-        ? blockingResetAt(quota, family, threshold, now)
-        : now;
+        isQuotaExhausted(quota, family, now) && !hasExtraUsage(quota);
+      const resetAt = exhausted ? blockingResetAt(quota, family, now) : now;
       if (resetAt === null) {
         unknown = true;
         continue;
@@ -1396,9 +1428,12 @@ export class AccountPoolHub {
     }
   }
 
-  private markError(accountId: string, message: string): void {
+  private setError(accountId: string, message: string | null): void {
     const quota = this.options.quotas.get(accountId);
-    this.options.quotas.put({ ...quota, error: message.slice(0, 1_000) });
+    const error = message?.slice(0, 1_000) ?? null;
+    if (quota.error === error) return;
+    this.options.quotas.put({ ...quota, error });
+    this.options.onAccountsChanged();
   }
 
   private releasePacing(accountId: string, pacing: PacingFlight): void {
@@ -1494,6 +1529,13 @@ export function createHub(options: {
 function readBearer(value: string | null): string | null {
   if (value === null) return null;
   return /^Bearer\s+(.+)$/iu.exec(value)?.[1] ?? null;
+}
+
+function accessTokenUnexpired(
+  secret: Extract<AccountSecret, { kind: "oauth" }>,
+  now: number,
+): boolean {
+  return secret.expiresAt === null || secret.expiresAt > now;
 }
 
 function errorMessage(error: unknown): string {

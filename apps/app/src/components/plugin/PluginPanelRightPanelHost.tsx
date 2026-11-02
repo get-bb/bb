@@ -18,15 +18,16 @@ import {
   runPluginPanelAction,
 } from "./PluginPanelActions";
 import { Button } from "@bb/shared-ui/button";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
-import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import {
+  RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
+  RIGHT_PANEL_TOGGLE_ICON_NAME,
+} from "@/components/secondary-panel/panelToggleControlState";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { getPluginPageSecondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
@@ -95,7 +96,6 @@ import { PluginDetailTabContent } from "./plugin-detail-navigation";
 import { usePanelTabPresenter } from "@/components/secondary-panel/usePanelTabPresenter";
 
 const EMPTY_TERMINAL_HOSTS: readonly Host[] = [];
-const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
@@ -903,7 +903,7 @@ export function PluginPanelRightPanelHost({
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    RIGHT_PANEL_TOGGLE_CLASS,
+                    RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
                     isSidebarFramed && MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS,
                   )}
                   aria-label={toggleLabel}
