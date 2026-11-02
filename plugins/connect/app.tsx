@@ -52,6 +52,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
+import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
 import { SetupOptionRow } from "@bb/shared-ui/setup-option-row";
 import {
   CodeDisplay,
@@ -1661,6 +1662,7 @@ function AppInstallToggles({
               {index > 0 ? <span aria-hidden="true">·</span> : null}
               <DisclosureToggle
                 expanded={expanded}
+                leading={<MobilePlatformIcon platform={option.platform} />}
                 onToggle={() =>
                   onOpenPlatformChange(expanded ? null : option.platform)
                 }
@@ -1952,25 +1954,34 @@ function setupGuideLoginPanel(
 ): ReactNode {
   if (login?.state !== "pending") return null;
   return (
-    <SignInPanel
-      flush
-      instructionBusy
-      instruction={
-        <>
+    <div className="flex flex-col gap-3">
+      <p
+        role="status"
+        className="flex items-center gap-1.5 pl-8 text-xs text-muted-foreground"
+      >
+        <Icon
+          name="Spinner"
+          aria-hidden
+          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+        />
+        <span>
           Finish signing in on{" "}
           <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
             {hostOf(login.verificationUrl)}
           </InlineTextLink>
           .
-        </>
-      }
-      variant={{
-        kind: "code",
-        code: login.userCode,
-        label: "bb connect sign-in code",
-        onCopyCode: (code) => void copyTextWithSdkToast(code),
-      }}
-    />
+        </span>
+      </p>
+      <SignInPanel
+        flush
+        variant={{
+          kind: "code",
+          code: login.userCode,
+          label: "bb connect sign-in code",
+          onCopyCode: (code) => void copyTextWithSdkToast(code),
+        }}
+      />
+    </div>
   );
 }
 
