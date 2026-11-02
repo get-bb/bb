@@ -210,3 +210,20 @@ export function getRelativeHostPath({
   const candidateSegments = parseHostPath(candidatePath)?.segments ?? [];
   return candidateSegments.slice(rootSegments.length).join("/");
 }
+
+export function getRelativeHostPathSegments(path: string): string[] | null {
+  if (
+    path.length === 0 ||
+    path.includes("\0") ||
+    path.includes("\\") ||
+    isAbsoluteHostPath(path)
+  ) {
+    return null;
+  }
+  const segments = path.split("/");
+  return segments.every(
+    (segment) => segment !== "" && segment !== "." && segment !== "..",
+  )
+    ? segments
+    : null;
+}
