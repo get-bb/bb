@@ -189,16 +189,11 @@ function requireThreadStoragePath(value: unknown): string {
   if (
     isAbsoluteHostPath(raw) ||
     resolvePath({ rootPath: "/", path: raw }) === null ||
-    raw.includes("\0") ||
     raw.split("/").includes("..")
   ) {
     throw new Error(`Invalid thread-storage path: ${raw}`);
   }
   return path.posix.normalize(raw);
-}
-
-function absolutePath(vault: Vault, relativePath: string): string {
-  return localFilePath(vault.rootPath, relativePath);
 }
 
 function isAbsoluteHostPath(value: string): boolean {
@@ -478,7 +473,7 @@ export default async function plugin(
             try {
               const file = await bb.sdk.files.read({
                 ...hostArgs(vault),
-                path: absolutePath(vault, notePath),
+                path: localFilePath(vault.rootPath, notePath),
                 rootPath: vault.rootPath,
                 ...(signal ? { signal } : {}),
               });
@@ -645,7 +640,7 @@ export default async function plugin(
     const relativePath = requireVaultPath(rawPath);
     const file = await bb.sdk.files.read({
       ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
+      path: localFilePath(vault.rootPath, relativePath),
       rootPath: vault.rootPath,
     });
     return { ...file, path: relativePath };
@@ -665,7 +660,7 @@ export default async function plugin(
       throw new Error('"content" must be a string');
     const result = await bb.sdk.files.write({
       ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
+      path: localFilePath(vault.rootPath, relativePath),
       rootPath: vault.rootPath,
       content: args.content,
       contentEncoding: args.contentEncoding ?? "utf8",
@@ -909,8 +904,8 @@ export default async function plugin(
   async function moveWithinVault(vault: Vault, from: string, to: string) {
     await bb.sdk.files.move({
       ...hostArgs(vault),
-      sourcePath: absolutePath(vault, from),
-      destinationPath: absolutePath(vault, to),
+      sourcePath: localFilePath(vault.rootPath, from),
+      destinationPath: localFilePath(vault.rootPath, to),
       rootPath: vault.rootPath,
     });
     db.transaction(() => {
@@ -958,7 +953,7 @@ export default async function plugin(
     return serializeVault(vault.id, async () => {
       await bb.sdk.files.remove({
         ...hostArgs(vault),
-        path: absolutePath(vault, relativePath),
+        path: localFilePath(vault.rootPath, relativePath),
         rootPath: vault.rootPath,
         recursive,
       });
@@ -991,7 +986,7 @@ export default async function plugin(
     try {
       return await bb.sdk.files.read({
         ...hostArgs(vault),
-        path: absolutePath(vault, relativePath),
+        path: localFilePath(vault.rootPath, relativePath),
         rootPath: vault.rootPath,
       });
     } catch (error) {
@@ -1271,7 +1266,7 @@ export default async function plugin(
       try {
         await bb.sdk.files.mkdir({
           ...hostArgs(vault),
-          path: absolutePath(vault, directory),
+          path: localFilePath(vault.rootPath, directory),
           rootPath: vault.rootPath,
           recursive: true,
         });
@@ -1594,7 +1589,7 @@ export default async function plugin(
       const relativePath = requireVaultPath(input.path);
       await bb.sdk.files.mkdir({
         ...hostArgs(vault),
-        path: absolutePath(vault, relativePath),
+        path: localFilePath(vault.rootPath, relativePath),
         rootPath: vault.rootPath,
         recursive: false,
       });
@@ -1731,7 +1726,7 @@ export default async function plugin(
       const relativePath = requireVaultPath(input.path);
       await bb.sdk.files.read({
         ...hostArgs(vault),
-        path: absolutePath(vault, relativePath),
+        path: localFilePath(vault.rootPath, relativePath),
         rootPath: vault.rootPath,
       });
       return previewLease(vault);
