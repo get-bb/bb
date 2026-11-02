@@ -216,7 +216,6 @@ export function SignInPanel({
   flushBottom = false,
   status,
   instruction,
-  instructionBusy = false,
   variant,
   toggles,
   expanded,
@@ -225,7 +224,6 @@ export function SignInPanel({
   flushBottom?: boolean;
   status?: string;
   instruction?: ReactNode;
-  instructionBusy?: boolean;
   variant: SignInPanelVariant;
   toggles?: ReactNode;
   expanded?: ReactNode;
@@ -252,16 +250,7 @@ export function SignInPanel({
           {status}
         </p>
       )}
-      {instruction === undefined ? null : instructionBusy ? (
-        <p role="status" className="flex items-center gap-2 text-foreground">
-          <Icon
-            name="Spinner"
-            aria-hidden
-            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-          />
-          <span>{instruction}</span>
-        </p>
-      ) : (
+      {instruction === undefined ? null : (
         <p className="text-foreground">{instruction}</p>
       )}
       {variant.kind === "code" ? (
