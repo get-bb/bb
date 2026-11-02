@@ -947,12 +947,8 @@ function PluginsStepContainer({
   }, [refetchCatalog, refetchList]);
 
   const installedPlugins = listQuery.data?.plugins;
-  const installedCount = installedPlugins?.length;
-  const seenInstalledCountRef = useRef(installedCount);
+  const installedCount = installedPlugins?.length ?? 0;
   useEffect(() => {
-    const seen = seenInstalledCountRef.current;
-    seenInstalledCountRef.current = installedCount;
-    if (seen === undefined || seen === installedCount) return;
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 

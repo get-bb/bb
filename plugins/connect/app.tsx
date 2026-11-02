@@ -1645,15 +1645,17 @@ function SetupGuideError({ children }: { children: ReactNode }) {
 }
 
 function AppInstallToggles({
+  label,
   openPlatform,
   onOpenPlatformChange,
 }: {
+  label: string;
   openPlatform: MobilePlatform | null;
   onOpenPlatformChange: (platform: MobilePlatform | null) => void;
 }) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <span>Then install the mobile app:</span>
+      <span>{label}</span>
       <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
         {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
           const expanded = openPlatform === option.platform;
@@ -1918,6 +1920,7 @@ function ConnectOnSetupContent({
             pair.
           </p>
           <AppInstallToggles
+            label="Install the mobile app:"
             openPlatform={openPlatform}
             onOpenPlatformChange={setOpenPlatform}
           />
@@ -1938,6 +1941,7 @@ function ConnectOffInstallLinks() {
   return (
     <>
       <AppInstallToggles
+        label="Then install the mobile app:"
         openPlatform={openPlatform}
         onOpenPlatformChange={setOpenPlatform}
       />

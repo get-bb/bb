@@ -1083,7 +1083,7 @@ describe("connect setup guide section", () => {
     );
 
     await slot.findByText("bb connect is on");
-    expect(slot.queryByText("Then install the mobile app:")).toBeNull();
+    expect(slot.queryByText(/install the mobile app/i)).toBeNull();
     expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain(
       "createMachineCode",
@@ -1098,6 +1098,6 @@ describe("connect setup guide section", () => {
     );
 
     await slot.findByRole("button", { name: "Set up" });
-    expect(slot.queryByText("Then install the mobile app:")).toBeNull();
+    expect(slot.queryByText(/install the mobile app/i)).toBeNull();
   });
 });
