@@ -262,6 +262,10 @@ describe("FilePreview", () => {
       />,
     );
 
+    await act(async () => {
+      await import("@/components/code/BbSourceCode");
+    });
+
     await waitFor(() => expect(pierreMock.state.statsCallback).not.toBeNull());
     const renderCountBeforeStatsChange = Number(
       screen.getByTestId("pierre-file").dataset.renderCount,
