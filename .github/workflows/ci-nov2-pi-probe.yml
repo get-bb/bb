@@ -1,0 +1,58 @@
+name: Temporary Pi relocation Windows diagnostic
+on:
+  push:
+    branches: [bb/ci-nov2-infra]
+    paths: [.github/workflows/ci-nov2-pi-probe.yml, scripts/pi-probe-instrument.mjs]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pi-startup:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - name: Restore dependency image
+        uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Build actual prerequisite modules
+        shell: cmd
+        run: pnpm exec turbo run test --filter=bb-plugin-provider-pi -- src/bridge/bridge.relocation.test.ts
+      - name: Instrument child observation in disposable checkout
+        run: node scripts/pi-probe-instrument.mjs
+      - name: Observe focused and package repetitions
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          PI_TIMING: '1'
+          PI_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
+        run: |
+          New-Item -ItemType Directory -Path $env:PI_PROBE_DIR -Force | Out-Null
+          Set-Location plugins/provider-pi
+          $failures = 0
+          foreach ($i in 1..10) {
+            cmd /c "pnpm exec vitest run --config vitest.config.ts src/bridge/bridge.relocation.test.ts > `"$env:PI_PROBE_DIR/focused-$i.log`" 2>&1"
+            if ($LASTEXITCODE -ne 0) { $failures += 1 }
+          }
+          foreach ($i in 1..5) {
+            cmd /c "pnpm exec vitest run --config vitest.config.ts > `"$env:PI_PROBE_DIR/package-$i.log`" 2>&1"
+            if ($LASTEXITCODE -ne 0) { $failures += 1 }
+          }
+          "Failed repetitions: $failures" | Set-Content "$env:PI_PROBE_DIR/summary.txt"
+          if ($failures -gt 0) { exit 1 }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pi-startup-probe
+          path: ${{ runner.temp }}/pi-startup-probe
+          retention-days: 7
