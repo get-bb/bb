@@ -861,7 +861,8 @@ export class ScrollPositionKeeper {
   private followsUnexplainedScroll(): boolean {
     return (
       this.windowFindOpen ||
-      (this.position.kind !== "bottom" && this.pendingRestore === null)
+      (this.position.kind !== "bottom" && this.pendingRestore === null) ||
+      this.options.getScrollElement()?.querySelector("iframe:hover") != null
     );
   }
 
