@@ -33,6 +33,20 @@ export const ONBOARDING_PLUGINS: readonly {
 
 export const CONNECT_PLUGIN_ID = "connect";
 
+export interface TerminalConnectFlow {
+  input: string;
+}
+
+const TERMINAL_CONNECT_FLOWS: Readonly<Record<string, TerminalConnectFlow>> = {
+  pi: { input: "/login\r" },
+};
+
+export function terminalConnectFlow(
+  providerId: string,
+): TerminalConnectFlow | null {
+  return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
+}
+
 export type SetupGuideVariant = "control" | "new";
 
 export interface SetupGuide {

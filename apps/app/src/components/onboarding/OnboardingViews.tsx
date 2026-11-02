@@ -278,10 +278,22 @@ export interface OnboardingAgent {
   name: string;
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
+  setup?: "signIn" | "connect";
   expanded?: ReactNode;
 }
 
-function agentSubline(state: AgentSetupState): string {
+function agentSubline(
+  state: AgentSetupState,
+  setup: "signIn" | "connect",
+): string {
+  if (setup === "connect") {
+    if (state.status === "signIn") {
+      return state.reason === "failed"
+        ? "Connecting didn't finish · try again"
+        : "Installed · no model connected";
+    }
+    if (state.status === "signingIn") return "Finish connecting below";
+  }
   switch (state.status) {
     case "checking":
       return "Checking…";
@@ -371,7 +383,7 @@ function AgentRow({
               loudFailure && "text-destructive-text",
             )}
           >
-            {agentSubline(state)}
+            {agentSubline(state, agent.setup ?? "signIn")}
           </ExpandableText>
         </div>
         <div className="col-start-2 flex shrink-0 items-center justify-end gap-2">
@@ -402,7 +414,7 @@ function AgentRow({
               onClick={() => onSignIn(agent.id)}
             >
               {quiet ? <AgentActionIcon agent={agent} quiet /> : null}
-              Sign in
+              {agent.setup === "connect" ? "Connect" : "Sign in"}
             </Button>
           ) : null}
           {loudFailure ? (
@@ -1164,6 +1176,7 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
 }
 
 interface AgentSignInPanelProps {
+  connect: boolean;
   agentName: string;
   guide: SignInGuide | null;
   code: string;
@@ -1180,6 +1193,7 @@ interface AgentSignInPanelProps {
 }
 
 export function AgentSignInPanel({
+  connect,
   agentName,
   guide,
   code,
@@ -1218,26 +1232,25 @@ export function AgentSignInPanel({
           : "use a code instead"}
       </InlineTextButton>
     );
-  const instruction =
-    url === null ? (
-      terminalVisible ? (
-        `Sign in to ${agentName} in the terminal below.`
-      ) : undefined
-    ) : userCode !== null ? (
-      alternateAction === null ? (
-        <>Enter this code on the {page}.</>
-      ) : (
-        <>
-          Enter this code on the {page}, or {alternateAction}.
-        </>
-      )
-    ) : acceptsPastedCode ? (
-      <>Sign in on the {page}, then paste the code it shows you.</>
-    ) : alternate === "code" ? (
-      <>Sign in with your browser, or {alternateAction}.</>
+  const instruction = connect ? undefined : url === null ? (
+    terminalVisible ? (
+      `Sign in to ${agentName} in the terminal below.`
+    ) : undefined
+  ) : userCode !== null ? (
+    alternateAction === null ? (
+      <>Enter this code on the {page}.</>
     ) : (
-      <>Finish signing in on the {page}.</>
-    );
+      <>
+        Enter this code on the {page}, or {alternateAction}.
+      </>
+    )
+  ) : acceptsPastedCode ? (
+    <>Sign in on the {page}, then paste the code it shows you.</>
+  ) : alternate === "code" ? (
+    <>Sign in with your browser, or {alternateAction}.</>
+  ) : (
+    <>Finish signing in on the {page}.</>
+  );
   const variant: SignInPanelVariant =
     url !== null && userCode !== null
       ? {
@@ -1259,11 +1272,13 @@ export function AgentSignInPanel({
     <div className="mt-3">
       <SignInPanel
         status={
-          codeSubmitted
-            ? "Finishing sign-in…"
-            : starting
-              ? `Starting ${agentName} sign-in…`
-              : "bb continues automatically after you sign in."
+          connect
+            ? "bb continues automatically once a model is connected."
+            : codeSubmitted
+              ? "Finishing sign-in…"
+              : starting
+                ? `Starting ${agentName} sign-in…`
+                : "bb continues automatically after you sign in."
         }
         instruction={instruction}
         variant={variant}

@@ -92,7 +92,9 @@ import {
   resolveSignInCommand,
   shortRemoteName,
   skippedStepIds,
+  terminalConnectFlow,
   type OnboardingStepId,
+  type TerminalConnectFlow,
   type SetupGuide,
   type StepOutcome,
 } from "./onboarding-model";
@@ -101,6 +103,7 @@ import {
   type OnboardingEntry,
 } from "./onboarding-telemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
+import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
 
 const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 const SIGN_IN_TERMINAL_COLS = 200;
@@ -109,6 +112,7 @@ const SIGN_IN_OUTPUT_POLL_INTERVAL_MS = 1_000;
 const SIGN_IN_OUTPUT_TAIL_BYTES = 64 * 1024;
 const SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 6_000;
 const REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 3_000;
+const CONNECT_INPUT_SETTLE_MS = 500;
 const INSTALL_FAILED_MESSAGE = "Install failed";
 const REDESIGN_INSTALL_FAILED_MESSAGE =
   "Couldn't install. Check your connection and retry.";
@@ -134,6 +138,7 @@ function encodeTerminalInput(text: string): string {
 
 function AgentSignInContainer({
   redesign,
+  connectFlow,
   agentName,
   session,
   alternate,
@@ -141,6 +146,7 @@ function AgentSignInContainer({
   onExit,
 }: {
   redesign: boolean;
+  connectFlow: TerminalConnectFlow | null;
   agentName: string;
   session: TerminalSession;
   alternate: { label: string; method: SignInMethod } | null;
@@ -181,7 +187,23 @@ function AgentSignInContainer({
     return () => window.clearTimeout(timer);
   }, [redesign]);
   const terminalVisible =
-    terminalChoice ?? (fallbackDue && (guide === null || guide.url === null));
+    terminalChoice ??
+    (connectFlow !== null ||
+      (fallbackDue && (guide === null || guide.url === null)));
+  useSendAfterFirstOutput({
+    enabled: connectFlow !== null,
+    hasOutput: (output?.chunks.length ?? 0) > 0,
+    settleMs: CONNECT_INPUT_SETTLE_MS,
+    send: () => {
+      if (connectFlow === null) return;
+      void sdk.terminals
+        .input({
+          terminalId: session.id,
+          dataBase64: encodeTerminalInput(connectFlow.input),
+        })
+        .catch(() => undefined);
+    },
+  });
 
   const exited =
     output !== undefined && !isActiveTerminalSessionStatus(output.status);
@@ -211,6 +233,7 @@ function AgentSignInContainer({
   if (redesign) {
     return (
       <AgentSignInPanel
+        connect={connectFlow !== null}
         agentName={agentName}
         guide={guide}
         code={code}
@@ -489,6 +512,10 @@ function AgentStepContainer({
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
+            setup:
+              redesign && terminalConnectFlow(health.providerId) !== null
+                ? "connect"
+                : "signIn",
             state: resolveAgentSetupState({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
@@ -510,6 +537,9 @@ function AgentStepContainer({
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}
+                  connectFlow={
+                    redesign ? terminalConnectFlow(health.providerId) : null
+                  }
                   agentName={health.displayName}
                   session={signIn.session}
                   alternate={

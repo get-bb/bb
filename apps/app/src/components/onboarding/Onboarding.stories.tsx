@@ -992,6 +992,7 @@ function RedesignSignInPanel({
   const codex = agentId === "codex";
   return (
     <AgentSignInPanel
+      connect={false}
       agentName={codex ? "Codex" : "Claude Code"}
       guide={{
         url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
