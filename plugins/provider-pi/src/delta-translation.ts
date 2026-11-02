@@ -456,6 +456,7 @@ export function createPiDeltaTranslator(
   >();
   const promptCacheTtlMsByThreadId = new Map<string, number>();
   const closedAssistantStreams = new Set<string>();
+  const openThinkingStreams = new Map<string, Set<number>>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
@@ -467,6 +468,36 @@ export function createPiDeltaTranslator(
         closedAssistantStreams.delete(key);
       }
     }
+    for (const key of [...openThinkingStreams.keys()]) {
+      if (key.startsWith(prefix)) {
+        openThinkingStreams.delete(key);
+      }
+    }
+  }
+
+  function closeUnfinishedAssistantStreams(
+    streamKey: string,
+    parentRefField: { parentRef?: string },
+  ): ThreadDelta[] {
+    const thinkingIndexes = openThinkingStreams.get(streamKey) ?? [];
+    openThinkingStreams.delete(streamKey);
+    return [
+      ...[...thinkingIndexes].map(
+        (contentIndex): ThreadDelta => ({
+          kind: "item.textClose",
+          key: {
+            channel: thinkingStreamChannel(contentIndex),
+            ...parentRefField,
+          },
+          channel: "reasoningText",
+        }),
+      ),
+      {
+        kind: "item.textClose",
+        key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+        channel: "agentMessage",
+      },
+    ];
   }
 
   function assistantStreamKey(
@@ -685,7 +716,7 @@ export function createPiDeltaTranslator(
           const message = assistantEvent.data.message;
           if (assistantEvent.data.type === "message_start") {
             closedAssistantStreams.delete(streamKey);
-            return [];
+            return closeUnfinishedAssistantStreams(streamKey, parentRefField);
           }
           if (
             message.stopReason === "error" ||
@@ -941,6 +972,11 @@ export function createPiDeltaTranslator(
           if (typeof assistantEvent.contentIndex !== "number") {
             return unexpectedSdkEventDeltas(event, context);
           }
+          const streamKey = assistantStreamKey(context);
+          const thinkingIndexes =
+            openThinkingStreams.get(streamKey) ?? new Set<number>();
+          thinkingIndexes.add(assistantEvent.contentIndex);
+          openThinkingStreams.set(streamKey, thinkingIndexes);
           return [
             {
               kind: "item.textDelta",
@@ -961,6 +997,9 @@ export function createPiDeltaTranslator(
           if (typeof assistantEvent.contentIndex !== "number") {
             return unexpectedSdkEventDeltas(event, context);
           }
+          openThinkingStreams
+            .get(assistantStreamKey(context))
+            ?.delete(assistantEvent.contentIndex);
           return [
             {
               kind: "item.textClose",
