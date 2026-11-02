@@ -50,7 +50,7 @@ export const earlyAdopterExperiments: Experiments = {
   sidebarMultiSelect: true,
   skipFocusedThreadNotifications: true,
   threadContextCard: false,
-  threadRowMetadata: false,
+  threadRowMetadata: true,
   timelinePush: true,
   unreadDividerAtAnswer: true,
   websocketCompression: true,

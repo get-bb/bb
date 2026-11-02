@@ -883,8 +883,9 @@ Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
 `pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
-off. An experiment you set yourself keeps your value either way.
+`threadRowMetadata`, `unreadDividerAtAnswer`, and `websocketCompression`) turn
+on, and the rest stay off. An experiment you set yourself keeps your value
+either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
@@ -950,8 +951,8 @@ off. An experiment you set yourself keeps your value either way.
   and a narrow pane or window opens it over the transcript. Phones keep the
   context row above the composer and show no card. Plugins read how a pane
   shows thread context with `experimental_useThreadContextKind()`.
-- `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
-  Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
+- `threadRowMetadata` (on for early adopters) adds Metadata to the built-in
+  thread list's Organize → Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
   GitHub PR Status's pull request number on a line under each thread title.
   While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
   read it with `experimental_useExperiment("threadRowMetadata")`.
