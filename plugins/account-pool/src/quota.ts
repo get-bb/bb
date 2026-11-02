@@ -2,7 +2,6 @@ import type {
   Account,
   AccountQuota,
   AccountSummary,
-  FamilyQuota,
   LimitWindow,
   ModelFamily,
 } from "./contracts.js";
@@ -143,98 +142,88 @@ export function quotaFromHeaders(
   };
 }
 
-function activeWindow(
-  utilization: number | null,
-  status: string | null,
-  resetAt: number | null,
-  threshold: number,
-  now: number,
-): boolean {
-  if (resetAt !== null && resetAt <= now) return false;
-  return (
-    status?.toLowerCase() === "rejected" ||
-    (utilization !== null && utilization >= threshold)
-  );
+interface QuotaWindow {
+  utilization: number | null;
+  status: string | null;
+  resetAt: number | null;
 }
 
-function activeFamilyWindow(
-  quota: FamilyQuota | null,
+function quotaWindows(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+): QuotaWindow[] {
+  const familyQuota = family === null ? null : quota.familyWeekly[family];
+  return [
+    {
+      utilization: quota.fiveHourUtilization,
+      status: quota.fiveHourStatus,
+      resetAt: quota.fiveHourResetAt,
+    },
+    {
+      utilization: quota.sevenDayUtilization,
+      status: quota.sevenDayStatus,
+      resetAt: quota.sevenDayResetAt,
+    },
+    ...quota.limitWindows,
+    ...(familyQuota === null ? [] : [familyQuota]),
+  ];
+}
+
+function isRefusedWindow(window: QuotaWindow, now: number): boolean {
+  if (window.resetAt !== null && window.resetAt <= now) return false;
+  if (window.status !== null) return window.status.toLowerCase() === "rejected";
+  return window.utilization !== null && window.utilization >= 1;
+}
+
+function isWindowPastThreshold(
+  window: QuotaWindow,
   threshold: number,
   now: number,
 ): boolean {
+  if (window.resetAt !== null && window.resetAt <= now) return false;
   return (
-    quota !== null &&
-    activeWindow(quota.utilization, quota.status, quota.resetAt, threshold, now)
+    isRefusedWindow(window, now) ||
+    (window.utilization !== null && window.utilization >= threshold)
   );
 }
 
 export function blockingResetAt(
   quota: AccountQuota | AccountSummary,
   family: ModelFamily | null,
-  threshold: number,
   now: number,
 ): number | null {
   if (isUsageRestricted(quota, now))
     return quota.usageRestriction?.resetAt ?? null;
   let latest: number | null = null;
-  let unknown = false;
-  const include = (
-    utilization: number | null,
-    status: string | null,
-    resetAt: number | null,
-  ) => {
-    if (!activeWindow(utilization, status, resetAt, threshold, now)) return;
-    if (resetAt === null) unknown = true;
-    else latest = Math.max(latest ?? resetAt, resetAt);
-  };
-  include(
-    quota.fiveHourUtilization,
-    quota.fiveHourStatus,
-    quota.fiveHourResetAt,
-  );
-  include(
-    quota.sevenDayUtilization,
-    quota.sevenDayStatus,
-    quota.sevenDayResetAt,
-  );
-  for (const window of quota.limitWindows)
-    include(window.utilization, window.status, window.resetAt);
-  if (family !== null) {
-    const familyQuota = quota.familyWeekly[family];
-    if (familyQuota !== null)
-      include(familyQuota.utilization, familyQuota.status, familyQuota.resetAt);
+  for (const window of quotaWindows(quota, family)) {
+    if (!isRefusedWindow(window, now)) continue;
+    if (window.resetAt === null) return null;
+    latest = Math.max(latest ?? window.resetAt, window.resetAt);
   }
-  return unknown ? null : latest;
+  return latest;
 }
 
-export function isSharedQuotaExhausted(
+export function isQuotaExhausted(
+  quota: AccountQuota | AccountSummary,
+  family: ModelFamily | null,
+  now: number,
+): boolean {
+  return (
+    isUsageRestricted(quota, now) ||
+    quotaWindows(quota, family).some((window) => isRefusedWindow(window, now))
+  );
+}
+
+export function isPastThreshold(
   quota: AccountQuota,
+  family: ModelFamily | null,
   threshold: number,
   now: number,
 ): boolean {
   return (
-    activeWindow(
-      quota.fiveHourUtilization,
-      quota.fiveHourStatus,
-      quota.fiveHourResetAt,
-      threshold,
-      now,
-    ) ||
-    activeWindow(
-      quota.sevenDayUtilization,
-      quota.sevenDayStatus,
-      quota.sevenDayResetAt,
-      threshold,
-      now,
-    ) ||
-    quota.limitWindows.some((window) =>
-      activeWindow(
-        window.utilization,
-        window.status,
-        window.resetAt,
-        threshold,
-        now,
-      ),
+    isUsageRestricted(quota, now) ||
+    quotaWindows(quota, family).some((window) =>
+      isWindowPastThreshold(window, threshold, now),
     )
   );
 }
@@ -251,19 +240,6 @@ export function longestLimitWindow(
       longest = window;
   }
   return longest;
-}
-
-export function isQuotaExhausted(
-  quota: AccountQuota,
-  family: ModelFamily,
-  threshold: number,
-  now: number,
-): boolean {
-  return (
-    isUsageRestricted(quota, now) ||
-    isSharedQuotaExhausted(quota, threshold, now) ||
-    activeFamilyWindow(quota.familyWeekly[family], threshold, now)
-  );
 }
 
 export function isUsageRestricted(
@@ -312,14 +288,13 @@ export function governingWeeklyResetAt(
 export function accountStatus(
   account: Account,
   quota: AccountQuota,
-  threshold: number,
   now: number,
 ): AccountSummary["status"] {
   if (!account.enabled) return "disabled";
   if (quota.error !== null) return "error";
   if (quota.heldUntil !== null && quota.heldUntil > now) return "held";
   if (isUsageRestricted(quota, now)) return "exhausted";
-  if (isSharedQuotaExhausted(quota, threshold, now) && !hasExtraUsage(quota))
+  if (isQuotaExhausted(quota, null, now) && !hasExtraUsage(quota))
     return "exhausted";
   return "ready";
 }

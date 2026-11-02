@@ -79,10 +79,10 @@ prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
 process arguments, shell history, and agent transcripts. OAuth quota refreshes
 on add, enable, or re-login of an enabled account and every five minutes while
-an account is idle. When a request finds no
-eligible account, the pool first refreshes the OAuth accounts it considers
-exhausted, at most once every 30 seconds per account, so a plan upgrade or an
-early reset takes effect on the next turn. Use
+an account is idle. Before a request falls back to an account at or above the
+switch threshold, or is refused, the pool first refreshes the OAuth accounts at
+or above the threshold for that request, at most once every 30 seconds per
+account, so a plan upgrade or an early reset takes effect on the next turn. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
 For an OAuth account in error, `refresh` also forces a new token with the stored
 refresh token and clears the error when that succeeds, so a spurious error does
@@ -93,8 +93,9 @@ freshly refreshed OAuth token is treated as an upstream failure instead: the
 request gets HTTP 503, and that token is held out of routing for one minute.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under
-`familyWeekly`. Selection skips an account whose requested family is spent
-while retaining it for other families. A present `metadata.user_id` account
+`familyWeekly`. Selection routes a request away from an account whose requested
+family is at or above the switch threshold while retaining it for other
+families. A present `metadata.user_id` account
 UUID is aligned with the selected OAuth account. Use `bb pool config` to
 inspect the full routing configuration and
 `bb pool config set <key> <value>` to update one value. The upstream URL keys
@@ -112,12 +113,23 @@ family without moving the session's main pin or the provider cursor. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
+The switch threshold is a preference, not a cutoff. When no account below it is
+available, accounts at or above it keep serving until the provider refuses
+them; refused accounts with extra usage or Codex credits come after those.
+Where the provider reports a window status, `rejected` decides whether it
+refused the window; a window without a status counts as refused from 100
+percent utilization. The pool answers with its own HTTP 429 only when no
+account can serve. Its `Retry-After`, the time in its message, and
+`provider-retry.v1.availability` count only refused windows, and `account list`
+and `status` report `exhausted` only for an account the provider refused.
+
 Claude accounts with an exhausted subscription window remain eligible as a
 fallback when Anthropic reports extra usage enabled with remaining allowance,
-or an allowed overage response header. Accounts below the switch threshold
-are preferred, including for conversations pinned to an extra-usage fallback;
-those conversations return to subscription quota when it recovers. Before using
-extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
+or an allowed overage response header. Accounts the provider still accepts are
+preferred, including for conversations pinned to an extra-usage fallback; those
+conversations return to subscription quota when it recovers. Before using extra
+usage, the pool rechecks OAuth accounts at or above the switch threshold (at
+most every 30 seconds).
 Disabled, spent, or unobserved extra usage does not override subscription limits.
 This does not enable extra usage or change spending limits on Claude.
 `account list` and `status` show an Extra usage column; JSON and the corresponding

@@ -37,6 +37,7 @@ import type { CodexDeviceLogin } from "./codex-device-login.js";
 
 const DESCRIPTION = [
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
+  "switchThreshold is a preference, not a cutoff: accounts below it go first, and accounts at or above it keep serving until the provider refuses them. Status shows exhausted only for an account the provider refused.",
   "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
@@ -769,7 +770,7 @@ export function registerPoolCli(
             {
               name: "value",
               description:
-                "HTTP(S) URL for the upstream keys, a number above 0 and at most 1 for switchThreshold, proxy or isolate for parentMode",
+                "HTTP(S) URL for the upstream keys, a number above 0 and at most 1 for switchThreshold (the quota fraction from which other accounts are preferred), proxy or isolate for parentMode",
               required: true,
             },
           ],
