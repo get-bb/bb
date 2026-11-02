@@ -32,6 +32,7 @@ import {
   usePrimaryHost,
 } from "@/hooks/queries/host-queries";
 import {
+  pluginCatalogSearchQueryOptions,
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
@@ -916,8 +917,12 @@ function PluginsStepContainer({
   }, [refetchCatalog, refetchList]);
 
   const installedPlugins = listQuery.data?.plugins;
-  const installedCount = installedPlugins?.length ?? 0;
+  const installedCount = installedPlugins?.length;
+  const seenInstalledCountRef = useRef(installedCount);
   useEffect(() => {
+    const seen = seenInstalledCountRef.current;
+    seenInstalledCountRef.current = installedCount;
+    if (seen === undefined || seen === installedCount) return;
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
@@ -1186,6 +1191,10 @@ export function OnboardingFlow({
   const [stepOutcomes, setStepOutcomes] = useState<
     ReadonlyMap<OnboardingStepId, StepOutcome>
   >(() => new Map());
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
+  }, [queryClient]);
   const exposedRef = useRef(false);
   useEffect(() => {
     if (exposedRef.current) return;
