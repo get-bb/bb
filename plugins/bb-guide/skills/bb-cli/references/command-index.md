@@ -131,6 +131,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb terminal list`
 - `bb terminal create`
 - `bb terminal start`
+- `bb terminal run`
 - `bb terminal show`
 - `bb terminal attach`
 - `bb terminal send`
@@ -142,11 +143,6 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb terminal restart`
 - `bb terminal close`
 - `bb terminal stop`
-
-## exec
-
-- `bb exec`
-- `bb exec wait`
 
 ## thread
 
