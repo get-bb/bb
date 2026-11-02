@@ -20,6 +20,7 @@ import {
   type DeltaNoTurnFallback,
   type JsonRpcMessage,
   type ProviderRawEvent,
+  type ProviderErrorInfo,
   type ThreadDelta,
   type ThreadEventTokenUsageBreakdown,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -160,6 +161,46 @@ const piCompactionNoopMessages = new Set([
 
 function isPiCompactionNoop(errorMessage: string): boolean {
   return piCompactionNoopMessages.has(errorMessage.trim());
+}
+
+function piErrorInfo(message: string): ProviderErrorInfo {
+  const status = message.match(
+    /\b(?:HTTP(?:\/[\d.]+)?\s+|status(?:\s+code)?[=:\s]+)([45]\d{2})\b|(?:^|:\s*)([45]\d{2})(?=[\s:]|$)/i,
+  );
+  const httpStatusCode = status ? Number(status[1] ?? status[2]) : null;
+  const category = (): ProviderErrorInfo["category"] => {
+    if (httpStatusCode === 401 || httpStatusCode === 403) return "unauthorized";
+    if (httpStatusCode === 402) return "billing";
+    if (httpStatusCode === 429) return "rate-limit";
+    if (httpStatusCode === 529) return "overloaded";
+    if (
+      /unauthorized|authentication[_ ](?:error|failed)|invalid api key/i.test(
+        message,
+      )
+    )
+      return "unauthorized";
+    if (/insufficient[_ ]quota|\bbilling\b/i.test(message)) return "billing";
+    if (/rate[_ -]?limit(?:ed|_error)?\b|too many requests/i.test(message))
+      return "rate-limit";
+    if (
+      /context[_ -](?:window|length).*(?:exceed|limit|full)|too many tokens|prompt is too long/i.test(
+        message,
+      )
+    )
+      return "context-window-exceeded";
+    if (httpStatusCode === 408) return "connection-failed";
+    if (httpStatusCode !== null && httpStatusCode < 500) return "bad-request";
+    if (/\boverloaded(?:_error)?\b/i.test(message)) return "overloaded";
+    if (httpStatusCode !== null && httpStatusCode >= 500) return "internal";
+    if (
+      /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed|network (?:error|failure)|connection (?:reset|closed|refused|failed)|timed out|timeout/i.test(
+        message,
+      )
+    )
+      return "connection-failed";
+    return "unknown";
+  };
+  return { category: category(), providerCode: null, httpStatusCode };
 }
 
 const piMessageUpdateEventSchema = z
@@ -648,6 +689,9 @@ export function createPiDeltaTranslator(
           kind: "provider.error",
           message: "Provider error",
           detail: errorEnvelope.data.params?.message ?? "unknown error",
+          errorInfo: piErrorInfo(
+            errorEnvelope.data.params?.message ?? "unknown error",
+          ),
           settlesTurn: true,
         },
       ];
@@ -800,6 +844,10 @@ export function createPiDeltaTranslator(
             detail:
               parsed.data.errorMessage ??
               "Automatic context compaction was interrupted",
+            errorInfo: piErrorInfo(
+              parsed.data.errorMessage ??
+                "Automatic context compaction was interrupted",
+            ),
           },
         ];
       }
@@ -817,6 +865,7 @@ export function createPiDeltaTranslator(
                 kind: "provider.error",
                 message: "Provider error",
                 detail: lastAssistant.errorMessage,
+                errorInfo: piErrorInfo(lastAssistant.errorMessage),
                 willRetry: true,
               },
             ];
@@ -834,6 +883,7 @@ export function createPiDeltaTranslator(
               kind: "provider.error",
               message: "Provider error",
               detail: settlementError,
+              errorInfo: piErrorInfo(settlementError),
             });
           }
           failure.push({
@@ -856,6 +906,7 @@ export function createPiDeltaTranslator(
             kind: "provider.error",
             message: "Provider error",
             detail: settlementError,
+            errorInfo: piErrorInfo(settlementError),
             ...(piEvent.data.willRetry ? { willRetry: true } : {}),
           });
         }

@@ -288,6 +288,11 @@ it("surfaces a failed run's error when queued work continues the same settlement
       kind: "provider.error",
       message: "Provider error",
       detail: "failure-original",
+      errorInfo: {
+        category: "unknown",
+        httpStatusCode: null,
+        providerCode: null,
+      },
     },
   ]);
   expect(deltas.filter((delta) => delta.kind === "turn.boundary")).toEqual([
