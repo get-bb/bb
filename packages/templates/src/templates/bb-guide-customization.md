@@ -194,7 +194,7 @@ thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
 `narrowPluginCss` serves each plugin a stylesheet that matches only that
 plugin's own UI, which makes style updates cheaper with many plugins; it
-applies after a reload and defaults on for early adopters.
+applies after a reload.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
@@ -216,10 +216,10 @@ before its first tool call. It defaults on for early adopters.
 pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`applicationLinks`, `timelinePush`, `compactExpiredCache`, `narrowPluginCss`,
-`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`threadContextCard`, `unreadDividerAtAnswer`, and `websocketCompression`; an
-experiment you set yourself keeps your value.
+`applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
+`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
+yourself keeps your value.
 
 Launcher settings
 

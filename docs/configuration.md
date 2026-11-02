@@ -874,9 +874,9 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`narrowPluginCss`, `pluginUpdates`, `sidebarMultiSelect`,
-`skipFocusedThreadNotifications`, `unreadDividerAtAnswer`, and
-`websocketCompression`) turn on, and the rest stay off. An experiment you set yourself keeps your value either way.
+`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
+`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
+off. An experiment you set yourself keeps your value either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
@@ -894,7 +894,7 @@ shipped default to the early adopter default: experiments marked Early adopter
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
-- `narrowPluginCss` (on for early adopters) makes the app request each plugin's
+- `narrowPluginCss` makes the app request each plugin's
   stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
   match only inside that plugin's own roots, not inside any root without a
   plugin id, which makes style recalculation cheaper with many plugins. A

@@ -49,7 +49,7 @@ export const earlyAdopterExperiments: Experiments = {
   applicationLinks: true,
   changelogPreview: false,
   compactExpiredCache: true,
-  narrowPluginCss: true,
+  narrowPluginCss: false,
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: true,
