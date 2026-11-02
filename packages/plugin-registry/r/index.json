@@ -242,6 +242,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "relative-time",
+      "type": "registry:ui"
+    },
+    {
       "name": "rename-dialog",
       "type": "registry:ui"
     },

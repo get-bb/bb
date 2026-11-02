@@ -1,3 +1,4 @@
+import { formatCompactRelativeTime } from "@bb/shared-ui/relative-time";
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -151,14 +152,8 @@ function Overlay({
   );
 }
 
-function relativeTime(ms: number): string {
-  const secs = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (secs < 60) return "just now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+function relativeTime(timestamp: number): string {
+  return formatCompactRelativeTime({ timestamp, now: Date.now() });
 }
 
 function minutes(ms: number): number {

@@ -394,7 +394,7 @@ describe("mobile recent thread rows", () => {
       </TestProviders>,
     );
 
-    expect(screen.getByText("bb \u00b7 3h ago")).not.toBeNull();
+    expect(screen.getByText("bb \u00b7 3h")).not.toBeNull();
   });
 
   it("includes the worktree branch when the thread has one", () => {
@@ -424,7 +424,7 @@ describe("mobile recent thread rows", () => {
     );
 
     expect(
-      screen.getByText("bb \u00b7 bb/mobile-home \u00b7 3h ago"),
+      screen.getByText("bb \u00b7 bb/mobile-home \u00b7 3h"),
     ).not.toBeNull();
   });
 
@@ -460,7 +460,7 @@ describe("mobile recent thread rows", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText("Personal \u00b7 3h ago")).not.toBeNull();
+    expect(screen.getByText("Personal \u00b7 3h")).not.toBeNull();
   });
 
   it("drops the status slot entirely when a thread has no indicator", () => {

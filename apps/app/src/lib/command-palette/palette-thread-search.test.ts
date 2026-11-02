@@ -212,7 +212,7 @@ describe("buildPaletteThreadSearchRows", () => {
         highlightRanges: [{ start: 4, end: 12 }],
       },
       projectName: "Palette project",
-      relativeTime: "just now",
+      relativeTime: "now",
       messageSeq: 42,
     });
   });

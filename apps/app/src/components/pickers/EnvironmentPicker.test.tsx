@@ -1034,7 +1034,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     renderMachineMenu();
 
     fireEvent.click(screen.getByRole("option", { name: "dev-vm" }));
-    expect(screen.getByText(/last seen 2h ago/u)).toBeTruthy();
+    expect(screen.getByText(/last seen 2h/u)).toBeTruthy();
     const checkoutItems = screen.getAllByRole("option", {
       name: /Project checkout/u,
     });
@@ -1070,7 +1070,7 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
         `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
       ),
     ).toBeTruthy();
-    expect(screen.queryByText(/last seen 2h ago/u)).toBeNull();
+    expect(screen.queryByText(/last seen 2h/u)).toBeNull();
   });
 
   it("disables options on an offline machine that has a source", () => {

@@ -1,3 +1,4 @@
+import { formatCompactRelativeTime } from "@/components/ui/relative-time";
 import {
   useCallback,
   useEffect,
@@ -184,11 +185,7 @@ function percent(value: number | null): string {
   return value === null ? "—" : `${Math.round(value * 100)}%`;
 }
 function relative(timestamp: number, now = Date.now()): string {
-  const minutes = Math.max(0, Math.round((now - timestamp) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+  return formatCompactRelativeTime({ timestamp, now });
 }
 function windowShortLabel(window: LimitWindow): string {
   if (window.windowMinutes === null)

@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  formatRelativeTime,
-  formatScheduledTime,
-} from "./relative-time";
+import { formatRelativeTime, formatScheduledTime } from "./relative-time";
 
 const NOW = 1_700_000_000_000;
 const MINUTE = 60 * 1000;
@@ -62,40 +59,40 @@ describe("formatScheduledTime", () => {
 });
 
 describe("formatRelativeTime", () => {
-  it("collapses sub-minute and future gaps to 'just now'", () => {
-    expect(formatRelativeTime({ timestamp: NOW, now: NOW })).toBe("just now");
+  it("collapses sub-minute and future gaps to 'now'", () => {
+    expect(formatRelativeTime({ timestamp: NOW, now: NOW })).toBe("now");
     expect(formatRelativeTime({ timestamp: NOW - 30 * 1000, now: NOW })).toBe(
-      "just now",
+      "now",
     );
     expect(formatRelativeTime({ timestamp: NOW + 5 * 1000, now: NOW })).toBe(
-      "just now",
+      "now",
     );
   });
 
   it("renders minutes and hours", () => {
     expect(formatRelativeTime({ timestamp: NOW - 2 * MINUTE, now: NOW })).toBe(
-      "2m ago",
+      "2m",
     );
     expect(formatRelativeTime({ timestamp: NOW - 59 * MINUTE, now: NOW })).toBe(
-      "59m ago",
+      "59m",
     );
     expect(formatRelativeTime({ timestamp: NOW - 3 * HOUR, now: NOW })).toBe(
-      "3h ago",
+      "3h",
     );
   });
 
-  it("renders Yesterday, days, and weeks", () => {
+  it("renders 1d, days, and weeks", () => {
     expect(formatRelativeTime({ timestamp: NOW - 25 * HOUR, now: NOW })).toBe(
-      "Yesterday",
+      "1d",
     );
     expect(formatRelativeTime({ timestamp: NOW - 2 * DAY, now: NOW })).toBe(
-      "2d ago",
+      "2d",
     );
     expect(formatRelativeTime({ timestamp: NOW - 6 * DAY, now: NOW })).toBe(
-      "6d ago",
+      "6d",
     );
     expect(formatRelativeTime({ timestamp: NOW - 14 * DAY, now: NOW })).toBe(
-      "2w ago",
+      "2w",
     );
   });
 

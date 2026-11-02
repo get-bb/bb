@@ -489,6 +489,11 @@
       "types": "./src/lib/absolute-file-path.ts",
       "default": "./src/lib/absolute-file-path.ts"
     },
+    "./relative-time": {
+      "source": "./src/components/ui/relative-time.ts",
+      "types": "./src/components/ui/relative-time.ts",
+      "default": "./src/components/ui/relative-time.ts"
+    },
     "./lib/format-byte-size": {
       "source": "./src/lib/format-byte-size.ts",
       "types": "./src/lib/format-byte-size.ts",

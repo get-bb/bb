@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { formatRelativeTime as formatDetailTime } from "../detail/meta.js";
 import type { DisplayComment } from "../../shared/contract.js";
 import {
   commentByline,
@@ -51,16 +52,38 @@ describe("commentByline", () => {
 });
 
 describe("formatRelativeTime", () => {
-  it("covers the just-now/minutes/hours/days ladder", () => {
-    expect(formatRelativeTime(at(20_000), NOW)).toBe("just now");
-    expect(formatRelativeTime(at(5 * 60_000), NOW)).toBe("5m ago");
-    expect(formatRelativeTime(at(59 * 60_000), NOW)).toBe("59m ago");
-    expect(formatRelativeTime(at(3 * 3_600_000), NOW)).toBe("3h ago");
-    expect(formatRelativeTime(at(50 * 3_600_000), NOW)).toBe("2d ago");
+  it("covers the now/minutes/hours/days ladder", () => {
+    expect(formatRelativeTime(at(20_000), NOW)).toBe("now");
+    expect(formatRelativeTime(at(5 * 60_000), NOW)).toBe("5m");
+    expect(formatRelativeTime(at(59 * 60_000), NOW)).toBe("59m");
+    expect(formatRelativeTime(at(3 * 3_600_000), NOW)).toBe("3h");
+    expect(formatRelativeTime(at(50 * 3_600_000), NOW)).toBe("2d");
   });
 
-  it("clamps future timestamps (clock skew) to just now", () => {
-    expect(formatRelativeTime(at(-90_000), NOW)).toBe("just now");
+  it("clamps future timestamps (clock skew) to now", () => {
+    expect(formatRelativeTime(at(-90_000), NOW)).toBe("now");
+  });
+
+  it.each([
+    [59_999, "now"],
+    [119_999, "1m"],
+    [3_599_999, "59m"],
+    [86_399_999, "23h"],
+    [7 * 86_400_000, "1w"],
+    [35 * 86_400_000 - 1, "4w"],
+  ])("floors elapsed units at %i ms", (age, expected) => {
+    expect(formatRelativeTime(at(age), NOW)).toBe(expected);
+  });
+
+  it.each([35, 400])("shows a date for a %i-day-old activity", (days) => {
+    const now = Date.now();
+    const iso = new Date(now - days * 86_400_000).toISOString();
+    const expected = new Date(iso).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+    expect.soft(formatDetailTime(iso)).toBe(expected);
+    expect.soft(formatRelativeTime(iso, now)).toBe(expected);
   });
 
   it("returns empty for an unparseable timestamp", () => {

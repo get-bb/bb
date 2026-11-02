@@ -136,7 +136,7 @@ describe("BrowserSettingsSectionContent", () => {
       expect(
         screen.getByText("1 skipped (accounts.example.com)"),
       ).toBeDefined();
-      expect(screen.getByText("imported just now")).toBeDefined();
+      expect(screen.getByText("imported now")).toBeDefined();
       expect(
         JSON.parse(
           window.localStorage.getItem(BROWSER_IMPORT_RECORDS_STORAGE_KEY) ??

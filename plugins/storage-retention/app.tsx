@@ -1,3 +1,4 @@
+import { formatCompactRelativeTime } from "@/components/ui/relative-time";
 import { toast } from "sonner";
 import {
   Fragment,
@@ -66,13 +67,8 @@ function bytes(value: number) {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 4);
   return `${Number((value / 1024 ** index).toFixed(1))} ${["B", "KB", "MB", "GB", "TB"][index]}`;
 }
-function ago(timestamp: number) {
-  const minutes = Math.round((Date.now() - timestamp) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+function ago(timestamp: number): string {
+  return formatCompactRelativeTime({ timestamp, now: Date.now() });
 }
 function duration(days: number) {
   if (days % 365 === 0) return days === 365 ? "1 year" : `${days / 365} years`;

@@ -1,3 +1,4 @@
+import { formatCompactRelativeTime } from "@/components/ui/relative-time";
 import { useEffect, useState } from "react";
 import type { DisplayComment } from "../../shared/contract.js";
 
@@ -21,14 +22,9 @@ export function commentByline(comment: DisplayComment): CommentByline {
 }
 
 export function formatRelativeTime(iso: string, nowMs: number): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const minutes = Math.max(0, Math.round((nowMs - then) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return "";
+  return formatCompactRelativeTime({ timestamp, now: nowMs });
 }
 
 interface SystemBodySegment {

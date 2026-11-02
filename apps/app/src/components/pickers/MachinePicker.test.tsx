@@ -168,7 +168,7 @@ describe("MachinePickerUI", () => {
 
     const offlineItem = screen.getByRole("option", { name: /dev-vm/u });
     expect(offlineItem.getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByText(/last seen 2h ago/u)).toBeTruthy();
+    expect(screen.getByText(/last seen 2h/u)).toBeTruthy();
   });
 
   it("falls back to the primary host when the selected host is unknown", () => {

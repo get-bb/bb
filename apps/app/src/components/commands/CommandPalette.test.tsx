@@ -1248,7 +1248,7 @@ describe("CommandPalette", () => {
     }
     expect(
       rows[1].querySelector("[data-palette-thread-metadata]")?.textContent,
-    ).toBe("Palette project · just now");
+    ).toBe("Palette project · now");
     expect(within(results).queryByText("Recent")).toBeNull();
     expect(
       results.querySelectorAll("[data-palette-thread-status]"),

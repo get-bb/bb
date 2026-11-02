@@ -1,3 +1,4 @@
+import { formatCompactRelativeTime } from "@bb/shared-ui/relative-time";
 import { useState, type FormEvent } from "react";
 import {
   createFileRoute,
@@ -216,10 +217,8 @@ function CodeEntry({
   );
 }
 
-function requestedAgo(requestedAt: number): string {
-  const mins = Math.floor(Math.max(0, Date.now() - requestedAt) / 60_000);
-  if (mins === 0) return "just now";
-  return mins === 1 ? "1 minute ago" : `${mins} minutes ago`;
+function requestedAgo(timestamp: number): string {
+  return formatCompactRelativeTime({ timestamp, now: Date.now() });
 }
 
 function RequestHeader({
