@@ -340,7 +340,7 @@ export function SignInView({
 export const DECISION_ROW_CLASS = "mt-3.5 flex items-start gap-2";
 
 export const DECISION_PRIMARY_CLASS =
-  "h-auto min-h-9 min-w-0 flex-1 justify-center whitespace-normal text-center";
+  "h-auto min-h-9 min-w-0 flex-1 justify-center whitespace-normal text-center [overflow-wrap:anywhere]";
 
 export function ClaimField({
   serverUrlTemplate,
