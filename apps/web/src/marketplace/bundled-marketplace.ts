@@ -6,18 +6,6 @@ import {
   type MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
 
-export const UNLISTED_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
-  "account-pool",
-  "environment-git-worktree",
-  "environment-personal-workspace",
-  "environment-project-checkout",
-  "plugin-api-tester",
-  "provider-acp",
-  "provider-claude-code",
-  "provider-codex",
-  "provider-pi",
-]);
-
 export const INSTALL_ON_REQUEST_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "browser-automation",
   "docs",
@@ -84,7 +72,7 @@ export function withBundledPlugins(
   const communityIds = new Set(community.plugins.map((entry) => entry.id));
   const plugins = bundled.plugins.flatMap((entry) => {
     const name = bundledPluginName(entry);
-    if (name === null || UNLISTED_BUNDLED_PLUGINS.has(name)) return [];
+    if (name === null || entry.unlisted === true) return [];
     if (communityIds.has(entry.id)) return [];
     return [{ ...entry, icon: bundledIcon(entry.icon, iconUrls) }];
   });

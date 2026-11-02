@@ -35,6 +35,7 @@ const searchResult = {
   installs: null,
   compatible: true,
   incompatibleReason: null,
+  marketplacePageUrl: null,
 };
 
 const bundledPlan = {
@@ -80,6 +81,7 @@ const installedPlugin = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "linear",
+  marketplacePageUrl: null,
   publisherLabel: "BB Community",
   sourceDisplay: "builtin · linear",
   updateState: {},

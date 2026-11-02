@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getInstalledPluginRegistration,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -210,6 +211,60 @@ describe("store-installed official plugins", () => {
           publisherLabel: "BB Official",
           status: "running",
         },
+      ]);
+    },
+  );
+
+  function seedOfficialMarketplace(entry: Record<string, unknown>): void {
+    upsertPluginMarketplace(db, {
+      name: "bb-official",
+      sourceKind: "path",
+      manifestUrl: "/bundled/marketplace",
+      sourceGitRef: null,
+      sourceGitSubdirectory: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "bb-official",
+        displayName: "BB Official",
+        plugins: [
+          {
+            id: "builtin-fixture",
+            displayName: "Fixture",
+            description: "A fixture plugin.",
+            icon: "Puzzle",
+            author: { name: "BB" },
+            source: { bundled: { plugin: "fixture" } },
+            ...entry,
+          },
+        ],
+      }),
+      statsJson: null,
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+  }
+
+  it.each([
+    { entry: {}, url: "https://getbb.app/marketplace/builtin-fixture?utm_source=bb&utm_medium=share" },
+    { entry: { unlisted: true }, url: null },
+  ])(
+    "links an installed official plugin to its page ($url)",
+    async ({ entry, url }) => {
+      seedOfficialMarketplace(entry);
+      service = createService({
+        db,
+        dataDir: join(workDir, "data"),
+        bundled: [officialEntry()],
+      });
+      await service.start();
+      await service.installOfficialPlugin("fixture");
+
+      expect(service.list()).toMatchObject([
+        { id: "builtin-fixture", marketplacePageUrl: url },
       ]);
     },
   );

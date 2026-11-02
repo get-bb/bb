@@ -95,6 +95,12 @@ import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { loadBundledMarketplace } from "./bundled-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 import { createKeyedLock } from "../lib/async-deduper.js";
+import {
+  findMarketplacePage,
+  marketplacePageForEntry,
+  type MarketplacePage,
+  type MarketplacePageCatalogs,
+} from "./marketplace-pages.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
@@ -137,6 +143,7 @@ export interface PluginCatalogService {
     marketplace: string,
     entryId: string,
   ): Promise<PluginCatalogIcon | undefined>;
+  marketplacePage(marketplace: string, entryId: string): MarketplacePage | null;
   listMarketplaces(): PluginMarketplace[];
   addMarketplace(input: {
     source: string;
@@ -282,6 +289,14 @@ export function createPluginCatalogService(deps: {
       lastAttemptedRefreshAt: existing?.lastAttemptedRefreshAt ?? null,
       lastError: null,
     });
+  }
+
+  function pageCatalogs(): MarketplacePageCatalogs {
+    const catalogs = reservedCollections.catalogsByMarketplace;
+    return {
+      official: catalogs.get(BUNDLED_MARKETPLACE_NAME) ?? null,
+      community: catalogs.get(CURATED_PLUGIN_MARKETPLACE_NAME) ?? null,
+    };
   }
 
   function requireRow(name: string): PluginMarketplaceRow {
@@ -539,6 +554,8 @@ export function createPluginCatalogService(deps: {
       installs: args.installs,
       compatible: compatibility === null,
       incompatibleReason: compatibility,
+      marketplacePageUrl:
+        marketplacePageForEntry(pageCatalogs(), row.name, entry)?.url ?? null,
     };
   }
 
@@ -984,6 +1001,10 @@ export function createPluginCatalogService(deps: {
     },
 
     refreshMarketplaces,
+
+    marketplacePage(marketplace, entryId) {
+      return findMarketplacePage(pageCatalogs(), marketplace, entryId);
+    },
 
     async icon(marketplace, entryId) {
       const row = getPluginMarketplaceIcon(deps.db, marketplace, entryId);

@@ -1,7 +1,8 @@
 {
   "account-pool": {
     "category": "agents-and-providers",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "agent-annotations": {
     "category": "code-and-reviews",
@@ -40,7 +41,8 @@
   },
   "plugin-api-tester": {
     "category": "plugin-development",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "inline-vis": {
     "category": "thread-content",
@@ -56,19 +58,23 @@
   },
   "provider-codex": {
     "category": "agents-and-providers",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "provider-claude-code": {
     "category": "agents-and-providers",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "provider-pi": {
     "category": "agents-and-providers",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "provider-acp": {
     "category": "agents-and-providers",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "keep-awake": {
     "category": "utilities",
@@ -171,15 +177,18 @@
   },
   "environment-project-checkout": {
     "category": "cloud-and-remote",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "environment-git-worktree": {
     "category": "cloud-and-remote",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "environment-personal-workspace": {
     "category": "cloud-and-remote",
-    "screenshots": []
+    "screenshots": [],
+    "unlisted": true
   },
   "bb-guide": {
     "category": "memory-and-context",

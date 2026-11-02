@@ -97,6 +97,7 @@ import {
 import { environmentProviderMachineAvailability } from "../services/environments/provider-machine-availability.js";
 import { machineProviderAcceptsEmptyInputs } from "../services/machines/provider-availability.js";
 import { requirePublicProject } from "../services/lib/entity-lookup.js";
+import type { PluginCatalogService } from "../services/plugin-catalog/plugin-catalog-service.js";
 
 const LEADING_ENVIRONMENT_PROVIDER_IDS: readonly string[] = [
   "project-checkout",
@@ -151,6 +152,7 @@ export function registerSystemRoutes(
   app: Hono,
   deps: ServerAppDeps,
   pluginService: PluginService,
+  pluginCatalog: Pick<PluginCatalogService, "marketplacePage">,
 ): void {
   const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -347,6 +349,22 @@ export function registerSystemRoutes(
   });
 
   post(routes.recordTelemetryEvent, (context, payload) => {
+    if (payload.name === "plugin_link_shared") {
+      const page = pluginCatalog.marketplacePage(
+        payload.properties.marketplace,
+        payload.properties.entry_id,
+      );
+      deps.telemetry.capture({
+        name: "plugin_link_shared",
+        properties: {
+          plugin_id: page?.pluginId ?? null,
+          entry_id: page?.entryId ?? null,
+          marketplace: page?.marketplace ?? null,
+          share_method: payload.properties.share_method,
+        },
+      });
+      return context.json({ ok: true });
+    }
     if (
       payload.name === "recommendation" &&
       payload.properties.action === "selected"

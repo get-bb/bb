@@ -9,7 +9,7 @@ import {
   bundledPluginSetup,
   INSTALL_ON_REQUEST_BUNDLED_PLUGINS,
   OFF_BY_DEFAULT_BUNDLED_PLUGINS,
-  UNLISTED_BUNDLED_PLUGINS,
+  bundledPluginName,
   withBundledPlugins,
 } from "./bundled-marketplace.js";
 import { marketplacePluginIcon } from "./marketplace-icons.js";
@@ -71,6 +71,7 @@ const BUNDLED_FIXTURE: MarketplaceV2Manifest = {
     bundledEntry("prompt-library", "prompt-library"),
     bundledEntry("provider-codex", "provider-codex", {
       category: "environments",
+      unlisted: true,
     }),
     bundledEntry("guide", "plugin-api-docs", {
       icon: { url: "./plugin-api-docs/icons/guide.svg" },
@@ -128,11 +129,31 @@ describe("withBundledPlugins", () => {
 });
 
 describe("bundled plugin setup", () => {
+  const unlisted = new Set(
+    bundledMarketplace()
+      .plugins.filter((entry) => entry.unlisted === true)
+      .map(bundledPluginName),
+  );
+
+  it("marks providers, environments, account-pool and plugin-api-tester unlisted", () => {
+    expect([...unlisted].sort()).toEqual([
+      "account-pool",
+      "environment-git-worktree",
+      "environment-personal-workspace",
+      "environment-project-checkout",
+      "plugin-api-tester",
+      "provider-acp",
+      "provider-claude-code",
+      "provider-codex",
+      "provider-pi",
+    ]);
+  });
+
   it("matches how the server registry installs and enables each plugin", () => {
     const listed = (plugins: readonly { name: string }[]) =>
       plugins
         .map((plugin) => plugin.name)
-        .filter((name) => !UNLISTED_BUNDLED_PLUGINS.has(name))
+        .filter((name) => !unlisted.has(name))
         .sort();
     expect([...INSTALL_ON_REQUEST_BUNDLED_PLUGINS].sort()).toEqual(
       listed(OFFICIAL_PLUGINS),

@@ -214,6 +214,7 @@ export const installedPluginSchema = z.object({
   isOrphanedBuiltin: z.boolean(),
   catalogEntryId: z.string().optional(),
   catalogMarketplaceName: z.string().optional(),
+  marketplacePageUrl: z.string().nullable().default(null),
   publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
@@ -550,6 +551,7 @@ export const pluginCatalogSearchResultSchema = z.object({
   installs: z.number().int().nonnegative().nullable().default(null),
   compatible: z.boolean(),
   incompatibleReason: z.string().nullable(),
+  marketplacePageUrl: z.string().nullable().default(null),
 });
 export type PluginCatalogSearchResult = z.infer<
   typeof pluginCatalogSearchResultSchema

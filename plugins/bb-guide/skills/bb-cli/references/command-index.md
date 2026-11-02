@@ -257,6 +257,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb plugin search`
 - `bb plugin list`
 - `bb plugin source`
+- `bb plugin share`
 - `bb plugin install`
 - `bb plugin install-jobs`
 - `bb plugin cancel-install`

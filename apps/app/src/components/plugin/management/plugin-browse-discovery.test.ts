@@ -38,6 +38,7 @@ function entry(
     installs: null,
     compatible: true,
     incompatibleReason: null,
+    marketplacePageUrl: null,
     ...overrides,
   };
 }

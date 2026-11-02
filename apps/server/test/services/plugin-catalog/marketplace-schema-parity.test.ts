@@ -476,6 +476,20 @@ describe("published marketplace schema parity", () => {
     }
   });
 
+  it("accepts only unlisted: true in both v2 contracts", async () => {
+    const validate = await compilePublishedSchema(2);
+    const unlisted = manifestV2With({ unlisted: true });
+
+    expect(validate(unlisted)).toBe(true);
+    expect(
+      parseMarketplaceManifest(unlisted, "fixture").plugins[0],
+    ).toMatchObject({ unlisted: true });
+
+    const listedFalse = manifestV2With({ unlisted: false });
+    expect(validate(listedFalse)).toBe(false);
+    expect(() => parseMarketplaceManifest(listedFalse, "fixture")).toThrow();
+  });
+
   it("keeps the bundled source out of the public publisher schema", async () => {
     const validate = await compilePublishedSchema(2);
     const manifest = {

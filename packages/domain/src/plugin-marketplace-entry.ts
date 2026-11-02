@@ -155,4 +155,5 @@ export const marketplaceEntryV2Schema = z.object({
   tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
   author: marketplaceAuthorSchema(),
   source: marketplaceSourceSchema(),
+  unlisted: z.literal(true).optional(),
 });

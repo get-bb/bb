@@ -203,6 +203,10 @@
         "updatedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "unlisted": {
+          "const": true,
+          "$comment": "Leave this out unless the plugin has no page on getbb.app. Only BB Official entries set it."
         }
       }
     },

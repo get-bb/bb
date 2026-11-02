@@ -77,6 +77,7 @@ export function makePluginListItem(
     isOrphanedBuiltin: false,
     catalogEntryId: null,
     catalogMarketplaceName: null,
+    marketplacePageUrl: null,
     publisherLabel: null,
     sourceDisplay: "path · /plugins/plugin-test",
     updateState: {
@@ -117,6 +118,7 @@ export function makeInstalledPlugin(
     provenance: "direct",
     isOrphanedBuiltin: false,
     publisherLabel: null,
+    marketplacePageUrl: null,
     sourceDisplay: "path · /plugins/plugin-test",
     updateState: {},
     enabled: true,

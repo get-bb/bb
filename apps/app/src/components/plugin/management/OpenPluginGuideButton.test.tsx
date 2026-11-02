@@ -18,6 +18,7 @@ const GUIDE: InstalledPlugin = {
   version: "1.0.0",
   provenance: "builtin",
   publisherLabel: "BB Official",
+  marketplacePageUrl: null,
   isOrphanedBuiltin: false,
   sourceDisplay: "Included with BB",
   updateState: {},
@@ -67,6 +68,7 @@ const GUIDE_ENTRY: PluginCatalogSearchEntry = {
   installs: null,
   compatible: true,
   incompatibleReason: null,
+  marketplacePageUrl: null,
 };
 
 function renderGuide() {

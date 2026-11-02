@@ -232,6 +232,13 @@ const releaseVersionTelemetrySchema = z
   .max(32)
   .regex(/^\d+(\.\d+){1,3}$/);
 
+export const pluginShareMethodSchema = z.enum([
+  "share_sheet",
+  "copy_link",
+  "cli",
+]);
+export type PluginShareMethod = z.infer<typeof pluginShareMethodSchema>;
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
@@ -379,6 +386,18 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .object({
       name: z.literal("plugin_creation_started"),
       properties: z.object({}).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("plugin_link_shared"),
+      properties: z
+        .object({
+          entry_id: z.string().min(1).max(128),
+          marketplace: z.string().min(1).max(64),
+          share_method: pluginShareMethodSchema,
+        })
+        .strict(),
     })
     .strict(),
 ]);

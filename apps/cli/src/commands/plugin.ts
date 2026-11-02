@@ -33,6 +33,11 @@ import {
   setPluginSdkPin,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
+import {
+  catalogEntryLinkTarget,
+  installedPluginLinkTarget,
+  type PluginLinkTarget,
+} from "@bb/client-core";
 import { action, CliExitError } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import { resolveContextThreadId } from "../context-env.js";
@@ -355,6 +360,58 @@ async function isPackageInstalled(
 }
 
 const PLUGIN_CREATION_TELEMETRY_TIMEOUT_MS = 2_000;
+const PLUGIN_SHARE_TELEMETRY_TIMEOUT_MS = 2_000;
+
+async function resolvePluginLinkTarget(
+  baseUrl: string,
+  id: string,
+): Promise<PluginLinkTarget | null> {
+  const sdk = createCliBbSdk(baseUrl);
+  const installed = (await sdk.plugins.list()).plugins.find(
+    (plugin) => plugin.id === id,
+  );
+  if (installed !== undefined) {
+    return installedPluginLinkTarget({
+      id: installed.id,
+      provenance: installed.provenance,
+      catalogEntryId: installed.catalogEntryId ?? null,
+      catalogMarketplaceName: installed.catalogMarketplaceName ?? null,
+      marketplacePageUrl: installed.marketplacePageUrl,
+    });
+  }
+  const listed = (await searchCatalog(baseUrl, id)).find(
+    (entry) =>
+      entry.official && (entry.pluginId === id || entry.entryId === id),
+  );
+  if (listed === undefined) {
+    throw new CliExitError(
+      `No plugin "${id}" is installed or listed in BB Official or BB Community.`,
+      1,
+    );
+  }
+  return catalogEntryLinkTarget(listed);
+}
+
+async function recordPluginLinkShared(
+  baseUrl: string,
+  target: PluginLinkTarget,
+): Promise<void> {
+  try {
+    await createCliBbSdk(
+      baseUrl,
+      PLUGIN_SHARE_TELEMETRY_TIMEOUT_MS,
+    ).system.experimental_recordTelemetryEvent({
+      name: "plugin_link_shared",
+      properties: {
+        entry_id: target.entryId,
+        marketplace: target.marketplace,
+        share_method: "cli",
+      },
+    });
+  } catch {
+    return;
+  }
+}
 
 async function recordPluginCreationStarted(
   getUrl: () => string,
@@ -1044,6 +1101,27 @@ export function registerPluginCommands(
         for (const entry of result.plugins) {
           printPlugin(entry);
         }
+      }),
+    );
+
+  plugin
+    .command("share <id>")
+    .description(
+      "Print the getbb.app marketplace link for a BB Official or BB Community plugin, installed or not",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (id: string, opts: JsonOutputOptions) => {
+        const baseUrl = getUrl();
+        const target = await resolvePluginLinkTarget(baseUrl, id);
+        if (target === null) {
+          throw new CliExitError(
+            `"${id}" has no marketplace page to share. Only BB Official and BB Community plugins with a getbb.app page have one.`,
+            1,
+          );
+        }
+        if (!outputJson(opts, { url: target.url })) console.log(target.url);
+        await recordPluginLinkShared(baseUrl, target);
       }),
     );
 

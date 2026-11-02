@@ -199,6 +199,11 @@
       "types": "./src/components/ui/select.tsx",
       "default": "./src/components/ui/select.tsx"
     },
+    "./separator": {
+      "source": "./src/components/ui/separator.tsx",
+      "types": "./src/components/ui/separator.tsx",
+      "default": "./src/components/ui/separator.tsx"
+    },
     "./skeleton": {
       "source": "./src/components/ui/skeleton.tsx",
       "types": "./src/components/ui/skeleton.tsx",

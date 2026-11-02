@@ -109,6 +109,7 @@ export const marketplaceV2EntrySchema = z.object({
   overview: z.string().min(1).optional(),
   publishedAt: z.string().datetime({ offset: true }).optional(),
   updatedAt: z.string().datetime({ offset: true }).optional(),
+  unlisted: z.literal(true).optional(),
 });
 
 const marketplaceCategorySchema = z.object({
