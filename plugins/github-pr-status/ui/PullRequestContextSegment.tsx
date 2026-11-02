@@ -69,7 +69,8 @@ export function usePullRequestSegmentVisible(
   input: ExperimentalThreadContextSegmentInput,
 ): boolean {
   const enabled = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
-  const show = enabled && experimental_useThreadContextKind() === "banner";
+  const contextKind = experimental_useThreadContextKind();
+  const show = enabled && contextKind === "banner";
   return useThreadPullRequest(show ? input.environment : null) !== null;
 }
 
