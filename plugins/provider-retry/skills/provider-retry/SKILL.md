@@ -38,7 +38,10 @@ retry whose reset is farther away:
 `bb plugin config provider-retry set maximumWait "24 hours"`.
 
 A pending retry is an ordinary durable queued row, shown on the thread's queue
-card with its reason and time, and survives restart.
+card with its reason and time, and survives restart. A thread keeps one
+pending retry for accepted input: when another accepted turn fails while a
+retry waits, the waiting retry moves to the new time instead of a second
+"Please continue." row. Input the provider never accepted keeps its own row.
 
 ```sh
 bb provider-retry status [thread-id] [--json]
