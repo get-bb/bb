@@ -1,0 +1,48 @@
+name: Temporary Windows CI cost comparison
+on:
+  push:
+    branches: [bb/ci-nov2-infra]
+    paths: [.github/workflows/ci-nov2-bench.yml, scripts/ci-nov2-bench.mjs, '.bb-ci-probe/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [app, git]
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Warm app prerequisites
+        if: matrix.kind == 'app'
+        shell: cmd
+        env:
+          VITEST_MAX_WORKERS: '4'
+        run: pnpm exec turbo run test --filter=@bb/app -- src/views/thread-detail/thread-opening.model.test.tsx
+      - name: Warm Git prerequisites
+        if: matrix.kind == 'git'
+        shell: cmd
+        run: pnpm exec turbo run test --filter=bb-plugin-bb--git -- host/workspace-diff.test.ts
+      - name: Compare baseline and candidate ABBA
+        env:
+          VITEST_MAX_WORKERS: ${{ matrix.kind == 'app' && '4' || '' }}
+        run: node scripts/ci-nov2-bench.mjs ${{ matrix.kind }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: ci-nov2-${{ matrix.kind }}
+          path: ${{ runner.temp }}/ci-nov2-${{ matrix.kind }}
+          retention-days: 7
