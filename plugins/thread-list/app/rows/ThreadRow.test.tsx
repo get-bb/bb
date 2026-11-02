@@ -15,6 +15,10 @@ import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
 import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarRenameProvider } from "./SidebarInlineRename.js";
+import {
+  RENAME_PRESENTATION_CASES,
+  type RenamePresentationOutcome,
+} from "@/components/ui/inline-rename-presentation-cases";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
@@ -373,8 +377,30 @@ function hostThreadActions({
   };
 }
 
+const pointerState = vi.hoisted(() => ({ coarse: false }));
+vi.mock("@/components/ui/hooks/use-pointer-coarse", () => ({
+  usePointerCoarse: () => pointerState.coarse,
+}));
+
+async function expectRenamePresentation(outcome: RenamePresentationOutcome) {
+  if (outcome === "none") {
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    return;
+  }
+  const input = await screen.findByRole("textbox", { name: "Thread name" });
+  expect(input).toHaveProperty("value", "Thread");
+  expect(input.closest('[role="dialog"]') === null ? "inline" : "dialog").toBe(
+    outcome,
+  );
+  fireEvent.keyDown(input, { key: "Escape" });
+  await waitFor(() =>
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull(),
+  );
+}
+
 afterEach(() => {
   cleanup();
+  pointerState.coarse = false;
   vi.restoreAllMocks();
   resetSidebarTitleDoubleClickForTest();
   resetPreferencesSyncForTest();
@@ -772,6 +798,24 @@ describe("ThreadRow", () => {
       fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
       const input = await screen.findByRole("textbox", { name: "Thread name" });
       expect(input).toHaveProperty("value", "Thread");
+    },
+  );
+
+  it.each(RENAME_PRESENTATION_CASES)(
+    "presents rename from the menu, a row action, and double click for compact=$compact coarse=$coarse",
+    async ({ compact, coarse, menu, direct, doubleClick }) => {
+      pointerState.coarse = coarse;
+      getDefaultStore().set(preferenceValueAtom("rowActions"), [
+        "bb--core/rename",
+      ]);
+      renderThreadRow({ isCompactViewport: compact });
+      fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+      await expectRenamePresentation(menu);
+      fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+      await expectRenamePresentation(direct);
+      fireEvent.doubleClick(screen.getByText("Thread"));
+      await expectRenamePresentation(doubleClick);
     },
   );
 

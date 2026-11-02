@@ -146,6 +146,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "inline-rename-presentation-cases",
+      "type": "registry:ui"
+    },
+    {
       "name": "input",
       "type": "registry:ui"
     },
@@ -239,6 +243,10 @@
     },
     {
       "name": "rename-dialog",
+      "type": "registry:ui"
+    },
+    {
+      "name": "rename-session-dialog",
       "type": "registry:ui"
     },
     {

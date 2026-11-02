@@ -8,7 +8,7 @@ import {
   type RenameSession,
 } from "@/components/ui/inline-rename";
 import { InlineRenameEditor } from "@/components/ui/inline-rename-editor";
-import { SidebarRenameDialog } from "./SidebarRenameDialog.js";
+import { RenameSessionDialog } from "@/components/ui/rename-session-dialog";
 
 const SidebarRenameContext = createContext<RenameController | null>(null);
 
@@ -17,7 +17,7 @@ export function SidebarRenameProvider({ children }: { children: ReactNode }) {
   return (
     <SidebarRenameContext.Provider value={controller}>
       {children}
-      <SidebarRenameDialog controller={controller} />
+      <RenameSessionDialog controller={controller} />
     </SidebarRenameContext.Provider>
   );
 }

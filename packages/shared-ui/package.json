@@ -304,6 +304,11 @@
       "types": "./src/components/ui/inline-rename.tsx",
       "default": "./src/components/ui/inline-rename.tsx"
     },
+    "./inline-rename-presentation-cases": {
+      "source": "./src/components/ui/inline-rename-presentation-cases.ts",
+      "types": "./src/components/ui/inline-rename-presentation-cases.ts",
+      "default": "./src/components/ui/inline-rename-presentation-cases.ts"
+    },
     "./inline-rename-editor": {
       "source": "./src/components/ui/inline-rename-editor.tsx",
       "types": "./src/components/ui/inline-rename-editor.tsx",
@@ -313,6 +318,11 @@
       "source": "./src/components/ui/rename-dialog.tsx",
       "types": "./src/components/ui/rename-dialog.tsx",
       "default": "./src/components/ui/rename-dialog.tsx"
+    },
+    "./rename-session-dialog": {
+      "source": "./src/components/ui/rename-session-dialog.tsx",
+      "types": "./src/components/ui/rename-session-dialog.tsx",
+      "default": "./src/components/ui/rename-session-dialog.tsx"
     },
     "./sidebar-customize-panel": {
       "source": "./src/components/ui/sidebar-customize-panel.tsx",
