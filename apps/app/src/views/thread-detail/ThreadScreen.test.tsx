@@ -121,7 +121,6 @@ function renderScreen(presentation: ThreadScreenPresentation) {
           unreadDividerAutoScroll: false,
           unreadDividerPlacement: null,
         }}
-        workspaceRootPath={undefined}
       />
     </Wrapper>,
   );

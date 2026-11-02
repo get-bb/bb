@@ -342,7 +342,6 @@ export function MarkdownBody() {
             <ThreadTimelineRows
               projectId="proj_demo"
               threadRuntimeDisplayStatus="idle"
-              workspaceRootPath={undefined}
               initialExpanded={new Set([row.id])}
               timelineRows={[row]}
             />

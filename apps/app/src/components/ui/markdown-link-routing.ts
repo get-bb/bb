@@ -62,6 +62,7 @@ export interface MarkdownLocalImageRouting {
 }
 
 export interface MarkdownLinkRouting {
+  headingAnchors?: true;
   localFile?: MarkdownLocalFileLinkRouting;
   localImage?: MarkdownLocalImageRouting;
   onOpenLink?: MarkdownPreviewLinkHandler;

@@ -18,6 +18,11 @@ vi.mock("@/lib/sdk", () => ({
   },
 }));
 
+vi.mock("@/hooks/useLocalFileLinkOpener", () => ({
+  useLocalFileLinkOpener: () => ({ openLink: () => false }),
+  useThreadFileLinkOpener: () => ({ openLink: () => false }),
+}));
+
 vi.mock("@pierre/diffs/react", async () => {
   const React = await import("react");
   return {

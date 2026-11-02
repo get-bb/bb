@@ -17,7 +17,12 @@ import {
   type ThreadTimelineConsumerMessageAction,
   type ThreadTimelineForkMessageHandler,
 } from "@/components/thread/timeline";
-import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import {
+  ThreadTimelineNavigationProvider,
+  useThreadTimelineNavigation,
+} from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useThreadFileLinkOpener } from "@/hooks/useLocalFileLinkOpener";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { PluginComposerHostScopeProvider } from "@/components/plugin/plugin-composer-host";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
@@ -36,9 +41,7 @@ import {
 } from "@/lib/environment-workspace-display";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
-import {
-  formatWorkspaceCheckoutDisplay,
-} from "@bb/shared-ui/lib/workspace-checkout-display";
+import { formatWorkspaceCheckoutDisplay } from "@bb/shared-ui/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
 import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 import {
@@ -174,10 +177,12 @@ function PluginThreadChatBody({
   const canUseHostFileNavigation =
     thread !== undefined &&
     thread.environmentId === timelineNavigation?.environmentId;
-  const onOpenLink = timelineNavigation?.onOpenLink;
-  const onOpenLocalFileLink = canUseHostFileNavigation
-    ? timelineNavigation.onOpenLocalFileLink
-    : undefined;
+  const navigation = useAppNavigationHost();
+  const onOpenLocalFileLink = useThreadFileLinkOpener({
+    environment,
+    openFilePreview: navigation.openFilePreview,
+    threadId: thread?.id,
+  }).openLink;
   const resolveHostMentionLink = canUseHostFileNavigation
     ? timelineNavigation.resolveMentionLink
     : undefined;
@@ -305,42 +310,47 @@ function PluginThreadChatBody({
   return (
     <ThreadProviderContext.Provider value={threadProviderContextValue}>
       <PluginComposerHostScopeProvider>
-        <ThreadScreen
-          composer={
-            hasComposer
-              ? {
-                  environmentCheckout,
-                  environmentChrome,
-                  focusRequest,
-                  contextEnvironmentId: null,
-                  permissionPolicy:
-                    permissionPolicy === "editable" ? "editable" : "snapshot",
-                }
-              : null
-          }
-          environment={environment}
-          presentation={presentation}
-          projectId={thread.projectId}
+        <ThreadTimelineNavigationProvider
+          environmentId={thread.environmentId}
+          onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={resolveMentionLink}
-          thread={thread}
-          timeline={timeline}
-          timelineHost={{
-            consumerMessageActions,
-            environmentHostName:
-              environmentHost !== null &&
-              isHostAmbiguous(hasMultipleMachines, environmentHost.type)
-                ? environmentHost.name
-                : null,
-            includePluginMessageActions: false,
-            leadingContent,
-            onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-            onOpenLink,
-            onOpenLocalFileLink,
-            unreadDividerAutoScroll: false,
-            unreadDividerPlacement: null,
-          }}
+          threadId={thread.id}
           workspaceRootPath={workspaceRootPath}
-        />
+        >
+          <ThreadScreen
+            composer={
+              hasComposer
+                ? {
+                    environmentCheckout,
+                    environmentChrome,
+                    focusRequest,
+                    contextEnvironmentId: null,
+                    permissionPolicy:
+                      permissionPolicy === "editable" ? "editable" : "snapshot",
+                  }
+                : null
+            }
+            environment={environment}
+            presentation={presentation}
+            projectId={thread.projectId}
+            resolveMentionLink={resolveMentionLink}
+            thread={thread}
+            timeline={timeline}
+            timelineHost={{
+              consumerMessageActions,
+              environmentHostName:
+                environmentHost !== null &&
+                isHostAmbiguous(hasMultipleMachines, environmentHost.type)
+                  ? environmentHost.name
+                  : null,
+              includePluginMessageActions: false,
+              leadingContent,
+              onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+              unreadDividerAutoScroll: false,
+              unreadDividerPlacement: null,
+            }}
+          />
+        </ThreadTimelineNavigationProvider>
       </PluginComposerHostScopeProvider>
     </ThreadProviderContext.Provider>
   );

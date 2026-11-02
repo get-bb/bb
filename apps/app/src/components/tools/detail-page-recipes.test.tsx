@@ -26,7 +26,7 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
-import { buildMarkdownFileImageRouting } from "@/components/ui/markdown-file-image-routing";
+import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
 
 afterEach(() => {
   cleanup();
@@ -533,7 +533,7 @@ function renderSkill(files: readonly string[]) {
 
 describe("Skill detail recipe", () => {
   it("routes relative images from Markdown skill files", () => {
-    const markdownLinkRouting = buildMarkdownFileImageRouting({
+    const markdownLinkRouting = buildMarkdownFileRouting({
       path: "/skills/writing-voice/SKILL.md",
       rootPath: "/skills/writing-voice",
       threadId: null,
