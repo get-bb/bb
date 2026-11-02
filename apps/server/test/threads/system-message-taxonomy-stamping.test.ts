@@ -124,6 +124,7 @@ describe("Family B emit-site discriminator stamping", () => {
           childThread: child,
           parentThreadId: fixture.parentThreadId,
           turnStatus,
+          turnId: null,
         });
 
         const stamped = await waitForStampedSystemMessage(
