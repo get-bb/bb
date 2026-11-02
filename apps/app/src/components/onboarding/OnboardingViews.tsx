@@ -1342,18 +1342,13 @@ export function AgentSignInPanel({
             onSubmit: onSubmitCode,
           }
         : { kind: "waiting" };
+  if (starting && !connect) return null;
   return (
     <div className="mt-3">
       <SignInPanel
         flush
         flushBottom
-        status={
-          codeSubmitted
-            ? "Finishing sign-in…"
-            : starting && !connect
-              ? `Starting ${agentName} sign-in…`
-              : undefined
-        }
+        status={codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={
           <DisclosureToggle

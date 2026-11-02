@@ -289,6 +289,25 @@ describe("AgentSignInInstruction", () => {
 });
 
 describe("AgentSignInPanel", () => {
+  it("stays hidden while sign-in is still starting", () => {
+    const { container } = render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Cursor"
+        view={{ guide: null, terminalVisible: false }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).toBe("");
+  });
+
   it("holds only the controls, not the instruction or a waiting line", () => {
     render(
       <AgentSignInPanel

@@ -546,6 +546,8 @@ function AgentStepContainer({
                     )
                   }
                 />
+              ) : redesign && signingIn && connectFlow === null ? (
+                "Starting sign-in…"
               ) : undefined,
             state: resolveAgentSetupState({
               health,
