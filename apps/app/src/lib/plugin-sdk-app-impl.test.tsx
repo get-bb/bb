@@ -98,6 +98,7 @@ describe("plugin SDK Markdown", () => {
       <AppNavigationHostProvider capabilities={{ openUrl }}>
         <ThreadTimelineNavigationProvider
           environmentId={null}
+          hostId={null}
           onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={() => null}
           threadId="thr_plugin"
@@ -157,6 +158,7 @@ describe("plugin SDK Markdown", () => {
           >
             <ThreadTimelineNavigationProvider
               environmentId="env_other"
+              hostId={null}
               onOpenLocalFileLink={() => {
                 throw new Error("Used ambient workspace");
               }}
@@ -210,6 +212,7 @@ describe("plugin SDK Markdown", () => {
         <AppNavigationHostProvider capabilities={{ openFilePreview }}>
           <ThreadTimelineNavigationProvider
             environmentId={null}
+            hostId={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={() => null}
             threadId="thr_document"

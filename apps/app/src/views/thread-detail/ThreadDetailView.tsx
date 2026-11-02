@@ -1709,6 +1709,7 @@ function ThreadDetailViewInternal(
       />
       <ThreadTimelineNavigationProvider
         environmentId={thread.environmentId}
+        hostId={environment?.hostId ?? null}
         onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
         resolveMentionLink={resolveMentionLink}
         threadId={thread.id}

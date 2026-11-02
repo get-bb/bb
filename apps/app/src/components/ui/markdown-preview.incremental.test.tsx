@@ -112,6 +112,7 @@ const messageDirectives = {
 const WORKSPACE_PATHS = { baseDir: "/workspace", rootPath: "/workspace" };
 const linkRouting: MarkdownLinkRouting = {
   localFile: {
+    hostId: null,
     absoluteLinks: { kind: "trusted-host" },
     onOpenLink: () => true,
     relativeLinks: WORKSPACE_PATHS,

@@ -534,6 +534,7 @@ function renderSkill(files: readonly string[]) {
 describe("Skill detail recipe", () => {
   it("routes relative images from Markdown skill files", () => {
     const markdownLinkRouting = buildMarkdownFileRouting({
+      hostId: null,
       path: "/skills/writing-voice/SKILL.md",
       rootPath: "/skills/writing-voice",
       threadId: null,

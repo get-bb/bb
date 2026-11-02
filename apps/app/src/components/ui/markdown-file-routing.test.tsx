@@ -31,6 +31,7 @@ function renderMarkdownFilePreview({
     <FilePreview
       headerMode="none"
       markdownLinkRouting={buildMarkdownFileRouting({
+        hostId: null,
         path,
         threadId: imageContent.threadId,
         resolveRelativeSrc: (relativePath, absolutePath) =>
@@ -100,6 +101,7 @@ describe("Markdown file preview image routing", () => {
       <FilePreview
         headerMode="none"
         markdownLinkRouting={buildMarkdownFileRouting({
+          hostId: null,
           path: "docs/report.md",
           rootPath: "/workspace",
           threadId: null,
@@ -142,6 +144,7 @@ describe("Markdown file preview image routing", () => {
       <FilePreview
         headerMode="none"
         markdownLinkRouting={buildMarkdownFileRouting({
+          hostId: null,
           path: "references/guide.md",
           rootPath: "/skills/example",
           threadId: null,

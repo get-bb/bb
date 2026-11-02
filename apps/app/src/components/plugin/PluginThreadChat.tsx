@@ -312,6 +312,7 @@ function PluginThreadChatBody({
       <PluginComposerHostScopeProvider>
         <ThreadTimelineNavigationProvider
           environmentId={thread.environmentId}
+          hostId={environment?.hostId ?? null}
           onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={resolveMentionLink}
           threadId={thread.id}

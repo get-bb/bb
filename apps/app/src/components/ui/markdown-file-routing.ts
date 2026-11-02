@@ -11,6 +11,7 @@ import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 const ROUTE_ROOT = "/__bb_markdown_file_root__";
 
 export function buildMarkdownFileRouting({
+  hostId,
   path,
   rootPath,
   threadId,
@@ -18,6 +19,7 @@ export function buildMarkdownFileRouting({
   openLink,
   openOutsideRoot,
 }: {
+  hostId: string | null;
   path: string;
   rootPath: string | null;
   threadId: string | null;
@@ -61,6 +63,7 @@ export function buildMarkdownFileRouting({
               openOutsideRoot === undefined
                 ? { kind: "contained", rootPath: root }
                 : { kind: "trusted-host" },
+            hostId,
             relativeLinks: relativePaths,
             onOpenLink: (link) =>
               isAbsoluteFilePathWithinRoot({

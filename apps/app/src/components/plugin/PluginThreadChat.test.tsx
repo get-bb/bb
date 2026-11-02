@@ -191,6 +191,7 @@ describe("PluginThreadChat", () => {
         <MemoryRouter>
           <ThreadTimelineNavigationProvider
             environmentId={null}
+            hostId={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={resolveMentionLink}
             workspaceRootPath="/workspace"

@@ -82,6 +82,7 @@ import {
   remarkHeadingIds,
   resolveMarkdownLinkTarget,
   resolveMarkdownLocalFileTarget,
+  type ResolvedMarkdownLocalFileTarget,
 } from "./markdown-link-target.js";
 import {
   MarkdownLocalFileContextMenuContext,
@@ -136,6 +137,7 @@ import {
   useRewriteLocalhostLinksPreference,
 } from "@/lib/localhost-link-rewrite-preference";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useHostPathExists } from "@/hooks/queries/host-path-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
@@ -274,6 +276,15 @@ type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
 type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> &
   ExtraProps &
   CodeFenceElementProps;
+interface MarkdownInlineCodeFileLinkProps {
+  code: ReactNode;
+  codeText: string;
+  hostId: string;
+  linkRouting: MarkdownLinkRouting | undefined;
+  rewriteLocalhostLinks: boolean;
+  target: ResolvedMarkdownLocalFileTarget;
+}
+
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
   codeFenceSourceOffset: number;
   imagePolicy: MarkdownImagePolicy;
@@ -354,6 +365,7 @@ function areMarkdownLocalFileLinkRoutingsEqual({
   if (previous === next) return true;
   if (previous === undefined || next === undefined) return false;
   return (
+    previous.hostId === next.hostId &&
     previous.onOpenLink === next.onOpenLink &&
     areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
       next: next.absoluteLinks,
@@ -519,18 +531,14 @@ function buildLocalAwareUrlTransform({
   };
 }
 
-function resolveInlineCodeFileHref({
+function resolveInlineCodeFileTarget({
   codeText,
   localFileRouting,
 }: {
   codeText: string;
-  localFileRouting: MarkdownLocalFileLinkRouting | undefined;
-}): string | null {
-  if (
-    localFileRouting === undefined ||
-    codeText.length === 0 ||
-    /\s/u.test(codeText)
-  ) {
+  localFileRouting: MarkdownLocalFileLinkRouting;
+}): ResolvedMarkdownLocalFileTarget | null {
+  if (codeText.length === 0 || /\s/u.test(codeText)) {
     return null;
   }
 
@@ -546,7 +554,7 @@ function resolveInlineCodeFileHref({
   return /^(?:[/\\]|\.{1,2}[/\\]|[a-zA-Z]:[/\\]|file:\/\/)/u.test(codeText) ||
     /\.[\p{L}\p{N}_-]+$/u.test(target.link.path) ||
     target.link.lineRange !== null
-    ? target.href
+    ? target
     : null;
 }
 
@@ -860,30 +868,59 @@ function MarkdownCode({
     );
   }
 
-  const localFileHref = resolveInlineCodeFileHref({
-    codeText,
-    localFileRouting: linkRouting?.localFile,
-  });
-  if (localFileHref !== null) {
-    return (
-      <MarkdownAnchor
-        data-clipboard-inline-code=""
-        href={localFileHref}
-        linkRouting={linkRouting}
-        rewriteLocalhostLinks={rewriteLocalhostLinks}
-      >
-        {codeText}
-      </MarkdownAnchor>
-    );
-  }
-
-  return (
+  const code = (
     <code
       className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs"
       {...props}
     >
       {children}
     </code>
+  );
+  const localFileRouting = linkRouting?.localFile;
+  if (localFileRouting === undefined || localFileRouting.hostId === null) {
+    return code;
+  }
+  const localFileTarget = resolveInlineCodeFileTarget({
+    codeText,
+    localFileRouting,
+  });
+  if (localFileTarget !== null) {
+    return (
+      <MarkdownInlineCodeFileLink
+        code={code}
+        codeText={codeText}
+        hostId={localFileRouting.hostId}
+        linkRouting={linkRouting}
+        rewriteLocalhostLinks={rewriteLocalhostLinks}
+        target={localFileTarget}
+      />
+    );
+  }
+
+  return code;
+}
+
+function MarkdownInlineCodeFileLink({
+  code,
+  codeText,
+  hostId,
+  linkRouting,
+  rewriteLocalhostLinks,
+  target,
+}: MarkdownInlineCodeFileLinkProps) {
+  const exists = useHostPathExists(hostId, target.link.path);
+  if (!exists) {
+    return code;
+  }
+  return (
+    <MarkdownAnchor
+      data-clipboard-inline-code=""
+      href={target.href}
+      linkRouting={linkRouting}
+      rewriteLocalhostLinks={rewriteLocalhostLinks}
+    >
+      {codeText}
+    </MarkdownAnchor>
   );
 }
 
