@@ -282,6 +282,21 @@ describe("Account Pool settings", () => {
     expect(group?.className).not.toMatch(/(^|\s)hidden(\s|$)/u);
   });
 
+  it("dates an exhausted account by its refused window, not one past the threshold", async () => {
+    const slot = render([
+      account({
+        status: "exhausted",
+        fiveHourUtilization: 1,
+        fiveHourStatus: "rejected",
+        fiveHourResetAt: Date.now() + 2 * 60 * 60 * 1_000,
+        sevenDayUtilization: 0.99,
+        sevenDayStatus: "allowed",
+        sevenDayResetAt: Date.now() + 6 * 24 * 60 * 60 * 1_000,
+      }),
+    ]);
+    expect(await slot.findByText("Exhausted · resets in 2h 0m")).toBeTruthy();
+  });
+
   it("renders only the windows a Codex account reports and no Fable slot", async () => {
     const blockingResetAt = Date.now() + 6 * 24 * 60 * 60 * 1_000;
     const slot = render([

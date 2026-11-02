@@ -28,8 +28,8 @@ import {
   blockingResetAt,
   governingWeeklyResetAt,
   hasExtraUsage,
+  isPastThreshold,
   isQuotaExhausted,
-  isSharedQuotaExhausted,
   isUsageRestricted,
   retryAfterMilliseconds,
 } from "./quota.js";
@@ -340,7 +340,7 @@ export class AccountPoolHub {
         return false;
       const quota = this.options.quotas.get(account.id);
       return (
-        quota.error === null && isQuotaExhausted(quota, family, threshold, now)
+        quota.error === null && isPastThreshold(quota, family, threshold, now)
       );
     });
     await Promise.all(
@@ -413,7 +413,6 @@ export class AccountPoolHub {
   }
 
   async status(): Promise<Omit<PoolStatus, "routing" | "parent">> {
-    const settings = this.options.getSettings();
     const now = this.options.now();
     const accounts = (await this.options.accounts.list()).sort(
       (left, right) => left.priority - right.priority,
@@ -432,7 +431,7 @@ export class AccountPoolHub {
           lastUsedHostName: null,
           ...quotaFields,
           inFlight: this.inFlightByAccount.get(account.id) ?? 0,
-          status: accountStatus(account, quota, settings.switchThreshold, now),
+          status: accountStatus(account, quota, now),
         };
       }),
     };
@@ -486,7 +485,7 @@ export class AccountPoolHub {
         if (
           !usageRefreshed &&
           (selected === null ||
-            isQuotaExhausted(
+            isPastThreshold(
               selected.quota,
               family,
               this.options.getSettings().switchThreshold,
@@ -883,31 +882,31 @@ export class AccountPoolHub {
       )
       .filter(
         ({ quota }) =>
-          !isSharedQuotaExhausted(quota, threshold, now) ||
-          hasExtraUsage(quota),
+          !isQuotaExhausted(quota, null, now) || hasExtraUsage(quota),
       );
-    let eligible = available.filter(
+    const usable = available.filter(
       ({ quota }) =>
-        !isQuotaExhausted(quota, family, threshold, now) ||
-        hasExtraUsage(quota),
+        !isQuotaExhausted(quota, family, now) || hasExtraUsage(quota),
     );
-    const included = eligible.filter(
-      ({ quota }) => !isQuotaExhausted(quota, family, threshold, now),
+    const isUnattempted = ({ account }: (typeof usable)[number]) =>
+      candidateIds.has(account.id) && !attempted.has(account.id);
+    const included = usable.filter(
+      ({ quota }) => !isPastThreshold(quota, family, threshold, now),
     );
-    if (
-      included.some(
-        ({ account, quota }) =>
-          candidateIds.has(account.id) &&
-          !attempted.has(account.id) &&
-          (quota.heldUntil === null || quota.heldUntil <= now),
-      )
-    ) {
-      eligible = included;
-    }
-    const unattempted = eligible.filter(
-      ({ account }) =>
-        candidateIds.has(account.id) && !attempted.has(account.id),
+    const accepted = usable.filter(
+      ({ quota }) => !isQuotaExhausted(quota, family, now),
     );
+    const eligible =
+      [included, accepted].find((tier) =>
+        tier.some(
+          (candidate) =>
+            isUnattempted(candidate) &&
+            (candidate.quota.heldUntil === null ||
+              candidate.quota.heldUntil <= now),
+        ),
+      ) ?? usable;
+    const pinnable = eligible === usable ? usable : accepted;
+    const unattempted = eligible.filter(isUnattempted);
     const candidates = unattempted.filter(
       ({ quota }) => quota.heldUntil === null || quota.heldUntil <= now,
     );
@@ -919,7 +918,7 @@ export class AccountPoolHub {
         : null;
     const bound =
       boundAccountId !== null
-        ? eligible.find(({ account }) => account.id === boundAccountId)
+        ? pinnable.find(({ account }) => account.id === boundAccountId)
         : undefined;
     let inherited: (typeof candidates)[number] | undefined;
     if (bound === undefined && parentAffinityKey !== null) {
@@ -928,8 +927,10 @@ export class AccountPoolHub {
         parent !== undefined &&
         now - parent.lastUsedAt < AFFINITY_IDLE_TTL_MS
       ) {
-        inherited = unattempted.find(
-          ({ account }) => account.id === parent.accountId,
+        inherited = pinnable.find(
+          (candidate) =>
+            candidate.account.id === parent.accountId &&
+            isUnattempted(candidate),
         );
       }
     }
@@ -951,7 +952,7 @@ export class AccountPoolHub {
       )
       .find((candidate) => candidate !== undefined);
     const selected =
-      bound !== undefined && unattempted.includes(bound)
+      bound !== undefined && isUnattempted(bound)
         ? bound
         : (inherited ??
           (boundAccountId === null &&
@@ -992,8 +993,8 @@ export class AccountPoolHub {
       available.some(
         ({ account, quota }) =>
           account.id === accountId &&
-          !isSharedQuotaExhausted(quota, threshold, now) &&
-          isQuotaExhausted(quota, family, threshold, now),
+          !isPastThreshold(quota, null, threshold, now) &&
+          isPastThreshold(quota, family, threshold, now),
       );
     const rebind =
       affinityKey !== null &&
@@ -1352,7 +1353,6 @@ export class AccountPoolHub {
     if (enabled.length === 0)
       return { kind: "unavailable", reason: "no-enabled-account" };
     const now = this.options.now();
-    const threshold = this.options.getSettings().switchThreshold;
     const resets: number[] = [];
     let unknown = false;
     for (const account of enabled) {
@@ -1363,11 +1363,8 @@ export class AccountPoolHub {
         continue;
       }
       const exhausted =
-        isQuotaExhausted(quota, family, threshold, now) &&
-        !hasExtraUsage(quota);
-      const resetAt = exhausted
-        ? blockingResetAt(quota, family, threshold, now)
-        : now;
+        isQuotaExhausted(quota, family, now) && !hasExtraUsage(quota);
+      const resetAt = exhausted ? blockingResetAt(quota, family, now) : now;
       if (resetAt === null) {
         unknown = true;
         continue;
