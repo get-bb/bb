@@ -532,7 +532,12 @@ export function AgentStep({
           ))}
         </ul>
       ) : (
-        <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+        <ul
+          className={cn(
+            "divide-y divide-border-hairline rounded-lg border border-border",
+            quiet && "overflow-hidden",
+          )}
+        >
           {agents.map((agent) => (
             <AgentRow
               key={agent.id}
