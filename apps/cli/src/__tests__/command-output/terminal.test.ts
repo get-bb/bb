@@ -460,6 +460,24 @@ describe("bb terminal command output", () => {
     ]);
   });
 
+  it("prints output without colors or progress redraws with --plain", async () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    stubServerApi({
+      "v1.terminals.:terminalId.output.$get": vi.fn(async () =>
+        outputResponse({
+          nextSeq: 1,
+          text: "\u001b[1mLocal\u001b[22m: http://localhost:5173/\r\n 10%\r 99%\r100%\r\n",
+        }),
+      ),
+    });
+
+    await runCommand(["terminal", "output", "term-1", "--plain"], register);
+
+    expect(write).toHaveBeenCalledWith("Local: http://localhost:5173/\n100%\n");
+  });
+
   it("accepts the scope flags of create and list on every terminal-id verb", async () => {
     stubServerApi({
       "v1.terminals.:terminalId.$get": vi.fn(async () => makeTerminalSession()),

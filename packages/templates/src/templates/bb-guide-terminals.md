@@ -57,6 +57,7 @@ runs:
     --since-seq <n>                       Read output chunks from a sequence
     --tail-bytes <n>                      Bound output to latest N bytes
     --limit-chunks <n>                    Bound output to latest N chunks
+    --plain                               Print plain text, with colors and progress redraws removed
     --json                                Print chunks, nextSeq, truncated, status, exitCode, and closeReason
 
   Output stays readable after the command exits: the machine keeps a finished

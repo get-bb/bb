@@ -116,7 +116,7 @@ export function describeTerminalExit(
     : `Terminal ${terminalId} exited with code ${exitCode}`;
 }
 
-function terminalPlainText(text: string): string {
+export function terminalPlainText(text: string): string {
   return stripVTControlCharacters(text)
     .split("\n")
     .map((line) => line.replace(/\r+$/u, "").split("\r").at(-1) ?? "")

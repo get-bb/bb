@@ -26,6 +26,7 @@ import {
   parseMaxOutputBytes,
   parseTerminalOutputCondition,
   reportTerminalObservation,
+  terminalPlainText,
   type TerminalObservePlan,
 } from "./terminal-wait.js";
 
@@ -86,6 +87,10 @@ interface TerminalOutputOptions extends TerminalJsonOptions {
   limitChunks?: string;
   sinceSeq?: string;
   tailBytes?: string;
+}
+
+interface TerminalReadOptions extends TerminalOutputOptions {
+  plain?: boolean;
 }
 
 interface TerminalWaitOptions extends TerminalOutputOptions {
@@ -327,16 +332,39 @@ export function registerTerminalCommands(
     .option("--since-seq <n>", "Only output chunks from this sequence")
     .option("--tail-bytes <n>", "Bound output to the latest N bytes")
     .option("--limit-chunks <n>", "Bound output to the latest N chunks")
+    .option(
+      "--plain",
+      "Print plain text, with colors and progress redraws removed",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (terminalId: string, opts: TerminalOutputOptions) => {
+      action(async (terminalId: string, opts: TerminalReadOptions) => {
+        if (opts.plain === true && opts.json === true) {
+          throw new CliUsageError({
+            code: "invalid_value",
+            hint: "--json returns the raw chunks; use terminal wait --json for plain output.",
+            message: "Provide only one of --plain or --json",
+          });
+        }
         const sdk = createCliBbSdk(getUrl());
         const output = await sdk.terminals.output({
           terminalId,
           ...terminalOutputQuery(opts),
         });
         if (outputJson(opts, output)) return;
-        writeOutputChunks(output.chunks);
+        if (opts.plain === true) {
+          process.stdout.write(
+            terminalPlainText(
+              Buffer.concat(
+                output.chunks.map((chunk) =>
+                  Buffer.from(chunk.dataBase64, "base64"),
+                ),
+              ).toString("utf8"),
+            ),
+          );
+        } else {
+          writeOutputChunks(output.chunks);
+        }
         if (output.status === "exited") {
           console.error(describeTerminalExit(terminalId, output.exitCode));
         }
