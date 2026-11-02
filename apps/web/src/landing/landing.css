@@ -791,15 +791,17 @@ body {
   transform: translateY(-1px);
 }
 
-/* Hero agent row: black-and-white marks, then "and more". */
+/* Hero agent row: black-and-white marks, then "+N more". */
 .agent-row .plogo {
   color: var(--ink);
 }
 
 .agent-more {
   font-size: 13px;
+  font-weight: 500;
   color: var(--subtle);
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 /* The longer label takes its own line on phones so the logos stay on one. */
@@ -814,7 +816,7 @@ body {
   }
 }
 
-/* Where the row collapses to three marks, "+N more" replaces "and more". */
+/* Where the row collapses to three marks, the phone count takes over. */
 @media (max-width: 720px) {
   .agent-more {
     display: none;
