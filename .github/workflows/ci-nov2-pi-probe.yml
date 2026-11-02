@@ -2,7 +2,7 @@ name: Temporary Pi relocation Windows diagnostic
 on:
   push:
     branches: [bb/ci-nov2-infra]
-    paths: [.github/workflows/ci-nov2-pi-probe.yml, scripts/pi-probe-instrument.mjs]
+    paths: [.github/workflows/ci-nov2-pi-probe.yml, scripts/pi-probe-instrument.mjs, scripts/pi-probe-runtime.mjs]
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,12 +32,15 @@ jobs:
         run: pnpm exec turbo run test --filter=bb-plugin-provider-pi -- src/bridge/bridge.relocation.test.ts
       - name: Instrument child observation in disposable checkout
         run: node scripts/pi-probe-instrument.mjs
+      - name: Trace upstream startup and lock ownership
+        run: node scripts/pi-probe-runtime.mjs
       - name: Observe focused and package repetitions
         shell: pwsh
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           PI_TIMING: '1'
+          BB_PI_RUNTIME_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
           PI_PROBE_DIR: ${{ runner.temp }}/pi-startup-probe
         run: |
           New-Item -ItemType Directory -Path $env:PI_PROBE_DIR -Force | Out-Null
@@ -47,7 +50,7 @@ jobs:
             cmd /c "pnpm exec vitest run --config vitest.config.ts src/bridge/bridge.relocation.test.ts > `"$env:PI_PROBE_DIR/focused-$i.log`" 2>&1"
             if ($LASTEXITCODE -ne 0) { $failures += 1 }
           }
-          foreach ($i in 1..5) {
+          foreach ($i in 1..10) {
             cmd /c "pnpm exec vitest run --config vitest.config.ts > `"$env:PI_PROBE_DIR/package-$i.log`" 2>&1"
             if ($LASTEXITCODE -ne 0) { $failures += 1 }
           }
