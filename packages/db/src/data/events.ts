@@ -2791,6 +2791,26 @@ export function hasStoredTurnStarted(
   return row !== undefined;
 }
 
+export function hasStoredTurnCompleted(
+  db: DbQueryConnection,
+  args: HasStoredTurnStartedArgs,
+): boolean {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        eq(events.turnId, args.turnId),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
+}
+
 export interface HasStoredTerminalClientTurnRequestEventArgs {
   requestId: ClientTurnRequestId;
   threadId: string;
