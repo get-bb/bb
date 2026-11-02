@@ -3,9 +3,10 @@
 A thread pane shows its thread context one of two ways: `banner`, the context
 row above the composer, or `card`, the thread context card at the pane's
 upper-right, below the header. bb picks one per pane: `card` while the
-`threadContextCard` experiment is on, for a thread opened as a page, except on
-phones (a narrow touch screen); `banner` everywhere else, including threads
-shown inside a panel.
+`threadContextCard` experiment is on, for a thread opened as a page whose pane
+is wide enough to fit the card beside the transcript, except on phones (a
+narrow touch screen); `banner` everywhere else, including narrow panes and
+threads shown inside a panel.
 
 `app.slots.experimental_threadContextCardRow({ id, group, order?, component })`
 adds a row to the card's top block, and
@@ -25,8 +26,8 @@ bb owns the card, placement, and header button: each split pane has its own
 card, and it stays put while messages scroll. In a wide pane the card sits
 beside the transcript, and a medium pane moves the transcript aside to fit it;
 there the header button pins or unpins it (`threadContextCard.pinned`,
-default on). A narrow pane or window opens it from the header button as a
-popover.
+default on). A pane too narrow for either shows the banner, and the header
+button opens the card as a popover; the pane switches back as it widens.
 
 ```tsx
 app.slots.experimental_threadContextCardRow({ id: "deploy", group: ROW_GROUPS.environment, order: 40, component: DeployRow });
