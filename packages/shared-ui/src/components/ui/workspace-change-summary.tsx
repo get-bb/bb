@@ -39,7 +39,9 @@ interface ChangeTally {
   lineStatsComplete: boolean;
 }
 
-export function toChangeTally(stats: WorkspaceChangeStatsLike): ChangeTally {
+export function toChangeTally(
+  stats: Omit<WorkspaceChangeStatsLike, "files">,
+): ChangeTally {
   return {
     filesCount: stats.fileCount,
     insertions: stats.insertions,

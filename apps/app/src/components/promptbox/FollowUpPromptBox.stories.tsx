@@ -421,6 +421,12 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     headSha: null,
   },
   mergeBase: null,
+  allChanges: {
+    insertions: 128,
+    deletions: 24,
+    lineStatsComplete: true,
+    fileCount: 3,
+  },
 };
 
 const dirtyContextBannerSection =
