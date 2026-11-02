@@ -1506,7 +1506,7 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="A ChatGPT chat says Hand this off to bb: fix the checkout bug and Used Control bb, with Claude and Grok behind it. The thread lands in the bb sidebar, grouped by machine under linux-box, the server, next to a thread from CI and one from a schedule. An iPhone shows the same thread in the bb mobile app, still working: it explored the code, edited two files and is running the tests."
+      aria-label="The bb desktop app with a thread, Fix the checkout bug, started from ChatGPT and running on linux-box, the server, next to a thread from CI and one from a schedule. An iPhone shows the same thread in the bb mobile app, still working: it explored the code, edited two files and is running the tests."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
@@ -1576,33 +1576,6 @@ export function StartAnywhere() {
                   </Reveal>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
-        <div className="bw-chat-stack">
-          <div className="bw-chat-back bw-chat-back-2">
-            <GrokIcon className="bw-chat-back-ic" />
-            Grok
-          </div>
-          <div className="bw-chat-back bw-chat-back-1">
-            <ClaudeIcon className="bw-chat-back-ic" />
-            Claude
-          </div>
-          <div className="bw-chat">
-            <div className="bw-chat-head">
-              <OpenAiIcon className="bw-chat-ic" />
-              ChatGPT
-            </div>
-            <div className="bw-chat-body">
-              <span className="bw-bubble">{START_PROMPT}</span>
-              <span className="bw-used bw-fade" style={at(0.8)}>
-                <BbGlyph className="bw-used-mark" />
-                Used <b>Control bb</b>
-                <CheckGlyph className="bw-used-check" />
-              </span>
-              <span className="bw-chat-say bw-fade" style={at(1.2)}>
-                Started <b>Fix the checkout bug</b> in bb on linux-box.
-              </span>
             </div>
           </div>
         </div>
