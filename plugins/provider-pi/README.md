@@ -14,7 +14,10 @@ What lives here:
   (`src/native-roots.ts`).
 - `src/delta-translation.ts` — pi's session events become bb's thread deltas.
 - `src/bridge/provider-maintenance.ts` — the install gate (`pi --version`
-  ≥ 0.84.0) and the npm install/update actions.
+  ≥ 0.84.0) and the install/update actions: install through npm; update a
+  pi.dev managed install (`src/bridge/pi-managed-install.ts`) with
+  `pi update --self`, a Bun or npm global install through that package
+  manager, and any other install with `pi update --self`.
 - `src/bridge/extension-ui.ts` — pi extension dialogs reach the user:
   `ctx.ui.select/confirm/input/editor` inside a pi extension arrive as pi RPC
   `extension_ui_request` lines, the bridge forwards each dialog as a
