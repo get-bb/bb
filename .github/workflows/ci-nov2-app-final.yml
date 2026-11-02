@@ -1,0 +1,32 @@
+name: Temporary final app fixes Windows verification
+on:
+  push:
+    branches: [bb/ci-nov2-infra]
+    paths: [.github/workflows/ci-nov2-app-final.yml, '.bb-ci-final/**']
+permissions:
+  contents: read
+jobs:
+  app-final:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Apply exact final test changes
+        run: |
+          Copy-Item .bb-ci-final/opening.tsx apps/app/src/views/thread-detail/thread-opening.model.test.tsx -Force
+          Copy-Item .bb-ci-final/FilePreview.test.tsx apps/app/src/components/secondary-panel/FilePreview.test.tsx -Force
+      - name: Verify renderer loading and opening model on Windows
+        shell: cmd
+        env:
+          VITEST_MAX_WORKERS: '4'
+        run: pnpm exec turbo run test --filter=@bb/app -- src/components/secondary-panel/FilePreview.test.tsx src/components/code/CodeHosts.cold-load.test.tsx src/views/thread-detail/thread-opening.model.test.tsx
