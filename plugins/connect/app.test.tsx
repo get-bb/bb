@@ -860,7 +860,7 @@ describe("connect setup guide section", () => {
 
     await slot.findByRole("button", { name: "Set up" });
     slot.getByText(/A private web address for your bb server/);
-    slot.getByText("Install the mobile app:");
+    slot.getByText("Then install the mobile app:");
     fireEvent.click(slot.getByRole("button", { name: "iPhone" }));
     await slot.findByRole("img", { name: "QR code to install bb on iPhone" });
     slot.getByText(/Install TestFlight if asked/);
@@ -1083,7 +1083,7 @@ describe("connect setup guide section", () => {
     );
 
     await slot.findByText("bb connect is on");
-    expect(slot.queryByText("Install the mobile app:")).toBeNull();
+    expect(slot.queryByText("Then install the mobile app:")).toBeNull();
     expect(slot.queryByText(/Get bb on your phone/)).toBeNull();
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain(
       "createMachineCode",
@@ -1098,6 +1098,6 @@ describe("connect setup guide section", () => {
     );
 
     await slot.findByRole("button", { name: "Set up" });
-    expect(slot.queryByText("Install the mobile app:")).toBeNull();
+    expect(slot.queryByText("Then install the mobile app:")).toBeNull();
   });
 });

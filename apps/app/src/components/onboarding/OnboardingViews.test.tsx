@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  AgentSignInInstruction,
   AgentSignInPanel,
   AgentStep,
   OnboardingLayout,
@@ -230,63 +231,92 @@ describe("ProjectsStep selection", () => {
   });
 });
 
-describe("AgentSignInPanel", () => {
-  function renderPanel(
-    url: string,
-    overrides: { userCode?: string; paste?: boolean } = {},
+describe("AgentSignInInstruction", () => {
+  function renderInstruction(
+    url: string | null,
+    overrides: { userCode?: string; paste?: boolean; connect?: boolean } = {},
   ) {
     render(
-      <AgentSignInPanel
-        connect={false}
-        agentName="Cursor"
-        guide={{
-          url,
-          userCode: overrides.userCode ?? null,
-          acceptsPastedCode: overrides.paste ?? false,
-        }}
-        code=""
-        codeSubmitted={false}
-        terminalVisible={false}
-        terminal={null}
-        alternate={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onOpenUrl={vi.fn()}
-        onCopy={vi.fn()}
-        onToggleTerminal={vi.fn()}
-        onUseAlternate={vi.fn()}
-      />,
+      <p data-testid="instruction">
+        <AgentSignInInstruction
+          connect={overrides.connect ?? false}
+          agentName="Cursor"
+          view={{
+            guide:
+              url === null
+                ? null
+                : {
+                    url,
+                    userCode: overrides.userCode ?? null,
+                    acceptsPastedCode: overrides.paste ?? false,
+                  },
+            terminalVisible: false,
+          }}
+          alternate={null}
+          onOpenUrl={vi.fn()}
+          onUseAlternate={vi.fn()}
+        />
+      </p>,
     );
+    return screen.getByTestId("instruction");
   }
 
   it("names the website to finish signing in on", () => {
-    renderPanel("https://www.cursor.com/login");
+    const line = renderInstruction("https://www.cursor.com/login");
 
     expect(screen.getByRole("link", { name: "cursor.com" })).toBeTruthy();
-    expect(screen.getByText(/Finish signing in on/u).textContent).toBe(
-      "Finish signing in on cursor.com.",
-    );
+    expect(line.textContent).toBe("Finish signing in on cursor.com.");
   });
 
-  it("names the website for code and paste sign-ins", () => {
-    renderPanel("https://claude.ai/oauth/authorize", { paste: true });
-
-    expect(screen.getByText(/paste the code/u).textContent).toBe(
-      "Sign in on claude.ai, then paste the code it shows you.",
-    );
-  });
-
-  it("starts with the instruction instead of a waiting line", () => {
-    renderPanel("https://www.cursor.com/login");
-
-    expect(screen.queryByText(/continues automatically/u)).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+  it("names the website for paste sign-ins", () => {
+    expect(
+      renderInstruction("https://claude.ai/oauth/authorize", { paste: true })
+        .textContent,
+    ).toBe("Sign in on claude.ai, then paste the code it shows you.");
   });
 
   it("falls back to the browser when the URL has no website", () => {
-    renderPanel("file:///tmp/sign-in");
+    expect(renderInstruction("file:///tmp/sign-in").textContent).toBe(
+      "Finish signing in in your browser.",
+    );
+  });
 
-    expect(screen.getByText("Finish signing in in your browser.")).toBeTruthy();
+  it("says nothing for terminal connect flows", () => {
+    expect(
+      renderInstruction("https://example.com", { connect: true }).textContent,
+    ).toBe("");
+  });
+});
+
+describe("AgentSignInPanel", () => {
+  it("holds only the controls, not the instruction or a waiting line", () => {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Claude Code"
+        view={{
+          guide: {
+            url: "https://claude.ai/oauth/authorize",
+            userCode: null,
+            acceptsPastedCode: true,
+          },
+          terminalVisible: false,
+        }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("textbox", { name: "Claude Code authorization code" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/paste the code it shows you/u)).toBeNull();
+    expect(screen.queryByText(/continues automatically/u)).toBeNull();
   });
 });
 

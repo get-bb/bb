@@ -67,6 +67,9 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   AgentInstallErrorDetails,
+  AgentSignInInstruction,
+  hasSignInInstruction,
+  type AgentSignInView,
   AgentSignInGuide,
   AgentSignInPanel,
   AgentStep,
@@ -146,9 +149,11 @@ function AgentSignInContainer({
   alternate,
   onUseAlternate,
   onExit,
+  onViewChange,
 }: {
   redesign: boolean;
   connectFlow: TerminalConnectFlow | null;
+  onViewChange: (view: AgentSignInView) => void;
   agentName: string;
   session: TerminalSession;
   alternate: { label: string; method: SignInMethod } | null;
@@ -192,6 +197,13 @@ function AgentSignInContainer({
     terminalChoice ??
     (connectFlow !== null ||
       (fallbackDue && (guide === null || guide.url === null)));
+  const view = useMemo(
+    () => ({ guide, terminalVisible }),
+    [guide, terminalVisible],
+  );
+  useEffect(() => {
+    onViewChange(view);
+  }, [onViewChange, view]);
   useSendAfterFirstOutput({
     enabled: connectFlow !== null,
     hasOutput: (output?.chunks.length ?? 0) > 0,
@@ -237,29 +249,17 @@ function AgentSignInContainer({
       <AgentSignInPanel
         connect={connectFlow !== null}
         agentName={agentName}
-        guide={guide}
+        view={view}
         code={code}
         codeSubmitted={codeSubmitted}
-        terminalVisible={terminalVisible}
         terminal={terminal}
-        alternate={
-          alternate?.method === "local"
-            ? "browser"
-            : alternate === null
-              ? null
-              : "code"
-        }
         onCodeChange={(next) => {
           setCode(next);
           setCodeSubmitted(false);
         }}
         onSubmitCode={submitCode}
-        onOpenUrl={openUrlInExternalBrowser}
         onCopy={(text) => void copyToClipboardWithToast(text)}
         onToggleTerminal={() => setTerminalChoice(!terminalVisible)}
-        onUseAlternate={() => {
-          if (alternate !== null) onUseAlternate(alternate.method);
-        }}
       />
     );
   }
@@ -361,6 +361,7 @@ function AgentStepContainer({
     string | null
   >(null);
   const signInRef = useRef<SignInSession | null>(null);
+  const [signInView, setSignInView] = useState<AgentSignInView | null>(null);
   const { refetch: refetchStates } = statesQuery;
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
@@ -375,6 +376,7 @@ function AgentStepContainer({
         properties: { entry, outcome },
       });
       setSignIn(null);
+      setSignInView(null);
       closeTerminalMutate({ mode: "force", terminalId: current.session.id });
       void refetchStates();
     },
@@ -480,6 +482,7 @@ function AgentStepContainer({
         state.localLoginCommand !== state.loginCommand,
     };
     signInRef.current = next;
+    setSignInView(null);
     setSignIn(next);
   };
 
@@ -510,14 +513,40 @@ function AgentStepContainer({
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signingIn = signIn?.providerId === health.providerId;
           const installFailure = installRunner.failuresByJobKey.get(jobKey);
+          const connectFlow = redesign
+            ? terminalConnectFlow(health.providerId)
+            : null;
+          const view = signingIn ? signInView : null;
           return {
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
-            setup:
-              redesign && terminalConnectFlow(health.providerId) !== null
-                ? "connect"
-                : "signIn",
+            setup: connectFlow !== null ? "connect" : "signIn",
+            subline:
+              redesign &&
+              signIn !== null &&
+              view !== null &&
+              hasSignInInstruction(view, connectFlow !== null) ? (
+                <AgentSignInInstruction
+                  connect={connectFlow !== null}
+                  agentName={health.displayName}
+                  view={view}
+                  alternate={
+                    signIn.hasAlternateMethod
+                      ? signIn.method === "local"
+                        ? "code"
+                        : "browser"
+                      : null
+                  }
+                  onOpenUrl={openUrlInExternalBrowser}
+                  onUseAlternate={() =>
+                    void startSignIn(
+                      health.providerId,
+                      signIn.method === "local" ? "remote" : "local",
+                    )
+                  }
+                />
+              ) : undefined,
             state: resolveAgentSetupState({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
@@ -539,9 +568,7 @@ function AgentStepContainer({
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}
-                  connectFlow={
-                    redesign ? terminalConnectFlow(health.providerId) : null
-                  }
+                  connectFlow={connectFlow}
                   agentName={health.displayName}
                   session={signIn.session}
                   alternate={
@@ -561,6 +588,7 @@ function AgentStepContainer({
                     void startSignIn(health.providerId, method)
                   }
                   onExit={handleSignInExit}
+                  onViewChange={setSignInView}
                 />
               ) : redesign && installFailure !== undefined ? (
                 <AgentInstallErrorDetails

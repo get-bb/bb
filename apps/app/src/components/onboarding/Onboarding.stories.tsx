@@ -5,6 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   AgentInstallErrorDetails,
   AgentSignInGuide,
+  AgentSignInInstruction,
   AgentSignInPanel,
   AgentStep,
   DevicesStep,
@@ -983,38 +984,41 @@ export function HomeAfterSkipping() {
   );
 }
 
+function redesignSignInView(agentId: "claude-code" | "codex") {
+  const codex = agentId === "codex";
+  return {
+    guide: {
+      url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
+      userCode: codex ? "JWMS-GLRCB" : null,
+      acceptsPastedCode: !codex,
+    },
+    terminalVisible: false,
+  };
+}
+
 function RedesignSignInPanel({
   agentId,
 }: {
   agentId: "claude-code" | "codex";
 }) {
   const [code, setCode] = useState("");
-  const [terminalVisible, setTerminalVisible] = useState(false);
   const codex = agentId === "codex";
   return (
     <AgentSignInPanel
       connect={false}
       agentName={codex ? "Codex" : "Claude Code"}
-      guide={{
-        url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
-        userCode: codex ? "JWMS-GLRCB" : null,
-        acceptsPastedCode: !codex,
-      }}
+      view={redesignSignInView(agentId)}
       code={code}
       codeSubmitted={false}
-      terminalVisible={terminalVisible}
       terminal={
         <FakeTerminal
           command={codex ? "codex login --device-auth" : "claude auth login"}
         />
       }
-      alternate={codex ? "browser" : null}
       onCodeChange={setCode}
       onSubmitCode={noop}
-      onOpenUrl={noop}
       onCopy={noop}
-      onToggleTerminal={() => setTerminalVisible((visible) => !visible)}
-      onUseAlternate={noop}
+      onToggleTerminal={noop}
     />
   );
 }
@@ -1044,6 +1048,18 @@ function RedesignAgentFrame({
       name: agent.name,
       provider: { id: agent.id, logoUrl: agent.logoUrl },
       state,
+      subline:
+        agent.id === signingIn &&
+        (agent.id === "claude-code" || agent.id === "codex") ? (
+          <AgentSignInInstruction
+            connect={false}
+            agentName={agent.name}
+            view={redesignSignInView(agent.id)}
+            alternate={agent.id === "codex" ? "browser" : null}
+            onOpenUrl={noop}
+            onUseAlternate={noop}
+          />
+        ) : undefined,
       expanded:
         agent.id === signingIn &&
         (agent.id === "claude-code" || agent.id === "codex") ? (

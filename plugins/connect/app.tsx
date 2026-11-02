@@ -1652,7 +1652,7 @@ function AppInstallToggles({
 }) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <span>Install the mobile app:</span>
+      <span>Then install the mobile app:</span>
       <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
         {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
           const expanded = openPlatform === option.platform;

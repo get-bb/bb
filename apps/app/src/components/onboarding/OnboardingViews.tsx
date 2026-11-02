@@ -281,6 +281,7 @@ export interface OnboardingAgent {
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
   setup?: "signIn" | "connect";
+  subline?: ReactNode;
   expanded?: ReactNode;
 }
 
@@ -390,16 +391,22 @@ function AgentRow({
                 className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
               />
             ) : null}
-            <ExpandableText
-              expandLabel="Show details"
-              className={cn(
-                "min-w-0 text-xs text-muted-foreground",
-                quiet && state.status === "ready" && "text-subtle-foreground",
-                loudFailure && "text-destructive-text",
-              )}
-            >
-              {agentSubline(state, agent.setup ?? "signIn")}
-            </ExpandableText>
+            {quiet && agent.subline !== undefined && agent.subline !== null ? (
+              <span className="min-w-0 text-xs text-muted-foreground">
+                {agent.subline}
+              </span>
+            ) : (
+              <ExpandableText
+                expandLabel="Show details"
+                className={cn(
+                  "min-w-0 text-xs text-muted-foreground",
+                  quiet && state.status === "ready" && "text-subtle-foreground",
+                  loudFailure && "text-destructive-text",
+                )}
+              >
+                {agentSubline(state, agent.setup ?? "signIn")}
+              </ExpandableText>
+            )}
           </span>
         </div>
         <div className="col-start-2 flex shrink-0 items-center justify-end gap-2">
@@ -1214,56 +1221,55 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
   );
 }
 
-interface AgentSignInPanelProps {
-  connect: boolean;
-  agentName: string;
+export interface AgentSignInView {
   guide: SignInGuide | null;
-  code: string;
-  codeSubmitted: boolean;
   terminalVisible: boolean;
-  terminal: ReactNode;
-  alternate: "browser" | "code" | null;
-  onCodeChange: (code: string) => void;
-  onSubmitCode: () => void;
-  onOpenUrl: (url: string) => void;
-  onCopy: (text: string) => void;
-  onToggleTerminal: () => void;
-  onUseAlternate: () => void;
 }
 
-export function AgentSignInPanel({
+export function hasSignInInstruction(
+  view: AgentSignInView,
+  connect: boolean,
+): boolean {
+  return !connect && (view.guide?.url != null || view.terminalVisible);
+}
+
+export function AgentSignInInstruction({
   connect,
   agentName,
-  guide,
-  code,
-  codeSubmitted,
-  terminalVisible,
-  terminal,
+  view,
   alternate,
-  onCodeChange,
-  onSubmitCode,
   onOpenUrl,
-  onCopy,
-  onToggleTerminal,
   onUseAlternate,
-}: AgentSignInPanelProps) {
-  const url = guide?.url ?? null;
-  const userCode = guide?.userCode ?? null;
-  const acceptsPastedCode = guide?.acceptsPastedCode ?? false;
-  const starting = url === null && !terminalVisible;
-  const siteName = url === null ? null : signInSiteName(url);
-  const site =
-    url === null || siteName === null ? null : (
-      <InlineTextLink
-        href={url}
-        onOpen={(href) => {
-          onOpenUrl(href);
-          return true;
-        }}
-      >
-        {siteName}
-      </InlineTextLink>
-    );
+}: {
+  connect: boolean;
+  agentName: string;
+  view: AgentSignInView;
+  alternate: "browser" | "code" | null;
+  onOpenUrl: (url: string) => void;
+  onUseAlternate: () => void;
+}) {
+  const url = view.guide?.url ?? null;
+  const userCode = view.guide?.userCode ?? null;
+  const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
+  if (connect) return null;
+  if (url === null) {
+    return view.terminalVisible ? (
+      <>Sign in to {agentName} in the terminal below.</>
+    ) : null;
+  }
+  const siteName = signInSiteName(url);
+  if (siteName === null) return <>Finish signing in in your browser.</>;
+  const site = (
+    <InlineTextLink
+      href={url}
+      onOpen={(href) => {
+        onOpenUrl(href);
+        return true;
+      }}
+    >
+      {siteName}
+    </InlineTextLink>
+  );
   const alternateAction =
     alternate === null ? null : (
       <InlineTextButton onClick={onUseAlternate}>
@@ -1272,27 +1278,53 @@ export function AgentSignInPanel({
           : "use a code instead"}
       </InlineTextButton>
     );
-  const instruction = connect ? undefined : url === null ? (
-    terminalVisible ? (
-      `Sign in to ${agentName} in the terminal below.`
-    ) : undefined
-  ) : site === null ? (
-    "Finish signing in in your browser."
-  ) : userCode !== null ? (
-    alternateAction === null ? (
+  if (userCode !== null) {
+    return alternateAction === null ? (
       <>Enter this code on {site}.</>
     ) : (
       <>
         Enter this code on {site}, or {alternateAction}.
       </>
-    )
-  ) : acceptsPastedCode ? (
-    <>Sign in on {site}, then paste the code it shows you.</>
-  ) : alternate === "code" ? (
-    <>Sign in with your browser, or {alternateAction}.</>
-  ) : (
-    <>Finish signing in on {site}.</>
-  );
+    );
+  }
+  if (acceptsPastedCode) {
+    return <>Sign in on {site}, then paste the code it shows you.</>;
+  }
+  if (alternate === "code") {
+    return <>Sign in with your browser, or {alternateAction}.</>;
+  }
+  return <>Finish signing in on {site}.</>;
+}
+
+interface AgentSignInPanelProps {
+  connect: boolean;
+  agentName: string;
+  view: AgentSignInView;
+  code: string;
+  codeSubmitted: boolean;
+  terminal: ReactNode;
+  onCodeChange: (code: string) => void;
+  onSubmitCode: () => void;
+  onCopy: (text: string) => void;
+  onToggleTerminal: () => void;
+}
+
+export function AgentSignInPanel({
+  connect,
+  agentName,
+  view,
+  code,
+  codeSubmitted,
+  terminal,
+  onCodeChange,
+  onSubmitCode,
+  onCopy,
+  onToggleTerminal,
+}: AgentSignInPanelProps) {
+  const url = view.guide?.url ?? null;
+  const userCode = view.guide?.userCode ?? null;
+  const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
+  const starting = url === null && !view.terminalVisible;
   const variant: SignInPanelVariant =
     url !== null && userCode !== null
       ? {
@@ -1322,18 +1354,17 @@ export function AgentSignInPanel({
               ? `Starting ${agentName} sign-in…`
               : undefined
         }
-        instruction={instruction}
         variant={variant}
         toggles={
           <DisclosureToggle
-            expanded={terminalVisible}
+            expanded={view.terminalVisible}
             onToggle={onToggleTerminal}
           >
-            {terminalVisible ? "Hide terminal" : "Show terminal"}
+            {view.terminalVisible ? "Hide terminal" : "Show terminal"}
           </DisclosureToggle>
         }
         expanded={
-          terminalVisible ? <div className="h-48">{terminal}</div> : null
+          view.terminalVisible ? <div className="h-48">{terminal}</div> : null
         }
       />
     </div>
