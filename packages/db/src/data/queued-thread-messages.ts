@@ -2319,6 +2319,27 @@ export function hasQueuedRetryOfTurnRequest(
   );
 }
 
+export function getFirstUnclaimedQueuedRetry(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          eq(queuedThreadMessages.payloadKind, "retry"),
+          ne(queuedThreadMessages.state, "claimed"),
+        ),
+      )
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 /**
  * Threads on one host with live rows parked on a `host-offline` wait.
  *
