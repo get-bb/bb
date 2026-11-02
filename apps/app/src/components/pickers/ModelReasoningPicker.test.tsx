@@ -795,6 +795,71 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
+  it("dismisses another provider's preview without starting a handoff", async () => {
+    const onStart = vi.fn();
+    const onSelect = vi.fn();
+    const onExit = vi.fn();
+    const { onModelChange, onReasoningChange, onSelectedProviderChange } =
+      renderPicker({
+        handoff: {
+          sourceProviderId: "codex",
+          active: false,
+          onStart,
+          onExit,
+          onSelect,
+        },
+      });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByTitle("Claude Code"));
+    await screen.findByText("Opus 4.7");
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+
+    expect(screen.queryByText("Opus 4.7")).toBeNull();
+    expect(trigger.textContent).toContain("5.5");
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(onReasoningChange).not.toHaveBeenCalled();
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+  });
+
+  it("commits a handoff model directly from another provider's preview", async () => {
+    const onStart = vi.fn();
+    const onSelect = vi.fn();
+    const { onModelChange, onSelectedProviderChange } = renderPicker({
+      handoff: {
+        sourceProviderId: "codex",
+        active: false,
+        onStart,
+        onExit: vi.fn(),
+        onSelect,
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+    fireEvent.click(await screen.findByText("Opus 4.7"));
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith({
+      providerId: "claude-code",
+      model: "claude-opus-4-7",
+      reasoningLevel: "medium",
+    });
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(onSelectedProviderChange).not.toHaveBeenCalled();
+  });
+
   it("can hand off within the source provider and exit the picker mode", () => {
     const onSelect = vi.fn();
     const onExit = vi.fn();
