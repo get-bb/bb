@@ -1,8 +1,7 @@
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
-const require = createRequire(resolve('plugins/provider-pi/package.json'));
-const dist = process.env.BB_PI_PROBE_DIST || dirname(require.resolve('@earendil-works/pi-coding-agent'));
+import { readFileSync, writeFileSync, realpathSync } from 'node:fs';
+const dist = process.env.BB_PI_PROBE_DIST || realpathSync(resolve('plugins/provider-pi/node_modules/@earendil-works/pi-coding-agent/dist'));
 const logger = String.raw`
 let __bbSequence = 0;
 function __bbLog(event, data = {}) {
