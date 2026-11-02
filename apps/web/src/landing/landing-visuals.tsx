@@ -7,6 +7,7 @@ import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02I
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
