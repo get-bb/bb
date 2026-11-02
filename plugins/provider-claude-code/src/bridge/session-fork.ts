@@ -4,12 +4,15 @@ import {
   type SessionStore,
   type SessionStoreEntry,
 } from "@anthropic-ai/claude-agent-sdk";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { open, readdir, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 
 const transcriptEntrySchema = z.looseObject({ type: z.string() });
+const TRANSCRIPT_READ_CHUNK_BYTES = 1024 * 1024;
 
 export function claudeConfigDirectory(env: NodeJS.ProcessEnv): string {
   return env.CLAUDE_CONFIG_DIR
@@ -44,7 +47,7 @@ function createProjectTranscriptStore(configDirectory: string): SessionStore {
         return null;
       }
       sourceProjectDirectory = found.projectDirectory;
-      return parseTranscript(found.contents);
+      return found.entries;
     },
     async append(key: SessionKey, entries: SessionStoreEntry[]): Promise<void> {
       if (sourceProjectDirectory === undefined) {
@@ -52,19 +55,27 @@ function createProjectTranscriptStore(configDirectory: string): SessionStore {
           `Cannot write Claude session ${key.sessionId} before loading its source transcript`,
         );
       }
-      await writeFile(
-        join(sourceProjectDirectory, `${key.sessionId}.jsonl`),
-        entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
-        { mode: 0o600, flag: "wx" },
+      await pipeline(
+        serializeTranscript(entries),
+        createWriteStream(
+          join(sourceProjectDirectory, `${key.sessionId}.jsonl`),
+          { mode: 0o600, flags: "wx" },
+        ),
       );
     },
   };
 }
 
+function* serializeTranscript(entries: SessionStoreEntry[]): Generator<string> {
+  for (const entry of entries) {
+    yield `${JSON.stringify(entry)}\n`;
+  }
+}
+
 async function findTranscript(
   projectsDirectory: string,
   sessionId: string,
-): Promise<{ projectDirectory: string; contents: string } | null> {
+): Promise<{ projectDirectory: string; entries: SessionStoreEntry[] } | null> {
   let projectDirectories: string[];
   try {
     projectDirectories = (
@@ -76,25 +87,31 @@ async function findTranscript(
     return null;
   }
   for (const projectDirectory of projectDirectories) {
-    let contents: string;
+    let transcript: FileHandle;
     try {
-      contents = await readFile(
-        join(projectDirectory, `${sessionId}.jsonl`),
-        "utf8",
-      );
+      transcript = await open(join(projectDirectory, `${sessionId}.jsonl`));
     } catch {
       continue;
     }
-    if (contents.length > 0) {
-      return { projectDirectory, contents };
+    try {
+      const entries = await parseTranscript(
+        transcript.readLines({ highWaterMark: TRANSCRIPT_READ_CHUNK_BYTES }),
+      );
+      if (entries.length > 0) {
+        return { projectDirectory, entries };
+      }
+    } finally {
+      await transcript.close();
     }
   }
   return null;
 }
 
-function parseTranscript(contents: string): SessionStoreEntry[] {
+async function parseTranscript(
+  lines: AsyncIterable<string>,
+): Promise<SessionStoreEntry[]> {
   const entries: SessionStoreEntry[] = [];
-  for (const line of contents.split("\n")) {
+  for await (const line of lines) {
     if (line.trim().length === 0) {
       continue;
     }

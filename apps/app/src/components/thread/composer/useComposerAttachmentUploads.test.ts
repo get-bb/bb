@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { BbHttpError } from "@bb/sdk/browser";
+import { PromptAttachmentSizeError } from "@/lib/prompt-attachment-size";
 import { uploadDraftAttachments } from "./useComposerAttachmentUploads";
 
 const uploaded: PromptDraftAttachment = {
@@ -79,6 +80,23 @@ describe("uploadDraftAttachments", () => {
 
     expect(result.failureMessage).toBe(
       `Failed to attach IMG_0001.heic, shot.png: ${message}`,
+    );
+  });
+
+  it("shows why an attachment is too large to upload", async () => {
+    const message = "VID_0001.mp4 is 110MB, over the 35MB attachment limit";
+    const result = await uploadDraftAttachments({
+      uploads: [pending("VID_0001.mp4")],
+      target: { key: "bottom", addAttachment: vi.fn() },
+      upload: async () => {
+        throw new PromptAttachmentSizeError(message);
+      },
+      getCurrentTarget: () => ({ key: "bottom", addAttachment: vi.fn() }),
+      onUploadSettled: vi.fn(),
+    });
+
+    expect(result.failureMessage).toBe(
+      `Failed to attach VID_0001.mp4: ${message}`,
     );
   });
 

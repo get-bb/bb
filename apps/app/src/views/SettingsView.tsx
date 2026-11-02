@@ -1129,6 +1129,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
+  narrowPluginCss: {
+    label: "Faster plugin styles",
+    description:
+      "Load each plugin's stylesheet so it only matches that plugin's own UI, which makes style updates cheaper on pages with many plugins. Plugins built with an old portal-scope helper keep the slower stylesheet. Applies after a reload.",
+  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:

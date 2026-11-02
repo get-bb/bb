@@ -12,7 +12,6 @@ import {
 import { useAtom } from "jotai";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
-import { getCollapsedChildActivity } from "../model/thread-activity.js";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
@@ -20,8 +19,11 @@ import { ActionMenuSeparator } from "@/components/ui/action-menu-items";
 import { SidebarContentElementContext } from "../ui/sidebar.js";
 import { reorderStoredOrder } from "../model/stored-order.js";
 import { sidebarHiddenGroupsAtom } from "../preferences/atoms.js";
-import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
-import { usePluginThreadRowStatusForThreads } from "./groupRollups.js";
+import { experimental_ThreadStatusGlyph as ThreadStatusGlyph } from "@get-bb/plugin-sdk/app";
+import {
+  useHiddenThreadsStatus,
+  usePluginThreadRowStatusForThreads,
+} from "./groupRollups.js";
 import {
   SidebarMore,
   SidebarOverflowItem,
@@ -272,12 +274,11 @@ export function ThreadListVisibilityMenuItems({
 
 function GroupActivity({ threads }: { threads: readonly SidebarThread[] }) {
   const pluginStatus = usePluginThreadRowStatusForThreads(threads);
-  return (
-    <CollapsedThreadStatusGlyph
-      activity={getCollapsedChildActivity(threads)}
-      pluginStatus={pluginStatus}
-    />
+  const { indicator, rowStatus } = useHiddenThreadsStatus(
+    threads,
+    pluginStatus,
   );
+  return <ThreadStatusGlyph indicator={indicator} rowStatus={rowStatus} />;
 }
 
 function HiddenGroup({

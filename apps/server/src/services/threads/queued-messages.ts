@@ -15,6 +15,7 @@ import {
   releaseQueuedThreadMessageEditHold,
   releaseStaleQueuedMessageClaims,
   type DbQueryConnection,
+  type QueuedThreadMessageExecution,
   type QueuedThreadMessageGroupClaimPolicy,
   type QueuedThreadMessageGroupEligibility,
 } from "@bb/db";
@@ -34,6 +35,7 @@ import type {
   QueuedMessageEditHoldResponse,
   SendMessageRequest,
   SendQueuedMessageMode,
+  UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
 import type {
   AppDeps,
@@ -268,6 +270,57 @@ export async function createQueuedMessageForThread(
     });
   }
   return toThreadQueuedMessage(queuedMessage);
+}
+
+export interface ResolveQueuedMessageExecutionChangeArgs {
+  expectedUpdatedAt: number;
+  queuedMessageId: string;
+  request: Pick<
+    UpdateQueuedMessageRequest,
+    "model" | "permissionMode" | "reasoningLevel" | "serviceTier"
+  >;
+  thread: Thread;
+}
+
+export async function resolveQueuedMessageExecutionChange(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: ResolveQueuedMessageExecutionChangeArgs,
+): Promise<QueuedThreadMessageExecution | null> {
+  const { request } = args;
+  if (
+    request.model === undefined &&
+    request.permissionMode === undefined &&
+    request.reasoningLevel === undefined &&
+    request.serviceTier === undefined
+  ) {
+    return null;
+  }
+  const row = getQueuedThreadMessage(deps.db, args.queuedMessageId);
+  if (
+    row === null ||
+    row.threadId !== args.thread.id ||
+    row.state === "claimed" ||
+    row.updatedAt !== args.expectedUpdatedAt
+  ) {
+    return null;
+  }
+  const current = toThreadQueuedMessage(row);
+  const resolved = await buildExecutionOptions(
+    deps,
+    {
+      model: request.model ?? current.model,
+      permissionMode: request.permissionMode ?? current.permissionMode,
+      reasoningLevel: request.reasoningLevel ?? current.reasoningLevel,
+      serviceTier: request.serviceTier ?? current.serviceTier,
+    },
+    { threadId: args.thread.id },
+  );
+  return {
+    model: resolved.model,
+    permissionMode: resolved.permissionMode,
+    reasoningLevel: resolved.reasoningLevel,
+    serviceTier: resolved.serviceTier,
+  };
 }
 
 function isQueuedMessageAutoSendCandidate(

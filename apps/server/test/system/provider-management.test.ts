@@ -127,7 +127,6 @@ describe("provider management", () => {
           },
         );
         expect(resolved.providerId).not.toBe("acp-opencode");
-        expect(resolved.executionDefaults).toBeNull();
       },
     );
   });

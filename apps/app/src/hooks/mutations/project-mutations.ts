@@ -8,6 +8,7 @@ import type {
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { registerLocalAttachmentPreview } from "@/lib/attachment-local-previews";
+import { uploadWithinPromptAttachmentLimit } from "@/lib/prompt-attachment-size";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
@@ -217,10 +218,9 @@ export function useUploadPromptAttachment() {
       projectId,
       file,
     }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> => {
-      const uploaded = await sdk.projects.attachments.upload({
-        projectId,
-        clientFile: file,
-      });
+      const uploaded = await uploadWithinPromptAttachmentLimit(file, () =>
+        sdk.projects.attachments.upload({ projectId, clientFile: file }),
+      );
       registerLocalAttachmentPreview(uploaded.path, file);
       return uploaded;
     },

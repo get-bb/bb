@@ -37,6 +37,7 @@ import type {
   QueuedMessagesListProps,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import { QueuedMessageSendTimeDialog } from "@/components/promptbox/banner/QueuedMessageSendTimeDialog";
 import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
@@ -137,6 +138,7 @@ interface QueuedMessageRowProps {
   onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (id: string) => void;
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
@@ -759,6 +761,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onExpandMobileActions,
   onSend,
   onEdit,
+  onChangeSendTime,
   onDelete,
   compact,
   isGroupBoundary,
@@ -995,6 +998,29 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
+                {queuedMessage.state === "scheduled" ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() => onChangeSendTime(queuedMessage.id)}
+                        aria-label={`Change when queued message ${index + 1} sends`}
+                      >
+                        <Icon name="Calendar" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-md:hidden">
+                      Change send time
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -1191,6 +1217,7 @@ export function QueuedMessagesList({
   onReorder,
   onSetGroupBoundary,
   onEdit,
+  onChangeSendTime,
   onDelete,
   expanded,
   onExpandedChange,
@@ -1502,6 +1529,21 @@ export function QueuedMessagesList({
     },
     [onEdit, openWorkspace],
   );
+  const [sendTimeQueuedMessageId, setSendTimeQueuedMessageId] = useState<
+    string | null
+  >(null);
+  const sendTimeQueuedMessage =
+    sendTimeQueuedMessageId === null
+      ? null
+      : (queuedMessages.find(
+          (queuedMessage) =>
+            queuedMessage.id === sendTimeQueuedMessageId &&
+            queuedMessage.state === "scheduled",
+        ) ?? null);
+  const handleOpenSendTime = useCallback((id: string) => {
+    setExpandedMobileActionsId(null);
+    setSendTimeQueuedMessageId(id);
+  }, []);
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
@@ -1580,6 +1622,7 @@ export function QueuedMessagesList({
           isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSend={onSend}
           onEdit={handleEdit}
+          onChangeSendTime={handleOpenSendTime}
           onDelete={onDelete}
         />,
       );
@@ -1693,6 +1736,13 @@ export function QueuedMessagesList({
           />
         </div>
       ) : null}
+      <QueuedMessageSendTimeDialog
+        queuedMessage={sendTimeQueuedMessage}
+        onOpenChange={(open) => {
+          if (!open) setSendTimeQueuedMessageId(null);
+        }}
+        onChangeSendTime={onChangeSendTime}
+      />
     </PromptStackCard>
   );
 }

@@ -37,6 +37,115 @@ afterEach(cleanup);
 
 describe("plugin SDK Markdown", () => {
   it.each([
+    {
+      name: "GitHub PR tables with inline code",
+      content:
+        "## Changes\n\n| Action | Pinned SHA | Version |\n| --- | --- | --- |\n| `actions/checkout` | `11d5960a…` | v4.4.0 |\n| `actions/setup-node` | `49933ea5…` | v4.4.0 |",
+      elements: {
+        h2: ["Changes"],
+        th: ["Action", "Pinned SHA", "Version"],
+        td: [
+          "actions/checkout",
+          "11d5960a…",
+          "v4.4.0",
+          "actions/setup-node",
+          "49933ea5…",
+          "v4.4.0",
+        ],
+        "td code": [
+          "actions/checkout",
+          "11d5960a…",
+          "actions/setup-node",
+          "49933ea5…",
+        ],
+      },
+    },
+    {
+      name: "aligned tables, escaped pipes, and following paragraphs",
+      content:
+        "Name | Notes | Total\n:--- | :---: | ---:\ncheckout | uses \\| safely | 2\n\nAfter the table.",
+      elements: {
+        'th[style*="left"]': ["Name"],
+        'th[style*="center"]': ["Notes"],
+        'th[style*="right"]': ["Total"],
+        'td[style*="left"]': ["checkout"],
+        'td[style*="center"]': ["uses | safely"],
+        'td[style*="right"]': ["2"],
+        p: ["After the table."],
+      },
+    },
+    {
+      name: "GitHub issue links and inline formatting",
+      content:
+        "[Open issue](https://github.com/get-bb/bb/issues/1) **strong** *emphasis* `code`",
+      elements: {
+        'a[href="https://github.com/get-bb/bb/issues/1"][target="_blank"]': [
+          "Open issue",
+        ],
+        strong: ["strong"],
+        em: ["emphasis"],
+        code: ["code"],
+      },
+    },
+    {
+      name: "headings, fenced code, and dash lists",
+      content: "# Heading\n\n```text\n<literal>\n```\n\n- First\n- Second",
+      elements: {
+        h1: ["Heading"],
+        "pre code": ["<literal>"],
+        "ul > li": ["First", "Second"],
+      },
+    },
+    {
+      name: "numbered, star, nested, and task lists",
+      content:
+        "1. First\n2. Second\n\n* Parent\n  * Child\n\n- [x] Done\n- [ ] Pending",
+      elements: {
+        "ol > li": ["First", "Second"],
+        "ul ul > li": ["Child"],
+        'input[type="checkbox"][checked][disabled]': [""],
+        'input[type="checkbox"]:not([checked])[disabled]': [""],
+      },
+    },
+    {
+      name: "quotes, strikethrough, autolinks, and hidden HTML comments",
+      content:
+        "> Quoted\n\n~~Removed~~ https://example.com\n\n<!-- hidden template -->",
+      elements: {
+        "blockquote p": ["Quoted"],
+        del: ["Removed"],
+        'a[href="https://example.com"]': ["https://example.com"],
+        p: ["Quoted", "Removed https://example.com"],
+      },
+    },
+    {
+      name: "Markdown and HTML images with sanitized attributes",
+      content:
+        '![Chart](https://example.com/chart.png)\n\n<img src="https://example.com/screen.png" alt="Screen" width="320" onerror="alert(1)">',
+      elements: {
+        'img[alt="Chart"][src="https://example.com/chart.png"]': [""],
+        'img[alt="Screen"][width="320"]': [""],
+        "[onerror]": [],
+      },
+    },
+  ])(
+    "renders $name through the shared host path",
+    async ({ content, elements }) => {
+      const Markdown = pluginSdkAppImplementation.Markdown;
+      const { container } = render(<Markdown content={content} />);
+      await waitFor(() => {
+        for (const [selector, expected] of Object.entries(elements)) {
+          expect(
+            [...container.querySelectorAll(selector)].map((node) =>
+              node.textContent?.trim(),
+            ),
+          ).toEqual(expected);
+        }
+      });
+    },
+  );
+
+  it.each([
     ["@thread:thr_1234567890", "/projects/proj_demo/threads/thr_1234567890"],
     [
       "@thread:thr_1234567890#msg=42",
@@ -90,7 +199,6 @@ describe("plugin SDK Markdown", () => {
   );
 
   it("uses the surrounding thread detail navigation for file and web links", async () => {
-    const onOpenLink = vi.fn(() => false);
     const openUrl = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
     const Markdown = pluginSdkAppImplementation.Markdown;
@@ -99,7 +207,7 @@ describe("plugin SDK Markdown", () => {
       <AppNavigationHostProvider capabilities={{ openUrl }}>
         <ThreadTimelineNavigationProvider
           environmentId={null}
-          onOpenLink={onOpenLink}
+          hostId={null}
           onOpenLocalFileLink={onOpenLocalFileLink}
           resolveMentionLink={() => null}
           threadId="thr_plugin"
@@ -126,7 +234,6 @@ describe("plugin SDK Markdown", () => {
     expect(openUrl).toHaveBeenCalledWith({
       url: "https://example.com/docs",
     });
-    expect(onOpenLink).not.toHaveBeenCalled();
   });
 
   it.each(["workspace", "thread-storage"] as const)(
@@ -154,20 +261,24 @@ describe("plugin SDK Markdown", () => {
         experimental_document: { target, rootPath, threadId: "thr_document" },
       };
       render(
-        <AppNavigationHostProvider capabilities={{ openFilePreview, openUrl }}>
-          <ThreadTimelineNavigationProvider
-            environmentId="env_other"
-            onOpenLink={() => false}
-            onOpenLocalFileLink={() => {
-              throw new Error("Used ambient workspace");
-            }}
-            resolveMentionLink={() => null}
-            threadId="thr_other"
-            workspaceRootPath="/wrong-workspace"
+        <QueryClientProvider client={new QueryClient()}>
+          <AppNavigationHostProvider
+            capabilities={{ openFilePreview, openUrl }}
           >
-            <Markdown {...props} />
-          </ThreadTimelineNavigationProvider>
-        </AppNavigationHostProvider>,
+            <ThreadTimelineNavigationProvider
+              environmentId="env_other"
+              hostId={null}
+              onOpenLocalFileLink={() => {
+                throw new Error("Used ambient workspace");
+              }}
+              resolveMentionLink={() => null}
+              threadId="thr_other"
+              workspaceRootPath="/wrong-workspace"
+            >
+              <Markdown {...props} />
+            </ThreadTimelineNavigationProvider>
+          </AppNavigationHostProvider>
+        </QueryClientProvider>,
       );
       fireEvent.click(await screen.findByRole("link", { name: "Sibling" }));
       expect(openFilePreview).toHaveBeenLastCalledWith({
@@ -206,29 +317,31 @@ describe("plugin SDK Markdown", () => {
     const onOpenLocalFileLink = vi.fn(() => true);
     const Markdown = pluginSdkAppImplementation.Markdown;
     render(
-      <AppNavigationHostProvider capabilities={{ openFilePreview }}>
-        <ThreadTimelineNavigationProvider
-          environmentId={null}
-          onOpenLink={() => false}
-          onOpenLocalFileLink={onOpenLocalFileLink}
-          resolveMentionLink={() => null}
-          threadId="thr_document"
-          workspaceRootPath="/workspace"
-        >
-          <Markdown
-            content="[Escape](../../../outside.md) ![Escape](../../../outside.svg) [Absolute](/outside.md) ![Absolute](/outside.svg)"
-            experimental_document={{
-              rootPath: "/storage",
-              threadId: "thr_document",
-              target: {
-                kind: "thread-storage",
+      <QueryClientProvider client={new QueryClient()}>
+        <AppNavigationHostProvider capabilities={{ openFilePreview }}>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            hostId={null}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={() => null}
+            threadId="thr_document"
+            workspaceRootPath="/workspace"
+          >
+            <Markdown
+              content="[Escape](../../../outside.md) ![Escape](../../../outside.svg) [Absolute](/outside.md) ![Absolute](/outside.svg)"
+              experimental_document={{
+                rootPath: "/storage",
                 threadId: "thr_document",
-                path: "reports/report.md",
-              },
-            }}
-          />
-        </ThreadTimelineNavigationProvider>
-      </AppNavigationHostProvider>,
+                target: {
+                  kind: "thread-storage",
+                  threadId: "thr_document",
+                  path: "reports/report.md",
+                },
+              }}
+            />
+          </ThreadTimelineNavigationProvider>
+        </AppNavigationHostProvider>
+      </QueryClientProvider>,
     );
     expect(
       (await screen.findByRole("link", { name: "Escape" })).getAttribute(

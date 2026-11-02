@@ -809,6 +809,7 @@ describe("@bb/sdk", () => {
       sdk.providers.models({
         environmentId: "env_remote",
         providerId: "acp-remote",
+        preferCached: true,
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
     await expect(
@@ -828,7 +829,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote",
+        url: "http://bb.test/api/v1/system/execution-options?environmentId=env_remote&providerId=acp-remote&preferCached=true",
       },
       {
         bodyText: undefined,

@@ -48,6 +48,7 @@ export const MarkdownLocalFileOpenTargetsContext = createContext<
 
 export interface MarkdownLocalFileLinkRouting {
   absoluteLinks: MarkdownAbsoluteLocalFileLinkRouting;
+  hostId: string | null;
   onOpenLink: MarkdownPreviewLocalFileLinkHandler;
   relativeLinks?: MarkdownRelativeLocalFileLinkRouting;
 }
@@ -62,6 +63,7 @@ export interface MarkdownLocalImageRouting {
 }
 
 export interface MarkdownLinkRouting {
+  headingAnchors?: true;
   localFile?: MarkdownLocalFileLinkRouting;
   localImage?: MarkdownLocalImageRouting;
   onOpenLink?: MarkdownPreviewLinkHandler;

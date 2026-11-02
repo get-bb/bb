@@ -93,7 +93,8 @@
       "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch",
       "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch",
       "mermaid@11.15.0": "patches/mermaid@11.15.0.patch",
-      "react-native-webview@14.0.1": "patches/react-native-webview@14.0.1.patch"
+      "react-native-webview@14.0.1": "patches/react-native-webview@14.0.1.patch",
+      "@dnd-kit/core@6.3.1": "patches/@dnd-kit__core@6.3.1.patch"
     }
   }
 }

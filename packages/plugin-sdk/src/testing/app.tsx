@@ -167,6 +167,7 @@ import {
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
+import { experimental_resolveThreadStatus } from "../internal/thread-status.js";
 import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
@@ -1977,6 +1978,7 @@ const testPluginSdkApp = {
   },
   ThreadTitle: TestThreadTitle,
   experimental_ThreadStatusGlyph: TestThreadStatusGlyph,
+  experimental_resolveThreadStatus,
   experimental_ThreadRowMetadata: TestThreadRowMetadata,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;

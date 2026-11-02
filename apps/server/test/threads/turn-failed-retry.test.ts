@@ -26,6 +26,7 @@ import { runQueuedMessageDispatch } from "../../src/services/threads/queued-mess
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
+import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import {
   seedEnvironment,
   seedEvent,
@@ -319,6 +320,80 @@ async function sweepPastResume(harness: TestAppHarness): Promise<void> {
   });
 }
 
+async function sendUserMessage(
+  harness: TestAppHarness,
+  threadId: string,
+  text: string,
+): Promise<void> {
+  const delivery = await attemptDispatch(harness.deps, {
+    thread: requireThread(harness, threadId),
+    payload: {
+      mode: "queue-if-active",
+      input: [{ type: "text", text, mentions: [] }],
+    },
+    source: { kind: "inline" },
+    queuePayload: { kind: "inline" },
+    pluginSubmission: null,
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: null,
+    trigger: "user",
+  });
+  expect(delivery.kind).toBe("dispatched");
+}
+
+async function failAndRetry(
+  harness: TestAppHarness,
+  args: {
+    environmentId: string;
+    threadId: string;
+    accepted: boolean;
+    sendAt: number;
+  },
+) {
+  const { requestId } = lastTurnRequest(harness, args.threadId);
+  if (args.accepted) {
+    seedInputAccepted(harness, {
+      environmentId: args.environmentId,
+      threadId: args.threadId,
+      requestId,
+    });
+  }
+  seedRateLimitFailure(harness, {
+    environmentId: args.environmentId,
+    threadId: args.threadId,
+    resetsAtMs: args.sendAt,
+  });
+  failThread(harness, args.threadId);
+  return retryFailedTurn(harness.deps, {
+    thread: requireThread(harness, args.threadId),
+    request: {
+      turnRequestId: requestId,
+      sendAt: args.sendAt,
+      reason: "Rate limited",
+    },
+  });
+}
+
+async function drainRecoveries(
+  harness: TestAppHarness,
+  threadId: string,
+): Promise<number> {
+  const before = turnRequests(harness, threadId).length;
+  while (queuedRows(harness, threadId).length > 0) {
+    await sweepPastResume(harness);
+    applyLoggedThreadLifecycleEvent(harness.deps, {
+      event: { type: "run.succeeded" },
+      threadId,
+    });
+    await runQueuedMessageDispatch(harness.deps, {
+      kind: "thread-ready",
+      threadId,
+    });
+  }
+  return turnRequests(harness, threadId).length - before;
+}
+
 describe("the turn.failed announcement", () => {
   it("carries the failed turn's ids and the provider's failure facts", async () => {
     await withTestHarness(async (harness) => {
@@ -490,6 +565,48 @@ describe("retrying a failed turn", () => {
       );
       expect(userRequests).toHaveLength(1);
       // The row was consumed by the dispatch rather than left on the queue.
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+
+  it("moves a waiting retry earlier in place, keeping its attempt", async () => {
+    await withTestHarness(async (harness) => {
+      const sendAt = Date.now() + 3_600_000;
+      const { requestId, thread } = seedFailableThread(
+        harness,
+        "host-retry-move",
+      );
+      failThread(harness, thread.id);
+      await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: requestId, sendAt, reason: "Rate limited" },
+      });
+      const queued = onlyQueuedRow(harness, thread.id);
+      const earlier = Date.now() + 60_000;
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queued.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            expectedUpdatedAt: queued.updatedAt,
+            sendAt: earlier,
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(onlyQueuedRow(harness, thread.id)).toMatchObject({
+        id: queued.id,
+        payload: queued.payload,
+        sendAt: earlier,
+      });
+
+      await sweepPastResume(harness);
+
+      const data = lastTurnRequest(harness, thread.id);
+      expect(data.retryOfRequestId).toBe(requestId);
+      expect(data.retryAttempt).toBe(2);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
   });
@@ -703,6 +820,69 @@ describe("retrying a failed turn", () => {
       });
       expect(requeued.sendAt).toBeNull();
       expect(requeued.payload.kind).toBe("retry");
+    });
+  });
+
+  it("joins later accepted failures to the thread's waiting retry", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, requestId, thread } = seedFailableThread(
+        harness,
+        "host-join",
+      );
+      const failure = (sendAt: number) =>
+        failAndRetry(harness, {
+          environmentId: environment.id,
+          threadId: thread.id,
+          accepted: true,
+          sendAt,
+        });
+      await failure(Date.now() + 3_600_000);
+      await sendUserMessage(harness, thread.id, "Also check the tests");
+      await failure(Date.now() + 1_800_000);
+      await sendUserMessage(harness, thread.id, "And the docs");
+      const latestSendAt = Date.now() + 60_000;
+      const last = await failure(latestSendAt);
+
+      const waiting = onlyQueuedRow(harness, thread.id);
+      expect(last).toEqual({
+        ok: true,
+        delivery: "queued",
+        turnRequestId: requestId,
+        attempt: 2,
+        queuedMessageId: waiting.id,
+        waitingOn: { kind: "time" },
+        sendAt: latestSendAt,
+      });
+      expect(waiting.sendAt).toBe(latestSendAt);
+      expect(await drainRecoveries(harness, thread.id)).toBe(1);
+    });
+  });
+
+  it("keeps a separate retry for every input the provider never accepted", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedFailableThread(
+        harness,
+        "host-unaccepted",
+      );
+      const sendAt = Date.now() + 60_000;
+      const failure = () =>
+        failAndRetry(harness, {
+          environmentId: environment.id,
+          threadId: thread.id,
+          accepted: false,
+          sendAt,
+        });
+      await failure();
+      await sendUserMessage(harness, thread.id, "Also check the tests");
+      await failure();
+
+      expect(
+        queuedRows(harness, thread.id).map((row) => row.content[0]),
+      ).toEqual([
+        expect.objectContaining({ text: "Do the thing" }),
+        expect.objectContaining({ text: "Also check the tests" }),
+      ]);
+      expect(await drainRecoveries(harness, thread.id)).toBe(2);
     });
   });
 

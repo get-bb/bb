@@ -32,6 +32,7 @@ export {
   listPromptHistoryPage,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
+  PROMPT_HISTORY_ENTRY_MAX_BYTES,
 } from "./prompt-history.js";
 export type {
   ListPromptHistoryPageArgs,
@@ -316,6 +317,7 @@ export {
   getLastStoredTurnRequestEvent,
   listStoredTaskTurnRequestEvents,
   listLatestTurnFinalAgentMessageEventRows,
+  getTurnFinalAgentMessageEventRow,
   getStoredTurnRequestEventForTurn,
   getLatestThreadOutputEventRow,
   getLatestStoredConversationOutlineSequence,
@@ -457,6 +459,7 @@ export {
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   getQueuedThreadStartMessage,
+  getFirstUnclaimedQueuedRetry,
   hasQueuedRetryOfTurnRequest,
   hasClaimedQueuedThreadMessages,
   holdQueuedThreadMessageForEdit,
@@ -484,6 +487,7 @@ export {
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
+  QueuedThreadMessageExecution,
   QueuedThreadMessageGroupClaimPolicy,
   QueuedThreadMessageGroupEligibility,
   QueuedThreadMessageRow,
