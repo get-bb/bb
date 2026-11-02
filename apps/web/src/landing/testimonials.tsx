@@ -128,7 +128,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
   {
     author: "ishan",
-    byline: "Inference engineer, NVIDIA",
+    byline: "Engineer, NVIDIA",
     avatar: ishanAvatar,
     source: "x",
     url: "https://x.com/0xishand/status/2098304763368767697",
