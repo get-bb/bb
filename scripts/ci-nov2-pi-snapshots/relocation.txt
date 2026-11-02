@@ -76,6 +76,7 @@ export default function (pi) {
       JSON.stringify([cli, "--extension", lifecycleExtension]),
     );
     vi.stubEnv("PI_CODING_AGENT_DIR", join(target, "agent"));
+    vi.stubEnv("PI_OFFLINE", "1");
     vi.stubEnv("ANTHROPIC_API_KEY", "unused-local-rpc-test-key");
     const resumed = await harness.request(200, "thread/resume", {
       threadId: "thr_relocation",
