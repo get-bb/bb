@@ -117,8 +117,8 @@ and the pool retains the 4,096 most recently used pins.
 The switch threshold is a preference, not a cutoff. New conversations go to
 accounts below it first, and existing conversations keep their account past it.
 When no account below it is available, accounts at or above it keep serving
-until the provider refuses them, alongside refused accounts with extra usage or
-Codex credits.
+until the provider refuses them; refused accounts with extra usage or Codex
+credits come after those.
 Where the provider reports a window status, `rejected` decides whether it
 refused the window; a window without a status counts as refused from 100
 percent utilization. The pool answers with its own HTTP 429 only when no
@@ -128,9 +128,9 @@ and `status` report `exhausted` only for an account the provider refused.
 
 Claude accounts with an exhausted subscription window remain eligible as a
 fallback when Anthropic reports extra usage enabled with remaining allowance,
-or an allowed overage response header. Accounts below the switch threshold
-are preferred, including for conversations pinned to an extra-usage fallback;
-those conversations return to subscription quota when it recovers. Before using
+or an allowed overage response header. Accounts the provider still accepts are
+preferred, including for conversations pinned to an extra-usage fallback; those
+conversations return to subscription quota when it recovers. Before using
 extra usage, the pool rechecks OAuth accounts at or above the switch threshold (at
 most every 30 seconds).
 Disabled, spent, or unobserved extra usage does not override subscription limits.

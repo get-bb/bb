@@ -889,18 +889,19 @@ export class AccountPoolHub {
     const included = usable.filter(
       ({ quota }) => !isPastThreshold(quota, family, threshold, now),
     );
-    const eligible = included.some(
-      (candidate) =>
-        isUnattempted(candidate) &&
-        (candidate.quota.heldUntil === null ||
-          candidate.quota.heldUntil <= now),
-    )
-      ? included
-      : usable;
-    const pinnable =
-      eligible === usable
-        ? usable
-        : usable.filter(({ quota }) => !isQuotaExhausted(quota, family, now));
+    const accepted = usable.filter(
+      ({ quota }) => !isQuotaExhausted(quota, family, now),
+    );
+    const eligible =
+      [included, accepted].find((tier) =>
+        tier.some(
+          (candidate) =>
+            isUnattempted(candidate) &&
+            (candidate.quota.heldUntil === null ||
+              candidate.quota.heldUntil <= now),
+        ),
+      ) ?? usable;
+    const pinnable = eligible === usable ? usable : accepted;
     const unattempted = eligible.filter(isUnattempted);
     const candidates = unattempted.filter(
       ({ quota }) => quota.heldUntil === null || quota.heldUntil <= now,

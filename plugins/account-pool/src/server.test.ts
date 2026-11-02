@@ -6460,6 +6460,56 @@ describe("sequential pool recovery", () => {
     ]);
   });
 
+  it("prefers an account past the threshold that the provider accepts over extra usage", async () => {
+    const attempts: Array<string | null> = [];
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      apiKey: "sk-first",
+      options: {
+        now: () => 1_800_000_000_000,
+        fetch: async (_input, init) => {
+          const key = new Headers(init?.headers).get("x-api-key");
+          attempts.push(key);
+          return Response.json(
+            {},
+            {
+              headers:
+                key === "sk-first"
+                  ? {
+                      "anthropic-ratelimit-unified-5h-utilization": "0.99",
+                      "anthropic-ratelimit-unified-5h-status": "allowed",
+                      "anthropic-ratelimit-unified-5h-reset": "1800003600",
+                    }
+                  : {
+                      "anthropic-ratelimit-unified-5h-utilization": "1",
+                      "anthropic-ratelimit-unified-5h-status": "rejected",
+                      "anthropic-ratelimit-unified-5h-reset": "1800003600",
+                      "anthropic-ratelimit-unified-overage-status": "allowed",
+                    },
+            },
+          );
+        },
+      },
+    });
+    await addApiAccount(fixture, "sk-second");
+    const send = async (requestBody: string) => {
+      const response = await fixture.host.harness.behavior.fetchHttp(
+        "POST",
+        "/v1/messages",
+        { headers: authHeaders(fixture.key), body: requestBody },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    };
+
+    await send("{}");
+    await send(body);
+    await send("{}");
+    await send(body);
+
+    expect(attempts).toEqual(["sk-first", "sk-second", "sk-first", "sk-first"]);
+  });
+
   it("reports an account past the switch threshold as exhausted only once the provider refuses it", async () => {
     let refused = false;
     const fixture = await createFixture({
