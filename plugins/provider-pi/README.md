@@ -65,6 +65,19 @@ install in a temporary prefix, say. The plugin declares them as environment
 passthrough, so a value set on the host daemon's environment reaches the
 bridge process; bb strips every other inherited `BB_*` variable.
 
+## Bridge channel
+
+Besides pi's RPC stdin and stdout, the injected extension talks to the bridge
+over its own channel: tool calls and results, fork and leaf requests, and
+settlement reports. The bridge listens on a Unix socket in a private temporary
+directory (a named pipe on Windows) and passes its address and a one-time token
+to pi in `BB_PI_BRIDGE_CHANNEL` and `BB_PI_BRIDGE_CHANNEL_TOKEN`. The extension
+removes both from its environment, connects once per pi process, and sends the
+token first; the bridge drops any connection that does not. Environment
+variables survive launchers, so pi works behind `cmd.exe` shims (npm, pnpm,
+the Pi installer), Bun's `pi.exe`, and wrappers that start pi as a child
+process, none of which forward extra stdio descriptors.
+
 ## Tests
 
 The bridge tests drive `src/bridge/fake-pi-rpc.mjs`, a scripted
@@ -72,15 +85,15 @@ The bridge tests drive `src/bridge/fake-pi-rpc.mjs`, a scripted
 pi's framing (LF-delimited JSON, raw U+2028 and U+2029). Its prompts script a
 turn: `/tool <name> <json>` runs an extension tool, `/hold` keeps the run open
 until `abort` or a steer, `/fail-run` ends it with an assistant error, `/ui
-<json>` opens an extension dialog, and `/die` exits mid-run. `FAKE_PI_*`
+<json>` opens an extension dialog, `/reload` reloads the extension the way
+pi's `ctx.reload()` does before answering, and `/die` exits mid-run. `FAKE_PI_*`
 environment variables select the rest: the reported version (`crash` for a
 broken install), logs of spawns, commands, prompts, and tools, and the faults
 the lifecycle and steering tests inject.
 
 `bridge.bun-runtime.test.ts` runs the same fake under Bun when it is
-installed: pi ships as a Bun standalone binary, and Bun's `node:net` could not
-attach a read handle to a borrowed stdio fd, which silently dropped every
-dynamic tool result.
+installed: pi ships as a Bun standalone binary, so the extension's channel
+socket has to work under Bun's `node:net` as well as Node's.
 
 The recorded-conformance replay of bb's committed pi recordings
 (`packages/provider-bridge-protocol/recordings/pi`) runs in
