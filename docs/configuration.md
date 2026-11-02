@@ -901,6 +901,14 @@ either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `narrowPluginCss` makes the app request each plugin's
+  stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
+  match only inside that plugin's own roots, not inside any root without a
+  plugin id, which makes style recalculation cheaper with many plugins. A
+  bundle whose `app.js` sets `data-bb-plugin-root` without `data-bb-plugin`
+  keeps the slower stylesheet either way. The app reads the experiment when it
+  loads a plugin's stylesheet, so a toggle applies after a reload. See
+  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel
