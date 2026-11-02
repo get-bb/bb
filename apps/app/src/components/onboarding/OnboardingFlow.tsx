@@ -700,7 +700,11 @@ function ProjectsStepContainer({
       {...chrome}
       step="projects"
       title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      description={
+        redesign
+          ? "Choose local Git repos used in the last 30 days."
+          : "Git repos on this computer that you've worked in over the last 30 days."
+      }
       primaryLabel={
         scanning || selectedPaths.size === 0
           ? "Continue"
@@ -718,6 +722,7 @@ function ProjectsStepContainer({
       onBack={onBack}
     >
       <ProjectsStep
+        selection={redesign ? "header" : "line"}
         status={
           scanning
             ? { kind: "scanning" }
