@@ -201,10 +201,10 @@ for a thread open in a visible, focused bb window or tab. It defaults on for
 early adopters.
 `threadContextCard` moves a running thread's changes, pull request, and parent
 and child threads into a card at the upper-right of its pane, opened or pinned from
-the header. It defaults on for early adopters.
+the header.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
-request number.
+request number. It defaults on for early adopters.
 `unreadDividerAtAnswer` places the NEW divider of an unread thread before the
 final assistant message of a turn that finished while you were away, instead of
 before its first tool call. It defaults on for early adopters.
@@ -213,7 +213,7 @@ pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
+`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadRowMetadata`,
 `unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
 yourself keeps your value.
 
