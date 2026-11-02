@@ -240,7 +240,7 @@ interface AddParentTurnNotificationFollowUpArgs {
   followUps: EventEffectFollowUp[] | ParentTurnNotificationFollowUp[];
   thread: NonNullable<ReturnType<typeof getThread>>;
   turnStatus: ThreadEventTurnStatus;
-  turnId?: string;
+  turnId: string | null;
   interruption?: ChildThreadOutcome["interruption"];
 }
 
@@ -251,7 +251,7 @@ interface ParentTurnNotificationFollowUp {
   parentThreadId: string;
   title: string | null;
   turnStatus: ThreadEventTurnStatus;
-  turnId?: string;
+  turnId: string | null;
   interruption?: ChildThreadOutcome["interruption"];
 }
 
@@ -599,6 +599,7 @@ async function applyEventEffects(
             followUps,
             thread,
             turnStatus: "failed",
+            turnId: null,
           });
         }
         continue;

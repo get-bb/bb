@@ -174,6 +174,7 @@ describe("child outcomes without provider completion", () => {
         childThread: child,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
         interruption: {
           reason: "host-daemon-restarted",
           cause: "host-connection-lost",
@@ -183,11 +184,13 @@ describe("child outcomes without provider completion", () => {
         childThread: child,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
       });
       await queueChildThreadTurnNotificationBestEffort(harness.deps, {
         childThread: sibling,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
         interruption: { reason: "host-daemon-restarted" },
       });
       await vi.advanceTimersByTimeAsync(2_000);
@@ -373,32 +376,16 @@ describe("child parent-notification policy", () => {
           body: JSON.stringify({
             sessionId: session.id,
             eventGroups: groupHostDaemonEvents(
-              children.flatMap(({ child, parentNotifications }) => [
-                {
+              children.map(({ child, parentNotifications }) => ({
+                threadId: child.id,
+                event: {
+                  type: "turn/completed",
                   threadId: child.id,
-                  event: {
-                    type: "item/completed",
-                    threadId: child.id,
-                    providerThreadId: `provider-${parentNotifications}`,
-                    scope: turnScope(`${parentNotifications}-turn`),
-                    item: {
-                      id: `${parentNotifications}-final`,
-                      type: "agentMessage",
-                      text: "Done.",
-                    },
-                  },
+                  providerThreadId: `provider-${parentNotifications}`,
+                  scope: turnScope(`${parentNotifications}-turn`),
+                  status,
                 },
-                {
-                  threadId: child.id,
-                  event: {
-                    type: "turn/completed",
-                    threadId: child.id,
-                    providerThreadId: `provider-${parentNotifications}`,
-                    scope: turnScope(`${parentNotifications}-turn`),
-                    status,
-                  },
-                },
-              ]),
+              })),
             ),
           }),
         });

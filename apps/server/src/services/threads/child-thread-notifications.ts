@@ -65,7 +65,7 @@ interface QueueChildThreadTurnNotificationArgs {
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
-  turnId?: string;
+  turnId: string | null;
   failureContext?: string;
   interruption?: ChildThreadOutcome["interruption"];
 }
@@ -243,7 +243,7 @@ function getChildThreadCompletionOutput(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): string | null {
-  if (args.turnStatus !== "completed" || args.turnId === undefined) {
+  if (args.turnStatus !== "completed" || args.turnId === null) {
     return null;
   }
   return getTurnFinalOutput(deps.db, {
@@ -436,14 +436,10 @@ function queueChildThreadTurnNotificationBatchItem(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueChildThreadTurnNotificationArgs,
 ): void {
-  const terminalOutput = getChildThreadCompletionOutput(deps, args);
-  if (args.turnStatus === "completed" && terminalOutput === null) {
-    return;
-  }
   const item: ChildThreadTurnNotificationBatchItem = {
     activeWorkflowCount: getChildThreadActiveWorkflowCount(deps, args),
     childThread: args.childThread,
-    terminalOutput,
+    terminalOutput: getChildThreadCompletionOutput(deps, args),
     turnStatus: args.turnStatus,
     ...(args.failureContext ? { failureContext: args.failureContext } : {}),
     ...(args.interruption ? { interruption: args.interruption } : {}),
