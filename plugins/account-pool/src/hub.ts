@@ -884,20 +884,19 @@ export class AccountPoolHub {
       ({ quota }) =>
         !isQuotaExhausted(quota, family, now) || hasExtraUsage(quota),
     );
-    const preferred = [
-      eligible.filter(
-        ({ quota }) => !isPastThreshold(quota, family, threshold, now),
-      ),
-      eligible.filter(({ quota }) => !isQuotaExhausted(quota, family, now)),
-    ].find((tier) =>
-      tier.some(
+    const included = eligible.filter(
+      ({ quota }) => !isPastThreshold(quota, family, threshold, now),
+    );
+    if (
+      included.some(
         ({ account, quota }) =>
           candidateIds.has(account.id) &&
           !attempted.has(account.id) &&
           (quota.heldUntil === null || quota.heldUntil <= now),
-      ),
-    );
-    if (preferred !== undefined) eligible = preferred;
+      )
+    ) {
+      eligible = included;
+    }
     const unattempted = eligible.filter(
       ({ account }) =>
         candidateIds.has(account.id) && !attempted.has(account.id),
