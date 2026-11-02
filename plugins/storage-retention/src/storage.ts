@@ -743,8 +743,12 @@ export function createStorage(
     return [...found.values()];
   }
   async function scanHost({ hostId }: { hostId: string }) {
+    await startScan(hostId);
+    return host({ hostId });
+  }
+  async function startScan(hostId: string) {
     await requireHost(hostId, true);
-    if (scans.get(hostId)?.state === "scanning") return host({ hostId });
+    if (scans.get(hostId)?.state === "scanning") return;
     const removal: Removal = {
       entries: new Set(),
       largeFiles: new Set(),
@@ -890,7 +894,6 @@ export function createStorage(
     })();
     jobs.add(job);
     void job.finally(() => jobs.delete(job));
-    return host({ hostId });
   }
   async function discard(
     hostId: string,
@@ -1282,7 +1285,7 @@ export function createStorage(
           if (next === undefined) return;
           pendingDevelopmentCleanups.delete(next);
           try {
-            if (read(next) === null) await scanHost({ hostId: next });
+            if (read(next) === null) await startScan(next);
             else await removeMissingDevelopment(next, await acquire(next));
           } catch (error) {
             if (!lifecycle.signal.aborted)
@@ -1333,6 +1336,17 @@ export function createStorage(
       if (!handedOff) release();
     }
   }
+  async function reconcileHostDevelopmentStorage(hostId: string) {
+    try {
+      if (lifecycle.signal.aborted || !(await devCleanupEnabled())) return;
+      await startScan(hostId);
+    } catch (error) {
+      if (!lifecycle.signal.aborted)
+        bb.log.warn(
+          `Could not reconcile development storage on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+  }
   let reconcilingDevelopment = false;
   function reconcileDevelopmentStorage() {
     if (reconcilingDevelopment || lifecycle.signal.aborted)
@@ -1362,7 +1376,7 @@ export function createStorage(
         machine.status === "connected" &&
         scans.get(machine.id)?.state !== "scanning"
       )
-        await scanHost({ hostId: machine.id });
+        await startScan(machine.id);
     return hosts();
   }
   async function clearThread({ threadId }: { threadId: string }) {
@@ -1859,6 +1873,7 @@ export function createStorage(
     scanHost,
     scanAll,
     reconcileDevelopmentStorage,
+    reconcileHostDevelopmentStorage,
     cleanDevelopmentStorage,
     removeOrphans,
     clearLargeFiles,
