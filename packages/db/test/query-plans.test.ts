@@ -1963,19 +1963,17 @@ describe("slow query index plans", () => {
     }
   });
 
-  it("pins multi-thread latest state lookups to one candidate seek per requested thread", () => {
+  it("rescans only state rows newer than the cached scan watermark", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
     });
-    insertEvents(
-      db,
-      noopNotifier,
+    const stateEvents = (sequenceStart: number) =>
       [thread, otherThread].flatMap((stateThread, threadIndex) =>
         Array.from({ length: 64 }, (_, index) => ({
           data: JSON.stringify(
-            index === 63
+            index === 0 && sequenceStart === 1
               ? { goal: `goal-${threadIndex}` }
               : { kind: "other-plugin/state", payload: { index } },
           ),
@@ -1983,40 +1981,56 @@ describe("slow query index plans", () => {
           itemKind: null,
           parentToolCallId: null,
           scope: threadScope(),
-          sequence: index + 1,
+          sequence: sequenceStart + index,
           threadId: stateThread.id,
           type:
-            index === 63
+            index === 0 && sequenceStart === 1
               ? ("thread/goal/updated" as const)
               : ("thread/extensionState/updated" as const),
         })),
-      ),
-    );
+      );
+    insertEvents(db, noopNotifier, stateEvents(1));
+    const lookup = () =>
+      captureStatements(db, () => {
+        expect(
+          listLatestThreadStateEventRowsByThreadIds(db, {
+            threadIds: [thread.id, otherThread.id],
+            kind: "provider-codex/goal",
+          }).map((row) => row.sequence),
+        ).toEqual([1, 1]);
+      }).find((entry) =>
+        entry.sql.includes("events_thread_state_thread_sequence_idx"),
+      );
 
-    const captured = captureStatements(db, () => {
-      expect(
-        listLatestThreadStateEventRowsByThreadIds(db, {
-          threadIds: [thread.id, otherThread.id],
-          kind: "provider-codex/goal",
-        }),
-      ).toHaveLength(2);
-    });
-    const statement = captured.find((entry) =>
-      entry.sql.includes("events_thread_state_thread_sequence_idx"),
-    );
-    if (!statement) {
-      throw new Error("Expected the latest-thread-state lookup SQL");
+    const cold = lookup();
+    insertEvents(db, noopNotifier, stateEvents(65));
+    const warm = lookup();
+    if (!cold || !warm) {
+      throw new Error("Expected the latest-thread-state scan SQL");
     }
 
-    expect(statement.sql).toContain("VALUES");
+    expect(cold.params).toEqual([
+      "provider-codex/goal",
+      thread.id,
+      -1,
+      otherThread.id,
+      -1,
+    ]);
+    expect(warm.params).toEqual([
+      "provider-codex/goal",
+      thread.id,
+      64,
+      otherThread.id,
+      64,
+    ]);
     const details = queryPlanDetails({
       db,
-      params: statement.params,
-      sql: statement.sql,
+      params: warm.params,
+      sql: warm.sql,
     });
     expect(
       details.match(
-        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx/gu,
+        /USING (?:COVERING )?INDEX events_thread_state_thread_sequence_idx \(thread_id=\? AND sequence>\?\)/gu,
       ),
     ).toHaveLength(1);
     expect(details).not.toMatch(
