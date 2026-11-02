@@ -41,6 +41,7 @@ export function buildMarkdownFileRouting({
   const rootRelative = (absolutePath: string) =>
     absolutePath.slice(root === "/" ? 1 : root.length + 1);
   return {
+    headingAnchors: true,
     localImage: {
       absolutePaths:
         threadId === null

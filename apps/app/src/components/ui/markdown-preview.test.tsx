@@ -687,13 +687,16 @@ describe("MarkdownPreview", () => {
     );
     render(
       <>
-        <MarkdownPreview content="## Plain heading" />
+        <MarkdownPreview
+          content="## Plain heading"
+          linkRouting={{ headingAnchors: true }}
+        />
         <MarkdownPreview
           allowHtml
           content={
             '[Heading](#plain-heading) [Anchor](#block-1) [Missing](#nowhere)\n\n## Plain heading\n\n## Plain heading\n\n<a id="block-1"></a>'
           }
-          linkRouting={{ onOpenLink }}
+          linkRouting={{ headingAnchors: true, onOpenLink }}
         />
       </>,
     );
@@ -712,6 +715,19 @@ describe("MarkdownPreview", () => {
       document.querySelectorAll('[id="user-content-plain-heading-1"]'),
     ).toHaveLength(1);
     expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  it("shows in-page fragment links as text outside file previews", () => {
+    const onOpenLink = vi.fn(() => true);
+    const { container } = render(
+      <MarkdownPreview
+        content={"[Details](#details)\n\n## Details"}
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Details" })).toBeNull();
+    expect(container.querySelector("[id]")).toBeNull();
   });
 
   it("leaves modified clicks on web links to the platform", () => {

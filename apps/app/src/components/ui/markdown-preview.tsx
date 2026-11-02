@@ -633,7 +633,11 @@ function MarkdownAnchor({
   const anchorHref = buildLocalFileAnchorHref(localFileLink, rewrittenHref);
   const getContextMenuItems = useContext(MarkdownLocalFileContextMenuContext);
   const openTargets = useContext(MarkdownLocalFileOpenTargetsContext);
-  if (!anchorHref || linkTarget === null) {
+  if (
+    !anchorHref ||
+    linkTarget === null ||
+    (linkTarget.kind === "fragment" && linkRouting?.headingAnchors !== true)
+  ) {
     return <span id={anchorProps.id}>{children}</span>;
   }
   const contextMenuItems =
@@ -1834,6 +1838,7 @@ function MarkdownPreviewComponent({
     };
   }, [messageDirectives]);
   const hasMessageDirectives = messageDirectiveMounts !== null;
+  const headingAnchors = linkRouting?.headingAnchors === true;
   const hasThreadMentions = threadMentions !== undefined;
   const hasPromptMentions = resolvedPromptMentions !== undefined;
   const markdownComponents = useMemo(
@@ -1870,8 +1875,10 @@ function MarkdownPreviewComponent({
       remarkGfm,
       [remarkMath, { singleDollarTextMath: false }],
       remarkInlineDollarMath,
-      remarkHeadingIds,
     ];
+    if (headingAnchors) {
+      plugins.push(remarkHeadingIds);
+    }
     if (
       threadMentions?.preserveSoftBreaks === true ||
       promptMentions !== undefined
@@ -1888,7 +1895,7 @@ function MarkdownPreviewComponent({
       plugins.push(remarkDirective);
     }
     return plugins;
-  }, [threadMentions, promptMentions, hasMessageDirectives]);
+  }, [headingAnchors, threadMentions, promptMentions, hasMessageDirectives]);
   const codeFenceRegistry = useCodeFenceLanguages();
   const remarkPlugins = useMemo((): MarkdownRemarkPlugins => {
     const plugins: MarkdownRemarkPlugins = [...baseRemarkPlugins];
