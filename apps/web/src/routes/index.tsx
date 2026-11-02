@@ -1386,7 +1386,7 @@ function RefreshedBelowFold() {
 
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">
-          All your agents, in one workspace you control.
+          One programmable workspace for all your agents.
         </h2>
         <p>Free and self-hostable.</p>
         <CloserInstall />
