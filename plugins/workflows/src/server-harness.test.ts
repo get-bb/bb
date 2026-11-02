@@ -62,6 +62,11 @@ describe("workflows plugin", () => {
       });
       hosts.push(harness);
       await plugin(bb);
+      expect(
+        harness.registrations.experimental_publishedRpcMethods,
+      ).toContainEqual(
+        expect.objectContaining({ method: "provider-retry.v1.consent" }),
+      );
       await expect(
         harness.callRpc("provider-retry.v1.consent", {
           threadId: "thread-1",

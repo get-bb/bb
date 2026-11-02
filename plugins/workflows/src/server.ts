@@ -103,12 +103,16 @@ export default async function plugin(bb: BbPluginApi) {
       ),
   );
   registerWorkflowCli(bb, service);
-  bb.rpc.register(retryConsentContract, {
-    [retryConsentMethod]: async ({ threadId }): Promise<RetryConsent> =>
-      (await bb.sdk.threads.get({ threadId })).originPluginId === bb.pluginId
-        ? { kind: "decline", reason: "Workflows owns worker retries" }
-        : { kind: "allow" },
-  });
+  bb.rpc.register(
+    retryConsentContract,
+    {
+      [retryConsentMethod]: async ({ threadId }): Promise<RetryConsent> =>
+        (await bb.sdk.threads.get({ threadId })).originPluginId === bb.pluginId
+          ? { kind: "decline", reason: "Workflows owns worker retries" }
+          : { kind: "allow" },
+    },
+    { experimental_discoverable: true },
+  );
 
   function workflowForThread(threadId: string, runId: string | null) {
     const run =
