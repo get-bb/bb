@@ -1346,9 +1346,9 @@ function RefreshedBelowFold() {
         visual={<PluginMap />}
       >
         <p>
-          bb adapts to how you work, not the other way around. Use plugins to
-          change almost any part of bb by just prompting an agent, or pick from
-          400+ built by the community.
+          bb adapts to how you work, not the other way around. Prompt an agent
+          to change almost anything in bb, or choose from 400+ plugins built by
+          the community.
         </p>
         <MarketplaceLink placement="customize" className="band-link">
           Browse plugins &rarr;
