@@ -416,10 +416,13 @@ export function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
-  return resolveExecutionOptions(deps, query, {
-    kind: "picker",
-    selectedModel: query.selectedModel,
-  });
+  return resolveExecutionOptions(
+    deps,
+    query,
+    query.requiredModel === undefined
+      ? { kind: "picker", selectedModel: query.selectedModel }
+      : { kind: "validation", requiredModel: query.requiredModel },
+  );
 }
 
 export function resolveSystemExecutionOptionsForValidation(

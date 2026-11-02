@@ -765,6 +765,43 @@ describe("provider model catalog store", () => {
     });
   });
 
+  it("serves a recovered catalog to execution-options reads that require a model while the picker still answers the cached timeout", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, {
+        id: "host-catalog-required-model",
+      });
+      host.setAnswer(() => errorAnswer("command_timeout"));
+      const request = async (requiredModel?: string) => {
+        const query = new URLSearchParams({
+          hostId: host.hostId,
+          providerId: "claude-code",
+          ...(requiredModel === undefined ? {} : { requiredModel }),
+        });
+        const response = await harness.app.request(
+          `/api/v1/system/execution-options?${query}`,
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()) as Awaited<ReturnType<typeof host.read>>;
+      };
+
+      const fresh = await request("claude-code-model");
+      expect(fresh.modelLoadError?.code).toBe("timeout");
+      expect(host.listRequests("claude-code")).toHaveLength(1);
+
+      host.setAnswer((command) =>
+        catalogAnswer(modelList(`${command.providerId}-model`)),
+      );
+      host.clock.now += SECOND;
+      expect((await request()).modelLoadError?.code).toBe("timeout");
+      expect(host.listRequests("claude-code")).toHaveLength(1);
+
+      const recovered = await request("claude-code-model");
+      expect(recovered.modelLoadError).toBeNull();
+      expect(modelIds(recovered)).toEqual(["claude-code-model"]);
+      expect(host.listRequests("claude-code")).toHaveLength(2);
+    });
+  });
+
   it("waits through recorded failures for validation and refreshes a catalog at least a minute old that lacks the override's model", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, { id: "host-catalog-validation" });

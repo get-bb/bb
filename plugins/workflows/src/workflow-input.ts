@@ -44,8 +44,12 @@ export async function prepareWorkflowSource(
       listProviders(environmentId) {
         return bb.sdk.providers.list({ environmentId });
       },
-      loadModels(environmentId, providerId) {
-        return bb.sdk.providers.models({ environmentId, providerId });
+      loadModels(environmentId, providerId, requiredModel) {
+        return bb.sdk.providers.models({
+          environmentId,
+          providerId,
+          requiredModel,
+        });
       },
     },
   );

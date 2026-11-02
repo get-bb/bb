@@ -110,6 +110,7 @@ export const systemExecutionOptionsQuerySchema = z
     providerId: z.string().min(1),
     projectId: z.string().min(1),
     selectedModel: z.string().min(1),
+    requiredModel: z.string().min(1),
   })
   .partial()
   .superRefine(rejectMultipleWorkspaceSelectors)
@@ -118,6 +119,15 @@ export const systemExecutionOptionsQuerySchema = z
       context.addIssue({
         code: "custom",
         message: "projectId and environmentId are mutually exclusive",
+      });
+    }
+    if (
+      query.selectedModel !== undefined &&
+      query.requiredModel !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "selectedModel and requiredModel are mutually exclusive",
       });
     }
   });

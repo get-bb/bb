@@ -29,6 +29,7 @@ export async function readExecutionOptions(
           projectId: input.projectId,
           providerId: input.providerId,
           selectedModel: input.selectedModel,
+          requiredModel: input.requiredModel,
         },
       },
       ...signalRequestArgs(input.signal),
