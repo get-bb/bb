@@ -1344,10 +1344,10 @@ function RefreshedBelowFold() {
         visual={<StartAnywhere />}
       >
         <p>
-          Work doesn&rsquo;t wait for you to be at your desk. Start bb threads
-          from other AI apps like ChatGPT and Claude, or from CI, and pick them
-          up anywhere, including the bb mobile app. bb is fully self-hostable,
-          so your threads run on machines you control.
+          bb is fully self-hostable. Run your threads on your own laptop,
+          desktop, home server, or VM, or spread them across several machines.
+          Start them from other AI apps like ChatGPT and Claude, or from CI, and
+          pick them up anywhere, including the bb mobile app.
         </p>
       </Band>
 
