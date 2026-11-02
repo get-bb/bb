@@ -32,6 +32,7 @@ export {
   listPromptHistoryPage,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
+  PROMPT_HISTORY_ENTRY_MAX_BYTES,
 } from "./prompt-history.js";
 export type {
   ListPromptHistoryPageArgs,
