@@ -48,6 +48,8 @@ export function createScheduledAppUpdateService(args: {
   let startInFlight = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let notifiedRunningThreadCount: number | null = null;
+  let enabled = args.isEnabled();
+  let threadChangePending = false;
   let queue: Promise<unknown> = Promise.resolve();
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -96,7 +98,7 @@ export function createScheduledAppUpdateService(args: {
       starting = null;
       waiting = schedule;
       args.notifyChanged();
-      checkIdle();
+      checkIdle(args.countRunningThreads());
       return true;
     },
   });
@@ -123,7 +125,7 @@ export function createScheduledAppUpdateService(args: {
     void serialize(async () => {
       const schedule = waiting;
       if (schedule === null || args.countRunningThreads() > 0) return;
-      if (!args.isEnabled()) {
+      if (!enabled) {
         dropWhenDisabled();
         return;
       }
@@ -145,8 +147,8 @@ export function createScheduledAppUpdateService(args: {
     });
   };
 
-  function checkIdle(): void {
-    if (waiting === null || args.countRunningThreads() > 0) {
+  function checkIdle(runningThreadCount: number): void {
+    if (waiting === null || runningThreadCount > 0) {
       clearSettleTimer();
       return;
     }
@@ -161,31 +163,40 @@ export function createScheduledAppUpdateService(args: {
     args.notifyChanged();
   }
 
+  const handleThreadChanges = (): void => {
+    threadChangePending = false;
+    if (!enabled) return;
+    const runningThreadCount = args.countRunningThreads();
+    if (runningThreadCount !== notifiedRunningThreadCount) {
+      notifiedRunningThreadCount = runningThreadCount;
+      args.notifyChanged();
+    }
+    checkIdle(runningThreadCount);
+  };
+
   const unsubscribe = args.onChangedMessage((message) => {
     if (message.entity === "system") {
-      if (message.changes.includes("config-changed") && !args.isEnabled()) {
-        dropWhenDisabled();
+      if (message.changes.includes("config-changed")) {
+        enabled = args.isEnabled();
+        if (!enabled) dropWhenDisabled();
       }
       return;
     }
     if (
+      !enabled ||
+      threadChangePending ||
       message.entity !== "thread" ||
       !message.changes.some(
         (change) =>
           change === "status-changed" ||
           change === "thread-deleted" ||
           change === "archived-changed",
-      ) ||
-      !args.isEnabled()
+      )
     ) {
       return;
     }
-    const runningThreadCount = args.countRunningThreads();
-    if (runningThreadCount !== notifiedRunningThreadCount) {
-      notifiedRunningThreadCount = runningThreadCount;
-      args.notifyChanged();
-    }
-    checkIdle();
+    threadChangePending = true;
+    queueMicrotask(handleThreadChanges);
   });
 
   return {

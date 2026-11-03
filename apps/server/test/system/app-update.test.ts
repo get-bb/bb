@@ -512,6 +512,7 @@ const PREPARING_STATUS = {
 function createScheduledService(args: { runningThreads: number }) {
   const running = { count: args.runningThreads };
   const experiment = { enabled: true };
+  const countRunningThreads = vi.fn(() => running.count);
   const listeners = new Set<(message: ServerChangedMessage) => void>();
   const launcher = new FakeLauncher();
   const inner = createAppUpdateService({
@@ -528,7 +529,7 @@ function createScheduledService(args: { runningThreads: number }) {
   launcher.push({});
   const notifyChanged = vi.fn();
   const service = createScheduledAppUpdateService({
-    countRunningThreads: () => running.count,
+    countRunningThreads,
     inner,
     isEnabled: () => experiment.enabled,
     logger: testLogger,
@@ -540,6 +541,16 @@ function createScheduledService(args: { runningThreads: number }) {
     },
     settleMs: 5_000,
   });
+  const emitThreadChange = (): void => {
+    for (const listener of listeners) {
+      listener({
+        changes: ["status-changed"],
+        entity: "thread",
+        id: "thr_1",
+        type: "changed",
+      });
+    }
+  };
   const setRunningThreads = (count: number): void => {
     running.count = count;
     for (const listener of listeners) {
@@ -565,6 +576,8 @@ function createScheduledService(args: { runningThreads: number }) {
     launcher.requests.filter((request) => request.type === "apply");
   return {
     applyRequests,
+    countRunningThreads,
+    emitThreadChange,
     launcher,
     notifyChanged,
     service,
@@ -641,11 +654,26 @@ describe("app update scheduled for when threads finish", () => {
     notifyChanged.mockClear();
 
     setRunningThreads(1);
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(notifyChanged).toHaveBeenCalled();
     expect(
       (await service.getStatus({ forceRefresh: false })).runningThreadCount,
     ).toBe(1);
+  });
+
+  it("reads the running thread count once for a burst of thread changes", async () => {
+    const { countRunningThreads, emitThreadChange, service } =
+      createScheduledService({ runningThreads: 3 });
+    await service.schedule();
+    countRunningThreads.mockClear();
+
+    emitThreadChange();
+    emitThreadChange();
+    emitThreadChange();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(countRunningThreads).toHaveBeenCalledTimes(1);
   });
 
   it("drops a waiting update when the experiment is turned off", async () => {
