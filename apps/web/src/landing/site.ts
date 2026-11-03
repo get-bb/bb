@@ -28,6 +28,7 @@ export type DesktopDownload = {
   label: string;
   buttonLabel: string;
   note: string;
+  shortNote: string;
   installerExtension: string;
   versionFeedUrl: string;
   redirectPath: string;
@@ -38,6 +39,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     label: "macOS",
     buttonLabel: "Download for macOS",
     note: "Apple Silicon",
+    shortNote: "Apple Silicon",
     installerExtension: ".dmg",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version.json`,
     redirectPath: "/download/macos",
@@ -46,6 +48,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     label: "Linux (Alpha)",
     buttonLabel: "Download for Linux",
     note: "x64 AppImage, alpha",
+    shortNote: "Alpha",
     installerExtension: ".AppImage",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-linux.json`,
     redirectPath: "/download/linux",
@@ -54,6 +57,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     label: "Windows (Alpha)",
     buttonLabel: "Download for Windows",
     note: "x64 · alpha",
+    shortNote: "Alpha",
     installerExtension: ".exe",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,
     redirectPath: "/download/windows",
