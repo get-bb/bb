@@ -1003,7 +1003,7 @@ either way.
   lands on your own message. It applies the next time you open a thread.
 - `updateWhenIdle` (on for early adopters) lets bb update itself once no
   thread is running instead of interrupting them. While threads run, Settings →
-  Updates offers Update when threads finish next to Update now (which still
+  Updates offers Update when idle next to Update now (which still
   asks before interrupting), and the waiting row shows the running count with
   Cancel and Update now. `bb updates app apply --when-idle` and
   `bb updates app cancel` do the same from the CLI. bb starts the update after

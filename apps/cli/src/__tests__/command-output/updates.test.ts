@@ -280,7 +280,7 @@ describe("bb updates command output", () => {
 });
 
 const UPDATE_WHEN_IDLE_OFF =
-  'Updating when threads finish is off. Turn on the "Update when threads finish" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
+  'Updating when idle is off. Turn on the "Update when idle" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
 
 function systemConfig(experiments: { updateWhenIdle: boolean }) {
   return vi.fn(async () => ({ experiments }));

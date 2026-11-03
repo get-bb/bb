@@ -1185,7 +1185,7 @@ const EXPERIMENT_DEFINITIONS: Record<
       "When you open a thread whose turn finished while you were away, place the NEW divider before the turn's final assistant message, or the error that ended it, instead of before its first tool call. The turn's work stays above the divider.",
   },
   updateWhenIdle: {
-    label: "Update when threads finish",
+    label: "Update when idle",
     description:
       "While threads are running, the Updates page offers to update bb once they all finish instead of interrupting them, and bb updates app apply --when-idle does the same from the CLI. bb waits again if a thread starts before it restarts.",
   },

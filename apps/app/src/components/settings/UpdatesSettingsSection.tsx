@@ -199,8 +199,11 @@ function UpdatesRow({
   actions: ReactNode;
 }) {
   return (
-    <div className="@container/update-row flex min-w-0 flex-wrap items-start gap-3 px-4 py-3.5 text-sm">
-      <span className="flex min-w-48 flex-1 basis-0 items-start gap-3">
+    <div className="@container/update-row flex min-w-0 flex-wrap items-start gap-3 px-4 py-3.5 text-sm has-[[data-row-actions]>*+*]:[&>[data-row-text]]:min-w-[min(22rem,100%)]">
+      <span
+        data-row-text
+        className="flex min-w-48 flex-1 basis-0 items-start gap-3"
+      >
         <span className="flex h-5 w-6 shrink-0 items-center justify-center">
           {leading}
         </span>
@@ -452,7 +455,10 @@ function RowStateControl({
 
 function RowActions({ children }: { children: ReactNode }) {
   return (
-    <span className="ml-auto flex h-5 shrink-0 items-center justify-end gap-1">
+    <span
+      data-row-actions
+      className="ml-auto flex h-5 shrink-0 items-center justify-end gap-1"
+    >
       {children}
     </span>
   );
@@ -930,7 +936,7 @@ function InAppUpdateRow({
         />
         <RowStateControl
           state="update-available"
-          buttonLabel="Update when threads finish"
+          buttonLabel="Update when idle"
           actionLabel="Download the update and restart bb once every thread finishes"
           variant="default"
           loading={schedulePending}

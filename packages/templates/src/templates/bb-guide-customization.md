@@ -213,7 +213,7 @@ request number. It defaults on for early adopters.
 `unreadDividerAtAnswer` places the NEW divider of an unread thread before the
 final assistant message of a turn that finished while you were away, instead of
 before its first tool call. It defaults on for early adopters.
-`updateWhenIdle` offers Update when threads finish on Settings → Updates while
+`updateWhenIdle` offers Update when idle on Settings → Updates while
 threads run and enables `bb updates app apply --when-idle`; see
 `bb guide machines`. It defaults on for early adopters.
 `websocketCompression` compresses large realtime messages (such as timeline

@@ -2363,7 +2363,7 @@ The published lede.
     {
       experiment: true,
       running: 2,
-      buttons: ["Update now", "Update when threads finish"],
+      buttons: ["Update now", "Update when idle"],
     },
     { experiment: false, running: 2, buttons: ["Update"] },
     { experiment: true, running: 0, buttons: ["Update"] },
@@ -2484,7 +2484,7 @@ The published lede.
     expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
     expect(
       within(dialog).queryByRole("button", {
-        name: "Update when threads finish",
+        name: "Update when idle",
       }),
     ).toBeNull();
     fireEvent.click(
