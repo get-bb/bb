@@ -4003,6 +4003,9 @@ importers:
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../../packages/tunnel-contract
+      bb-plugin-bb-account:
+        specifier: workspace:*
+        version: link:../bb-account
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -4037,9 +4040,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
-      bb-plugin-bb-account:
-        specifier: workspace:*
-        version: link:../bb-account
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
@@ -4073,6 +4073,9 @@ importers:
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../../packages/tunnel-contract
+      bb-plugin-bb-account:
+        specifier: workspace:*
+        version: link:../bb-account
       zod:
         specifier: 4.6.5
         version: 4.6.5
