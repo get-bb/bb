@@ -1960,7 +1960,7 @@ function ConnectOnSetupRow({
               >
                 ·
               </span>
-              <span className="flex min-w-0 items-center gap-1">
+              <span className="flex min-w-0 max-w-full items-center gap-1">
                 <code className="min-w-0 truncate font-mono text-xs">
                   {url}
                 </code>
