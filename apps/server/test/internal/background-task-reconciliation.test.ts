@@ -1,5 +1,6 @@
 import {
   closeSession,
+  getLatestThreadSequence,
   getThread,
   hostDaemonSessions,
   listEvents,
@@ -16,7 +17,15 @@ import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
+import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import {
+  internalAuthHeaders,
+  registerTestHostRpcCapture,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
+import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
   seedHost,
@@ -998,6 +1007,146 @@ describe("active thread disconnect reconciliation triggers", () => {
 
       expect(response.status).toBe(201);
       expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  async function startRunAfterReconnectRestop(harness: TestAppHarness) {
+    const { environment, host, session, thread } = seedThreadFixture(harness, {
+      thread: { status: "idle" },
+    });
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      providerThreadId: "claude-session-1",
+      threadId: thread.id,
+    });
+    seedTurnStarted(harness.deps, {
+      environmentId: environment.id,
+      providerThreadId: "claude-session-1",
+      threadId: thread.id,
+      turnId: "turn-stopped",
+    });
+    seedStoredEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence:
+        getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+      type: "system/thread/interrupted",
+      scope: threadScope(),
+      data: { reason: "manual-stop" },
+    });
+    handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+    harness.hub.cancelPendingDaemonDisconnect(session.id);
+
+    const response = await harness.app.request("/internal/session/open", {
+      method: "POST",
+      headers: internalAuthHeaders(harness, { hostId: host.id }),
+      body: JSON.stringify({
+        hostId: host.id,
+        instanceId: session.instanceId,
+        hostName: host.name,
+        hasMachineCredential: false,
+        platform: "darwin",
+        dataDir: "/tmp/host-daemon-stop-overtaken",
+        localApiPort: null,
+        protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+        activeThreads: [{ threadId: thread.id }],
+        openThreadWork: [],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { sessionId } = (await response.json()) as { sessionId: string };
+    registerTestHostRpcCapture(harness, { hostId: host.id, sessionId });
+    const stop = await waitForQueuedCommand(
+      harness,
+      ({ command }) =>
+        command.type === "thread.stop" && command.threadId === thread.id,
+    );
+    expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+
+    await sendThreadMessage(harness.deps, {
+      originPluginId: null,
+      environment,
+      payload: {
+        input: textInput("Start over"),
+        mode: "start",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: getThread(harness.deps.db, thread.id)!,
+      trigger: "user",
+    });
+    const submit = await waitForQueuedCommand(
+      harness,
+      ({ command }) =>
+        command.type === "turn.submit" && command.threadId === thread.id,
+    );
+    await reportQueuedCommandSuccess(harness, submit, {
+      trace: { spans: [] },
+    });
+    seedTurnStarted(harness.deps, {
+      environmentId: environment.id,
+      providerThreadId: "claude-session-1",
+      threadId: thread.id,
+      turnId: "turn-new-run",
+    });
+    seedStoredEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      sequence:
+        getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+      type: "item/started",
+      scope: turnScope("turn-new-run"),
+      providerThreadId: "claude-session-1",
+      itemId: "task:new-run",
+      itemKind: "backgroundTask",
+      data: backgroundTaskItemData({
+        itemId: "task:new-run",
+        status: "pending",
+        taskStatus: "running",
+      }),
+    });
+
+    return { environment, stop, thread };
+  }
+
+  it("leaves a run requested after a reconnect re-stop running when that stop is acknowledged", async () => {
+    await withTestHarness(async (harness) => {
+      const { stop, thread } = await startRunAfterReconnectRestop(harness);
+
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+      expect(
+        listEvents(harness.deps.db, { threadId: thread.id })
+          .filter(
+            (row) =>
+              row.turnId === "turn-new-run" || row.itemId === "task:new-run",
+          )
+          .map((row) => row.type),
+      ).toEqual(["turn/started", "item/started"]);
+    });
+  });
+
+  it("finishes a stop the user requested on that newer run when the older re-stop is acknowledged", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, stop, thread } =
+        await startRunAfterReconnectRestop(harness);
+      requestThreadStopForCurrentState(
+        harness.deps,
+        getThread(harness.deps.db, thread.id)!,
+        environment,
+      );
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("stopping");
+
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
     });
   });
 

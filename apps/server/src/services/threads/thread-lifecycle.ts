@@ -26,6 +26,7 @@ import {
   getLatestThreadInterruptedReason,
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
+  hasTurnRequestSince,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -1017,9 +1018,25 @@ export async function prepareReadyThreadTurnCommand(
   };
 }
 
+function isStopOvertakenByTurnRequest(
+  args: SettleThreadStopCommandResultArgs,
+): boolean {
+  return (
+    getThread(args.deps.db, args.command.threadId)?.status !== "stopping" &&
+    hasTurnRequestSince(args.deps.db, {
+      since: args.execution.createdAt,
+      threadId: args.command.threadId,
+    })
+  );
+}
+
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
+  if (isStopOvertakenByTurnRequest(args)) {
+    return emptyCommandResultSideEffects();
+  }
+
   if (args.report.ok && args.report.result.activeTurnRetained !== true) {
     settleDanglingBackgroundTasksForStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,

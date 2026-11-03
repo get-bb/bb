@@ -2807,6 +2807,31 @@ export function hasStoredTurnCompleted(
   return row !== undefined;
 }
 
+export interface HasTurnRequestSinceArgs {
+  since: number;
+  threadId: string;
+}
+
+export function hasTurnRequestSince(
+  db: DbQueryConnection,
+  args: HasTurnRequestSinceArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          gte(events.createdAt, args.since),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export interface HasStoredTerminalClientTurnRequestEventArgs {
   requestId: ClientTurnRequestId;
   threadId: string;
