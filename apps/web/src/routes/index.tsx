@@ -38,7 +38,6 @@ import {
 } from "../experiments/flags";
 import {
   useExperiment,
-  useExperimentBootstrap,
   useExperimentExposer,
   useExperimentExposure,
 } from "../experiments/use-experiment";
@@ -291,7 +290,7 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingRoute() {
-  useInitAnalytics(useExperimentBootstrap());
+  useInitAnalytics();
   return <LandingPage />;
 }
 

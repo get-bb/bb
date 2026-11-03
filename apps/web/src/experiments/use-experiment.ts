@@ -1,15 +1,20 @@
-import { useRouteContext } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 
 import { exposeExperiment } from "../landing/analytics";
+import { useExperimentBootstrap } from "./context";
 import {
-  NO_EXPERIMENTS,
   experimentVariant,
   type ExperimentBootstrap,
   type ExperimentDevices,
   type ExperimentKey,
   type ExperimentVariant,
 } from "./flags";
+
+export {
+  ExperimentsProvider,
+  RouteExperimentsProvider,
+  useExperimentBootstrap,
+} from "./context";
 
 export function experimentsBeforeLoad({
   serverContext,
@@ -19,13 +24,6 @@ export function experimentsBeforeLoad({
   return serverContext === undefined
     ? undefined
     : { experiments: serverContext.experiments };
-}
-
-export function useExperimentBootstrap(): ExperimentBootstrap {
-  return useRouteContext({
-    from: "__root__",
-    select: (context) => context?.experiments ?? NO_EXPERIMENTS,
-  });
 }
 
 export function useExperiment<K extends ExperimentKey>(

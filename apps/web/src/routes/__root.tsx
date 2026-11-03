@@ -8,7 +8,10 @@ import { useEffect } from "react";
 
 import { ReviewPanel } from "../experiments/review-panel";
 import "../experiments/review-panel.css";
-import { experimentsBeforeLoad } from "../experiments/use-experiment";
+import {
+  RouteExperimentsProvider,
+  experimentsBeforeLoad,
+} from "../experiments/use-experiment";
 import { readVisitIds } from "../landing/analytics";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { canonicalHref } from "../lib/canonical";
@@ -70,30 +73,34 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     select: (state) => canonicalHref(state.matches),
   });
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        {}
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
-        <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
-        {}
-        <meta
-          name="theme-color"
-          media="(prefers-color-scheme: light)"
-          content="#ffffff"
-        />
-        <meta
-          name="theme-color"
-          media="(prefers-color-scheme: dark)"
-          content="#151515"
-        />
-        {canonical === null ? null : <link rel="canonical" href={canonical} />}
-        <HeadContent />
-      </head>
-      <body>
-        {children}
-        <ReviewPanel />
-        <Scripts />
-      </body>
-    </html>
+    <RouteExperimentsProvider>
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          {}
+          <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+          <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
+          {}
+          <meta
+            name="theme-color"
+            media="(prefers-color-scheme: light)"
+            content="#ffffff"
+          />
+          <meta
+            name="theme-color"
+            media="(prefers-color-scheme: dark)"
+            content="#151515"
+          />
+          {canonical === null ? null : (
+            <link rel="canonical" href={canonical} />
+          )}
+          <HeadContent />
+        </head>
+        <body>
+          {children}
+          <ReviewPanel />
+          <Scripts />
+        </body>
+      </html>
+    </RouteExperimentsProvider>
   );
 }
