@@ -1,0 +1,101 @@
+---
+title: Use several accounts
+description: The Account Pooler puts several Claude and Codex accounts behind bb and moves new conversations on when one hits its limit. Experimental and off at first.
+type: how-to
+sources:
+  - plugins/account-pool/app.tsx
+  - plugins/account-pool/src/cli.ts
+  - plugins/account-pool/src/hub.ts
+  - plugins/account-pool/src/store.ts
+  - plugins/account-pool/src/server.ts
+since: 0.42.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+The pool keeps your accounts on the bb server and routes Claude Code and Codex threads on every machine through them. Pi and ACP agents use their own login.
+
+## Turn on the Account Pooler
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. In **Settings → Installed plugins**, turn on **Account Pooler**.
+2. Open **Settings → Plugins → Account Pooler [Experimental]**.
+
+</Tab>
+<Tab value="CLI">
+
+```sh
+bb plugin enable account-pool
+bb pool status
+```
+
+</Tab>
+</Tabs>
+
+Until you add an account, every machine keeps using its own login.
+
+## Add your accounts
+
+Use **Add account** in the **Claude** or **Codex** section. Add only accounts you may use this way.
+
+<Screenshot
+  src="/docs-images/use-several-accounts/add-account"
+  alt="The Claude section's Add account menu shows Sign in to Claude, Import from this machine and Add API key."
+  width={760}
+  height={315}
+/>
+
+| Choice | What happens |
+| --- | --- |
+| **Sign in to Claude** | Opens claude.ai; paste the final code into bb. |
+| **Sign in to Codex** | Opens ChatGPT with a device code. |
+| **Import from this machine** | Copies the login on the bb server's machine. |
+| **Add API key…** | Claude only. A metered fallback, used last. |
+
+```sh
+bb pool account add --provider claude --login
+bb pool account add --provider codex --login
+bb pool account add --provider claude --import
+printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin
+bb pool account list
+```
+
+Claude `--login` prints a URL and session ID; pipe the code to `bb pool account login-complete --session <id> --code-stdin` within ten minutes. Codex `--login` prints a code and a `bb pool account login-poll` command.
+
+## How the pool picks an account
+
+| Rule | Detail |
+| --- | --- |
+| One account at a time, in order | New conversations use the current account until it hits 98% of a limit or fails. Drag to reorder, or `bb pool account reorder <claude\|codex> <id>...`. |
+| Conversations stay put | A conversation keeps its account until 30 idle minutes pass. |
+| Paid usage comes last | Claude extra usage and Codex credits are used only when no subscription has room. The pool never enables extra usage or buys credits. |
+
+To change the 98% threshold, set **Advanced → Quota switch threshold**, or run `bb pool config set switchThreshold 0.9`.
+
+## Use your own login for some threads
+
+| Scope | How |
+| --- | --- |
+| One provider | Turn off the switch next to **Add account**, or `bb pool routing claude --off`. |
+| One thread | `bb pool bypass <thread-id>`; add `--off` to undo. |
+
+Both fall back to the machine's own login.
+
+## If no account is eligible
+
+When every account is at its limit, unavailable or disabled, threads stop with **No Account Pooler account is currently eligible.** and say when the next frees up.
+
+- The Provider retry plugin (on by default) retries the turn once an account frees up.
+- Run `bb pool account refresh <id>` for an account in error, or `bb pool account enable <id>` for a disabled one.
+- `bb pool status` shows limits and reset times.
+
+## Check it worked
+
+`bb pool status` counts your enabled accounts. Start a Claude Code or Codex thread; its account shows a recent **Last used** time in settings.
+
+## Related troubleshooting
+
+- [Track usage, limits and cost](/docs/track-usage-limits-and-cost): see every pooled account's limits.
+- [Claude Code](/docs/claude-code#check-it-worked): a machine's own Claude login.
