@@ -4,21 +4,11 @@ on:
 permissions:
   contents: read
 jobs:
-  fixture-comparison:
+  plugin-shard-comparison:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - package: bb-plugin-bb--git
-            directory: plugins/git
-            file: plugins/git/host/workspace-status-cache.test.ts
-            branch: bb/ci-nov3-git-cost
-            commit: e0abd4f84d2a10e851098ce3f30932ec042ea327
-          - package: bb-plugin-environment-git-worktree
-            directory: plugins/environment-git-worktree
-            file: plugins/environment-git-worktree/host.test.ts
-            branch: bb/ci-nov3-worktree-cost
-            commit: a79ab713400ae5677944863c1a86690b225d5cb4
+        order: ['baseline,candidate', 'candidate,baseline']
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 25
     steps:
@@ -34,20 +24,21 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
-      - name: Fetch committed candidate
-        run: git fetch origin ${{ matrix.branch }}
-      - name: Build prerequisites and run baseline through Turbo
+      - name: Fetch committed candidates
         shell: bash
-        run: pnpm exec turbo run test --filter=${{ matrix.package }} --concurrency=1
-      - name: Compare complete uncached test packages in alternating order
+        run: |
+          git fetch --depth=1 origin bb/ci-nov3-git-cost
+          git fetch --depth=1 origin bb/ci-nov3-worktree-cost
+      - name: Compare full cold Windows plugins-2 shard
         env:
-          CANDIDATE: ${{ matrix.commit }}
-          TEST_FILE: ${{ matrix.file }}
-          PACKAGE_NAME: ${{ matrix.package }}
-          PACKAGE_DIR: ${{ matrix.directory }}
-        run: node .github/diagnostics/compare-git-fixtures.mjs
+          ORDER: ${{ matrix.order }}
+          VITEST_MAX_WORKERS: ''
+          BB_CI_TEST_SHARD: ''
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node .github/diagnostics/compare-plugin-shard.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: fixture-timings-${{ matrix.package }}
-          path: fixture-timings
+          name: shard-timings-${{ strategy.job-index }}
+          path: shard-timings
