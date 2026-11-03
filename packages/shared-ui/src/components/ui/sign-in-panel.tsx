@@ -6,6 +6,9 @@ import { Icon, type IconName } from "./icon";
 const INLINE_TEXT_LINK_CLASS =
   "rounded-sm text-foreground underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
+export const INLINE_CHIP_BUTTON_CLASS =
+  "inline-flex items-center rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
 export function CodeDisplay({
   code,
   label,
@@ -137,7 +140,8 @@ export function DisclosureToggle({
       aria-expanded={expanded}
       onClick={onToggle}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        INLINE_CHIP_BUTTON_CLASS,
+        "gap-0.5",
         expanded && "bg-state-hover",
       )}
     >
@@ -203,6 +207,59 @@ export function InlinePanel({
   );
 }
 
+export function PendingStatus({ children }: { children: ReactNode }) {
+  return (
+    <p role="status" className="flex items-center gap-2">
+      <Icon
+        name="Spinner"
+        aria-hidden
+        className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+      />
+      {children}
+    </p>
+  );
+}
+
+export function PasteCodeForm({
+  label,
+  value,
+  onChange,
+  onSubmit,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={label}
+        placeholder="Paste the code here"
+        autoComplete="off"
+        spellCheck={false}
+        className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        disabled={value.trim().length === 0}
+      >
+        Complete
+      </Button>
+    </form>
+  );
+}
+
 export type SignInPanelVariant =
   | {
       kind: "code";
@@ -248,16 +305,7 @@ export function SignInPanel({
       toggles={toggles}
       expanded={expanded}
     >
-      {status === undefined ? null : (
-        <p role="status" className="flex items-center gap-2">
-          <Icon
-            name="Spinner"
-            aria-hidden
-            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-          />
-          {status}
-        </p>
-      )}
+      {status === undefined ? null : <PendingStatus>{status}</PendingStatus>}
       {instruction === undefined ? null : (
         <p className="text-foreground">{instruction}</p>
       )}
@@ -269,31 +317,12 @@ export function SignInPanel({
           onCopy={variant.onCopyCode}
         />
       ) : variant.kind === "paste" ? (
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            variant.onSubmit();
-          }}
-        >
-          <input
-            value={variant.value}
-            onChange={(event) => variant.onChange(event.target.value)}
-            aria-label={variant.label}
-            placeholder="Paste the code here"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-          <Button
-            type="submit"
-            size="sm"
-            variant="outline"
-            disabled={variant.value.trim().length === 0}
-          >
-            Complete
-          </Button>
-        </form>
+        <PasteCodeForm
+          label={variant.label}
+          value={variant.value}
+          onChange={variant.onChange}
+          onSubmit={variant.onSubmit}
+        />
       ) : null}
     </InlinePanel>
   );
