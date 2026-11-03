@@ -129,7 +129,22 @@
     "Bundles that import it get it before they evaluate; experimental_Diff",
     "loads behind a split. The PluginFrontend closure, which every plugin",
     "waits on, measures 528.9 KB raw / 165.3 KB brotli. Its limits sit 25%",
-    "above that, and the diff engine and Shiki are forbidden."
+    "above that, and the diff engine and Shiki are forbidden.",
+    "",
+    "On 2026-11-03 app chunks were grouped by page journey (vite-journey-chunks.ts):",
+    "the workspace route, the plugin runtime, the code ThreadPage and NewThreadPage",
+    "share, and each page's own code. A cold load had fetched 149 app chunks,",
+    "85 of them under 2 KB brotli. Over HTTP/1.1 at 100 ms latency they queued",
+    "on six connections ahead of first content. The plugin runtime chunk now",
+    "statically imports the workspace-route chunk that every page modulepreloads,",
+    "so PluginFrontend measures the same page journey as the other two closures:",
+    "the workspace route plus the plugin runtime. Measured that way, main was",
+    "56 chunks / 760.9 KB raw / 234.0 KB brotli and is now 2 chunks / 857.5 KB raw /",
+    "223.5 KB brotli. The raw growth is first-party code reached through",
+    "package barrels that the old per-module split left to tree-shaking. The",
+    "PluginFrontend limits sit 25% above the new measurement. ThreadPage went",
+    "from 95 chunks / 522.1 KB brotli to 4 / 462.3 KB, and NewThreadPage from 74 /",
+    "290.9 KB to 4 / 268.7 KB. Their limits are unchanged."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 424031,
@@ -280,8 +295,8 @@
   },
   "routeClosures": {
     "PluginFrontend": {
-      "maxBytes": 676970,
-      "maxBrotliBytes": 211533,
+      "maxBytes": 1097632,
+      "maxBrotliBytes": 286101,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",

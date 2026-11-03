@@ -14,6 +14,7 @@
     "vite-font-preload.ts",
     "vite-split-prefetch.ts",
     "vite-route-modulepreload.ts",
+    "vite-journey-chunks.ts",
     "vite-forkable-plugin-paths.ts",
     "vite-shared-ui-seam.ts",
     "vite-react-compiler.ts"

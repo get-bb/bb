@@ -190,6 +190,29 @@ journey; report both. Shared chunks move between closures, so byte savings
 from separate splits are not additive; build and check the combined result. Do
 not increase limits to hide a regression.
 
+## Chunk grouping
+
+Split boundaries decide what loads when. Chunk grouping decides how many files
+carry it. Without grouping, Rolldown emits one chunk for every distinct set of
+lazy entries that share a module, and a cold load fetched 149 app chunks, 85 of
+them under 2 KB Brotli. Over HTTP/1.1 they queue six at a time.
+
+`apps/app/vite-journey-chunks.ts` groups first-party modules by page journey,
+listed in `vite.config.ts` in priority order: the workspace route, the plugin
+runtime, the code ThreadPage and NewThreadPage share, then each page's own code.
+A module joins the first journey whose every entry statically reaches it, so a
+page chunk never imports the other page's chunk. Dependency modules and
+anything behind a dynamic import keep automatic chunking, so `defineSplit`
+boundaries still emit their own chunks.
+
+The closure is computed on the module graph before tree-shaking. A first-party
+module reached only through an unused barrel re-export therefore lands in the
+journey chunk instead of staying with its later importer. Import from the
+defining module rather than a barrel to keep such code out of a journey.
+
+Because the plugin runtime chunk imports the workspace-route chunk, the
+`PluginFrontend` journey measures both, like `ThreadPage` and `NewThreadPage`.
+
 ## Review loading states
 
 Use browser request interception against an isolated production build to hold or

@@ -9,6 +9,7 @@ import { routeModulePreload } from "./vite-route-modulepreload.js";
 import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 import { cachedReactCompiler } from "./vite-react-compiler.js";
+import { journeyChunkGroups } from "./vite-journey-chunks.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +50,31 @@ export const sharedViteConfig = {
               priority: 1,
               minSize: 12 * 1024,
             },
+            ...journeyChunkGroups(appDir, [
+              {
+                name: "workspace-route",
+                entries: ["src/views/SplitWorkspaceRoute.tsx"],
+              },
+              {
+                name: "plugin-frontend",
+                entries: ["src/lib/plugin-frontend.ts"],
+              },
+              {
+                name: "thread-and-compose",
+                entries: [
+                  "src/views/thread-detail/ThreadDetailView.tsx",
+                  "src/views/RootComposeView.tsx",
+                ],
+              },
+              {
+                name: "thread-detail",
+                entries: ["src/views/thread-detail/ThreadDetailView.tsx"],
+              },
+              {
+                name: "root-compose",
+                entries: ["src/views/RootComposeView.tsx"],
+              },
+            ]),
           ],
         },
       },

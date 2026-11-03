@@ -30,7 +30,10 @@ export interface BundleStats {
 }
 
 const MEASURED_ROUTE_CLOSURES: Record<string, readonly string[]> = {
-  PluginFrontend: ["/src/lib/plugin-frontend.ts"],
+  PluginFrontend: [
+    "/src/views/SplitWorkspaceRoute.tsx",
+    "/src/lib/plugin-frontend.ts",
+  ],
   ThreadPage: [
     "/src/views/SplitWorkspaceRoute.tsx",
     "/src/views/thread-detail/ThreadDetailView.tsx",
