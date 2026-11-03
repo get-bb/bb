@@ -1348,7 +1348,7 @@ function requestThreadStop(
   dispatchThreadStopCommand(deps, args);
 }
 
-export const TURN_START_DEADLINE_MS = 10 * 60_000;
+export const TURN_START_DEADLINE_MS = 5 * 60_000;
 export const TURN_START_DEADLINE_RECONNECT_GRACE_MS = 60_000;
 
 export function stopRunsWhoseTurnNeverStarted(
