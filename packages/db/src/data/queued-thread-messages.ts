@@ -62,6 +62,7 @@ import {
 } from "../ids.js";
 import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
+import { liveThread } from "./threads.js";
 
 export interface CreateQueuedThreadMessageInput {
   threadId: string;
@@ -1376,8 +1377,7 @@ export function listReadySystemNoticesOnBusyThreads(
         isNotNull(queuedThreadMessages.systemNotice),
         isNull(queuedThreadMessages.waitingOn),
         notInArray(threads.status, ["idle", "pending"]),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
@@ -1407,8 +1407,7 @@ export function listIdleThreadsWithQueuedMessages(
     .where(
       and(
         inArray(threads.status, ["idle", "pending"]),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
         or(
           notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
           notOrdinaryTurnEndQueuedThreadMessage(),
@@ -2270,8 +2269,7 @@ export function listRetryableFailedQueuedThreadMessages(
             .where(
               and(
                 eq(threads.id, queuedThreadMessages.threadId),
-                isNull(threads.archivedAt),
-                isNull(threads.deletedAt),
+                liveThread,
               ),
             ),
         ),
@@ -2349,8 +2347,7 @@ export function listDueScheduledQueuedThreadMessages(
             .where(
               and(
                 eq(threads.id, queuedThreadMessages.threadId),
-                isNull(threads.archivedAt),
-                isNull(threads.deletedAt),
+                liveThread,
               ),
             ),
         ),
@@ -2543,8 +2540,7 @@ export function listThreadIdsWithHostOfflineQueueWaits(
     .where(
       and(
         eq(environments.hostId, hostId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
         automaticallyDrainableQueuedThreadMessage(),
       ),
