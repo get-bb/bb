@@ -2948,3 +2948,12 @@
 .rhb .rhb-turn-body > .rhb-work::before {
   content: none;
 }
+
+/* The thread's text starts at the composer box's left edge, as in the app:
+   the turn header, its tool calls and the agent's reply drop their extra
+   8px inset on the left. */
+.rhb .rhb-turn,
+.rhb .rhb-feed .rhb-work,
+.rhb .rhb-say {
+  padding-left: 0;
+}
