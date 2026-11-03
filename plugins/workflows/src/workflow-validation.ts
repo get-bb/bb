@@ -1,4 +1,8 @@
 import { inspectWorkflowSource, type LiteralAgentSelection } from "./parser.js";
+import {
+  resolveWorkflowReasoning,
+  type WorkflowReasoningModel,
+} from "./reasoning-selection.js";
 import type { ParsedWorkflow } from "./types.js";
 
 interface CatalogProvider {
@@ -6,10 +10,9 @@ interface CatalogProvider {
   available: boolean;
 }
 
-interface CatalogModel {
+interface CatalogModel extends WorkflowReasoningModel {
   id: string;
   model: string;
-  supportedReasoningEfforts: Array<{ reasoningEffort: string }>;
 }
 
 interface ModelCatalog {
@@ -79,9 +82,8 @@ export async function validateWorkflowSource(
         );
       }
       if (
-        !model.supportedReasoningEfforts.some(
-          (effort) => effort.reasoningEffort === selection.reasoningLevel,
-        )
+        resolveWorkflowReasoning(model, selection.reasoningLevel, false) ===
+        null
       ) {
         throw new Error(
           `Unsupported reasoning level for literal workflow selection ${tupleDescription(selection)}`,
