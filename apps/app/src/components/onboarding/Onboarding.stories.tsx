@@ -993,6 +993,7 @@ function redesignSignInView(agentId: "claude-code" | "codex") {
       acceptsPastedCode: !codex,
     },
     terminalVisible: false,
+    started: true,
   };
 }
 
