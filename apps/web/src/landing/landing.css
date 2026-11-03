@@ -3558,6 +3558,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 15px;
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .dl-computers {
+    display: none;
+  }
+
+  .dl-computers + .dl-h2 {
+    margin-top: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .dl-hero {
     padding-top: 24px;
