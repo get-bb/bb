@@ -1557,6 +1557,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   bundled.rootDir,
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
+                  { minify: true, hostProvidedZod: true },
                 );
                 logPluginBuildWarnings({
                   dataDir: deps.dataDir,

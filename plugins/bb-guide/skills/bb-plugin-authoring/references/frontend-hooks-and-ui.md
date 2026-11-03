@@ -281,10 +281,13 @@ composer.
 - Also never bundled, for size rather than singleton reasons: `clsx`,
   `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
   host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
-  your declared ranges inside those majors. `zod` is NOT shimmed (exposing
-  its namespace would bloat the host's boot payload) — it bundles from your
-  `node_modules` in both `app.tsx` and `server.ts`, so keep it in
-  `dependencies`.
+  your declared ranges inside those majors.
+- `zod` bundles from your `node_modules`, so keep it in `dependencies`.
+  When bb itself builds your frontend (git and local installs), it instead
+  uses one copy the host loads on demand and shares across plugins, provided
+  your installed `zod` has the host's major and is not newer than the host's
+  copy (bb ships zod 4). `bb plugin build` artifacts, `server.ts` and
+  `zod/mini` always bundle their own, so a prebuilt bundle runs on older bb.
 - Source and diffs: use the host components
   `experimental_SourceCode` / `experimental_Diff` (frontend-components.md),
   NOT a direct
@@ -292,7 +295,7 @@ composer.
   Pierre usage means owning patch normalization and the code theme yourself,
   and it opts you out of any installed renderer replacement.
 - Everything else bundles from YOUR `node_modules` (lucide,
-  non-portal radix, zod, form/calendar/chart libs): run `npm install`
+  non-portal radix, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.

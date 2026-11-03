@@ -10,11 +10,13 @@ import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 import { cachedReactCompiler } from "./vite-react-compiler.js";
 import { journeyChunkGroups } from "./vite-journey-chunks.js";
+import { pluginZodRuntime } from "./vite-plugin-zod-runtime.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
 export const sharedViteConfig = {
   plugins: [
+    pluginZodRuntime(),
     sharedUiEnvSeam(),
     react(),
     cachedReactCompiler(),
