@@ -299,7 +299,7 @@ export function downloadLinkEmail(
       '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#111">',
       `<p style="margin:0 0 20px"><a href="${href}" style="display:inline-block;padding:12px 22px;border-radius:8px;background:#111;color:#fff;font-weight:600;text-decoration:none">Download bb</a></p>`,
       `<p style="margin:0 0 12px">${escapeHtml(note)}</p>`,
-      `<p style="margin:0;font-size:13px;color:#666">Or open this link on your computer: <a href="${href}" style="color:#666">${href}</a></p>`,
+      `<p style="margin:0;font-size:13px;color:#666">Or open this link on your computer: <a href="${href}" style="color:#666;word-break:break-all;overflow-wrap:anywhere">${href}</a></p>`,
       "</div>",
     ].join(""),
     text: `Download bb: ${link}\n\n${note}\n`,

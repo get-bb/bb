@@ -611,8 +611,10 @@ body {
 }
 
 .install-email .install-email-send {
-  flex: 0 0 auto;
-  width: auto;
+  flex: 0 0 7.75em;
+  width: 7.75em;
+  padding-inline: 0;
+  justify-content: center;
   font-family: var(--font-sans);
 }
 
