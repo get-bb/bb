@@ -1512,7 +1512,7 @@ export function RedesignedDevicesStep({
   const open = addMachinePanel !== null;
   return (
     <div className="flex flex-col gap-3">
-      <SetupOptionGroup label="Where you use bb">
+      <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
         {connectSection}
       </SetupOptionGroup>
       {showMachines ? (

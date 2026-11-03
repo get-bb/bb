@@ -591,6 +591,7 @@ describe("RedesignedDevicesStep", () => {
     );
     expect(screen.queryByText("Where agents run")).toBeNull();
     expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.getByText("Where you use bb").className).toContain("sr-only");
 
     rerender(
       <TooltipProvider>
@@ -598,6 +599,9 @@ describe("RedesignedDevicesStep", () => {
       </TooltipProvider>,
     );
     screen.getByText("Where agents run");
+    expect(screen.getByText("Where you use bb").className).not.toContain(
+      "sr-only",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });

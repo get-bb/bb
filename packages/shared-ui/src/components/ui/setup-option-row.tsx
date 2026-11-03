@@ -67,14 +67,21 @@ export function SetupOptionRow({
 
 export function SetupOptionGroup({
   label,
+  labelHidden = false,
   children,
 }: {
   label: string;
+  labelHidden?: boolean;
   children: ReactNode;
 }) {
   return (
     <section aria-label={label} className="flex flex-col gap-1.5">
-      <h2 className="px-3 text-xs font-medium text-subtle-foreground">
+      <h2
+        className={cn(
+          "px-3 text-xs font-medium text-subtle-foreground",
+          labelHidden && "sr-only",
+        )}
+      >
         {label}
       </h2>
       <ul className="overflow-hidden rounded-lg border border-border">
