@@ -1239,7 +1239,13 @@ function LandingPage() {
   const heroWindowRef = useRef<HTMLElement>(null);
   const [heroWindowInView, setHeroWindowInView] = useState(false);
   const [heroWindowSeen, setHeroWindowSeen] = useState(false);
-  useExperimentExposure("homepage-hero-window", "desktop", heroWindowSeen);
+  const [heroWindowFilled, setHeroWindowFilled] = useState(false);
+  const markHeroWindowFilled = useCallback(() => setHeroWindowFilled(true), []);
+  useExperimentExposure(
+    "homepage-hero-window",
+    "desktop",
+    heroWindowSeen && (heroWindow !== "test" || heroWindowFilled),
+  );
   useScrollReveal();
   useSectionViews();
   useConstructMock();
@@ -1303,7 +1309,11 @@ function LandingPage() {
       </header>
 
       {heroWindow === "test" ? (
-        <HeroWindow ref={heroWindowRef} inView={heroWindowInView} />
+        <HeroWindow
+          ref={heroWindowRef}
+          inView={heroWindowInView}
+          onFilled={markHeroWindowFilled}
+        />
       ) : (
         <HeroAppMock ref={heroWindowRef} />
       )}
