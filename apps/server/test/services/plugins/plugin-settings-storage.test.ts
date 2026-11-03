@@ -622,7 +622,6 @@ describe("plugin settings + storage", () => {
               db.prepare("SELECT 1").get();
               g.__chatty.handles.push(db);
             }
-            // A plugin that closes the handle itself gets a fresh one next.
             for (let i = 0; i < 3; i++) {
               const db = bb.storage.database();
               db.close();

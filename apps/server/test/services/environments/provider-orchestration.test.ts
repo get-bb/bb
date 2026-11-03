@@ -361,7 +361,9 @@ describe("core environment orchestration", () => {
           ).toMatchObject({ action: "reject" });
           await expect(
             cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
-          ).rejects.toThrow();
+          ).rejects.toThrow(
+            "The environment provider belongs to a different plugin or has no recorded owner. Automatic removal is blocked.",
+          );
         } else {
           await sweepProviderEnvironment(harness.deps, environmentId);
           expect(
@@ -2245,45 +2247,50 @@ describe("existing-path provider selection", () => {
       expect(placement.environmentIntent.type).toBe("provider");
     }));
 
-  it.each(["error", "cleanup", "foreign"])(
-    "refuses an existing path in %s state",
-    async (state) =>
-      withTestHarness(async (harness) => {
-        const fixture = setup(harness, {
-          experimental_existingPath: () => "/tmp/existing",
-        });
-        const other =
-          state === "foreign"
-            ? seedProjectWithSource(harness.deps, {
-                hostId: fixture.host.id,
-                name: "Other",
-              }).project
-            : fixture.context.project;
-        const existing = seedEnvironment(harness.deps, {
-          projectId: other.id,
-          hostId: fixture.host.id,
-          path: "/tmp/existing",
-          status: state === "error" ? "error" : "ready",
-          providerOwnsPath: true,
-        });
-        if (state === "cleanup")
-          harness.db
-            .update(environments)
-            .set({ teardownStatus: "running" })
-            .where(eq(environments.id, existing.id))
-            .run();
-        await expect(
-          resolveThreadEnvironmentPlacement(harness.deps, {
-            projectId: fixture.context.project.id,
-            requestedEnvironment: {
-              type: "provider",
-              environmentProviderId: fixture.record.provider.id,
-              machine: { type: "existing", hostId: fixture.host.id },
-              inputs: null,
-            },
-          }),
-        ).rejects.toThrow();
-      }),
+  it.each([
+    ["error", "Environment unavailable"],
+    ["cleanup", "Environment unavailable"],
+    [
+      "foreign",
+      "Workspace path is a bb-managed workspace owned by another project",
+    ],
+  ] as const)("refuses an existing path in %s state", async (state, refusal) =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        experimental_existingPath: () => "/tmp/existing",
+      });
+      const other =
+        state === "foreign"
+          ? seedProjectWithSource(harness.deps, {
+              hostId: fixture.host.id,
+              name: "Other",
+            }).project
+          : fixture.context.project;
+      const existing = seedEnvironment(harness.deps, {
+        projectId: other.id,
+        hostId: fixture.host.id,
+        path: "/tmp/existing",
+        status: state === "error" ? "error" : "ready",
+        providerOwnsPath: true,
+      });
+      if (state === "cleanup")
+        harness.db
+          .update(environments)
+          .set({ teardownStatus: "running" })
+          .where(eq(environments.id, existing.id))
+          .run();
+      await expect(
+        resolveThreadEnvironmentPlacement(harness.deps, {
+          projectId: fixture.context.project.id,
+          requestedEnvironment: {
+            type: "provider",
+            environmentProviderId: fixture.record.provider.id,
+            machine: { type: "existing", hostId: fixture.host.id },
+            inputs: null,
+          },
+        }),
+      ).rejects.toThrow(refusal);
+    }),
   );
 
   it("does not cancel an adopted checkout with a previous selection", async () =>
@@ -2657,7 +2664,9 @@ it.each([
       } else {
         await expect(
           cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
-        ).rejects.toThrow();
+        ).rejects.toThrow(
+          "Environment hook outcome is unknown after interruption. Automatic cleanup is blocked; inspect the workspace before recovering it.",
+        );
       }
       for (let attempt = 1; attempt <= 5; attempt++) {
         const failed = fixture.row();
@@ -2729,7 +2738,9 @@ it.each([false, true])(
           .run();
       await expect(
         cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
-      ).rejects.toThrow();
+      ).rejects.toThrow(
+        "Environment hook outcome is unknown after interruption. Automatic cleanup is blocked; inspect the workspace before recovering it.",
+      );
       harness.db
         .update(threads)
         .set({ status: "idle", archivedAt: Date.now() })

@@ -289,11 +289,6 @@ function nextTestRpcCursor(
   return nextCursor;
 }
 
-/**
- * Registers the capturing daemon socket for a host and returns it, so a test
- * that reconnects a host can hand the same socket to the real
- * `onDaemonSocketOpen` instead of replacing the capture with a stub.
- */
 export function registerTestHostRpcCapture(
   deps: Pick<TestAppHarness, "db" | "hub">,
   args: RegisterTestHostRpcCaptureArgs,
