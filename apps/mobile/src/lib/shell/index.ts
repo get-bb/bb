@@ -19,6 +19,7 @@ export {
   isServerApiUrl,
   resolveOpenWindowAction,
   resolveServerFileUrl,
+  SHELL_ORIGIN_WHITELIST,
   supportsNativeDownloads,
 } from "./shell-save-file";
 export { bridgeServersForProfiles, canSwitchToProfile } from "./shell-servers";
