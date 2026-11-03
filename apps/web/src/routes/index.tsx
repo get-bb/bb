@@ -1356,7 +1356,7 @@ function RefreshedBelowFold() {
       </Band>
 
       <Band
-        title="Stop babysitting."
+        title="Stop babysitting agents."
         stacked
         section="hand-off"
         visual={<DelegationTree />}
