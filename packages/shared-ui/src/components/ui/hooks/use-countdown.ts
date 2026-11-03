@@ -7,6 +7,8 @@ export function formatCountdown(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+export function useCountdown(expiresAt: number): number;
+export function useCountdown(expiresAt: number | null): number | null;
 export function useCountdown(expiresAt: number | null): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
