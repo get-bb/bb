@@ -492,6 +492,7 @@ describe("createAgentRuntime process lifecycle", () => {
   }
 
   function writeExitWhileStderrHeldScript(args: {
+    exitFile: string;
     pidFile: string;
     scriptPath: string;
     startsLog: string;
@@ -506,6 +507,7 @@ describe("createAgentRuntime process lifecycle", () => {
           const msg = JSON.parse(line);
           if (msg.method !== "initialize") return;
           spawn(process.execPath, ["-e", ${JSON.stringify(holder)}], {
+            detached: process.platform === "win32",
             stdio: ["ignore", "ignore", "inherit"],
           }).unref();
           process.stdout.write(JSON.stringify({
@@ -513,7 +515,9 @@ describe("createAgentRuntime process lifecycle", () => {
             id: msg.id,
             result: { protocolVersion: 2, capabilities: { grammarVersions: [3, 3] } },
           }) + "\\n");
-          setTimeout(() => process.exit(42), 100);
+          setInterval(() => {
+            if (existsSync(${JSON.stringify(args.exitFile)})) process.exit(42);
+          }, 10);
         });`,
     });
   }
@@ -528,8 +532,14 @@ describe("createAgentRuntime process lifecycle", () => {
     const scriptPath = join(tmpDir, `${name}.cjs`);
     const startsLog = join(tmpDir, `${name}.starts`);
     const pidFile = join(tmpDir, `${name}.holder.pid`);
+    const exitFile = join(tmpDir, `${name}.exit`);
     fixturePidFile = pidFile;
-    writeExitWhileStderrHeldScript({ pidFile, scriptPath, startsLog });
+    writeExitWhileStderrHeldScript({
+      exitFile,
+      pidFile,
+      scriptPath,
+      startsLog,
+    });
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
@@ -543,9 +553,9 @@ describe("createAgentRuntime process lifecycle", () => {
       predicate: () => existsSync(pidFile),
       timeoutMs: 5_000,
     });
-    if (child.exitCode === null && child.signalCode === null) {
-      await new Promise((resolve) => child.once("exit", resolve));
-    }
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    writeFileSync(exitFile, "exit");
+    await exited;
     expect(exitInfo).not.toHaveBeenCalled();
     return { exitInfo, manager, startsLog };
   }
