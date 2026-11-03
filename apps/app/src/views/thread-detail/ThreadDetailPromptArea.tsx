@@ -2231,6 +2231,7 @@ export function ThreadDetailPromptArea({
             onDelete={handleDeleteQueuedMessage}
             expanded={queueExpanded}
             onExpandedChange={setQueueExpanded}
+            threadStatus={thread.status}
           />
         )}
       </>
@@ -2245,6 +2246,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSegment,
       contextEnvironmentId,
       thread.projectId,
+      thread.status,
       handleChangeQueuedMessageSendTime,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,

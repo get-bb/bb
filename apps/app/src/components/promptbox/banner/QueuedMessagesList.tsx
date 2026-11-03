@@ -69,6 +69,7 @@ import type {
   PromptInput,
   PromptTextMention,
   ThreadQueuedMessage,
+  ThreadStatus,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -142,6 +143,7 @@ interface QueuedMessageRowProps {
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
+  threadStatus: ThreadStatus;
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
@@ -628,9 +630,11 @@ function QueuedMessagePreview({
 function QueuedMessageWaitLine({
   pluginDisplayName,
   queuedMessage,
+  threadStatus,
 }: {
   pluginDisplayName: string;
   queuedMessage: ThreadQueuedMessage;
+  threadStatus: ThreadStatus;
 }) {
   const now = useSecondTick();
   const label = describeQueuedMessageWait({
@@ -639,6 +643,7 @@ function QueuedMessageWaitLine({
     payload: queuedMessage.payload,
     pluginDisplayName,
     sendAt: queuedMessage.sendAt,
+    threadStatus,
     waitingOn: queuedMessage.waitingOn,
   });
   if (label === null) return null;
@@ -678,8 +683,10 @@ function QueuedMessageWaitLine({
 
 function QueuedMessagesHeaderWait({
   queuedMessages,
+  threadStatus,
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
+  threadStatus: ThreadStatus;
 }) {
   const newestFirst = [...queuedMessages].sort(
     (first, second) => second.createdAt - first.createdAt,
@@ -697,6 +704,7 @@ function QueuedMessagesHeaderWait({
     <QueuedMessageWaitLine
       pluginDisplayName={pluginDisplayName}
       queuedMessage={attentionMessage}
+      threadStatus={threadStatus}
     />
   );
 }
@@ -765,6 +773,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onDelete,
   compact,
   isGroupBoundary,
+  threadStatus,
 }: QueuedMessageRowProps) {
   const actionsRef = useRef<HTMLDivElement>(null);
   const focusActionsOnExpandRef = useRef(false);
@@ -926,6 +935,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                 <QueuedMessageWaitLine
                   pluginDisplayName={pluginDisplayName}
                   queuedMessage={queuedMessage}
+                  threadStatus={threadStatus}
                 />
               ) : null}
             </div>
@@ -1221,6 +1231,7 @@ export function QueuedMessagesList({
   onDelete,
   expanded,
   onExpandedChange,
+  threadStatus,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
@@ -1620,6 +1631,7 @@ export function QueuedMessagesList({
           onExpandMobileActions={setExpandedMobileActionsId}
           compact={mode !== "workspace"}
           isGroupBoundary={messageIndex === groupBoundaryIndex}
+          threadStatus={threadStatus}
           onSend={onSend}
           onEdit={handleEdit}
           onChangeSendTime={handleOpenSendTime}
@@ -1669,7 +1681,10 @@ export function QueuedMessagesList({
         >
           <span className="font-normal">Queue</span>
           {isExpanded ? null : (
-            <QueuedMessagesHeaderWait queuedMessages={queuedMessages} />
+            <QueuedMessagesHeaderWait
+              queuedMessages={queuedMessages}
+              threadStatus={threadStatus}
+            />
           )}
           <QueuedMessagesCountPill
             arrivals={arrivals}
