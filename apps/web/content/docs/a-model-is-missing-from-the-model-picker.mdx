@@ -1,0 +1,85 @@
+---
+title: A model is missing from the model picker
+description: A new or 1M-context model doesn't show in the model picker. bb lists the models the agent's CLI reports on that machine, so update the CLI first.
+type: troubleshooting
+sources:
+  - apps/app/src/components/pickers/model-load-error-message.tsx
+  - apps/app/src/components/pickers/ModelReasoningMenu.tsx
+  - apps/server/src/services/providers/provider-model-catalog-store.ts
+  - plugins/provider-claude-code/src/model-list.ts
+  - plugins/provider-claude-code/server.ts
+  - plugins/account-pool/src/server.ts
+  - packages/provider-bridge-acp/src/bridge/bridge.ts
+since: 0.48.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| What you see | Likely cause | Fix |
+| --- | --- | --- |
+| A newly released model is missing | The agent's CLI on that machine is older than the model | Update the CLI, then open the picker again |
+| The model is in your terminal but not in bb | The thread is set to another machine, where the CLI is older or signed in differently | Pick the machine in the composer, or update the CLI on it |
+| A Claude thread is limited to 200K context | The model or your login doesn't get the 1M window, **Disable 1M context** is on, or a custom base URL limits it | See [1M context is missing](#1m-context-is-missing) |
+| "Could not load models for Claude Code." | bb couldn't get the list from the agent | Read the reason under it; see [the reasons below](#could-not-load-models-for-claude-code) |
+| "No models available" | The agent answered with an empty list | Update the CLI and check its sign-in. For Pi, sign in to at least one model provider inside Pi |
+| Reasoning shows only Medium for an ACP agent's model | Older bb versions guessed a single level for models they hadn't checked | Update bb, then pick the model again |
+| A model the agent accepts isn't listed at all | The agent doesn't list it | [Add it as a custom model](#add-a-model-the-agent-doesnt-list) |
+
+## A new model is missing
+
+1. Update the agent's CLI on the thread's machine: **Settings → Updates → Provider CLIs**, or from a terminal, for example `claude update`.
+2. Open the model picker again. bb rechecks in the background when its list is more than a minute old, so it can take one more opening.
+
+Some models, such as Claude Code's aliases, are under **More models** at the bottom of the picker. To see exactly what bb gets from the agent, run `bb provider models claude-code`; add `--machine <machine>` to ask a specific machine.
+
+## 1M context is missing
+
+Claude Code, not bb, decides which models get the 1M window, based on the model, its version and your login. Some models offer it as a separate "(1M)" entry, for example "Opus 5.5 (1M)"; pick it. The context ring shows the window Claude Code reports. If a thread is limited to 200K:
+
+- **Update Claude Code.**
+- **Turn off Disable 1M context** in **Settings → Claude Code provider** (sidebar **Plugins** group), or run `bb plugin config provider-claude-code set disable1MContext false`.
+- **Check `ANTHROPIC_BASE_URL`.** Claude Code limits Opus to 200K when it points at another server. The Account Pooler plugin keeps the 1M window for its own accounts.
+
+## Could not load models for Claude Code.
+
+The reason is under the message; long ones are behind **Show details**. A new thread can't be sent while it shows.
+
+| Reason | Fix |
+| --- | --- |
+| CLI not found | Install the CLI on that machine: [Claude Code not installed](/docs/an-agent-wont-sign-in-or-cant-be-found#claude-code-not-installed) |
+| Not signed in | Sign in on that machine: [Not signed in](/docs/an-agent-wont-sign-in-or-cant-be-found#not-signed-in) |
+| Timed out | Open the picker again. ACP agents get 30 seconds to list their models |
+| Provider plugin failed to load | Check the agent's plugin in **Settings → Installed plugins** |
+| Any other text | The agent's own error; it usually says what's wrong |
+
+bb remembers a failure for 30 seconds, so wait a moment after fixing the cause.
+
+## No models available
+
+The agent answered with an empty list. Update the CLI and check that it's signed in. For Pi, the list comes from the model providers you signed in to inside Pi.
+
+## Reasoning shows only Medium
+
+Update bb. It now checks a model's reasoning levels when you pick it, and hides the control when a model reports none. Run `bb provider models <provider-id> --selected-model <model>` to see the levels bb found.
+
+## Add a model the agent doesn't list
+
+Add it to `customModels`, then run `npx bb-app config refresh` or restart bb:
+
+```json title="~/.bb/config.json"
+{
+  "customModels": [
+    { "providerId": "claude-code", "model": "claude-example-preview" }
+  ]
+}
+```
+
+Custom models appear after the agent's own. Claude Code and Codex accept unlisted models; an ACP agent can reject one when the thread starts. **Streamer mode** in **Settings → General** hides custom models.
+
+## What to send when you ask for help
+
+- `bb --version`, your operating system, and the agent's CLI version on the thread's machine (`claude --version`).
+- `bb provider models <provider-id> --json` for that machine.
+- The model you expected and where you saw it.
+- The exact picker error, including the reason under it.
+- Whether you use the Account Pooler or set `ANTHROPIC_BASE_URL`.
