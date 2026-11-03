@@ -2851,17 +2851,19 @@
 /* Sentry: the sidebar collapse and the page opening are one move. Wide
    windows run it on the FLIP glide (flipLayout's drawer), so CSS width
    transitions stay off; tablets run it as one CSS layout transition with the
-   same 650ms duration and easing. The pane divider uses --border. */
+   same durations (1050ms open, 850ms close) and easing. The pane divider uses --border. */
 @media (max-width: 720px), (min-width: 861px) {
   .rhb .rhb-scene-sentry .rhb-left,
   .rhb .rhb-scene-sentry .rhb-body,
   .rhb .rhb-scene-sentry .rhb-col-page .rhb-band { transition: none; }
 }
 @media (min-width: 721px) and (max-width: 860px) {
-  .rhb .rhb-scene-sentry .rhb-left { transition: width 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
-  .rhb .rhb-scene-sentry .rhb-body { transition: padding 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
-  .rhb .rhb-scene-sentry .rhb-col-page { transition: flex-grow 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
-  .rhb .rhb-scene-sentry .rhb-col-page .rhb-band { transition: padding 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .rhb .rhb-scene-sentry { --rhb-sentry-move: 0.85s; }
+  .rhb .rhb-scene-sentry.rhb-has-sentry { --rhb-sentry-move: 1.05s; }
+  .rhb .rhb-scene-sentry .rhb-left { transition: width var(--rhb-sentry-move) cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .rhb .rhb-scene-sentry .rhb-body { transition: padding var(--rhb-sentry-move) cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .rhb .rhb-scene-sentry .rhb-col-page { transition: flex-grow var(--rhb-sentry-move) cubic-bezier(0.22, 0.61, 0.36, 1); }
+  .rhb .rhb-scene-sentry .rhb-col-page .rhb-band { transition: padding var(--rhb-sentry-move) cubic-bezier(0.22, 0.61, 0.36, 1); }
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-card-main { border-left-color: var(--border); }
 }
 

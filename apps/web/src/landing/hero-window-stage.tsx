@@ -142,6 +142,7 @@ type Scene = {
   then?: { id: string; worked: string; reply: ReactNode };
 
   hold: number;
+  beat?: number;
 
   replyFirst?: boolean;
 
@@ -161,6 +162,7 @@ const SCENES: Scene[] = [
   {
     id: "sentry",
     hold: 2.5,
+    beat: 1.3,
     title: "Sentry errors",
     prompt: "Chart my Sentry errors for checkout-web next to this thread",
     steps: [
@@ -455,8 +457,9 @@ function timing(scene: Scene, tablet = false) {
     postAt = posts.map((_, i) => lastStep + ROW_GAP + i * ROW_GAP);
     changeAt = (postAt.at(-1) ?? lastStep) + ROW_GAP;
   } else {
-    changeAt = scene.prompt ? lastStep + ROW_GAP : 0.6;
-    postAt = posts.map((_, i) => changeAt + ROW_GAP + i * ROW_GAP);
+    changeAt = scene.prompt ? lastStep + ROW_GAP + (scene.beat ?? 0) : 0.6;
+    const settle = scene.id === "sentry" ? (SENTRY_OPEN_MS - 650) / 1000 : 0;
+    postAt = posts.map((_, i) => changeAt + settle + ROW_GAP + i * ROW_GAP);
   }
   const collapseAt = scene.id === "linear" && tablet ? changeAt : null;
   if (collapseAt !== null) {
@@ -888,6 +891,8 @@ function useMedia(query: string) {
 }
 
 const EASE_OUT = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+const SENTRY_OPEN_MS = 1050;
+const SENTRY_CLOSE_MS = 850;
 const TOP = ".rhb-col-main, .rhb-col-page, .rhb-col-panel, .rhb-side";
 const KIDS =
   ".rhb-side > :not(.rhb-xf), .rhb-rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
@@ -984,6 +989,7 @@ function dissolve(
   t: { x: number; y: number },
   pad?: number,
   seq = false,
+  dur = 650,
 ) {
   const host = el.parentElement;
   if (!host) return;
@@ -1049,8 +1055,8 @@ function dissolve(
       { transform: `translate(${dx}px, ${dy}px)` },
       { transform: "none" },
     ];
-    glide(el, move);
-    glide(wrap, move);
+    glide(el, move, dur);
+    glide(wrap, move, dur);
   }
   // Old and new content overlap while they trade places, so the column never
   // shows an empty frame between them. In the drawer the new content fades
@@ -1134,6 +1140,11 @@ function flipLayout(root: HTMLElement, first: Snap) {
   const sentryCloses = root.matches(".rhb-scene-sentry:not(.rhb-has-sentry)");
   const drawer =
     (sentryOpens || sentryCloses) && !window.matchMedia(TABLET_QUERY).matches;
+  const dur = sentryOpens
+    ? SENTRY_OPEN_MS
+    : sentryCloses
+      ? SENTRY_CLOSE_MS
+      : 650;
   const finals = new Map<Element, { b: DOMRect; pb?: DOMRect }>();
   root.querySelectorAll(KIDS).forEach((el) => {
     if (!el.closest(".rhb-frozen"))
@@ -1162,7 +1173,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
           { opacity: 1, transform: `translateX(${dx}px)` },
         ],
         {
-          duration: 650,
+          duration: dur,
           easing: EASE_OUT,
           fill: "forwards",
         },
@@ -1179,7 +1190,11 @@ function flipLayout(root: HTMLElement, first: Snap) {
     ) {
       const dx = first.root.left - b.right;
       moved.set(el, { x: dx, y: 0 });
-      glide(el, [{ transform: `translateX(${dx}px)` }, { transform: "none" }]);
+      glide(
+        el,
+        [{ transform: `translateX(${dx}px)` }, { transform: "none" }],
+        dur,
+      );
     } else if (
       (a.width < 2 || a.height < 2) &&
       b.width >= 2 &&
@@ -1192,7 +1207,11 @@ function flipLayout(root: HTMLElement, first: Snap) {
       const dx = first.root.right - b.left;
       moved.set(el, { x: dx, y: 0 });
       entering.add(el);
-      glide(el, [{ transform: `translateX(${dx}px)` }, { transform: "none" }]);
+      glide(
+        el,
+        [{ transform: `translateX(${dx}px)` }, { transform: "none" }],
+        dur,
+      );
     } else if ((a.width < 2 || a.height < 2) && b.width >= 2 && b.height >= 2) {
       const dx = -28;
       moved.set(el, { x: dx, y: 0 });
@@ -1204,10 +1223,14 @@ function flipLayout(root: HTMLElement, first: Snap) {
     } else if (Math.abs(a.left - b.left) > 1 || Math.abs(a.top - b.top) > 1) {
       const dx = a.left - b.left;
       moved.set(el, { x: dx, y: a.top - b.top });
-      glide(el, [
-        { transform: `translate(${dx}px, ${a.top - b.top}px)` },
-        { transform: "none" },
-      ]);
+      glide(
+        el,
+        [
+          { transform: `translate(${dx}px, ${a.top - b.top}px)` },
+          { transform: "none" },
+        ],
+        dur,
+      );
       const gap = a.right - (b.right + dx);
       const card = el.querySelector<HTMLElement>(":scope > .rhb-card");
       if (gap > 2 && card) {
@@ -1242,7 +1265,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
               "border-top-right-radius",
               "border-bottom-right-radius",
             ].forEach((x) => card.style.removeProperty(x));
-          }, 680);
+          }, dur + 30);
         }
         const clips = [
           ...el.querySelectorAll<HTMLElement>(".rhb-scroll, .rhb-feed-layer"),
@@ -1258,7 +1281,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
           clips.forEach((c) =>
             Object.assign(c.style, { overflow: "", clipPath: "" }),
           );
-        }, 680);
+        }, dur + 30);
       }
     }
   });
@@ -1297,14 +1320,18 @@ function flipLayout(root: HTMLElement, first: Snap) {
       const t = (top && moved.get(top)) || { x: 0, y: 0 };
       const ml = parseFloat(getComputedStyle(el).marginLeft);
       const inset = b.left - pb.left - ml;
-      glide(el, [
-        {
-          marginLeft: `${s.r.left - s.p.left - inset}px`,
-          width: `${s.r.width}px`,
-          transform: `translate(${s.p.left - pb.left - t.x}px, ${s.r.top - b.top - t.y}px)`,
-        },
-        { marginLeft: `${ml}px`, width: `${b.width}px`, transform: "none" },
-      ]);
+      glide(
+        el,
+        [
+          {
+            marginLeft: `${s.r.left - s.p.left - inset}px`,
+            width: `${s.r.width}px`,
+            transform: `translate(${s.p.left - pb.left - t.x}px, ${s.r.top - b.top - t.y}px)`,
+          },
+          { marginLeft: `${ml}px`, width: `${b.width}px`, transform: "none" },
+        ],
+        dur,
+      );
       return;
     }
     if (!inBand && (Math.abs(s.r.width - b.width) > 1 || repad)) {
@@ -1319,13 +1346,15 @@ function flipLayout(root: HTMLElement, first: Snap) {
           (top && moved.get(top)) || { x: 0, y: 0 },
           s.pad,
           drawer,
+          dur,
         );
       else if (s.r.width < 2) glide(el, [{ opacity: 0 }, { opacity: 1 }], 250);
     } else if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-      glide(el, [
-        { transform: `translate(${dx}px, ${dy}px)` },
-        { transform: "none" },
-      ]);
+      glide(
+        el,
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+        dur,
+      );
     }
   });
 
@@ -1348,7 +1377,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
         { opacity: drawer ? 1 : 0, transform: `translateX(${out}px)` },
       ],
       {
-        duration: drawer ? 650 : 450,
+        duration: drawer ? dur : 450,
         easing: EASE_OUT,
         fill: "forwards",
       },
@@ -1362,10 +1391,14 @@ function flipLayout(root: HTMLElement, first: Snap) {
   ) {
     const side = leftBody.querySelector(":scope > .rhb-side");
     if (drawer)
-      glide(leftBody, [
-        { transform: `translateX(${first.root.left - now.right}px)` },
-        { transform: "none" },
-      ]);
+      glide(
+        leftBody,
+        [
+          { transform: `translateX(${first.root.left - now.right}px)` },
+          { transform: "none" },
+        ],
+        dur,
+      );
     else if (first.left.width >= 2 && side)
       // The rail was already showing: it stays put and only the sidebar
       // beside it fades in.
@@ -1679,15 +1712,22 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     let growing = 0;
     const visible = (el: Element | null) =>
       !!el && (el as HTMLElement).offsetParent !== null;
-    const grow = (el: HTMLElement) => {
+    const roomOf = (el: HTMLElement) => {
       const parent = el.parentElement;
-      if (!parent) return;
+      if (!parent) return 0;
       let prev = el.previousElementSibling;
       while (prev && !visible(prev)) prev = prev.previousElementSibling;
       const cs = getComputedStyle(el);
-      const mb = parseFloat(cs.marginBottom) || 0;
       const gap = prev ? parseFloat(getComputedStyle(parent).rowGap) || 0 : 0;
-      const room = el.offsetHeight + (parseFloat(cs.marginTop) || 0) + mb + gap;
+      return (
+        el.offsetHeight +
+        (parseFloat(cs.marginTop) || 0) +
+        (parseFloat(cs.marginBottom) || 0) +
+        gap
+      );
+    };
+    const grow = (el: HTMLElement, room: number) => {
+      const mb = parseFloat(getComputedStyle(el).marginBottom) || 0;
       if (room < 1) return;
       growing++;
       const anim = el.animate(
@@ -1710,8 +1750,16 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
         if (primed) fresh.push(el);
       }
       primed = true;
-      for (const el of fresh)
-        if (!fresh.includes(el.parentElement as HTMLElement)) grow(el);
+      let run = 0;
+      for (const el of fresh) {
+        if (fresh.includes(el.parentElement as HTMLElement)) continue;
+        run += roomOf(el);
+        let next = el.nextElementSibling;
+        while (next && !visible(next)) next = next.nextElementSibling;
+        if (next && fresh.includes(next as HTMLElement)) continue;
+        grow(el, run);
+        run = 0;
+      }
       let moved = false;
       const ft = feed.offsetTop;
       const fd = growing ? 0 : self.top - ft;
