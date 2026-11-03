@@ -1242,7 +1242,7 @@ function LandingPage() {
         {subhead === "test" ? (
           <p className="sub sub-wide">
             Run all your coding agents in one programmable workspace. Change
-            almost anything with a plugin or a prompt, no need to fork.
+            almost anything with a plugin or a prompt.
           </p>
         ) : (
           <p className="sub">
