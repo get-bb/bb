@@ -1,14 +1,13 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { asHttpError } from "@/lib/http-error";
-import {
-  agentStatusTelemetryPropertyByProviderId,
-  type HostDiscoveredRepo,
-  type RecordTelemetryEventRequest,
-  type ServerAccessStatus,
-  type SetupGuideVariant,
-  type SystemProviderState,
-  type SystemSetupGuideResponse,
+import type {
+  HostDiscoveredRepo,
+  RecordTelemetryEventRequest,
+  ServerAccessStatus,
+  SetupGuideVariant,
+  SystemProviderState,
+  SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
@@ -257,10 +256,6 @@ type AgentStateTelemetryProperties = Extract<
   { name: "onboarding_agent_state" }
 >["properties"];
 
-const agentStatusPropertyKeys = Object.entries(
-  agentStatusTelemetryPropertyByProviderId,
-);
-
 export function agentStateTelemetryProperties(
   entry: AgentStateTelemetryProperties["entry"],
   states: readonly SystemProviderState[] | undefined,
@@ -271,18 +266,22 @@ export function agentStateTelemetryProperties(
     states?.some(
       (state) => state.status !== "not_installed" && state.status !== "unknown",
     ) ?? false;
-  const properties: AgentStateTelemetryProperties = {
+  return {
     entry,
     agent_installed: installed ? true : hasUnknown ? null : false,
     agent_ready: hasReadyAgent(states) ? true : hasUnknown ? null : false,
+    ...(states === undefined
+      ? {}
+      : {
+          agent_statuses: Object.fromEntries(
+            [...states]
+              .sort((left, right) =>
+                left.providerId.localeCompare(right.providerId),
+              )
+              .map((state) => [state.providerId, state.status]),
+          ),
+        }),
   };
-  for (const [providerId, key] of agentStatusPropertyKeys) {
-    const state = states?.find(
-      (candidate) => candidate.providerId === providerId,
-    );
-    if (state !== undefined) properties[key] = state.status;
-  }
-  return properties;
 }
 
 const RECENT_REPO_WINDOW_MS = 7 * 86_400_000;

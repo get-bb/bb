@@ -239,32 +239,9 @@ const telemetryResourceIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
 
-const agentStatusTelemetrySchema = providerHealthSchema.shape.status.optional();
-
-const agentStatusTelemetryProperties = {
-  agent_status_claude_code: agentStatusTelemetrySchema,
-  agent_status_codex: agentStatusTelemetrySchema,
-  agent_status_pi: agentStatusTelemetrySchema,
-  agent_status_acp_cursor: agentStatusTelemetrySchema,
-  agent_status_acp_grok: agentStatusTelemetrySchema,
-  agent_status_acp_hermes_agent: agentStatusTelemetrySchema,
-  agent_status_acp_omp: agentStatusTelemetrySchema,
-  agent_status_acp_opencode: agentStatusTelemetrySchema,
-};
-
-export const agentStatusTelemetryPropertyByProviderId = {
-  "claude-code": "agent_status_claude_code",
-  codex: "agent_status_codex",
-  pi: "agent_status_pi",
-  "acp-cursor": "agent_status_acp_cursor",
-  "acp-grok": "agent_status_acp_grok",
-  "acp-hermes-agent": "agent_status_acp_hermes_agent",
-  "acp-omp": "agent_status_acp_omp",
-  "acp-opencode": "agent_status_acp_opencode",
-} as const satisfies Record<
-  string,
-  keyof typeof agentStatusTelemetryProperties
->;
+const agentStatusesTelemetrySchema = z
+  .record(z.string().min(1).max(256), providerHealthSchema.shape.status)
+  .refine((statuses) => Object.keys(statuses).length <= 64);
 
 const newThreadBlockerReasonTelemetrySchema = z.enum([
   "agent_missing",
@@ -347,7 +324,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           entry: onboardingEntryTelemetrySchema,
           agent_installed: z.boolean().nullable(),
           agent_ready: z.boolean().nullable(),
-          ...agentStatusTelemetryProperties,
+          agent_statuses: agentStatusesTelemetrySchema.optional(),
         })
         .strict(),
     })

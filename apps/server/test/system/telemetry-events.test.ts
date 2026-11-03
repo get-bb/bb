@@ -1,6 +1,4 @@
-import { agentStatusTelemetryPropertyByProviderId } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
-import { listShippedProviderIds } from "../../src/services/system/provider-telemetry.js";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -45,14 +43,14 @@ describe("client telemetry events", () => {
             entry: "first_run",
             agent_installed: true,
             agent_ready: false,
-            agent_status_claude_code: "unauthenticated",
-            agent_status_codex: "not_installed",
-            agent_status_pi: "unknown",
-            agent_status_acp_cursor: "expired",
-            agent_status_acp_grok: "unsupported_version",
-            agent_status_acp_hermes_agent: "ready",
-            agent_status_acp_omp: "not_installed",
-            agent_status_acp_opencode: "not_installed",
+            agent_statuses: {
+              "claude-code": "unauthenticated",
+              codex: "not_installed",
+              pi: "unknown",
+              "acp-cursor": "expired",
+              "acp-grok": "unsupported_version",
+              "acp-hermes-agent": "ready",
+            },
           },
         },
         {
@@ -276,10 +274,37 @@ describe("client telemetry events", () => {
     });
   });
 
-  it("has an agent status property for every shipped agent", () => {
-    expect(
-      Object.keys(agentStatusTelemetryPropertyByProviderId).sort(),
-    ).toEqual(listShippedProviderIds().sort());
+  it("drops custom agents from the agent step's per-agent statuses", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const properties = {
+        entry: "first_run",
+        agent_installed: true,
+        agent_ready: true,
+      } as const;
+
+      const response = await post(harness, {
+        name: "onboarding_agent_state",
+        properties: {
+          ...properties,
+          agent_statuses: {
+            codex: "unauthenticated",
+            "acp-my-private-agent": "ready",
+            "Jane's Agent": "ready",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(capture).toHaveBeenCalledExactlyOnceWith({
+        name: "onboarding_agent_state",
+        properties: {
+          ...properties,
+          agent_statuses: { codex: "unauthenticated" },
+        },
+      });
+    });
   });
 
   it.each(["new_thread_composer_shown", "new_thread_draft_started"] as const)(
@@ -532,7 +557,7 @@ describe("client telemetry events", () => {
             entry: "first_run",
             agent_installed: true,
             agent_ready: true,
-            agent_status_my_private_agent: "ready",
+            agent_status_codex: "ready",
           },
         },
         {
@@ -541,7 +566,7 @@ describe("client telemetry events", () => {
             entry: "first_run",
             agent_installed: true,
             agent_ready: true,
-            agent_status_claude_code: "person@example.com",
+            agent_statuses: { "claude-code": "person@example.com" },
           },
         },
         {
@@ -561,6 +586,20 @@ describe("client telemetry events", () => {
           properties: { blocker: "none", draft_length: 17 },
         },
         { name: "new_thread_draft_started", properties: {} },
+        {
+          name: "onboarding_agent_state",
+          properties: {
+            entry: "first_run",
+            agent_installed: true,
+            agent_ready: true,
+            agent_statuses: Object.fromEntries(
+              Array.from({ length: 65 }, (_, index) => [
+                `agent-${index}`,
+                "ready",
+              ]),
+            ),
+          },
+        },
       ]) {
         expect((await post(harness, event)).status).toBe(400);
       }

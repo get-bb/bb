@@ -406,13 +406,11 @@ rejected), or `turn_on` (turning remote access on failed); a retry after a
 failure records a new `started`. `add_machine` can fail before `started` when
 the setup command couldn't be prepared.
 `onboarding_agent_state` (`agent_installed` and `agent_ready`, each `null`
-when unknown) also carries, for each shipped agent the host reports, its
-status in `agent_status_claude_code`, `agent_status_codex`, `agent_status_pi`,
-`agent_status_acp_cursor`, `agent_status_acp_grok`,
-`agent_status_acp_hermes_agent`, `agent_status_acp_omp`, or
-`agent_status_acp_opencode`: `ready`, `not_installed`, `unauthenticated`,
-`expired`, `unsupported_version`, or `unknown`. Custom agents get no status
-property, and none are sent when the agent states fail to load. It is sent
+when unknown) also carries `agent_statuses`, an object from each shipped
+agent's public id the host reports (such as `claude-code` or `codex`) to its
+status: `ready`, `not_installed`, `unauthenticated`, `expired`,
+`unsupported_version`, or `unknown`. Custom agents are left out, and
+`agent_statuses` is absent when the agent states fail to load. It is sent
 again only when one of these values changes.
 The new-thread page's composer sends `new_thread_composer_shown` once per app
 session when it first shows, and `new_thread_draft_started` once per app

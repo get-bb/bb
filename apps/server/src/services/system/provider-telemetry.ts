@@ -16,10 +16,6 @@ for (const { rootDir } of listBundledPluginRegistrations()) {
   } catch {}
 }
 
-export function listShippedProviderIds(): string[] {
-  return [...shippedProviderIds];
-}
-
 export function reportedProviderId(providerId: string): string {
   return shippedProviderIds.has(providerId) ? providerId : "other";
 }
@@ -46,6 +42,21 @@ export function withReportedProviderId(
     case "new_thread_composer_shown":
     case "new_thread_draft_started":
       return withReportedResourceId(event);
+    case "onboarding_agent_state": {
+      const statuses = event.properties.agent_statuses;
+      if (statuses === undefined) return event;
+      return {
+        ...event,
+        properties: {
+          ...event.properties,
+          agent_statuses: Object.fromEntries(
+            Object.entries(statuses).filter(([providerId]) =>
+              shippedProviderIds.has(providerId),
+            ),
+          ),
+        },
+      };
+    }
     case "onboarding_operation":
       return event.properties.step === "agent"
         ? withReportedResourceId(event)

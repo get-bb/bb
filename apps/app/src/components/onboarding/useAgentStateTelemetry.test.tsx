@@ -50,7 +50,7 @@ function recorded() {
 }
 
 describe("agent state telemetry", () => {
-  it("reports each shipped agent's status, maps nothing for custom agents, and fires once per distinct state", () => {
+  it("reports each agent's status once per distinct set of states", () => {
     const signedOut = [
       state("claude-code", "unauthenticated"),
       state("codex", "not_installed"),
@@ -72,9 +72,12 @@ describe("agent state telemetry", () => {
           entry: "first_run",
           agent_installed: true,
           agent_ready: true,
-          agent_status_claude_code: "unauthenticated",
-          agent_status_codex: "not_installed",
-          agent_status_acp_hermes_agent: "unsupported_version",
+          agent_statuses: {
+            "acp-hermes-agent": "unsupported_version",
+            "acp-my-private-agent": "ready",
+            "claude-code": "unauthenticated",
+            codex: "not_installed",
+          },
         },
       },
       {
@@ -83,9 +86,12 @@ describe("agent state telemetry", () => {
           entry: "first_run",
           agent_installed: true,
           agent_ready: true,
-          agent_status_claude_code: "ready",
-          agent_status_codex: "not_installed",
-          agent_status_acp_hermes_agent: "unsupported_version",
+          agent_statuses: {
+            "acp-hermes-agent": "unsupported_version",
+            "acp-my-private-agent": "ready",
+            "claude-code": "ready",
+            codex: "not_installed",
+          },
         },
       },
     ]);
@@ -122,8 +128,7 @@ describe("agent state telemetry", () => {
           entry: "first_run",
           agent_installed: true,
           agent_ready: null,
-          agent_status_codex: "unknown",
-          agent_status_pi: "expired",
+          agent_statuses: { codex: "unknown", pi: "expired" },
         },
       },
     ]);
