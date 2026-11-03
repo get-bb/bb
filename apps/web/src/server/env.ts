@@ -3,6 +3,11 @@ import { env as workerEnv } from "cloudflare:workers";
 export interface Env {
   DB: D1Database;
   COMMUNITY_FORMS_ENABLED?: string;
+  COMMUNITY_SHOPIFY_STORE?: string;
+  COMMUNITY_STICKER_VARIANT_ID?: string;
+  COMMUNITY_STICKER_LIMIT?: string;
+  SHOPIFY_CLIENT_ID?: string;
+  SHOPIFY_CLIENT_SECRET?: string;
   COMMUNITY_FORM_RATE_LIMITER?: RateLimit;
   TUNNEL_DO: DurableObjectNamespace;
   LINK_START_RATE_LIMITER: RateLimit;

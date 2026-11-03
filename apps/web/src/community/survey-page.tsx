@@ -241,11 +241,24 @@ export function SurveyPage({
             ref={thanks}
           >
             <p>
-              <strong>Thanks!</strong>{" "}
-              {result.duplicate
-                ? "We already have your answers."
-                : "We got your answers."}
+              <strong>Thanks!</strong>
+              {result.duplicate ? " We already have your answers." : ""}
             </p>
+            {!result.duplicate && (
+              <p>
+                {result.claimLink ? (
+                  <a
+                    className="btn btn-primary"
+                    href={result.claimLink}
+                    rel="noreferrer"
+                  >
+                    Claim my bb stickers
+                  </a>
+                ) : (
+                  result.claimNote
+                )}
+              </p>
+            )}
           </section>
         ) : (
           <>

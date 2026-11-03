@@ -94,9 +94,15 @@ describe("survey page", () => {
     expect(field('[name="community_other"]')).toBeNull();
   });
 
-  it("sends visible answers once, then focuses the thanks and clears progress", async () => {
+  it("sends visible answers once, then shows the claim link, focuses the thanks and clears progress", async () => {
     const fetch = vi.fn(async (_url: string, _init: RequestInit) =>
-      Response.json({ result: { duplicate: false } }),
+      Response.json({
+        result: {
+          duplicate: false,
+          claimLink: "https://shop.example/cart/1:1?discount=CODE",
+          claimNote: null,
+        },
+      }),
     );
     vi.stubGlobal("fetch", fetch);
     vi.stubGlobal("scrollTo", () => {});
@@ -107,7 +113,9 @@ describe("survey page", () => {
     expect(fetch).toHaveBeenCalledOnce();
     const body = JSON.parse(fetch.mock.calls[0]![1].body as string);
     expect(body.answers.work).toBeUndefined();
-    expect(field("main")!.textContent).toContain("We got your answers.");
+    expect(field<HTMLAnchorElement>("main a.btn")!.href).toBe(
+      "https://shop.example/cart/1:1?discount=CODE",
+    );
     expect(document.activeElement).toBe(field(".community-thanks"));
     expect(localStorage.getItem(key)).toBeNull();
   });
