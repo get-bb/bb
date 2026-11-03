@@ -3599,7 +3599,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
    to show the timeline beside the phone (--bw-drop flips from 0 to 1), the
    phone drops below the timeline instead of covering it. */
 .bw-start-stage {
-  --bw-overlay-scale: clamp(0.74, var(--bw-slice-ratio, 1) * 1.25, 1);
+  /* The phone sits at 0.8 of its old size, a little shorter than the
+     window, so the two read as devices of the same scene. */
+  --bw-phone-size: 0.8;
+  --bw-overlay-scale: calc(
+    clamp(0.74, var(--bw-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
+  );
   --bw-drop: clamp(0, (0.968 - var(--bw-slice-ratio, 1)) * 1000, 1);
   --bw-stage-pad: calc(
     150px + var(--bw-drop) * (656px * var(--bw-overlay-scale) - 396px)
@@ -3617,7 +3622,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   );
 }
 
-/* An iPhone at 0.75x beside the window. The screen is laid out at the real
+/* An iPhone beside the window, sized by --bw-overlay-scale. The screen is laid out at the real
    393 x 852 point size and scaled down, so the bb mobile UI keeps its true
    proportions. */
 .bw-phone {
