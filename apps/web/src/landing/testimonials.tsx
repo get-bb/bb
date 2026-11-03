@@ -48,7 +48,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     avatar: lutkeAvatar,
     source: "x",
     url: "https://x.com/tobi/status/2104898204135297252",
-    quote: "I think it’s really really good, too! Use it daily.",
+    quote: "I think it’s really really good… Use it daily.",
   },
   {
     author: "David Ondrej",
