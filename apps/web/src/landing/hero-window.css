@@ -2258,6 +2258,9 @@
 .rhb .rhb-has-grouped .rhb-list-grouped {
   transition: opacity 0.35s ease 0.2s, transform 0.65s ease;
 }
+.rhb .rhb-has-grouped .rhb-list-plain {
+  transition: opacity 0.2s ease, transform 0.4s ease;
+}
 .rhb .rhb-stage-out + .rhb-stage {
   animation: rhb-fade-in 0.7s ease backwards;
 }
