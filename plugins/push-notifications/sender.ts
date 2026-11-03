@@ -9,9 +9,11 @@ import type { Dispatcher } from "undici";
 import { z } from "zod";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
+  CLIENT_NOTIFICATION_DISMISS_CHANNEL,
   NOTIFICATION_BODY_MAX_LENGTH,
   NOTIFICATION_TITLE_MAX_LENGTH,
   type ClientNotification,
+  type ClientNotificationDismissal,
   type DeliveryChannel,
   type PushSubscription,
   type SendNotificationInput,
@@ -435,15 +437,17 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
         channels,
       } satisfies ClientNotification);
     }
-    if (!config.mobileEnabled) return channels;
-    const rows = await subscriptions.list();
-    if (rows.length === 0) return channels;
-    if (notification.thread !== null) {
+    const rows = config.mobileEnabled ? await subscriptions.list() : [];
+    if (
+      notification.thread !== null &&
+      (channels.length > 0 || rows.length > 0)
+    ) {
       await bb.storage.kv.set(
         `${DELIVERED_THREAD_KEY_PREFIX}${notification.thread.id}`,
         true,
       );
     }
+    if (rows.length === 0) return channels;
     const serverUrl = bb.server.experimental_appUrl;
     const data = {
       kind: notification.kind,
@@ -486,9 +490,10 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     const key = `${DELIVERED_THREAD_KEY_PREFIX}${threadId}`;
     if ((await bb.storage.kv.get<unknown>(key)) === undefined) return;
     await bb.storage.kv.delete(key);
-    const rows = (await subscriptions.list()).filter(
-      (subscription) => subscription.platform === "ios",
-    );
+    bb.realtime.publish(CLIENT_NOTIFICATION_DISMISS_CHANNEL, {
+      threadId,
+    } satisfies ClientNotificationDismissal);
+    const rows = await subscriptions.list();
     const serverUrl = bb.server.experimental_appUrl;
     const deliveries: Delivery[] = rows.map((subscription) => ({
       subscription,

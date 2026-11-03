@@ -3595,8 +3595,8 @@ opened it or marked it read, or the user sent it a turn. Marking a thread
 unread does not fire it. Core's own read path is the trigger: every
 `lastReadAt` write raises the `read-state-changed` thread change, and the hub
 emits the event from there, so the payload is the same read state the
-sidebar's unread dot uses. Push-notifications uses it to tell iOS devices to
-remove the thread's delivered notifications.
+sidebar's unread dot uses. Push-notifications uses it to remove the thread's
+delivered notifications from phones and from open web and desktop clients.
 
 Docs: `backend-sdk.md`, `backend-events.md`.
 

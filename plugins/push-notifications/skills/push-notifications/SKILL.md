@@ -10,8 +10,8 @@ an error, and anyone can send their own through the same channels. Mobile device
 closed. Web and desktop clients receive system notifications only while a bb
 tab or app window stays open, and each browser grants permission separately in
 the plugin settings. When a notified thread is read on any client, the plugin
-sends registered iOS devices a silent push that removes the thread's delivered
-notifications.
+sends registered devices a silent push and tells open web and desktop clients
+to close the thread's notifications.
 
 ```sh
 bb push-notifications status [--json]

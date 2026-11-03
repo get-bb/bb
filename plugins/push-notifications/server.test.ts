@@ -724,7 +724,7 @@ describe("push sender", () => {
     }
   });
 
-  it("tells iOS devices to remove a notified thread's notifications once it is read", async () => {
+  it("tells every device and client to remove a notified thread's notifications once it is read", async () => {
     const host = await setup({ appUrl: "https://bb.example.com" });
     try {
       await host.addSubscription();
@@ -735,6 +735,10 @@ describe("push sender", () => {
       );
       const notified = host.setThread();
       const quiet = host.setThread();
+      const dismissals = () =>
+        host.harness.realtimeSignals.filter(
+          (signal) => signal.channel === "notification-dismiss",
+        );
 
       await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
         thread: notified,
@@ -750,18 +754,24 @@ describe("push sender", () => {
         thread: read,
       });
       await vi.waitFor(() => expect(host.expo.requests).toHaveLength(2));
-      expect(host.expo.requests[1]).toEqual([
-        {
-          to: "ExponentPushToken[phone]",
+      expect(host.expo.requests[1]).toEqual(
+        [
+          ["ExponentPushToken[phone]", "subscription-1"],
+          ["ExponentPushToken[pixel]", "subscription-2"],
+        ].map(([to, subscriptionId]) => ({
+          to,
           data: {
             kind: "dismiss",
             threadId: notified.id,
-            subscriptionId: "subscription-1",
+            subscriptionId,
             serverUrl: "https://bb.example.com",
           },
           _contentAvailable: true,
           priority: "normal",
-        },
+        })),
+      );
+      expect(dismissals().map((signal) => signal.payload)).toEqual([
+        { threadId: notified.id },
       ]);
 
       await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
@@ -772,6 +782,33 @@ describe("push sender", () => {
       });
       await waitForCoalesce();
       expect(host.expo.requests).toHaveLength(2);
+      expect(dismissals()).toHaveLength(1);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("dismisses a thread notified only on web and desktop", async () => {
+    const host = await setup();
+    try {
+      const thread = host.setThread();
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: "Done",
+      });
+      await vi.waitFor(() => expect(host.clientSignals()).toHaveLength(1));
+
+      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
+        thread: { ...thread, lastReadAt: 200 },
+      });
+      await vi.waitFor(() =>
+        expect(
+          host.harness.realtimeSignals
+            .filter((signal) => signal.channel === "notification-dismiss")
+            .map((signal) => signal.payload),
+        ).toEqual([{ threadId: thread.id }]),
+      );
+      expect(host.expo.requests).toHaveLength(0);
     } finally {
       await host.cleanup();
     }

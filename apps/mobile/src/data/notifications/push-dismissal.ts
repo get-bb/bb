@@ -16,6 +16,10 @@ export interface PresentedPushNotification {
   data: unknown;
 }
 
+export function isDismissalPushData(data: unknown): boolean {
+  return dismissalSchema.safeParse(data).success;
+}
+
 export function parseDismissedThreadId(payload: unknown): string | null {
   const task = taskPayloadSchema.safeParse(payload);
   if (!task.success) return null;

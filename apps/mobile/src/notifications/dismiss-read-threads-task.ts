@@ -1,6 +1,5 @@
 import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
-import { Platform } from "react-native";
 import {
   parseDismissedThreadId,
   presentedNotificationIdsForThread,
@@ -38,10 +37,8 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(
   },
 );
 
-if (Platform.OS === "ios") {
-  Notifications.registerTaskAsync(DISMISS_READ_THREADS_TASK).catch(
-    (error: unknown) => {
-      console.warn("Could not register the notification dismissal task", error);
-    },
-  );
-}
+Notifications.registerTaskAsync(DISMISS_READ_THREADS_TASK).catch(
+  (error: unknown) => {
+    console.warn("Could not register the notification dismissal task", error);
+  },
+);
