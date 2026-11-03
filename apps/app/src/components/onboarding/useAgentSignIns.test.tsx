@@ -145,4 +145,31 @@ describe("useAgentSignIns", () => {
     expect([...result.current.signIns.keys()]).toEqual(["claude-code"]);
     expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
   });
+
+  it("clears every failed sign-in when the control guide starts another", async () => {
+    const { result } = renderSignIns(false);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+    act(() => result.current.handleExit("codex", 1));
+    expect(result.current.failedProviderIds.has("codex")).toBe(true);
+
+    await act(async () => {
+      await result.current.start("claude-code");
+    });
+    expect(result.current.failedProviderIds.size).toBe(0);
+  });
+
+  it("keeps another agent's failed sign-in in the redesign", async () => {
+    const { result } = renderSignIns(true);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+    act(() => result.current.handleExit("codex", 1));
+
+    await act(async () => {
+      await result.current.start("claude-code");
+    });
+    expect([...result.current.failedProviderIds]).toEqual(["codex"]);
+  });
 });

@@ -175,6 +175,7 @@ export function useAgentSignIns({
         if (other !== providerId) bumpRequest(other);
       }
       setStartingProviderIds(new Set());
+      setFailedProviderIds(new Set());
     }
     setFailedProviderIds((ids) => withoutKey(ids, providerId));
     const request = bumpRequest(providerId);
