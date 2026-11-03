@@ -519,6 +519,47 @@ jobs:
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
 
+  storybook:
+    name: Ladle build (ubuntu-latest, Node 22.x)
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).storybook }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace tools
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: storybook
+          turbo-cache: "true"
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh
+
+      - name: Build Ladle stories
+        run: pnpm exec turbo run storybook:build --filter=@bb/app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
+
   checks:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection).buildNeeded }}

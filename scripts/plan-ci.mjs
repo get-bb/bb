@@ -33,6 +33,7 @@ const full = {
   staticNeeded: true,
   appBuild: true,
   sdkBuild: true,
+  storybook: true,
   reason: "Full cross-platform coverage",
 };
 
@@ -89,6 +90,7 @@ function select() {
       staticNeeded: false,
       appBuild: false,
       sdkBuild: false,
+      storybook: false,
       reason: "CI and contributor documentation only",
     };
   }
@@ -183,6 +185,9 @@ function select() {
     ),
     sdkBuild: tasks.some(
       (task) => task.package === "@get-bb/plugin-sdk" && task.name === "build",
+    ),
+    storybook: tasks.some(
+      (task) => task.package === "@bb/app" && task.name === "storybook:build",
     ),
     buildFilters: filtersFor(buildPackages),
     staticFilters: filtersFor(staticPackages),

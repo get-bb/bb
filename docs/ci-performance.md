@@ -56,6 +56,18 @@ The plugin SDK version check in `version-lockstep.yml` checks out with
 runs fetch two levels of history and point the base branch ref at the tested
 merge's first parent; pushes fetch all branches and tags.
 
+## Ladle build
+
+`Ladle build` runs `turbo run storybook:build --filter=@bb/app` on its own
+runner, in parallel with the other checks, so a story that no longer builds
+fails CI. It runs when Turbo marks `@bb/app#storybook:build` affected: changes
+to `@bb/app`, its workspace dependencies (which include the Git, Composer,
+Automations and GitHub PR Status plugins whose stories Ladle loads), or the
+task's explicit inputs for the Provider Usage and Workflows stories. The task
+writes no outputs, so an unchanged input hash replays from the job's Turbo
+cache in under a second; a cold build is about 25 s of CPU. Setup and install
+dominate the job, and it finishes before the Checks and Tests jobs.
+
 ## Fork checks
 
 The Plugin Fork Check runs in three shards. On pull requests it checks only
