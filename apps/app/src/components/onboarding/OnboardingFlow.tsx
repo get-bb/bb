@@ -89,6 +89,8 @@ import {
 import {
   CONNECT_PLUGIN_ID,
   ONBOARDING_PLUGIN_MARKETPLACE,
+  ONBOARDING_STEPS,
+  STEP_COPY,
   connectAccessUrl,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
@@ -129,7 +131,12 @@ const INSTALL_FAILED_MESSAGE = "Install failed";
 const REDESIGN_INSTALL_FAILED_MESSAGE =
   "Couldn't install. Check your connection and retry.";
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
-const PHONE_MEDIA_QUERY = "(max-width: 640px) and (pointer: coarse)";
+const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
+const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
+
+function stepCopy(redesign: boolean, step: OnboardingStepId) {
+  return STEP_COPY[redesign ? "new" : "control"][step];
+}
 
 function decodeTerminalChunks(chunks: readonly TerminalOutputChunk[]): string {
   const decoder = new TextDecoder();
@@ -557,18 +564,12 @@ function AgentStepContainer({
     <OnboardingLayout
       {...chrome}
       step="agent"
-      title="Connect a coding agent"
-      description={
-        !redesign
-          ? "bb runs the agents you already use. You need one that is installed and signed in on this computer."
-          : "Agents run on your machine. bb needs one installed and signed in."
-      }
+      {...stepCopy(redesign, "agent")}
       footerNote={
         agentBlocked && !redesign
           ? "Threads can't start until one agent is ready."
           : null
       }
-      primaryLabel="Continue"
       primaryDisabled={agentContinueDisabled({
         redesign,
         agentReady,
@@ -711,19 +712,16 @@ function ProjectsStepContainer({
   };
 
   const scanning = hostId === null || reposQuery.isPending || rescanning;
+  const copy = stepCopy(redesign, "projects");
   return (
     <OnboardingLayout
       {...chrome}
       step="projects"
-      title="Add your projects"
-      description={
-        redesign
-          ? "Choose local Git repos used in the last 30 days."
-          : "Git repos on this computer that you've worked in over the last 30 days."
-      }
+      title={copy.title}
+      description={copy.description}
       primaryLabel={
         scanning || selectedPaths.size === 0
-          ? "Continue"
+          ? copy.primaryLabel
           : `Import ${selectedPaths.size} ${selectedPaths.size === 1 ? "project" : "projects"}`
       }
       primaryDisabled={scanning}
@@ -959,13 +957,7 @@ function PluginsStepContainer({
       {...chrome}
       step="plugins"
       width={redesign ? "wide" : "default"}
-      title="Make bb yours"
-      description={
-        redesign
-          ? "Customize almost everything in bb with plugins. Turn on a few, change them anytime."
-          : "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
-      }
-      primaryLabel="Continue"
+      {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
         if (redesign && !(entries ?? []).some(isEnabled)) onSkip();
@@ -1022,7 +1014,7 @@ function DevicesStepContainer({
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
-  const onPhone = useMediaQuery(PHONE_MEDIA_QUERY);
+  const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
   const location = useLocation();
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
@@ -1094,9 +1086,7 @@ function DevicesStepContainer({
         {...chrome}
         step="devices"
         width="wide"
-        title="Use bb away from this computer"
-        description="Start a task at your desk, then check on it from anywhere. Change these later in Settings."
-        primaryLabel="Start using bb"
+        {...stepCopy(redesign, "devices")}
         onPrimary={onFinish}
         onBack={onBack}
       >
@@ -1126,9 +1116,7 @@ function DevicesStepContainer({
     <OnboardingLayout
       {...chrome}
       step="devices"
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      {...stepCopy(redesign, "devices")}
       onPrimary={onFinish}
       onBack={onBack}
     >
@@ -1153,12 +1141,9 @@ function DevicesStepContainer({
   );
 }
 
-const STEP_ORDER: readonly OnboardingStepId[] = [
-  "agent",
-  "projects",
-  "plugins",
-  "devices",
-];
+const STEP_ORDER: readonly OnboardingStepId[] = ONBOARDING_STEPS.map(
+  (entry) => entry.id,
+);
 
 export function OnboardingFlow({
   initialStep,
@@ -1300,7 +1285,7 @@ export function OnboardingFlow({
     });
     onClose();
   };
-  const compact = useMediaQuery("(max-width: 640px)");
+  const compact = useMediaQuery(ONBOARDING_COMPACT_QUERY);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const windowState = useDesktopWindowState();
   const chrome: StepChrome = {

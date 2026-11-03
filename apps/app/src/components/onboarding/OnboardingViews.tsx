@@ -6,14 +6,17 @@ import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
 import {
+  CodeDisplay,
   DisclosureToggle,
   InlinePanel,
   InlineTextButton,
   InlineTextLink,
+  PasteCodeForm,
   SignInPanel,
   type SignInPanelVariant,
 } from "@bb/shared-ui/sign-in-panel";
 import {
+  SETUP_GUIDE_CONTAINER_CLASS,
   SetupOptionGroup,
   SetupOptionRow,
 } from "@bb/shared-ui/setup-option-row";
@@ -40,8 +43,11 @@ import {
 } from "./onboarding-model";
 import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
+const ONBOARDING_LIST_CLASS =
+  "divide-y divide-border-hairline rounded-lg border border-border";
+
 const CONTENT_COLUMN_CLASS =
-  "mx-auto w-full max-w-[600px] px-4 @xl/onboarding:px-6";
+  "mx-auto w-full max-w-150 px-4 @xl/onboarding:px-6";
 
 interface OnboardingLayoutProps {
   step: OnboardingStepId;
@@ -124,7 +130,10 @@ export function OnboardingLayout({
   return (
     <div
       data-testid="onboarding"
-      className="@container/onboarding flex min-h-0 flex-1 flex-col bg-background text-foreground"
+      className={cn(
+        SETUP_GUIDE_CONTAINER_CLASS,
+        "flex min-h-0 flex-1 flex-col bg-background text-foreground",
+      )}
     >
       <header
         className={cn(
@@ -288,15 +297,40 @@ export interface OnboardingAgent {
   expanded?: ReactNode;
 }
 
+const AGENT_STATUS_COPY = {
+  checking: "Checking…",
+  signedIn: "Signed in",
+  signInFailed: "Sign-in didn't finish · try again",
+  updateNeeded: "Update needed",
+  unknown: "Couldn't check this agent",
+} as const;
+
+function installActionLabel(
+  state: Extract<
+    AgentSetupState,
+    { status: "install" | "update" | "installFailed" | "installing" }
+  >,
+): string {
+  return state.status === "installFailed"
+    ? "Retry"
+    : state.status === "update"
+      ? "Update"
+      : "Install";
+}
+
+function terminalToggleLabel(terminalVisible: boolean): string {
+  return terminalVisible ? "Hide terminal" : "Show terminal";
+}
+
 function agentSubline(state: AgentSetupState): string {
   switch (state.status) {
     case "checking":
-      return "Checking…";
+      return AGENT_STATUS_COPY.checking;
     case "ready":
-      return state.detail ?? "Signed in";
+      return state.detail ?? AGENT_STATUS_COPY.signedIn;
     case "signIn":
       return state.reason === "failed"
-        ? "Sign-in didn't finish · try again"
+        ? AGENT_STATUS_COPY.signInFailed
         : state.reason === "expired"
           ? "Installed · your session expired"
           : "Installed · not signed in";
@@ -305,13 +339,13 @@ function agentSubline(state: AgentSetupState): string {
     case "install":
       return "Not installed";
     case "update":
-      return state.detail ?? "Update needed";
+      return state.detail ?? AGENT_STATUS_COPY.updateNeeded;
     case "installing":
       return "Installing…";
     case "installFailed":
       return state.message;
     case "unknown":
-      return state.message ?? "Couldn't check this agent";
+      return state.message ?? AGENT_STATUS_COPY.unknown;
   }
 }
 
@@ -321,28 +355,57 @@ function quietAgentSubline(
 ): string | null {
   switch (state.status) {
     case "checking":
-      return "Checking…";
+      return AGENT_STATUS_COPY.checking;
     case "ready":
       return (
-        state.detail ?? (setup === "connect" ? "Model connected" : "Signed in")
+        state.detail ??
+        (setup === "connect" ? "Model connected" : AGENT_STATUS_COPY.signedIn)
       );
     case "signIn":
       if (state.reason !== "failed") return null;
       return setup === "connect"
         ? "Connecting didn't finish · try again"
-        : "Sign-in didn't finish · try again";
+        : AGENT_STATUS_COPY.signInFailed;
     case "update":
-      return state.detail ?? "Update needed";
+      return state.detail ?? AGENT_STATUS_COPY.updateNeeded;
     case "installFailed":
       return state.message;
     case "unknown":
-      return state.message ?? "Couldn't check this agent";
+      return state.message ?? AGENT_STATUS_COPY.unknown;
     case "signingIn":
       return setup === "connect" ? "Finish connecting below" : null;
     case "install":
     case "installing":
       return null;
   }
+}
+
+function RowDismissButton({
+  label,
+  tooltip,
+  onClick,
+}: {
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-8 text-muted-foreground"
+          aria-label={label}
+          onClick={onClick}
+        >
+          <Icon name="X" aria-hidden />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function AgentActionButton({
@@ -529,13 +592,7 @@ function AgentRow({
               state.canInstall)) ? (
             <AgentActionButton
               agent={agent}
-              label={
-                state.status === "installFailed"
-                  ? "Retry"
-                  : state.status === "update"
-                    ? "Update"
-                    : "Install"
-              }
+              label={installActionLabel(state)}
               busyLabel={
                 agent.installQueued === true ? "Waiting…" : "Installing…"
               }
@@ -554,29 +611,16 @@ function AgentRow({
               onClick={() => onInstall(agent.id)}
             >
               <AgentActionIcon agent={agent} quiet={false} />
-              {state.status === "installFailed"
-                ? "Retry"
-                : state.status === "update"
-                  ? "Update"
-                  : "Install"}
+              {installActionLabel(state)}
             </Button>
           ) : null}
           {state.status === "signingIn" && !busy ? (
             quiet ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-muted-foreground"
-                    aria-label={`Cancel signing in to ${agent.name}`}
-                    onClick={() => onCancelSignIn(agent.id)}
-                  >
-                    <Icon name="X" aria-hidden />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Cancel</TooltipContent>
-              </Tooltip>
+              <RowDismissButton
+                label={`Cancel signing in to ${agent.name}`}
+                tooltip="Cancel"
+                onClick={() => onCancelSignIn(agent.id)}
+              />
             ) : (
               <Button
                 size="sm"
@@ -633,7 +677,7 @@ export function AgentStep({
         )}
       </div>
       {agents === null ? (
-        <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+        <ul className={ONBOARDING_LIST_CLASS}>
           {[0, 1, 2].map((index) => (
             <li key={index} className="flex items-center gap-3 px-3 py-3">
               <span className="size-6 rounded-md bg-state-hover" />
@@ -645,12 +689,7 @@ export function AgentStep({
           ))}
         </ul>
       ) : (
-        <ul
-          className={cn(
-            "divide-y divide-border-hairline rounded-lg border border-border",
-            quiet && "overflow-hidden",
-          )}
-        >
+        <ul className={cn(ONBOARDING_LIST_CLASS, quiet && "overflow-hidden")}>
           {agents.map((agent) => (
             <AgentRow
               key={agent.id}
@@ -732,22 +771,12 @@ export function AgentSignInGuide({
                   : `Finish signing in on the ${agentName} page.`}
             </p>
             {userCode === null ? null : (
-              <div className="flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-3">
-                <span
-                  aria-label={`${agentName} sign-in code`}
-                  className="select-all font-mono text-xl font-semibold tracking-widest"
-                >
-                  {userCode}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Copy sign-in code"
-                  onClick={() => onCopy(userCode)}
-                >
-                  <Icon name="Copy" aria-hidden />
-                </Button>
-              </div>
+              <CodeDisplay
+                code={userCode}
+                label={`${agentName} sign-in code`}
+                copyLabel="Copy sign-in code"
+                onCopy={onCopy}
+              />
             )}
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={() => onOpenUrl(url)}>
@@ -765,31 +794,12 @@ export function AgentSignInGuide({
               </Button>
             </div>
             {acceptsPastedCode && userCode === null ? (
-              <form
-                className="flex items-center gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  onSubmitCode();
-                }}
-              >
-                <input
-                  value={code}
-                  onChange={(event) => onCodeChange(event.target.value)}
-                  aria-label={`${agentName} authorization code`}
-                  placeholder="Paste the code here"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-xs outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  disabled={code.trim().length === 0}
-                >
-                  Complete
-                </Button>
-              </form>
+              <PasteCodeForm
+                label={`${agentName} authorization code`}
+                value={code}
+                onChange={onCodeChange}
+                onSubmit={onSubmitCode}
+              />
             ) : null}
           </>
         )}
@@ -818,7 +828,7 @@ export function AgentSignInGuide({
           onClick={onToggleTerminal}
           className="shrink-0 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
-          {terminalVisible ? "Hide terminal" : "Show terminal"}
+          {terminalToggleLabel(terminalVisible)}
         </button>
       </div>
     </div>
@@ -869,7 +879,7 @@ export function ProjectsStep({
           <Icon name="Spinner" aria-hidden className="size-3.5 animate-spin" />
           Looking for git repos you've touched recently…
         </div>
-        <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+        <ul className={ONBOARDING_LIST_CLASS}>
           {[0, 1, 2, 3].map((index) => (
             <li key={index} className="flex items-center gap-3 px-3 py-3">
               <span className="size-4 rounded-sm bg-state-hover" />
@@ -938,7 +948,7 @@ export function ProjectsStep({
           </button>
         </div>
       )}
-      <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+      <ul className={ONBOARDING_LIST_CLASS}>
         {selection === "header" ? (
           <li>
             <label
@@ -1228,7 +1238,7 @@ export function DevicesStep({
   onAddMachine,
 }: DevicesStepProps) {
   return (
-    <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+    <ul className={ONBOARDING_LIST_CLASS}>
       <DeviceRow
         icon="ComputerCloud"
         title="Open bb from any browser"
@@ -1451,7 +1461,7 @@ export function AgentSignInPanel({
             expanded={view.terminalVisible}
             onToggle={onToggleTerminal}
           >
-            {view.terminalVisible ? "Hide terminal" : "Show terminal"}
+            {terminalToggleLabel(view.terminalVisible)}
           </DisclosureToggle>
         }
         expanded={
@@ -1502,21 +1512,11 @@ export function RedesignedDevicesStep({
             actionStaysInline={open}
             action={
               open ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="size-8 text-muted-foreground"
-                      aria-label="Close adding a machine"
-                      onClick={onCloseAddMachine}
-                    >
-                      <Icon name="X" aria-hidden />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Close</TooltipContent>
-                </Tooltip>
+                <RowDismissButton
+                  label="Close adding a machine"
+                  tooltip="Close"
+                  onClick={onCloseAddMachine}
+                />
               ) : (
                 <Button
                   type="button"

@@ -2,7 +2,9 @@ import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import type {
   HostDiscoveredRepo,
   ServerAccessStatus,
+  SetupGuideVariant,
   SystemProviderState,
+  SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
@@ -19,16 +21,13 @@ export const ONBOARDING_STEPS: readonly {
 
 export const ONBOARDING_PLUGIN_MARKETPLACE = "bb-official";
 
-export const ONBOARDING_PLUGINS: readonly {
-  entryId: string;
-  pluginId: string;
-}[] = [
-  { entryId: "browser-automation", pluginId: "browser-automation" },
-  { entryId: "workflows", pluginId: "workflows" },
-  { entryId: "monaco-editor", pluginId: "monaco-editor" },
-  { entryId: "prompt-library", pluginId: "bb--prompt-library" },
-  { entryId: "agent-annotations", pluginId: "agent-annotations" },
-  { entryId: "ask-user-question", pluginId: "ask-user-question" },
+const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
+  "browser-automation",
+  "workflows",
+  "monaco-editor",
+  "prompt-library",
+  "agent-annotations",
+  "ask-user-question",
 ];
 
 export const CONNECT_PLUGIN_ID = "connect";
@@ -47,18 +46,72 @@ export function terminalConnectFlow(
   return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
 }
 
-type SetupGuideVariant = "control" | "new";
+export type SetupGuide = SystemSetupGuideResponse;
 
-export interface SetupGuide {
-  variant: SetupGuideVariant;
-  featuredPluginEntryIds: readonly string[] | null;
+interface StepCopy {
+  title: string;
+  description: string;
+  primaryLabel: string;
 }
 
+export const STEP_COPY: Readonly<
+  Record<SetupGuideVariant, Readonly<Record<OnboardingStepId, StepCopy>>>
+> = {
+  control: {
+    agent: {
+      title: "Connect a coding agent",
+      description:
+        "bb runs the agents you already use. You need one that is installed and signed in on this computer.",
+      primaryLabel: "Continue",
+    },
+    projects: {
+      title: "Add your projects",
+      description:
+        "Git repos on this computer that you've worked in over the last 30 days.",
+      primaryLabel: "Continue",
+    },
+    plugins: {
+      title: "Make bb yours",
+      description:
+        "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins.",
+      primaryLabel: "Continue",
+    },
+    devices: {
+      title: "Use bb from anywhere",
+      description:
+        "All optional. Everything here also lives in Settings → Machines.",
+      primaryLabel: "Start using bb",
+    },
+  },
+  new: {
+    agent: {
+      title: "Connect a coding agent",
+      description:
+        "Agents run on your machine. bb needs one installed and signed in.",
+      primaryLabel: "Continue",
+    },
+    projects: {
+      title: "Add your projects",
+      description: "Choose local Git repos used in the last 30 days.",
+      primaryLabel: "Continue",
+    },
+    plugins: {
+      title: "Make bb yours",
+      description:
+        "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
+      primaryLabel: "Continue",
+    },
+    devices: {
+      title: "Use bb away from this computer",
+      description:
+        "Start a task at your desk, then check on it from anywhere. Change these later in Settings.",
+      primaryLabel: "Start using bb",
+    },
+  },
+};
+
 export function featuredPluginEntryIds(guide: SetupGuide): readonly string[] {
-  return (
-    guide.featuredPluginEntryIds ??
-    ONBOARDING_PLUGINS.map((plugin) => plugin.entryId)
-  );
+  return guide.featuredPluginEntryIds ?? ONBOARDING_PLUGIN_ENTRY_IDS;
 }
 
 export type StepOutcome = "completed" | "skipped";

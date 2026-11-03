@@ -18,7 +18,11 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
+import {
+  STEP_COPY,
+  type AgentSetupState,
+  type OnboardingStepId,
+} from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
@@ -271,7 +275,7 @@ function Captioned({
 }) {
   return (
     <figure className="flex flex-col gap-2">
-      <figcaption className="flex max-w-[960px] flex-col gap-0.5">
+      <figcaption className="flex max-w-240 flex-col gap-0.5">
         <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="text-xs text-muted-foreground">{hint}</span>
       </figcaption>
@@ -321,12 +325,10 @@ function AgentFrame({
     <OnboardingLayout
       step="agent"
       compact={chrome.compact}
-      title="Connect a coding agent"
-      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
+      {...STEP_COPY.control.agent}
       footerNote={
         blocked ? "Threads can't start until one agent is ready." : null
       }
-      primaryLabel="Continue"
       primaryDisabled={loading || !ready}
       secondaryLabel={blocked ? "Skip for now" : undefined}
       onPrimary={chrome.onPrimary ?? noop}
@@ -370,11 +372,11 @@ function ProjectsFrame({
     <OnboardingLayout
       step="projects"
       compact={chrome.compact}
-      title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      title={STEP_COPY.control.projects.title}
+      description={STEP_COPY.control.projects.description}
       primaryLabel={
         scanning || selectedIds.size === 0
-          ? "Continue"
+          ? STEP_COPY.control.projects.primaryLabel
           : `Import ${selectedIds.size} projects`
       }
       primaryDisabled={scanning}
@@ -416,9 +418,7 @@ function PluginsFrame({
     <OnboardingLayout
       step="plugins"
       compact={chrome.compact}
-      title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
-      primaryLabel="Continue"
+      {...STEP_COPY.control.plugins}
       secondaryLabel="Skip"
       onPrimary={chrome.onPrimary ?? noop}
       onSecondary={chrome.onSecondary ?? noop}
@@ -464,9 +464,7 @@ function DevicesFrame({
     <OnboardingLayout
       step="devices"
       compact={chrome.compact}
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      {...STEP_COPY.control.devices}
       onPrimary={chrome.onPrimary ?? noop}
       onBack={chrome.onBack ?? noop}
       onSelectStep={chrome.onSelectStep ?? noop}
@@ -493,7 +491,7 @@ function DevicesFrame({
 
 function HomeFrame() {
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
+    <div className="mx-auto flex w-full max-w-190 flex-1 flex-col px-6 pt-14">
       <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
         The usual bb home composer goes here.
       </p>
@@ -1079,9 +1077,7 @@ function RedesignAgentFrame({
         step="agent"
         composition="centered"
         showSkipAll={false}
-        title="Connect a coding agent"
-        description={`Agents run on ${MACHINE_NAME}. bb needs one installed and signed in.`}
-        primaryLabel="Continue"
+        {...STEP_COPY.new.agent}
         onPrimary={noop}
         onSelectStep={noop}
         onSkipAll={noop}
@@ -1137,10 +1133,12 @@ export function RedesignProjects() {
         composition="centered"
         showSkipAll={false}
         skippedSteps={new Set()}
-        title="Add your projects"
-        description="Choose local Git repos used in the last 30 days."
+        title={STEP_COPY.new.projects.title}
+        description={STEP_COPY.new.projects.description}
         primaryLabel={
-          selected.size === 0 ? "Continue" : `Import ${selected.size} projects`
+          selected.size === 0
+            ? STEP_COPY.new.projects.primaryLabel
+            : `Import ${selected.size} projects`
         }
         onPrimary={noop}
         onBack={noop}
