@@ -7,8 +7,8 @@ export function useInView<T extends Element>(rootMargin = "0px") {
   useEffect(() => {
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry?.isIntersecting ?? false;
+      (entries) => {
+        const visible = entries.at(-1)?.isIntersecting ?? false;
         setInView(visible);
         if (visible) setSeen(true);
       },
@@ -28,7 +28,7 @@ function subscribeVisibility(onChange: () => void) {
 export function usePageHidden() {
   return useSyncExternalStore(
     subscribeVisibility,
-    () => document.visibilityState === "hidden",
+    () => document.hidden,
     () => false,
   );
 }

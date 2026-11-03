@@ -11,7 +11,10 @@ import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
+import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import CornerDownLeftIcon from "@hugeicons/core-free-icons/CornerDownLeftIcon";
+import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
+import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
 import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
 import FlaskConicalIcon from "@hugeicons/core-free-icons/FlaskConicalIcon";
@@ -42,6 +45,7 @@ import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import SquareGlyph from "@hugeicons/core-free-icons/SquareIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import UserGlyph from "@hugeicons/core-free-icons/UserIcon";
+import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect } from "react";
@@ -104,6 +108,10 @@ export const FileEditGlyph = glyph(FileEditIcon);
 export const PinGlyph = glyph(PinIcon);
 export const TestIcon = glyph(FlaskConicalIcon);
 export const MessageIcon = glyph(Message01Icon);
+export const SubagentIcon = glyph(UserAdd01Icon);
+export const FileReadIcon = glyph(File01Icon);
+export const EditFileIcon = glyph(Edit04Icon);
+export const CommandIcon = glyph(ComputerTerminal01Icon);
 
 export type ThreadState = "running" | "done" | "waiting";
 
@@ -275,14 +283,18 @@ export function NavRail({
   );
 }
 
-export function useFitMock(ref: RefObject<HTMLElement | null>) {
+export function useFitMock(
+  ref: RefObject<HTMLElement | null>,
+  { shrinkOnly = false }: { shrinkOnly?: boolean } = {},
+) {
   useEffect(() => {
     const mock = ref.current;
     const wrap = mock?.parentElement;
-    if (!mock || !wrap) {
+    if (!mock || !wrap || typeof ResizeObserver === "undefined") {
       return;
     }
     const fit = () => {
+      const mockStyle = getComputedStyle(mock);
       const wrapStyle = getComputedStyle(wrap);
       if (
         getComputedStyle(mock).getPropertyValue("--mock-fill").trim() === "1"
@@ -300,23 +312,34 @@ export function useFitMock(ref: RefObject<HTMLElement | null>) {
       }
       mock.style.removeProperty("--mock-fill-width");
       const visibleWidth = Number.parseFloat(
-        getComputedStyle(mock).getPropertyValue("--mock-visible-width"),
+        mockStyle.getPropertyValue("--mock-visible-width"),
       );
       if (!visibleWidth) {
         mock.style.removeProperty("--mock-scale");
         return;
       }
-      const slice =
+      const room =
         wrap.clientWidth -
         Number.parseFloat(wrapStyle.paddingLeft) -
         Number.parseFloat(wrapStyle.paddingRight);
-      mock.style.setProperty("--mock-scale", String(slice / visibleWidth));
+      if (shrinkOnly && !room) return;
+      const scale = shrinkOnly
+        ? Math.min(1, room / visibleWidth)
+        : room / visibleWidth;
+      mock.style.setProperty("--mock-scale", String(scale));
+      const width = Number.parseFloat(
+        mockStyle.getPropertyValue("--mock-width"),
+      );
+      if (!width) return;
+      const slice = Math.min(width, room / scale);
+      mock.style.setProperty("--mock-slice", `${slice}px`);
+      mock.style.setProperty("--mock-slice-ratio", String(slice / width));
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [ref]);
+  }, [ref, shrinkOnly]);
 }
 
 export function MockBubbleLines({

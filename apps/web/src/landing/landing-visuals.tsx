@@ -1,48 +1,54 @@
-import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
-import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
-import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
-import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
-import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
-import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
-import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
-import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
-import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
-import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
-import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
-import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
-import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
-import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
 import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
-import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
-import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
-import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
-import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
-import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
-import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import RoboticIcon from "@hugeicons/core-free-icons/RoboticIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode, RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { useExperiment } from "../experiments/use-experiment";
 import FilesEditorIcon from "../assets/plugin-icons/files-editor.svg";
 import TaskboardIcon from "../assets/plugin-icons/taskboard.svg";
+import {
+  BugIcon,
+  ChevronDown,
+  ChevronRight,
+  ClockIcon,
+  CloseIcon as ClearGlyph,
+  CommandIcon,
+  ComposerBox,
+  EditFileIcon,
+  FileReadIcon,
+  Ellipsis as MoreIcon,
+  GitBranchIcon,
+  LaptopGlyph,
+  Maximize2,
+  MicIcon,
+  MockBar,
+  type IconProps,
+  type NavLabel,
+  type ThreadState,
+  NavRail,
+  NewThreadIcon,
+  PanelIcon,
+  PanelRightIcon,
+  Paperclip,
+  PhoneIcon,
+  PlusIcon as PlusGlyph,
+  SearchIcon,
+  SendIcon,
+  Spinner,
+  StatusGlyph,
+  SubagentIcon,
+  TerminalIcon,
+  useFitMock,
+} from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DownloadLink, GitHubLink } from "./cta";
@@ -63,6 +69,7 @@ import {
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
+import { useActiveWhileVisible, usePageHidden } from "./visibility";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const simple = useExperiment("homepage-download-path") === "test";
@@ -305,34 +312,18 @@ export function Band({
   );
 }
 
-export function useCycle(
-  holdMs: number,
-  fadeMs: number,
-  ref?: RefObject<Element | null>,
-) {
+export function useCycle(holdMs: number, fadeMs: number, active?: boolean) {
   const [cycle, setCycle] = useState(0);
   const [leaving, setLeaving] = useState(false);
-  const [inView, setInView] = useState(ref === undefined);
-  useEffect(() => {
-    if (!ref) return;
-    const target = ref.current;
-    if (!target || typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      const latest = entries[entries.length - 1];
-      if (latest) setInView(latest.isIntersecting);
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [ref]);
+  const hidden = usePageHidden();
+  const gated = active !== undefined;
+  const running = (active ?? true) && !hidden;
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
-    if (!inView) return;
-    if (ref) {
+    if (!running) return;
+    if (gated) {
       setCycle((c) => c + 1);
       setLeaving(false);
     }
@@ -353,8 +344,8 @@ export function useCycle(
       window.clearTimeout(holdTimer);
       window.clearTimeout(fadeTimer);
     };
-  }, [holdMs, fadeMs, inView, ref]);
-  return { cycle, leaving, paused: !inView };
+  }, [holdMs, fadeMs, running, gated]);
+  return { cycle, leaving, paused: !running };
 }
 
 export function SpawnRow({
@@ -460,33 +451,6 @@ export function SpawnSidebar() {
     </div>
   );
 }
-
-type IconProps = { className?: string };
-
-const PanelIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SidebarLeftIcon} className={className} />
-);
-const ChevronRight = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowRight01Icon} className={className} />
-);
-const ChevronDown = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowDown01Icon} className={className} />
-);
-const Maximize2 = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowExpand01Icon} className={className} />
-);
-const Paperclip = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={AttachmentIcon} className={className} />
-);
-const SendIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowMoveDownLeftIcon} className={className} />
-);
-const GitBranchIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={GitBranchIcon_} className={className} />
-);
-const Spinner = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Loading03Icon} className={className} />
-);
 
 type CustomizeMessage = {
   role: "user" | "agent" | "tool";
@@ -716,75 +680,13 @@ export function CustomizeBuild() {
   );
 }
 
-const ClockIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Clock01Icon} className={className} />
-);
-const TerminalIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={CommandLineIcon} className={className} />
-);
-const DoneIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={CheckmarkCircle02Icon} className={className} />
-);
-const WaitingIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
-);
-const PhoneIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SmartPhone01Icon} className={className} />
-);
-const LaptopGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={LaptopIcon} className={className} />
-);
-const ChevronLeft = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowLeft01Icon} className={className} />
-);
-const MoreIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={MoreHorizontalIcon} className={className} />
-);
-const NewThreadIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
-);
-const PanelRightIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SidebarRightIcon} className={className} />
-);
-const PluginIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Plug02Icon} className={className} />
-);
-const SubagentIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={UserAdd01Icon} className={className} />
-);
-const MicIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Mic02Icon} className={className} />
-);
-const HomeIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Home01Icon} className={className} />
-);
-const SkillsIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ZapIcon} className={className} />
-);
-const AutomationsIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={RepeatIcon} className={className} />
-);
-const SettingsIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Settings01Icon} className={className} />
-);
-const BugIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Bug01Icon} className={className} />
-);
 const BbGlyph = ({ className }: IconProps) => (
   <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
 
-type ThreadState = "running" | "done" | "waiting";
-
-function StatusGlyph({ status }: { status: ThreadState }) {
-  if (status === "running") return <Spinner className="trun" />;
-  if (status === "done") return <DoneIcon className="tdone" />;
-  return <WaitingIcon className="twait" />;
-}
-
 type StatusStep = { status: ThreadState; at: number };
 
-function ThreadStatus({
+function RowStatus({
   status,
   then = [],
 }: {
@@ -830,46 +732,18 @@ function at(seconds: number): CSSProperties {
   return { "--fw-at": `${seconds}s` } as CSSProperties;
 }
 
-function WindowDots() {
-  return (
-    <span className="mock-dots" aria-hidden>
-      <i />
-      <i />
-      <i />
-    </span>
+function useMockWindow() {
+  const fitRef = useRef<HTMLDivElement | null>(null);
+  useFitMock(fitRef, { shrinkOnly: true });
+  const { ref: watch, active } = useActiveWhileVisible<HTMLDivElement>();
+  const ref = useCallback(
+    (el: HTMLDivElement | null) => {
+      fitRef.current = el;
+      watch(el);
+    },
+    [watch],
   );
-}
-
-function useFitWindow(ref: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const node = ref.current;
-    const frame = node?.parentElement;
-    if (!node || !frame || typeof ResizeObserver === "undefined") return;
-    const fit = () => {
-      const windowStyle = getComputedStyle(node);
-      const frameStyle = getComputedStyle(frame);
-      const width = Number.parseFloat(
-        windowStyle.getPropertyValue("--bw-width"),
-      );
-      const visible = Number.parseFloat(
-        windowStyle.getPropertyValue("--bw-visible-width"),
-      );
-      const room =
-        frame.clientWidth -
-        Number.parseFloat(frameStyle.paddingLeft) -
-        Number.parseFloat(frameStyle.paddingRight);
-      if (!width || !visible || !room) return;
-      const scale = Math.min(1, room / visible);
-      const slice = Math.min(width, room / scale);
-      node.style.setProperty("--bw-scale", String(scale));
-      node.style.setProperty("--bw-slice", `${slice}px`);
-      node.style.setProperty("--bw-slice-ratio", String(slice / width));
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [ref]);
+  return { ref, active };
 }
 
 function stageClass(base: string, leaving: boolean, paused: boolean) {
@@ -903,63 +777,15 @@ function WindowBar({
   panelOpen?: boolean;
 }) {
   return (
-    <div className="mock-bar">
-      <div className="bar-left">
-        <WindowDots />
-        <span className="bar-menu" aria-hidden>
-          <PanelIcon className="ri bar-ic" />
+    <MockBar>
+      <span className="bar-title">{title}</span>
+      <MoreIcon className="bar-kebab" />
+      <span className="bar-actions" aria-hidden>
+        <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
+          <PanelRightIcon className="ri" />
         </span>
-        <span className="bar-nav" aria-hidden>
-          <ChevronLeft className="ri" />
-          <ChevronRight className="ri" />
-        </span>
-      </div>
-      <div className="bar-main">
-        <span className="bar-title">{title}</span>
-        <MoreIcon className="bar-kebab" />
-        <span className="bar-actions" aria-hidden>
-          <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
-            <PanelRightIcon className="ri" />
-          </span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-type RailDestination = "home" | "plugins";
-
-function NavRail({
-  active = "home",
-  children,
-}: {
-  active?: RailDestination | null;
-  children?: ReactNode;
-}) {
-  const button = (destination: RailDestination) =>
-    destination === active ? "bw-rail-btn is-on" : "bw-rail-btn";
-  return (
-    <nav className="bw-rail" aria-hidden>
-      <span className={button("home")}>
-        <HomeIcon className="bw-rail-ic" />
       </span>
-      <span className={button("plugins")}>
-        <PluginIcon className="bw-rail-ic" />
-      </span>
-      <span className="bw-rail-btn">
-        <SkillsIcon className="bw-rail-ic" />
-      </span>
-      <span className="bw-rail-btn">
-        <AutomationsIcon className="bw-rail-ic" />
-      </span>
-      {children}
-      <span className="bw-rail-btn">
-        <MoreIcon className="bw-rail-ic" />
-      </span>
-      <span className="bw-rail-btn bw-rail-settings">
-        <SettingsIcon className="bw-rail-ic" />
-      </span>
-    </nav>
+    </MockBar>
   );
 }
 
@@ -969,7 +795,7 @@ function Sidebar({
   children,
 }: {
   rail?: ReactNode;
-  nav?: RailDestination;
+  nav?: NavLabel;
   children: ReactNode;
 }) {
   return (
@@ -1020,15 +846,15 @@ function ThreadRow({
         <span className="trow-title">{title}</span>
         {meta ? <span className="bw-meta">{meta}</span> : null}
       </span>
-      {status ? <ThreadStatus status={status} then={then} /> : null}
+      {status ? <RowStatus status={status} then={then} /> : null}
     </div>
   );
 }
 
-function ComposerBox({
+function WindowComposer({
   placeholder,
   model,
-  modelIcon: ModelIcon,
+  modelIcon,
   banner,
 }: {
   placeholder: string;
@@ -1039,36 +865,13 @@ function ComposerBox({
   return (
     <div className="composer">
       {banner}
-      <div className="composer-box">
-        <div className="composer-top">
-          <span className="composer-input bw-placeholder">{placeholder}</span>
-          <Maximize2 className="cb-expand" />
-        </div>
-        <div className="composer-row">
-          <span className="model">
-            <ModelIcon className="model-ic" />
-            {model}
-            <ChevronDown className="chev-sm" />
-          </span>
-          <span className="composer-actions" aria-hidden>
-            <Paperclip className="composer-clip" />
-            <MicIcon className="composer-clip" />
-            <span className="send-btn">
-              <SendIcon className="send-ic" />
-            </span>
-          </span>
-        </div>
-      </div>
+      <ComposerBox model={model} modelIcon={modelIcon}>
+        <span className="composer-input bw-placeholder">{placeholder}</span>
+        <Maximize2 className="cb-expand" />
+      </ComposerBox>
     </div>
   );
 }
-
-const PlusGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={PlusSignIcon} className={className} />
-);
-const ClearGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Cancel01Icon} className={className} />
-);
 
 type MorphScene = "stock" | "files" | "graph" | "taskboard" | "shelves";
 
@@ -1113,33 +916,11 @@ const MORPH_TITLES: Record<MorphCenter, string> = {
 
 type MorphState = { scene: number; previous: number | null };
 
-function useMorphTimeline(ref: RefObject<Element | null>) {
+function useMorphTimeline(active: boolean) {
   const [state, setState] = useState<MorphState>({
     scene: 0,
     previous: null,
   });
-  const [inView, setInView] = useState(false);
-  const [hidden, setHidden] = useState(false);
-  useEffect(() => {
-    const target = ref.current;
-    if (!target || typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      const latest = entries[entries.length - 1];
-      if (latest) setInView(latest.isIntersecting);
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [ref]);
-  useEffect(() => {
-    const sync = () => setHidden(document.hidden);
-    sync();
-    document.addEventListener("visibilitychange", sync);
-    return () => document.removeEventListener("visibilitychange", sync);
-  }, []);
-  const active = inView && !hidden;
   useEffect(() => {
     if (!active) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1334,7 +1115,7 @@ function MorphThread() {
           timeout to 30 seconds, added one retry, and the checkout tests pass.
         </div>
       </div>
-      <ComposerBox
+      <WindowComposer
         placeholder="Ask for a follow-up"
         model="Opus 5.5"
         modelIcon={ClaudeIcon}
@@ -1790,9 +1571,8 @@ function MorphAgentGraph() {
 }
 
 export function PluginMorph() {
-  const ref = useRef<HTMLDivElement>(null);
-  useFitWindow(ref);
-  const { scene, previous, paused } = useMorphTimeline(ref);
+  const { ref, active } = useMockWindow();
+  const { scene, previous, paused } = useMorphTimeline(active);
   const changing = previous !== null;
   const center = MORPH_CENTER[scene];
   const side = MORPH_SIDE[scene];
@@ -1828,17 +1608,17 @@ export function PluginMorph() {
           }
         />
         <div className="mock-body bw-body mx-body" aria-hidden>
-          <NavRail active={center === "thread" ? "home" : null}>
+          <NavRail active={center === "thread" ? "Home" : null}>
             {(["files-editor", "taskboard"] as const).map((id) => (
               <span
                 key={id}
                 className={
                   center === (id === "files-editor" ? "files" : id)
-                    ? "bw-rail-btn mx-rail-plugin is-on"
-                    : "bw-rail-btn mx-rail-plugin"
+                    ? "rail-btn mx-rail-plugin is-on"
+                    : "rail-btn mx-rail-plugin"
                 }
               >
-                <PluginMark id={id} className="bw-rail-ic" />
+                <PluginMark id={id} className="rail-ic" />
               </span>
             ))}
           </NavRail>
@@ -1957,9 +1737,8 @@ function ChildUpdate({
 const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
-  const ref = useRef<HTMLDivElement>(null);
-  useFitWindow(ref);
-  const { cycle, leaving, paused } = useCycle(14800, 700, ref);
+  const { ref, active } = useMockWindow();
+  const { cycle, leaving, paused } = useCycle(14800, 700, active);
   return (
     <div
       ref={ref}
@@ -2050,7 +1829,7 @@ export function DelegationTree() {
                 </ChildUpdate>
               </Reveal>
             </div>
-            <ComposerBox
+            <WindowComposer
               placeholder="Ask for a follow-up"
               model="Grok Build"
               modelIcon={GrokIcon}
@@ -2070,19 +1849,6 @@ export function DelegationTree() {
 }
 
 const START_PROMPT = "Hand this off to bb: fix the checkout bug";
-
-const FileReadIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={File01Icon} className={className} />
-);
-const SearchIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Search01Icon} className={className} />
-);
-const EditFileIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Edit04Icon} className={className} />
-);
-const CommandIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ComputerTerminal01Icon} className={className} />
-);
 
 type StartStep =
   | { at: number; say: string }
@@ -2148,9 +1914,8 @@ function PhoneStatusBar() {
 }
 
 export function StartAnywhere() {
-  const ref = useRef<HTMLDivElement>(null);
-  useFitWindow(ref);
-  const { cycle, leaving, paused } = useCycle(11800, 700, ref);
+  const { ref, active } = useMockWindow();
+  const { cycle, leaving, paused } = useCycle(11800, 700, active);
   return (
     <div
       ref={ref}
@@ -2226,7 +1991,7 @@ export function StartAnywhere() {
                   </Reveal>
                 ))}
               </div>
-              <ComposerBox
+              <WindowComposer
                 placeholder="Ask for a follow-up"
                 model="Codex"
                 modelIcon={OpenAiIcon}

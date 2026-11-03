@@ -55,7 +55,9 @@
      dark block pins it to black — a light-ink shadow on a dark canvas would
      read as a glow, not depth. */
   --shade: var(--ink);
-  --border: color-mix(in oklab, var(--ink) 14%, var(--bg));
+  --border-mix-light: 14%;
+  --border-mix-dark: 19.4%;
+  --border: color-mix(in oklab, var(--ink) var(--border-mix-light), var(--bg));
   --border-soft: color-mix(in oklab, var(--ink) 8%, var(--bg));
   --surface: color-mix(in oklab, var(--ink) 3.5%, var(--bg));
   --surface-recessed: color-mix(in oklab, var(--ink) 6%, var(--bg));
@@ -71,6 +73,35 @@
   --mock-active: color-mix(in oklab, var(--ink) 10%, transparent);
   --shadow-lift: 0 -4px 12px -4px
     color-mix(in oklab, var(--shade) 8%, transparent);
+  --shadow-pop: 0 18px 40px -18px
+    color-mix(in oklab, var(--shade) 45%, transparent);
+  --shadow-chip: 0 4px 12px -8px
+    color-mix(in oklab, var(--shade) 40%, transparent);
+  --shadow-phone:
+    inset 0 0 0 1.5px var(--phone-edge),
+    0 0 0 1px color-mix(in oklab, var(--shade) 18%, transparent),
+    0 40px 80px -30px color-mix(in oklab, var(--shade) 55%, transparent);
+  --ring-soft: 0 0 0 1px var(--border-soft);
+  --phone-body: #1b1b1d;
+  --phone-edge: #3a3a3e;
+  --phone-screen: #000;
+  --wrap-gutter: 28px;
+  --mock-text-2xs: 10.5px;
+  --mock-text-xs: 11px;
+  --mock-text-sm: 11.5px;
+  --mock-text-md: 12.5px;
+  --mock-text-base: 13px;
+  --mock-text-lg: 15px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-quick: 0.35s;
+  --dur-med: 0.5s;
+  --dur-slow: 0.6s;
   --mock-fold-dur: 900ms;
   --mock-fold-ease: cubic-bezier(0.45, 0, 0.2, 1);
   --mock-row-dur: 550ms;
@@ -105,7 +136,7 @@
   --heading-sub: oklch(0.88 0 0);
   --ink-strong: oklch(0.85 0 0);
   --shade: oklch(0 0 0);
-  --border: color-mix(in oklab, var(--ink) 19.4%, var(--bg));
+  --border: color-mix(in oklab, var(--ink) var(--border-mix-dark), var(--bg));
   --border-soft: color-mix(in oklab, var(--ink) 11%, var(--bg));
   --surface: color-mix(in oklab, var(--ink) 4.3%, var(--bg));
   --surface-recessed: color-mix(in oklab, var(--ink) 8%, var(--bg));
@@ -160,7 +191,7 @@ body {
 .wrap {
   max-width: 980px;
   margin: 0 auto;
-  padding: 0 28px;
+  padding: 0 var(--wrap-gutter);
 }
 
 /* ── Nav ────────────────────────────────────────────────────────── */
@@ -2646,12 +2677,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
 }
 
-/* ── Below-the-fold refresh (homepage-below-fold test arm) ──────── */
 
 .band-link {
   display: inline-block;
   margin-top: 14px;
-  font-size: 16px;
+  font-size: var(--text-lead);
   font-weight: 500;
   color: var(--ink);
   text-decoration: none;
@@ -2678,8 +2708,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .band-stacked.band-flip .band-visual {
   display: block;
   order: 1;
-  margin: 0 -28px;
-  padding-left: 28px;
+  margin: 0 calc(-1 * var(--wrap-gutter));
+  padding-left: var(--wrap-gutter);
   overflow-x: clip;
 }
 
@@ -2700,19 +2730,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* Each window keeps its full desktop layout at every width and is only
-   cropped on the right, like the hero mock on phones. useFitWindow sets
-   --bw-scale so a --bw-visible-width slice fills the space up to the
-   viewport edge (never scaling up), and --bw-slice to the window width
-   that slice shows, so overlays stay on screen. */
 .bw {
-  --fw-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --bw-width: 924px;
-  --bw-visible-width: 560px;
-  --bw-fit-slice: var(--bw-slice, min(var(--bw-width), 100vw - 28px));
+  --mock-width: 924px;
+  --mock-visible-width: 560px;
+  --bw-fit-slice: var(--mock-slice, min(var(--mock-width), 100vw - var(--wrap-gutter)));
   position: relative;
-  width: var(--bw-width);
-  zoom: var(--bw-scale, 1);
+  width: var(--mock-width);
+  zoom: var(--mock-scale, 1);
   text-align: left;
 }
 
@@ -2720,7 +2744,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 100%;
 }
 
-/* One window size for all three sections. */
 .bw .mock-body {
   height: 540px;
 }
@@ -2733,41 +2756,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 192px;
 }
 
-.bw-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+.bw .rail {
   width: 44px;
-  flex-shrink: 0;
   padding: 8px 0 10px;
   background: color-mix(in oklab, var(--ink) 4%, var(--surface));
 }
 
-.bw-rail-btn {
+.bw .rail-btn {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  color: var(--dim);
-}
-
-.bw-rail-btn.is-on {
-  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
-  color: var(--ink);
-}
-
-.bw-rail-ic {
-  width: 16px;
-  height: 16px;
-}
-
-.bw-rail-settings {
-  margin-top: auto;
 }
 
 .bw-side-foot {
@@ -2794,7 +2790,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw .trow.active,
 .bw .trow.active:hover {
-  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+  background: var(--mock-active);
 }
 
 .bw .bar-toggle {
@@ -2820,7 +2816,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   gap: 4px;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--subtle);
   white-space: nowrap;
 }
@@ -2829,8 +2825,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-/* Thread text starts at the composer box's left edge, 16px in from the
-   thread column, as in the app and the hero. */
 .bw-feed {
   gap: 0;
   padding: 18px 16px;
@@ -2857,7 +2851,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-reveal {
   display: grid;
   grid-template-rows: 1fr;
-  animation: bw-reveal 0.6s var(--fw-ease) var(--fw-at, 0s) both;
+  animation: bw-reveal var(--dur-slow) var(--ease-out-expo) var(--fw-at, 0s) both;
 }
 
 .bw-reveal-inner {
@@ -2866,7 +2860,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .leaving .bw-reveal {
-  animation: bw-collapse 0.6s var(--fw-ease) forwards;
+  animation: bw-collapse var(--dur-slow) var(--ease-out-expo) forwards;
 }
 
 @keyframes bw-reveal {
@@ -2884,11 +2878,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-fade {
-  animation: fw-fade-in 0.5s ease var(--fw-at, 0s) both;
+  animation: fw-fade-in var(--dur-med) ease var(--fw-at, 0s) both;
 }
 
 .leaving .bw-fade {
-  animation: fw-fade-out 0.6s ease forwards;
+  animation: fw-fade-out var(--dur-slow) ease forwards;
 }
 
 .bw-phases {
@@ -2904,18 +2898,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-phase-first {
   opacity: 0;
-  animation: bw-hide 0.35s ease var(--fw-out, 0s) both;
+  animation: bw-hide var(--dur-quick) ease var(--fw-out, 0s) both;
 }
 
 .bw-phase-mid {
   opacity: 0;
   animation:
-    bw-show 0.35s ease var(--fw-at, 0s) both,
-    bw-hide 0.35s ease var(--fw-out, 0s) forwards;
+    bw-show var(--dur-quick) ease var(--fw-at, 0s) both,
+    bw-hide var(--dur-quick) ease var(--fw-out, 0s) forwards;
 }
 
 .bw-phase-last {
-  animation: bw-show 0.35s ease var(--fw-at, 0s) both;
+  animation: bw-show var(--dur-quick) ease var(--fw-at, 0s) both;
 }
 
 @keyframes bw-show {
@@ -2968,12 +2962,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border: 1px solid var(--border-soft);
   border-radius: 10px;
   background: var(--surface);
-  font-size: 13px;
+  font-size: var(--mock-text-base);
   color: var(--ink-strong);
 }
 
 .bw-update-head {
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--subtle);
 }
 
@@ -3000,10 +2994,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-update code {
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--surface-recessed);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-label-small);
 }
 
 .bw-toast {
@@ -3017,28 +3011,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 300px;
   padding: 11px 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
-  box-shadow: 0 18px 40px -18px
-    color-mix(in oklab, var(--shade) 45%, transparent);
-  animation: bw-toast 0.7s var(--fw-ease) var(--fw-at, 0s) both;
+  box-shadow: var(--shadow-pop);
+  animation: bw-toast 0.7s var(--ease-out-expo) var(--fw-at, 0s) both;
 }
 
 .leaving .bw-toast {
-  animation: fw-fade-out 0.6s ease forwards;
+  animation: fw-fade-out var(--dur-slow) ease forwards;
 }
 
-/* Stop babysitting: by the end of the loop the first message has scrolled
-   above the feed. Collapsing the updates would pull it back down into view
-   just before the restart, so the feed fades out in place instead, and the
-   first message of the next loop glides up as it fades in. */
 .bw-lead .leaving .bw-feed > .bw-reveal,
 .bw-lead .leaving .bw-feed > .msg-user {
-  animation: fw-fade-out 0.6s ease forwards;
+  animation: fw-fade-out var(--dur-slow) ease forwards;
 }
 
 .bw-lead .bw-feed > .msg-user {
-  animation: bw-msg-in 0.7s var(--fw-ease) both;
+  animation: bw-msg-in 0.7s var(--ease-out-expo) both;
 }
 
 @keyframes bw-msg-in {
@@ -3058,7 +3047,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-toast-mark {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .bw-toast-text {
@@ -3069,12 +3058,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-toast-app {
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--subtle);
 }
 
 .bw-toast-body {
-  font-size: 13.5px;
+  font-size: var(--text-body-sm);
   font-weight: 500;
   color: var(--ink);
 }
@@ -3094,26 +3083,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-chip {
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
+  border-radius: var(--radius-pill);
+  font-size: var(--mock-text-xs);
   line-height: 16px;
 }
 
-/* Like most desktop + phone product shots, the phone (about 90% of the window
-   height) overlaps the window's bottom-right corner, half inside and half past
-   its right edge, and sits a little below it. The window is narrower than the
-   frame so the phone has room, and the thread keeps clear of the phone.
-   The phone shrinks as the visible slice of the frame narrows
-   (--bw-slice-ratio, from useFitWindow). When the slice is too narrow to show
-   the phone beside the thread (--bw-drop flips from 0 to 1), the phone drops
-   below the timeline instead of covering it. */
 .bw-start-stage {
   --bw-phone-size: 0.8;
   --bw-start-window: 780px;
   --bw-overlay-scale: calc(
-    clamp(0.74, var(--bw-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
+    clamp(0.74, var(--mock-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
   );
-  --bw-drop: clamp(0, (0.968 - var(--bw-slice-ratio, 1)) * 1000, 1);
+  --bw-drop: clamp(0, (0.968 - var(--mock-slice-ratio, 1)) * 1000, 1);
   --bw-stage-pad: calc(
     (1 - var(--bw-drop)) * 24px + var(--bw-drop) *
       (656px * var(--bw-overlay-scale) - 150px)
@@ -3133,9 +3114,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   );
 }
 
-/* An iPhone beside the window, sized by --bw-overlay-scale. The screen is laid out at the real
-   393 x 852 point size and scaled down, so the bb mobile UI keeps its true
-   proportions. */
 .bw-phone {
   --bw-phone-ui-scale: 0.748;
   position: absolute;
@@ -3146,11 +3124,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 656px;
   padding: 9px;
   border-radius: 50px;
-  background: #1b1b1d;
-  box-shadow:
-    inset 0 0 0 1.5px #3a3a3e,
-    0 0 0 1px color-mix(in oklab, var(--shade) 18%, transparent),
-    0 40px 80px -30px color-mix(in oklab, var(--shade) 55%, transparent);
+  background: var(--phone-body);
+  box-shadow: var(--shadow-phone);
   transform: scale(var(--bw-overlay-scale));
   transform-origin: right bottom;
 }
@@ -3184,8 +3159,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   left: 50%;
   width: 124px;
   height: 36px;
-  border-radius: 999px;
-  background: #000;
+  border-radius: var(--radius-pill);
+  background: var(--phone-screen);
   transform: translateX(-50%);
 }
 
@@ -3221,13 +3196,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   left: 50%;
   width: 139px;
   height: 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--heading);
   transform: translateX(-50%);
 }
 
-/* bb's thread view as the mobile app shows it: the web app in the native
-   shell, at its phone sizes (header 48px, 15px timeline, 48px composer). */
 .bw-m-head {
   display: flex;
   flex-shrink: 0;
@@ -3237,7 +3210,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding: 0 20px;
   border-bottom: 1px solid
     color-mix(in oklab, var(--border-soft) 60%, var(--bg));
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   color: var(--ink);
 }
 
@@ -3281,16 +3254,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-bottom: 6px;
   padding: 10px 16px;
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-recessed);
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   line-height: 1.625;
   color: var(--ink);
 }
 
 .bw-m-say {
   padding: 4px 8px;
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   line-height: 24px;
   color: var(--ink);
 }
@@ -3300,7 +3273,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   gap: 6px;
   padding: 0 8px;
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   line-height: 20px;
   color: var(--dim);
   white-space: nowrap;
@@ -3340,7 +3313,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   min-height: 28px;
   margin-top: 16px;
   padding: 0 8px;
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   line-height: 28px;
   color: var(--dim);
   -webkit-mask-image: linear-gradient(
@@ -3358,12 +3331,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   -webkit-mask-size: 300% 100%;
   mask-size: 300% 100%;
   animation:
-    fw-fade-in 0.5s ease var(--fw-at, 0s) both,
+    fw-fade-in var(--dur-med) ease var(--fw-at, 0s) both,
     bw-m-sweep 1s linear infinite;
 }
 
 .leaving .bw-m-working {
-  animation: fw-fade-out 0.6s ease forwards;
+  animation: fw-fade-out var(--dur-slow) ease forwards;
 }
 
 @keyframes bw-m-sweep {
@@ -3386,14 +3359,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin: 12px 16px 34px;
   padding: 0 4px 0 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
-  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 7%, transparent);
+  box-shadow: var(--shadow-lift);
 }
 
 .bw-m-placeholder {
   flex: 1;
-  font-size: 16px;
+  font-size: var(--text-lead);
   color: var(--subtle);
 }
 
@@ -3410,8 +3383,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
+  border-radius: var(--radius-sm);
+  background: var(--mock-active);
 }
 
 .bw-m-stop i {
@@ -3423,8 +3396,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 @media (max-width: 587px) {
   .bw {
-    --bw-fit-slice: var(--bw-slice, var(--bw-visible-width));
-    zoom: var(--bw-scale, 0.62);
+    --bw-fit-slice: var(--mock-slice, var(--mock-visible-width));
+    zoom: var(--mock-scale, 0.62);
   }
 }
 
@@ -4744,7 +4717,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-morph {
-  --bw-visible-width: 924px;
+  --mock-visible-width: 924px;
   --mx-canvas: var(--bg);
   --mx-ink: var(--ink);
   --mx-side: var(--surface);
@@ -4754,11 +4727,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-purple: oklch(0.55 0.17 300);
   --mx-red: var(--del);
   --mx-cyan: oklch(0.6 0.1 220);
-  --mx-line: 14%;
+  --mx-line: var(--border-mix-light);
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
   --mx-color-ms: 1s;
-  --mx-move: 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+  --mx-move: 0.9s var(--ease-in-out);
   transition:
     --mx-canvas var(--mx-color-ms) ease,
     --mx-ink var(--mx-color-ms) ease,
@@ -4775,7 +4748,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .dark .bw-morph.mx-stock {
-  --mx-line: 19.4%;
+  --mx-line: var(--border-mix-dark);
 }
 
 .bw-morph.mx-files {
@@ -4788,7 +4761,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-purple: #bb9af7;
   --mx-red: #f7768e;
   --mx-cyan: #7dcfff;
-  --mx-line: 19.4%;
+  --mx-line: var(--border-mix-dark);
 }
 
 .bw-morph.mx-graph {
@@ -4815,7 +4788,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-purple: #a37acc;
   --mx-red: #e65050;
   --mx-cyan: #22a4e6;
-  --mx-line: 14%;
+  --mx-line: var(--border-mix-light);
 }
 
 .bw-morph.mx-shelves {
@@ -4828,7 +4801,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-purple: #dfbfff;
   --mx-red: #ff6666;
   --mx-cyan: #73d0ff;
-  --mx-line: 19.4%;
+  --mx-line: var(--border-mix-dark);
   --mx-side-w: 256px;
 }
 
@@ -4872,7 +4845,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-window .bar-left {
   width: calc(44px + max(var(--mx-side-w), 128px));
-  transition: border-color 0.5s ease;
+  transition: border-color var(--dur-med) ease;
 }
 
 .mx-collapsed .mx-window .bar-left {
@@ -4880,10 +4853,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-window .bar-toggle,
-.mx-window .bw-rail-btn {
+.mx-window .rail-btn {
   transition:
-    background 0.5s ease,
-    color 0.5s ease;
+    background var(--dur-med) ease,
+    color var(--dur-med) ease;
 }
 
 .mx-titles {
@@ -4901,7 +4874,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-title.is-on {
   opacity: 1;
-  transition: opacity 0.35s ease 0.3s;
+  transition: opacity var(--dur-quick) ease 0.3s;
 }
 
 .mx-rail-plugin {
@@ -4913,7 +4886,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     height var(--mx-move),
     margin var(--mx-move),
     opacity 0.4s ease,
-    background 0.5s ease;
+    background var(--dur-med) ease;
 }
 
 .mx-rail-plugin.is-on {
@@ -4923,8 +4896,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   transition:
     height var(--mx-move),
     margin var(--mx-move),
-    opacity 0.5s ease 0.3s,
-    background 0.5s ease;
+    opacity var(--dur-med) ease 0.3s,
+    background var(--dur-med) ease;
 }
 
 .mx-side-slot,
@@ -4968,7 +4941,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-layer.is-entering {
-  animation: mx-enter 0.5s ease 0.1s both;
+  animation: mx-enter var(--dur-med) ease 0.1s both;
 }
 
 @keyframes mx-enter {
@@ -5038,23 +5011,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-recessed);
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--subtle);
   white-space: nowrap;
 }
 
 .mx-seg > span {
   padding: 3px 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .mx-seg > .is-on {
   background: var(--bg);
   color: var(--ink);
   font-weight: 500;
-  box-shadow: 0 0 0 1px var(--border-soft);
+  box-shadow: var(--ring-soft);
 }
 
 .mx-state {
@@ -5113,7 +5086,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 8px;
   height: 30px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--text-label-small);
   font-weight: 600;
   color: var(--ink);
 }
@@ -5130,9 +5103,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 7px;
   padding: 9px 11px;
   border: 1px solid var(--border-soft);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
-  font-size: 12px;
+  font-size: var(--text-label-small);
 }
 
 .mx-tb-key {
@@ -5145,7 +5118,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--mock-text-base);
   font-weight: 500;
   line-height: 1.3;
   color: var(--ink-strong);
@@ -5162,7 +5135,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-tb-label {
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface-recessed);
   color: var(--dim);
 }
@@ -5192,7 +5165,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-fe {
   display: flex;
   height: 100%;
-  font-size: 12px;
+  font-size: var(--text-label-small);
 }
 
 .mx-fe-tree {
@@ -5213,7 +5186,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--ink);
   white-space: nowrap;
@@ -5272,7 +5245,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 24px;
   padding-right: 6px;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   color: var(--ink);
   white-space: nowrap;
 }
@@ -5289,7 +5262,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin: 0 -8px;
   padding: 8px 10px;
   border-top: 1px solid var(--border-soft);
-  font-size: 10.5px;
+  font-size: var(--mock-text-2xs);
   color: var(--subtle);
   white-space: nowrap;
   overflow: hidden;
@@ -5359,7 +5332,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-fe-crumbs .mx-seg {
-  font-size: 11px;
+  font-size: var(--mock-text-xs);
 }
 
 .mx-fe-doc {
@@ -5380,25 +5353,25 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-fe-h2 {
   margin-top: 6px;
-  font-size: 15px;
+  font-size: var(--mock-text-lg);
   font-weight: 600;
   color: var(--ink-strong);
 }
 
 .mx-fe-p {
-  font-size: 13px;
+  font-size: var(--mock-text-base);
   line-height: 1.55;
 }
 
 .mx-fe-p code,
 .mx-fe-pre {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--mock-text-sm);
 }
 
 .mx-fe-p code {
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--surface-recessed);
 }
 
@@ -5408,7 +5381,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 3px;
   padding: 10px 12px;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -5429,13 +5402,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-sh-scope {
   justify-content: space-between;
   margin-top: 10px;
-  font-size: 12.5px;
+  font-size: var(--mock-text-md);
   color: var(--dim);
 }
 
 .mx-sh-shelf {
   margin: 14px 0 6px;
-  font-size: 11px;
+  font-size: var(--mock-text-xs);
 }
 
 .mx-sh-shelf > i {
@@ -5458,7 +5431,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-direction: column;
   gap: 2px;
   padding: 7px 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
 }
 
 .mx-sh-card.is-active {
@@ -5468,7 +5441,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-sh-proj {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: var(--mock-text-2xs);
   font-weight: 500;
   color: var(--subtle);
 }
@@ -5478,7 +5451,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-sh-title {
-  font-size: 13px;
+  font-size: var(--mock-text-base);
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -5490,7 +5463,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--mock-text-2xs);
   color: var(--subtle);
 }
 
@@ -5510,7 +5483,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   gap: 7px;
   padding: 5px 4px;
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--dim);
 }
 
@@ -5564,9 +5537,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   align-items: center;
   gap: 6px;
   padding: 4px 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-recessed);
-  font-size: 12px;
+  font-size: var(--text-label-small);
   color: var(--ink);
 }
 
@@ -5600,8 +5573,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-ag-tools .mx-seg {
   background: var(--bg);
-  box-shadow: 0 0 0 1px var(--border-soft);
-  font-size: 11px;
+  box-shadow: var(--ring-soft);
+  font-size: var(--mock-text-xs);
 }
 
 .mx-ag-edges {
@@ -5624,9 +5597,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding: 0 8px 0 9px;
   border: 1px solid var(--border-soft);
   border-left: 3px solid var(--mx-node);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
-  box-shadow: 0 4px 12px -8px color-mix(in oklab, var(--shade) 40%, transparent);
+  box-shadow: var(--shadow-chip);
 }
 
 .mx-ag-node.is-thread {
@@ -5655,7 +5628,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: color-mix(in oklab, var(--mx-node) 16%, var(--bg));
   color: var(--mx-node);
 }
@@ -5680,7 +5653,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-ag-title {
-  font-size: 11.5px;
+  font-size: var(--mock-text-sm);
   color: var(--ink);
 }
 
@@ -5708,16 +5681,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 7px;
   padding: 4px 9px;
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
-  font-size: 11px;
+  font-size: var(--mock-text-xs);
   color: var(--ink);
 }
 
 @media (max-width: 587px) {
   .bw.bw-morph {
-    --bw-visible-width: 400px;
-    zoom: var(--bw-scale, 0.88);
+    --mock-visible-width: 400px;
+    zoom: var(--mock-scale, 0.88);
   }
 
   .bw-morph {
