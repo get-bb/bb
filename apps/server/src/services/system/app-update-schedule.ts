@@ -85,6 +85,12 @@ export function createScheduledAppUpdateService(args: {
     shouldDefer: (runningThreadCount) => {
       if (starting !== schedule) return true;
       if (runningThreadCount === 0) return false;
+      if (!startInFlight) {
+        args.logger.info(
+          { runningThreadCount },
+          "Deferred the scheduled bb update until threads finish again",
+        );
+      }
       starting = null;
       waiting = schedule;
       args.notifyChanged();
@@ -151,6 +157,7 @@ export function createScheduledAppUpdateService(args: {
           change === "archived-changed",
       )
     ) {
+      args.notifyChanged();
       checkIdle();
     }
   });

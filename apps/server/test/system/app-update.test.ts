@@ -525,11 +525,12 @@ function createScheduledService(args: { runningThreads: number }) {
     notifyChanged: vi.fn(),
   });
   launcher.push({});
+  const notifyChanged = vi.fn();
   const service = createScheduledAppUpdateService({
     countRunningThreads: () => running.count,
     inner,
     logger: testLogger,
-    notifyChanged: vi.fn(),
+    notifyChanged,
     now: () => new Date("2026-10-23T00:00:00.000Z"),
     onChangedMessage: (listener) => {
       listeners.add(listener);
@@ -550,7 +551,7 @@ function createScheduledService(args: { runningThreads: number }) {
   };
   const applyRequests = () =>
     launcher.requests.filter((request) => request.type === "apply");
-  return { applyRequests, launcher, service, setRunningThreads };
+  return { applyRequests, launcher, notifyChanged, service, setRunningThreads };
 }
 
 describe("app update scheduled for when threads finish", () => {
@@ -612,6 +613,20 @@ describe("app update scheduled for when threads finish", () => {
     expect(
       (await service.getStatus({ forceRefresh: false })).scheduled,
     ).not.toBeNull();
+  });
+
+  it("tells clients the running thread count changed while it waits", async () => {
+    const { notifyChanged, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 2 });
+    await service.schedule();
+    notifyChanged.mockClear();
+
+    setRunningThreads(1);
+
+    expect(notifyChanged).toHaveBeenCalled();
+    expect(
+      (await service.getStatus({ forceRefresh: false })).runningThreadCount,
+    ).toBe(1);
   });
 
   it("starts at once when no thread is running", async () => {
