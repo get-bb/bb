@@ -244,7 +244,7 @@ describe("phone email arm placement", () => {
     expect(commandChoice).toContain("Intel Macs");
     expect(html.match(/class="install-choice"/g)).toHaveLength(1);
     expect(html).toContain(
-      '<span class="install-note touch-only">bb runs on macOS, Windows, and Linux</span>',
+      '<span class="install-note touch-only">We’ll email a link to open on your computer · macOS, Windows, Linux</span>',
     );
   });
 });

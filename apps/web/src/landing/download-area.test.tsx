@@ -71,6 +71,9 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
   it("gives a phone in both test arms the email form", () => {
     const html = heroHtml("email");
     expect(html).toContain("Other platforms");
+    expect(html.split('<span class="install-note touch-only">')[1]).toMatch(
+      /^We’ll email a link to open on your computer · macOS, Windows, Linux<\/span>/,
+    );
     expect(html).toContain('class="subscribe-form install-email touch-only"');
     expect(html).not.toContain("install-send");
   });
