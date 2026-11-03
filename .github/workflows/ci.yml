@@ -149,7 +149,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -201,7 +201,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -286,7 +286,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -361,7 +361,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
