@@ -2823,3 +2823,59 @@ it.each([false, true])(
     });
   },
 );
+
+it("records the removed workspace when its thread is unarchived during removal", async () => {
+  await withTestHarness(async (harness) => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const remove = vi.fn(async () => {
+      await gate;
+      return { status: "removed" as const };
+    });
+    const fixture = setup(harness, {
+      policy: { retireGraceMs: 0 },
+      remove,
+      restore: async () => ({
+        status: "created",
+        path: "/tmp/restored",
+        ownsPath: true,
+      }),
+    });
+    fixture.ask();
+    await fixture.settled();
+    const environmentId = fixture.attach();
+    harness.db
+      .update(threads)
+      .set({ environmentId, status: "idle" })
+      .where(eq(threads.id, fixture.thread.id))
+      .run();
+    const archive = await harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/archive-all`,
+      { method: "POST" },
+    );
+    expect(archive.status).toBe(200);
+    await expect.poll(() => remove.mock.calls.length).toBe(1);
+    const unarchive = await harness.app.request(
+      `/api/v1/threads/${fixture.thread.id}/unarchive`,
+      { method: "POST" },
+    );
+    expect(unarchive.status).toBe(200);
+    release();
+    await expect
+      .poll(() => getEnvironment(harness.db, environmentId)?.teardownStatus)
+      .toBe("removed");
+
+    expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+      status: "destroyed",
+      path: null,
+    });
+    const thread = getThread(harness.db, fixture.thread.id)!;
+    expect(thread.archivedAt).toBeNull();
+    expect(
+      toThreadResponseFromThread(harness.deps, { thread })
+        .canRestoreEnvironment,
+    ).toBe(true);
+  });
+});
