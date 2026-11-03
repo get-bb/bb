@@ -41,8 +41,6 @@ const TABLES: TableSpec[] = [
 
 type Row = Record<string, unknown>;
 
-const LABEL_SOURCE_TABLES = ["profile", "server", "machine"];
-
 const { values: args } = parseArgs({
   options: {
     d1: { type: "string" },
@@ -195,13 +193,34 @@ function sqliteLiteral(value: unknown): string {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+type Conflict = "update" | "nothing";
+
+const PG_MAX_PARAMS = 60_000;
+const PG_BATCH_ROWS = 500;
+
+async function pgBatch(
+  statements: { text: string; params: unknown[] }[],
+): Promise<void> {
+  await pg.queryArrays("BEGIN", []);
+  try {
+    await pg.queryArrays("SET LOCAL session_replication_role = replica", []);
+    for (const statement of statements) {
+      await pg.queryArrays(statement.text, statement.params);
+    }
+    await pg.queryArrays("COMMIT", []);
+  } catch (error) {
+    await pg.queryArrays("ROLLBACK", []).catch(() => undefined);
+    throw error;
+  }
+}
+
 function upsertSql(
   table: TableSpec,
-  row: Row,
+  rows: Row[],
   dialect: "sqlite" | "pg",
-  onConflict: "update" | "nothing",
+  onConflict: Conflict,
 ): { text: string; params: unknown[] } {
-  const columns = Object.keys(row);
+  const columns = Object.keys(rows[0] ?? {});
   const quoted = columns.map((column) => `"${column}"`).join(", ");
   const conflict = table.key.map((column) => `"${column}"`).join(", ");
   const updates = columns
@@ -213,22 +232,31 @@ function upsertSql(
       ? `ON CONFLICT (${conflict}) DO NOTHING`
       : `ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`;
   if (dialect === "sqlite") {
-    const values = columns.map((column) => sqliteLiteral(row[column]));
+    const tuples = rows.map(
+      (row) =>
+        `(${columns.map((column) => sqliteLiteral(row[column])).join(", ")})`,
+    );
     return {
-      text: `INSERT INTO "${table.name}" (${quoted}) VALUES (${values.join(", ")}) ${tail}`,
+      text: `INSERT INTO "${table.name}" (${quoted}) VALUES ${tuples.join(", ")} ${tail}`,
       params: [],
     };
   }
-  const values = columns.map((column) => {
-    const value = row[column];
-    if (table.booleans?.includes(column) && typeof value === "number") {
-      return value === 1;
-    }
-    return value;
+  const params: unknown[] = [];
+  const tuples = rows.map((row) => {
+    const placeholders = columns.map((column) => {
+      const value = row[column];
+      params.push(
+        table.booleans?.includes(column) && typeof value === "number"
+          ? value === 1
+          : value,
+      );
+      return `$${params.length}`;
+    });
+    return `(${placeholders.join(", ")})`;
   });
   return {
-    text: `INSERT INTO "${table.name}" (${quoted}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(", ")}) ${tail}`,
-    params: values,
+    text: `INSERT INTO "${table.name}" (${quoted}) VALUES ${tuples.join(", ")} ${tail}`,
+    params,
   };
 }
 
@@ -295,14 +323,15 @@ async function main(): Promise<void> {
 
   const targetDialect = from === "d1" ? "pg" : "sqlite";
   const onConflict = action === "backfill" ? "nothing" : "update";
-  const statements: { text: string; params: unknown[] }[] = [];
+  const deletes: { table: TableSpec; row: Row }[] = [];
   if (action === "repair") {
     for (const table of [...tables].reverse()) {
       for (const row of diffs.get(table.name)?.extra ?? []) {
-        statements.push(deleteSql(table, row, targetDialect));
+        deletes.push({ table, row });
       }
     }
   }
+  const writes: { table: TableSpec; rows: Row[]; onConflict: Conflict }[] = [];
   for (const table of tables) {
     const result = diffs.get(table.name);
     if (!result) continue;
@@ -310,38 +339,43 @@ async function main(): Promise<void> {
       action === "backfill" && table.name !== "label_claim"
         ? result.missing
         : [...result.missing, ...result.changed];
-    for (const row of rows) {
-      statements.push(
-        upsertSql(
-          table,
-          row,
-          targetDialect,
-          table.name === "label_claim" ? "update" : onConflict,
-        ),
-      );
-    }
+    if (rows.length === 0) continue;
+    writes.push({
+      table,
+      rows,
+      onConflict: table.name === "label_claim" ? "update" : onConflict,
+    });
   }
+  let wrote = 0;
   if (targetDialect === "sqlite") {
-    d1ExecFile(statements.map((statement) => statement.text));
+    const statements = [
+      ...deletes.map(({ table, row }) => deleteSql(table, row, "sqlite").text),
+      ...writes.flatMap(({ table, rows, onConflict: mode }) =>
+        rows.map((row) => upsertSql(table, [row], "sqlite", mode).text),
+      ),
+    ];
+    d1ExecFile(statements);
+    wrote = statements.length;
   } else {
-    await pg.queryArrays("BEGIN", []);
-    try {
-      for (const table of LABEL_SOURCE_TABLES) {
-        await pg.queryArrays(`ALTER TABLE "${table}" DISABLE TRIGGER USER`, []);
+    for (const { table, row } of deletes) {
+      await pgBatch([deleteSql(table, row, "pg")]);
+      wrote += 1;
+    }
+    for (const { table, rows, onConflict: mode } of writes) {
+      const columnCount = Object.keys(rows[0] ?? {}).length;
+      const size = Math.max(
+        1,
+        Math.min(PG_BATCH_ROWS, Math.floor(PG_MAX_PARAMS / columnCount)),
+      );
+      for (let start = 0; start < rows.length; start += size) {
+        const chunk = rows.slice(start, start + size);
+        await pgBatch([upsertSql(table, chunk, "pg", mode)]);
+        wrote += chunk.length;
       }
-      for (const statement of statements) {
-        await pg.queryArrays(statement.text, statement.params);
-      }
-      for (const table of LABEL_SOURCE_TABLES) {
-        await pg.queryArrays(`ALTER TABLE "${table}" ENABLE TRIGGER USER`, []);
-      }
-      await pg.queryArrays("COMMIT", []);
-    } catch (error) {
-      await pg.queryArrays("ROLLBACK", []).catch(() => undefined);
-      throw error;
+      console.log(`wrote ${table.name} ${rows.length}`);
     }
   }
-  console.log(JSON.stringify({ wrote: statements.length }));
+  console.log(JSON.stringify({ wrote }));
 }
 
 try {
