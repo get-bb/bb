@@ -448,8 +448,8 @@ export function ClaimField({
           <div className="mt-3.5">{submitButton}</div>
         ) : (
           <div className={DECISION_ROW_CLASS}>
-            {secondaryAction}
             {submitButton}
+            {secondaryAction}
           </div>
         )
       ) : (

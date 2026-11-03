@@ -487,7 +487,6 @@ function ChooseServerStep({
             ) : null}
             {error ? <ErrorBox>{error}</ErrorBox> : null}
             <div className={DECISION_ROW_CLASS}>
-              <DenyButton code={code} />
               <Button
                 className={DECISION_PRIMARY_CLASS}
                 type="submit"
@@ -503,6 +502,7 @@ function ChooseServerStep({
                     ? `Approve and replace ${hostOf(selectedServer.serverUrl)}`
                     : "Approve"}
               </Button>
+              <DenyButton code={code} />
             </div>
           </form>
         )}
