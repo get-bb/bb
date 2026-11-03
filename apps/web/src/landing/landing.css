@@ -3464,7 +3464,20 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   white-space: nowrap;
 }
 
+.bw-sp-select-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* At the panel's 300px width the search and filter buttons would squeeze
+   the change picker into the file count, so the graphic leaves them out. */
+.bw-sp-tool {
+  display: none;
+}
+
 .bw-sp-select-chev {
+  flex-shrink: 0;
   width: 13px;
   height: 13px;
   color: var(--dim);

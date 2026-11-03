@@ -2516,7 +2516,7 @@ function DiffToolbar({
   return (
     <div className="bw-sp-toolbar">
       <span className="bw-sp-select">
-        {selection}
+        <span className="bw-sp-select-label">{selection}</span>
         <ChevronDown className="bw-sp-select-chev" />
       </span>
       <span className="bw-sp-summary">{summary}</span>
