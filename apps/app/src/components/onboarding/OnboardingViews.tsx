@@ -288,19 +288,7 @@ export interface OnboardingAgent {
   expanded?: ReactNode;
 }
 
-function agentSubline(
-  state: AgentSetupState,
-  setup: "signIn" | "connect",
-): string {
-  if (setup === "connect") {
-    if (state.status === "signIn") {
-      return state.reason === "failed"
-        ? "Connecting didn't finish · try again"
-        : "Installed · no model connected";
-    }
-    if (state.status === "signingIn") return "Finish connecting below";
-    if (state.status === "ready") return state.detail ?? "Model connected";
-  }
+function agentSubline(state: AgentSetupState): string {
   switch (state.status) {
     case "checking":
       return "Checking…";
@@ -476,7 +464,7 @@ function AgentRow({
                     loudFailure && "text-destructive-text",
                   )}
                 >
-                  {quiet ? quietSubline : agentSubline(state, setup)}
+                  {quiet ? quietSubline : agentSubline(state)}
                 </ExpandableText>
               )}
             </span>
@@ -1342,22 +1330,13 @@ export interface AgentSignInView {
   started: boolean;
 }
 
-export function hasSignInInstruction(
-  view: AgentSignInView,
-  connect: boolean,
-): boolean {
-  return !connect && view.started;
-}
-
 export function AgentSignInInstruction({
-  connect,
   agentName,
   view,
   alternate,
   onOpenUrl,
   onUseAlternate,
 }: {
-  connect: boolean;
   agentName: string;
   view: AgentSignInView;
   alternate: "browser" | "code" | null;
@@ -1367,7 +1346,6 @@ export function AgentSignInInstruction({
   const url = view.guide?.url ?? null;
   const userCode = view.guide?.userCode ?? null;
   const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
-  if (connect) return null;
   if (url === null) {
     return view.terminalVisible ? (
       <>Sign in to {agentName} in the terminal below.</>

@@ -71,7 +71,6 @@ import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   AgentInstallErrorDetails,
   AgentSignInInstruction,
-  hasSignInInstruction,
   type AgentSignInView,
   AgentSignInGuide,
   AgentSignInPanel,
@@ -459,7 +458,7 @@ function AgentStepContainer({
             : null;
           const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady =
-            view !== null && hasSignInInstruction(view, connectFlow !== null);
+            view !== null && connectFlow === null && view.started;
           return {
             id: health.providerId,
             name: health.displayName,
@@ -476,7 +475,6 @@ function AgentStepContainer({
               view !== null &&
               instructionReady ? (
                 <AgentSignInInstruction
-                  connect={connectFlow !== null}
                   agentName={health.displayName}
                   view={view}
                   alternate={

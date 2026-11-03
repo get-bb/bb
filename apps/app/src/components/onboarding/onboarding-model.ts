@@ -47,7 +47,7 @@ export function terminalConnectFlow(
   return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
 }
 
-export type SetupGuideVariant = "control" | "new";
+type SetupGuideVariant = "control" | "new";
 
 export interface SetupGuide {
   variant: SetupGuideVariant;
