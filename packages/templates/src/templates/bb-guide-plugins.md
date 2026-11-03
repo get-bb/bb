@@ -145,6 +145,8 @@ Each bundled plugin documents its commands and behavior in its own skill.
   hosts while bb runs; closing the lid still sleeps.
   `bb keep-awake status|enable|disable [--json]`, `bb keep-awake hosts all`,
   or `bb keep-awake hosts <host-id>...`.
+- GitHub Star (builtin): asks once for a GitHub star after more than five
+  prompts. `bb plugin disable bb--github-star` stops it from asking.
 - Concurrency limit (builtin): caps running threads overall and per host.
   `bb concurrency-limit status|global|host`; see the `concurrency-limit`
   skill.
