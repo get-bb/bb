@@ -4503,6 +4503,24 @@ export function getLastStoredTurnRequestEvent(
   );
 }
 
+export function hasStoredTurnRequestEventSince(
+  db: DbQueryConnection,
+  args: { since: number; threadId: string },
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        sql`${events.threadId} = ${args.threadId}
+        AND ${events.type} = 'client/turn/requested'
+        AND ${events.createdAt} >= ${args.since}`,
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 interface ListStoredTaskTurnRequestEventsArgs {
   limit: number;
   order: "oldest" | "newest";

@@ -23,9 +23,11 @@ import {
   events,
   getEnvironment,
   getHost,
+  getLatestSessionForHost,
   getLatestThreadInterruptedReason,
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
+  hasStoredTurnRequestEventSince,
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
@@ -220,6 +222,11 @@ class InFlightRpcGuard {
 }
 
 const inFlightThreadRpcGuard = new InFlightRpcGuard();
+
+const stopsAwaitingDaemon = new Map<
+  string,
+  { hostId: string; sentAt: number }
+>();
 
 export function hasLiveThreadStartInFlight(threadId: string): boolean {
   return inFlightThreadRpcGuard.isHeld(threadId, "thread.start");
@@ -1020,6 +1027,9 @@ export async function prepareReadyThreadTurnCommand(
 export function settleThreadStopCommandResult(
   args: SettleThreadStopCommandResultArgs,
 ): CommandResultSideEffectsResult {
+  if (args.command.intent === "interrupt") {
+    rememberStopAwaitingDaemon(args);
+  }
   if (args.report.ok && args.report.result.activeTurnRetained !== true) {
     settleDanglingBackgroundTasksForStoppedThreadInTransaction(args.deps, {
       threadId: args.command.threadId,
@@ -1464,6 +1474,54 @@ function dispatchThreadStopCommand(
     .finally(() => {
       inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     });
+}
+
+function rememberStopAwaitingDaemon(
+  args: SettleThreadStopCommandResultArgs,
+): void {
+  const { hostId } = args.execution;
+  if (
+    !args.report.ok &&
+    args.report.errorCode === "host_unavailable" &&
+    getLatestSessionForHost(args.deps.db, { hostId })?.status === "active"
+  ) {
+    stopsAwaitingDaemon.set(args.command.threadId, {
+      hostId,
+      sentAt: args.execution.createdAt,
+    });
+    return;
+  }
+  stopsAwaitingDaemon.delete(args.command.threadId);
+}
+
+export function resendStopsAwaitingDaemon(
+  deps: CommandResultSideEffectsDeps,
+  hostId: string,
+): void {
+  for (const [threadId, awaiting] of stopsAwaitingDaemon) {
+    if (awaiting.hostId !== hostId) continue;
+    stopsAwaitingDaemon.delete(threadId);
+    const thread = getThread(deps.db, threadId);
+    if (
+      thread === null ||
+      thread.deletedAt !== null ||
+      thread.environmentId === null ||
+      (thread.status !== "idle" && thread.status !== "error") ||
+      hasStoredTurnRequestEventSince(deps.db, {
+        since: awaiting.sentAt,
+        threadId,
+      }) ||
+      !inFlightThreadRpcGuard.claim(threadId, "thread.stop")
+    ) {
+      continue;
+    }
+    dispatchThreadStopCommand(deps, {
+      environmentId: thread.environmentId,
+      hostId,
+      interruptionReason: "manual-stop",
+      threadId,
+    });
+  }
 }
 
 function requestPreStartThreadStop(
