@@ -13,14 +13,12 @@ import {
 } from "bb-environment-provider-host/branch-options";
 import {
   detectGitRepoKind,
-  readDefaultBranchRefs,
-} from "bb-environment-provider-host/workspace-git";
-import {
-  detectLinkedWorktree,
   getCheckoutRef,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
-} from "@bb/host-workspace";
+  readDefaultBranchRefs,
+} from "bb-environment-provider-host/workspace-git";
+import { detectLinkedWorktree } from "@bb/host-workspace";
 
 const NO_GIT_OPERATION: WorkspaceGitOperation = { kind: "none" };
 

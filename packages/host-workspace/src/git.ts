@@ -1,15 +1,13 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import type { ExecFileException } from "node:child_process";
 import { execHostFileBuffer, runVcsProcess } from "@bb/process-utils";
-import type { GitCheckoutRef, WorkspaceGitOperation } from "@bb/domain";
 import {
   createGitCommandFailedError,
-  detectGitSource,
   ensureGitRepo,
   type GitProcessOptions,
   type GitTimeoutOptions,
   parseOriginHeadBranchName,
+  pathExists,
   resolveGitProcessEnv,
   resolvePreferredLocalDefaultBranch,
   runGit,
@@ -29,79 +27,12 @@ function isMaxBufferExceededError(error: unknown): boolean {
   );
 }
 
-async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-type ActiveWorkspaceGitOperationKind = Exclude<
-  WorkspaceGitOperation["kind"],
-  "none" | "unknown"
->;
-
-interface WorkspaceGitOperationMarker {
-  kind: ActiveWorkspaceGitOperationKind;
-  markerNames: string[];
-}
-
-const CONFLICT_PORCELAIN_STATUSES = new Set<string>([
-  "DD",
-  "AU",
-  "UD",
-  "UA",
-  "DU",
-  "AA",
-  "UU",
-]);
-
-const WORKSPACE_GIT_OPERATION_MARKERS: WorkspaceGitOperationMarker[] = [
-  { kind: "rebase", markerNames: ["rebase-merge", "rebase-apply"] },
-  { kind: "merge", markerNames: ["MERGE_HEAD"] },
-  { kind: "cherry-pick", markerNames: ["CHERRY_PICK_HEAD"] },
-  { kind: "revert", markerNames: ["REVERT_HEAD"] },
-];
-
 function isMissingGitBlobTargetError(stderr: string): boolean {
   return (
     /^fatal: path '.+' does not exist in '.+'$/u.test(stderr) ||
     /^fatal: invalid object name '.+'\.$/u.test(stderr) ||
     /^fatal: Not a valid object name .+$/u.test(stderr)
   );
-}
-
-export async function getAbsoluteGitDir(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<string> {
-  const result = await runGit(["rev-parse", "--absolute-git-dir"], {
-    cwd,
-    ...options,
-  });
-  const gitDir = result.stdout.trim();
-  if (!gitDir) {
-    throw new WorkspaceError(
-      "git_command_failed",
-      `git rev-parse --absolute-git-dir returned no path for ${cwd}`,
-    );
-  }
-  return path.resolve(gitDir);
-}
-
-async function findWorkspaceGitOperationMarker(
-  gitDir: string,
-): Promise<WorkspaceGitOperationMarker | undefined> {
-  for (const marker of WORKSPACE_GIT_OPERATION_MARKERS) {
-    for (const markerName of marker.markerNames) {
-      if (await pathExists(path.join(gitDir, markerName))) {
-        return marker;
-      }
-    }
-  }
-  return undefined;
 }
 
 export async function inspectGitRepository(
@@ -173,107 +104,6 @@ export async function detectLinkedWorktree(
     return false;
   }
   return gitDirResult.stdout.trim().includes("/worktrees/");
-}
-
-async function readHeadSha(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<string | null> {
-  const result = await runGit(["rev-parse", "--verify", "HEAD"], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (result.exitCode !== 0) {
-    return null;
-  }
-
-  const sha = trimOutput(result.stdout);
-  return sha || null;
-}
-
-export async function getCheckoutRef(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<GitCheckoutRef> {
-  if (!(await detectGitSource(cwd, options))) {
-    return { kind: "unknown", reason: "Path is not a git repository" };
-  }
-
-  const [symbolicRef, headSha] = await Promise.all([
-    runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
-      cwd,
-      ...options,
-      allowFailure: true,
-    }),
-    readHeadSha(cwd, options),
-  ]);
-
-  const branchName = trimOutput(symbolicRef.stdout);
-  if (symbolicRef.exitCode === 0 && branchName) {
-    if (headSha === null) {
-      return { kind: "unborn", branchName };
-    }
-    return { kind: "branch", branchName, headSha };
-  }
-
-  if (headSha !== null) {
-    return { kind: "detached", headSha };
-  }
-
-  return {
-    kind: "unknown",
-    reason: "HEAD is not symbolic and no commit is checked out",
-  };
-}
-
-function hasPorcelainConflict(statusOutput: string): boolean {
-  return statusOutput.split("\n").some((line) => {
-    const status = line.slice(0, 2);
-    return status.includes("U") || CONFLICT_PORCELAIN_STATUSES.has(status);
-  });
-}
-
-function buildActiveWorkspaceGitOperation(
-  kind: ActiveWorkspaceGitOperationKind,
-  hasConflicts: boolean,
-): WorkspaceGitOperation {
-  switch (kind) {
-    case "merge":
-      return { kind: "merge", hasConflicts };
-    case "rebase":
-      return { kind: "rebase", hasConflicts };
-    case "cherry-pick":
-      return { kind: "cherry-pick", hasConflicts };
-    case "revert":
-      return { kind: "revert", hasConflicts };
-  }
-}
-
-export async function getWorkspaceGitOperation(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<WorkspaceGitOperation> {
-  await ensureGitRepo(cwd, options);
-
-  const [gitDir, status] = await Promise.all([
-    getAbsoluteGitDir(cwd, options),
-    runGit(
-      [
-        "--no-optional-locks",
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=all",
-      ],
-      { cwd, ...options },
-    ),
-  ]);
-  const hasConflicts = hasPorcelainConflict(status.stdout);
-  const marker = await findWorkspaceGitOperationMarker(gitDir);
-  if (!marker) {
-    return { kind: "none" };
-  }
-  return buildActiveWorkspaceGitOperation(marker.kind, hasConflicts);
 }
 
 export interface SharedGitRefsSnapshot {
@@ -451,21 +281,4 @@ export async function readGitBlob(
       error,
     );
   }
-}
-
-export async function hasUncommittedChanges(
-  cwd: string,
-  options: GitProcessOptions = {},
-): Promise<boolean> {
-  await ensureGitRepo(cwd, options);
-  const status = await runGit(
-    [
-      "--no-optional-locks",
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
-    ],
-    { cwd, ...options },
-  );
-  return status.stdout.trim().length > 0;
 }

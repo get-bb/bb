@@ -5,10 +5,11 @@ import {
   type GitTimeoutOptions,
   type DefaultBranchRefs,
   createGitQueries,
+  pathExists,
   runGit as runSharedGit,
   trimOutput,
 } from "./workspace-git.js";
-export { WorkspaceError };
+export { pathExists, WorkspaceError };
 export type { GitCommandResult, GitProcessOptions, DefaultBranchRefs };
 
 export interface RunGitOptions extends GitProcessOptions {
@@ -70,8 +71,11 @@ export const {
   detectGitRepo,
   detectGitSource,
   ensureGitRepo,
+  getCheckoutRef,
   getCurrentBranch,
   getGitCommonDir,
+  getWorkspaceGitOperation,
+  hasUncommittedChanges,
   hasRef,
   readBranchRelation,
   readDefaultBranch,

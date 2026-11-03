@@ -10,13 +10,12 @@ import {
   it,
   vi,
 } from "vitest";
-import { runGit } from "bb-environment-provider-host/workspace-git";
 import {
-  detectLinkedWorktree,
   getCheckoutRef,
   getWorkspaceGitOperation,
-  readGitBlob,
-} from "../src/git.js";
+  runGit,
+} from "bb-environment-provider-host/workspace-git";
+import { detectLinkedWorktree, readGitBlob } from "../src/git.js";
 
 const tempDirs: string[] = [];
 

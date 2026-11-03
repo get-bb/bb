@@ -3,8 +3,10 @@ import {
   withProcessLocalQueuedLocks,
   type ProcessLocalQueuedLockWork,
 } from "bb-environment-provider-host/process-local-lock";
-import type { GitProcessOptions } from "bb-environment-provider-host/workspace-git";
-import { getAbsoluteGitDir } from "./git.js";
+import {
+  getAbsoluteGitDir,
+  type GitProcessOptions,
+} from "bb-environment-provider-host/workspace-git";
 
 export async function withCheckoutMutationLock<T>(
   checkoutPath: string,
