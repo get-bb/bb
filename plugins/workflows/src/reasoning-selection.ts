@@ -16,12 +16,15 @@ export function resolveWorkflowReasoning(
   ) {
     return requested;
   }
+  if (inherited) {
+    return model.defaultReasoningEffort;
+  }
   if (
     model.reasoningDiscovery === "known" &&
     model.supportedReasoningEfforts.length === 0 &&
-    (inherited || requested === model.defaultReasoningEffort)
+    requested === model.defaultReasoningEffort
   ) {
-    return model.defaultReasoningEffort;
+    return requested;
   }
   return null;
 }

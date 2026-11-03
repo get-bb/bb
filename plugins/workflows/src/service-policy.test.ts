@@ -274,13 +274,72 @@ describe("workflow service policy integration", () => {
   });
 
   it.each([
-    { parentReasoning: "medium", discovery: "known", explicit: false },
-    { parentReasoning: "high", discovery: "known", explicit: false },
-    { parentReasoning: "medium", discovery: "known", explicit: true },
-    { parentReasoning: "medium", discovery: "unknown", explicit: false },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "high",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "unknown",
+      efforts: [],
+      parent: "medium",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "low",
+      requested: null,
+      resolved: "low",
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "xhigh",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: "medium",
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: "high",
+      resolved: null,
+    },
+    {
+      discovery: "unknown",
+      efforts: [],
+      parent: "medium",
+      requested: "medium",
+      resolved: null,
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "medium",
+      requested: "xhigh",
+      resolved: null,
+    },
   ] as const)(
-    "handles native reasoning defaults: $discovery/$parentReasoning/explicit=$explicit",
-    async ({ parentReasoning, discovery, explicit }) => {
+    "resolves reasoning: $discovery/$efforts parent=$parent requested=$requested",
+    async ({ discovery, efforts, parent, requested, resolved }) => {
       const test = setup();
       harnesses.push(test.harness);
       test.harness.sdk.stub("providers.models", async () => ({
@@ -289,7 +348,10 @@ describe("workflow service policy integration", () => {
           {
             ...model(),
             reasoningDiscovery: discovery,
-            supportedReasoningEfforts: [],
+            supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
+              reasoningEffort,
+              description: "test",
+            })),
           },
         ],
         selectedOnlyModels: [],
@@ -297,22 +359,22 @@ describe("workflow service policy integration", () => {
       }));
       test.harness.sdk.stub("threads.defaultExecutionOptions", async () => ({
         model: "gpt-test",
-        reasoningLevel: parentReasoning,
+        reasoningLevel: parent,
         permissionMode: "full",
         serviceTier: "default",
         source: "default",
       }));
       const run = await test.start(
         source(
-          explicit
-            ? 'return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "medium" });'
-            : 'return await agent("review");',
+          requested === null
+            ? 'return await agent("review");'
+            : `return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "${requested}" });`,
         ),
       );
       const controller = new AbortController();
       const worker = test.service.runWorker(controller.signal);
       try {
-        if (discovery === "unknown") {
+        if (resolved === null) {
           await eventually(() =>
             expect(getRunRequired(test.db, run.id).status).toBe("failed"),
           );
@@ -331,11 +393,11 @@ describe("workflow service policy integration", () => {
           {
             providerId: "codex",
             model: "gpt-test",
-            reasoningLevel: "medium",
+            reasoningLevel: resolved,
           },
         );
         expect(getCall(test.db, run.id, 0)).toMatchObject({
-          resolvedReasoningLevel: "medium",
+          resolvedReasoningLevel: resolved,
         });
         test.service.onThreadIdle("child-1", "completed");
         await eventually(() =>
