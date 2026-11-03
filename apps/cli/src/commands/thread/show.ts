@@ -14,7 +14,7 @@ import {
   gitStatusResultSchema,
 } from "bb-plugin-bb--git/contract";
 import { prependOlderTimelineRows } from "@bb/client-core";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   formatThreadTimelineText,
   type ThreadTimelineTextFormat,
@@ -210,6 +210,49 @@ function threadShowEnvironmentJson(
   };
 }
 
+function usedDeprecatedGitFlags(opts: ThreadShowCommandOptions): string[] {
+  return [
+    opts.workStatus && "--work-status",
+    opts.gitDiff && "--git-diff",
+    opts.diffTarget !== undefined && "--diff-target",
+    opts.diffSha !== undefined && "--diff-sha",
+    opts.diffMergeBase !== undefined && "--diff-merge-base",
+  ].filter((flag): flag is string => typeof flag === "string");
+}
+
+function deprecatedGitFlagsNotice(args: {
+  opts: ThreadShowCommandOptions;
+  usedFlags: string[];
+  environmentId: string | null;
+  environmentMergeBaseBranch: string | undefined;
+}): string {
+  const { opts, usedFlags } = args;
+  const environmentId = args.environmentId ?? "<environment-id>";
+  const json = opts.json ? " --json" : "";
+  const commands: string[] = [];
+  if (opts.workStatus) {
+    commands.push(
+      `bb git status ${environmentId} --merge-base-branch ${args.environmentMergeBaseBranch ?? "<branch>"}${json}`,
+    );
+  }
+  if (usedFlags.some((flag) => flag !== "--work-status")) {
+    const target = (opts.diffTarget ?? "all").trim();
+    const targetArgs =
+      target === "commit"
+        ? ` --sha ${opts.diffSha ?? "<sha>"}`
+        : target === "uncommitted"
+          ? ""
+          : ` --merge-base-branch ${opts.diffMergeBase ?? args.environmentMergeBaseBranch ?? "<branch>"}`;
+    commands.push(
+      `bb git diff ${environmentId} --target ${target}${targetArgs}${json}`,
+    );
+  }
+  return [
+    `bb thread show ${usedFlags.join(", ")} ${usedFlags.length === 1 ? "is" : "are"} deprecated and will be removed. Use:`,
+    ...commands.map((command) => `  ${command}`),
+  ].join("\n");
+}
+
 export function registerShowCommand(
   parent: Command,
   getUrl: () => string,
@@ -220,18 +263,11 @@ export function registerShowCommand(
     .description("Show thread details and pull request status")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
-    .option("--work-status", "Include work status (git state) in output")
-    .option("--git-diff", "Include git diff in output")
-    .option(
-      "--diff-target <type>",
-      "Diff target: uncommitted, branch_committed, all, or commit (used with --git-diff)",
-      "all",
-    )
-    .option("--diff-sha <sha>", "Commit SHA for --diff-target commit")
-    .option(
-      "--diff-merge-base <branch>",
-      "Merge base branch for --diff-target branch_committed or all",
-    )
+    .addOption(new Option("--work-status").hideHelp())
+    .addOption(new Option("--git-diff").hideHelp())
+    .addOption(new Option("--diff-target <type>").hideHelp())
+    .addOption(new Option("--diff-sha <sha>").hideHelp())
+    .addOption(new Option("--diff-merge-base <branch>").hideHelp())
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
@@ -252,6 +288,19 @@ export function registerShowCommand(
           });
           return environment;
         };
+        const deprecatedFlags = usedDeprecatedGitFlags(opts);
+        if (deprecatedFlags.length > 0) {
+          console.error(
+            deprecatedGitFlagsNotice({
+              opts,
+              usedFlags: deprecatedFlags,
+              environmentId: thread.environmentId,
+              environmentMergeBaseBranch: resolveEnvironmentMergeBaseBranch(
+                await getEnvironment(),
+              ),
+            }),
+          );
+        }
         const requireMergeBaseBranch = async (override?: string) => {
           const environment = await getEnvironment();
           const mergeBaseBranch =
