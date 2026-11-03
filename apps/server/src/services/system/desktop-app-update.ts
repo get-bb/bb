@@ -115,6 +115,7 @@ export function createDesktopAppUpdateService(args: {
       available:
         info?.updateAvailable === true && version !== null
           ? {
+              behindSince: null,
               channel: isNightlyAppVersion(version) ? "nightly" : "latest",
               commit: null,
               commitCount: null,

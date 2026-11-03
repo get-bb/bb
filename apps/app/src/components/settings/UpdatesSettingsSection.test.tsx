@@ -333,6 +333,7 @@ function makeAppUpdateStatus(
   return {
     activity: { phase: "idle" },
     available: {
+      behindSince: null,
       channel: "latest",
       commit: null,
       commitCount: null,
@@ -768,6 +769,7 @@ The published lede.
 
       it("lists the incoming commits instead of the installed release's notes", async () => {
         useSourceCheckout("0.48.0", {
+          behindSince: "2026-11-02T12:00:00.000Z",
           channel: "main",
           commit: TO,
           commitCount: 41,
@@ -2623,6 +2625,7 @@ The published lede.
         makeAppUpdateStatus({
           available: incoming
             ? {
+                behindSince: "2026-11-02T12:00:00.000Z",
                 channel: "main",
                 commit: "b".repeat(40),
                 commitCount: 3,

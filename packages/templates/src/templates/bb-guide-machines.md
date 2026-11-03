@@ -129,7 +129,8 @@ CLI counterpart of Settings → Updates.
     --machine <id-or-name>                Limit to one machine
     --json                                Print per-target results as JSON
   bb updates app [status]                 Show whether bb can update itself, the available
-                                          version, and the last result
+                                          version, how long a source checkout has been
+                                          behind origin/main, and the last result
     --json                                Print the status as JSON
   bb updates app apply                    Download the update and restart bb into it
     --yes                                 Interrupt running threads without asking

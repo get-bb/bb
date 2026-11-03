@@ -515,6 +515,7 @@ export type SystemAppUpdateSupport = z.infer<
 >;
 
 export const systemAppUpdateAvailableSchema = z.object({
+  behindSince: z.iso.datetime().nullable(),
   channel: z.enum(["latest", "nightly", "main"]),
   commit: z.string().nullable(),
   commitCount: z.number().int().nonnegative().nullable(),

@@ -204,7 +204,10 @@ with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
   Stable installs follow the `latest` dist-tag and nightly builds `nightly`.
 - **Source checkouts** update only from a clean `main` that fast-forwards to
   `origin/main`; bb fast-forwards, runs `pnpm install --frozen-lockfile`,
-  rebuilds, and restarts.
+  rebuilds, and restarts. The sidebar badges a source update once the server
+  is more than 30 commits behind `origin/main`, or six hours after the oldest
+  missing commit was committed. `available.behindSince` in
+  `GET /api/v1/system/app-update` and `bb updates app` report that commit time.
 
 bb does not roll back an update; a version that fails to start runs again on
 the next start, and an older release may not open a database the new version

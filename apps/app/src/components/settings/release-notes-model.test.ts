@@ -43,7 +43,14 @@ function available(
   version: string,
   channel: "latest" | "nightly" | "main" = "latest",
 ): NonNullable<SystemAppUpdateStatus["available"]> {
-  return { channel, commit: null, commitCount: null, subjects: [], version };
+  return {
+    behindSince: null,
+    channel,
+    commit: null,
+    commitCount: null,
+    subjects: [],
+    version,
+  };
 }
 
 function systemVersion(
