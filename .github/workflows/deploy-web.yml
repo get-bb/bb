@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/connect-db-pg/**"
       - "packages/domain/src/plugin-install-badge.ts"
       - "packages/shared-ui/src/**"
       - "plugins/plugin-api-docs/src/**"
@@ -118,6 +119,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+
+      - name: Apply connect-db Postgres migrations
+        env:
+          CONNECT_DB_PG_MIGRATOR_URL: ${{ secrets.CONNECT_DB_PG_MIGRATOR_URL }}
+        run: pnpm --filter @bb/connect-db-pg run db:migrate
 
       # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET are set
       # once by hand and intentionally NOT synced from CI.

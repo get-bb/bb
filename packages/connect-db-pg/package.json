@@ -21,6 +21,7 @@
     }
   },
   "scripts": {
+    "db:migrate": "tsx scripts/migrate.ts",
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
@@ -37,6 +38,7 @@
     "better-sqlite3": "12.10.0",
     "drizzle-orm": "^0.38.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.1"
   }

@@ -131,6 +131,19 @@
           "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b",
         },
       ],
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "1645c9edadb74b8cb593218030fac7f2",
+          "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CONNECT_DB_FLAGS",
+          "id": "2ccd420634434541be2321c40bfe1cea",
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {
