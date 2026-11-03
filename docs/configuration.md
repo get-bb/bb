@@ -818,16 +818,16 @@ ui_preference_conflict`. Read and write them with `bb settings ui
 list|get|set|reset` or `sdk.system.uiPreferences` (see
 `bb guide customization`).
 
-| Key                           | Value                                                                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one |
-| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`       |
-| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                           |
-| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                         |
-| `sidebar.footerOrder`         | Footer action order                                                                                                                                    |
-| `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                         |
-| `threadContextCard.pinned`   | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
-| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)          |
+| Key                           | Value                                                                                                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidebar.threadListProvider`  | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one    |
+| `sidebar.navigationProvider`  | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`          |
+| `sidebar.pluginPanelOrder`    | Navigation destination order                                                                                                                              |
+| `sidebar.visiblePluginPanels` | Navigation destinations shown, or `null` for every destination                                                                                            |
+| `sidebar.footerOrder`         | Footer action order                                                                                                                                       |
+| `sidebar.hiddenFooterItems`   | Footer actions moved into More                                                                                                                            |
+| `threadContextCard.pinned`    | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header |
+| `infoPanel.collapsedSections` | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)             |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
@@ -1098,6 +1098,7 @@ skills.
 | `artifactsEnabled`           | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
 | `sandboxEnabled`             | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
 | `fullAccessApprovalsEnabled` | `false` | Shows Claude Code's own prompts in Full Access (`permissions.ask` rules, PreToolUse hooks that answer `ask`, and built-in safety checks); `false` approves every request. Applies from the next turn without a restart.                                               |
+| `commandDescriptionsEnabled` | `false` | Titles Bash command rows with Claude's short description of the command instead of the command itself; approval prompts and the expanded row still show the command. Takes effect from each thread's next message; existing rows keep their titles.                   |
 
 Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
 noted, a change restarts the thread's Claude process before its next turn,

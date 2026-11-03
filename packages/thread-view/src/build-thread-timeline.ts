@@ -532,6 +532,7 @@ function convertMessage(
           status: message.status,
           callId: message.callId,
           command: message.command,
+          description: message.description,
           cwd: message.cwd,
           source: message.source,
           output: message.output,

@@ -81,6 +81,7 @@ export function commandRow(args: {
     status: "completed",
     callId: `${threadId}-call-${seq}`,
     command,
+    description: null,
     cwd: CWD,
     source: null,
     output,
