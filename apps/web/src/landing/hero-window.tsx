@@ -1,0 +1,63 @@
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ClientOnly } from "@tanstack/react-router";
+import { lazy, Suspense, useSyncExternalStore } from "react";
+import type { Ref } from "react";
+
+const HeroWindowStage = lazy(() => import("./hero-window-stage"));
+
+function subscribeVisibility(onChange: () => void) {
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
+}
+
+function usePageHidden() {
+  return useSyncExternalStore(
+    subscribeVisibility,
+    () => document.visibilityState === "hidden",
+    () => false,
+  );
+}
+
+export function HeroWindow({
+  ref,
+  inView,
+}: {
+  ref: Ref<HTMLElement>;
+  inView: boolean;
+}) {
+  const hidden = usePageHidden();
+  const paused = !inView || hidden;
+  return (
+    <section
+      ref={ref}
+      className={paused ? "mockup-wrap rhb is-paused" : "mockup-wrap rhb"}
+    >
+      <div
+        className="mock rhb-win"
+        role="img"
+        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, a Codex child thread started to write tests for a CSV export and the two threads messaging each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
+      >
+        <div className="rhb-band rhb-band-left" aria-hidden>
+          <span className="mock-dots">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="rhb-band-ctrls">
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="rhb-ic" />
+            <HugeiconsIcon icon={ArrowRight01Icon} className="rhb-ic" />
+            <HugeiconsIcon icon={SidebarLeftIcon} className="rhb-ic" />
+          </span>
+        </div>
+        <ClientOnly>
+          <Suspense>
+            <HeroWindowStage paused={paused} />
+          </Suspense>
+        </ClientOnly>
+      </div>
+    </section>
+  );
+}
