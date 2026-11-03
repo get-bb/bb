@@ -59,11 +59,13 @@ describe("file-change-summary", () => {
           "- durable fund memory",
           "- work records",
           "- run records",
+          "+ plus bullet",
+          "    indented code",
           "",
         ].join("\n"),
       }),
     ).toEqual({
-      added: 5,
+      added: 9,
       removed: 0,
     });
   });
@@ -81,12 +83,14 @@ describe("file-change-summary", () => {
           "- durable fund memory",
           "- work records",
           "- run records",
+          "+ plus bullet",
+          "    indented code",
           "",
         ].join("\n"),
       }),
     ).toEqual({
       added: 0,
-      removed: 5,
+      removed: 9,
     });
   });
 });
