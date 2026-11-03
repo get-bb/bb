@@ -2363,7 +2363,7 @@ The published lede.
     {
       experiment: true,
       running: 2,
-      buttons: ["Update now", "Update when idle"],
+      buttons: ["Update when idle"],
     },
     { experiment: false, running: 2, buttons: ["Update"] },
     { experiment: true, running: 0, buttons: ["Update"] },
@@ -2409,7 +2409,7 @@ The published lede.
     expect(await screen.findByText("2 threads running")).toBeDefined();
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Update available · Download the update and restart bb once every thread finishes",
+        name: "Update when idle",
       }),
     );
 
@@ -2426,7 +2426,7 @@ The published lede.
     );
     expect(
       await screen.findByRole("button", {
-        name: "Update available · Download the update and restart bb once every thread finishes",
+        name: "Update when idle",
       }),
     ).toBeDefined();
     expect(sdk.system.experimental_cancelScheduledAppUpdate).toHaveBeenCalled();
@@ -2443,11 +2443,11 @@ The published lede.
     );
 
     renderSection();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Update available · Interrupt running threads, then download the update and restart bb",
-      }),
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "More ways to update bb" }),
+      { button: 0, ctrlKey: false },
     );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update now" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();

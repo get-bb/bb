@@ -453,7 +453,7 @@ export function RowVariations() {
 
         <StoryRow
           label="In-app update while threads run"
-          hint="With the updateWhenIdle experiment on, the primary action waits for running threads; Update now asks before interrupting them."
+          hint="With the updateWhenIdle experiment on, Update when idle waits for running threads; Update now in its menu asks before interrupting them."
         >
           <div className="w-full">
             <BbUpdatesCard>

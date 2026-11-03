@@ -3929,8 +3929,8 @@ without one. Applying by hand also clears it, and schedule, apply, and the
 scheduled start run one at a time. A scheduled start the server refuses ends the
 schedule with only a log line; the status's `blocked`, `support`, or `activity`
 shows why. The schedule lives in server memory and is lost when the server
-restarts. Core callers: Settings → Updates (the row's "Update when threads
-finish" while threads run, and the waiting row's Cancel) and
+restarts. Core callers: Settings → Updates (the row's "Update when idle" split
+button while threads run, and the waiting row's Cancel) and
 `bb updates app apply --when-idle` / `bb updates app cancel`.
 
 Stabilize after deciding whether the schedule should persist across server

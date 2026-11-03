@@ -68,6 +68,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@bb/shared-ui/confirm-delete-dialog";
+import { SplitButton } from "@/components/ui/split-button";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
 import { SettingsSection } from "@/components/ui/settings-section";
@@ -354,7 +355,6 @@ function RowStateControl({
   loading = false,
   live = false,
   onClick,
-  variant = "outline",
 }: {
   state: UpdateState;
   actionIcon?: IconName;
@@ -365,7 +365,6 @@ function RowStateControl({
   loading?: boolean;
   live?: boolean;
   onClick?: () => void;
-  variant?: "default" | "outline";
 }) {
   const presentation = UPDATE_STATE_PRESENTATION[state];
   const icon = actionIcon ?? (presentation.icon as IconName | null);
@@ -378,7 +377,7 @@ function RowStateControl({
       <span className="flex min-w-0 items-center gap-1.5">
         <Button
           type="button"
-          variant={variant}
+          variant="outline"
           size="sm"
           aria-label={[srLabel, actionLabel].filter(Boolean).join(" · ")}
           aria-busy={loading}
@@ -926,23 +925,22 @@ function InAppUpdateRow({
   ) {
     return row(
       name,
-      <>
-        <RowStateControl
-          state="update-available"
-          buttonLabel="Update now"
-          actionLabel="Interrupt running threads, then download the update and restart bb"
-          loading={applyPending}
-          onClick={onApply ?? undefined}
-        />
-        <RowStateControl
-          state="update-available"
-          buttonLabel="Update when idle"
-          actionLabel="Download the update and restart bb once every thread finishes"
-          variant="default"
-          loading={schedulePending}
-          onClick={onSchedule}
-        />
-      </>,
+      <SplitButton
+        className="h-6 px-2 text-xs"
+        disabled={schedulePending}
+        primaryAction={{ label: "Update when idle", onSelect: onSchedule }}
+        primaryTooltip="Restart into the update once every thread finishes"
+        triggerLabel="More ways to update bb"
+        mobileTitle="Update bb"
+        secondaryActions={[
+          {
+            id: "update-now",
+            label: "Update now",
+            disabled: applyPending || onApply === null,
+            onSelect: () => onApply?.(),
+          },
+        ]}
+      />,
       <RowStateCaption state="update-available">
         {runningThreadsCaption(status.runningThreadCount)}
       </RowStateCaption>,
