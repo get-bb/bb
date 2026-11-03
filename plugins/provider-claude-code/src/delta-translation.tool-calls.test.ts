@@ -1260,6 +1260,62 @@ describe("claude tool-result translation (delta path)", () => {
     );
   });
 
+  function runBashWithDescription(
+    harness: ReturnType<typeof createClaudeDeltaHarness>,
+    toolUseId: string,
+    description: unknown,
+  ): (string | undefined)[] {
+    const started = harness.translate({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: toolUseId,
+            name: "Bash",
+            input: { command: "ls -a", cwd: "/repo", description },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+    const completed = harness.translate({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: "README.md",
+            is_error: false,
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+
+    return (
+      [
+        [started, "item/started"],
+        [completed, "item/completed"],
+      ] as const
+    ).map(([events, type]) => {
+      const item = events.find((event) => event.type === type);
+      expect(item).toMatchObject({
+        item: {
+          type: "commandExecution",
+          command: "ls -a",
+          presentation: { title: "ls -a" },
+        },
+      });
+      return item?.type === type && item.item.type === "commandExecution"
+        ? item.item.description
+        : undefined;
+    });
+  }
+
   it.each([
     { input: "List workspace files", description: "List workspace files" },
     { input: "  List workspace files\n", description: "List workspace files" },
@@ -1267,60 +1323,40 @@ describe("claude tool-result translation (delta path)", () => {
     { input: 42, description: undefined },
     { input: undefined, description: undefined },
   ])(
-    "carries the Bash description on the command item ($input)",
+    "carries the Bash description on the command item when command descriptions are on ($input)",
     ({ input, description }) => {
-      const harness = createClaudeDeltaHarness();
-      const started = harness.translate({
-        type: "assistant",
-        message: {
-          role: "assistant",
-          content: [
-            {
-              type: "tool_use",
-              id: "tool-1",
-              name: "Bash",
-              input: { command: "ls -a", cwd: "/repo", description: input },
-            },
-          ],
-        },
-        session_id: "sess-1",
-      });
-      const completed = harness.translate({
-        type: "user",
-        message: {
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: "tool-1",
-              content: "README.md",
-              is_error: false,
-            },
-          ],
-        },
-        session_id: "sess-1",
+      const harness = createClaudeDeltaHarness({
+        commandDescriptionsEnabled: true,
       });
 
-      for (const [events, type] of [
-        [started, "item/started"],
-        [completed, "item/completed"],
-      ] as const) {
-        const item = events.find((event) => event.type === type);
-        expect(item).toMatchObject({
-          item: {
-            type: "commandExecution",
-            command: "ls -a",
-            presentation: { title: "ls -a" },
-          },
-        });
-        expect(
-          item?.type === type && item.item.type === "commandExecution"
-            ? item.item.description
-            : null,
-        ).toBe(description);
-      }
+      expect(runBashWithDescription(harness, "tool-1", input)).toEqual([
+        description,
+        description,
+      ]);
     },
   );
+
+  it("leaves the Bash description off the command item when command descriptions are off", () => {
+    const harness = createClaudeDeltaHarness();
+
+    expect(
+      runBashWithDescription(harness, "tool-1", "List workspace files"),
+    ).toEqual([undefined, undefined]);
+  });
+
+  it("applies a command descriptions change to the next command", () => {
+    const harness = createClaudeDeltaHarness();
+
+    harness.translator.configureCommandDescriptions(true);
+    expect(
+      runBashWithDescription(harness, "tool-1", "List workspace files"),
+    ).toEqual(["List workspace files", "List workspace files"]);
+
+    harness.translator.configureCommandDescriptions(false);
+    expect(
+      runBashWithDescription(harness, "tool-2", "List workspace files"),
+    ).toEqual([undefined, undefined]);
+  });
 
   it("recovers missing tool names from prior tool uses", () => {
     const harness = createClaudeDeltaHarness();

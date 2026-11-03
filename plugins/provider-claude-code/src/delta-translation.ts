@@ -428,6 +428,7 @@ function createThreadState(): ClaudeThreadDialectState {
 export interface ClaudeDeltaTranslatorOptions {
   cwd?: string | undefined;
   sandboxEnabled: boolean;
+  commandDescriptionsEnabled: boolean;
 }
 
 export function createClaudeDeltaTranslator(
@@ -435,6 +436,7 @@ export function createClaudeDeltaTranslator(
 ) {
   const sessionCwd = options.cwd;
   let sandboxEnabled = options.sandboxEnabled;
+  let commandDescriptionsEnabled = options.commandDescriptionsEnabled;
   const statesByThreadId = new Map<string, ClaudeThreadDialectState>();
   let injectedToolsByName = new Map<string, ClaudeInjectedTool>();
 
@@ -918,6 +920,7 @@ export function createClaudeDeltaTranslator(
         input: toolUse.input,
         injectedTools: injectedToolsByName,
         sandboxEnabled,
+        commandDescriptionsEnabled,
       });
       state.startedTools.set(toolUse.id, classified);
       deltas.push(...releaseHeldSkillOpen(state, undefined));
@@ -1422,6 +1425,9 @@ export function createClaudeDeltaTranslator(
     configureInjectedTools,
     configureSandbox: (enabled: boolean) => {
       sandboxEnabled = enabled;
+    },
+    configureCommandDescriptions: (enabled: boolean) => {
+      commandDescriptionsEnabled = enabled;
     },
     hasOpenTurn,
     setClaudeModelContextWindowHint,

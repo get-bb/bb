@@ -357,6 +357,7 @@ export function classifyClaudeToolUse(args: {
   input: unknown;
   injectedTools: ReadonlyMap<string, ClaudeInjectedTool>;
   sandboxEnabled: boolean;
+  commandDescriptionsEnabled: boolean;
 }): ClaudeClassifiedTool {
   const { toolName, toolUseId, input, sandboxEnabled } = args;
   switch (toolName) {
@@ -368,9 +369,10 @@ export function classifyClaudeToolUse(args: {
               type: "command",
               command: command.command,
               cwd: command.cwd ?? "",
-              ...(command.description === null
-                ? {}
-                : { description: command.description }),
+              ...(args.commandDescriptionsEnabled &&
+              command.description !== null
+                ? { description: command.description }
+                : {}),
             },
             presentation: commandPresentation({
               ...command,
