@@ -1153,6 +1153,13 @@ processor), a blank host field restores Auto, and `0` pauses new work for that
 scope. Configure it on its autosaving plugin page or with
 `bb concurrency-limit status|global|host`; see the `concurrency-limit` skill.
 
+### GitHub Star
+
+The builtin GitHub Star plugin (`bb--github-star`) asks once for a star on
+GitHub after more than five prompts, when the window has been idle for 30
+seconds. The server records that it asked, so no other window or device asks
+again. Disable the plugin to never be asked.
+
 ### Keep Awake
 
 The builtin Keep Awake plugin prevents idle system sleep on selected macOS and
