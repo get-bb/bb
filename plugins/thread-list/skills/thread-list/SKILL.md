@@ -61,6 +61,12 @@ shows archived threads, and `'["active","archived"]'` shows both. The default
 is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
 
+Organized by project, the Filter menu's Empty projects item toggles
+`showEmptyProjects` (default `true`). With
+`bb thread-list prefs set showEmptyProjects false`, project groups with no
+visible threads are left out; hidden threads and threads shown under Pinned
+do not count. A project reappears once it has a visible thread.
+
 Every write is broadcast on the plugin's `preferences` realtime channel as
 `{ key, value, origin }`. `setPreference` takes an optional `origin` string
 that the broadcast repeats, so an open window can ignore the echo of its own

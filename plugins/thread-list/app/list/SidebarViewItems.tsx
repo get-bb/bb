@@ -25,8 +25,8 @@ import {
   sidebarGroupByReadStatusAtom,
   sidebarShowProviderIconsAtom,
   sidebarShowRowMetadataAtom,
-  THREAD_ROW_METADATA_EXPERIMENT,
   sidebarShowEmptyProjectsAtom,
+  THREAD_ROW_METADATA_EXPERIMENT,
 } from "../preferences/atoms.js";
 
 const SIDEBAR_ORGANIZE_OPTIONS = [

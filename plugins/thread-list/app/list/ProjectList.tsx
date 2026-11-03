@@ -585,6 +585,7 @@ function ProjectModeSections({
           (project) =>
             !project.isPersonal &&
             (showEmptyProjects ||
+              status !== "ready" ||
               threadsByProject.get(project.id)?.some(isSidebarProjectThread)),
         )
         .map((project) => ({
