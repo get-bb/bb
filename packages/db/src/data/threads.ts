@@ -12,7 +12,6 @@ import {
   isNotNull,
   isNull,
   lt,
-  ne,
   or,
   placeholder,
   sql,
@@ -68,8 +67,18 @@ function nonDeletedThreads(...where: ThreadWhere[]): ThreadWhere {
   return and(...where, isNull(threads.deletedAt));
 }
 
+export const liveThread = and(
+  isNull(threads.archivedAt),
+  isNull(threads.deletedAt),
+);
+
+export const threadHoldsEnvironment = or(
+  liveThread,
+  inArray(threads.status, ["stopping", "active"]),
+);
+
 function liveThreads(...where: ThreadWhere[]): ThreadWhere {
-  return nonDeletedThreads(...where, isNull(threads.archivedAt));
+  return and(...where, liveThread);
 }
 
 function countThreadsWhere(
@@ -307,8 +316,7 @@ export function createThread(
           .where(
             and(
               eq(threads.id, input.lifecycleOwnerThreadId),
-              isNull(threads.archivedAt),
-              isNull(threads.deletedAt),
+              liveThread,
               isNull(projects.deletedAt),
             ),
           )
@@ -636,11 +644,6 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentPath: string | null;
   environmentProviderId: string | null;
   hasPendingInteraction: number;
-}
-
-export interface CountLiveThreadsInEnvironmentArgs {
-  environmentId: string;
-  excludeThreadId?: string;
 }
 
 export interface ListLiveThreadsInEnvironmentArgs {
@@ -1505,19 +1508,6 @@ export function listThreadsWithPendingInteractionStateForProjects(
   return rows.map(toThreadWithPendingInteractionState);
 }
 
-export function countLiveThreadsInEnvironment(
-  db: ThreadWriteConnection,
-  args: CountLiveThreadsInEnvironmentArgs,
-): number {
-  return countThreadsWhere(
-    db,
-    liveThreads(
-      eq(threads.environmentId, args.environmentId),
-      args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
-    ),
-  );
-}
-
 export function listLiveThreadsInEnvironment(
   db: ThreadWriteConnection,
   args: ListLiveThreadsInEnvironmentArgs,
@@ -2218,8 +2208,7 @@ export function archiveThread(
       .where(
         and(
           inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
-          isNull(threads.archivedAt),
-          isNull(threads.deletedAt),
+          liveThread,
         ),
       )
       .returning()

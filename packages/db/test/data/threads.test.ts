@@ -7,7 +7,6 @@ import type { DbNotifier } from "../../src/notifier.js";
 import { threads } from "../../src/schema.js";
 import {
   createThread,
-  countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
@@ -39,7 +38,10 @@ import {
 } from "../../src/data/thread-sections.js";
 import { createProject, markProjectDeleted } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { createEnvironment } from "../../src/data/environments.js";
+import {
+  createEnvironment,
+  environmentHasLiveThreads,
+} from "../../src/data/environments.js";
 import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
@@ -1221,7 +1223,7 @@ describe("threads", () => {
     expect(unarchived?.latestAttentionAt).toBe(thread.latestAttentionAt);
   });
 
-  it("counts only non-archived, non-deleted threads as live", () => {
+  it("counts unarchived threads and archived threads that still run as live", () => {
     const { db, project, host } = setup();
     const environment = createEnvironment(db, noopNotifier, {
       providerOwnsPath: false,
@@ -1230,37 +1232,28 @@ describe("threads", () => {
       path: "/tmp/thread-live-count",
       status: "ready",
     });
-    const liveThread = createThread(db, noopNotifier, {
+    const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       environmentId: environment.id,
       providerId: "codex",
       status: "idle",
     });
-    const archivedThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "idle",
-    });
-    const deletedThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "idle",
-    });
+    expect(environmentHasLiveThreads(db, environment.id)).toBe(true);
 
-    archiveThread(db, noopNotifier, archivedThread.id);
-    markThreadDeleted(db, noopNotifier, { threadId: deletedThread.id });
+    archiveThread(db, noopNotifier, thread.id);
+    expect(environmentHasLiveThreads(db, environment.id)).toBe(false);
 
-    expect(
-      countLiveThreadsInEnvironment(db, { environmentId: environment.id }),
-    ).toBe(1);
-    expect(
-      countLiveThreadsInEnvironment(db, {
-        environmentId: environment.id,
-        excludeThreadId: liveThread.id,
-      }),
-    ).toBe(0);
+    const setStatus = (status: "active" | "stopping" | "idle") =>
+      db.update(threads).set({ status }).where(eq(threads.id, thread.id)).run();
+    for (const status of ["active", "stopping"] as const) {
+      setStatus(status);
+      expect(environmentHasLiveThreads(db, environment.id)).toBe(true);
+    }
+
+    setStatus("idle");
+    unarchiveThread(db, noopNotifier, thread.id);
+    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
+    expect(environmentHasLiveThreads(db, environment.id)).toBe(false);
   });
 
   it("lists canonical thread environments for a host", () => {

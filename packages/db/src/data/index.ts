@@ -68,7 +68,6 @@ export {
 export {
   createThread,
   InvalidLifecycleOwnerError,
-  countLiveThreadsInEnvironment,
   countThreads,
   countNonDeletedAssignedChildThreads,
   getThread,
@@ -82,6 +81,8 @@ export {
   listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listLiveThreadsInEnvironment,
+  liveThread,
+  threadHoldsEnvironment,
   listThreadMentionRowsByIds,
   listNonDeletedChildThreads,
   listThreadEnvironmentAssignmentsOnHost,

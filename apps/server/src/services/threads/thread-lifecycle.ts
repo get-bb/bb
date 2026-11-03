@@ -28,6 +28,7 @@ import {
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
+  liveThread,
   markThreadStorageDeleted,
   threads,
   type DbNotifier,
@@ -2125,8 +2126,7 @@ export async function reconcileDaemonReportedThreads(
         and(
           eq(environments.hostId, args.hostId),
           eq(threads.status, "error"),
-          isNull(threads.deletedAt),
-          isNull(threads.archivedAt),
+          liveThread,
           inArray(threads.id, [...args.activeThreadIds]),
         ),
       )
@@ -2181,8 +2181,7 @@ export async function reconcileDaemonReportedThreads(
       and(
         eq(environments.hostId, args.hostId),
         inArray(threads.status, ["starting", "idle"]),
-        isNull(threads.deletedAt),
-        isNull(threads.archivedAt),
+        liveThread,
         inArray(threads.id, [...args.activeThreadIds]),
       ),
     )
