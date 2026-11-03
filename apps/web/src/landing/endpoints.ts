@@ -321,15 +321,7 @@ type ContactRequest = {
   headers: Record<string, string>;
 };
 
-async function addDownloadLinkContact(args: ContactRequest): Promise<boolean> {
-  const contactUrl = `${RESEND_GLOBAL_CONTACTS_URL}/${encodeURIComponent(args.email)}`;
-  const existing = await fetch(contactUrl, { headers: args.headers });
-  if (existing.ok) {
-    return addContactToSegment(contactUrl, args);
-  }
-  if (existing.status !== 404) {
-    return false;
-  }
+async function addDownloadLinkContact(args: ContactRequest): Promise<void> {
   const created = await fetch(RESEND_GLOBAL_CONTACTS_URL, {
     body: JSON.stringify({
       email: args.email,
@@ -340,27 +332,27 @@ async function addDownloadLinkContact(args: ContactRequest): Promise<boolean> {
     method: "POST",
   });
   if (created.ok) {
-    return true;
+    return;
   }
-  return (
-    (await isAlreadySubscribed(created)) && addContactToSegment(contactUrl, args)
+  const added = await fetch(
+    `${RESEND_GLOBAL_CONTACTS_URL}/${encodeURIComponent(args.email)}/segments/${args.segmentId}`,
+    { headers: args.headers, method: "POST" },
   );
+  if (!added.ok) {
+    throw new Error("contact not added");
+  }
 }
 
-async function addContactToSegment(
-  contactUrl: string,
-  args: ContactRequest,
-): Promise<boolean> {
-  const added = await fetch(`${contactUrl}/segments/${args.segmentId}`, {
-    headers: args.headers,
-    method: "POST",
-  });
-  return added.ok || (await isAlreadySubscribed(added));
+function logContactFailure(): void {
+  console.log(
+    JSON.stringify({ event: "download_link_contact", outcome: "failed" }),
+  );
 }
 
 export async function handleEmailDownloadLink(
   request: Request,
   env: DownloadLinkEnv,
+  waitUntil: (promise: Promise<void>) => void,
   now: () => Date = () => new Date(),
 ): Promise<Response> {
   const apiKey = env.RESEND_API_KEY;
@@ -379,16 +371,13 @@ export async function handleEmailDownloadLink(
     "content-type": "application/json",
   };
 
+  let sent: Response;
   try {
-    if (!(await addDownloadLinkContact({ email, segmentId, headers }))) {
-      return jsonResponse({ error: "send_failed" }, 502);
-    }
-
     const link = emailDownloadLinkUrl(
       env.APP_URL,
       parseCampaignParams(payload?.search),
     );
-    const sent = await fetch(RESEND_EMAILS_URL, {
+    sent = await fetch(RESEND_EMAILS_URL, {
       body: JSON.stringify({
         from,
         to: [email],
@@ -403,13 +392,18 @@ export async function handleEmailDownloadLink(
       },
       method: "POST",
     });
-    if (sent.ok || sent.status === 409) {
-      return jsonResponse({ ok: true }, 200);
-    }
   } catch {
     return jsonResponse({ error: "send_failed" }, 502);
   }
-  return jsonResponse({ error: "send_failed" }, 502);
+  if (!sent.ok && sent.status !== 409) {
+    return jsonResponse({ error: "send_failed" }, 502);
+  }
+  waitUntil(
+    addDownloadLinkContact({ email, segmentId, headers }).catch(
+      logContactFailure,
+    ),
+  );
+  return jsonResponse({ ok: true }, 200);
 }
 
 async function isAlreadySubscribed(response: Response): Promise<boolean> {
