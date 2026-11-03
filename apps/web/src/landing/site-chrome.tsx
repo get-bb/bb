@@ -203,6 +203,8 @@ export function SiteNav({
   const platform = useDesktopPlatform();
   const sticky = useExperiment("homepage-sticky-header") === "test";
   useExperimentExposure("homepage-sticky-header", "desktop");
+  const downloadPage = useExperiment("homepage-header-download") === "test";
+  useExperimentExposure("homepage-header-download", "desktop");
   return (
     <nav className={sticky ? "nav nav-sticky" : "nav"}>
       {}
@@ -234,11 +236,17 @@ export function SiteNav({
         >
           <HugeiconsIcon icon={GithubIcon} />
         </GitHubLink>
-        <DesktopDownloadButton
-          placement="nav"
-          platform={platform}
-          className="btn btn-primary btn-sm nav-download"
-        />
+        {downloadPage ? (
+          <a className="btn btn-primary btn-sm nav-download" href="/download">
+            Download
+          </a>
+        ) : (
+          <DesktopDownloadButton
+            placement="nav"
+            platform={platform}
+            className="btn btn-primary btn-sm nav-download"
+          />
+        )}
       </div>
     </nav>
   );

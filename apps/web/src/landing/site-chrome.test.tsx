@@ -60,6 +60,17 @@ describe("site navigation", () => {
     );
   });
 
+  it("sends the header button to the download page on any page in the test", () => {
+    expect(navFor("homepage-header-download", "control")).toContain(
+      "/download/macos",
+    );
+    const html = navFor("homepage-header-download", "test");
+    expect(html).toContain(
+      '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
+    );
+    expect(html).not.toContain("/download/macos");
+  });
+
   it("marks Building plugins current inside the Plugins menu", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugin-guide" />);
     expect(html).toContain('<summary class="nav-current">Plugins');
