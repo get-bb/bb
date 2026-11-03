@@ -90,9 +90,11 @@ function providerStatusCache(deps: WorkSessionDeps) {
   return cache;
 }
 
+export type ProviderInstallationsReadMode = "prewarm" | "read" | "refresh";
+
 export async function getProviderInstallations(
   deps: WorkSessionDeps,
-  args: { hostId: string; refresh: boolean },
+  args: { hostId: string; mode: ProviderInstallationsReadMode },
 ): Promise<ProviderCliStatusResponse> {
   const deadline = Date.now() + PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS;
   const providers = await listSystemProviderInfos(deps, {
@@ -140,7 +142,8 @@ export async function getProviderInstallations(
                 },
               }),
             {
-              refresh: args.refresh,
+              refresh: args.mode === "refresh",
+              revalidateStale: args.mode !== "prewarm",
               onReplaced: (previous, next) => {
                 if (!isDeepStrictEqual(previous, next)) {
                   deps.hub.notifyHost(args.hostId, [

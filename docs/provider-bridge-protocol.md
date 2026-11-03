@@ -118,7 +118,10 @@ served as is. After that, a request still gets the cached status while the
 server probes again in the background; when the new status differs, the
 server sends a `provider-cli-status-changed` host change so open clients
 refetch. A failed refresh keeps the previous status. Machine reconnects keep
-the cache. An install or update through bb drops the machine's cached
+the cache. When an active, non-ephemeral machine connects, the server probes
+in the background the providers that have no cached status yet, so the first
+read after a server restart is already cached; a reconnect with every status
+cached sends no probe. An install or update through bb drops the machine's cached
 statuses before and after it runs, so the next read waits for a fresh probe.
 `?refresh=true` (`hosts.providerCliStatus({ refresh: true })`) always waits
 for a fresh probe; Settings → Updates uses it when it checks for updates, as
