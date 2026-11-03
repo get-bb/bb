@@ -50,6 +50,7 @@ const machineCodeResponseSchema = z.object({
 const machineCodeLookupSchema = z.object({
   consumed: z.boolean(),
   machineId: z.string().nullable(),
+  machineName: z.string().nullable().optional(),
 });
 
 const revokeMachineResponseSchema = z.object({ ok: z.literal(true) });
@@ -186,20 +187,43 @@ export class HostedConnectApi {
   async lookupMachineCode(
     code: string,
     signal?: AbortSignal,
-  ): Promise<{ consumed: boolean; machineId: string | null }> {
-    const result = await this.send(
-      {
-        target: "api",
-        method: "POST",
-        path: "/api/connect/machine-code-lookup",
-        body: { code },
-      },
-      signal,
-    );
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(`Machine code lookup failed (${result.status})`);
+  ): Promise<{
+    consumed: boolean;
+    machineId: string | null;
+    machineName: string | null;
+  }> {
+    let result: AccountFetchResult;
+    try {
+      result = await this.send(
+        {
+          target: "api",
+          method: "POST",
+          path: "/api/connect/machine-code-lookup",
+          body: { code },
+        },
+        signal,
+      );
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (
+        error instanceof NotSignedInError ||
+        error instanceof AccountUnavailableError
+      ) {
+        throw new MachineCodeError("not_paired");
+      }
+      throw new MachineCodeError("network");
     }
-    return machineCodeLookupSchema.parse(result.body);
+    if (result.status === 401) throw new MachineCodeError("not_paired");
+    if (result.status < 200 || result.status >= 300) {
+      throw new MachineCodeError("network");
+    }
+    const parsed = machineCodeLookupSchema.safeParse(result.body);
+    if (!parsed.success) throw new MachineCodeError("network");
+    return {
+      consumed: parsed.data.consumed,
+      machineId: parsed.data.machineId,
+      machineName: parsed.data.machineName ?? null,
+    };
   }
 
   async revokeMachine(machineId: string, signal?: AbortSignal): Promise<void> {

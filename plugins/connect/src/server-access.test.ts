@@ -266,7 +266,7 @@ it.each([true, false])(
     const api = fakeCloud({
       lookup: async () => {
         if (!available) throw new Error("Machine code lookup failed (404)");
-        return { consumed: true, machineId: "device-1" };
+        return { consumed: true, machineId: "device-1", machineName: null };
       },
       redeem: async () => {
         redeemed += 1;
@@ -346,7 +346,11 @@ it.each(["expired", "valid"])(
     const issued: string[] = [];
     const redeemedCodes: string[] = [];
     const api = fakeCloud({
-      lookup: async () => ({ consumed: false, machineId: null }),
+      lookup: async () => ({
+        consumed: false,
+        machineId: null,
+        machineName: null,
+      }),
       mint: async () => {
         issued.push("NEW-CODE");
         return {
@@ -467,7 +471,11 @@ it("retains interrupted redemption intent and revokes the committed device", asy
         });
       });
     },
-    lookup: async () => ({ consumed: true, machineId: "committed-device" }),
+    lookup: async () => ({
+      consumed: true,
+      machineId: "committed-device",
+      machineName: null,
+    }),
   });
   const host = await setup(api.cloud);
   const controller = new AbortController();
@@ -501,6 +509,7 @@ it("keeps an unexpired acquisition intent until a late redemption can be ruled o
     lookup: async () => ({
       consumed,
       machineId: consumed ? "late-device" : null,
+      machineName: null,
     }),
   });
   const host = await setup(api.cloud, {

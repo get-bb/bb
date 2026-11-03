@@ -756,7 +756,7 @@ describe("server-authenticated machine-code round trip", () => {
           serverCredential,
           minted.code,
         ),
-      ).toEqual({ consumed: false, machineId: null });
+      ).toEqual({ consumed: false, machineId: null, machineName: null });
       const redeemed = await redeemMachineCode(deps, minted.code, deviceName);
       if ("error" in redeemed) throw new Error(redeemed.error);
       expect(
@@ -765,7 +765,11 @@ describe("server-authenticated machine-code round trip", () => {
           serverCredential,
           minted.code,
         ),
-      ).toEqual({ consumed: true, machineId: redeemed.machineId });
+      ).toEqual({
+        consumed: true,
+        machineId: redeemed.machineId,
+        machineName: deviceName,
+      });
       expect(
         await lookupMachineCodeForServerCredential(deps, "bogus", minted.code),
       ).toMatchObject({ status: 401 });
