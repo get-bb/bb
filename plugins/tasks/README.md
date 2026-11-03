@@ -42,9 +42,9 @@ bb tasks delegate PROD-1 --preset "GPT-5.6 · high"
 
 When the CLI runs inside a linked bb project, `create` and `list` infer the
 tracker project, so `--project` can be omitted. Task keys are case-insensitive
-at the CLI boundary. You can also delegate from a task's **Delegate** menu,
-choose or create presets under **Manage → Presets**, and type `@` in the bb
-composer to send a task mention to an agent.
+at the CLI boundary. You can also delegate from a task's **Dispatch with
+preset** menu, choose or create presets under **Agent presets** in the Tasks
+sidebar, and type `@` in the bb composer to send a task mention to an agent.
 
 The comment composer shows a **Notify last responding agent** switch. When the
 task has an agent reply, leave it on to send the new comment to the thread that
@@ -110,8 +110,8 @@ than traversing an inconsistent snapshot.
 
 ## Agents, delegation, and presets
 
-Linking a Tasks project to a bb project enables delegation. Open a task, choose
-**Delegate**, select a preset, and optionally add instructions. A preset
+Linking a Tasks project to a bb project enables delegation. Open a task, open
+**Dispatch with preset**, select a preset, and optionally add instructions. A preset
 defines the provider, model, reasoning level, optional service tier, permission
 mode, and reusable instructions. Presets are user-defined, so create the worker profiles your team
 uses repeatedly before dispatching work.
@@ -123,7 +123,7 @@ comments, preset instructions, and a report-back contract. Its installed Tasks
 skill tells it to inspect the task, leave substantive milestone comments,
 attach artifacts, and move completed work to `in_review`.
 
-If work begins outside the Delegate action, the agent can associate its current
+If work begins outside the Dispatch action, the agent can associate its current
 thread with `bb tasks attach KEY`. The inverse is `bb tasks detach KEY
 [--thread <id>]`, and each thread card on the task page has a detach control;
 use either to drop a thread that died or moved on to other work. The task
