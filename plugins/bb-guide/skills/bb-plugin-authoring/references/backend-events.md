@@ -30,17 +30,16 @@ caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
 stats survive reloads and reset on remove). The surface that asks is
 `bb.experimental_hooks`, below, where core acts on your answer.
 
-Seventeen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
-fires after core commits a pending interaction row. The three `message.*`
-ones fire when a dispatch is queued behind a wait (again when its wait or
-`sendAt` is rewritten), when a queued row's waits all clear and it dispatches,
-or when the user removes a queued row before it dispatched. Every listener sees every
-queued row, so a plugin that only wants its own filters on
+Eighteen events. The seven `thread.*` ones are thread lifecycle.
+`interaction.pending` fires after core commits a pending interaction row. The
+three `message.*` ones fire when a dispatch is queued behind a wait (again when
+its wait or `sendAt` is rewritten), when a queued row's waits all clear and it
+dispatches, or when the user removes a queued row before it dispatched. Every
+listener sees every queued row, so a plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`message.cancelled` is the only signal for that removal: release external
-resources held for a waiting message (a sandbox mid-provision, a reserved
-slot) there. Archiving or deleting the whole thread fires the thread event
-instead.
+`message.cancelled` is the only signal for that removal: release resources held
+for a waiting message (a sandbox mid-provision, a reserved slot) there.
+Archiving or deleting the whole thread fires the thread event instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
