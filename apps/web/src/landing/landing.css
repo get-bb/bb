@@ -4971,7 +4971,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: 19.4%;
 }
 
-.bw-morph.mx-taskboard {
+.bw-morph.mx-files {
   --mx-canvas: #1a1b26;
   --mx-ink: #c0caf5;
   --mx-side: color-mix(in oklab, #c0caf5 4.3%, #1a1b26);
@@ -4995,10 +4995,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-red: #e34671;
   --mx-cyan: #88c0d0;
   --mx-line: 17%;
-  --mx-panel-w: 400px;
+  --mx-panel-w: 440px;
 }
 
-.bw-morph.mx-linear {
+.bw-morph.mx-taskboard {
   --mx-canvas: #fcfcfc;
   --mx-ink: #5c6166;
   --mx-side: #f8f9fa;
@@ -5023,6 +5023,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-cyan: #73d0ff;
   --mx-line: 19.4%;
   --mx-side-w: 256px;
+}
+
+.bw-morph.mx-collapsed {
+  --mx-side-w: 0px;
 }
 
 .mx-window {
@@ -5060,7 +5064,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-window .bar-left {
-  width: calc(44px + var(--mx-side-w));
+  width: calc(44px + max(var(--mx-side-w), 128px));
+  transition: border-color 0.5s ease;
+}
+
+.mx-collapsed .mx-window .bar-left {
+  border-right-color: transparent;
 }
 
 .mx-window .bar-toggle,
@@ -5169,11 +5178,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-morph .mx-side-threads {
-  width: 192px;
+  width: max(192px, 100%);
 }
 
 .bw-morph .mx-side-shelves {
-  width: 256px;
+  width: max(256px, 100%);
 }
 
 .mx-center > .main {
@@ -5373,62 +5382,232 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 13px;
 }
 
-.mx-ln {
+.mx-fe {
+  display: flex;
+  height: 100%;
+  font-size: 12px;
+}
+
+.mx-fe-tree {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  padding: 12px 10px;
-}
-
-.mx-ln-group {
-  align-self: stretch;
-  margin-top: 12px;
-}
-
-.mx-ln-head {
-  display: flex;
-  align-items: center;
   gap: 6px;
-  padding: 0 8px 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--subtle);
+  width: 212px;
+  flex-shrink: 0;
+  padding: 10px 8px 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--mx-side);
 }
 
-.mx-ln-count {
-  color: var(--subtle);
-  font-weight: 400;
-}
-
-.mx-ln-row {
+.mx-fe-pick {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
   border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  white-space: nowrap;
 }
 
-.mx-ln-group:first-of-type .mx-ln-row {
-  background: var(--surface-recessed);
-}
-
-.mx-ln-id {
-  width: 58px;
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--subtle);
-}
-
-.mx-ln-title {
+.mx-fe-pick-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.mx-fe-search {
+  color: var(--subtle);
+}
+
+.mx-fe-ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mx-fe-chev,
+.mx-fe-twist,
+.mx-fe-sep {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mx-fe-file.is-ts {
+  color: var(--mx-accent);
+}
+
+.mx-fe-file.is-md {
+  color: var(--mx-ok);
+}
+
+.mx-fe-file.is-json {
+  color: var(--mx-warn);
+}
+
+.mx-fe-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin-top: 4px;
+}
+
+.mx-fe-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-right: 6px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.mx-fe-row > .mx-fe-file {
+  margin-left: 17px;
+}
+
+.mx-fe-row.is-active {
+  background: var(--state-hover);
+}
+
+.mx-fe-foot {
+  margin: 0 -8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 10.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mx-fe-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.mx-fe-tabs {
+  display: flex;
+  height: 36px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--mx-side);
+}
+
+.mx-fe-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid var(--border-soft);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.mx-fe-tab.is-on {
+  margin-bottom: -1px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.mx-fe-x {
+  width: 10px;
+  height: 10px;
+  color: var(--subtle);
+}
+
+.mx-fe-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.mx-fe-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mx-fe-here {
+  color: var(--ink);
+}
+
+.mx-fe-crumbs .mx-seg {
+  font-size: 11px;
+}
+
+.mx-fe-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 36px;
+  color: var(--ink);
+}
+
+.mx-fe-h1 {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 22px;
+  font-weight: 600;
   color: var(--ink-strong);
+}
+
+.mx-fe-h2 {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.mx-fe-p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mx-fe-p code,
+.mx-fe-pre {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.mx-fe-p code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+}
+
+.mx-fe-pre {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.mx-fe-pre em {
+  font-style: normal;
+  color: var(--mx-red);
 }
 
 .mx-sh-scope,
@@ -5553,7 +5732,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 400px;
+  width: 440px;
   border-left: 1px solid var(--border-soft);
   background: var(--bg);
 }
@@ -5734,9 +5913,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     zoom: var(--bw-scale, 0.88);
   }
 
-  .bw-morph,
-  .bw-morph.mx-taskboard,
-  .bw-morph.mx-linear {
+  .bw-morph {
     --mx-side-w: 0px;
   }
 
@@ -5757,9 +5934,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     flex: none;
     width: max(
       0px,
-      calc(
-        var(--bw-fit-slice) - 44px - var(--mx-side-w) - var(--mx-panel-w)
-      )
+      calc(var(--bw-fit-slice) - 44px - var(--mx-side-w) - var(--mx-panel-w))
     );
   }
 
@@ -5777,6 +5952,19 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .mx-panel {
     width: calc(var(--bw-fit-slice) - 44px);
+  }
+
+  .mx-fe-tree {
+    width: 150px;
+  }
+
+  .mx-fe-meta,
+  .mx-fe-tab:not(.is-on) {
+    display: none;
+  }
+
+  .mx-fe-doc {
+    padding: 18px 16px;
   }
 }
 

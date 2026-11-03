@@ -21,6 +21,7 @@ import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
@@ -1371,35 +1372,36 @@ export function PluginMap() {
   );
 }
 
-type MorphScene = "stock" | "taskboard" | "graph" | "linear" | "shelves";
+type MorphScene = "stock" | "files" | "graph" | "taskboard" | "shelves";
 
 const MORPH_SCENES: readonly MorphScene[] = [
   "stock",
-  "taskboard",
+  "files",
   "graph",
-  "linear",
+  "taskboard",
   "shelves",
 ];
-const MORPH_STATIC_SCENE = 1;
-const MORPH_HOLD_MS = 3000;
+const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
+const MORPH_FIRST_HOLD_MS = 1500;
+const MORPH_HOLD_MS = 2600;
 const MORPH_CHANGE_MS = 1100;
 
-type MorphCenter = "thread" | "taskboard" | "linear";
-type MorphSide = "threads" | "shelves";
+type MorphCenter = "thread" | "files" | "taskboard";
+type MorphSide = "threads" | "shelves" | null;
 
 const MORPH_CENTER: Record<MorphScene, MorphCenter> = {
   stock: "thread",
-  taskboard: "taskboard",
+  files: "files",
   graph: "thread",
-  linear: "linear",
+  taskboard: "taskboard",
   shelves: "thread",
 };
 
 const MORPH_SIDE: Record<MorphScene, MorphSide> = {
   stock: "threads",
-  taskboard: "threads",
-  graph: "threads",
-  linear: "threads",
+  files: null,
+  graph: null,
+  taskboard: null,
   shelves: "shelves",
 };
 
@@ -1407,8 +1409,8 @@ const MORPH_THREAD = "Fix the checkout bug";
 
 const MORPH_TITLES: Record<MorphCenter, string> = {
   thread: MORPH_THREAD,
+  files: "Files",
   taskboard: "Taskboard",
-  linear: "Linear",
 };
 
 type MorphState = { scene: number; previous: number | null };
@@ -1447,7 +1449,10 @@ function useMorphTimeline(ref: RefObject<Element | null>) {
       return;
     }
     let timer = 0;
+    let first = true;
     const hold = () => {
+      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_HOLD_MS;
+      first = false;
       timer = window.setTimeout(() => {
         setState((current) => ({
           scene: (current.scene + 1) % MORPH_SCENES.length,
@@ -1457,7 +1462,7 @@ function useMorphTimeline(ref: RefObject<Element | null>) {
           setState((current) => ({ ...current, previous: null }));
           hold();
         }, MORPH_CHANGE_MS);
-      }, MORPH_HOLD_MS);
+      }, wait);
     };
     hold();
     return () => window.clearTimeout(timer);
@@ -1472,15 +1477,16 @@ function useMorphTimeline(ref: RefObject<Element | null>) {
 function morphLayer<T extends string>(
   base: string,
   key: T,
-  current: T,
+  current: T | null,
   previous: T | null,
+  changing: boolean,
 ) {
   if (key === current) {
-    return previous !== null && previous !== key
+    return changing && previous !== key
       ? `${base} mx-layer is-on is-entering`
       : `${base} mx-layer is-on`;
   }
-  if (key === previous) return `${base} mx-layer is-under`;
+  if (changing && key === previous) return `${base} mx-layer is-under`;
   return `${base} mx-layer`;
 }
 
@@ -1788,92 +1794,128 @@ function MorphTaskboard() {
   );
 }
 
-const LINEAR_GROUPS: readonly {
-  label: string;
-  rows: readonly {
-    id: string;
-    title: string;
-    state: WorkState;
-    who: string;
-  }[];
+type FileKind = "folder" | "ts" | "md" | "json" | "plain";
+
+const FILE_TREE: readonly {
+  name: string;
+  kind: FileKind;
+  depth: number;
+  open?: boolean;
+  active?: boolean;
 }[] = [
-  {
-    label: "Running",
-    rows: [
-      {
-        id: "ENG-412",
-        title: "Checkout times out on slow networks",
-        state: "progress",
-        who: "BB",
-      },
-    ],
-  },
-  {
-    label: "PR needs you",
-    rows: [
-      {
-        id: "ENG-398",
-        title: "Retry failed webhooks",
-        state: "review",
-        who: "VB",
-      },
-    ],
-  },
-  {
-    label: "In progress, no PR",
-    rows: [
-      {
-        id: "ENG-405",
-        title: "Show order history on the account page",
-        state: "progress",
-        who: "YA",
-      },
-      {
-        id: "ENG-401",
-        title: "Add Apple Pay to checkout",
-        state: "progress",
-        who: "MC",
-      },
-    ],
-  },
-  {
-    label: "Assigned to you, never started",
-    rows: [
-      { id: "ENG-417", title: "Cache plan prices", state: "todo", who: "BB" },
-      {
-        id: "ENG-420",
-        title: "Export invoices as CSV",
-        state: "todo",
-        who: "BB",
-      },
-    ],
-  },
+  { name: ".github", kind: "folder", depth: 0 },
+  { name: "src", kind: "folder", depth: 0, open: true },
+  { name: "components", kind: "folder", depth: 1 },
+  { name: "pay", kind: "folder", depth: 1, open: true },
+  { name: "client.ts", kind: "ts", depth: 2 },
+  { name: "retry.ts", kind: "ts", depth: 2 },
+  { name: "app.tsx", kind: "ts", depth: 1 },
+  { name: "tests", kind: "folder", depth: 0 },
+  { name: ".gitignore", kind: "plain", depth: 0 },
+  { name: "CONTRIBUTING.md", kind: "md", depth: 0 },
+  { name: "package.json", kind: "json", depth: 0 },
+  { name: "README.md", kind: "md", depth: 0, active: true },
 ];
 
-function MorphLinear() {
+const FILE_TABS = ["client.ts", "README.md", "CONTRIBUTING.md"] as const;
+
+function MorphFiles() {
   return (
-    <div className="mx-ln">
-      <span className="mx-seg">
-        <span className="is-on">Working set</span>
-        <span>Inbox</span>
-        <span>All issues</span>
-      </span>
-      {LINEAR_GROUPS.map((group) => (
-        <div key={group.label} className="mx-ln-group">
-          <div className="mx-ln-head">
-            {group.label}
-            <span className="mx-ln-count">{group.rows.length}</span>
-          </div>
-          {group.rows.map((row) => (
-            <div key={row.id} className="mx-ln-row">
-              <WorkGlyph state={row.state} />
-              <span className="mx-ln-id">{row.id}</span>
-              <span className="mx-ln-title">{row.title}</span>
-              <span className="mx-avatar">{row.who}</span>
-            </div>
+    <div className="mx-fe">
+      <div className="mx-fe-tree">
+        <span className="mx-fe-pick">
+          <HugeiconsIcon icon={Folder01Icon} className="mx-fe-ic" />
+          <span className="mx-fe-pick-text">checkout-web</span>
+          <ChevronDown className="mx-fe-chev" />
+        </span>
+        <span className="mx-fe-pick">
+          <GitBranchIcon className="mx-fe-ic" />
+          <span className="mx-fe-pick-text">fix/checkout-timeout</span>
+          <ChevronDown className="mx-fe-chev" />
+        </span>
+        <span className="mx-fe-pick mx-fe-search">
+          <SearchIcon className="mx-fe-ic" />
+          Search in files
+        </span>
+        <div className="mx-fe-rows">
+          {FILE_TREE.map((row) => (
+            <span
+              key={`${row.depth}-${row.name}`}
+              className={row.active ? "mx-fe-row is-active" : "mx-fe-row"}
+              style={{ paddingLeft: 6 + row.depth * 14 }}
+            >
+              {row.kind === "folder" ? (
+                <>
+                  {row.open ? (
+                    <ChevronDown className="mx-fe-twist" />
+                  ) : (
+                    <ChevronRight className="mx-fe-twist" />
+                  )}
+                  <HugeiconsIcon icon={Folder01Icon} className="mx-fe-ic" />
+                </>
+              ) : (
+                <FileReadIcon
+                  className={`mx-fe-ic mx-fe-file is-${row.kind}`}
+                />
+              )}
+              {row.name}
+            </span>
           ))}
         </div>
-      ))}
+        <span className="mx-fe-foot">
+          1,284 files · excluding .git, node_modules
+        </span>
+      </div>
+      <div className="mx-fe-editor">
+        <div className="mx-fe-tabs">
+          {FILE_TABS.map((tab) => (
+            <span
+              key={tab}
+              className={tab === "README.md" ? "mx-fe-tab is-on" : "mx-fe-tab"}
+            >
+              <FileReadIcon
+                className={`mx-fe-ic mx-fe-file is-${tab.endsWith(".md") ? "md" : "ts"}`}
+              />
+              {tab}
+              <ClearGlyph className="mx-fe-x" />
+            </span>
+          ))}
+        </div>
+        <div className="mx-fe-crumbs">
+          <span className="mx-fe-path">
+            checkout-web
+            <ChevronRight className="mx-fe-sep" />
+            <span className="mx-fe-here">README.md</span>
+          </span>
+          <span className="mx-fe-meta">Markdown · 42 lines</span>
+          <span className="mx-seg">
+            <span className="is-on">Preview</span>
+            <span>Read</span>
+            <span>Edit</span>
+          </span>
+        </div>
+        <div className="mx-fe-doc">
+          <span className="mx-fe-h1">checkout-web</span>
+          <span className="mx-fe-p">
+            The storefront checkout. Payment calls live in <code>src/pay</code>;
+            the UI is in <code>src/components</code>.
+          </span>
+          <span className="mx-fe-h2">Getting started</span>
+          <span className="mx-fe-pre">
+            <span>
+              <em>npm</em> install
+            </span>
+            <span>
+              <em>npm</em> run dev
+            </span>
+          </span>
+          <span className="mx-fe-h2">Timeouts</span>
+          <span className="mx-fe-p">
+            Payment requests wait 30 seconds and retry once before checkout
+            shows an error.
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2041,6 +2083,7 @@ export function PluginMorph() {
   const ref = useRef<HTMLDivElement>(null);
   useFitWindow(ref);
   const { scene, previous, paused } = useMorphTimeline(ref);
+  const changing = previous !== null;
   const center = MORPH_CENTER[scene];
   const side = MORPH_SIDE[scene];
   const before = previous === null ? null : MORPH_CENTER[previous];
@@ -2049,10 +2092,10 @@ export function PluginMorph() {
   return (
     <div
       ref={ref}
-      className={`bw bw-morph mx-${scene}${paused ? " fw-paused" : ""}`}
+      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${paused ? " fw-paused" : ""}`}
       data-scene={scene}
       role="img"
-      aria-label="One bb window that keeps changing as plugins reshape it. It starts as a plain thread in bb's default theme. Then it turns dark blue with the Tokyo Night theme and opens the Taskboard plugin's kanban board, goes near-black with bb Monokai as the Agent Graph panel slides in beside the thread, turns light with Ayu and shows the Linear plugin's working set of issues, and goes slate with Ayu Mirage as BB Sidebar regroups the threads into shelves. Then it starts over."
+      aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
     >
       <div className="mock bw-window mx-window">
         <WindowBar
@@ -2076,11 +2119,11 @@ export function PluginMorph() {
         />
         <div className="mock-body bw-body mx-body" aria-hidden>
           <NavRail active={center === "thread" ? "home" : null}>
-            {(["taskboard", "linear"] as const).map((id) => (
+            {(["files-editor", "taskboard"] as const).map((id) => (
               <span
                 key={id}
                 className={
-                  center === id
+                  center === (id === "files-editor" ? "files" : id)
                     ? "bw-rail-btn mx-rail-plugin is-on"
                     : "bw-rail-btn mx-rail-plugin"
                 }
@@ -2091,25 +2134,49 @@ export function PluginMorph() {
           </NavRail>
           <div className="mx-side-slot">
             <aside
-              className={morphLayer("side mx-side-threads", "threads", side, sideBefore)}
+              className={morphLayer(
+                "side mx-side-threads",
+                "threads",
+                side,
+                sideBefore,
+                changing,
+              )}
             >
               <MorphThreads />
             </aside>
             <aside
-              className={morphLayer("side mx-side-shelves", "shelves", side, sideBefore)}
+              className={morphLayer(
+                "side mx-side-shelves",
+                "shelves",
+                side,
+                sideBefore,
+                changing,
+              )}
             >
               <MorphShelves />
             </aside>
           </div>
           <div className="mx-center">
-            <div className={morphLayer("main", "thread", center, before)}>
+            <div
+              className={morphLayer("main", "thread", center, before, changing)}
+            >
               <MorphThread />
             </div>
-            <div className={morphLayer("main", "taskboard", center, before)}>
-              <MorphTaskboard />
+            <div
+              className={morphLayer("main", "files", center, before, changing)}
+            >
+              <MorphFiles />
             </div>
-            <div className={morphLayer("main", "linear", center, before)}>
-              <MorphLinear />
+            <div
+              className={morphLayer(
+                "main",
+                "taskboard",
+                center,
+                before,
+                changing,
+              )}
+            >
+              <MorphTaskboard />
             </div>
           </div>
           <div className="mx-panel-slot">
@@ -2360,7 +2427,11 @@ const START_DIFF: readonly DiffLine[] = [
   { n: 13, kind: "del", text: "  return post(PAY_URL, order);" },
   { n: 13, kind: "add", text: "  return retry(1, () =>" },
   { n: 14, kind: "add", text: "    post(PAY_URL, order, {" },
-  { n: 15, kind: "add", text: "      signal: AbortSignal.timeout(TIMEOUT_MS)," },
+  {
+    n: 15,
+    kind: "add",
+    text: "      signal: AbortSignal.timeout(TIMEOUT_MS),",
+  },
   { n: 16, kind: "add", text: "    })," },
   { n: 17, kind: "add", text: "  );" },
   { n: 18, kind: "ctx", text: "}" },
