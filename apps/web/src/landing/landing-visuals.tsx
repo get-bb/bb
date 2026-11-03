@@ -10,7 +10,7 @@ import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 
 import {
   useExperiment,
@@ -34,23 +34,53 @@ import {
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 
+function useFirstSeen(): [(el: HTMLDivElement | null) => void, boolean] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (!el || seen) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setSeen(true);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, seen]);
+  return [setEl, seen];
+}
+
+function DownloadAreaExposure() {
+  useExperimentExposure("homepage-download-area", "desktop");
+  return null;
+}
+
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const simple = useExperiment("homepage-download-area") === "test";
-  useExperimentExposure("homepage-download-area", "desktop");
-  return simple ? (
-    <SimpleInstallOptions placement={placement} />
-  ) : (
-    <CurrentInstallOptions placement={placement} />
+  const [ref, seen] = useFirstSeen();
+  return (
+    <>
+      {simple ? (
+        <SimpleInstallOptions ref={ref} placement={placement} />
+      ) : (
+        <CurrentInstallOptions ref={ref} placement={placement} />
+      )}
+      {seen ? <DownloadAreaExposure /> : null}
+    </>
   );
 }
 
-function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
+function CurrentInstallOptions({
+  ref,
+  placement,
+}: {
+  ref?: Ref<HTMLDivElement>;
+  placement: CtaPlacement;
+}) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
     platform === "macos" ? "linux" : "macos";
   return (
-    <div className="install-options">
+    <div ref={ref} className="install-options">
       <div className="install-actions">
         <span className="install-choice">
           <DesktopDownloadButton
@@ -116,16 +146,16 @@ function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
   );
 }
 
-// homepage-download-area test arm: one download button over a single line
-// that links to the repo and to /download. The command moves to /download.
 export function SimpleInstallOptions({
+  ref,
   placement,
 }: {
+  ref?: Ref<HTMLDivElement>;
   placement: CtaPlacement;
 }) {
   const platform = useDesktopPlatform();
   return (
-    <div className="install-options">
+    <div ref={ref} className="install-options">
       <div className="install-actions">
         <span className="install-choice">
           <DesktopDownloadButton
