@@ -3328,8 +3328,271 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-start .bw-feed {
   padding-right: calc(
     (1 - var(--bw-drop)) *
-      min(386px, 968px - var(--bw-fit-slice) + 312px * var(--bw-overlay-scale))
+      max(
+        var(--bw-sp-width) + 22px,
+        min(
+          386px,
+          968px - var(--bw-fit-slice) + 312px * var(--bw-overlay-scale)
+        )
+      )
   );
+}
+
+.bw-start-stage {
+  --bw-sp-width: 392px;
+}
+
+.bw-start .bar-toggle.active {
+  animation: bw-sp-toggle 0.3s ease 4.5s backwards;
+}
+
+.bw-start .leaving .bar-toggle.active {
+  animation: bw-sp-toggle 0.3s ease reverse forwards;
+}
+
+@keyframes bw-sp-toggle {
+  from {
+    background: transparent;
+    color: var(--subtle);
+  }
+}
+
+.bw-sp-slot {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--bw-sp-width);
+  overflow: hidden;
+  transform: translateX(calc(var(--bw-drop) * 100%));
+}
+
+.bw-sp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left: 1px solid var(--border-soft);
+  background: var(--surface);
+  animation: bw-sp-in 0.7s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-sp {
+  animation: bw-sp-out 0.6s var(--fw-ease) forwards;
+}
+
+@keyframes bw-sp-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes bw-sp-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.bw-sp-chrome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  color: var(--dim);
+}
+
+.bw-sp-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.bw-sp-tab.is-on {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-sp-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.bw-sp-new {
+  margin: 0 7px;
+  color: var(--subtle);
+}
+
+.bw-sp-full {
+  margin: 0 7px 0 auto;
+  color: var(--subtle);
+}
+
+.bw-sp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 12px 16px;
+  font-size: 12px;
+}
+
+.bw-sp-select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.bw-sp-select-chev {
+  width: 13px;
+  height: 13px;
+  color: var(--dim);
+}
+
+.bw-sp-summary {
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.bw-sp-tool {
+  color: var(--dim);
+}
+
+.bw-sp-tally {
+  display: inline-flex;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bw-sp-plus {
+  color: var(--add);
+}
+
+.bw-sp-minus {
+  color: var(--del);
+}
+
+.bw-sp-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 0 16px;
+}
+
+.bw-sp-card {
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.bw-sp-file-head {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-right: 12px;
+  font-size: 12px;
+}
+
+.bw-sp-chev {
+  width: 32px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.bw-sp-chev.is-open {
+  transform: rotate(90deg);
+}
+
+.bw-sp-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 0.5ch;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-sp-viewed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  color: var(--dim);
+}
+
+.bw-sp-viewed i {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.bw-sp-diff {
+  padding: 4px 0 6px;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 20px;
+}
+
+.bw-sp-line {
+  display: flex;
+  white-space: pre;
+}
+
+.bw-sp-num {
+  width: 34px;
+  flex-shrink: 0;
+  padding-right: 12px;
+  border-left: 2px solid transparent;
+  color: var(--subtle);
+  text-align: right;
+}
+
+.bw-sp-code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+}
+
+.bw-sp-line.is-add {
+  background: color-mix(in oklab, var(--add) 12%, transparent);
+}
+
+.bw-sp-line.is-add .bw-sp-num {
+  border-left-color: var(--add);
+  color: var(--add);
+}
+
+.bw-sp-line.is-del {
+  background: color-mix(in oklab, var(--del) 12%, transparent);
+}
+
+.bw-sp-line.is-del .bw-sp-num {
+  border-left-color: var(--del);
+  color: var(--del);
 }
 
 /* An iPhone beside the window, sized by --bw-overlay-scale. The screen is laid out at the real
