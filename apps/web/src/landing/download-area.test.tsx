@@ -23,11 +23,19 @@ describe("homepage-download-area install block", () => {
     expect(html).not.toContain(CLI_COMMAND);
     expect(html).not.toContain("Alpha");
     expect(html).toContain('href="/download">Other platforms</a>');
-    const desktopNote = html.slice(html.indexOf("install-note-desktop"));
-    const touchNote = html.slice(html.indexOf("install-note-touch"));
-    expect(desktopNote).toContain(`href="${GITHUB_URL}"`);
-    expect(touchNote).toContain(`href="${GITHUB_URL}"`);
-    expect(touchNote).toContain("bb runs on macOS, Windows, and Linux");
+    expect(html).toContain(`href="${GITHUB_URL}"`);
+  });
+
+  it("gives phones the same note as computers in the test arm", () => {
+    const html = renderToStaticMarkup(
+      <SimpleInstallOptions placement="hero" />,
+    );
+    expect(html.match(/class="install-note[ "]/g)).toHaveLength(1);
+    expect(html).not.toContain("install-note-touch");
+    expect(html).not.toContain("bb runs on macOS, Windows, and Linux");
+    expect(html).toMatch(
+      /<span class="install-note">.*Open source<\/a> · <a class="install-note-link" href="\/download">Other platforms<\/a><\/span>/,
+    );
   });
 });
 
