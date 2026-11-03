@@ -31,6 +31,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
+import type { ExperimentVariant } from "../experiments/flags";
 import {
   useExperiment,
   useExperimentExposure,
@@ -1201,6 +1202,12 @@ function AgentChat() {
   );
 }
 
+const SUBHEAD_COPY = {
+  control:
+    "bb can control, customize, and automate itself, laying the groundwork for your own software factory.",
+  test: "Run all your coding agents in one programmable workspace. Change almost anything with a plugin or a prompt.",
+} as const satisfies Record<ExperimentVariant<"homepage-subhead-text">, string>;
+
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
@@ -1239,17 +1246,9 @@ function LandingPage() {
           <ChevronRight className="updates-arrow" />
         </a>
         <h1>The IDE that builds itself</h1>
-        {subhead === "test" ? (
-          <p className="sub sub-wide">
-            Run all your coding agents in one programmable workspace. Change
-            almost anything with a plugin or a prompt.
-          </p>
-        ) : (
-          <p className="sub">
-            bb can control, customize, and automate itself, laying the
-            groundwork for your own software factory.
-          </p>
-        )}
+        <p className={subhead === "test" ? "sub sub-wide" : "sub"}>
+          {SUBHEAD_COPY[subhead]}
+        </p>
 
         <InstallOptions placement="hero" />
 
