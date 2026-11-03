@@ -948,6 +948,10 @@ describe("connect setup guide section", () => {
     );
 
     const setUp = await slot.findByRole("button", { name: "Set up" });
+    await waitFor(() =>
+      expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+    );
+    await act(async () => {});
     vi.useFakeTimers();
     await act(async () => fireEvent.click(setUp));
     await act(async () => vi.advanceTimersByTimeAsync(2_000));
@@ -983,6 +987,10 @@ describe("connect setup guide section", () => {
     );
 
     const setUp = await slot.findByRole("button", { name: "Set up" });
+    await waitFor(() =>
+      expect(slot.rpcCalls.map((call) => call.method)).toContain("status"),
+    );
+    await act(async () => {});
     vi.useFakeTimers();
     await act(async () => fireEvent.click(setUp));
     await act(async () => vi.advanceTimersByTimeAsync(2_000));
