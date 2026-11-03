@@ -300,8 +300,8 @@ describe("PluginMorph", () => {
       "Kanban",
       "Start task",
       "Agent graph",
-      "Working set",
-      "PR needs you",
+      "Search in files",
+      "README.md",
       "Settled (23)",
     ]) {
       expect(html).toContain(text);
@@ -310,23 +310,35 @@ describe("PluginMorph", () => {
     expect(html.match(/mx-layer is-on/g)).toHaveLength(2);
   });
 
-  it("changes configuration on a beat, only while on screen and visible", () => {
+  it("changes the window's layout on a beat, only while on screen and visible", () => {
     const { root, layer, unmount } = mount();
     act(() => vi.advanceTimersByTime(20_000));
     expect(root.dataset.scene).toBe("stock");
 
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(3_000));
-    expect(root.dataset.scene).toBe("taskboard");
-    expect(root.className).toContain("mx-taskboard");
+    act(() => vi.advanceTimersByTime(1_500));
+    expect(root.dataset.scene).toBe("files");
+    expect(root.className).toContain("mx-collapsed");
     expect(layer(".mx-center > .main:nth-child(2)")).toContain("is-entering");
     expect(layer(".mx-center > .main:nth-child(1)")).toContain("is-under");
+    expect(layer(".mx-side-threads")).toContain("is-under");
 
     act(() => vi.advanceTimersByTime(1_100));
     expect(layer(".mx-center > .main:nth-child(1)")).not.toContain("is-under");
+    expect(layer(".mx-side-threads")).not.toContain("is-on");
 
-    act(() => vi.advanceTimersByTime(4_100 * 3));
+    act(() => vi.advanceTimersByTime(2_600));
+    expect(root.dataset.scene).toBe("graph");
+    expect(root.querySelector(".bar-toggle.active")).not.toBeNull();
+
+    act(() => vi.advanceTimersByTime(3_700));
+    expect(root.dataset.scene).toBe("taskboard");
+    expect(root.querySelector(".bar-toggle.active")).toBeNull();
+
+    act(() => vi.advanceTimersByTime(3_700));
     expect(root.dataset.scene).toBe("shelves");
+    expect(root.className).not.toContain("mx-collapsed");
+    expect(layer(".mx-side-shelves")).toContain("is-entering");
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -336,8 +348,31 @@ describe("PluginMorph", () => {
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(false);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
-    act(() => vi.advanceTimersByTime(4_100));
+    act(() => vi.advanceTimersByTime(1_500));
     expect(root.dataset.scene).toBe("stock");
+    unmount();
+  });
+
+  it("never shows the same layout twice in a row", () => {
+    const { root, unmount } = mount();
+    FakeObserver.instances[0]!.show(true);
+    const seen: string[] = [];
+    const layout = () =>
+      [
+        root.className.includes("mx-collapsed"),
+        root.querySelector(".mx-side-slot .is-on")?.className ?? "",
+        root.querySelector(".mx-center .is-on")!.className,
+        root.querySelector(".bar-toggle.active") !== null,
+      ].join("|");
+    seen.push(layout());
+    for (let step = 0; step < 5; step += 1) {
+      act(() => vi.advanceTimersByTime(3_700));
+      seen.push(layout());
+    }
+    for (let step = 1; step < seen.length; step += 1) {
+      expect(seen[step]).not.toBe(seen[step - 1]);
+    }
+    expect(seen[5]).toBe(seen[0]);
     unmount();
   });
 
@@ -345,7 +380,7 @@ describe("PluginMorph", () => {
     const { root, unmount } = mount(true);
     FakeObserver.instances[0]!.show(true);
     act(() => vi.advanceTimersByTime(20_000));
-    expect(root.dataset.scene).toBe("taskboard");
+    expect(root.dataset.scene).toBe("graph");
     expect(root.querySelector(".is-entering")).toBeNull();
     unmount();
   });
