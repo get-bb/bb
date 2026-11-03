@@ -17,7 +17,9 @@ function isPrerenderedDocsPath(path: string): boolean {
   return (
     path === "/llms.txt" ||
     path === "/llms-full.txt" ||
-    ((path === "/docs" || path.startsWith("/docs/")) && path !== "/docs/mcp")
+    ((path === "/docs" || path.startsWith("/docs/")) &&
+      path !== "/docs/mcp" &&
+      !path.startsWith("/docs/og/"))
   );
 }
 
