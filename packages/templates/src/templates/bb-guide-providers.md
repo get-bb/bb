@@ -80,8 +80,9 @@ threads use the next enabled provider in saved order, including in projects whos
 last-used provider is disabled. Explicit or existing-thread choices never
 silently switch.
 
-Provider-native memory can be controlled on the separate Settings → Providers
-→ Codex and Settings → Providers → Claude Code pages. Codex memory controls
+Provider-native memory can be controlled on the Settings → Plugins → Codex
+provider and Settings → Plugins → Claude Code provider pages, or with
+bb plugin config <plugin-id> set memoryEnabled false. Codex memory controls
 both recall (`memories.use_memories`) and future generation
 (`memories.generate_memories`). Claude Code memory controls native auto-memory
 reads and writes (`autoMemoryEnabled`). Both preferences default on and apply

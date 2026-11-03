@@ -4,7 +4,9 @@ BB's official plugin for durable, progressively disclosed agent memory. It
 provides:
 
 Because this memory store works across providers, we recommend turning off
-provider-native memory under Settings → Providers while using it. That avoids
+provider-native memory while using it: the Claude Code memory and Codex memory
+switches under Settings → Plugins → Claude Code provider and Codex provider.
+That avoids
 duplicated or conflicting memories split between Codex, Claude Code, and bb.
 
 - plugin-private SQLite storage with append-only migrations;
