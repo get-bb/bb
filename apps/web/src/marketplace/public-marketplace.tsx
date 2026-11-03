@@ -245,9 +245,7 @@ function InstallCount({
   if (badge?.kind !== "count") return null;
   const total = badge.installs;
   const formatted =
-    variant === "detail"
-      ? total.toLocaleString("en-US")
-      : formatInstalls(total);
+    variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
   return (
     <span
       className={className}
@@ -944,8 +942,7 @@ function MoreInCategory({
       <div className="marketplace-section-head">
         <div>
           <h2>
-            More in {categoryName}
-            {"\u00a0"}
+            More in {categoryName}{"\u00a0"}
             <span>{entries.length}</span>
           </h2>
           {category?.description === undefined ? null : (
@@ -1063,6 +1060,7 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
+
             </div>
           </div>
           <div className="marketplace-detail-install">
@@ -1105,15 +1103,15 @@ export function PublicMarketplaceDetailPage({
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
-                <a
-                  className="marketplace-detail-source"
-                  href={repository}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View source
-                  <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-                </a>
+              <a
+                className="marketplace-detail-source"
+                href={repository}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View source
+                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+              </a>
               </div>
               {entry.overview === undefined ? null : (
                 <MarketplaceOverview markdown={entry.overview} />
