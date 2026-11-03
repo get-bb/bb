@@ -18,4 +18,27 @@ describe("formatCompactRelativeTime", () => {
       expected,
     );
   });
+
+  it("includes the year only for dates before the current year", () => {
+    const now = new Date(2026, 10, 2).getTime();
+    const previousYear = new Date(2025, 9, 4);
+    const currentYear = new Date(2026, 8, 4);
+    expect(
+      formatCompactRelativeTime({ timestamp: previousYear.getTime(), now }),
+    ).toBe(
+      previousYear.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    );
+    expect(
+      formatCompactRelativeTime({ timestamp: currentYear.getTime(), now }),
+    ).toBe(
+      currentYear.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+    );
+  });
 });

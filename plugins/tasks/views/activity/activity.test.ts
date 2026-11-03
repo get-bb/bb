@@ -81,6 +81,9 @@ describe("formatRelativeTime", () => {
     const expected = new Date(iso).toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
+      ...(new Date(iso).getFullYear() < new Date(now).getFullYear()
+        ? { year: "numeric" }
+        : {}),
     });
     expect.soft(formatDetailTime(iso)).toBe(expected);
     expect.soft(formatRelativeTime(iso, now)).toBe(expected);

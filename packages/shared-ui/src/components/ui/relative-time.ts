@@ -26,8 +26,12 @@ export function formatCompactRelativeTime({
   if (diffMs < 5 * WEEK_MS) {
     return `${Math.floor(diffMs / WEEK_MS)}w`;
   }
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  const date = new Date(timestamp);
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+    ...(date.getFullYear() < new Date(now).getFullYear()
+      ? { year: "numeric" }
+      : {}),
   });
 }
