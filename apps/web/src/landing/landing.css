@@ -2729,9 +2729,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
+/* Thread text starts at the composer box's left edge, 16px in from the
+   thread column, as in the app and the hero. */
 .bw-feed {
   gap: 0;
-  padding: 18px 22px;
+  padding: 18px 16px;
 }
 
 .bw-feed > * + * {
