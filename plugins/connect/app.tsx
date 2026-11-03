@@ -1980,6 +1980,7 @@ function ConnectOnSetupRow({
 function setupGuideLoginPanel(
   login: AccountLogin["login"],
   openUrl: (url: string) => boolean,
+  last: boolean,
 ): ReactNode {
   if (login?.state !== "pending") return null;
   return (
@@ -2003,6 +2004,7 @@ function setupGuideLoginPanel(
       </p>
       <SignInPanel
         flush
+        flushBottom={last}
         variant={{
           kind: "code",
           code: login.userCode,
@@ -2088,7 +2090,7 @@ function ConnectSetupGuideSection({
 
   const showsContent =
     connecting ||
-    login !== null ||
+    (login !== null && login.state !== "pending") ||
     error !== null ||
     turnOnError !== null ||
     loadError !== null;
@@ -2098,7 +2100,11 @@ function ConnectSetupGuideSection({
       icon="ComputerCloud"
       title="bb connect"
       description={SETUP_GUIDE_DESCRIPTION}
-      panel={connecting ? null : setupGuideLoginPanel(login, navigate.openUrl)}
+      panel={
+        connecting
+          ? null
+          : setupGuideLoginPanel(login, navigate.openUrl, !showsContent)
+      }
       action={
         connecting || signingIn ? undefined : (
           <Button
