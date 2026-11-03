@@ -811,7 +811,7 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
-function closeTurnThatOutlivedItsRunInTransaction(
+function stopTurnThatOutlivedItsRunInTransaction(
   deps: ThreadCommandResultSettlementDeps,
   args: { environmentId: string | null; threadId: string },
 ): CommandResultPostCommitAction | null {
@@ -820,17 +820,15 @@ function closeTurnThatOutlivedItsRunInTransaction(
   if (environmentId === null || openTurnId === null) {
     return null;
   }
-  appendInterruptedTurnCompletedEventInTransaction(deps, {
-    activeTurnId: openTurnId,
-    environmentId,
-    providerThreadId: getLastProviderThreadId(deps, args.threadId),
+  appendThreadInterruptedEventInTransaction(deps.db, {
     threadId: args.threadId,
+    reason: "manual-stop",
   });
   deps.hub.notifyThread(args.threadId, ["events-appended"], {
     timelineSequence: getLatestThreadSequence(deps.db, {
       threadId: args.threadId,
     }),
-    eventTypes: ["turn/completed"],
+    eventTypes: ["system/thread/interrupted"],
   });
   return {
     run: (postCommitDeps) => {
@@ -912,7 +910,7 @@ function settleThreadCommandFailure(
       args.command.type === "thread.start" ||
       args.command.target.mode === "start";
     const stopOpenTurn = isStartRefusal
-      ? closeTurnThatOutlivedItsRunInTransaction(args.deps, {
+      ? stopTurnThatOutlivedItsRunInTransaction(args.deps, {
           environmentId: thread.environmentId,
           threadId: thread.id,
         })
@@ -2138,6 +2136,25 @@ export function finalizeStoppedThreadInTransaction(
     });
     if (outcome.applied) {
       deps.hub.notifyThread(currentThread.id, ["status-changed"]);
+    }
+  } else if (currentThread.status === "error") {
+    const openTurnId = getActiveTurnId(deps, currentThread.id);
+    if (openTurnId !== null) {
+      appendInterruptedTurnCompletedEventInTransaction(deps, {
+        activeTurnId: openTurnId,
+        environmentId: currentThread.environmentId,
+        ...(args.providerCheckpointId !== undefined
+          ? { providerCheckpointId: args.providerCheckpointId }
+          : {}),
+        providerThreadId: getLastProviderThreadId(deps, currentThread.id),
+        threadId: currentThread.id,
+      });
+      deps.hub.notifyThread(currentThread.id, ["events-appended"], {
+        timelineSequence: getLatestThreadSequence(deps.db, {
+          threadId: currentThread.id,
+        }),
+        eventTypes: ["turn/completed"],
+      });
     }
   }
 

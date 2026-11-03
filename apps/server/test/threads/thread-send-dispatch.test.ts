@@ -16,6 +16,7 @@ import type { EnvironmentRow } from "@bb/db";
 import {
   changedMessageSchema,
   threadScope,
+  turnRequestEventDataSchema,
   turnScope,
   type ServiceTier,
   type Thread,
@@ -47,6 +48,7 @@ import {
   internalAuthHeaders,
   listQueuedThreadCommands,
   reportQueuedCommandError,
+  reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
@@ -1943,41 +1945,123 @@ describe("competing turn refusals", () => {
     });
   });
 
-  it("fails the run and stops the open root turn for other refusals", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedProviderThreadFixture({
-        harness,
-        status: "idle",
-        value: 63,
-      });
-      const { queued } = await sendStartFromIdle(harness, fixture);
-      seedTurnStarted(harness.deps, {
-        environmentId: fixture.environment.id,
-        providerThreadId: "provider-send-dispatch-63",
-        threadId: fixture.thread.id,
-        turnId: "turn-unrequested",
-      });
+  it.each([
+    { providerReportsCompletion: true },
+    { providerReportsCompletion: false },
+  ])(
+    "stops the open turn of a refused start with one completion and one parent notice (provider reports completion: $providerReportsCompletion)",
+    async ({ providerReportsCompletion }) => {
+      await withTestHarness(async (harness) => {
+        const fixture = seedProviderThreadFixture({
+          harness,
+          status: "idle",
+          value: providerReportsCompletion ? 63 : 64,
+        });
+        const child = seedThread(harness.deps, {
+          projectId: fixture.thread.projectId,
+          environmentId: fixture.environment.id,
+          parentThreadId: fixture.thread.id,
+          status: "idle",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: fixture.environment.id,
+          providerThreadId: "provider-refused-child",
+          threadId: child.id,
+        });
+        const { queued } = await sendStartFromIdle(harness, {
+          ...fixture,
+          thread: child,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: fixture.environment.id,
+          providerThreadId: "provider-refused-child",
+          threadId: child.id,
+          turnId: "turn-unrequested",
+        });
 
-      await reportQueuedCommandError(harness, queued, {
-        errorCode: "provider_rpc_error",
-        errorMessage: "Provider rejected the turn",
-      });
+        await reportQueuedCommandError(harness, queued, {
+          errorCode: "provider_rpc_error",
+          errorMessage: "Provider rejected the turn",
+        });
+        expect(getThread(harness.db, child.id)?.status).toBe("error");
+        const stop = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" && command.threadId === child.id,
+        );
+        if (stop.command.type !== "thread.stop") {
+          throw new Error("Expected a thread.stop command");
+        }
+        expect(stop.command.intent).toBe("interrupt");
 
-      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
-      expect(getActiveStoredTurnId(harness.db, fixture.thread.id)).toBeNull();
-      const stop = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.stop" &&
-          command.threadId === fixture.thread.id,
-      );
-      if (stop.command.type !== "thread.stop") {
-        throw new Error("Expected a thread.stop command");
-      }
-      expect(stop.command.intent).toBe("interrupt");
-    });
-  });
+        if (providerReportsCompletion) {
+          const completed = await harness.app.request(
+            "/internal/session/events",
+            {
+              method: "POST",
+              headers: internalAuthHeaders(harness),
+              body: JSON.stringify({
+                sessionId: fixture.sessionId,
+                eventGroups: groupHostDaemonEvents([
+                  {
+                    threadId: child.id,
+                    event: {
+                      type: "turn/completed",
+                      threadId: child.id,
+                      providerThreadId: "provider-refused-child",
+                      scope: turnScope("turn-unrequested"),
+                      status: "interrupted",
+                    },
+                  },
+                ]),
+              }),
+            },
+          );
+          expect(completed.status, await completed.clone().text()).toBe(200);
+        }
+        await reportQueuedCommandSuccess(harness, stop, {
+          providerCheckpointId: null,
+        });
+
+        expect(getThread(harness.db, child.id)?.status).toBe("error");
+        expect(getActiveStoredTurnId(harness.db, child.id)).toBeNull();
+        expect(
+          listEvents(harness.db, { threadId: child.id }).filter(
+            (event) =>
+              event.type === "turn/completed" &&
+              event.turnId === "turn-unrequested",
+          ),
+        ).toHaveLength(1);
+        await vi.waitFor(
+          () =>
+            expect(parentNoticeStatuses(harness, fixture.thread.id)).toEqual([
+              "failed",
+            ]),
+          { timeout: 5_000 },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        expect(parentNoticeStatuses(harness, fixture.thread.id)).toEqual([
+          "failed",
+        ]);
+      });
+    },
+  );
 });
+
+function parentNoticeStatuses(
+  harness: TestAppHarness,
+  parentThreadId: string,
+): string[] {
+  return listEvents(harness.db, { threadId: parentThreadId })
+    .filter((row) => row.type === "client/turn/requested")
+    .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+    .flatMap((data) => {
+      const subject = data.systemMessageSubject;
+      return subject?.kind === "thread"
+        ? (subject.outcomes ?? []).map((outcome) => outcome.status)
+        : [];
+    });
+}
 
 describe("turn held open for background work", () => {
   async function postTurnEvents(
