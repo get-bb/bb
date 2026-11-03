@@ -5,5 +5,6 @@ export {
   resetNativeShellForTests,
   shellOpenExternal,
   shellOpenNative,
+  shellSetBadge,
 } from "./native-shell";
 export { NativeShellReporter } from "./NativeShellReporter";

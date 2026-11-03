@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import {
+  desktopAttentionThreads,
+  shouldShowFaviconAttentionDot,
+} from "./faviconAttentionDot";
 
 type FaviconSidebarThread = Parameters<
   typeof shouldShowFaviconAttentionDot
@@ -179,5 +182,28 @@ describe("shouldShowFaviconAttentionDot", () => {
         ],
       }),
     ).toBe(false);
+  });
+});
+
+it("reports pending threads separately from threads that are only unread, excluding hidden threads", () => {
+  expect(
+    desktopAttentionThreads([
+      makeSidebarThread({ id: "unread" }),
+      makeSidebarThread({
+        id: "pending",
+        lastReadAt: 30,
+        hasPendingInteraction: true,
+      }),
+      makeSidebarThread({ id: "both", hasPendingInteraction: true }),
+      makeSidebarThread({ id: "read", lastReadAt: 30 }),
+      makeSidebarThread({
+        id: "hidden",
+        visibility: "hidden",
+        hasPendingInteraction: true,
+      }),
+    ]),
+  ).toEqual({
+    pendingThreadIds: ["pending", "both"],
+    unreadThreadIds: ["unread"],
   });
 });

@@ -1,5 +1,7 @@
 import type { AvailableModel } from "@bb/domain";
 
+export const LIVE_TEST_PROVIDER_ID = "codex";
+
 const PREFERRED_TEST_MODELS_BY_PROVIDER: Record<string, readonly string[]> = {
   codex: ["gpt-5.4"],
   "claude-code": ["claude-haiku-4-5"],

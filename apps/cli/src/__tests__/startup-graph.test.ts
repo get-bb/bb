@@ -120,6 +120,7 @@ describe("bb startup module graph", () => {
     for (const fragment of [
       "/zod/",
       "/undici/",
+      "/execa/",
       "/mime-types/",
       "/node_modules/ws/",
       "/packages/config/",

@@ -1,234 +1,105 @@
-import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
 import type { QueryClient } from "@tanstack/react-query";
-import type { Environment, ThreadListEntry } from "@bb/domain";
+import { optimisticQueryUpdate } from "@bb/query-tags";
+import type { Environment } from "@bb/domain";
 import {
   environmentQueryKey,
-  sidebarNavigationQueryKey,
   threadSearchQueryKeyPrefix,
-  threadsQueryKey,
 } from "../queries/query-keys";
+import { keepNewerByUpdatedAt } from "./cache-effect-utils";
 import { invalidateEnvironmentWorkspaceStateQueries } from "./environment-cache-effects";
 import {
-  applyToCachedThreadListsAndSidebarNavigation,
-  applyToCachedSidebarNavigationThreads,
-  listSidebarNavigationThreads,
-  snapshotCachedSidebarNavigation,
-  type CachedSidebarNavigationSnapshot,
-  type CachedThreadListsAndSidebarNavigationMapper,
-} from "./query-cache";
-import {
-  applyToCachedThreadLists,
-  getCachedThreadLists,
-  iterateThreadListCacheEntries,
-  type CachedThreadListSnapshot,
-} from "./thread-list-cache-data";
+  beginThreadEntityPrediction,
+  findThreadEntityIds,
+  patchThreadEntity,
+  type ThreadEntityPrediction,
+} from "./thread-entity-store";
 
 interface EnvironmentUpdateResultArgs {
   environment: Environment;
   queryClient: QueryClient;
 }
 
-interface ApplyEnvironmentNameToCachedThreadArgs {
-  environment: Environment;
-  thread: ThreadListEntry;
-}
-
-interface BeginEnvironmentNameUpdateTransactionArgs {
-  environmentId: string;
-  name: string | null;
-  queryClient: QueryClient;
-}
-
-interface RollbackEnvironmentNameUpdateTransactionArgs {
-  queryClient: QueryClient;
-  transaction: EnvironmentNameUpdateTransaction | undefined;
-}
-
-interface CompleteEnvironmentNameUpdateTransactionArgs {
-  environment: Environment;
-  queryClient: QueryClient;
-  transaction: EnvironmentNameUpdateTransaction | undefined;
-}
-
 export interface EnvironmentNameUpdateTransaction {
   environmentId: string;
   name: string | null;
-  previousEnvironment: Environment | undefined;
-  previousSidebarNavigation: CachedSidebarNavigationSnapshot;
-  previousThreadLists: CachedThreadListSnapshot;
-}
-
-function applyEnvironmentNameToThread(
-  thread: ThreadListEntry,
-  environmentId: string,
-  name: string | null,
-): ThreadListEntry {
-  return thread.environmentId === environmentId
-    ? { ...thread, environmentName: name }
-    : thread;
-}
-
-function applyEnvironmentNameToCachedThread({
-  environment,
-  thread,
-}: ApplyEnvironmentNameToCachedThreadArgs): ThreadListEntry {
-  return applyEnvironmentNameToThread(thread, environment.id, environment.name);
-}
-
-function isEnvironmentNameCurrent(
-  queryClient: QueryClient,
-  environmentId: string,
-  name: string | null,
-): boolean {
-  const environment = queryClient.getQueryData<Environment>(
-    environmentQueryKey(environmentId),
-  );
-  if (environment !== undefined) return environment.name === name;
-
-  for (const snapshot of getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  })) {
-    const thread = [...iterateThreadListCacheEntries(snapshot.data)].find(
-      (entry) => entry.environmentId === environmentId,
-    );
-    if (thread !== undefined) return thread.environmentName === name;
-  }
-
-  const sidebarNavigation = snapshotCachedSidebarNavigation(queryClient);
-  const thread = sidebarNavigation
-    ? listSidebarNavigationThreads(sidebarNavigation).find(
-        (entry) => entry.environmentId === environmentId,
-      )
-    : undefined;
-  return thread === undefined || thread.environmentName === name;
+  prediction: ThreadEntityPrediction<Environment>;
 }
 
 export async function beginEnvironmentNameUpdateTransaction({
   environmentId,
   name,
   queryClient,
-}: BeginEnvironmentNameUpdateTransactionArgs): Promise<EnvironmentNameUpdateTransaction> {
-  await cancelOptimisticQueries(queryClient, {
-    queryKey: environmentQueryKey(environmentId),
-  });
-  await cancelOptimisticQueries(queryClient, { queryKey: threadsQueryKey() });
-  await cancelOptimisticQueries(queryClient, {
-    queryKey: sidebarNavigationQueryKey(),
-  });
-
-  const previousEnvironment = queryClient.getQueryData<Environment>(
-    environmentQueryKey(environmentId),
-  );
-  const previousThreadLists = getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  });
-  const previousSidebarNavigation =
-    snapshotCachedSidebarNavigation(queryClient);
-
-  queryClient.setQueryData<Environment>(
-    environmentQueryKey(environmentId),
-    (environment) =>
-      environment === undefined ? environment : { ...environment, name },
-  );
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (threads) =>
-    threads.map((thread) =>
-      applyEnvironmentNameToThread(thread, environmentId, name),
-    ),
-  );
-
+}: {
+  environmentId: string;
+  name: string | null;
+  queryClient: QueryClient;
+}): Promise<EnvironmentNameUpdateTransaction> {
+  const nameFrom = (result: { value: Environment } | undefined) =>
+    result === undefined ? name : result.value.name;
   return {
     environmentId,
     name,
-    previousEnvironment,
-    previousSidebarNavigation,
-    previousThreadLists,
+    prediction: beginThreadEntityPrediction<Environment>(queryClient, {
+      threadIds: findThreadEntityIds(
+        queryClient,
+        (thread) => thread.environmentId === environmentId,
+      ),
+      update: (entity, _threadId, result) => ({
+        ...entity,
+        list: entity.list && {
+          ...entity.list,
+          environmentName: nameFrom(result),
+        },
+      }),
+      extra: [
+        optimisticQueryUpdate<Environment, Environment>(
+          environmentQueryKey(environmentId),
+          (environment, result) => ({ ...environment, name: nameFrom(result) }),
+        ),
+      ],
+    }),
   };
 }
 
 export function rollbackEnvironmentNameUpdateTransaction({
-  queryClient,
   transaction,
-}: RollbackEnvironmentNameUpdateTransactionArgs): void {
-  if (transaction === undefined) return;
-  const { environmentId, name } = transaction;
-  queryClient.setQueryData<Environment>(
-    environmentQueryKey(environmentId),
-    (environment) =>
-      environment?.name === name &&
-      transaction.previousEnvironment !== undefined
-        ? { ...environment, name: transaction.previousEnvironment.name }
-        : environment,
-  );
-
-  const restoreThread = (
-    thread: ThreadListEntry,
-    previousName: string | null | undefined,
-  ): ThreadListEntry =>
-    thread.environmentId === environmentId &&
-    thread.environmentName === name &&
-    previousName !== undefined
-      ? { ...thread, environmentName: previousName }
-      : thread;
-
-  for (const snapshot of transaction.previousThreadLists) {
-    const previousName = [...iterateThreadListCacheEntries(snapshot.data)].find(
-      (thread) => thread.environmentId === environmentId,
-    )?.environmentName;
-    applyToCachedThreadLists(queryClient, {
-      queryKey: snapshot.queryKey,
-      mapper: (threads) =>
-        threads.map((thread) => restoreThread(thread, previousName)),
-    });
-  }
-
-  const previousName = transaction.previousSidebarNavigation
-    ? listSidebarNavigationThreads(transaction.previousSidebarNavigation).find(
-        (thread) => thread.environmentId === environmentId,
-      )?.environmentName
-    : undefined;
-  applyToCachedSidebarNavigationThreads({
-    queryClient,
-    mapper: (threads) =>
-      threads.map((thread) => restoreThread(thread, previousName)),
-  });
+}: {
+  queryClient: QueryClient;
+  transaction: EnvironmentNameUpdateTransaction | undefined;
+}): void {
+  transaction?.prediction.fail();
 }
 
 export function completeEnvironmentNameUpdateTransaction({
   environment,
   queryClient,
   transaction,
-}: CompleteEnvironmentNameUpdateTransactionArgs): void {
-  if (
-    transaction !== undefined &&
-    !isEnvironmentNameCurrent(
-      queryClient,
-      transaction.environmentId,
-      transaction.name,
-    )
-  ) {
-    return;
-  }
+}: {
+  environment: Environment;
+  queryClient: QueryClient;
+  transaction: EnvironmentNameUpdateTransaction | undefined;
+}): void {
+  transaction?.prediction.succeed(environment);
   applyEnvironmentUpdateResult({ environment, queryClient });
 }
 
 export function applyEnvironmentUpdateResult({
-  environment,
+  environment: result,
   queryClient,
 }: EnvironmentUpdateResultArgs): void {
-  queryClient.setQueryData<Environment>(
-    environmentQueryKey(environment.id),
-    environment,
+  const queryKey = environmentQueryKey(result.id);
+  const environment = keepNewerByUpdatedAt(
+    queryClient.getQueryData<Environment>(queryKey),
+    result,
   );
-  const applyEnvironmentName: CachedThreadListsAndSidebarNavigationMapper = (
-    threads,
-  ) =>
-    threads.map((thread) =>
-      applyEnvironmentNameToCachedThread({ environment, thread }),
-    );
-  applyToCachedThreadListsAndSidebarNavigation(
+  queryClient.setQueryData<Environment>(queryKey, environment);
+  for (const threadId of findThreadEntityIds(
     queryClient,
-    applyEnvironmentName,
-  );
+    (thread) => thread.environmentId === environment.id,
+  ))
+    patchThreadEntity(queryClient, threadId, {
+      environmentName: environment.name,
+    });
   queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
   invalidateEnvironmentWorkspaceStateQueries({
     environmentId: environment.id,

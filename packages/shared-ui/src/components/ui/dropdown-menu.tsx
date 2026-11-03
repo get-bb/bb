@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { Slot } from "@radix-ui/react-slot";
 
 import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
@@ -34,12 +35,35 @@ const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
 const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
   "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
-const ResponsiveMenuContext =
-  React.createContext<ResponsiveOverlayContextValue>({
+const RESPONSIVE_MENU_CONTEXT_KEY = Symbol.for("bb.responsive-menu-context.v1");
+
+function isReactContext(
+  value: unknown,
+): value is React.Context<ResponsiveOverlayContextValue> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "Provider" in value &&
+    "Consumer" in value
+  );
+}
+
+function sharedResponsiveMenuContext(): React.Context<ResponsiveOverlayContextValue> {
+  const existing: unknown = Reflect.get(
+    globalThis,
+    RESPONSIVE_MENU_CONTEXT_KEY,
+  );
+  if (isReactContext(existing)) return existing;
+  const context = React.createContext<ResponsiveOverlayContextValue>({
     isCompactViewport: false,
     open: false,
     onOpenChange: () => {},
   });
+  Reflect.set(globalThis, RESPONSIVE_MENU_CONTEXT_KEY, context);
+  return context;
+}
+
+const ResponsiveMenuContext = sharedResponsiveMenuContext();
 
 function useResponsiveMenu() {
   return React.useContext(ResponsiveMenuContext);
@@ -221,6 +245,7 @@ const DropdownMenuItem = React.forwardRef<
   (
     {
       className,
+      asChild,
       inset,
       variant = "default",
       onSelect,
@@ -252,10 +277,11 @@ const DropdownMenuItem = React.forwardRef<
       };
 
     if (isCompactViewport) {
+      const Comp = asChild ? Slot : "button";
       return (
-        <button
+        <Comp
           ref={ref as React.RefCallback<HTMLButtonElement> | null}
-          type="button"
+          type={asChild ? undefined : "button"}
           role={role}
           disabled={disabled}
           aria-disabled={disabled || undefined}
@@ -269,8 +295,11 @@ const DropdownMenuItem = React.forwardRef<
           data-disabled={disabled ? "" : undefined}
           onFocus={callerFocus}
           onBlur={callerBlur}
-          onClick={() => {
-            if (disabled) return;
+          onClick={(clickEvent) => {
+            if (disabled) {
+              clickEvent.preventDefault();
+              return;
+            }
             const event = createSelectEvent();
             onSelect?.(event);
             if (!event.defaultPrevented) {
@@ -279,13 +308,14 @@ const DropdownMenuItem = React.forwardRef<
           }}
         >
           {children}
-        </button>
+        </Comp>
       );
     }
 
     return (
       <DropdownMenuPrimitive.Item
         ref={ref}
+        asChild={asChild}
         className={cn(
           "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,

@@ -8,11 +8,6 @@ export type HostObservedChange =
       environmentId: string;
     }
   | {
-      kind: "thread-storage-changed";
-      environmentId: string;
-      threadId: string;
-    }
-  | {
       kind: "injected-skills-changed";
       changedPaths: string[];
       sourceType: "data-dir";
@@ -21,13 +16,6 @@ export type HostObservedChange =
 type WorkspaceObservedChange = Extract<
   HostObservedChange,
   { kind: "workspace-status-changed" }
->;
-
-export type ThreadStorageObservedChange = Extract<
-  HostObservedChange,
-  {
-    kind: "thread-storage-changed";
-  }
 >;
 
 export type InjectedSkillsObservedChange = Extract<
@@ -48,19 +36,12 @@ export interface ThreadStorageWatchError {
   kind: "thread-storage-watch-error";
   rootPath: string;
   message: string;
-  environmentId?: string;
-  threadId?: string;
 }
 
 export interface DataDirSkillsWatchError {
   kind: "data-dir-skills-watch-error";
   rootPath: string;
   message: string;
-}
-
-export interface ThreadStorageWatchTarget {
-  environmentId: string;
-  threadId: string;
 }
 
 export interface WatchWorkspaceArgs {
@@ -71,10 +52,9 @@ export interface WatchWorkspaceArgs {
   onWatchError: (error: WorkspaceWatchError) => void;
 }
 
-export interface WatchThreadStorageRootArgs {
-  threadStorageRootPath: string;
-  resolveThreadTarget: (threadId: string) => ThreadStorageWatchTarget | null;
-  onChange: (event: ThreadStorageObservedChange) => void;
+export interface WatchThreadStorageArgs {
+  threadStoragePath: string;
+  onChange: () => void;
   onWatchError: (error: ThreadStorageWatchError) => void;
 }
 
@@ -103,9 +83,7 @@ export interface WatchPathRootArgs {
 export interface HostWatcher {
   watchWorkspace(args: WatchWorkspaceArgs): () => void | Promise<void>;
   watchPathRoot?(args: WatchPathRootArgs): () => void | Promise<void>;
-  watchThreadStorageRoot(
-    args: WatchThreadStorageRootArgs,
-  ): () => void | Promise<void>;
+  watchThreadStorage(args: WatchThreadStorageArgs): () => void | Promise<void>;
   watchDataDirSkillsRoot?(
     args: WatchDataDirSkillsRootArgs,
   ): () => void | Promise<void>;

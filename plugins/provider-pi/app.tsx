@@ -80,10 +80,11 @@ function ExtensionUiInteraction({
         questions={[
           {
             id: request.requestId,
-            prompt: request.message ?? "",
+            prompt: request.fullTitle ?? request.message ?? "",
             shortLabel: "Select",
             multiSelect: false,
             allowFreeText: false,
+            required: true,
             options: options.map((label, index) => ({
               value: `option-${index}`,
               label,
@@ -118,6 +119,9 @@ function ExtensionUiInteraction({
       onSubmit={onSubmit}
       className="flex flex-col gap-3 text-xs text-muted-foreground"
     >
+      {request.fullTitle ? (
+        <p className="text-sm text-foreground">{request.fullTitle}</p>
+      ) : null}
       {request.message ? (
         <p className="text-sm text-foreground">{request.message}</p>
       ) : null}

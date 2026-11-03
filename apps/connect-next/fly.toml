@@ -1,0 +1,42 @@
+app = "bb-connect-next"
+primary_region = "sjc"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+BASE_DOMAIN = "next.getbb.app"
+ACCOUNT_API_URL = "https://connect.getbb.app"
+ACCOUNT_APP_URL = "https://getbb.app"
+PUBLIC_SCHEME = "https"
+PORT = "8080"
+FRP_BIND_PORT = "7001"
+FRP_VHOST_PORT = "7080"
+FRP_HOOKS_PORT = "7090"
+FRP_LOG_LEVEL = "info"
+INTERNAL_PORT = "7100"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = "off"
+auto_start_machines = true
+min_machines_running = 1
+
+[http_service.concurrency]
+type = "connections"
+soft_limit = 4000
+hard_limit = 8000
+
+[[http_service.checks]]
+grace_period = "15s"
+interval = "15s"
+method = "GET"
+path = "/__gate/health"
+timeout = "5s"
+
+[[vm]]
+size = "performance-2x"
+memory = "4gb"

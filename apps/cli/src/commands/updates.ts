@@ -108,6 +108,7 @@ async function collectMachineUpdates(
           host,
           providerStatus: await sdk.hosts.providerCliStatus({
             hostId: host.id,
+            refresh: true,
           }),
           statusError: null,
         };

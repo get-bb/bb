@@ -56,6 +56,7 @@ function mountEditor(host: TestHost, pluginCustomizable = true) {
       attachmentError: null,
     },
     insertAtCursor: () => true,
+    submit: async () => {},
   };
   act(() => publishComposerEditorBridge(host.textEffectKey, bridge));
   published.push([host.textEffectKey, bridge]);
@@ -138,8 +139,12 @@ describe("useComposers", () => {
     const { result } = renderHook(() => useComposers(), { wrapper });
 
     result.current[0]!.setInputLock(true);
+    result.current[0]!.setTextEffect({ className: "listed-effect" });
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("useComposers() composer.setInputLock"),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("useComposers() composer.setTextEffect"),
     );
   });
 });

@@ -289,11 +289,6 @@ function nextTestRpcCursor(
   return nextCursor;
 }
 
-/**
- * Registers the capturing daemon socket for a host and returns it, so a test
- * that reconnects a host can hand the same socket to the real
- * `onDaemonSocketOpen` instead of replacing the capture with a stub.
- */
 export function registerTestHostRpcCapture(
   deps: Pick<TestAppHarness, "db" | "hub">,
   args: RegisterTestHostRpcCaptureArgs,
@@ -496,6 +491,12 @@ function isCapturedRpcForHarness(
       .where(eq(hostDaemonSessions.hostId, queued.row.hostId))
       .get() !== undefined
   );
+}
+
+export function forgetQueuedCommand(queued: QueuedCommand): void {
+  if (queued.rpcRequest) {
+    removePendingHostRpcRequest(queued.rpcRequest.requestId);
+  }
 }
 
 export async function waitForQueuedCommand(

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnHostProcess as spawn } from "@bb/process-utils";
 import { mkdir, open, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {

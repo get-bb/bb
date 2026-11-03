@@ -6,17 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 
-interface ScrollMetrics {
-  scrollHeight: number;
-  clientHeight: number;
-  scrollTop: number;
-}
-
-interface RowRect {
-  top: number;
-  bottom: number;
-}
-
 const SCROLL_AREA_CLASS = "scroll-area";
 
 class ResizeObserverMock implements ResizeObserver {
@@ -34,12 +23,6 @@ class ResizeObserverMock implements ResizeObserver {
   }
 }
 
-function getLatestResizeObserver(): ResizeObserverMock {
-  const instance = ResizeObserverMock.instances.at(-1);
-  if (!instance) throw new Error("Expected a ResizeObserver instance.");
-  return instance;
-}
-
 function stubMediaQueries(matching: ReadonlySet<string>): void {
   vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
     matches: matching.has(query),
@@ -51,30 +34,6 @@ function stubMediaQueries(matching: ReadonlySet<string>): void {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }));
-}
-
-function setScrollMetrics(element: HTMLElement, metrics: ScrollMetrics) {
-  Object.defineProperty(element, "scrollHeight", {
-    configurable: true,
-    value: metrics.scrollHeight,
-  });
-  Object.defineProperty(element, "clientHeight", {
-    configurable: true,
-    value: metrics.clientHeight,
-  });
-  element.scrollTop = metrics.scrollTop;
-}
-
-function mockScrollAreaRect(scrollArea: HTMLElement) {
-  vi.spyOn(scrollArea, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, 0, 100, 100),
-  );
-}
-
-function mockRowRect(row: HTMLElement, rect: RowRect) {
-  vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, rect.top, 100, rect.bottom - rect.top),
-  );
 }
 
 function requireHTMLElement(element: Element | null) {
@@ -132,7 +91,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   const store = getDefaultStore();
-  for (const threadId of ["coarse-thread", "cache-thread"]) {
+  for (const threadId of ["coarse-thread"]) {
     store.set(threadTimelineScrollAnchorAtomFamily(threadId), null);
   }
   vi.unstubAllGlobals();
@@ -187,63 +146,6 @@ describe("BottomAnchoredScrollBody on coarse pointers", () => {
       rowId: "",
       offsetWithinRow: 0,
       atBottom: true,
-    });
-  });
-});
-
-describe("BottomAnchoredScrollBody row NodeList cache", () => {
-  it("reuses the cached rows across captures until a resize invalidates them", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-    const { scrollArea, rowElements } = renderTimeline("cache-thread", [
-      "row-a",
-      "row-b",
-      "row-c",
-    ]);
-    mockScrollAreaRect(scrollArea);
-    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
-      top: -120,
-      bottom: -20,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
-      top: -20,
-      bottom: 80,
-    });
-    mockRowRect(requireHTMLElement(rowElements.get("row-c")!), {
-      top: 80,
-      bottom: 180,
-    });
-    setScrollMetrics(scrollArea, {
-      scrollHeight: 400,
-      clientHeight: 100,
-      scrollTop: 300,
-    });
-    const queryRows = vi.spyOn(scrollArea, "querySelectorAll");
-
-    vi.advanceTimersByTime(1_000);
-    scrollArea.scrollTop = 150;
-    fireEvent.wheel(scrollArea);
-    fireEvent.scroll(scrollArea);
-    expect(readAnchor("cache-thread")).toEqual({
-      rowId: "row-b",
-      offsetWithinRow: 20,
-      atBottom: false,
-    });
-    expect(queryRows).toHaveBeenCalledTimes(1);
-
-    vi.advanceTimersByTime(200);
-    scrollArea.scrollTop = 140;
-    fireEvent.scroll(scrollArea);
-    expect(queryRows).toHaveBeenCalledTimes(1);
-
-    getLatestResizeObserver().trigger();
-    vi.advanceTimersByTime(200);
-    scrollArea.scrollTop = 130;
-    fireEvent.scroll(scrollArea);
-    expect(queryRows).toHaveBeenCalledTimes(2);
-    expect(readAnchor("cache-thread")).toEqual({
-      rowId: "row-b",
-      offsetWithinRow: 20,
-      atBottom: false,
     });
   });
 });

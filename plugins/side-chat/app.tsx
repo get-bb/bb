@@ -7,8 +7,9 @@ import {
   ThreadChat,
   useSdk,
   type PluginMessageActionContext,
-  type PluginThreadPanelActionContext,
-  type PluginThreadPanelProps,
+  type ExperimentalThreadTabActionContext,
+  type ExperimentalPanelController,
+  type ExperimentalThreadActionTabProps,
   type ThreadChatMessageAction,
 } from "@get-bb/plugin-sdk/app";
 
@@ -95,7 +96,7 @@ interface OpenSideChatArgs {
   sourceThreadId: string;
   anchorText: string;
   sourceSeqEnd: number | null;
-  openPanel(options: { title: string; params: SideChatPanelParams }): boolean;
+  panel: ExperimentalPanelController;
 }
 
 const inFlightOpens = new Map<string, Promise<void>>();
@@ -130,7 +131,7 @@ async function createAndOpenSideChat({
   sourceThreadId,
   anchorText,
   sourceSeqEnd,
-  openPanel,
+  panel,
 }: OpenSideChatArgs): Promise<void> {
   let threadId: string;
   try {
@@ -149,7 +150,12 @@ async function createAndOpenSideChat({
     );
     throw error;
   }
-  openPanel({
+  panel.openTab({
+    tab: {
+      id: PANEL_ACTION_ID,
+      context: { kind: "thread" },
+      availability: "action",
+    },
     title: PANEL_TAB_TITLE,
     params: {
       threadId,
@@ -213,7 +219,7 @@ function ReplyingTo({ anchorText }: { anchorText: string }) {
   );
 }
 
-function SideChatPanel({ params }: PluginThreadPanelProps) {
+function SideChatPanel({ params }: ExperimentalThreadActionTabProps) {
   const sdk = useSdk();
   const parsed = parsePanelParams(params);
   const sideChatThreadId = parsed?.threadId ?? null;
@@ -225,8 +231,9 @@ function SideChatPanel({ params }: PluginThreadPanelProps) {
       const text = message.text.trim();
       if (text.length === 0) return;
       try {
-        await sdk.threads.queuedMessages.create({
+        await sdk.threads.send({
           threadId: sourceThreadId,
+          mode: "queue-if-active",
           input: [{ type: "text", text, mentions: [] }],
           senderThreadId: sideChatThreadId,
         });
@@ -286,23 +293,24 @@ export default definePluginApp((app) => {
         sourceThreadId: context.threadId,
         anchorText,
         sourceSeqEnd: context.message.sourceSeqEnd,
-        openPanel: (options) =>
-          context.openPanel({ actionId: PANEL_ACTION_ID, ...options }),
+        panel: context.experimental_panel,
       });
     },
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: PANEL_ACTION_ID,
     title: "Start side chat",
     icon: "SideChat",
     component: SideChatPanel,
     layout: "flush",
-    async run(context: PluginThreadPanelActionContext) {
+    async run(context: ExperimentalThreadTabActionContext) {
       await openSideChat({
         sourceThreadId: context.threadId,
         anchorText: "",
         sourceSeqEnd: null,
-        openPanel: (options) => context.openPanel(options),
+        panel: context.experimental_panel,
       });
     },
   });

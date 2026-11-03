@@ -392,3 +392,39 @@ it("holds preload-tier work until rendered splits have loaded", async () => {
   expect(screen.getByText("Page content")).toBeTruthy();
   expect(preloadLoad).toHaveBeenCalledOnce();
 });
+
+it("holds preload-tier work until every hold is released, without delaying critical loads", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("requestIdleCallback", undefined);
+  vi.resetModules();
+  const { defineSplit: define } = await import("./define-split");
+  const {
+    holdSplitPreloads,
+    startSplitPreloading: start,
+    whenCriticalLoadsSettled,
+  } = await import("./split-prefetch");
+  const preloadLoad = vi.fn(async () => () => null);
+  define({
+    id: "held",
+    load: preloadLoad,
+    loading: () => null,
+    tier: "preload",
+  });
+  const releaseFirst = holdSplitPreloads();
+  const releaseSecond = holdSplitPreloads();
+  const settled = vi.fn();
+  void whenCriticalLoadsSettled().then(settled);
+  start();
+  await act(async () => vi.runAllTimersAsync());
+  expect(settled).toHaveBeenCalledOnce();
+  expect(preloadLoad).not.toHaveBeenCalled();
+
+  releaseFirst();
+  releaseFirst();
+  await act(async () => vi.runAllTimersAsync());
+  expect(preloadLoad).not.toHaveBeenCalled();
+
+  releaseSecond();
+  await act(async () => vi.runAllTimersAsync());
+  expect(preloadLoad).toHaveBeenCalledOnce();
+});

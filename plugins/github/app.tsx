@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   definePluginApp,
+  Markdown,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
   experimental_copyToClipboard,
@@ -10,7 +11,7 @@ import {
   useRpc,
   type PluginNavPanelProps,
   type PluginRpcResult,
-  type PluginThreadPanelProps,
+  type ExperimentalThreadActionTabProps,
 } from "@get-bb/plugin-sdk/app";
 import {
   buildSuggestions,
@@ -49,7 +50,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "./components/empty-state.js";
-import { Markdown } from "./components/markdown-lite.js";
 
 type IssueDetail = PluginRpcResult<
   (typeof githubRpcContract)["getIssue"]
@@ -1847,7 +1847,7 @@ function PullPickerList({
   );
 }
 
-function PullPanelTab({ threadId }: PluginThreadPanelProps) {
+function PullPanelTab({ threadId }: ExperimentalThreadActionTabProps) {
   const rpc = useRpc<typeof githubRpcContract>();
   const [resolved, setResolved] = useState(false);
   const [selected, setSelected] = useState<{
@@ -2236,7 +2236,9 @@ export default definePluginApp((app) => {
     component: GithubPanel,
     headerContent: PanelHeader,
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: "pull",
     title: "GitHub PR",
     icon: "Github",

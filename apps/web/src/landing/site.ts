@@ -66,11 +66,18 @@ export const CAMPAIGN_PARAM_NAMES = [
   ...CLICK_ID_PARAM_NAMES,
 ] as const;
 
+export const VISIT_PARAM_NAMES = [
+  "visitor_id",
+  "session_id",
+  "first_page",
+  "first_referrer",
+] as const;
+
 export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,
 ): string {
-  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}&instructions=1`;
+  return `${DESKTOP_DOWNLOADS[platform].redirectPath}?placement=${placement}`;
 }
 
 declare const __SITE_ORIGIN__: string;

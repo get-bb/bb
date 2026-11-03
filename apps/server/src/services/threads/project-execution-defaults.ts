@@ -1,17 +1,22 @@
 import {
   getProjectExecutionDefaults,
+  getThread,
   upsertProjectExecutionDefaults,
 } from "@bb/db";
-import type {
-  ProjectExecutionDefaults,
-  ResolvedThreadExecutionOptions,
-} from "@bb/domain";
+import type { ResolvedThreadExecutionOptions, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import type {
   ThreadCreateServiceRequest,
   ThreadCreateServiceRequestInput,
 } from "./thread-create-request.js";
-import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js";
+import {
+  resolveCreateThreadExecutionDefaults,
+  resolveThreadExecutionDefaults,
+  type ThreadExecutionDefaults,
+  type ThreadParentExecution,
+} from "./thread-default-policy.js";
+import { getLastExecutionOptions } from "./thread-events.js";
+import { isLiveParentThread } from "./thread-parent.js";
 
 interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
@@ -21,12 +26,13 @@ interface RememberProjectExecutionDefaultsForCreateArgs {
 interface ResolveProjectExecutionDefaultsForCreateArgs {
   executionInputSources?: ThreadCreateServiceRequestInput["executionInputSources"];
   model?: ThreadCreateServiceRequestInput["model"];
+  parentThread: Thread | null;
   projectId: string;
   providerId?: ThreadCreateServiceRequestInput["providerId"];
 }
 
 interface ResolvedProjectExecutionDefaultsForCreate {
-  executionDefaults: ProjectExecutionDefaults | null;
+  defaultModel: string | null;
   providerId: string;
   providerFallbackCandidates: readonly string[];
   requestedModel: string | null;
@@ -53,6 +59,47 @@ function shouldRememberProjectExecutionDefaults(args: {
   if (args.environment.type === "reuse") return false;
   if (args.originKind !== null) return false;
   return args.origin === "app";
+}
+
+function loadThreadParentExecution(
+  deps: Pick<AppDeps, "db">,
+  parentThread: Thread | null,
+): ThreadParentExecution | null {
+  if (parentThread === null || !isLiveParentThread({ parentThread })) {
+    return null;
+  }
+  const execution = getLastExecutionOptions(deps, parentThread.id);
+  return execution === null
+    ? null
+    : { execution, providerId: parentThread.providerId };
+}
+
+export function loadThreadExecutionDefaults(
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
+  thread: Pick<Thread, "parentThreadId" | "projectId" | "providerId">,
+): ThreadExecutionDefaults {
+  return resolveThreadExecutionDefaults(deps.providerRegistry, {
+    parent: loadThreadParentExecution(
+      deps,
+      thread.parentThreadId === null
+        ? null
+        : getThread(deps.db, thread.parentThreadId),
+    ),
+    projectDefaults: getProjectExecutionDefaults(deps.db, {
+      projectId: thread.projectId,
+    }),
+    providerId: thread.providerId,
+  });
+}
+
+function isSelectableProvider(
+  registry: AppDeps["providerRegistry"],
+  providerId: string,
+): boolean {
+  return (
+    !registry.disabledProviderIds().has(providerId) &&
+    registry.get(providerId)?.info.available === true
+  );
 }
 
 function resolveRequestedCreateExecutionValue<TValue>({
@@ -92,18 +139,24 @@ export function resolveProjectExecutionDefaultsForCreate(
     sources: args.executionInputSources,
     value: args.model,
   });
-  const resolution = resolveCreateThreadExecutionDefaults(
-    deps.providerRegistry,
-    {
-      requestedProviderId,
+  const parent = loadThreadParentExecution(deps, args.parentThread);
+  const { providerId, providerFallbackCandidates } =
+    resolveCreateThreadExecutionDefaults(deps.providerRegistry, {
+      requestedProviderId:
+        requestedProviderId ??
+        (parent !== null &&
+        isSelectableProvider(deps.providerRegistry, parent.providerId)
+          ? parent.providerId
+          : undefined),
       storedDefaults,
-    },
-  );
-  const { executionDefaults, providerId, providerFallbackCandidates } =
-    resolution;
+    });
 
   return {
-    executionDefaults,
+    defaultModel: resolveThreadExecutionDefaults(deps.providerRegistry, {
+      parent,
+      projectDefaults: storedDefaults,
+      providerId,
+    }).model,
     providerId,
     providerFallbackCandidates,
     requestedModel: requestedModel ?? null,

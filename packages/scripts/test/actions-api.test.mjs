@@ -9,17 +9,17 @@ import { expect, it, onTestFinished } from "vitest";
 
 const execute = promisify(execFile);
 
-it.each([
+it.concurrent.for([
+  "timeout",
   "unavailable",
   "disconnect",
   "rate limit",
   "forbidden",
   "delete",
-  "timeout",
   "exhausted",
 ])(
   "bounds recovery for %s without retrying permanent failures or mutations",
-  async (scenario) => {
+  async (scenario, { expect, onTestFinished }) => {
     let requests = 0;
     const server = createServer((_request, response) => {
       requests++;

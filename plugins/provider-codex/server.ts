@@ -74,7 +74,11 @@ export default function plugin(bb: BbPluginApi) {
     serviceTiers: [
       { id: "default", label: "Default" },
       { id: "fast", label: "Fast" },
-      { id: "ultrafast", label: "Ultrafast" },
+      {
+        id: "ultrafast",
+        label: "Ultrafast",
+        experimental_icon: "provider-codex/ultrafast",
+      },
     ],
     composerActions: ["plan", "goal"],
     deriveProviderOptions(context) {

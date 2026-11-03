@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { usePromptMentions } from "./usePromptMentions";
+import type { PluginMentionTrigger } from "@bb/client-core";
+import {
+  usePromptMentions,
+  usePromptMentionTriggers,
+} from "./usePromptMentions";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { config: vi.fn() } },
@@ -29,6 +33,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
+
+const NO_MENTION: {
+  mention: { text: string; trigger: PluginMentionTrigger } | null;
+} = { mention: null };
 
 describe("usePromptMentions", () => {
   it("shows loading for a non-at plugin trigger while the query is debouncing", async () => {
@@ -77,21 +85,26 @@ describe("usePromptMentions", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
-        usePromptMentions("proj_1", {
-          environmentId: null,
-        }),
-      { wrapper },
+    const { result, rerender } = renderHook(
+      ({
+        mention,
+      }: {
+        mention: { text: string; trigger: PluginMentionTrigger } | null;
+      }) => ({
+        triggers: usePromptMentionTriggers(),
+        ...usePromptMentions(
+          { projectId: "proj_1", environmentId: null },
+          mention,
+        ),
+      }),
+      { wrapper, initialProps: NO_MENTION },
     );
 
     await waitFor(() => {
       expect(result.current.triggers).toEqual(["@", "#"]);
     });
 
-    act(() => {
-      result.current.setQuery("42", "#");
-    });
+    rerender({ mention: { text: "42", trigger: "#" } });
 
     expect(result.current.isLoading).toBe(true);
     expect(
@@ -170,28 +183,31 @@ describe("usePromptMentions", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
-        usePromptMentions("proj_1", {
-          environmentId: null,
-        }),
-      { wrapper },
+    const { result, rerender } = renderHook(
+      ({
+        mention,
+      }: {
+        mention: { text: string; trigger: PluginMentionTrigger } | null;
+      }) => ({
+        triggers: usePromptMentionTriggers(),
+        ...usePromptMentions(
+          { projectId: "proj_1", environmentId: null },
+          mention,
+        ),
+      }),
+      { wrapper, initialProps: NO_MENTION },
     );
     await waitFor(() => {
       expect(result.current.triggers).toContain("#");
     });
 
-    act(() => {
-      result.current.setQuery("42", "#");
-    });
+    rerender({ mention: { text: "42", trigger: "#" } });
     await waitFor(() => {
       expect(result.current.results.suggestions).toHaveLength(1);
     });
     expect(result.current.isRefreshing).toBe(false);
 
-    act(() => {
-      result.current.setQuery("43", "#");
-    });
+    rerender({ mention: { text: "43", trigger: "#" } });
     await waitFor(() => {
       expect(releaseSecondSearch).not.toBeNull();
       expect(result.current.isRefreshing).toBe(true);

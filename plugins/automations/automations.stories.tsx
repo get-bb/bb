@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   AgentAutomationDefinition,
+  AutomationDetailView,
   AutomationLifecycleControl,
   AutomationScriptContent,
   ScriptAutomationDefinition,
@@ -8,6 +9,7 @@ import {
 } from "./detail-view";
 import { AUTOMATION_CREATE_TEMPLATES, OverviewRow } from "./overview-view";
 import type {
+  AutomationDetailResponse,
   AutomationResponse,
   AgentEnvironment,
   AutomationRunResponse,
@@ -150,6 +152,16 @@ const OVERVIEW_ENTRIES: AutomationsOverviewResponse["automations"] = [
       projectId: "proj_moss",
       lastRunStatus: "failed",
       lastError: "Host was offline",
+    }),
+    project: { id: "proj_moss", name: "Moss" },
+  },
+  {
+    automation: automation("triage-sweep", "Triage sweep", {
+      projectId: "proj_moss",
+      enabled: false,
+      nextRunAt: null,
+      lastRunStatus: "failed",
+      lastError: "Target thread thr_story_target was archived",
     }),
     project: { id: "proj_moss", name: "Moss" },
   },
@@ -351,7 +363,11 @@ export function OverviewRows() {
     },
     "stale-worktrees": {
       label: "Last run failed",
-      hint: "The latest run failed, but the recurring schedule remains enabled. Shows the failure indicator.",
+      hint: "The latest run failed, but the recurring schedule remains enabled. Shows the failure indicator and its reason.",
+    },
+    "triage-sweep": {
+      label: "Paused by a failure",
+      hint: "bb paused the automation because its target thread was archived. The row ends with that reason.",
     },
   };
   return (
@@ -664,6 +680,98 @@ export function RunStates() {
   );
 }
 
+const FAILED_AUTOMATION: AutomationDetailResponse = {
+  ...automation("triage-sweep", "Triage sweep", {
+    projectId: "proj_bb",
+    enabled: false,
+    nextRunAt: null,
+    lastRunAt: now,
+    runCount: 2,
+    lastRunStatus: "failed",
+    lastError: "Target thread thr_story_target was archived",
+  }),
+  execution: {
+    mode: "agent",
+    prompt: "Run one pass of the Linear triage sweep.",
+    providerId: "claude-code",
+    model: "claude-fable-5",
+    reasoningLevel: "high",
+    permissionMode: "full",
+    environment: { type: "project-default" },
+    targetThreadId: "thr_story_target",
+  },
+};
+
+function failedAutomationRuns(): AutomationRunResponse[] {
+  const run = {
+    automationId: FAILED_AUTOMATION.id,
+    runMode: "agent",
+    trigger: "schedule",
+    skipReason: null,
+    output: null,
+    exitCode: null,
+  } as const;
+  const previous = now - 12 * 3_600_000;
+  return [
+    {
+      ...run,
+      id: "triage_run_failed",
+      threadId: null,
+      status: "failed",
+      error: FAILED_AUTOMATION.lastError,
+      scheduledFor: now,
+      startedAt: now,
+      finishedAt: now + 34,
+    },
+    {
+      ...run,
+      id: "triage_run_succeeded",
+      threadId: "thr_story_target",
+      status: "succeeded",
+      error: null,
+      scheduledFor: previous,
+      startedAt: previous,
+      finishedAt: previous + 60_000,
+    },
+  ];
+}
+
+export function FailureStates() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="Paused by a failed run"
+        hint="The run failed before it reached a thread, so there is no thread to open. The header and the failed run both say why."
+      >
+        <div className="w-full max-w-3xl">
+          <AutomationDetailView
+            automation={FAILED_AUTOMATION}
+            projectLabel="bb"
+            runsState={{
+              runs: failedAutomationRuns(),
+              nextCursor: null,
+              loading: false,
+              loadingMore: false,
+              error: null,
+              loadMore: noop,
+              retry: noop,
+            }}
+            actionPending={false}
+            editing={false}
+            onToggle={noop}
+            onEdit={noop}
+            onCancelEdit={noop}
+            onUpdateAgent={async () => {}}
+            onRunNow={noop}
+            onDelete={noop}
+            onOpenThread={noop}
+          />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 const automationMenuItems = [
   { label: "Run now", icon: "Play" as const, onSelect: noop },
   { kind: "separator" as const },
@@ -739,6 +847,8 @@ export function ControlStates() {
       >
         <ResourceCreateButton
           label="New automation"
+          shortLabel="New"
+          icon="Repeat"
           templates={AUTOMATION_CREATE_TEMPLATES}
           onCreate={noop}
         />

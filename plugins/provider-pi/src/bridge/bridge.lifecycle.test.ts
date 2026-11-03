@@ -622,17 +622,29 @@ it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {
   await startThread("thr_lc_kill");
   const { spawned } = harness.readProcessLog();
   const pid = spawned[0]!;
-  const stop = await harness.request((nextId += 1), "thread/stop", {
-    threadId: "thr_lc_kill",
-    providerThreadId: providerThreadIdFor("thr_lc_kill"),
-    intent: "release",
-    activeTurnId: null,
-  });
-  expect(stop.result).toMatchObject({ ok: true });
-  expect(harness.runningChildPids()).toContain(pid);
-  const deadline = Date.now() + 15_000;
-  while (harness.runningChildPids().includes(pid) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const stopId = (nextId += 1);
+    const stopping = harness.request(stopId, "thread/stop", {
+      threadId: "thr_lc_kill",
+      providerThreadId: providerThreadIdFor("thr_lc_kill"),
+      intent: "release",
+      activeTurnId: null,
+    });
+    await expect
+      .poll(() => harness.messages.find((message) => message.id === stopId), {
+        timeout: 60_000,
+      })
+      .toMatchObject({ result: { ok: true } });
+    await vi.advanceTimersByTimeAsync(10);
+    expect((await stopping).result).toMatchObject({ ok: true });
+    expect(harness.runningChildPids()).toContain(pid);
+    await vi.advanceTimersByTimeAsync(8_000);
+    await expect
+      .poll(() => harness.runningChildPids(), { timeout: 15_000 })
+      .not.toContain(pid);
+  } finally {
+    await vi.advanceTimersByTimeAsync(8_000);
+    vi.useRealTimers();
   }
-  expect(harness.runningChildPids()).not.toContain(pid);
 }, 90_000);

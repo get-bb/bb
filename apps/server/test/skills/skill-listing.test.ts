@@ -106,6 +106,8 @@ describe("assembleSkillList", () => {
       description: null,
       rootKind,
       filePath,
+      realPath: filePath,
+      contentSha256: createHash("sha256").update(filePath).digest("hex"),
       linked: false,
     };
   }

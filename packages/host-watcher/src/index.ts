@@ -12,7 +12,7 @@ export type {
   DataDirSkillsWatchError,
   ThreadStorageWatchError,
   InjectedSkillsObservedChange,
-  WatchThreadStorageRootArgs,
+  WatchThreadStorageArgs,
   WatchWorkspaceArgs,
   WorkspaceWatchError,
   WatchPathRootArgs,

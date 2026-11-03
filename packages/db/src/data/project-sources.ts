@@ -1,9 +1,9 @@
 import { hostPathEquals } from "./host-path-sql.js";
-import { and, count, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray } from "drizzle-orm";
 import type { ProjectSource } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { projectSources } from "../schema.js";
+import { hosts, projectSources } from "../schema.js";
 import { createProjectSourceId } from "../ids.js";
 
 type ProjectSourceRow = typeof projectSources.$inferSelect;
@@ -218,6 +218,34 @@ export function getProjectSourceByHost(
       )
       .get() ?? null;
   return source ? toProjectSource(source) : null;
+}
+
+export function getProjectSourceOnPersistentHost(
+  db: DbConnection,
+  projectId: string,
+) {
+  const row =
+    db
+      .select({ source: projectSources })
+      .from(projectSources)
+      .innerJoin(hosts, eq(hosts.id, projectSources.hostId))
+      .where(
+        and(
+          eq(projectSources.projectId, projectId),
+          eq(projectSources.type, "local_path"),
+          eq(hosts.type, "persistent"),
+          isNull(hosts.destroyedAt),
+          notInArray(hosts.phase, ["removing", "destroyed"]),
+        ),
+      )
+      .orderBy(
+        desc(projectSources.isDefault),
+        asc(projectSources.createdAt),
+        asc(projectSources.id),
+      )
+      .limit(1)
+      .get() ?? null;
+  return row ? toProjectSource(row.source) : null;
 }
 
 export function deleteProjectSource(

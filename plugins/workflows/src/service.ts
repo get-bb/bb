@@ -54,7 +54,7 @@ import {
   type WorkflowRunRow,
 } from "./data.js";
 import { parseWorkflowSource } from "./parser.js";
-import { WORKFLOW_RUNS_REALTIME_CHANNEL } from "./realtime-channel.js";
+import { resolveWorkflowReasoning } from "./reasoning-selection.js";
 import { executeWorkflowScript } from "./runtime.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -431,9 +431,7 @@ export function createWorkflowService(
   }
 
   function publishRunsChanged(originThreadId: string): void {
-    bb.realtime.publish(WORKFLOW_RUNS_REALTIME_CHANNEL, {
-      threadId: originThreadId,
-    });
+    bb.rpc.experimental_invalidate([`runs:${originThreadId}`]);
   }
 
   function publishRunProgress(runId: string): void {
@@ -767,11 +765,12 @@ export function createWorkflowService(
         `Model ${JSON.stringify(requested.model)} is not available for provider ${requested.provider}`,
       );
     }
-    if (
-      !model.supportedReasoningEfforts.some(
-        (effort) => effort.reasoningEffort === requested.reasoningLevel,
-      )
-    ) {
+    const reasoningLevel = resolveWorkflowReasoning(
+      model,
+      requested.reasoningLevel,
+      inherited,
+    );
+    if (reasoningLevel === null) {
       throw new Error(
         `Reasoning level ${JSON.stringify(requested.reasoningLevel)} is not supported by ${requested.provider}/${requested.model}`,
       );
@@ -787,7 +786,7 @@ export function createWorkflowService(
     return selectedExecutionSchema.parse({
       providerId: requested.provider,
       model: model.model,
-      reasoningLevel: requested.reasoningLevel,
+      reasoningLevel,
       permissionMode,
     });
   }

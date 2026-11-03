@@ -611,6 +611,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 25,
           command: {
             type: "host.read_file",
+            followRootSymlink: false,
             path: filePath,
           },
         });
@@ -626,6 +627,7 @@ describe("host online RPC retry semantics", () => {
       expect(requests.map((request) => request.command)).toEqual([
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
         },
       ]);
@@ -676,6 +678,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: {
             type: "host.read_file",
+            followRootSymlink: false,
             path: filePath,
           },
         });
@@ -694,6 +697,7 @@ describe("host online RPC retry semantics", () => {
       expect(requests.map((request) => request.command)).toEqual([
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
         },
       ]);

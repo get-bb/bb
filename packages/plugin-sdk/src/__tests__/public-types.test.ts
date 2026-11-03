@@ -16,6 +16,7 @@ import type {
 } from "../app-contract.js";
 
 type ExpectedBbPluginApiKey =
+  | "internal_DO_NOT_USE_recordPluginUse"
   | "agents"
   | "background"
   | "cli"
@@ -135,11 +136,16 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginSettingsHandle",
   "PluginSettingsValues",
   "PluginSharedPortTunnelIdentity",
+  "InternalDoNotUsePluginNextTunnelServer",
+  "InternalDoNotUsePluginNextTunnelConfig",
+  "InternalDoNotUsePluginHostNextTunnelStatus",
   "PluginStatusApi",
   "PluginStorage",
   "PluginThreadEventHandler",
   "PluginThreadEventName",
   "PluginThreadEventPayloads",
+  "InternalDoNotUsePluginTunnelIngress",
+  "InternalDoNotUsePluginTunnelIngressOptions",
   "PluginTurnFailedEvent",
   "PluginUi",
   "PluginServerAccess",

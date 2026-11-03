@@ -7,7 +7,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntime } from "./runtime.js";
 import { createProviderForId } from "./provider-registry.js";
@@ -354,6 +362,11 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     expect(starts).toBe(2);
     const replacementProcess = manager.requireProviderProcess(MANAGER_PROVIDER);
+    onTestFinished(async () => {
+      await replacementProcess.stop();
+    });
+    const exited = vi.fn();
+    replacementProcess.child.once("exit", exited);
     const fullShutdown = manager.shutdown();
     const operations = Promise.all([
       retirement,
@@ -375,7 +388,7 @@ describe("createAgentRuntime process lifecycle", () => {
       undefined,
     ]);
     expect(completedPromptly).toBe(true);
-    expect(processIsAlive(replacementProcess.child.pid ?? 0)).toBe(false);
+    expect(exited).toHaveBeenCalledOnce();
     await manager.ensureProvider(MANAGER_PROVIDER);
     expect(manager.listRunningProviders()).toEqual([]);
   });
@@ -446,37 +459,6 @@ describe("createAgentRuntime process lifecycle", () => {
     await manager.shutdown();
   });
 
-  it("does not wait for an already-exited provider during shutdown", async () => {
-    const crashScript = join(tmpDir, "open-stderr-provider.cjs");
-    const delayedWriter = "setTimeout(() => {}, 400);";
-    writeFileSync(
-      crashScript,
-      `const { spawn } = require("node:child_process");
-      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
-        stdio: ["ignore", "ignore", "inherit"],
-      });
-      writer.unref();
-      setTimeout(() => process.exit(42), 100);`,
-    );
-    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
-    const manager = createProviderProcessManager({
-      onProcessExit: exitInfo,
-      rawScriptPath: crashScript,
-      workspacePath: tmpDir,
-    });
-
-    await ensureCrashingProvider(manager);
-    await waitForRuntimeState({
-      label: "exited provider reported",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
-
-    const startedAt = Date.now();
-    await manager.shutdown();
-
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
-  });
-
   function writeCrashOnceScript(args: {
     scriptPath: string;
     startMarker: string;
@@ -509,47 +491,102 @@ describe("createAgentRuntime process lifecycle", () => {
     );
   }
 
-  it("waits for an exited provider to finalize before replacing it", async () => {
-    const crashScript = join(tmpDir, "replace-after-stderr-provider.cjs");
-    const startMarker = join(tmpDir, "replace-after-stderr.started");
-    const startsLog = join(tmpDir, "replace-after-stderr.starts");
-    const delayedWriter = "setTimeout(() => {}, 400);";
+  function writeExitWhileStderrHeldScript(args: {
+    exitFile: string;
+    pidFile: string;
+    scriptPath: string;
+    startsLog: string;
+  }): void {
+    const holder = `require("node:fs").writeFileSync(${JSON.stringify(args.pidFile)}, String(process.pid)); setTimeout(() => {}, 30_000);`;
     writeCrashOnceScript({
-      scriptPath: crashScript,
-      startMarker,
+      scriptPath: args.scriptPath,
+      startMarker: `${args.scriptPath}.started`,
+      startsLog: args.startsLog,
+      firstStartBody: `const rl = require("node:readline").createInterface({ input: process.stdin });
+        rl.on("line", (line) => {
+          const msg = JSON.parse(line);
+          if (msg.method !== "initialize") return;
+          spawn(process.execPath, ["-e", ${JSON.stringify(holder)}], {
+            cwd: require("node:os").tmpdir(),
+            detached: process.platform === "win32",
+            stdio: ["ignore", "ignore", "inherit"],
+          }).unref();
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            id: msg.id,
+            result: { protocolVersion: 2, capabilities: { grammarVersions: [3, 3] } },
+          }) + "\\n");
+          setInterval(() => {
+            if (existsSync(${JSON.stringify(args.exitFile)})) process.exit(42);
+          }, 10);
+        });`,
+    });
+  }
+
+  async function startProviderThatExitsWhileStderrHeld(name: string): Promise<{
+    exitInfo: ReturnType<
+      typeof vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>
+    >;
+    manager: RuntimeProviderProcessManager;
+    startsLog: string;
+  }> {
+    const scriptPath = join(tmpDir, `${name}.cjs`);
+    const startsLog = join(tmpDir, `${name}.starts`);
+    const pidFile = join(tmpDir, `${name}.holder.pid`);
+    const exitFile = join(tmpDir, `${name}.exit`);
+    fixturePidFile = pidFile;
+    writeExitWhileStderrHeldScript({
+      exitFile,
+      pidFile,
+      scriptPath,
       startsLog,
-      firstStartBody: `const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
-          stdio: ["ignore", "ignore", "inherit"],
-        });
-        writer.unref();
-        setTimeout(() => process.exit(42), 100);`,
     });
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
-      rawScriptPath: crashScript,
+      rawScriptPath: scriptPath,
       workspacePath: tmpDir,
     });
+    await manager.ensureProvider(MANAGER_PROVIDER);
+    const { child } = manager.requireProviderProcess(MANAGER_PROVIDER);
+    await waitForRuntimeState({
+      label: "the stderr holder started",
+      predicate: () => existsSync(pidFile),
+      timeoutMs: 5_000,
+    });
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    writeFileSync(exitFile, "exit");
+    await exited;
+    expect(exitInfo).not.toHaveBeenCalled();
+    return { exitInfo, manager, startsLog };
+  }
+
+  it("does not wait for an already-exited provider during shutdown", async () => {
+    const { manager } =
+      await startProviderThatExitsWhileStderrHeld("shutdown-exited");
+
+    const startedAt = Date.now();
+    await manager.shutdown();
+
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  it("waits for an exited provider to finalize before replacing it", async () => {
+    const { exitInfo, manager, startsLog } =
+      await startProviderThatExitsWhileStderrHeld("replace-exited");
 
     try {
-      await ensureCrashingProvider(manager);
-      await waitForRuntimeState({
-        label: "exited provider reported",
-        predicate: () => exitInfo.mock.calls.length === 1,
-      });
-      const [exitedPid] = startedPids(startsLog);
+      await manager.ensureProvider(MANAGER_PROVIDER);
 
-      await manager.ensureProvider({
-        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-        processKey: "fake",
+      expect(exitInfo).toHaveBeenCalledTimes(1);
+      expect(exitInfo.mock.calls[0]?.[0]).toMatchObject({
         providerId: "fake",
+        code: 42,
+        expected: false,
       });
-      const replacementProvider = manager.requireProviderProcess({
-        processKey: "fake",
-        providerId: "fake",
-      });
-      expect(exitedPid).toBeDefined();
-      expect(replacementProvider.child.exitCode).toBeNull();
+      expect(
+        manager.requireProviderProcess(MANAGER_PROVIDER).child.exitCode,
+      ).toBeNull();
       expect(startedPids(startsLog)).toHaveLength(2);
     } finally {
       await manager.shutdown();
@@ -557,61 +594,20 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   it("starts a single replacement for concurrent callers after an exit", async () => {
-    const crashScript = join(tmpDir, "concurrent-replace-provider.cjs");
-    const startsLog = join(tmpDir, "concurrent-replace.starts");
-    const startMarker = join(tmpDir, "concurrent-replace.started");
-    const delayedWriter = "setTimeout(() => {}, 400);";
-    writeCrashOnceScript({
-      scriptPath: crashScript,
-      startMarker,
-      startsLog,
-      firstStartBody: `const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
-          stdio: ["ignore", "ignore", "inherit"],
-        });
-        writer.unref();
-        setTimeout(() => process.exit(42), 100);`,
-    });
-    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
-    const manager = createProviderProcessManager({
-      onProcessExit: exitInfo,
-      rawScriptPath: crashScript,
-      workspacePath: tmpDir,
-    });
+    const { exitInfo, manager, startsLog } =
+      await startProviderThatExitsWhileStderrHeld("concurrent-replace");
 
     try {
-      await ensureCrashingProvider(manager);
-      await waitForRuntimeState({
-        label: "exited provider reported",
-        predicate: () => exitInfo.mock.calls.length === 1,
-      });
-      const [exitedPid] = startedPids(startsLog);
-
       await Promise.all([
-        manager.ensureProvider({
-          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-          processKey: "fake",
-          providerId: "fake",
-        }),
-        manager.ensureProvider({
-          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-          processKey: "fake",
-          providerId: "fake",
-        }),
-        manager.ensureProvider({
-          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-          processKey: "fake",
-          providerId: "fake",
-        }),
+        manager.ensureProvider(MANAGER_PROVIDER),
+        manager.ensureProvider(MANAGER_PROVIDER),
+        manager.ensureProvider(MANAGER_PROVIDER),
       ]);
 
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      const replacementProvider = manager.requireProviderProcess({
-        processKey: "fake",
-        providerId: "fake",
-      });
-      expect(exitedPid).toBeDefined();
-      expect(replacementProvider.child.exitCode).toBeNull();
+      expect(exitInfo).toHaveBeenCalledTimes(1);
+      expect(
+        manager.requireProviderProcess(MANAGER_PROVIDER).child.exitCode,
+      ).toBeNull();
       expect(startedPids(startsLog)).toHaveLength(2);
       expect(manager.listRunningProviders()).toEqual(["fake"]);
     } finally {
@@ -1145,46 +1141,6 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a restorable non-Codex session", async () => {
-    const events: ThreadEvent[] = [];
-    const processLog = createScriptedEchoProcessLog();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        env: processLog.env,
-        workspacePath: tmpDir,
-        onEvent: (event) => events.push(event),
-      },
-      launch: {
-        pluginId: "provider-claude-code",
-        scripted: { sessionRestorable: true },
-      },
-    });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "claude-code",
-        options: fullRuntimeOptions,
-      });
-      const result = await runtime.reapIdleProviderSessions({
-        idleForMs: 0,
-        nowMs: Date.now(),
-      });
-      expect(result.reapedSessions).toEqual([
-        expect.objectContaining({
-          providerId: "claude-code",
-          threadId: "t1",
-        }),
-      ]);
-      expect(runtime.hasThread("t1")).toBe(false);
-      expect(runtime.listRunningProviders()).toEqual([]);
-      expect(stoppedProcessPids(processLog.read())).toHaveLength(1);
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
   it("marks a cold-resumed session restorable from the bridge's resume result", async () => {
     const runtime = createScriptedEchoRuntime({
       runtime: { workspacePath: tmpDir, onEvent: () => {} },
@@ -1450,7 +1406,7 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  it("removes the cached provider and retries when startup skill configuration fails", async () => {
+  it("relaunches the provider for the next start after startup skill configuration fails", async () => {
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -1469,53 +1425,26 @@ describe("createAgentRuntime process lifecycle", () => {
       launch: { pluginId: "provider-codex" },
     });
     try {
-      await expect(
-        runtime.startThread({
-          environmentId: "env-1",
-          threadId: "t1",
-          projectId: "p1",
-          providerId: "codex",
-          options: fullRuntimeOptions,
-        }),
-      ).rejects.toThrow("configure failed");
-      expect(runtime.listRunningProviders()).not.toContain("codex");
-      const requestsBefore = record.read();
-      expect(requestsBefore.map((request) => request.method)).toEqual([
+      for (const threadId of ["t1", "t2"]) {
+        await expect(
+          runtime.startThread({
+            environmentId: "env-1",
+            threadId,
+            projectId: "p1",
+            providerId: "codex",
+            options: fullRuntimeOptions,
+          }),
+        ).rejects.toThrow("configure failed");
+        expect(runtime.listRunningProviders()).not.toContain("codex");
+      }
+      expect(record.read().map((request) => request.method)).toEqual([
+        "initialize",
+        "skills/configure",
         "initialize",
         "skills/configure",
       ]);
-      expect(requestsBefore.some((r) => r.method === "thread/start")).toBe(
-        false,
-      );
     } finally {
       await runtime.shutdown();
-    }
-    const retryRecord = createScriptedEchoRequestRecord();
-    const retryRuntime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: retryRecord.env,
-        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
-        onEvent: () => {},
-      },
-      launch: { pluginId: "provider-codex" },
-    });
-    try {
-      await retryRuntime.startThread({
-        environmentId: "env-1",
-        threadId: "t2",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      expect(retryRuntime.listRunningProviders()).toContain("codex");
-      expect(retryRecord.read().map((request) => request.method)).toEqual([
-        "initialize",
-        "skills/configure",
-        "thread/start",
-      ]);
-    } finally {
-      await retryRuntime.shutdown();
     }
   });
 

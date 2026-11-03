@@ -9,6 +9,7 @@ import { SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
 import {
   hostsQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
 } from "@/hooks/queries/query-keys";
 import { collectPluginAppRegistrations } from "@/lib/plugin-app-definition";
 import {
@@ -25,6 +26,7 @@ import {
 } from "../../../.ladle/story-fixtures";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { SidebarThreadEntriesProvider } from "@/lib/sidebar-thread-entries";
 
@@ -264,6 +266,73 @@ export function InboxReadStatus() {
           <ThreadListSidebar />
           <OpenThreadControls />
         </main>
+      </ThreadActionsProvider>
+    </QueryClientProvider>
+  );
+}
+
+const ACTION_TITLES = [
+  ["short", "Plan"],
+  ["long", "Migrate billing to webhooks and improve retry handling"],
+];
+const ACTION_THREADS = ACTION_TITLES.flatMap(([length, title]) => [
+  inboxEntry(`thr_actions_leaf_${length}`, title, 900, true),
+  ...["collapsed", "expanded"].flatMap((state) => {
+    const id = `thr_actions_${length}_${state}`;
+    return [
+      inboxEntry(id, title, 800, true),
+      inboxEntry(`${id}_child`, "Check retry handling", 700, false, {
+        parentThreadId: id,
+      }),
+    ];
+  }),
+]);
+const ACTION_PREFERENCES = {
+  organizationMode: "chronological",
+  groupByReadStatus: false,
+  collapsedThreads: [
+    "thr_actions_short_collapsed",
+    "thr_actions_long_collapsed",
+  ],
+};
+
+function ActionSidebar() {
+  const replacement = useThreadListReplacement();
+  const { data } = useSidebarNavigation();
+  return (
+    <SidebarThreadEntriesProvider navigation={data}>
+      <SidebarProvider defaultOpen className="min-h-0 w-auto">
+        <main
+          data-thread-row-fixture
+          className="bg-sidebar text-sidebar-foreground"
+          style={{ width: 288 }}
+        >
+          <SidebarContent>
+            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+          </SidebarContent>
+        </main>
+      </SidebarProvider>
+    </SidebarThreadEntriesProvider>
+  );
+}
+
+export function ActionAlignment() {
+  const [queryClient] = useState(() => {
+    const client = createThreadListQueryClient();
+    client.setQueryData(systemConfigQueryKey(), makeSystemConfig());
+    client.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarNavigation(ACTION_THREADS),
+    );
+    return client;
+  });
+  const ready = useThreadListPreferenceRpc(ACTION_PREFERENCES);
+  useThreadListPlugin();
+  if (!ready) return null;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThreadActionsProvider>
+        <ActionSidebar />
       </ThreadActionsProvider>
     </QueryClientProvider>
   );

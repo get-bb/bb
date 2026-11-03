@@ -578,7 +578,7 @@ export type SessionOptionSelections = z.infer<
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
-  reasoningLevel: reasoningLevelSchema,
+  reasoningLevel: reasoningLevelSchema.optional(),
   promptMode: promptModeSchema.optional(),
   sessionOptions: sessionOptionSelectionsSchema.optional(),
   providerOptions: jsonObjectSchema,

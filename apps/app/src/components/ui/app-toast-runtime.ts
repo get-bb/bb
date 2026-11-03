@@ -3,26 +3,14 @@ import type { toast } from "sonner";
 type SonnerToast = typeof toast;
 
 let attachedToast: SonnerToast | null = null;
-const pendingCalls: Array<(sonnerToast: SonnerToast) => void> = [];
+const pendingCalls: Array<{
+  id: string | number | null;
+  run: (sonnerToast: SonnerToast) => void;
+}> = [];
 let toasterRequested = false;
 const requestListeners = new Set<() => void>();
-let toasterSettled = false;
-const settleWaiters: Array<() => void> = [];
-
-function settleToaster(): void {
-  toasterSettled = true;
-  for (const resolve of settleWaiters.splice(0)) resolve();
-}
-
-export function whenToasterSettled(): Promise<void> {
-  requestToaster();
-  if (toasterSettled) return Promise.resolve();
-  return new Promise((resolve) => settleWaiters.push(resolve));
-}
-
 export function markToasterUnavailable(): void {
   pendingCalls.length = 0;
-  settleToaster();
 }
 
 export function requestToaster(): void {
@@ -40,17 +28,28 @@ export function isToasterRequested(): boolean {
   return toasterRequested;
 }
 
-export function withSonnerToast(run: (sonnerToast: SonnerToast) => void): void {
+export function withSonnerToast(
+  run: (sonnerToast: SonnerToast) => void,
+  id: string | number | null = null,
+): void {
   if (attachedToast !== null) {
     run(attachedToast);
     return;
   }
-  pendingCalls.push(run);
+  pendingCalls.push({ id, run });
   requestToaster();
+}
+
+export function dismissSonnerToast(id?: string | number): void {
+  for (let index = pendingCalls.length - 1; index >= 0; index -= 1) {
+    if (id === undefined || pendingCalls[index]?.id === id) {
+      pendingCalls.splice(index, 1);
+    }
+  }
+  attachedToast?.dismiss(id);
 }
 
 export function attachSonnerToast(sonnerToast: SonnerToast): void {
   attachedToast = sonnerToast;
-  for (const run of pendingCalls.splice(0)) run(sonnerToast);
-  settleToaster();
+  for (const { run } of pendingCalls.splice(0)) run(sonnerToast);
 }

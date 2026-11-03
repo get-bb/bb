@@ -3,7 +3,8 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
-import { makeTask, rpcInput } from "../../test-fixtures.js";
+import { labelsByProject, makeTask, rpcInput } from "../../test-fixtures.js";
+import { PROJECTS_TAG } from "../../shared/tags";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -402,7 +403,9 @@ describe("NewTaskDialog drafts", () => {
       listFolders: () => ({ folders: [] }),
       listPresets: () => ({ presets: [] }),
       sidebarSummary: () => ({ projects: [] }),
-      listTasks: () => ({ tasks: [] }),
+      listAllTasks: () => ({ tasks: [] }),
+      listTaskCardMeta: () => ({ cards: [] }),
+      labelsByProject: labelsByProject([]),
       listLabels: () => ({ labels: [] }),
       createTask: (raw: unknown) => {
         const input = rpcInput(raw);
@@ -561,6 +564,11 @@ describe("NewTaskDialog drafts", () => {
       );
       fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
       await slot.findByLabelText("Task title");
+      await waitFor(() =>
+        expect(
+          slot.getByRole("button", { name: "Create task" }),
+        ).toHaveProperty("disabled", false),
+      );
       fireEvent.click(slot.getByRole("button", { name: "Create task" }));
       await waitFor(() => expect(createCalls).toHaveLength(1));
       expect(createCalls[0]).toMatchObject({
@@ -1273,9 +1281,7 @@ describe("Manage folders", () => {
     fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
 
     projectsUnavailable = true;
-    await slot.behavior.emitRealtime("projects:changed", {
-      projectId: PROJECT_ID,
-    });
+    await slot.behavior.experimental_invalidateRpc([PROJECTS_TAG]);
     fireEvent.click(
       await slot.findByRole("button", { name: "Delete folder bb" }),
     );

@@ -65,7 +65,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
       {
         ...group,
         blurb:
-          "Plugins can add banners, actions, providers, and rich text to the prompt box.",
+          "Plugins can replace the prompt box, or add banners, actions, providers, and rich text to it.",
       },
     ];
   }
@@ -74,12 +74,14 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
       {
         ...group,
         title: "Sidebar",
-        blurb: "Plugins can add navigation, thread status, and footer controls.",
+        blurb:
+          "Plugins can add navigation, thread status, and footer controls.",
         appShellScene: "navigation" as const,
         surfaces: group.surfaces.filter((surface) =>
           [
             "nav-panel",
             "thread-row-status",
+            "thread-row-metadata",
             "thread-list",
             "sidebar-footer",
           ].includes(surface.id),
@@ -89,7 +91,8 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         ...group,
         id: "app-shell-thread",
         title: "Thread",
-        blurb: "Plugins can extend the thread header, conversation, and composer.",
+        blurb:
+          "Plugins can extend the thread header, conversation, and composer.",
         appShellScene: "conversation" as const,
         surfaces: group.surfaces.filter((surface) =>
           [
@@ -98,6 +101,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
             "message-directives",
             "code-fence-renderers",
             "message-actions",
+            "message-metadata",
             "pending-interaction",
             "app-overlay",
             "content-scripts",
@@ -112,6 +116,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         appShellScene: "panel" as const,
         surfaces: group.surfaces.filter((surface) =>
           [
+            "thread-info",
             "code-renderers",
             "browser-toolbar",
             "thread-panel",
@@ -594,7 +599,9 @@ function Slide({
   return (
     <>
       <SpatialFixture
-        band={mobile ? { min: 390, max: 390 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        band={
+          mobile ? { min: 390, max: 390 } : FIXTURE_WIDTH_BANDS[group.groupId]
+        }
         maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
       >
         <SlideContent group={group} mobile={mobile} />
@@ -869,7 +876,10 @@ export function ProductMap({
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target instanceof HTMLSelectElement) return;
-    if (event.target instanceof Element && event.target.closest('[role="dialog"]')) {
+    if (
+      event.target instanceof Element &&
+      event.target.closest('[role="dialog"]')
+    ) {
       return;
     }
     if (event.key === "ArrowRight") {
@@ -959,7 +969,10 @@ export function ProductMap({
             ) : (
               <div className="mb-3 border-b border-border-hairline pb-3">
                 <h2 className="text-base font-semibold">
-                  <SlideTitle title={slides[index].title} brandMark={brandMark} />
+                  <SlideTitle
+                    title={slides[index].title}
+                    brandMark={brandMark}
+                  />
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
                   {slides[index].blurb}

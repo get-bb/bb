@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { expect, it, onTestFinished, vi } from "vitest";
 import {
   execPortableFile,
@@ -19,9 +19,16 @@ import {
   spawnManagedProcess,
 } from "../src/index.js";
 
-for (const shim of [false, true]) {
-  it.skipIf(shim && process.platform !== "win32")(
-    `preserves cwd, arguments, stdin, output, and exit status through ${shim ? "a Windows .cmd shim on PATH" : "a native executable"}`,
+for (const kind of [
+  "a native executable",
+  "a Windows .cmd shim on PATH",
+  "an explicit Windows .cmd path",
+  "an explicit Windows extensionless shebang path",
+]) {
+  const native = kind === "a native executable";
+  const shebang = kind === "an explicit Windows extensionless shebang path";
+  it.skipIf(!native && process.platform !== "win32")(
+    `preserves cwd, arguments, stdin, output, and exit status through ${kind}`,
     async () => {
       const directory = realpathSync(
         mkdtempSync(join(tmpdir(), "bb process é-")),
@@ -40,9 +47,18 @@ for (const shim of [false, true]) {
       );
       const binDirectory = join(directory, "node_modules", ".bin");
       mkdirSync(binDirectory, { recursive: true });
-      if (shim) {
+      const shimPath = join(
+        binDirectory,
+        shebang ? "bb-process-probe" : "bb-process-probe.cmd",
+      );
+      if (shebang) {
         writeFileSync(
-          join(binDirectory, "bb-process-probe.cmd"),
+          shimPath,
+          "#!/usr/bin/env node\n" + readFileSync(scriptPath, "utf8"),
+        );
+      } else if (!native) {
+        writeFileSync(
+          shimPath,
           `@echo off\r\n"${process.execPath}" "%~dp0..\\..\\probe.cjs" %*\r\n`,
         );
       }
@@ -59,10 +75,18 @@ for (const shim of [false, true]) {
       for (const key of Object.keys(inheritedEnv)) {
         if (key.toUpperCase() === "PATH") delete inheritedEnv[key];
       }
-      inheritedEnv.Path = directory;
+      inheritedEnv.Path = [directory, dirname(process.execPath)].join(
+        delimiter,
+      );
+      const command = native
+        ? process.execPath
+        : kind === "a Windows .cmd shim on PATH"
+          ? "bb-process-probe"
+          : shimPath;
+      const commandArgs = native ? [scriptPath, ...args] : args;
       const child = spawnPortablePipedProcess({
-        command: shim ? "bb-process-probe" : process.execPath,
-        args: shim ? args : [scriptPath, ...args],
+        command,
+        args: commandArgs,
         cwd: directory,
         env: sanitizeInheritedChildProcessEnv({
           env: inheritedEnv,
@@ -86,11 +110,9 @@ for (const shim of [false, true]) {
         stdin: "input with spaces and é\n",
       });
       expect(Buffer.concat(stderr).toString("utf8")).toBe("provider stderr");
-      await expect(
-        execPortableFile(
-          shim ? "bb-process-probe" : process.execPath,
-          shim ? args : [scriptPath, ...args],
-          {
+      if (!shebang)
+        await expect(
+          execPortableFile(command, commandArgs, {
             cwd: directory,
             env: sanitizeInheritedChildProcessEnv({
               env: inheritedEnv,
@@ -98,43 +120,70 @@ for (const shim of [false, true]) {
             }),
             maxBuffer: 1024,
             input: "input with spaces and é\n",
-          },
-        ),
-      ).rejects.toMatchObject({
-        code: 23,
-        stdout: JSON.stringify({
-          args,
-          cwd: directory,
-          stdin: "input with spaces and é\n",
-        }),
-        stderr: "provider stderr",
-      });
+          }),
+        ).rejects.toMatchObject({
+          code: 23,
+          stdout: JSON.stringify({
+            args,
+            cwd: directory,
+            stdin: "input with spaces and é\n",
+          }),
+          stderr: "provider stderr",
+        });
     },
   );
 }
 
-it("reports ENOENT and finishes cleanup when a command cannot be resolved", async () => {
-  const managed = spawnManagedProcess({
-    command: "bb-process-utils-command-that-does-not-exist",
-    args: [],
-  });
-  await expect(once(managed.child, "close")).rejects.toMatchObject({
-    code: "ENOENT",
-  });
-  await managed.stop();
-  await expect(
-    execPortableFile("bb-process-utils-command-that-does-not-exist", [], {
-      cwd: process.cwd(),
-      env: process.env,
-      maxBuffer: 1024,
-    }),
-  ).rejects.toMatchObject({
-    code: "ENOENT",
-    syscall: expect.stringMatching(/^spawn/),
-    stdout: "",
-    stderr: "",
-  });
-});
+it.each(["name", "path"])(
+  "reports ENOENT and finishes cleanup when a command %s cannot be resolved",
+  async (kind) => {
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), "bb-missing-process-")),
+    );
+    onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+    const command =
+      kind === "path"
+        ? join(directory, "missing-agent")
+        : "bb-process-utils-command-that-does-not-exist";
+    const managed = spawnManagedProcess({ command, args: [] });
+    let spawned = false;
+    let stderr = "";
+    managed.child.once("spawn", () => {
+      spawned = true;
+    });
+    managed.child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    const closed = new Promise<void>((resolve) => {
+      managed.child.once("close", () => resolve());
+    });
+    try {
+      await expect(once(managed.child, "close")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await closed;
+      if (kind === "path") {
+        expect(spawned).toBe(false);
+        expect(stderr).toBe("");
+      }
+    } finally {
+      await managed.stop();
+    }
+    await expect(
+      execPortableFile(command, [], {
+        cwd: process.cwd(),
+        env: process.env,
+        maxBuffer: 1024,
+      }),
+    ).rejects.toMatchObject({
+      code: "ENOENT",
+      syscall: expect.stringMatching(/^spawn/),
+      stdout: "",
+      stderr: "",
+    });
+  },
+  20_000,
+);
 
 it.runIf(process.platform === "win32")(
   "removes case-insensitive inherited runtime settings before a Windows child reads them",

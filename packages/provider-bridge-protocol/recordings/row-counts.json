@@ -252,7 +252,7 @@
     "grammarDrops": 0
   },
   "pi/compaction": {
-    "events": 38,
+    "events": 39,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
@@ -276,7 +276,7 @@
     "grammarDrops": 0
   },
   "pi/steer": {
-    "events": 38,
+    "events": 39,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
@@ -288,7 +288,7 @@
     "grammarDrops": 0
   },
   "pi/subagent": {
-    "events": 39,
+    "events": 40,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0

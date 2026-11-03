@@ -12,7 +12,7 @@ export interface AppStateSubscriptionLike {
 }
 
 export interface AppStateLike {
-  readonly currentState: AppStateStatusLike;
+  readonly currentState: string | null | undefined;
   addEventListener(
     type: "change",
     handler: (state: AppStateStatusLike) => void,
@@ -23,7 +23,7 @@ export function bindRealtimeToAppState(
   realtime: MobileRealtime,
   appState: AppStateLike,
 ): () => void {
-  const apply = (state: AppStateStatusLike): void => {
+  const apply = (state: string | null | undefined): void => {
     if (state === "active") realtime.resume();
     else if (state === "background") realtime.suspend();
   };

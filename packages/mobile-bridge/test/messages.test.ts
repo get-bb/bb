@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseBridgeServers,
   parsePageToShellMessage,
   parseNativeShellHandshake,
   type NativeShellHandshake,
@@ -35,6 +36,15 @@ describe("parsePageToShellMessage", () => {
       { type: "badge", count: 0 },
       { type: "open-external", url: "https://example.com/docs" },
       { type: "open-native", screen: "device-settings" },
+      { type: "switch-server", id: "profile-2" },
+      {
+        type: "request",
+        id: "r1-app",
+        request: {
+          kind: "open-application",
+          payload: { url: "reflect://note/Project%20X" },
+        },
+      },
       {
         type: "request",
         id: "r1-2",
@@ -178,6 +188,27 @@ describe("native download support", () => {
         ...handshake,
         capabilities: ["native-downloads"],
       }),
+    ).toBeNull();
+  });
+});
+
+describe("server lists", () => {
+  const server = {
+    id: "profile-1",
+    name: "Studio",
+    origin: "https://studio.getbb.app",
+    kind: "account",
+    active: true,
+  };
+
+  it("reads a list the shell injects and treats any malformed entry as no list", () => {
+    expect(parseBridgeServers([server])).toEqual([server]);
+    expect(parseBridgeServers(undefined)).toBeNull();
+    expect(parseBridgeServers([{ ...server, kind: "teleport" }])).toBeNull();
+    expect(
+      parseBridgeServers([
+        { ...server, url: "https://user:password@studio.getbb.app" },
+      ]),
     ).toBeNull();
   });
 });

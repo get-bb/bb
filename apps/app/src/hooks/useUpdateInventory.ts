@@ -17,7 +17,11 @@ import {
 import { hasActionableReleaseUpdate } from "@/components/app-update/app-update-presentation";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
-import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import {
+  usePluginList,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
+import { pluginHasUpdateSurfaces } from "@/components/plugin/management/PluginUpdatesCard";
 import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
@@ -40,6 +44,20 @@ export interface UpdateInventoryMachine {
   canRetryDaemonUpdate: boolean;
 }
 
+export type UpdateInventoryPlugin =
+  | { kind: "update"; plugin: PluginListItem; version: string }
+  | {
+      kind: "blocked";
+      plugin: PluginListItem;
+      version: string;
+      reasons: string[];
+    };
+
+export interface UpdateInventoryPlugins {
+  trackedCount: number;
+  items: UpdateInventoryPlugin[];
+}
+
 export interface UpdateInventory {
   isLoading: boolean;
   systemVersion: SystemVersionResponse | undefined;
@@ -47,6 +65,7 @@ export interface UpdateInventory {
   appUpdateAvailable: boolean;
   desktopUpdateReady: boolean;
   machines: UpdateInventoryMachine[];
+  plugins: UpdateInventoryPlugins | null;
   pluginAttentionCount: number;
   actionableCount: number;
   hasAttention: boolean;
@@ -63,6 +82,37 @@ export function buildUpdateInventoryProviderIssues(
   return providerCliEntries(providerStatus)
     .map(buildProviderCliIssue)
     .filter(isProviderCliIssue);
+}
+
+export function buildUpdateInventoryPlugins(
+  plugins: readonly PluginListItem[],
+): UpdateInventoryPlugins {
+  const tracked = plugins.filter(
+    (plugin) =>
+      pluginHasUpdateSurfaces(plugin) &&
+      plugin.updateState.outcome !== "pinned",
+  );
+  const items = tracked.flatMap((plugin): UpdateInventoryPlugin[] => {
+    const { availableLabel, blockedLabel, blockedReasons } = plugin.updateState;
+    if (availableLabel !== null) {
+      return [{ kind: "update", plugin, version: availableLabel }];
+    }
+    if (blockedLabel !== null) {
+      return [
+        {
+          kind: "blocked",
+          plugin,
+          version: blockedLabel,
+          reasons: blockedReasons,
+        },
+      ];
+    }
+    return [];
+  });
+  items.sort((a, b) =>
+    (a.plugin.name ?? a.plugin.id).localeCompare(b.plugin.name ?? b.plugin.id),
+  );
+  return { trackedCount: tracked.length, items };
 }
 
 export function resolveAppUpdateAvailable(args: {
@@ -92,9 +142,19 @@ export function useUpdateInventory(
   const systemConfigQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
   const { desktopInfo, isDesktop } = useDesktopUpdateInfo();
+  const installedPlugins = usePluginList({ enabled }).data?.plugins;
   const pluginAttentionCount = pluginsNeedingAttention(
-    usePluginList({ enabled }).data?.plugins ?? [],
+    installedPlugins ?? [],
   ).length;
+  const pluginUpdatesEnabled =
+    systemConfigQuery.data?.experiments.pluginUpdates === true;
+  const plugins = useMemo(
+    () =>
+      pluginUpdatesEnabled
+        ? buildUpdateInventoryPlugins(installedPlugins ?? [])
+        : null,
+    [installedPlugins, pluginUpdatesEnabled],
+  );
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const updateHosts = updateInventoryHosts(hosts);
@@ -161,6 +221,7 @@ export function useUpdateInventory(
     ) +
     (appUpdateAvailable ? 1 : 0) +
     (desktopUpdateReady ? 1 : 0) +
+    (plugins?.items.filter((item) => item.kind === "update").length ?? 0) +
     pluginAttentionCount;
 
   const desktopLastCheckedAt =
@@ -186,6 +247,7 @@ export function useUpdateInventory(
     appUpdateAvailable,
     desktopUpdateReady,
     machines,
+    plugins,
     pluginAttentionCount,
     actionableCount,
     hasAttention: actionableCount > 0,

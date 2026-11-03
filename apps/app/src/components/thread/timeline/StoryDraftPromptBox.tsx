@@ -1,9 +1,9 @@
 import type { PromptTextMention } from "@bb/domain";
 import { useCallback, useMemo, useState } from "react";
 import {
-  PromptBoxInternal,
+  ComposerBox,
   type HistoryConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+} from "@/components/promptbox/ComposerBox";
 import { appendQuoteToDraftText } from "@bb/client-core";
 import {
   makeAttachmentsConfig,
@@ -84,11 +84,12 @@ export function StoryDraftPromptBox({
   );
 
   return (
-    <PromptBoxInternal
+    <ComposerBox
       value={draft.text}
       mentionRanges={draft.mentionRanges}
       onChange={draft.onChange}
       onSubmit={noop}
+      surface="thread"
       placeholder="Add to chat inserts a quote here"
       typeahead={typeahead}
       mentionMenuPlacement="bottom"

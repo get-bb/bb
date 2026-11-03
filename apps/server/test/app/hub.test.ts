@@ -21,25 +21,6 @@ describe("NotificationHub", () => {
     vi.useRealTimers();
   });
 
-  it("batches tag changes and delivers them to every connected client without subscriptions", async () => {
-    const hub = new NotificationHub();
-    const first = createMockHubSocket();
-    const second = createMockHubSocket();
-    const disconnected = createMockHubSocket();
-    for (const socket of [first, second, disconnected])
-      hub.registerClient(socket);
-    hub.unregisterClient(disconnected);
-    hub.notifyTags([]);
-    hub.notifyTags(["a", "b"]);
-    hub.notifyTags(["b", "c"]);
-    await Promise.resolve();
-    for (const socket of [first, second])
-      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
-        { type: "changed", entity: "tags", tags: ["a", "b", "c"] },
-      ]);
-    expect(disconnected.messages).toEqual([]);
-  });
-
   it("includes thread notification metadata when provided", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
@@ -56,25 +37,6 @@ describe("NotificationHub", () => {
       id: "thread-1",
       metadata: { projectId: "project-1" },
       changes: ["archived-changed"],
-    });
-  });
-
-  it("subscribes clients and delivers environment notifications", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, {
-      kind: "environment-detail",
-      environmentId: "environment-1",
-    });
-    hub.notifyEnvironment("environment-1", ["metadata-changed"]);
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toMatchObject({
-      type: "changed",
-      entity: "environment",
-      id: "environment-1",
-      changes: ["metadata-changed"],
     });
   });
 
@@ -156,16 +118,15 @@ describe("NotificationHub", () => {
       environmentId: "environment-1",
     } as const;
     const pullRequest = {
-      kind: "environment-pull-request",
-      environmentId: "environment-1",
+      kind: "plugin-read",
+      pluginId: "bb--github-pr-status",
+      method: "pullRequests",
+      read: { key: "environment-1" },
     } as const;
     const changes: unknown[] = [];
-    hub.onWatchedTargets(
-      ["environment-detail", "environment-pull-request"],
-      (change) => {
-        changes.push(change);
-      },
-    );
+    hub.onWatchedTargets(["environment-detail", "plugin-read"], (change) => {
+      changes.push(change);
+    });
 
     hub.subscribe(first, environment);
     hub.subscribe(second, { ...environment });
@@ -595,6 +556,22 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("stops delivering change notifications to clients once stopped", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    const listener = vi.fn();
+    hub.onChangedMessage(listener);
+    hub.subscribe(socket, { kind: "system" });
+    hub.subscribe(socket, { kind: "host-list" });
+
+    hub.stopClientChangeNotifications();
+    hub.notifySystem(["provider-registrations-changed"]);
+    hub.notifyHost("host-1", ["provider-model-catalog-changed"]);
+
+    expect(socket.messages).toHaveLength(0);
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
   it("delivers host notifications to list and detail subscribers", () => {
     const hub = new NotificationHub();
     const entityWideSocket = createMockHubSocket();
@@ -889,4 +866,29 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
     hub.notifyThread("thread-1", ["events-appended"]);
     expect(seen).toEqual([["events-appended"], ["events-appended"]]);
   });
+});
+
+it("shares watched producers across sockets", () => {
+  const hub = new NotificationHub();
+  const a = createMockHubSocket();
+  const b = createMockHubSocket();
+  const changes = vi.fn();
+  const read = {
+    kind: "plugin-read",
+    pluginId: "demo",
+    method: "status",
+    read: { input: { a: 1, b: 2 } },
+  } as const;
+  const stop = hub.onWatchedTargets(["plugin-read"], changes);
+  hub.subscribe(a, read);
+  hub.subscribe(b, { ...read, read: { input: { b: 2, a: 1 } } });
+  expect(changes.mock.calls).toEqual([[{ started: [read], stopped: [] }]]);
+  hub.unsubscribe(a, read);
+  expect(changes).toHaveBeenCalledTimes(1);
+  hub.unregisterClient(b);
+  expect(changes.mock.calls).toEqual([
+    [{ started: [read], stopped: [] }],
+    [{ started: [], stopped: [read] }],
+  ]);
+  stop();
 });

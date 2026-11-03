@@ -655,9 +655,6 @@ describe("the requested queue drain", () => {
   );
 
   it("leaves rows on core waits alone", async () => {
-    // A `thread-busy` row is waiting on its own thread's turn ending, not on
-    // somebody else's slot. Re-attempting it on every completion in the server
-    // would be pure churn.
     await withTestHarness(async (harness) => {
       const seen: string[] = [];
       const registry: HookRegistry = { "message.dispatch": [] };
@@ -712,9 +709,6 @@ describe("the requested queue drain", () => {
       });
       expect(passes).toBe(1);
 
-      // The first drain re-queues, which starts the thread's cooldown; the
-      // second finds it and does nothing, so a burst of completions costs one
-      // hook pass per thread rather than one per completion.
       await runPluginWake(harness);
       expect(passes).toBe(2);
       await runPluginWake(harness);
@@ -723,9 +717,6 @@ describe("the requested queue drain", () => {
   });
 
   it("walks the queued rows in queue order", async () => {
-    // A limit can be expressed over any grouping, so core cannot pick which
-    // row deserves the freed slot — it re-offers them oldest first and lets the
-    // hook decide. A full pool therefore drains in the order it filled.
     await withTestHarness(async (harness) => {
       let admit = false;
       const seen: string[] = [];
@@ -799,19 +790,15 @@ describe("requesting a drain", () => {
         vi.useRealTimers();
       }
 
-      for (const thread of threads) {
-        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
-      }
+      await vi.waitFor(() => {
+        for (const thread of threads) {
+          expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+        }
+      });
     });
   });
 
   it("coalesces a burst of requests into one walk", async () => {
-    // Five turns finishing together are five requests, and one walk of the
-    // queue fills as many freed slots as the hook allows. Without the
-    // coalescing flag each request would schedule its own walk over the same
-    // rows. Asserted on the scheduled work itself: the re-queue pacing makes a
-    // redundant walk invisible in the hook-pass count, which is exactly why it
-    // must not be the thing under test here.
     await withTestHarness(async (harness) => {
       let passes = 0;
       const registry: HookRegistry = { "message.dispatch": [] };
@@ -839,17 +826,12 @@ describe("requesting a drain", () => {
         requestPluginWake(harness);
         requestPluginWake(harness);
         expect(vi.getTimerCount()).toBe(1);
-        // Let it run rather than dropping it: the pending flag clears when the
-        // walk starts, and a walk that never starts would suppress every later
-        // request in the process.
         await vi.runAllTimersAsync();
       } finally {
         vi.useRealTimers();
       }
       expect(passes).toBe(2);
 
-      // The flag cleared when that walk started, so the next burst is its own
-      // walk — a thread freeing mid-walk is not silently dropped.
       vi.useFakeTimers();
       try {
         requestPluginWake(harness);

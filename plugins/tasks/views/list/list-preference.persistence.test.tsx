@@ -5,7 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 import { LIST_PREFERENCE_STORAGE_KEY } from "./list-preference.js";
-import { makeTask, rpcInput } from "../../test-fixtures.js";
+import { labelsByProject, makeTask, rpcInput } from "../../test-fixtures.js";
 
 window.matchMedia = (query: string) => ({
   matches: query === COMPACT_VIEWPORT_QUERY,
@@ -133,7 +133,9 @@ function baseRpc(
     listLabels: (input: unknown) => ({
       labels: rpcInput(input).projectId === PROJECT_A ? labelsA : [],
     }),
-    listTasks: (raw: unknown) => {
+    labelsByProject: labelsByProject(labelsA),
+    listTaskCardMeta: () => ({ cards: [] }),
+    listAllTasks: (raw: unknown) => {
       const input = rpcInput(raw);
       listTasksCalls.push(input);
       let tasks: Task[];
@@ -365,7 +367,7 @@ describe("list filter/sort preference persistence", () => {
       { subPath: "active" },
       {
         rpc: baseRpc({
-          listTasks: () => ({
+          listAllTasks: () => ({
             tasks: [task(PROJECT_A, 9, "in_progress", "high")],
           }),
         }),

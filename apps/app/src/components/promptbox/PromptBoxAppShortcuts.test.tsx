@@ -1,19 +1,17 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerComposerPlugin } from "@/test/fixtures/composer-plugin";
+import { ComposerTestProviders } from "@/test/fixtures/composer-test-providers";
 import { defaultAppSettings, type AppShortcut } from "@bb/domain";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
   AppCommandProvider,
   useAppCommandHandler,
   useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  PromptBoxInternal,
-} from "./PromptBoxInternal";
+import { ComposerBox } from "./ComposerBox";
+import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
@@ -70,29 +68,21 @@ function ShortcutHintState() {
 
 function renderComposer(extra: React.ReactNode = null) {
   render(
-    <MemoryRouter>
+    <ComposerTestProviders>
       <AppCommandProvider>
         <SidebarToggleHandler />
         {extra}
-        <PromptBoxInternal
+        <ComposerBox
+          surface="thread"
           value=""
           mentionRanges={[]}
           onChange={vi.fn()}
           onSubmit={vi.fn()}
           mentionMenuPlacement="bottom"
-          typeahead={{
-            mention: {
-              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-              isLoading: false,
-              isRefreshing: false,
-              isError: false,
-              onQueryChange: vi.fn(),
-            },
-            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-          }}
+          typeahead={testTypeaheadConfig()}
         />
       </AppCommandProvider>
-    </MemoryRouter>,
+    </ComposerTestProviders>,
   );
   const editor = document.querySelector<HTMLElement>(
     "[data-promptbox-editor-content] [contenteditable]",
@@ -129,6 +119,10 @@ afterEach(() => {
     alt: false,
     shift: false,
   };
+});
+
+beforeEach(async () => {
+  await registerComposerPlugin();
 });
 
 describe("prompt editor app shortcuts", () => {

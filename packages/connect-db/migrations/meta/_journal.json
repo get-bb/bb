@@ -71,6 +71,13 @@
       "when": 1791756797997,
       "tag": "0009_mcp_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792517406041,
+      "tag": "0010_next_tunnel_presence",
+      "breakpoints": true
     }
   ]
 }

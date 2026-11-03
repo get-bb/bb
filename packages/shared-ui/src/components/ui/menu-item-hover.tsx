@@ -18,11 +18,32 @@ interface MenuHoverContextValue {
   clearLastHovered: () => void;
 }
 
-const MenuHoverContext = React.createContext<MenuHoverContextValue>({
-  lastHoveredId: null,
-  setLastHovered: () => {},
-  clearLastHovered: () => {},
-});
+const MENU_HOVER_CONTEXT_KEY = Symbol.for("bb.menu-hover-context.v1");
+
+function isMenuHoverContext(
+  value: unknown,
+): value is React.Context<MenuHoverContextValue> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "Provider" in value &&
+    "Consumer" in value
+  );
+}
+
+function sharedMenuHoverContext(): React.Context<MenuHoverContextValue> {
+  const existing: unknown = Reflect.get(globalThis, MENU_HOVER_CONTEXT_KEY);
+  if (isMenuHoverContext(existing)) return existing;
+  const context = React.createContext<MenuHoverContextValue>({
+    lastHoveredId: null,
+    setLastHovered: () => {},
+    clearLastHovered: () => {},
+  });
+  Reflect.set(globalThis, MENU_HOVER_CONTEXT_KEY, context);
+  return context;
+}
+
+const MenuHoverContext = sharedMenuHoverContext();
 
 export function MenuHoverProvider({ children }: { children: React.ReactNode }) {
   const [lastHoveredId, setLastHoveredId] = React.useState<string | null>(null);

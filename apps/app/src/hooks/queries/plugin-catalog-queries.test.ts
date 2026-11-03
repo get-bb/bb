@@ -27,20 +27,24 @@ const UPDATES_RESULTS = [
   {
     id: "current-plugin",
     outcome: "current",
-    installed: { version: "1.0.0", display: "1.0.0" },
+    installed: { version: "1.0.0", label: "1.0.0", display: "1.0.0" },
   },
   {
     id: "updatable-plugin",
     outcome: "update-available",
-    installed: { version: "1.6.2", display: "1.6.2" },
-    candidate: { version: "1.7.0", display: "1.7.0" },
+    installed: { version: "1.6.2", label: "1.6.2", display: "1.6.2" },
+    candidate: { version: "1.7.0", label: "1.7.0", display: "1.7.0" },
   },
   {
     id: "blocked-plugin",
     outcome: "incompatible",
     devMode: true,
-    installed: { version: "1.8.3", display: "1.8.3" },
-    blocked: { version: "1.9.0", reasons: ["requires bb >= 0.15"] },
+    installed: { version: "1.8.3", label: "1.8.3", display: "1.8.3" },
+    blocked: {
+      version: "1.9.0",
+      label: "1.9.0",
+      reasons: ["requires bb >= 0.15"],
+    },
   },
 ];
 
@@ -70,16 +74,16 @@ describe("applyPluginUpdate", () => {
   it("POSTs an empty body and parses the apply result", async () => {
     const { fetchImpl, calls } = recordingFetch({
       applied: true,
-      from: { version: "1.6.2", display: "1.6.2" },
-      to: { version: "1.7.0", display: "1.7.0" },
+      from: { version: "1.6.2", label: "1.6.2", display: "1.6.2" },
+      to: { version: "1.7.0", label: "1.7.0", display: "1.7.0" },
       outcome: "updated",
     });
     const result = await applyPluginUpdate(fetchImpl, "linear");
     expect(result).toEqual({
       applied: true,
       outcome: "updated",
-      from: { version: "1.6.2", display: "1.6.2" },
-      to: { version: "1.7.0", display: "1.7.0" },
+      from: { version: "1.6.2", label: "1.6.2", display: "1.6.2" },
+      to: { version: "1.7.0", label: "1.7.0", display: "1.7.0" },
       detail: null,
     });
     expect(calls[0]?.init?.body).toBe("{}");

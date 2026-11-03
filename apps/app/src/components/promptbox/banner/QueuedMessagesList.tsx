@@ -37,6 +37,7 @@ import type {
   QueuedMessagesListProps,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import { QueuedMessageSendTimeDialog } from "@/components/promptbox/banner/QueuedMessageSendTimeDialog";
 import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
@@ -79,7 +80,7 @@ import {
   PromptStackCollapseRow,
   useDisclosureFocusHandoff,
 } from "@bb/shared-ui/prompt-stack-disclosure";
-import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@/components/promptbox/banner/prompt-banner-actions";
+import { PROMPT_STACK_ROW_ACTION_TAKEOVER_CLASS } from "@bb/shared-ui/prompt-banner-actions";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
@@ -100,13 +101,14 @@ import {
   preserveLeadQueuedMessageGroupAfterReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import {
   PromptMentionPill,
   shiftMentionsToTextRange,
 } from "@/components/thread/timeline/ConversationMessageMentions";
 import {
-  buildPromptMentionComponent,
+  PromptMentionElement,
+  PromptMentionsContext,
   remarkPromptMentions,
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
@@ -136,6 +138,7 @@ interface QueuedMessageRowProps {
   onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (id: string) => void;
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
@@ -234,6 +237,7 @@ const QUEUED_MARKDOWN_COMPONENTS: Components = {
   thead: ({ children }) => <span>{children}</span>,
   tr: ({ children }) => <span>{children} </span>,
   ul: ({ children }) => <span>{children}</span>,
+  "bb-prompt-mention": PromptMentionElement,
 };
 
 function CompactQueuedMarkdownPreview({
@@ -254,25 +258,24 @@ function CompactQueuedMarkdownPreview({
       normalizePromptBlockquoteBoundaries(promptMentionSubstitution.content),
     [promptMentionSubstitution.content],
   );
-  const components = useMemo<Components>(
+  const promptMentions = useMemo(
     () => ({
-      ...QUEUED_MARKDOWN_COMPONENTS,
-      "bb-prompt-mention": buildPromptMentionComponent({
-        mentions: promptMentionSubstitution.mentions,
-        resolveMentionLink,
-      }),
+      mentions: promptMentionSubstitution.mentions,
+      resolveMentionLink,
     }),
     [promptMentionSubstitution.mentions, resolveMentionLink],
   );
 
   return (
     <span className={queuedMarkdownPreviewClass(compact)}>
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
-      >
-        {markdownContent}
-      </ReactMarkdown>
+      <PromptMentionsContext.Provider value={promptMentions}>
+        <ReactMarkdown
+          components={QUEUED_MARKDOWN_COMPONENTS}
+          remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
+        >
+          {markdownContent}
+        </ReactMarkdown>
+      </PromptMentionsContext.Provider>
     </span>
   );
 }
@@ -758,6 +761,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onExpandMobileActions,
   onSend,
   onEdit,
+  onChangeSendTime,
   onDelete,
   compact,
   isGroupBoundary,
@@ -994,6 +998,29 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
+                {queuedMessage.state === "scheduled" ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          compact ? "size-7" : "size-8",
+                        )}
+                        disabled={actionDisabled}
+                        onClick={() => onChangeSendTime(queuedMessage.id)}
+                        aria-label={`Change when queued message ${index + 1} sends`}
+                      >
+                        <Icon name="Calendar" className="size-4" aria-hidden />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-md:hidden">
+                      Change send time
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -1190,6 +1217,7 @@ export function QueuedMessagesList({
   onReorder,
   onSetGroupBoundary,
   onEdit,
+  onChangeSendTime,
   onDelete,
   expanded,
   onExpandedChange,
@@ -1501,6 +1529,21 @@ export function QueuedMessagesList({
     },
     [onEdit, openWorkspace],
   );
+  const [sendTimeQueuedMessageId, setSendTimeQueuedMessageId] = useState<
+    string | null
+  >(null);
+  const sendTimeQueuedMessage =
+    sendTimeQueuedMessageId === null
+      ? null
+      : (queuedMessages.find(
+          (queuedMessage) =>
+            queuedMessage.id === sendTimeQueuedMessageId &&
+            queuedMessage.state === "scheduled",
+        ) ?? null);
+  const handleOpenSendTime = useCallback((id: string) => {
+    setExpandedMobileActionsId(null);
+    setSendTimeQueuedMessageId(id);
+  }, []);
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
@@ -1579,6 +1622,7 @@ export function QueuedMessagesList({
           isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSend={onSend}
           onEdit={handleEdit}
+          onChangeSendTime={handleOpenSendTime}
           onDelete={onDelete}
         />,
       );
@@ -1692,6 +1736,13 @@ export function QueuedMessagesList({
           />
         </div>
       ) : null}
+      <QueuedMessageSendTimeDialog
+        queuedMessage={sendTimeQueuedMessage}
+        onOpenChange={(open) => {
+          if (!open) setSendTimeQueuedMessageId(null);
+        }}
+        onChangeSendTime={onChangeSendTime}
+      />
     </PromptStackCard>
   );
 }

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { AnimatedDisclosureBody } from "./AnimatedBody";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useResumeHost } from "@/hooks/mutations/host-mutations";
 import type { SystemMachineProvider } from "@bb/server-contract";
@@ -13,11 +12,12 @@ import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
+  AnimatedDisclosureBody,
 } from "@bb/shared-ui/prompt-stack-disclosure";
 import {
   BannerActionSlot,
   PromptBannerActionButton,
-} from "./prompt-banner-actions";
+} from "@bb/shared-ui/prompt-banner-actions";
 import {
   PromptStackCard,
   PROMPT_STACK_CARD_ROW_HEIGHT,

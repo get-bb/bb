@@ -393,6 +393,7 @@ function validateUserQuestionResolution(
   for (const question of interaction.payload.questions) {
     const answer = resolution.answers[question.id];
     if (!answer) {
+      if (!question.required) continue;
       throw new ApiError(
         400,
         "invalid_request",
@@ -459,7 +460,11 @@ function validateUserQuestionResolution(
       );
     }
 
-    if (answer.selected.length === 0 && answer.freeText === undefined) {
+    if (
+      question.required &&
+      answer.selected.length === 0 &&
+      answer.freeText === undefined
+    ) {
       throw new ApiError(
         400,
         "invalid_request",

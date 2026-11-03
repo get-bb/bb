@@ -15,6 +15,11 @@
     "icon": "Repeat"
   },
   {
+    "id": "bb--composer",
+    "name": "Composer",
+    "icon": "MessageSquare"
+  },
+  {
     "id": "bb-ai",
     "name": "bb cloud AI",
     "icon": "AiBrain01"
@@ -55,6 +60,16 @@
     "icon": "Github"
   },
   {
+    "id": "bb--git",
+    "name": "Git",
+    "icon": "GitBranch"
+  },
+  {
+    "id": "bb--github-pr-status",
+    "name": "GitHub PR Status",
+    "icon": "GitPullRequest"
+  },
+  {
     "id": "inline-vis",
     "name": "Inline visualizations",
     "icon": "AppWindow"
@@ -63,6 +78,11 @@
     "id": "keep-awake",
     "name": "Keep Awake",
     "icon": "Coffee"
+  },
+  {
+    "id": "bb--github-star",
+    "name": "GitHub Star",
+    "icon": "Star"
   },
   {
     "id": "memory",

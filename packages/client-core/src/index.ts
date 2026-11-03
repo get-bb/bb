@@ -1,17 +1,11 @@
 export * from "./api-types.js";
 
 export * from "./thread/thread-read-state.js";
-export * from "./thread/thread-activity.js";
 
 export * from "./codepoint-compare.js";
 export * from "./environment-providers.js";
-export * from "./sidebar/sectionKeys.js";
 export * from "./sidebar/projectThreadGroups.js";
-export * from "./sidebar/machineThreadGroups.js";
-export * from "./sidebar/pinnedSidebarThreads.js";
 export * from "./sidebar/threadReadState.js";
-export * from "./sidebar/sidebarSectionId.js";
-export * from "./sidebar/sidebarSectionOrder.js";
 export * from "./sidebar/neighbor-reorder.js";
 
 export * from "./prompt/create-resource-prompts.js";
@@ -24,8 +18,12 @@ export * from "./prompt/permission-mode-options.js";
 export * from "./prompt/mentions/plugin-mention-triggers.js";
 export * from "./prompt/mentions/types.js";
 export * from "./prompt/mentions/mention-candidates.js";
-export * from "./prompt/mentions/find-active-trigger.js";
 export * from "./prompt/mentions/command-trigger.js";
+export * from "./prompt/mentions/composer-mention.js";
+export * from "./prompt/mentions/composer-suggestions.js";
+export * from "./prompt/mentions/prompt-mention-clipboard.js";
+export * from "./prompt/mentions/prompt-mention-link.js";
+export * from "./prompt/mentions/prompt-mention-display.js";
 export * from "./prompt/fork-thread-request.js";
 export * from "./prompt/thread-handoff-request.js";
 

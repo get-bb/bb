@@ -1,12 +1,33 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderWithoutHost,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearLocalAttachmentPreviews,
   registerLocalAttachmentPreview,
 } from "@/lib/attachment-local-previews";
-import { AttachmentPreview } from "./AttachmentPreview";
+import { loadAttachmentPreview } from "@/test/fixtures/composer-plugin-modules";
+import { ComposerRendererTestHost } from "@/test/fixtures/composer-renderer";
+
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
+
+const AttachmentPreview = await loadAttachmentPreview();
+
+const render = (
+  ui: Parameters<typeof renderWithoutHost>[0],
+  options?: Parameters<typeof renderWithoutHost>[1],
+) => renderWithoutHost(ui, { wrapper: ComposerRendererTestHost, ...options });
 
 describe("AttachmentPreview", () => {
   const revoked: string[] = [];
@@ -42,10 +63,15 @@ describe("AttachmentPreview", () => {
       onExpandedImageIndexChange: vi.fn(),
     };
     const { getByRole, queryByRole, rerender } = render(
-      <AttachmentPreview {...props} pendingUploads={[{ id: "upload-1", file }]} />,
+      <AttachmentPreview
+        {...props}
+        pendingUploads={[{ id: "upload-1", file }]}
+      />,
     );
     const status = getByRole("status", { name: "Uploading pending.png" });
-    expect(status.querySelector("img")?.getAttribute("src")).toBe("blob:local-1");
+    expect(status.querySelector("img")?.getAttribute("src")).toBe(
+      "blob:local-1",
+    );
     expect(status.textContent).toContain("Uploading");
     expect(queryByRole("button", { name: "Remove pending.png" })).toBeNull();
 
@@ -72,7 +98,9 @@ describe("AttachmentPreview", () => {
       />,
     );
 
-    const uploading = getByRole("status", { name: "Uploading Pasted text.txt" });
+    const uploading = getByRole("status", {
+      name: "Uploading Pasted text.txt",
+    });
     const finishedPill = getByRole("button", { name: "Remove notes.txt" })
       .parentElement?.parentElement;
     expect(uploading.parentElement).toBe(finishedPill?.parentElement);
@@ -82,28 +110,55 @@ describe("AttachmentPreview", () => {
   it("keeps upload feedback in the collapsed composer and releases previews on unmount", () => {
     const props = {
       attachments: [],
-      pendingUploads: [{ id: "upload-1", file: new File(["image"], "pending.png", { type: "image/png" }) }],
+      pendingUploads: [
+        {
+          id: "upload-1",
+          file: new File(["image"], "pending.png", { type: "image/png" }),
+        },
+      ],
       expandedImageIndex: null,
       onExpandedImageIndexChange: vi.fn(),
     };
-    const { getByRole, rerender, unmount } = render(<AttachmentPreview {...props} compact />);
+    const { getByRole, rerender, unmount } = render(
+      <AttachmentPreview {...props} compact />,
+    );
     const uploading = getByRole("status", { name: "1 uploading" });
     expect(uploading.textContent).toBe("1");
     expect(uploading.querySelector('[data-icon="Paperclip"]')).not.toBeNull();
-    const attachments = [{ type: "localImage" as const, path: "done.png", name: "done.png", sizeBytes: 5 }];
-    rerender(<AttachmentPreview {...props} attachments={attachments} compact />);
+    const attachments = [
+      {
+        type: "localImage" as const,
+        path: "done.png",
+        name: "done.png",
+        sizeBytes: 5,
+      },
+    ];
+    rerender(
+      <AttachmentPreview {...props} attachments={attachments} compact />,
+    );
     const mixed = getByRole("status", { name: "1 attachment, 1 uploading" });
     expect(mixed.textContent).toBe("2");
-    rerender(<AttachmentPreview {...props} attachments={attachments} pendingUploads={[]} compact />);
+    rerender(
+      <AttachmentPreview
+        {...props}
+        attachments={attachments}
+        pendingUploads={[]}
+        compact
+      />,
+    );
     const settled = getByRole("img", { name: "1 attachment" });
     expect(settled.querySelector('[data-icon="Loading"]')).toBeNull();
     rerender(<AttachmentPreview {...props} />);
-    expect(getByRole("status", { name: "Uploading pending.png" }).querySelector("img")).not.toBeNull();
+    expect(
+      getByRole("status", { name: "Uploading pending.png" }).querySelector(
+        "img",
+      ),
+    ).not.toBeNull();
     unmount();
     expect(revoked).toEqual(["blob:local-1"]);
   });
 
-  it("renders a just-picked image from its local object URL and revokes it on remove", () => {
+  it("renders a just-picked image from its local object URL", () => {
     registerLocalAttachmentPreview(
       "photo-1-abc.png",
       new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
@@ -149,7 +204,6 @@ describe("AttachmentPreview", () => {
 
     fireEvent.click(getByLabelText("Remove photo.png"));
     expect(onRemoveAttachment).toHaveBeenCalledWith("photo-1-abc.png");
-    expect(revoked).toEqual(["blob:local-1"]);
   });
 
   it("keeps composer focus when a touch on remove synthesizes mousedown", () => {

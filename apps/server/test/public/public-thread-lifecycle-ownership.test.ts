@@ -36,40 +36,51 @@ async function remove(harness: TestAppHarness, id: string) {
 }
 
 describe("lifecycle ownership deletion", () => {
-  it("durably marks nested dependents before effects and recovers after interruption", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const owner = seedThread(harness.deps, { projectId: project.id });
-      const child = seedThread(harness.deps, {
-        projectId: project.id,
-        lifecycleOwnerThreadId: owner.id,
-      });
-      const nested = seedThread(harness.deps, {
-        projectId: project.id,
-        lifecycleOwnerThreadId: child.id,
-      });
-      const close = vi
-        .spyOn(harness.deps.terminalSessions, "closeDeletedThreadTerminals")
-        .mockImplementationOnce(() => {
-          throw new Error("Interrupted");
+  it.each(["parentThreadId", "lifecycleOwnerThreadId"] as const)(
+    "durably marks nested %s descendants before effects and recovers after interruption",
+    async (relationship) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
         });
-      expect((await remove(harness, owner.id)).status).toBe(500);
-      close.mockRestore();
-      for (const thread of [owner, child, nested])
-        expect(getThread(harness.db, thread.id)?.deletedAt).toEqual(
-          expect.any(Number),
+        const owner = seedThread(harness.deps, { projectId: project.id });
+        const child = seedThread(harness.deps, {
+          projectId: project.id,
+          [relationship]: owner.id,
+        });
+        const nested = seedThread(harness.deps, {
+          projectId: project.id,
+          lifecycleOwnerThreadId: child.id,
+        });
+        const hidden = seedThread(harness.deps, {
+          projectId: project.id,
+          parentThreadId: nested.id,
+          visibility: "hidden",
+        });
+        archiveThread(harness.db, harness.deps.hub, nested.id);
+        archiveThread(harness.db, harness.deps.hub, hidden.id);
+        const descendants = [owner, child, nested, hidden];
+        const close = vi
+          .spyOn(harness.deps.terminalSessions, "closeDeletedThreadTerminals")
+          .mockImplementationOnce(() => {
+            throw new Error("Interrupted");
+          });
+        expect((await remove(harness, owner.id)).status).toBe(500);
+        close.mockRestore();
+        for (const thread of descendants)
+          expect(getThread(harness.db, thread.id)?.deletedAt).toEqual(
+            expect.any(Number),
+          );
+        expect(getThread(harness.db, nested.id)?.lifecycleOwnerThreadId).toBe(
+          child.id,
         );
-      expect(getThread(harness.db, nested.id)?.lifecycleOwnerThreadId).toBe(
-        child.id,
-      );
-      for (let i = 0; i < 3; i++) await runThreadLifecycleSweep(harness.deps);
-      for (const thread of [owner, child, nested])
-        expect(getThread(harness.db, thread.id)).toBeNull();
-    });
-  });
+        for (let i = 0; i < 3; i++) await runThreadLifecycleSweep(harness.deps);
+        for (const thread of descendants)
+          expect(getThread(harness.db, thread.id)).toBeNull();
+      });
+    },
+  );
 
   it.each([false, true])(
     "retains owner until active cross-host dependent storage is deleted (archived: %s)",
@@ -152,12 +163,12 @@ describe("lifecycle ownership deletion", () => {
         await runThreadLifecycleSweep(harness.deps);
         expect(getThread(harness.db, owner.id)).toBeNull();
         expect(getThread(harness.db, child.id)).toBeNull();
-        for (const thread of [independent, sidebar])
-          expect(getThread(harness.db, thread.id)).toMatchObject({
-            archivedAt: null,
-            deletedAt: null,
-            lifecycleOwnerThreadId: null,
-          });
+        expect(getThread(harness.db, sidebar.id)).toBeNull();
+        expect(getThread(harness.db, independent.id)).toMatchObject({
+          archivedAt: null,
+          deletedAt: null,
+          lifecycleOwnerThreadId: null,
+        });
       });
     },
   );

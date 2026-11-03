@@ -1,9 +1,11 @@
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { open, readdir } from "node:fs/promises";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { WebSocket } from "ws";
 import {
   DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE,
+  desktopBrowserBrokerProofSchema,
   desktopBrowserBrokerDescriptorSchema,
   desktopBrowserBrokerRequestSchema,
   desktopBrowserResultSchemas,
@@ -60,6 +62,8 @@ async function readServerBrokerDescriptor(args: {
   dataDir: string;
   homeDir: string;
   serverOrigin: string;
+  fetchImpl: typeof fetch;
+  signal: AbortSignal;
 }) {
   const serverHost = new URL(args.serverOrigin).host.replace(
     /[^a-zA-Z0-9.-]/gu,
@@ -70,15 +74,63 @@ async function readServerBrokerDescriptor(args: {
     join(args.homeDir, ".bb-machines", serverHost),
   ]);
   for (const dataDir of dataDirs) {
-    try {
-      const descriptor = await readBrokerDescriptor(dataDir);
-      if (new URL(descriptor.serverUrl).origin === args.serverOrigin)
-        return descriptor;
-    } catch {
-      continue;
-    }
+    const descriptor = await readBrokerDescriptor(dataDir).catch(() => null);
+    if (
+      descriptor !== null &&
+      new URL(descriptor.serverUrl).origin === args.serverOrigin
+    )
+      return descriptor;
   }
-  throw new Error("No desktop broker found for the selected server");
+  const machinesDir = join(args.homeDir, ".bb-machines");
+  const entries = await readdir(machinesDir, { withFileTypes: true }).catch(
+    () => [],
+  );
+  const candidates = new Set([
+    ...dataDirs,
+    ...entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(machinesDir, entry.name)),
+  ]);
+  const controller = new AbortController();
+  const signal = AbortSignal.any([
+    args.signal,
+    controller.signal,
+    AbortSignal.timeout(6000),
+  ]);
+  try {
+    return await Promise.any(
+      [...candidates].map(async (dataDir) => {
+        signal.throwIfAborted();
+        const descriptor = await readBrokerDescriptor(dataDir);
+        signal.throwIfAborted();
+        const challenge = randomBytes(32).toString("hex");
+        const response = await args.fetchImpl(
+          `${args.serverOrigin}/api/v1/desktop-browsers/broker-proof`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ hostId: descriptor.hostId, challenge }),
+            credentials: "include",
+            redirect: "error",
+            signal,
+          },
+        );
+        if (!response.ok) throw new Error("Desktop broker proof unavailable");
+        const { proof } = desktopBrowserBrokerProofSchema.parse(
+          await response.json(),
+        );
+        signal.throwIfAborted();
+        const expected = createHmac("sha256", descriptor.token)
+          .update(`bb-desktop-broker:${challenge}`)
+          .digest();
+        if (!timingSafeEqual(expected, Buffer.from(proof, "hex")))
+          throw new Error("Invalid desktop broker proof");
+        return descriptor;
+      }),
+    );
+  } finally {
+    controller.abort();
+  }
 }
 
 export function createDesktopBrowserBrokerClient(args: {
@@ -86,9 +138,12 @@ export function createDesktopBrowserBrokerClient(args: {
   dataDir: string;
   homeDir: string;
   getServerUrl(): string;
+  fetchImpl?: typeof fetch;
 }) {
   let socket: WebSocket | null = null;
+  let lookup: AbortController | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let failures = 0;
   let stopped = false;
   let generation = 0;
   let serverUrl: string | null = args.getServerUrl();
@@ -97,6 +152,8 @@ export function createDesktopBrowserBrokerClient(args: {
     if (retry !== null) clearTimeout(retry);
     retry = null;
     generation += 1;
+    lookup?.abort();
+    lookup = null;
     const previous = socket;
     socket = null;
     previous?.terminate();
@@ -105,16 +162,21 @@ export function createDesktopBrowserBrokerClient(args: {
 
   function schedule(): void {
     if (stopped || serverUrl === null || retry !== null) return;
+    const delay = Math.min(2000 * 2 ** failures, 60_000);
+    failures += 1;
     retry = setTimeout(() => {
       retry = null;
       void connect();
-    }, 2000);
+    }, delay);
     retry.unref();
   }
 
   async function connect(): Promise<void> {
-    if (stopped || serverUrl === null || socket !== null) return;
+    if (stopped || serverUrl === null || socket !== null || lookup !== null)
+      return;
     const currentGeneration = generation;
+    const controller = new AbortController();
+    lookup = controller;
     try {
       const serverOrigin = new URL(serverUrl).origin;
       args.broker.setServerOrigin(serverOrigin);
@@ -122,6 +184,8 @@ export function createDesktopBrowserBrokerClient(args: {
         dataDir: args.dataDir,
         homeDir: args.homeDir,
         serverOrigin,
+        fetchImpl: args.fetchImpl ?? fetch,
+        signal: controller.signal,
       });
       if (stopped || generation !== currentGeneration) return;
       const connection = new WebSocket(descriptor.url, {
@@ -149,13 +213,11 @@ export function createDesktopBrowserBrokerClient(args: {
       let requests = Promise.resolve();
       let pending = 0;
       connection.on("open", () => {
-        if (
-          stopped ||
-          generation !== currentGeneration
-        ) {
+        if (stopped || generation !== currentGeneration) {
           connection.terminate();
           return;
         }
+        failures = 0;
         sendRegistration();
         args.broker.setHostId(descriptor.hostId);
       });
@@ -217,6 +279,8 @@ export function createDesktopBrowserBrokerClient(args: {
       });
     } catch {
       if (generation === currentGeneration) schedule();
+    } finally {
+      if (lookup === controller) lookup = null;
     }
   }
 
@@ -228,6 +292,7 @@ export function createDesktopBrowserBrokerClient(args: {
     },
     reconnect() {
       serverUrl = args.getServerUrl();
+      failures = 0;
       disconnect();
       void connect();
     },

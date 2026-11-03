@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
-import type { ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { createStore, Provider } from "jotai";
+import { useContext, type ReactNode } from "react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { createStore, Provider, useSetAtom } from "jotai";
+import { RESET } from "jotai/utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -17,7 +24,13 @@ import {
   type SecondaryPanelRenderArgs,
 } from "./SecondaryPanelLayout";
 import { panelGroupState } from "@/test/react-resizable-panels-stub";
-import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import {
+  getPluginPageSecondaryPanelWidthPercentAtom,
+  getThreadSecondaryPanelWidthPercentAtom,
+  SecondaryPanelWidthPercentAtomContext,
+  secondaryPanelWidthPercentAtom,
+  type SecondaryPanelWidthPercentAtom,
+} from "./threadSecondaryPanelAtoms";
 
 type DrawerShellCallback = (open: boolean) => void;
 
@@ -76,6 +89,7 @@ interface RenderLayoutArgs {
   panelGroupKey?: string;
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   resetKey: string;
+  widthPercentAtom?: SecondaryPanelWidthPercentAtom;
 }
 
 const noop = () => {};
@@ -141,6 +155,9 @@ function renderLayout(args: RenderLayoutArgs) {
             }
             renderPanel={renderArgs.renderPanel}
             composerHost={null}
+            widthPercentAtom={
+              renderArgs.widthPercentAtom ?? secondaryPanelWidthPercentAtom
+            }
           />
         </CompactViewportOverrideProvider>
       </Provider>,
@@ -150,6 +167,7 @@ function renderLayout(args: RenderLayoutArgs) {
 
   return {
     ...view,
+    store,
     rerenderWith(nextArgs: Partial<RenderLayoutArgs>) {
       renderArgs = { ...renderArgs, ...nextArgs };
       view.rerender(renderContent());
@@ -260,6 +278,7 @@ afterEach(() => {
     value: PRISTINE_CANCEL_ANIMATION_FRAME,
   });
   drawerShellState.onContentAnimationEnd = undefined;
+  window.localStorage.clear();
 });
 
 beforeEach(() => {
@@ -405,6 +424,98 @@ describe("SecondaryPanelLayout", () => {
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
   });
 
+  it("sizes a plugin page from its own width instead of the thread width", () => {
+    const pluginPageWidthAtom = getPluginPageSecondaryPanelWidthPercentAtom({
+      panelPath: "board",
+      pluginId: "test-plugin",
+    });
+    function PanelWidthProbe() {
+      const setWidthPercent = useSetAtom(
+        useContext(SecondaryPanelWidthPercentAtomContext),
+      );
+      return (
+        <button type="button" onClick={() => setWidthPercent(33)}>
+          Resize
+        </button>
+      );
+    }
+
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      renderPanel: () => <PanelWidthProbe />,
+      resetKey: "plugin-page",
+      widthPercentAtom: pluginPageWidthAtom,
+    });
+
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([50, 50]);
+    fireEvent.click(screen.getByRole("button", { name: "Resize" }));
+    expect(view.store.get(pluginPageWidthAtom)).toBe(33);
+    expect(view.store.get(secondaryPanelWidthPercentAtom)).toBe(40);
+    expect(
+      getPluginPageSecondaryPanelWidthPercentAtom({
+        panelPath: "board",
+        pluginId: "other-plugin",
+      }),
+    ).not.toBe(pluginPageWidthAtom);
+  });
+
+  it("gives each thread its own width that falls back to the last width set", () => {
+    const firstThreadWidthAtom =
+      getThreadSecondaryPanelWidthPercentAtom("thr_first");
+    const secondThreadWidthAtom =
+      getThreadSecondaryPanelWidthPercentAtom("thr_second");
+    function PanelWidthProbe() {
+      const setWidthPercent = useSetAtom(
+        useContext(SecondaryPanelWidthPercentAtomContext),
+      );
+      return (
+        <>
+          <button type="button" onClick={() => setWidthPercent(30)}>
+            Narrow
+          </button>
+          <button type="button" onClick={() => setWidthPercent(60)}>
+            Wide
+          </button>
+          <button type="button" onClick={() => setWidthPercent(RESET)}>
+            Reset
+          </button>
+        </>
+      );
+    }
+
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      panelGroupKey: "thread-detail",
+      renderPanel: () => <PanelWidthProbe />,
+      resetKey: "thr_first",
+      widthPercentAtom: firstThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Narrow" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+
+    view.rerenderWith({
+      resetKey: "thr_second",
+      widthPercentAtom: secondThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+    fireEvent.click(screen.getByRole("button", { name: "Wide" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([40, 60]);
+
+    view.rerenderWith({
+      resetKey: "thr_first",
+      widthPercentAtom: firstThreadWidthAtom,
+    });
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([70, 30]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([40, 60]);
+    expect(view.store.get(secondThreadWidthAtom)).toBe(60);
+  });
+
   it("publishes one hosted panel model and gates native content on pane focus", () => {
     const frames = installAnimationFrameQueue();
     const renderPanel = createPanelRenderer();
@@ -423,6 +534,7 @@ describe("SecondaryPanelLayout", () => {
       isMainCollapsed: true,
       isOpen: true,
       transitionsReady: false,
+      widthPercentAtom: secondaryPanelWidthPercentAtom,
     });
     expect(renderPanel).toHaveBeenLastCalledWith(
       expect.objectContaining({

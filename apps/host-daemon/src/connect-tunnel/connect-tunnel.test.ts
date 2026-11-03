@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 import {
   decodeFrame,
   encodeFrame,
@@ -13,6 +14,7 @@ import type { HostDaemonLogger } from "../logger.js";
 import {
   buildMachineSharePublicOrigin,
   buildMachineTunnelUrl,
+  CONNECT_NEXT_ENROLLMENT_MESSAGE,
   ConnectTunnelClient,
   resolveTrustedConnectGate,
   type ConnectTunnelFetch,
@@ -365,6 +367,52 @@ describe("ConnectTunnelClient", () => {
     client.shutdown();
   });
 
+  it("abandons a handshake the gate never answers and dials again", async () => {
+    const gateServer = createServer();
+    const gatePort = await listen(gateServer);
+    const gate = new WebSocketServer({ noServer: true });
+    openWebSocketServers.push(gate);
+    let attempts = 0;
+    const unansweredSockets: Duplex[] = [];
+    gateServer.on("upgrade", (request, socket, head) => {
+      attempts += 1;
+      if (attempts === 1) {
+        unansweredSockets.push(socket);
+        return;
+      }
+      gate.handleUpgrade(request, socket, head, (websocket) => {
+        gate.emit("connection", websocket, request);
+      });
+    });
+
+    const statuses: ConnectTunnelStatus[] = [];
+    const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.getbb.app",
+      hostName: "Machine A",
+      machineCredential: "bbcm_machine-secret",
+      fetchFn: labelFetch([], "machine-a"),
+      logger,
+      createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
+      reconnectBackoff: { baseDelayMs: 5, maxDelayMs: 20 },
+      handshakeTimeoutMs: 50,
+      onStatusChange: (status) => statuses.push(status),
+    });
+    client.replaceShareSet({ generation: 1, ports: [3000] });
+
+    await waitFor(
+      () => client.status().state === "connected",
+      "client connected after the unanswered handshake",
+    );
+    expect(attempts).toBe(2);
+    expect(
+      statuses.some((status) =>
+        status.lastError?.includes("handshake timed out"),
+      ),
+    ).toBe(true);
+    client.shutdown();
+    for (const socket of unansweredSockets) socket.destroy();
+  });
+
   it("stops reconnecting when the gate rejects the machine credential", async () => {
     const gateServer = createServer();
     const gatePort = await listen(gateServer);
@@ -490,6 +538,36 @@ describe("ConnectTunnelClient", () => {
     expect(fetchCount).toBe(0);
     expect(dialCount).toBe(0);
     expect(client.status()).toMatchObject({ state: "offline", ports: [3000] });
+    client.shutdown();
+  });
+  it("does not dial a Cloudflare tunnel for a machine that joined through a next address", async () => {
+    let dialCount = 0;
+    const labelRequests: LabelRequest[] = [];
+    const client = new ConnectTunnelClient({
+      serverUrl: "https://owner.next.getbb.app",
+      hostName: "Machine A",
+      machineCredential: "bbcm_machine-secret",
+      logger,
+      fetchFn: labelFetch(labelRequests, "machine-a"),
+      createWebSocket: () => {
+        dialCount += 1;
+        throw new Error("must not dial");
+      },
+    });
+    client.replaceShareSet({ generation: 1, ports: [3000] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(dialCount).toBe(0);
+    expect(client.status()).toMatchObject({
+      state: "offline",
+      lastError: CONNECT_NEXT_ENROLLMENT_MESSAGE,
+    });
+    await expect(client.ensureTunnelIdentity()).resolves.toEqual({
+      label: "machine-a",
+      baseDomain: "next.getbb.app",
+    });
+    expect(labelRequests[0]?.url).toBe(
+      "https://owner.next.getbb.app/api/connect/machine-label",
+    );
     client.shutdown();
   });
 });

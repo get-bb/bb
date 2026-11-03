@@ -1,9 +1,5 @@
-import { execPortableFile } from "@bb/process-utils";
-import { execFile } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import { hostToolchain, execPortableFile } from "@bb/process-utils";
 import path from "node:path";
-import { promisify } from "node:util";
 import semverCompare from "semver/functions/compare.js";
 import semverValid from "semver/functions/valid.js";
 import { z } from "zod";
@@ -14,59 +10,13 @@ import type {
   ProviderInstallationVerification,
 } from "../provider-maintenance.js";
 
-const execFileAsync = promisify(execFile);
-
 const CLI_PROBE_TIMEOUT_MS = 5_000;
 const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
-
-const DEFAULT_WINDOWS_PATHEXT = ".COM;.EXE;.BAT;.CMD";
-
-export function selectResolvedExecutable(args: {
-  candidates: readonly string[];
-  platform: NodeJS.Platform;
-  pathExt: string | undefined;
-}): string | null {
-  const candidates = args.candidates
-    .map((candidate) => candidate.trim())
-    .filter((candidate) => candidate.length > 0);
-  if (args.platform !== "win32") {
-    return candidates[0] ?? null;
-  }
-  const extensions = (args.pathExt ?? DEFAULT_WINDOWS_PATHEXT)
-    .split(";")
-    .map((extension) => extension.trim().toLowerCase())
-    .filter((extension) => extension.length > 0);
-  return (
-    candidates.find((candidate) =>
-      extensions.includes(path.win32.extname(candidate).toLowerCase()),
-    ) ?? null
-  );
-}
 
 export async function resolveExecutablePath(
   command: string,
 ): Promise<string | null> {
-  if (path.isAbsolute(command)) {
-    try {
-      await access(command, fsConstants.X_OK);
-      return command;
-    } catch {
-      return null;
-    }
-  }
-  try {
-    const lookup = process.platform === "win32" ? "where" : "which";
-    const { stdout } = await execFileAsync(lookup, [command], {
-      timeout: CLI_PROBE_TIMEOUT_MS,
-    });
-    return selectResolvedExecutable({
-      candidates: stdout.split(/\r?\n/u),
-      platform: process.platform,
-      pathExt: process.env.PATHEXT,
-    });
-  } catch {
-    return null;
-  }
+  return hostToolchain.resolve(command);
 }
 
 export async function commandOutput(

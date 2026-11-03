@@ -285,7 +285,6 @@ it("preserves telemetry opt-out when older clients update other settings", async
 
 it.each([
   "confirmThreadArchive",
-  "showGitChanges",
   "summarizeShellCommands",
 ] as const)(
   "persists %s opt-out and preserves it for older clients",

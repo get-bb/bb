@@ -1,4 +1,6 @@
 import {
+  desktopBrowserBrokerChallengeSchema,
+  desktopBrowserBrokerProofSchema,
   desktopBrowserImportSelectionSchema,
   desktopBrowserNavigationUrlSchema,
 } from "@bb/host-daemon-contract";
@@ -9,6 +11,18 @@ const id = z.string().min(1).max(256);
 export const desktopBrowserHostRequestSchema = z
   .object({ hostId: id })
   .strict();
+export const desktopBrowserBrokerProofRequestSchema =
+  desktopBrowserHostRequestSchema
+    .extend({
+      challenge: desktopBrowserBrokerChallengeSchema,
+    })
+    .strict();
+export type DesktopBrowserBrokerProofRequest = z.infer<
+  typeof desktopBrowserBrokerProofRequestSchema
+>;
+export type DesktopBrowserBrokerProof = z.infer<
+  typeof desktopBrowserBrokerProofSchema
+>;
 export const desktopBrowserScopeSchema = desktopBrowserHostRequestSchema
   .extend({
     instanceId: id,

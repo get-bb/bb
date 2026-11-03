@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { vi } from "vitest";
+import { registerComposerPlugin } from "@/test/fixtures/composer-plugin";
+import { ComposerTestProviders } from "@/test/fixtures/composer-test-providers";
 
 vi.hoisted(() => {
   Object.defineProperty(navigator, "vendor", {
@@ -24,20 +26,29 @@ vi.hoisted(() => {
 });
 
 import type { PromptTextMention } from "@bb/domain";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import { useState } from "react";
 import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderWithoutRouter,
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ComposerBox } from "./ComposerBox";
 import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  PromptBoxInternal,
-} from "./PromptBoxInternal";
+  setComposerSearchResults,
+  testTypeaheadConfig,
+} from "@/test/fixtures/composer-search";
+
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
 
 const IOS_ENTER_REPLAY_MS = 200;
 
@@ -69,7 +80,13 @@ afterEach(() => {
   cleanup();
 });
 
-describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
+const render = (ui: Parameters<typeof renderWithoutRouter>[0]) =>
+  renderWithoutRouter(ui, { wrapper: ComposerTestProviders });
+beforeEach(async () => {
+  await registerComposerPlugin();
+});
+
+describe("ComposerBox on a real iPadOS ProseMirror build", () => {
   it("applies typeahead before submitting a Magic Keyboard Enter", async () => {
     const changes = vi.fn();
     const onSubmit = vi.fn();
@@ -80,7 +97,8 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
         [],
       );
       return (
-        <PromptBoxInternal
+        <ComposerBox
+          surface="thread"
           value={value}
           mentionRanges={mentionRanges}
           onChange={(nextValue, nextMentions) => {
@@ -90,38 +108,23 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
           }}
           onSubmit={onSubmit}
           mentionMenuPlacement="bottom"
-          typeahead={{
-            mention: {
-              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-              isLoading: false,
-              isRefreshing: false,
-              isError: false,
-              onQueryChange: vi.fn(),
-            },
-            command: {
-              triggers: ["/"],
-              suggestions: [
-                {
-                  kind: "command",
-                  name: "review",
-                  source: "skill",
-                  origin: "user",
-                  description: null,
-                  argumentHint: null,
-                },
-              ],
-              isLoading: false,
-              isError: false,
-              hasMore: false,
-              isLoadingMore: false,
-              loadMore: vi.fn(),
-              onQueryChange: vi.fn(),
-            },
-          }}
+          typeahead={testTypeaheadConfig({ commandTriggers: ["/"] })}
         />
       );
     }
 
+    setComposerSearchResults({
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "review",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
     render(<Harness />);
     await act(async () => {});
     expect(screen.getByRole("button", { name: "review" })).toBeTruthy();
@@ -150,22 +153,14 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
-      <PromptBoxInternal
+      <ComposerBox
+        surface="thread"
         value="Run this"
         mentionRanges={[]}
         onChange={onChange}
         onSubmit={onSubmit}
         mentionMenuPlacement="bottom"
-        typeahead={{
-          mention: {
-            results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-            isLoading: false,
-            isRefreshing: false,
-            isError: false,
-            onQueryChange: vi.fn(),
-          },
-          command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-        }}
+        typeahead={testTypeaheadConfig()}
       />,
     );
 
@@ -188,22 +183,14 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
-      <PromptBoxInternal
+      <ComposerBox
+        surface="thread"
         value="First line"
         mentionRanges={[]}
         onChange={onChange}
         onSubmit={onSubmit}
         mentionMenuPlacement="bottom"
-        typeahead={{
-          mention: {
-            results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-            isLoading: false,
-            isRefreshing: false,
-            isError: false,
-            onQueryChange: vi.fn(),
-          },
-          command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-        }}
+        typeahead={testTypeaheadConfig()}
       />,
     );
 

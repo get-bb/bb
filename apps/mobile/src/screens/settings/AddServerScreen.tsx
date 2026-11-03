@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { View, type TextInput } from "react-native";
+import { View, type TextInputInstance } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
   PROFILE_LABEL_MAX_LENGTH,
@@ -40,7 +40,7 @@ export function AddServerScreen() {
   const [label, setLabel] = useState("");
   const [urlTouched, setUrlTouched] = useState(false);
   const [submit, setSubmit] = useState<SubmitState>({ phase: "idle" });
-  const labelRef = useRef<TextInput>(null);
+  const labelRef = useRef<TextInputInstance>(null);
 
   const validation = validateDirectServerUrl(url);
   const showUrlError = urlTouched && !validation.ok && url.trim().length > 0;
@@ -77,11 +77,7 @@ export function AddServerScreen() {
         ),
       });
       await setActiveProfile(profile.id);
-      toast.success(`Added ${profile.label}`, {
-        description: probe.advertisedServerUrl
-          ? `Server reports ${probe.advertisedServerUrl}; keeping ${serverUrl}.`
-          : undefined,
-      });
+      toast.success(`Added ${profile.label}`);
       router.dismissTo("/");
       if (params.next?.startsWith("/")) router.push(rawPathHref(params.next));
     } catch (error) {

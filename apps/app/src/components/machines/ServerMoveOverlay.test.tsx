@@ -26,10 +26,11 @@ import { serverMoveStatusQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ServerMoveOverlay } from "./ServerMoveOverlay";
-import { fetchServerMoveDestinationHealth } from "./server-move-destination";
+import { fetchServerHealth } from "@bb/host-daemon-contract";
 
-vi.mock("./server-move-destination", () => ({
-  fetchServerMoveDestinationHealth: vi.fn(async () => null),
+vi.mock("@bb/host-daemon-contract", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@bb/host-daemon-contract")>()),
+  fetchServerHealth: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -368,10 +369,20 @@ describe("ServerMoveOverlay", () => {
         lastMove: null,
       })
       .mockRejectedValue(new TypeError("Failed to fetch"));
-    vi.mocked(fetchServerMoveDestinationHealth)
+    vi.mocked(fetchServerHealth)
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ moveId: "move_1", state: "pending" })
-      .mockResolvedValue({ moveId: "move_1", state: "ready" });
+      .mockResolvedValueOnce({
+        ok: true,
+        serverMove: { moveId: "move_1", state: "pending" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        serverMove: { moveId: "move_1", state: "activating" },
+      })
+      .mockResolvedValue({
+        ok: true,
+        serverMove: { moveId: "move_1", state: "ready" },
+      });
     const { navigateTo } = renderOverlay(
       "/projects/proj_1/threads/thr_1?panel=diff#turn-3",
     );
@@ -389,12 +400,16 @@ describe("ServerMoveOverlay", () => {
       expect(navigateTo).toHaveBeenCalledWith(destination);
     });
     expect(
-      vi.mocked(fetchServerMoveDestinationHealth).mock.calls.length,
-    ).toBeGreaterThanOrEqual(3);
-    expect(vi.mocked(fetchServerMoveDestinationHealth)).toHaveBeenCalledWith(
-      "https://desk.example.com/health",
-      expect.any(AbortSignal),
-    );
+      vi.mocked(fetchServerHealth).mock.calls.length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(vi.mocked(fetchServerHealth)).toHaveBeenCalledWith({
+      url: "https://desk.example.com/health",
+      init: {
+        cache: "no-store",
+        credentials: "omit",
+        signal: expect.any(AbortSignal),
+      },
+    });
     const overlay = screen.getByRole("dialog", {
       name: "Server moved to desk",
     });

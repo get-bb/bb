@@ -1,14 +1,9 @@
 import { and, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { environments, hosts, threads } from "../schema.js";
+import { liveThread, threadHoldsEnvironment } from "./threads.js";
 
 type Connection = DbConnection | DbTransaction;
-
-const liveThreadCondition = or(
-  and(isNull(threads.archivedAt), isNull(threads.deletedAt)),
-  eq(threads.status, "stopping"),
-  eq(threads.status, "active"),
-);
 
 export function listProviderMachines(db: Connection, providerId: string) {
   return db
@@ -30,7 +25,7 @@ export function machineHasLiveThreads(db: Connection, hostId: string): boolean {
       .select({ id: threads.id })
       .from(threads)
       .innerJoin(environments, eq(threads.environmentId, environments.id))
-      .where(and(eq(environments.hostId, hostId), liveThreadCondition))
+      .where(and(eq(environments.hostId, hostId), threadHoldsEnvironment))
       .limit(1)
       .get() !== undefined
   );
@@ -58,7 +53,7 @@ export function machineHasLiveThreadLaunch(
   db: Connection,
   hostId: string,
 ): boolean {
-  return machineHasThreadLaunchWhere(db, hostId, liveThreadCondition);
+  return machineHasThreadLaunchWhere(db, hostId, threadHoldsEnvironment);
 }
 
 export function machineHasPendingThreads(
@@ -92,8 +87,7 @@ export function machineHasPendingThreads(
       .where(
         and(
           inArray(threads.status, ["pending", "starting"]),
-          isNull(threads.archivedAt),
-          isNull(threads.deletedAt),
+          liveThread,
           or(
             and(
               eq(environments.hostId, hostId),
@@ -141,10 +135,6 @@ export function machineHasStartingThreadLaunch(
   return machineHasThreadLaunchWhere(
     db,
     hostId,
-    and(
-      eq(threads.status, "starting"),
-      isNull(threads.archivedAt),
-      isNull(threads.deletedAt),
-    ),
+    and(eq(threads.status, "starting"), liveThread),
   );
 }

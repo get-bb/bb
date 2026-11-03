@@ -15,7 +15,6 @@ import {
   type ComposerHandleController,
   type ComposerHandleTarget,
 } from "@get-bb/plugin-sdk/internal/composer-handle";
-import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import {
   permissionModeSchema,
   reasoningLevelSchema,
@@ -24,10 +23,13 @@ import {
 import { createThreadEnvironmentArgsSchema } from "@bb/server-contract";
 import {
   appendQuoteAndAttachmentsToDraft,
+  composerMentionFromPromptTextMention,
+  promptMentionResourceFromComposerMention,
+  promptTextMentionFromComposerMention,
   type PromptDraftState,
 } from "@bb/client-core";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { serializedTextForPromptMentionResource } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+import { serializedTextForPromptMentionResource } from "@bb/client-core";
 import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   getComposerEditorBridge,
@@ -42,7 +44,6 @@ export type ComposerSource = Pick<
   | "setDraft"
   | "isAvailable"
   | "focus"
-  | "submit"
   | "setSelection"
   | "getSelection"
   | "subscribeSelection"
@@ -93,52 +94,10 @@ export function parseComposerSelection(selection: unknown): ComposerSelection {
   );
 }
 
-function splitPluginItemId(
-  pluginId: string,
-  itemId: string,
-): { provider: string; id: string } {
-  const separator = itemId.indexOf(":");
-  return separator === -1
-    ? { provider: pluginId, id: itemId }
-    : { provider: itemId.slice(0, separator), id: itemId.slice(separator + 1) };
-}
-
-export function composerMentionFromTextMention({
-  start,
-  end,
-  resource,
-}: PromptTextMention): ComposerMention {
-  if (resource.kind !== "plugin") return { from: start, to: end, ...resource };
-  const { itemId, ...plugin } = resource;
-  return {
-    from: start,
-    to: end,
-    ...plugin,
-    ...splitPluginItemId(resource.pluginId, itemId),
-  };
-}
-
-function textMentionFromComposerMention(
-  mention: ComposerMention,
-): PromptTextMention {
-  return {
-    start: mention.from,
-    end: mention.to,
-    resource: resourceOf(mention),
-  };
-}
-
-function resourceOf(mention: ComposerMention): PromptMentionResource {
-  if (mention.kind === "plugin") {
-    const { from: _from, to: _to, provider, id, ...plugin } = mention;
-    return { ...plugin, itemId: `${provider}:${id}` };
-  }
-  const { from: _from, to: _to, ...resource } = mention;
-  return resource;
-}
-
 function mentionText(mention: ComposerMention): string {
-  return serializedTextForPromptMentionResource(resourceOf(mention));
+  return serializedTextForPromptMentionResource(
+    promptMentionResourceFromComposerMention(mention),
+  );
 }
 
 const composerDrafts = new WeakMap<PromptDraftState, ComposerDraftSnapshot>();
@@ -151,7 +110,7 @@ export function composerDraftFromPromptDraft(
   const next: ComposerDraftSnapshot = {
     attachments: draft.attachments,
     text: draft.text,
-    mentions: draft.mentions.map(composerMentionFromTextMention),
+    mentions: draft.mentions.map(composerMentionFromPromptTextMention),
   };
   composerDrafts.set(draft, next);
   return next;
@@ -184,7 +143,7 @@ function composerDraftTarget(source: ComposerDraftSource) {
       source.setDraft({
         ...current,
         text: next.text,
-        mentions: next.mentions.map(textMentionFromComposerMention),
+        mentions: next.mentions.map(promptTextMentionFromComposerMention),
         attachments:
           next.attachments === undefined ||
           next.attachments === current.attachments
@@ -218,25 +177,20 @@ function composerHandleTarget(source: ComposerSource): ComposerHandleTarget {
     },
     getEditorState: () =>
       getComposerEditorBridge(key)?.state ?? OFF_SCREEN_EDITOR_STATE,
+    editorSubmit: (submission) =>
+      getComposerEditorBridge(key)?.submit(submission) ?? null,
     subscribeEditorState: (listener) =>
       subscribeComposerEditorBridge(key, listener),
     insertAtCursor: (value, block) => {
       const bridge = getComposerEditorBridge(key);
       if (bridge === null) return false;
-      const inserted = bridge.insertAtCursor(
-        {
-          text: value.text,
-          mentions: value.mentions.map(textMentionFromComposerMention),
-        },
-        block,
-      );
+      const inserted = bridge.insertAtCursor(value, block);
       if (!inserted)
         draftTarget.setDraft(
           appendComposerDraft(draftTarget.getDraft(), value, block),
         );
       return true;
     },
-    ...(source.submit !== undefined ? { submit: source.submit } : {}),
     ...(hostSetSelection !== undefined
       ? {
           setSelection: (selection: ComposerSelection) =>

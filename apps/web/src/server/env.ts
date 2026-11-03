@@ -2,6 +2,8 @@ import { env as workerEnv } from "cloudflare:workers";
 
 export interface Env {
   DB: D1Database;
+  HYPERDRIVE?: Hyperdrive;
+  CONNECT_DB_FLAGS?: KVNamespace;
   TUNNEL_DO: DurableObjectNamespace;
   LINK_START_RATE_LIMITER: RateLimit;
   BASE_DOMAIN: string;
@@ -17,6 +19,8 @@ export interface Env {
   MARKETPLACE?: R2Bucket;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
   PRESENCE_WRITES?: string;
+  NEXT_BASE_DOMAIN?: string;
+  GATE_PUBLIC_KEYS?: string;
 }
 
 export function getEnv(): Env {

@@ -33,6 +33,7 @@ export interface ThreadCreateServiceRequestInput {
   originPluginId?: CreateThreadRequest["originPluginId"];
   originKind?: ThreadOriginKind | null;
   parentThreadId?: string;
+  senderThreadId?: CreateThreadRequest["senderThreadId"];
   parentNotifications?: ThreadParentNotifications;
   lifecycleOwnerThreadId?: string;
   permissionMode?: CreateThreadRequest["permissionMode"];

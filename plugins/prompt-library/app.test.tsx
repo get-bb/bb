@@ -119,6 +119,7 @@ function render(
     ({ id, title }: { id: string; title: string | null }) => ({ id, title }),
   );
   const markUsed = vi.fn(() => null);
+  const recordInsertion = vi.fn(() => null);
   const slot = renderSlot<object, typeof promptLibraryRpcContract>(
     popup,
     {},
@@ -129,10 +130,10 @@ function render(
         scope: options.scope ?? { kind: "thread", threadId: "thr_1" },
         text: options.draft ?? "",
       },
-      rpc: { search, star, unstar, markUsed, setTitle },
+      rpc: { search, star, unstar, markUsed, setTitle, recordInsertion },
     },
   );
-  return { slot, search, star, unstar, markUsed, setTitle };
+  return { slot, search, star, unstar, markUsed, setTitle, recordInsertion };
 }
 
 function searchBox(slot: ReturnType<typeof renderSlot>) {
@@ -275,7 +276,7 @@ describe("prompt library popup", () => {
   });
 
   it("inserts the highlighted prompt and records use of a starred one", async () => {
-    const { slot, markUsed } = render();
+    const { slot, markUsed, recordInsertion } = render();
     await slot.findByRole("option", { name: /starred prompt/ });
 
     fireEvent.keyDown(searchBox(slot), { key: "Enter" });
@@ -284,6 +285,7 @@ describe("prompt library popup", () => {
     await waitFor(() =>
       expect(markUsed).toHaveBeenCalledWith({ id: "prompt_1" }),
     );
+    await waitFor(() => expect(recordInsertion).toHaveBeenCalledOnce());
   });
 
   it.each(["", "Existing draft: "])(
@@ -472,6 +474,29 @@ describe("prompt library popup", () => {
     expect(search).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: "recent", scope: "global" }),
     );
+  });
+
+  it("keeps saved stars visible when keyboard selection moves to another prompt", async () => {
+    const { slot } = render({
+      recent: [
+        recentRow("h1", "saved history prompt", "prompt_2"),
+        recentRow("h2", "ordinary history prompt"),
+      ],
+    });
+    const saved = await slot.findByRole("option", { name: /starred prompt/ });
+    const history = slot.getByRole("option", { name: /saved history prompt/ });
+    const savedStar = within(saved).getByRole("button", { name: "Unstar" });
+    const historyStar = within(history).getByRole("button", { name: "Unstar" });
+
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+
+    expect(saved.getAttribute("aria-selected")).toBe("false");
+    expect(history.getAttribute("aria-selected")).toBe("false");
+    for (const button of [savedStar, historyStar]) {
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(button.classList.contains("opacity-0")).toBe(false);
+    }
   });
 
   it("stars and unstars prompts with Mod+S", async () => {

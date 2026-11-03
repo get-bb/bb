@@ -81,6 +81,7 @@ function makePendingInteraction(threadId: string): PendingInteraction {
           prompt: "Continue?",
           multiSelect: false,
           allowFreeText: true,
+          required: true,
         },
       ],
     },
@@ -125,29 +126,26 @@ function buildPromptArea({
       <ShellProbe />
       <PublishedHostDraftProbe />
       <ThreadDetailPromptArea
-        showGitChanges={true}
         activeBackgroundCommands={[]}
         activePromptMode={null}
         activeWorkflows={[]}
-        canUseGitUi={false}
         childThreadsSection={null}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
+        composerFocusRequestKey={0}
+        composerId="thread-detail-follow-up-composer"
+        isPrimaryComposer
+        permissionPolicy="editable"
         canRestoreEnvironment={false}
         environmentGoneStatus={null}
         goal={null}
         providerCommands={null}
         sessionOptions={null}
         modelFallback={null}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={0}
         pendingTodos={null}
         projectId={PROJECT_ID}
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
+        contextEnvironmentId={null}
         resolveMentionLink={() => null}
         sendMessage={{
           isPending: false,
@@ -155,8 +153,6 @@ function buildPromptArea({
         }}
         steerActiveThreadOnEnter={false}
         thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
       />
     </PluginComposerHostScopeProvider>
   );

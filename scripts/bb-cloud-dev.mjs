@@ -16,7 +16,9 @@ const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const STATE_DIR = path.join(REPO_ROOT, ".wrangler", "cloud-dev");
+const STATE_DIR =
+  process.env.BB_CLOUD_DEV_STATE_DIR?.trim() ||
+  path.join(REPO_ROOT, ".wrangler", "cloud-dev");
 const DEV_SECRET =
   "6c9e2f41a7d58b30c4e918f267bd5a0c3f1468e2d9a57b04c8f31a6d72e95b40";
 const DEV_BASE_DOMAIN = "bb.localhost";
@@ -245,6 +247,11 @@ const worker = spawnService([
   `BETTER_AUTH_SECRET:${DEV_SECRET}`,
   "--var",
   "CLOUD_DEV:true",
+  "--var",
+  `NEXT_BASE_DOMAIN:next.${DEV_BASE_DOMAIN}`,
+  ...(process.env.BB_CLOUD_DEV_GATE_SECRET?.trim()
+    ? ["--var", `GATE_SECRET:${process.env.BB_CLOUD_DEV_GATE_SECRET.trim()}`]
+    : []),
   "--show-interactive-dev-session=false",
 ]);
 

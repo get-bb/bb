@@ -20,18 +20,41 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 
+import { tick } from "./clock.js";
+import {
+  recordKeyedRead,
+  registerKeyedView,
+  type KeyedCollection,
+  type KeyedView,
+} from "./keyed-store.js";
 import {
   beginOptimisticMutation,
   subscribeOptimisticQuery,
   getTaggedReadData,
-  taggedReadReceipt,
+  markTaggedQueryMeta,
+  commitTaggedReadReceipt,
   taggedStructuralSharing,
+  type OptimisticUpdate,
+} from "./optimistic.js";
+export {
+  beginOptimisticMutation,
+  optimisticKeyedUpdate,
+  optimisticQueryUpdate,
+  type KeyedOptimisticUpdate,
+  type OptimisticUpdate,
   type TaggedOptimisticUpdate,
 } from "./optimistic.js";
 export {
-  optimisticQueryUpdate,
-  type TaggedOptimisticUpdate,
-} from "./optimistic.js";
+  KeyedCollection,
+  confirmKeyedEntity,
+  insertKeyedEntry,
+  keyedEntities,
+  readKeyedEntity,
+  registerKeyedViews,
+  writeKeyedEntity,
+  type KeyedView,
+  type KeyedViewSlot,
+} from "./keyed-store.js";
 
 export function useTaggedQuery<
   QueryData = unknown,
@@ -55,8 +78,6 @@ export function useTaggedQuery<
   return result;
 }
 
-export const CORE_TAG_SCOPE = "core";
-
 export interface TaggedQueryRegistration<Data> {
   scope: string;
   tagsOf(data: Data): readonly string[];
@@ -77,6 +98,7 @@ export function taggedQueryOptions<Data>(
   registration: TaggedQueryRegistration<Data>,
 ) {
   const meta = {};
+  markTaggedQueryMeta(meta);
   registrations.set(meta, {
     scope: registration.scope,
     tagsOf: (data) => registration.tagsOf(data as Data),
@@ -98,27 +120,24 @@ export async function runTaggedRead<Data>(
   client: QueryClient,
   queryKey: QueryKey,
   read: () => Promise<Data>,
-  paths: () => readonly (readonly string[])[] = () => [[]],
 ): Promise<Data> {
   const query = client
     .getQueryCache()
     .get(client.defaultQueryOptions({ queryKey }).queryHash);
   if (query === undefined) return read();
   const registration = registrationOf(query);
-  const receipt = taggedReadReceipt(query);
   for (;;) {
     const pending = { tags: new Set<string>(), restart: false };
     reads.set(query, pending);
-    const started = receipt.start();
+    const started = tick();
     try {
       const result = await read();
-      receipt.record(started, paths());
       const overlap = registration
         ?.tagsOf(result)
         .some((tag) => pending.tags.has(tag));
       if (overlap) registration?.onInvalidate?.(result, [...pending.tags]);
       if (pending.restart || overlap) continue;
-      receipt.commit(result);
+      commitTaggedReadReceipt(query, result, started);
       return result;
     } catch (error) {
       if (pending.restart) continue;
@@ -180,42 +199,23 @@ export async function invalidateTags(
   ]);
 }
 
-export interface TaggedMutationOptions {
-  client: QueryClient;
-  optimistic: readonly TaggedOptimisticUpdate[];
-}
-
 async function executeTaggedMutation<Result>(
-  invalidate: (tags: readonly string[]) => Promise<void>,
+  invalidate: ((tags: readonly string[]) => Promise<void>) | undefined,
   call: () => Promise<TaggedMutationOutcome<Result>>,
-  prediction: ReturnType<typeof beginOptimisticMutation> | undefined,
+  prediction: ReturnType<typeof beginOptimisticMutation>,
 ): Promise<Result> {
   const { result, invalidated } = await call();
-  prediction?.accept();
+  prediction.accept(result);
   const refresh = async () => {
     try {
-      if (invalidated.length > 0) await invalidate(invalidated);
+      if (invalidate !== undefined && invalidated.length > 0)
+        await invalidate(invalidated);
     } finally {
-      prediction?.settle();
+      prediction.settle();
     }
   };
   void refresh().catch(() => {});
   return result;
-}
-
-export async function runTaggedMutation<Result>(
-  invalidate: (tags: readonly string[]) => Promise<void>,
-  call: () => Promise<TaggedMutationOutcome<Result>>,
-  options?: TaggedMutationOptions,
-): Promise<Result> {
-  const prediction =
-    options && beginOptimisticMutation(options.client, options.optimistic);
-  try {
-    return await executeTaggedMutation(invalidate, call, prediction);
-  } catch (error) {
-    prediction?.rollback();
-    throw error;
-  }
 }
 
 export const pluginTagScope = (pluginId: string): string =>
@@ -226,12 +226,21 @@ export function restartTaggedRead(query: object): void {
   if (pending) pending.restart = true;
 }
 
-export function useTaggedMutation<Input, Result>(
-  client: QueryClient,
-  invalidate: (tags: readonly string[]) => Promise<void>,
-  call: (input: Input) => Promise<TaggedMutationOutcome<Result>>,
-  optimistic?: (input: Input) => readonly TaggedOptimisticUpdate[],
-) {
+export interface UseTaggedMutationOptions<Input, Result> {
+  client: QueryClient;
+  invalidate?(tags: readonly string[]): Promise<void>;
+  call(input: Input): Promise<TaggedMutationOutcome<Result>>;
+  optimistic?(input: Input): readonly OptimisticUpdate[];
+  meta?: Record<string, unknown>;
+}
+
+export function useTaggedMutation<Input, Result>({
+  client,
+  invalidate,
+  call,
+  optimistic,
+  meta,
+}: UseTaggedMutationOptions<Input, Result>) {
   const [owner] = useState(() => ({}));
   const predict = useRef(optimistic);
   useEffect(() => {
@@ -243,7 +252,7 @@ export function useTaggedMutation<Input, Result>(
   };
   const mutation = useMutation<Result, Error, Variables>(
     {
-      meta: { taggedMutationOwner: owner },
+      meta: { ...meta, taggedMutationOwner: owner },
       mutationFn: ({ input, prediction }) =>
         executeTaggedMutation(invalidate, () => call(input), prediction),
     },
@@ -288,21 +297,73 @@ type KeyedData<Value> = {
   keyTags: Record<string, string[]>;
 };
 
+function hasRows(data: unknown): data is { result: object } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "result" in data &&
+    typeof data.result === "object" &&
+    data.result !== null
+  );
+}
+
+const rowKey = (item: unknown) =>
+  Array.isArray(item) && typeof item[0] === "string" ? item[0] : undefined;
+const rowValue = (item: unknown): unknown =>
+  Array.isArray(item) ? item[1] : undefined;
+
+function keyedRowsView(
+  collection: KeyedCollection<unknown>,
+): KeyedView<unknown> {
+  return {
+    collection,
+    slots: (data) =>
+      hasRows(data)
+        ? [{ key: "result", items: Object.entries(data.result) }]
+        : undefined,
+    rebuild: (data, items) =>
+      hasRows(data)
+        ? {
+            ...data,
+            result: Object.fromEntries(
+              (items.get("result") ?? []).flatMap((item) => {
+                const key = rowKey(item);
+                return key === undefined ? [] : [[key, rowValue(item)]];
+              }),
+            ),
+          }
+        : data,
+    keyOf: rowKey,
+    read: (item, current, fresh) =>
+      current === undefined || fresh ? rowValue(item) : current,
+    write: rowValue,
+    render: (item, entity) =>
+      Object.is(rowValue(item), entity) ? item : [rowKey(item), entity],
+  };
+}
+
 export function createTaggedKeyedQueryOwner<Value>(options: {
   client: QueryClient;
   queryKey: QueryKey;
   scope: string;
+  collection: KeyedCollection<unknown>;
   read(keys: readonly string[]): Promise<KeyedData<Value>>;
 }) {
-  const { client, queryKey, scope, read } = options;
+  const { client, queryKey, scope, collection, read } = options;
+  registerKeyedView(client, queryKey, keyedRowsView(collection));
   const keys = new Map<string, number>();
   let readingKeys = new Set<string>();
+  let collecting = false;
   let missingOnly = false;
   let refreshAll = false;
   const dirtyKeys = new Set<string>();
-  const collectSubscribedKeys = () =>
+  const takeSubscribedKeys = (take: (subscribed: string[]) => string[]) =>
     new Promise<string[]>((resolve) => {
-      queueMicrotask(() => resolve([...keys.keys()]));
+      queueMicrotask(() => {
+        readingKeys = new Set(take([...keys.keys()]));
+        collecting = false;
+        resolve([...readingKeys]);
+      });
     });
   const observer = new QueryObserver<KeyedData<Value>>(client, {
     queryKey,
@@ -327,86 +388,106 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
     }),
     queryFn: () => {
       let previous = getTaggedReadData<KeyedData<Value>>(client, queryKey);
-      let loaded: readonly string[] = [];
-      let refresh = !missingOnly && dirtyKeys.size === 0;
+      const startedAt = new Map<string, number>();
+      let refresh =
+        !missingOnly && ![...keys.keys()].some((key) => dirtyKeys.has(key));
       missingOnly = false;
       const refreshedKeys = new Set<string>();
       let refreshedAll = false;
-      return runTaggedRead(
-        client,
-        queryKey,
-        async () => {
-          const subscribed = await collectSubscribedKeys();
-          const all = refreshAll || refresh;
+      return runTaggedRead(client, queryKey, async () => {
+        collecting = true;
+        let all = false;
+        const requested = await takeSubscribedKeys((subscribed) => {
+          all = refreshAll || refresh;
           refresh = false;
           const dirty = new Set(dirtyKeys);
-          for (const key of dirty) refreshedKeys.add(key);
           refreshedAll ||= all;
-          dirtyKeys.clear();
+          if (all)
+            for (const key of Object.keys(previous?.result ?? {}))
+              dirtyKeys.add(key);
           refreshAll = false;
-          const requested = subscribed.filter(
+          const taken = subscribed.filter(
             (key) =>
               all ||
               dirty.has(key) ||
               !Object.hasOwn(previous?.result ?? {}, key),
           );
-          readingKeys = new Set(requested);
-          try {
-            const results = await Promise.all(
-              Array.from(
-                { length: Math.ceil(requested.length / 200) },
-                async (_, i) => {
-                  const batch = requested.slice(i * 200, (i + 1) * 200);
-                  const response = await read(batch);
-                  for (const key of batch)
-                    if (!Object.hasOwn(response.result, key))
-                      throw new Error(`Keyed read omitted key ${key}`);
-                  return response;
-                },
-              ),
-            );
-            const retained = (key: string) =>
-              !all && !dirty.has(key) && !readingKeys.has(key);
-            loaded = requested;
-            previous = {
-              result: Object.fromEntries([
-                ...Object.entries(previous?.result ?? {}).filter(([key]) =>
-                  retained(key),
-                ),
-                ...results.flatMap((response) =>
-                  Object.entries(response.result),
-                ),
-              ]),
-              tags: [
-                ...new Set([
-                  ...(all ? [] : (previous?.tags ?? [])),
-                  ...results.flatMap((r) => r.tags),
-                ]),
-              ],
-              keyTags: Object.fromEntries([
-                ...Object.entries(previous?.keyTags ?? {}).filter(([key]) =>
-                  retained(key),
-                ),
-                ...results.flatMap((response) =>
-                  Object.entries(response.keyTags),
-                ),
-              ]),
-            };
-            return previous;
-          } catch (error) {
-            for (const key of refreshedKeys) dirtyKeys.add(key);
-            refreshAll ||= refreshedAll;
-            throw error;
+          for (const key of taken) {
+            refreshedKeys.add(key);
+            dirtyKeys.delete(key);
           }
-        },
-        () => loaded.map((key) => ["result", key]),
-      );
+          return taken;
+        });
+        const started = tick();
+        try {
+          const results = await Promise.all(
+            Array.from(
+              { length: Math.ceil(requested.length / 200) },
+              async (_, i) => {
+                const batch = requested.slice(i * 200, (i + 1) * 200);
+                const response = await read(batch);
+                for (const key of batch)
+                  if (!Object.hasOwn(response.result, key))
+                    throw new Error(`Keyed read omitted key ${key}`);
+                return response;
+              },
+            ),
+          );
+          const retained = (key: string) => !readingKeys.has(key);
+          for (const key of requested) startedAt.set(key, started);
+          previous = {
+            result: Object.fromEntries([
+              ...Object.entries(previous?.result ?? {}).filter(([key]) =>
+                retained(key),
+              ),
+              ...results.flatMap((response) => Object.entries(response.result)),
+            ]),
+            tags: [
+              ...new Set([
+                ...(all ? [] : (previous?.tags ?? [])),
+                ...results.flatMap((r) => r.tags),
+              ]),
+            ],
+            keyTags: Object.fromEntries([
+              ...Object.entries(previous?.keyTags ?? {}).filter(([key]) =>
+                retained(key),
+              ),
+              ...results.flatMap((response) =>
+                Object.entries(response.keyTags),
+              ),
+            ]),
+          };
+          return previous;
+        } catch (error) {
+          for (const key of refreshedKeys) dirtyKeys.add(key);
+          refreshAll ||= refreshedAll;
+          throw error;
+        }
+      }).then((data) => {
+        recordKeyedRead(client, queryKey, startedAt);
+        return data;
+      });
     },
   });
   const listeners = new Set<() => void>();
   let stop: (() => void) | undefined;
   return {
     observer,
+    async refresh(requested: readonly string[]): Promise<void> {
+      const subscribed = requested.filter((key) => keys.has(key));
+      if (subscribed.length === 0) return;
+      const fetching =
+        observer.getCurrentQuery().state.fetchStatus === "fetching";
+      const unread =
+        fetching && !collecting
+          ? subscribed.filter((key) => !readingKeys.has(key))
+          : subscribed;
+      if (unread.length === 0) return;
+      for (const key of unread) dirtyKeys.add(key);
+      if (fetching && !collecting)
+        restartTaggedRead(observer.getCurrentQuery());
+      await observer.refetch({ cancelRefetch: false });
+    },
     subscribe(requested: readonly string[], listener: () => void) {
       let added = false;
       for (const key of requested) {
@@ -414,8 +495,9 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
         keys.set(key, (keys.get(key) ?? 0) + 1);
       }
       const cached = getTaggedReadData<KeyedData<Value>>(client, queryKey);
-      const missing = requested.filter(
-        (key) => !Object.hasOwn(cached?.result ?? {}, key),
+      const pending = requested.filter(
+        (key) =>
+          dirtyKeys.has(key) || !Object.hasOwn(cached?.result ?? {}, key),
       );
       if (!stop) missingOnly = cached === undefined;
       listeners.add(listener);
@@ -424,12 +506,9 @@ export function createTaggedKeyedQueryOwner<Value>(options: {
           for (const notify of listeners) notify();
         });
       }
-      if (added && missing.length > 0) {
+      if (added && pending.length > 0) {
         if (observer.getCurrentResult().isFetching) {
-          if (
-            readingKeys.size > 0 &&
-            missing.some((key) => !readingKeys.has(key))
-          )
+          if (!collecting && pending.some((key) => !readingKeys.has(key)))
             restartTaggedRead(observer.getCurrentQuery());
         } else {
           missingOnly = true;

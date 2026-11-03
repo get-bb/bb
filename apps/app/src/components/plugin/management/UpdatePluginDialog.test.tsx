@@ -71,7 +71,7 @@ describe("UpdatePluginDialog", () => {
     const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
-        plugin={plugin({ availableVersion: "1.7.0" })}
+        plugin={plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" })}
         open
         onOpenChange={() => {}}
       />,
@@ -96,6 +96,7 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({
           blockedVersion: "1.9.0",
+          blockedLabel: "1.9.0",
           blockedReasons: ["needs bb >= 0.15 — you have 0.14.1"],
         })}
         open
@@ -143,8 +144,10 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({
           availableVersion: "1.8.0",
+          availableLabel: "1.8.0",
           lastFailure: {
             version: "1.7.0",
+            label: "1.7.0",
             at: failedAt,
             detail: "factory threw during activation",
           },
@@ -180,6 +183,7 @@ describe("UpdatePluginDialog", () => {
         plugin={plugin({
           lastFailure: {
             version: "1.7.0",
+            label: "1.7.0",
             at: null,
             detail: "factory threw during activation",
           },
@@ -210,7 +214,7 @@ describe("UpdatePluginDialog", () => {
     const onOpenChange = vi.fn();
     render(
       <UpdatePluginDialog
-        plugin={plugin({ availableVersion: "1.7.0" })}
+        plugin={plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" })}
         open
         onOpenChange={onOpenChange}
       />,
@@ -236,7 +240,7 @@ describe("UpdatePluginDialog", () => {
     const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
-        plugin={plugin({ availableVersion: "1.7.0" })}
+        plugin={plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" })}
         open
         onOpenChange={() => {}}
       />,
@@ -264,7 +268,7 @@ describe("UpdatePluginDialog", () => {
     const { wrapper } = createDialogTestHarness();
     render(
       <UpdatePluginDialog
-        plugin={plugin({ availableVersion: "1.7.0" })}
+        plugin={plugin({ availableVersion: "1.7.0", availableLabel: "1.7.0" })}
         open
         onOpenChange={() => {}}
       />,

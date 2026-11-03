@@ -17,7 +17,7 @@ import {
 } from "./generated/plugin-theme.generated.js";
 import { renameIntoPlace } from "./rename-into-place.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
-import { type PluginBuildToolchain } from "./toolchain.js";
+import type { PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import {
   isRecord,
@@ -33,7 +33,9 @@ import {
   SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
   SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
 } from "./runtime-shims.mjs";
+import { retiredSdkMemberWarnings } from "./retired-sdk-members.js";
 import {
+  findUnnamedPluginRoots,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -86,6 +88,27 @@ async function freshModuleExports(moduleUrl: string): Promise<string[]> {
   return Object.keys(moduleNamespace).sort();
 }
 
+async function pluginSdkAppExports(
+  pluginSdkAppModuleUrl: string | undefined,
+): Promise<readonly string[]> {
+  if (pluginSdkAppModuleUrl !== undefined) {
+    return freshModuleExports(pluginSdkAppModuleUrl);
+  }
+  let resolvedModuleUrl: string;
+  try {
+    resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
+  } catch {
+    const names = RUNTIME_EXPORT_MANIFEST[PLUGIN_SDK_APP_SPECIFIER];
+    if (!names) {
+      throw new Error(
+        `no runtime export manifest entry for "${PLUGIN_SDK_APP_SPECIFIER}"`,
+      );
+    }
+    return names;
+  }
+  return freshModuleExports(resolvedModuleUrl);
+}
+
 async function shimExportsOf(
   requestedSpecifier: string,
   pluginSdkAppModuleUrl: string | undefined,
@@ -95,20 +118,12 @@ async function shimExportsOf(
       ? PLUGIN_SDK_APP_SPECIFIER
       : requestedSpecifier;
   if (specifier === PLUGIN_SDK_APP_SPECIFIER) {
-    if (pluginSdkAppModuleUrl !== undefined) {
-      return freshModuleExports(pluginSdkAppModuleUrl);
-    }
-    let resolvedModuleUrl: string;
-    try {
-      resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
-    } catch {
-      const names = RUNTIME_EXPORT_MANIFEST[specifier];
-      if (!names) {
-        throw new Error(`no runtime export manifest entry for "${specifier}"`);
-      }
-      return names;
-    }
-    return freshModuleExports(resolvedModuleUrl);
+    return [
+      ...new Set([
+        ...(await pluginSdkAppExports(pluginSdkAppModuleUrl)),
+        ...Object.keys(RETIRED_PLUGIN_SDK_APP_EXPORTS),
+      ]),
+    ];
   }
   const names = RUNTIME_EXPORT_MANIFEST[specifier];
   if (!names) {
@@ -140,6 +155,36 @@ async function shimModuleSource(
 }
 
 const SHIM_NAMESPACE = "bb-plugin-runtime-shim";
+
+const RETIRED_PLUGIN_SDK_APP_EXPORTS: Readonly<Record<string, string>> = {
+  experimental_useSidebarThreadPullRequest:
+    'Render <experimental_ThreadRowMetadata thread={thread} /> in the row to draw bb\'s pull request badge, or read pull requests from the GitHub PR Status plugin: experimental_useRpcKeyedQuery({ pluginId: "bb--github-pr-status", contract, method: "pullRequests", keys: [thread.environment.id] }). See "Migrating from experimental_useSidebarThreadPullRequest" in the bb-plugin-authoring skill.',
+};
+
+const NAMED_IMPORT_PATTERN =
+  /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/gu;
+
+async function retiredPluginSdkAppImports(
+  importer: string,
+  specifier: string,
+): Promise<string[]> {
+  const source = await readFile(importer, "utf8");
+  const retired: string[] = [];
+  for (const match of source.matchAll(NAMED_IMPORT_PATTERN)) {
+    if (match[1] !== undefined || match[3] !== specifier) continue;
+    for (const entry of (match[2] ?? "").split(",")) {
+      const [name] = entry.trim().split(/\s+as\s+/u);
+      if (
+        name !== undefined &&
+        !name.startsWith("type ") &&
+        RETIRED_PLUGIN_SDK_APP_EXPORTS[name] !== undefined
+      ) {
+        retired.push(name);
+      }
+    }
+  }
+  return retired;
+}
 const SHIM_FILTER = new RegExp(
   `^(${Object.keys(RUNTIME_SLOT_BY_SPECIFIER)
     .map((specifier) => specifier.replace(/[/@.-]/g, "\\$&"))
@@ -150,12 +195,74 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
   return {
     name: "bb-plugin-runtime-shims",
     setup(build) {
-      build.onResolve({ filter: SHIM_FILTER }, (args) => ({
-        path: args.path,
-        namespace: SHIM_NAMESPACE,
-      }));
+      build.onLoad(
+        { filter: /\.[cm]?[jt]sx?$/, namespace: "file" },
+        async (args) => {
+          if (
+            args.path.includes("/node_modules/") ||
+            args.path.includes("\\node_modules\\")
+          )
+            return undefined;
+          const source = await readFile(args.path, "utf8");
+          const warnings = [];
+          const migration =
+            "See bb-plugin-authoring, frontend-registration.md#tab-api-migration.";
+          if (/\.\s*threadPanelAction\s*\(/u.test(source)) {
+            warnings.push({
+              text: `threadPanelAction is retired from SDK typings. Use app.slots.experimental_tab({ context: { kind: "thread" }, availability: "action", id, title, icon, component, run }). Existing bundles remain supported. ${migration}`,
+            });
+          }
+          if (
+            /\bfixedTabs\s*:/u.test(source) &&
+            /\.\s*navPanel\s*\(/u.test(source)
+          ) {
+            warnings.push({
+              text: `navPanel.fixedTabs is retired from SDK typings. Register each tab with app.slots.experimental_tab({ context: { kind: "nav-panel", panelId }, availability: "fixed", id, title, icon, component }). Existing bundles remain supported. ${migration}`,
+            });
+          }
+          if (/\.\s*experimental_threadHeaderAction\b/u.test(source)) {
+            warnings.push({
+              text: `experimental_threadHeaderAction is retired from SDK typings. Register a thread action with placement "header" instead: app.slots.experimental_threadAction({ id, title, icon, group, placement: "header", item }). Existing plugins remain supported. See bb-plugin-authoring, frontend-registration.md#a-button-in-the-thread-header.`,
+            });
+          }
+          for (const text of retiredSdkMemberWarnings(source)) {
+            warnings.push({ text });
+          }
+          if (warnings.length === 0) return undefined;
+          return {
+            contents: source,
+            loader: args.path.endsWith("tsx")
+              ? "tsx"
+              : args.path.endsWith("ts")
+                ? "ts"
+                : args.path.endsWith("jsx")
+                  ? "jsx"
+                  : "js",
+            warnings,
+          };
+        },
+      );
+      build.onResolve({ filter: SHIM_FILTER }, async (args) => {
+        const retired =
+          (args.path === PLUGIN_SDK_APP_SPECIFIER ||
+            args.path === LEGACY_PLUGIN_SDK_APP_SPECIFIER) &&
+          args.namespace === "file" &&
+          args.importer !== ""
+            ? await retiredPluginSdkAppImports(args.importer, args.path)
+            : [];
+        return {
+          path: args.path,
+          namespace: SHIM_NAMESPACE,
+          warnings: retired.map((name) => ({
+            text: `${name} is retired from ${args.path}. Existing plugins remain supported. ${RETIRED_PLUGIN_SDK_APP_EXPORTS[name]}`,
+          })),
+        };
+      });
       build.onResolve(
-        { filter: /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/ },
+        {
+          filter:
+            /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/,
+        },
         (args) => {
           if (args.namespace !== "file" || !args.path.startsWith(".")) {
             return undefined;
@@ -397,10 +504,22 @@ async function bundledInputPaths(
   return paths;
 }
 
+function bundledRuntimeSlots(metafile: Metafile): string[] {
+  const prefix = `${SHIM_NAMESPACE}:`;
+  const slots = new Set<string>();
+  for (const input of Object.keys(metafile.inputs)) {
+    if (!input.startsWith(prefix)) continue;
+    const specifier = input.slice(prefix.length);
+    slots.add(RUNTIME_SLOT_BY_SPECIFIER[specifier]);
+  }
+  return [...slots].sort();
+}
+
 interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
+  migrationWarnings: string[];
 }
 
 interface PluginAppBuildOptions {
@@ -423,6 +542,7 @@ export async function buildPluginApp(
   const cssPath = join(distDir, "app.css");
   const metaPath = join(distDir, "app.meta.json");
 
+  let migrationWarnings: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   try {
     const stagedJsPath = join(stageDir, "app.js");
@@ -437,7 +557,7 @@ export async function buildPluginApp(
       outfile: stagedJsPath,
       absWorkingDir: rootDir,
       bundle: true,
-      metafile: dependencySources.length > 0,
+      metafile: true,
       format: "esm",
       platform: "browser",
       target: "es2022",
@@ -453,21 +573,33 @@ export async function buildPluginApp(
       plugins: [zodLocaleStubPlugin(), runtimeShimPlugin()],
     });
 
+    migrationWarnings = bundle.warnings
+      .filter((warning) => warning.pluginName === "bb-plugin-runtime-shims")
+      .map((warning) =>
+        warning.location === null
+          ? warning.text
+          : `${warning.location.file}:${warning.location.line}: ${warning.text}`,
+      );
+    const builtJs = await readFile(stagedJsPath, "utf8");
+    const unnamedRoots = findUnnamedPluginRoots(builtJs);
+    const [first] = unnamedRoots;
+    if (first !== undefined) {
+      migrationWarnings.push(
+        `app.js sets data-bb-plugin-root without data-bb-plugin ${unnamedRoots.length} time(s), so bb serves this plugin's utilities with the slower legacy scope. Refresh lib/portal-scope with "npx shadcn add @bb/portal-scope", or set data-bb-plugin="${pluginId}" next to data-bb-plugin-root. First match: ${builtJs.slice(Math.max(0, first - 40), first + 60)}`,
+      );
+    }
+
     let authoredCss = "";
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
     } catch (error) {
       if (!isRecord(error) || error.code !== "ENOENT") throw error;
     }
-    let bundledInputs: ReadonlySet<string> = new Set();
-    if (dependencySources.length > 0) {
-      if (bundle.metafile === undefined) {
-        throw new Error(
-          "esbuild did not return the metafile required for dependency Tailwind scanning",
-        );
-      }
-      bundledInputs = await bundledInputPaths(bundle.metafile, rootDir);
-    }
+    const runtimeSlots = bundledRuntimeSlots(bundle.metafile);
+    const bundledInputs: ReadonlySet<string> =
+      dependencySources.length > 0
+        ? await bundledInputPaths(bundle.metafile, rootDir)
+        : new Set();
     const tailwindCss = (
       await buildTailwindCss(
         rootDir,
@@ -487,7 +619,14 @@ export async function buildPluginApp(
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
-        createPluginArtifactMeta({ packageName, pluginVersion, bbVersion }),
+        {
+          ...createPluginArtifactMeta({
+            packageName,
+            pluginVersion,
+            bbVersion,
+          }),
+          runtimeSlots,
+        },
         null,
         2,
       ) + "\n",
@@ -499,5 +638,5 @@ export async function buildPluginApp(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, cssPath, metaPath };
+  return { jsPath, cssPath, metaPath, migrationWarnings };
 }

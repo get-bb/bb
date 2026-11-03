@@ -25,7 +25,8 @@ import {
 } from "@/lib/plugin-slots";
 import { registerComposerMenuPlugins } from "@/test/fixtures/composer-menu";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { ComposerSendMenu } from "./ComposerSendMenu";
+import { ComposerRendererTestHost } from "@/test/fixtures/composer-renderer";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
 import { MemoryRouter } from "react-router-dom";
 import {
   PluginComposerHostProvider,
@@ -33,16 +34,27 @@ import {
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import type { PluginComposerPlusMenuContribution } from "@/components/plugin/PluginComposerActions";
+import { ComposerMenuEntry } from "@/components/promptbox/composer-root";
 import { emptyPromptDraftState } from "@bb/client-core";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import {
-  ComposerPlusMenuSlot,
-  PromptBoxActionsMenu,
-} from "./PromptBoxActionsMenu";
+import { loadComposerMenus } from "@/test/fixtures/composer-plugin-modules";
+
+vi.mock("@/hooks/usePromptMentions", async () =>
+  (await import("@/test/fixtures/composer-search")).fakePromptMentionsModule(),
+);
+vi.mock("@/hooks/useCommandSuggestions", async () =>
+  (
+    await import("@/test/fixtures/composer-search")
+  ).fakeCommandSuggestionsModule(),
+);
+
+installPluginRuntime();
+const { ComposerPlusMenuSlot, ComposerSendMenu, PromptBoxActionsMenu } =
+  await loadComposerMenus();
 
 afterEach(() => {
   cleanup();
@@ -116,13 +128,15 @@ describe("PromptBoxActionsMenu", () => {
         <MemoryRouter>
           <PluginComposerHostProvider value={host}>
             <PluginComposerViewProvider value={view}>
-              <ComposerPlusMenuSlot
-                actions={[
-                  { kind: "skills", text: "/skills " },
-                  { kind: "plan", text: "/plan " },
-                ]}
-                onAction={() => {}}
-              />
+              <ComposerRendererTestHost>
+                <ComposerPlusMenuSlot
+                  actions={[
+                    { kind: "skills", text: "/skills " },
+                    { kind: "plan", text: "/plan " },
+                  ]}
+                  onAction={() => {}}
+                />
+              </ComposerRendererTestHost>
             </PluginComposerViewProvider>
           </PluginComposerHostProvider>
         </MemoryRouter>,
@@ -182,20 +196,21 @@ describe("PromptBoxActionsMenu", () => {
         <MemoryRouter>
           <PluginComposerHostProvider value={host}>
             <PluginComposerViewProvider value={view}>
-              {menu === "plus" ? (
-                <ComposerPlusMenuSlot onAction={() => {}} />
-              ) : (
-                <ComposerSendMenu
-                  isPointerCoarse={false}
-                  includePluginContributions
-                  queue={false}
-                  hasInput
-                  canSubmit
-                  onSubmit={undefined}
-                >
-                  <button>Send</button>
-                </ComposerSendMenu>
-              )}
+              <ComposerRendererTestHost>
+                {menu === "plus" ? (
+                  <ComposerPlusMenuSlot onAction={() => {}} />
+                ) : (
+                  <ComposerSendMenu
+                    isPointerCoarse={false}
+                    modifierKind="steer"
+                    hasInput
+                    canSubmit
+                    onSubmit={undefined}
+                  >
+                    <button>Send</button>
+                  </ComposerSendMenu>
+                )}
+              </ComposerRendererTestHost>
             </PluginComposerViewProvider>
           </PluginComposerHostProvider>
         </MemoryRouter>,
@@ -263,7 +278,10 @@ describe("PromptBoxActionsMenu", () => {
               <input id="composer-focus-target" aria-label="Composer" />
               <PromptBoxActionsMenu
                 onAction={() => {}}
-                pluginItems={pluginItems}
+                plugins={{
+                  plusMenuItems: pluginItems,
+                  MenuEntry: ComposerMenuEntry,
+                }}
               />
             </PluginComposerViewProvider>
           </PluginComposerHostProvider>
@@ -364,7 +382,10 @@ describe("PromptBoxActionsMenu", () => {
             <PromptBoxActionsMenu
               actions={[{ kind: "plan", text: "/plan " }]}
               onAction={() => {}}
-              pluginItems={pluginItems}
+              plugins={{
+                plusMenuItems: pluginItems,
+                MenuEntry: ComposerMenuEntry,
+              }}
             />
           </PluginComposerViewProvider>
         </PluginComposerHostProvider>

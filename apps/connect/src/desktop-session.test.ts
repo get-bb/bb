@@ -174,7 +174,7 @@ describe("desktop session cookie", () => {
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 1_000),
     ).resolves.toMatchObject({ userId: "acct-revoke" });
     await expect(
-      verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 21_000),
+      verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 61_000),
     ).resolves.toBeNull();
   });
 
@@ -261,7 +261,7 @@ describe("desktop session cookie", () => {
 
     db.delete(session).where(eq(session.id, "sess-browser")).run();
     await expect(
-      verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 21_000),
+      verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 61_000),
     ).resolves.toBeNull();
   });
 

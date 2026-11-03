@@ -174,6 +174,65 @@ function AutomationDetailView({
 }
 
 describe("Automation detail recipe", () => {
+  it("explains a failed agent run in the header and in its run row", () => {
+    const error = "Target thread thr_target was archived";
+    const run = {
+      automationId: "auto_1",
+      runMode: "agent",
+      trigger: "schedule",
+      skipReason: null,
+      output: null,
+      exitCode: null,
+      scheduledFor: 1_800_000_000_000,
+      startedAt: 1_800_000_000_000,
+      finishedAt: 1_800_000_000_030,
+    } as const;
+    const { container } = render(
+      <AutomationDetailView
+        automation={{
+          ...AUTOMATION,
+          enabled: false,
+          nextRunAt: null,
+          lastRunStatus: "failed",
+          lastError: error,
+        }}
+        projectLabel="Personal"
+        runsState={{
+          ...NO_RUNS,
+          runs: [
+            {
+              ...run,
+              id: "run_failed",
+              threadId: null,
+              status: "failed",
+              error,
+            },
+            {
+              ...run,
+              id: "run_succeeded",
+              threadId: "thr_target",
+              status: "succeeded",
+              error: null,
+            },
+          ],
+        }}
+        actionPending={false}
+        onToggle={() => {}}
+        onEdit={() => {}}
+        onRunNow={() => {}}
+        onDelete={() => {}}
+        onOpenThread={() => {}}
+      />,
+    );
+
+    expect(
+      container.querySelector('[data-automation-error=""]')?.textContent,
+    ).toBe(error);
+    expect(
+      [...container.querySelectorAll("pre")].map((block) => block.textContent),
+    ).toEqual([error]);
+  });
+
   it("renders the personal workspace through the host's environment provider icon", () => {
     const { container } = render(
       <AgentAutomationDefinition

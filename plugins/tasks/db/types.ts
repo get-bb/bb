@@ -98,6 +98,12 @@ export interface TaskThread {
   updatedAt: string;
 }
 
+export interface TaskCardMeta {
+  taskId: string;
+  attachmentCount: number;
+  activeThreads: TaskThread[];
+}
+
 export interface Preset {
   id: string;
   name: string;

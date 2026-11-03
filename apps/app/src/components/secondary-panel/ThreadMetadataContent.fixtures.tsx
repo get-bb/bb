@@ -1,10 +1,5 @@
 import type { ReactNode } from "react";
-import type {
-  ThreadListEntry,
-  ThreadPullRequest,
-  WorkspaceMergeBase,
-  WorkspaceWorkingTree,
-} from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
@@ -13,6 +8,10 @@ import {
   makeWorkspaceStatus,
 } from "../../../.ladle/story-fixtures";
 import type { ThreadMetadataContentProps } from "./ThreadMetadataContent";
+import type {
+  WorkspaceMergeBase,
+  WorkspaceWorkingTree,
+} from "bb-plugin-bb--git/contract";
 
 export { makeEnvironment, makeThread, makeWorkspaceStatus };
 
@@ -44,40 +43,6 @@ export const parentThreads: ThreadListEntry[] = [
   }),
 ];
 
-export function makePullRequest(
-  overrides: Partial<ThreadPullRequest> = {},
-): ThreadPullRequest {
-  return {
-    number: 128,
-    title: "Show the branch's GitHub pull request in the Info tab",
-    state: "open",
-    url: "https://github.com/acme/bb/pull/128",
-    baseRefName: "main",
-    headRefName: "bb/pr-info-panel",
-    updatedAt: "2026-06-16T12:30:00Z",
-    autoMerge: false,
-    inMergeQueue: false,
-    checks: {
-      state: "passing",
-      totalCount: 3,
-      passedCount: 3,
-      failedCount: 0,
-      pendingCount: 0,
-    },
-    review: {
-      state: "approved",
-      reviewRequestCount: 0,
-    },
-    mergeability: {
-      state: "mergeable",
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    },
-    attention: "ready_to_merge",
-    ...overrides,
-  };
-}
-
 export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),
   projectId: "proj_bb",
@@ -91,18 +56,11 @@ export const baseProps: ThreadMetadataContentProps = {
   environment: makeEnvironment(),
   environmentProvisioningFailure: false,
   environmentDisplayHost: localEnvironmentDisplayHost,
-  workspaceStatus: makeWorkspaceStatus(),
-  workspaceStatusError: null,
-  pullRequest: null,
-  selectedMergeBaseBranch: undefined,
-  mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
-  isLoadingMergeBaseBranchOptions: false,
+  threadEnvironmentId: null,
   updateThreadPending: false,
   onAssignParent: noop,
   onParentSelectorOpenChange: noop,
   onRetryParentThreads: noop,
-  onMergeBaseBranchChange: noop,
-  onChangedFileClick: noop,
 };
 
 export const STORY_DIRTY_WORKING_TREE: Omit<WorkspaceWorkingTree, "state"> = {
@@ -138,6 +96,7 @@ export const STORY_COMMITTED_MERGE_BASE: WorkspaceMergeBase = {
   baseRef: "main",
   aheadCount: 2,
   behindCount: 0,
+  squashMergeCheckComplete: true,
   hasCommittedUnmergedChanges: true,
   commits: [],
   insertions: 110,

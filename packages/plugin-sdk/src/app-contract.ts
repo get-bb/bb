@@ -1,14 +1,20 @@
 import type {
   ExperimentalRpcKeyedMethod,
   ExperimentalRpcKeyedValue,
+  experimental_PluginRpcCallError,
+  PluginRpcCallArgs,
+  PluginRpcContract,
+  PluginRpcMethodContract,
+  StandardSchemaV1InferInput,
+  PluginRpcResult,
 } from "./rpc-contract.js";
-import type { experimental_PluginRpcCallError } from "./rpc-contract.js";
 import type {
   ComponentPropsWithRef,
   ComponentPropsWithoutRef,
   ComponentType,
   CSSProperties,
   ReactNode,
+  RefObject,
 } from "react";
 import type {
   PermissionMode,
@@ -18,6 +24,7 @@ import type {
   ServiceTier,
   SessionOptionSelections,
   EnvironmentWorkspaceDisplayKind,
+  ThreadParentNotifications,
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
   ThreadStatus,
@@ -36,13 +43,7 @@ import type {
   ThreadPluginMetadataUpdateArgs,
 } from "@bb/sdk";
 import type { JsonValue } from "./json-value.js";
-import type {
-  PluginRpcCallArgs,
-  PluginRpcContract,
-  PluginRpcMethodContract,
-  StandardSchemaV1InferInput,
-  PluginRpcResult,
-} from "./rpc-contract.js";
+import type { PluginMentionTrigger } from "./backend-contract.js";
 
 /**
  * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
@@ -92,30 +93,44 @@ export interface ExperimentalPageBreadcrumb {
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
-   * The route remainder after the panel root, "" at the root. The panel's
-   * route is `/plugins/<pluginId>/<path>/*`, so a deep link like
-   * `/plugins/notes/notes/work/ideas.md` renders the panel with
-   * `subPath: "work/ideas.md"`. Navigate within the panel via
-   * `useBbNavigate().toPluginPanel(path, { subPath })` — browser
-   * back/forward then walks panel-internal history.
+   * The route remainder after the panel root, "" at the root, as it appears
+   * in the URL: each segment stays percent-encoded. The panel's route is
+   * `/plugins/<pluginId>/<path>/*`, so a deep link like
+   * `/plugins/notes/notes/work/my%20ideas.md` renders the panel with
+   * `subPath: "work/my%20ideas.md"`. Decode each segment with
+   * `decodeURIComponent` before using it. Navigate within the panel via
+   * `useBbNavigate().toPluginPanel(path, { subPath })`, which takes
+   * unencoded segments and encodes them — browser back/forward then walks
+   * panel-internal history.
    */
   subPath: string;
 }
 
 /**
- * Props passed to a panel tab opened by a `threadPanelAction`.
+ * Props passed to a panel tab opened by a thread action tab.
  *
  * This slot is rendered only for an existing thread. Use
  * `experimental_newThreadPanelAction` for the root New thread screen.
  */
-export interface PluginThreadPanelProps {
-  threadId: string;
+export interface ExperimentalThreadActionTabProps extends ExperimentalThreadTabProps {
   /**
-   * The JSON value the action's `openPanel` call passed (round-tripped
-   * through persistence, so the tab restores across reloads); null when the
-   * action opened the panel without params.
+   * The JSON `params` the tab was opened with (round-tripped through
+   * persistence, so the tab restores across reloads); null when it was
+   * opened without params.
    */
   params: JsonValue | null;
+}
+
+/** Props every thread tab receives, fixed or action. */
+export interface ExperimentalThreadTabProps {
+  threadId: string;
+  /**
+   * The thread's environment, taken from the thread so it is present on the
+   * first render; null only when the thread has no environment. The tab reads
+   * whatever it needs about the environment itself and handles loading and
+   * failure there.
+   */
+  environment: ExperimentalThreadEnvironment | null;
 }
 
 /** Props passed to a panel tab opened by `experimental_newThreadPanelAction`. */
@@ -123,9 +138,9 @@ export interface PluginNewThreadPanelProps {
   /** Project selected in the root composer; null in projectless compose. */
   projectId: string | null;
   /**
-   * The JSON value the action's `openPanel` call passed (round-tripped
-   * through persistence, so the tab restores across reloads); null when the
-   * action opened the panel without params.
+   * The JSON `params` the tab was opened with (round-tripped through
+   * persistence, so the tab restores across reloads); null when it was
+   * opened without params.
    */
   params: JsonValue | null;
 }
@@ -152,9 +167,21 @@ export interface ExperimentalQuestionShortcut {
 }
 
 /**
+ * A form-level action bb binds while a pending interaction is open: `submit`
+ * presses the form's primary button (Next, or Submit on the last question),
+ * `previous` and `next` show another question without submitting, and
+ * `cancel` presses the form's Cancel button.
+ */
+export type ExperimentalQuestionFormAction =
+  | "submit"
+  | "previous"
+  | "next"
+  | "cancel";
+
+/**
  * The keyboard shortcuts bb binds while a pending interaction is open. The
  * host owns the bindings (users can remap them); a form shows them and decides
- * what choosing an option means.
+ * what choosing an option or an action means.
  */
 export interface ExperimentalQuestionFormHost {
   /**
@@ -162,6 +189,11 @@ export interface ExperimentalQuestionFormHost {
    * option). Missing entries have no binding.
    */
   shortcuts: ReadonlyMap<string, ExperimentalQuestionShortcut>;
+  /** Shortcut per form action. Missing entries have no binding. */
+  actionShortcuts: ReadonlyMap<
+    ExperimentalQuestionFormAction,
+    ExperimentalQuestionShortcut
+  >;
   /**
    * Receive the index of the option the person chose with a shortcut while
    * the thread's pane is focused. Return true when the index names an option
@@ -169,6 +201,16 @@ export interface ExperimentalQuestionFormHost {
    * function to unregister.
    */
   registerChoiceHandler(handler: (index: number) => boolean): () => void;
+  /**
+   * Receive the action the person chose with a shortcut while the thread's
+   * pane is focused, or while focus is inside an element marked
+   * `data-question-form`, including its text fields. Return true when the form
+   * performed the action. The last registered handler wins; call the returned
+   * function to unregister.
+   */
+  registerActionHandler(
+    handler: (action: ExperimentalQuestionFormAction) => boolean,
+  ): () => void;
 }
 
 /**
@@ -469,27 +511,6 @@ export interface PluginThreadListProps {
   searchQuery: string;
 }
 
-/**
- * Props passed to an `experimental_threadHeaderAction` component, rendered in
- * the thread header's action row.
- */
-export interface PluginThreadHeaderActionProps {
-  /**
-   * The thread this header belongs to. Never null: the slot is not rendered
-   * on the compose screen or other non-thread routes. A split layout renders
-   * one header per pane, so the component mounts once per visible thread,
-   * each with its own id — keep per-thread state in the component, never in a
-   * module-level singleton.
-   */
-  threadId: string;
-  projectId: string;
-  /**
-   * True on phone-width viewports and coarse pointers. Collapse to an
-   * icon-sized control when it is true — the row is short.
-   */
-  isCompactViewport: boolean;
-}
-
 /** JavaScript world a Browser page expression runs in. */
 export type ExperimentalPluginBrowserPageWorld = "isolated" | "main";
 
@@ -617,7 +638,8 @@ export interface ExperimentalDiffFullFileContents {
  * Props of the host-owned `experimental_SourceCode` component — BB's source
  * viewer. The host owns syntax highlighting, gutters, wrapping, line-selection
  * presentation, and the live BB code theme; the caller owns loading the text
- * and any surrounding chrome.
+ * and any surrounding chrome. Inside a thread view, selected lines offer Add to
+ * chat, which quotes them into that thread's composer.
  */
 export interface SourceCodeProps {
   /** The complete source text to render. */
@@ -640,8 +662,9 @@ export interface SourceCodeProps {
  * The host owns patch normalization (a patch without a `diff --git` header is
  * completed from `path`), syntax highlighting, unified/split presentation,
  * gutters, line-selection presentation, optional full-file context expansion,
- * and the live BB code theme. Content that cannot be parsed as a patch
- * degrades to plain monospace text.
+ * and the live BB code theme. Inside a thread view, selected lines offer Add
+ * to chat, which quotes them into that thread's composer. Content that cannot
+ * be parsed as a patch degrades to plain monospace text.
  */
 export interface DiffProps {
   /** Unified patch text for exactly ONE file. */
@@ -881,22 +904,6 @@ export type ExperimentalPluginFixedTabReference<
       readonly experimental_target: ExperimentalFixedTabTargetContract<Target>;
     });
 
-/** A fixed tab declared by a plugin nav panel. */
-export type PluginFixedTabRegistration<Target extends JsonValue = never> =
-  ExperimentalPluginFixedTabReference<Target> & {
-    title: string;
-    /** Resolved names take precedence over plugin branding; unknown names fall back to branding. */
-    icon: BbIconName;
-    component: ComponentType<PluginNavPanelProps>;
-    /** `flush` lets the component own padding and scrolling. */
-    layout?: "padded" | "flush";
-  };
-
-/** A fixed tab with either no target or an owner-validated JSON target. */
-export type PluginFixedTabDeclaration =
-  | PluginFixedTabRegistration
-  | PluginFixedTabRegistration<JsonValue>;
-
 /**
  * How urgent an {@link ExperimentalBadge} is. bb picks the colors: `neutral`
  * (the default) for counts and new items, `warning` for something due or
@@ -965,17 +972,6 @@ export interface PluginNavPanelRegistration {
     props: PluginNavPanelProps,
   ) => ExperimentalPageTitle | null;
   /**
-   * Ordered, non-closable tabs shown in this page's host-owned right panel.
-   * BB owns selection and persistence and always includes its native Browser
-   * and Terminal tools beside them. One tab is active in each visible split
-   * pane, so multiple fixed-tab components can be mounted concurrently. A
-   * component mounts only while its tab is active in a visible pane and the
-   * panel is open, and receives the same `subPath` as the page component.
-   *
-   * Experimental: see docs/api_to_audit.md.
-   */
-  fixedTabs?: readonly PluginFixedTabDeclaration[];
-  /**
    * Optional React hook that returns this panel's navigation badge, or `null`
    * for none. The host calls it once in your plugin's scope for every
    * registered panel, including ones hidden under More, so it can own an RPC
@@ -998,90 +994,143 @@ export interface PluginNavPanelRegistration {
 }
 
 /**
- * What a plugin action passes when it asks the host to open one of its panel
- * tabs. Shared by every `openPanel` entry point so a plugin registering more
- * than one kind of action can write a single open routine;
- * `PluginTargetedPanelActionOpenOptions` adds the `actionId` a caller
- * outside a panel action must pass to name the panel it wants.
- */
-export interface PluginPanelActionOpenOptions {
-  /** Tab label. Default: the action's `title`. */
-  title?: string;
-  /**
-   * Persisted with the tab and handed to the component as its `params` prop.
-   * Must be a JSON value; anything else is a declined open.
-   */
-  params?: JsonValue;
-}
-
-/**
- * Context handed to a `threadPanelAction`'s `run`.
+ * Context handed to a thread action tab's `run`.
  *
  * The action is thread-only and is never offered on the root New thread
  * screen, so `threadId` is always present.
  */
-export interface PluginThreadPanelActionContext {
+export interface ExperimentalThreadTabActionContext {
   /** The thread whose panel launcher invoked the action. */
   threadId: string;
-  /**
-   * Open a tab in the thread's side panel rendering this action's
-   * `component`. `title` labels the tab (default: the action's `title`);
-   * `params` must be JSON-serializable — it is persisted with the tab and
-   * reaches the component as its `params` prop. Opening with params
-   * identical to an already-open tab of this action focuses that tab
-   * (updating its title) instead of duplicating it. May be called more than
-   * once (different params ⇒ multiple tabs) or not at all.
-   *
-   * Returns true when the host accepted the open; false when it declined —
-   * from this launcher, only a `params` that is not a JSON value. The true /
-   * false contract is shared with `messageAction`'s `openPanel` and
-   * `useBbNavigate().openThreadPanel` (which decline for more reasons) so one
-   * open routine can serve every action kind. A decline is never thrown: the
-   * host logs it and reports it here.
-   */
-  openPanel(options?: PluginPanelActionOpenOptions): boolean;
+  /** The side panel of the thread view that invoked the action. */
+  experimental_panel: ExperimentalPanelController;
 }
 
-export interface PluginThreadPanelActionRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
+/** Where a plugin tab belongs. Navigation panels are owned by the registering plugin. */
+export type ExperimentalTabContext =
+  | { kind: "thread" }
+  | { kind: "nav-panel"; panelId: string };
+
+export interface ExperimentalTabReference {
   id: string;
-  /** Label of the action row in the panel's new-tab launcher. */
-  title: string;
-  /**
-   * Resolved names take precedence over plugin branding in the launcher and
-   * opened tabs. Omitted or unknown names fall back to plugin branding.
-   */
-  icon?: BbIconName;
-  /** Rendered inside every panel tab this action opens. */
-  component: ComponentType<PluginThreadPanelProps>;
-  /**
-   * How the host frames the tab content. "padded" (default) wraps the
-   * component in the panel's scroll container with standard padding —
-   * right for document-like content. "flush" gives the component the full
-   * tab area (no padding, definite height, no host scrolling) — right for
-   * app-like content that manages its own layout, such as
-   * `ThreadChat`.
-   */
-  layout?: "padded" | "flush";
-  /**
-   * Runs when the user activates the action: call your RPC methods, show a
-   * toast, and/or open panel tabs via `context.openPanel`. Omitted =
-   * immediately open a panel tab with defaults. Errors (sync or async) are
-   * contained and logged; they never break the launcher.
-   */
-  run?(context: PluginThreadPanelActionContext): void | Promise<void>;
+  context: ExperimentalTabContext;
+  availability: "fixed" | "action";
 }
+
+type ExperimentalTabCommon = ExperimentalTabReference & {
+  title: string;
+  icon: BbIconName;
+  tooltip?: string;
+  layout?: "padded" | "flush";
+};
+
+type ExperimentalTabLifecycle<Props, Context> =
+  | {
+      availability: "fixed";
+      component: ComponentType<Props>;
+      run?: never;
+      params?: never;
+    }
+  | {
+      availability: "action";
+      component: ComponentType<Props & { params: JsonValue | null }>;
+      /** Default persisted params when opened without explicit params. */
+      params?: JsonValue;
+      run?(
+        context: Context & { experimental_panel: ExperimentalPanelController },
+      ): void | Promise<void>;
+    };
+
+type ExperimentalTabContextProps<C extends ExperimentalTabContext> = C extends {
+  kind: "thread";
+}
+  ? ExperimentalThreadTabProps
+  : PluginNavPanelProps;
+
+type ExperimentalTabInput<
+  C extends ExperimentalTabContext,
+  A extends "fixed" | "action",
+> = {
+  id: string;
+  title: string;
+  icon: BbIconName;
+  tooltip?: string;
+  layout?: "padded" | "flush";
+  context: C;
+  availability: A;
+  useVisible?(props: ExperimentalTabContextProps<C>): boolean;
+} & (A extends "fixed"
+  ? {
+      component: ComponentType<ExperimentalTabContextProps<C>>;
+      run?: never;
+      params?: never;
+      experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
+    }
+  : {
+      component: ComponentType<
+        ExperimentalTabContextProps<C> & { params: JsonValue | null }
+      >;
+      params?: JsonValue;
+      run?(
+        context: ExperimentalTabContextProps<C> & {
+          experimental_panel: ExperimentalPanelController;
+        },
+      ): void | Promise<void>;
+      experimental_target?: never;
+    });
+
+/** One registration for pinned destinations and actions opening closable instances. */
+export type ExperimentalTabRegistration = ExperimentalTabCommon &
+  (
+    | ({
+        context: { kind: "thread" };
+        useVisible?(props: ExperimentalThreadTabProps): boolean;
+      } & (
+        | (ExperimentalTabLifecycle<
+            ExperimentalThreadTabProps,
+            ExperimentalThreadTabProps
+          > & {
+            availability: "action";
+            experimental_target?: never;
+          })
+        | (ExperimentalTabLifecycle<
+            ExperimentalThreadTabProps,
+            ExperimentalThreadTabProps
+          > & {
+            availability: "fixed";
+            experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
+          })
+      ))
+    | ({
+        context: { kind: "nav-panel"; panelId: string };
+        useVisible?(props: PluginNavPanelProps): boolean;
+      } & (
+        | (ExperimentalTabLifecycle<
+            PluginNavPanelProps,
+            PluginNavPanelProps
+          > & {
+            availability: "action";
+            experimental_target?: never;
+          })
+        | (ExperimentalTabLifecycle<
+            PluginNavPanelProps,
+            PluginNavPanelProps
+          > & {
+            availability: "fixed";
+            experimental_target?: ExperimentalFixedTabTargetContract<JsonValue>;
+          })
+      ))
+  );
 
 /** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
 export interface PluginNewThreadPanelActionContext {
   /** Project selected in the root composer; null in projectless compose. */
   projectId: string | null;
   /**
-   * Open a tab in the root New thread screen's side panel rendering this
-   * action's `component`. The title, params, deduplication, return value, and
-   * error semantics match `threadPanelAction`.
+   * The New thread screen's side panel. Address this action's tab as
+   * `{ id, context: { kind: "thread" }, availability: "action" }`.
    */
-  openPanel(options?: PluginPanelActionOpenOptions): boolean;
+  experimental_panel: ExperimentalPanelController;
 }
 
 /** Registration for the root New thread screen's panel Actions list. */
@@ -1094,7 +1143,7 @@ export interface PluginNewThreadPanelActionRegistration {
   icon?: BbIconName;
   /** Rendered inside every panel tab this action opens. */
   component: ComponentType<PluginNewThreadPanelProps>;
-  /** Host framing; matches `threadPanelAction`. */
+  /** Host framing; matches thread action tabs. */
   layout?: "padded" | "flush";
   /**
    * Runs when the user activates the action. Omitted = immediately open a
@@ -1207,7 +1256,9 @@ export interface ExperimentalSidebarFooter {
 /**
  * The one status bb would paint for a thread, already resolved through the
  * host's precedence (attention before work; plan and goal before the generic
- * spinner). Draw your own glyph for it — the SDK ships no status component.
+ * spinner). Draw it with {@link PluginSdkApp.experimental_ThreadStatusGlyph},
+ * or resolve a row that folds in more through
+ * {@link PluginSdkApp.experimental_resolveThreadStatus}.
  *
  * Treat an unrecognized value as "none": bb adds kinds over time, and an
  * older plugin must degrade to drawing nothing rather than throwing.
@@ -1272,6 +1323,11 @@ export interface PluginSidebarThread {
    * when its owner stops); null when the thread owns its own lifecycle.
    */
   lifecycleOwnerThreadId: string | null;
+  /**
+   * Which of this child's outcomes wake its parent: "auto" (every outcome),
+   * "stuck" (failures, interruptions, and blockers), or "off".
+   */
+  parentNotifications: ThreadParentNotifications;
   /** The thread this one was forked from; null unless `originKind` is "fork". */
   sourceThreadId: string | null;
   sectionId: string | null;
@@ -1370,60 +1426,6 @@ export interface PluginSidebarThread {
   updatedAt: number;
   lastReadAt: number | null;
   latestAttentionAt: number;
-}
-
-/**
- * The pull request for a thread's branch, narrowed to what a sidebar row
- * needs. `attention` is bb's rolled-up "does this need you" signal, so a row
- * can colour a badge without reading checks, review, and mergeability itself.
- */
-export interface PluginSidebarPullRequest {
-  /** Whether GitHub auto-merge is enabled. */
-  experimental_autoMerge: boolean;
-  /** Null when the GitHub merge queue lookup is unavailable. */
-  experimental_inMergeQueue: boolean | null;
-  experimental_checks: {
-    state: "passing" | "failing" | "pending" | "no_checks" | "unknown";
-  };
-  experimental_review: {
-    state:
-      | "approved"
-      | "changes_requested"
-      | "review_required"
-      | "review_requested"
-      | "none";
-  };
-  experimental_mergeability: {
-    state: "mergeable" | "conflicts" | "blocked" | "draft" | "unknown";
-  };
-  number: number;
-  title: string;
-  url: string;
-  state: "draft" | "open" | "merged" | "closed";
-  attention:
-    | "checks_failed"
-    | "checks_pending"
-    | "changes_requested"
-    | "review_requested"
-    | "conflicts"
-    | "blocked"
-    | "draft"
-    | "queued"
-    | "ready_to_merge"
-    | "merged"
-    | "closed"
-    | "none";
-}
-
-export interface PluginSidebarThreadPullRequestState {
-  /** True while the first lookup for this thread's environment is in flight. */
-  isLoading: boolean;
-  /**
-   * The pull request, or null when the branch has none, the thread has no
-   * environment, or the lookup could not run (a git-host hiccup). A row should
-   * treat null as "nothing to show", never as an error.
-   */
-  pullRequest: PluginSidebarPullRequest | null;
 }
 
 /** One project in the sidebar's live view. */
@@ -1606,10 +1608,72 @@ export interface PluginThreadTitleProps {
 }
 
 /**
+ * The fields of a {@link PluginSidebarThread} that
+ * {@link PluginSdkApp.experimental_resolveThreadStatus} reads.
+ */
+export type PluginThreadStatusThread = Pick<
+  PluginSidebarThread,
+  | "status"
+  | "runtimeStatus"
+  | "queuedWork"
+  | "hasPendingInteraction"
+  | "activity"
+  | "isUnread"
+  | "parentThreadId"
+>;
+
+/** Input for {@link PluginSdkApp.experimental_resolveThreadStatus}. */
+export interface PluginThreadStatusInput {
+  /**
+   * The row's own thread, or null for a group row (a collapsed section,
+   * project, or environment) that stands only for `hiddenThreads`.
+   */
+  thread: PluginThreadStatusThread | null;
+  /**
+   * Threads the row stands for while they are hidden, such as a collapsed
+   * parent's sub-threads. Their attention and work count toward the row;
+   * their queued messages do not. Pass an empty array when nothing is hidden.
+   */
+  hiddenThreads: readonly PluginThreadStatusThread[];
+  /**
+   * Whether the composer holds an unsent draft for `thread` or any of
+   * `hiddenThreads` (see {@link PluginSdkApp.useSidebarThreadDraft}).
+   */
+  hasUnsubmittedDraft: boolean;
+  /**
+   * The status another plugin set on the row (see
+   * {@link PluginSdkApp.useSidebarThreadRowStatus}), or null.
+   */
+  rowStatus: PluginSidebarThreadRowStatus | null;
+}
+
+/** What bb's lists draw for a row (see {@link PluginThreadStatusInput}). */
+export interface PluginThreadStatus {
+  indicator: PluginSidebarThreadIndicator;
+  /**
+   * The input `rowStatus` when it shows in place of `indicator`: it replaces
+   * every indicator except "runtime", "unread-error", and
+   * "waiting-for-input". Null otherwise.
+   */
+  rowStatus: PluginSidebarThreadRowStatus | null;
+  /**
+   * The accessible label for what shows: `rowStatus`'s label, else the
+   * indicator's; null when nothing shows.
+   */
+  label: string | null;
+  /**
+   * Whether the row's thread or a hidden thread is working, or the input
+   * `rowStatus` has the "running" tone.
+   */
+  isWorking: boolean;
+}
+
+/**
  * Props for {@link PluginSdkApp.experimental_ThreadStatusGlyph}: bb's thread
- * status glyph, the one its own lists draw. The caller resolves the
- * indicator, so a row can fold in state the host does not know about, such
- * as collapsed children or a client-local draft.
+ * status glyph, the one its own lists draw. Pass the `indicator` and
+ * `rowStatus` from {@link PluginSdkApp.experimental_resolveThreadStatus} to
+ * fold in state a sidebar thread's `indicator` leaves out, such as collapsed
+ * children or a client-local draft.
  */
 export interface PluginThreadStatusGlyphProps {
   /** The indicator to draw; "none" draws nothing unless `rowStatus` shows. */
@@ -1740,27 +1804,351 @@ export interface PluginSidebarThreadActions {
 }
 
 /**
- * Render a plugin component in the thread header's action row.
- *
- * The frontend sibling of the backend `bb.ui.registerThreadAction`, which
- * renders a host-owned button and runs server-side. Use that one for "do a
- * thing"; use this one when the control must draw live state.
- *
- * The host places it at the left end of the action row, before the workspace
- * button, git actions, the panel toggle, maximize, and close. That row is a
- * 48px chrome row with 28px controls: render one inline control that fits, and
- * put anything taller in a portalled popover.
+ * Props passed to an `experimental_threadRowMetadata` component, rendered on a
+ * thread's row in a thread list: bb's sidebar and any list that draws
+ * {@link PluginSdkApp.experimental_ThreadRowMetadata}.
  */
-export interface PluginThreadHeaderActionRegistration {
+export interface ExperimentalThreadRowMetadataProps<Data = undefined> {
+  /** The row's thread, the same value the list renders. */
+  thread: PluginSidebarThread;
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+}
+
+/** What a row metadata registration's `useData` receives. */
+export interface ExperimentalThreadRowMetadataDataInput {
+  /**
+   * Every thread a list may draw a metadata line for: bb's active sidebar
+   * threads in sidebar order, then any other thread whose line is mounted
+   * (such as an archived row), deduplicated. Threads whose rows are not
+   * rendered, like a windowed list's rows off screen, are included: load
+   * them all in one batch so a row has its data, and its final height, when
+   * it renders.
+   */
+  threads: readonly PluginSidebarThread[];
+}
+
+/**
+ * A small item on a thread row's metadata line, under the title: a badge, not
+ * a control. Items share one line, left to right, and the line clips at the
+ * row's edge. bb's sidebar draws the line only while the `threadRowMetadata`
+ * experiment is on and the user turns on Organize → Rows → Metadata, and only
+ * on rows where an item shows something.
+ * Load the line's data in `useData`, a React hook bb calls once for the
+ * whole app while any list draws a metadata line, never per row; it
+ * receives every thread a list may show, so read them in one batch (for
+ * example one `experimental_useRpcKeyedQuery` over their keys). The
+ * component is then a pure render of its thread and `data`; with `useData`
+ * it first renders once `useData` has returned. A row that renders already
+ * has its data, so rows keep their height as they scroll into view.
+ * It hides the line while the row is renamed or customized and keeps it
+ * visible on hover. Render null to show nothing for a thread. Keep
+ * it to an icon and a few characters with a tooltip; clicks on it open the
+ * thread like the rest of the row. A crash removes only this item for that
+ * row.
+ */
+export interface ExperimentalThreadRowMetadataRegistration<Data = undefined> {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /**
-   * Names the region the host wraps around your component (a labelled group).
-   * It does NOT label your control: an icon-only button still needs its own
-   * accessible name.
+   * Items sort by `order` (unset sorts last), then registration order. The
+   * first item starts the line.
    */
+  order?: number;
+  useData?(input: ExperimentalThreadRowMetadataDataInput): Data;
+  component: ComponentType<ExperimentalThreadRowMetadataProps<Data>>;
+}
+
+/** Props for {@link PluginSdkApp.experimental_ThreadRowMetadata}. */
+export interface ExperimentalThreadRowMetadataLineProps {
+  thread: PluginSidebarThread;
+}
+
+/**
+ * Props passed to an `experimental_threadInfoRow` or
+ * `experimental_threadInfoSection` component, rendered in a thread's Info tab.
+ */
+export interface ExperimentalThreadInfoProps {
+  /**
+   * The thread whose Info tab is open. A split layout renders one Info tab per
+   * pane, so the component mounts once per visible thread; keep per-thread
+   * state in the component, never in a module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /**
+   * The thread's environment, taken from the thread; null only when the
+   * thread has no environment. Read its state (host, checkout, git) yourself.
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/** An environment a thread surface hands to plugin components. */
+export interface ExperimentalThreadEnvironment {
+  id: string;
+}
+
+/**
+ * A visible thread context segment. `key` is `<pluginId>/<id>`, where bb's own
+ * segments use `bb--core`, as thread action keys do.
+ */
+export interface ExperimentalThreadContextSegmentReference {
+  key: string;
+  pluginId: string;
+}
+
+/** What a thread context segment knows about its thread. */
+export interface ExperimentalThreadContextSegmentInput {
+  threadId: string;
+  projectId: string;
+  /**
+   * The thread's environment, or null when the thread has no environment,
+   * its host is not active, or the environment is not a usable checkout.
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/** Props of a thread context segment's `summary`, `action` and `details`. */
+export interface ExperimentalThreadContextSegmentProps extends ExperimentalThreadContextSegmentInput {
+  /** The visible segments in row order, this one included. */
+  segments: readonly ExperimentalThreadContextSegmentReference[];
+  /** One segment of a thread's context row is expanded at a time. */
+  isExpanded: boolean;
+  onToggle(): void;
+}
+
+/**
+ * A segment of the context row above an existing thread's composer. bb's
+ * parent thread and changed files register through this slot too. The host
+ * mounts each component in its own crash boundary.
+ */
+export interface ExperimentalThreadContextSegmentRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Accessible name of the group the host wraps around `summary`. */
   title: string;
-  component: ComponentType<PluginThreadHeaderActionProps>;
+  /**
+   * Segments sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own first on a
+   * tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_CONTEXT_SEGMENT_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  /** Renders in the context row. */
+  summary: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders at the row's end, after every segment's summary. */
+  action?: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders below the row; show content only while `isExpanded`. */
+  details?: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /**
+   * Runs in plugin scope for each thread; false hides the segment and leaves
+   * it out of `segments`. Omit to always show.
+   */
+  useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
+}
+
+/**
+ * A row in the thread Info tab's details block, beside bb's own rows. Render
+ * one or more `experimental_DetailRow` elements, or null to show nothing for
+ * this thread. A crash removes only this row for that thread.
+ */
+export interface ExperimentalThreadInfoRowRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Rows sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own rows first
+   * on a tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}; any other
+   * string is a group of its own, placed where it sorts. Groups only order
+   * rows; the details block draws no separator between them.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadInfoProps>;
+}
+
+/**
+ * A section in the thread Info tab, below the details block. Render one
+ * `experimental_InfoSection`, or null to hide the section for this thread.
+ * The host remembers the section's collapsed state per registration. A crash
+ * removes only this section for that thread.
+ */
+export interface ExperimentalThreadInfoSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Sections sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own sections
+   * first on a tie. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_INFO_SECTION_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadInfoProps>;
+}
+
+/**
+ * Props passed to an `experimental_threadContextCardRow` or
+ * `experimental_threadContextCardSection` component.
+ */
+export interface ExperimentalThreadContextCardProps {
+  /**
+   * The thread shown in the pane. Every thread pane of a split layout has its
+   * own thread context card, so the component mounts once per visible thread;
+   * keep per-thread state in the component, never in a module-level singleton.
+   */
+  threadId: string;
+  projectId: string;
+  /**
+   * The thread's environment, taken from the thread; null only when the
+   * thread has no environment. Read its state (host, checkout, git) yourself.
+   */
+  environment: ExperimentalThreadEnvironment | null;
+}
+
+/**
+ * How a thread pane shows its thread context: `banner` in the context row
+ * above the composer, `card` in the thread context card at the pane's
+ * upper-right. bb picks one per pane.
+ */
+export type ExperimentalThreadContextKind = "banner" | "card";
+
+/**
+ * A row in the thread context card at a thread pane's upper-right, below the
+ * header, beside bb's own rows; the card's counterpart of
+ * `experimental_threadInfoRow`. Render one or more
+ * `experimental_ThreadContextCardRow` elements, or null to show nothing for
+ * this thread. bb draws the card and places it, and mounts rows only in panes
+ * whose thread context kind is `card`. A crash removes only this row for that
+ * thread.
+ */
+export interface ExperimentalThreadContextCardRowRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Rows sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own rows first
+   * on a tie. Rows use the Info tab's groups,
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadContextCardProps>;
+}
+
+/**
+ * A titled section of the thread context card, below its rows; the card's
+ * counterpart of `experimental_threadInfoSection`. bb draws the title and a
+ * divider above it, and hides the section while its component renders
+ * nothing. A crash removes only this section for that thread.
+ */
+export interface ExperimentalThreadContextCardSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Heading bb draws above the section's rows. */
+  title: string;
+  /**
+   * Sections sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own sections
+   * first on a tie. Sections use the Info tab's groups,
+   * {@link PluginSdkApp.experimental_THREAD_INFO_SECTION_GROUPS}; any other
+   * string is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  component: ComponentType<ExperimentalThreadContextCardProps>;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadContextCardRow` component, the row
+ * bb's own card rows use: an icon, a label, an optional trailing value, and an
+ * optional second control. With `onClick` the label is a button.
+ */
+export interface ExperimentalThreadContextCardRowProps {
+  /** Icon drawn before the label, any name `experimental_Icon` accepts. */
+  icon?: BbIconName;
+  /** Drawn in the icon's place, such as an app or site icon; wins over `icon`. */
+  leading?: ReactNode;
+  label: ReactNode;
+  /** Drawn at the row's end, such as a count or `+4 −1`. */
+  trailing?: ReactNode;
+  /** Tooltip, and the accessible description when the label is truncated. */
+  title?: string;
+  disabled?: boolean;
+  /**
+   * A second control, such as a button that opens a menu. It takes the
+   * place of `trailing` while the row is hovered or focused or the control's
+   * menu is open, and always shows on touch screens.
+   */
+  action?: ReactNode;
+  /** Makes the label a button. */
+  onClick?(): void;
+}
+
+/**
+ * Props of the host-owned `experimental_InfoSection` component — the heading,
+ * count, and collapse control every Info tab section uses.
+ */
+export interface ExperimentalInfoSectionProps {
+  label: string;
+  /** Drawn as a pill after the label; omit for no count. */
+  count?: number;
+  /** Drawn after the label and count while the section is expanded. */
+  accessory?: ReactNode;
+  /** Drawn at the heading's trailing edge while the section is expanded. */
+  trailing?: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * Props of the host-owned `experimental_DetailRow` component — one label and
+ * value pair in the Info tab's details block.
+ */
+export interface ExperimentalDetailRowProps {
+  label: ReactNode;
+  /** Icon drawn before the label, any name `experimental_Icon` accepts. */
+  icon?: BbIconName;
+  /** Vertical alignment of label and value; defaults to `center`. */
+  align?: "center" | "start";
+  children: ReactNode;
+}
+
+/**
+ * Props of the host-owned `experimental_InfoList` component — the list every
+ * Info tab section uses, collapsed to `limit` rows behind a "N more" toggle.
+ */
+export interface ExperimentalInfoListProps<Item> {
+  items: readonly Item[];
+  getKey(item: Item): string;
+  /** Usually an `experimental_InfoListRow`. */
+  renderItem(item: Item): ReactNode;
+  /** Rows shown before the "N more" toggle; defaults to 5. */
+  limit?: number;
+}
+
+/**
+ * Props of the host-owned `experimental_InfoListRow` component — one row of an
+ * `experimental_InfoList`.
+ */
+export interface ExperimentalInfoListRowProps {
+  /** Drawn in the row's 12px leading column, such as an `experimental_Icon`. */
+  leading: ReactNode;
+  /** Tooltip and accessible name for `leading`; omit when it is decorative. */
+  leadingLabel?: string;
+  name: ReactNode;
+  /** Native tooltip on the name. */
+  title?: string;
+  /** Muted text after the name, truncated from the start. */
+  context?: string;
+  /** Drawn at the row's trailing edge, such as a status. */
+  trailing?: ReactNode;
+  /** Runs when the user activates the row; omit for a static row. */
+  onSelect?: () => void;
 }
 
 export interface ExperimentalPluginBrowserToolbarActionRegistration {
@@ -1780,6 +2168,8 @@ export interface PluginThreadActionTarget {
   id: string;
   projectId: string;
   parentThreadId: string | null;
+  /** Which of this child's outcomes wake its parent; see `PluginSidebarThread`. */
+  parentNotifications: ThreadParentNotifications;
   archivedAt: number | null;
   pinnedAt: number | null;
   sectionId: string | null;
@@ -1854,7 +2244,8 @@ export interface PluginThreadActionDataInput {
   /**
    * Every thread a visible surface currently shows actions for (sidebar rows
    * on screen, the open thread's header, open menus); a hidden sidebar
-   * contributes none. Sorted, deduplicated, and published once the set has
+   * contributes none. A `"header"` action receives only the threads whose
+   * header is on screen. Sorted, deduplicated, and published once the set has
    * been quiet for 32 ms (at most 100 ms after the first change), so rows
    * that mount a frame apart arrive together. Load per-thread state for these
    * ids, fetching only ids not loaded yet.
@@ -1869,12 +2260,31 @@ export interface PluginThreadActionItemInput<Data> {
   data: Data;
   /** The registering plugin's `useSdk()` client. */
   sdk: PluginBrowserBbSdk;
-  /**
-   * The registering plugin's `useBbNavigate()`. Thread menus are not inside a
-   * side panel, so `openThreadPanel` opens in the focused thread view, as
-   * plugin commands do, and returns false when no thread view is open.
-   */
+  /** The registering plugin's `useBbNavigate()`. */
   navigate: BbNavigate;
+  /**
+   * The focused surface's side panel, as for plugin commands. Thread menus
+   * are not inside a side panel, so calls return false when the focused
+   * surface has no such tab.
+   */
+  experimental_panel: ExperimentalPanelController;
+}
+
+/**
+ * What a registration's `experimental_bulkItem` receives for a selection
+ * of several threads.
+ */
+export interface PluginThreadActionBulkItemInput<Data> {
+  /** The selected threads in the surface's list order; always two or more. */
+  threads: readonly PluginThreadActionTarget[];
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /** The registering plugin's `useBbNavigate()`, as for `item`. */
+  navigate: BbNavigate;
+  /** The focused surface's side panel, as for `item`. */
+  experimental_panel: ExperimentalPanelController;
 }
 
 /**
@@ -1891,6 +2301,9 @@ export interface PluginThreadActionItemInput<Data> {
  * derives the action for one thread from that thread and `data`, closing over
  * everything `run` needs, or returns null to hide it. A throw from either
  * drops only this registration.
+ *
+ * With `placement: "header"` the action is a button in the open thread's
+ * header instead (see {@link PluginThreadActionPlacement}).
  */
 export interface PluginThreadActionRegistration<Data = undefined> {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -1908,9 +2321,38 @@ export interface PluginThreadActionRegistration<Data = undefined> {
    */
   group: string;
   order?: number;
+  /** Where the action shows; defaults to `"menu"`. */
+  placement?: PluginThreadActionPlacement;
   useData?(input: PluginThreadActionDataInput): Data;
   item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
+  /**
+   * The action for several selected threads at once, shown when
+   * `experimental_ThreadActionsContextMenu` gets an `experimental_bulkThreads`
+   * (see {@link PluginThreadActionsContextMenuProps}). Pure and
+   * synchronous like `item`, with every selected thread in `useData`'s
+   * `threadIds`; `run` acts on all of them. Omit it, or return null, to leave
+   * the action out of selection menus. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_bulkItem?(
+    input: PluginThreadActionBulkItemInput<Data>,
+  ): PluginThreadAction | null;
 }
+
+/**
+ * Where a thread action shows.
+ *
+ * - `"menu"`: every thread actions menu and the quick-action picker.
+ * - `"header"`: only the open thread's header, as an outline button labelled
+ *   with the action's `label`, after the workspace's Open button. Several
+ *   header actions share one split button, the first as its main action. At
+ *   compact width and in narrow split panes the buttons fold into the
+ *   header's thread menu as rows at its top, after Open. `group` and `order`
+ *   sort header actions among themselves. Header actions never appear in
+ *   other menus, selection menus, `experimental_useThreadActions`, or the
+ *   quick-action picker, and an action that returns `choices` is left out
+ *   of the header.
+ */
+export type PluginThreadActionPlacement = "menu" | "header";
 
 /**
  * A thread action as {@link PluginSdkApp.experimental_useThreadActions}
@@ -2008,6 +2450,18 @@ export interface PluginThreadActionsContextMenuProps extends PluginThreadActions
   disabled?: boolean;
   /** Closes the menu and suppresses opening while the row is being dragged. */
   dragging?: boolean;
+  /**
+   * The selected threads in list order when the row is part of a multi-row
+   * selection. With two or more, the menu acts on all of them: it lists every
+   * registration's `experimental_bulkItem` under a count of the
+   * selection, including bb's own Mark read, Pin, Archive and Delete, which
+   * confirm and clean up as the single-thread actions do, then `inline`.
+   * Omit it, or pass fewer than two, for `thread`'s own menu. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_bulkThreads?: readonly PluginThreadActionTarget[];
+  /** Called when Escape dismisses the desktop menu, e.g. to clear a selection. */
+  onEscapeKeyDown?(event: KeyboardEvent): void;
 }
 
 /** One pane's place in the split layout, as fractions of the split area. */
@@ -2035,6 +2489,17 @@ export interface PluginSidebarSplitLayout {
     threadId: string | null;
     isFocused: boolean;
   }[];
+}
+
+/** Options for {@link PluginSdkApp.experimental_useSidebarThreadSplit}. */
+export interface PluginSidebarThreadSplitOptions {
+  /**
+   * Every thread a drag from this row carries, in list order, when the row is
+   * part of a multi-row selection; include the row's own thread. With more
+   * than one thread the drag offers no split or replace targets and drops
+   * onto a composer as one mention per thread. Omit for a single-row drag.
+   */
+  dragThreadIds?: readonly string[];
 }
 
 /**
@@ -2200,6 +2665,663 @@ export interface PluginDiffRendererRegistration {
 }
 
 /**
+ * Props passed to an `experimental_composer` component. Deliberately empty:
+ * the component reads everything through `experimental_useComposerRenderer()`
+ * and `useComposer()`.
+ */
+export interface ExperimentalComposerProps {}
+
+/**
+ * Draw bb's composer input box: the editor, its @-mention and slash-command
+ * menus, attachments, voice input, the `+` and send menus and the send and
+ * stop controls. It renders everywhere bb shows a composer (a thread's
+ * composer, the New thread screen, queued and sent message editors). The
+ * banners, approval cards and queued messages above the box stay bb's.
+ *
+ * Exclusive, like `experimental_threadList`: a composer from a plugin the
+ * user installed wins over the bundled one, then the first in slot order.
+ * Users choose under Settings → Appearance → Composer (`composer.provider`).
+ * bb ships its own composer as the bundled Composer plugin; with no composer
+ * plugin enabled, no composer is shown.
+ *
+ * The host keeps the draft, uploads, history, pickers and submission; the
+ * component draws over them with `experimental_useComposerRenderer()`.
+ */
+export interface ExperimentalComposerRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in the provider choice and capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalComposerProps>;
+}
+
+/**
+ * One way the box submits, worked out by the host for this surface and the
+ * user's settings: what it does now, whether it needs a draft, and its key.
+ */
+export interface ExperimentalComposerAction {
+  /**
+   * `"send"` sends the draft, `"queue"` queues it behind the running turn,
+   * `"steer"` adds it to the running turn.
+   */
+  kind: "send" | "queue" | "steer";
+  /**
+   * The action needs a non-empty draft. A steer does not: with an empty
+   * draft it steers the next queued message.
+   */
+  requiresInput: boolean;
+  /** The key that runs it, formatted for display. */
+  shortcut: ExperimentalShortcutPresentation;
+  /**
+   * Run it without the checks `useComposer().submit()` applies: the box has
+   * already decided it may. A failed send shows bb's error toast and restores
+   * the draft.
+   */
+  run(): void;
+}
+
+/** Submit-button state and actions the host computes for a composer. */
+export interface ExperimentalComposerSubmission {
+  isSubmitting?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  label?: string;
+  icon?: BbIconName;
+  title?: string;
+  isRunning?: boolean;
+  onStop?: () => void;
+  /** What Enter (and the send button) does. */
+  enter: ExperimentalComposerAction;
+  /** What modifier+Enter does, or null where the surface has one action. */
+  modifier: ExperimentalComposerAction | null;
+  /** Offer `modifier` in the send button's menu too, not only on its shortcut. */
+  showModifierInMenu: boolean;
+}
+
+/** The characters that open the slash-command and skill menus. */
+export type ExperimentalComposerCommandTrigger = "/" | "$";
+
+/** The text typed after an @-mention or command trigger while its menu is open. */
+export interface ExperimentalComposerSearchQuery<Trigger extends string> {
+  text: string;
+  trigger: Trigger;
+}
+
+/** How a suggested thread relates to the thread being composed in. */
+export type ExperimentalComposerThreadRelation =
+  | "parent"
+  | "child"
+  | "same-parent"
+  | "same-environment";
+
+type MentionTargetOf<Kind extends ExperimentalComposerMentionTarget["kind"]> =
+  Extract<ExperimentalComposerMentionTarget, { kind: Kind }>;
+
+/**
+ * One @-mention result. `mention` is the pill choosing it inserts; `text` is
+ * what the pill stands for after the trigger, such as `src/app.ts` or
+ * `thread:thr_1`. `key` is stable across result updates.
+ */
+export type ExperimentalComposerMentionSuggestion = {
+  key: string;
+  text: string;
+} & (
+  | { kind: "path"; mention: MentionTargetOf<"path"> }
+  | {
+      kind: "thread";
+      mention: MentionTargetOf<"thread"> & { projectId: string };
+      /** The thread's own title; null when it has none and the pill shows its id. */
+      title: string | null;
+      /** The thread's project, when it differs from the composer's. */
+      projectName: string | null;
+      relation: ExperimentalComposerThreadRelation | null;
+    }
+  | { kind: "project"; mention: MentionTargetOf<"project"> }
+  | { kind: "section"; mention: MentionTargetOf<"section"> }
+  | {
+      kind: "plugin";
+      mention: MentionTargetOf<"plugin">;
+      /** The mention provider's name, such as "Issues". */
+      providerLabel: string;
+      subtitle: string | null;
+    }
+);
+
+/** Mention results under one heading, in display order. */
+export interface ExperimentalComposerMentionSuggestionGroup {
+  key: string;
+  label: string;
+  suggestions: readonly ExperimentalComposerMentionSuggestion[];
+}
+
+/** What `experimental_useComposerMentionSearch` returns. */
+export interface ExperimentalComposerMentionSearch {
+  /** `"idle"` without a query. */
+  status: "idle" | "loading" | "error" | "ready";
+  /** Earlier results are showing while newer ones load. */
+  refreshing: boolean;
+  groups: readonly ExperimentalComposerMentionSuggestionGroup[];
+  /**
+   * Set the open mention menu's query, or null when it closes. Call it from
+   * the event that changes the menu, next to the composer's own state update,
+   * so the results arrive in the same render.
+   */
+  search(
+    query: ExperimentalComposerSearchQuery<PluginMentionTrigger> | null,
+  ): void;
+}
+
+/** One slash-command or skill result. */
+export interface ExperimentalComposerCommandSuggestion {
+  kind: "command";
+  name: string;
+  source: "skill" | "command";
+  origin: "builtin" | "project" | "user";
+  description: string | null;
+  argumentHint: string | null;
+  /** The plugin that contributed the command; absent for the provider's own. */
+  pluginId?: string;
+}
+
+/** Command results under one heading, such as "Skills", in display order. */
+export interface ExperimentalComposerCommandSuggestionGroup {
+  key: string;
+  label: string;
+  suggestions: readonly ExperimentalComposerCommandSuggestion[];
+}
+
+/** What `experimental_useComposerCommandSearch` returns. */
+export interface ExperimentalComposerCommandSearch {
+  /** `"idle"` without a query. */
+  status: "idle" | "loading" | "error" | "ready";
+  /** Earlier results are showing while newer ones load. */
+  refreshing: boolean;
+  /** Ranked for the query, under their headings. */
+  groups: readonly ExperimentalComposerCommandSuggestionGroup[];
+  /**
+   * Set the open command menu's query, or null when it closes. Call it from
+   * the event that changes the menu, next to the composer's own state update,
+   * so the results arrive in the same render.
+   */
+  search(
+    query: ExperimentalComposerSearchQuery<ExperimentalComposerCommandTrigger> | null,
+  ): void;
+}
+
+/** An attachment upload that has not finished yet. */
+export interface ExperimentalComposerPendingUpload {
+  id: string;
+  file: File;
+}
+
+/** The draft's attachments and bb's upload pipeline for them. */
+export interface ExperimentalComposerAttachments {
+  items?: readonly ComposerAttachment[];
+  pendingUploads?: readonly ExperimentalComposerPendingUpload[];
+  isAttaching?: boolean;
+  error?: string | null;
+  /** Upload files and add them to the draft; resolves with the added attachments. */
+  onAttachFiles?(files: File[]): Promise<readonly ComposerAttachment[]>;
+  onUpdate?(
+    update: (
+      attachments: readonly ComposerAttachment[],
+    ) => readonly ComposerAttachment[],
+  ): void;
+  projectId?: string;
+}
+
+/** Up-arrow prompt history for the composer. */
+export interface ExperimentalComposerHistory {
+  currentDraft: ComposerDraftSnapshot;
+  entries: readonly ComposerDraftSnapshot[];
+  onSelectEntry(draft: ComposerDraftSnapshot): void;
+  resetKey?: string | number;
+}
+
+export type ExperimentalVoiceDelivery = "insert" | "send";
+
+/** A voice recording whose transcription failed, kept for retry. */
+export interface ExperimentalFailedVoiceRecording {
+  id: string;
+  key: string;
+  file: File;
+  promptContext: string | undefined;
+  delivery: ExperimentalVoiceDelivery;
+  createdAt: number;
+  errorMessage: string | null;
+  retrying: boolean;
+}
+
+/** bb's voice input for the composer. */
+export interface ExperimentalComposerVoice {
+  state: "idle" | "recording" | "transcribing" | "error";
+  delivery: ExperimentalVoiceDelivery;
+  microphoneWarning: string | null;
+  isSupported: boolean;
+  /** Why voice input is unavailable, as a message safe to show; read it only while `isSupported` is false. */
+  unsupportedMessage: string;
+  stream: MediaStream | null;
+  failedRecordings: readonly ExperimentalFailedVoiceRecording[];
+  start(): void | Promise<void>;
+  stop(): void;
+  send(): void;
+  retry(recording: ExperimentalFailedVoiceRecording): void;
+  discard(recording: ExperimentalFailedVoiceRecording): void;
+  download(recording: ExperimentalFailedVoiceRecording): void;
+  cancel(): void;
+}
+
+/** A host shortcut prompt action in the composer's `+` menu. */
+export interface ExperimentalComposerPromptAction {
+  kind: "skills" | "plan" | "goal";
+  text: string;
+  /** The command the action puts at the start of the draft, if any. */
+  command?: {
+    trigger: ExperimentalComposerCommandTrigger;
+    name: string;
+    trailingText: string;
+  };
+}
+
+/**
+ * Everything the host passes to a composer box for one surface. Read and
+ * write the draft with `useComposer().draft` and `replace`, and submit with
+ * `useComposer().submit()`; inside a composer box they are bound to this box.
+ * The box decides where bb's controls (`executionControls`, `handoff`,
+ * `compactBeforeSend`) go, or whether to show them.
+ */
+export interface ExperimentalComposerInput {
+  id?: string;
+  /**
+   * Where the box sits: a thread's composer (including queued and sent
+   * message editors) or the New thread screen.
+   */
+  surface: "thread" | "new-thread";
+  onEscape?(): void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  /** bb's model, reasoning effort and mode controls for this composer. */
+  executionControls?: ReactNode;
+  /** The "Handoff to new thread" banner, while a handoff is active. */
+  handoff?: ReactNode;
+  /** bb's chip offering to compact the context before sending. */
+  compactBeforeSend?: ReactNode;
+  submission: ExperimentalComposerSubmission;
+  /** The editor's minimum height, from the space the host leaves above the box. */
+  minHeight?: number;
+  /** The most height the whole box may take; the editor scrolls inside it. */
+  maxHeight?: number;
+  /** Characters that open the @-mention menu; search with `experimental_useComposerMentionSearch`. */
+  mentionTriggers: readonly PluginMentionTrigger[];
+  /**
+   * Characters that open the command menu; search with
+   * `experimental_useComposerCommandSearch`. Never repeats a mention trigger:
+   * when a plugin mention provider claims `$`, `$` opens the mention menu.
+   */
+  commandTriggers: readonly ExperimentalComposerCommandTrigger[];
+  /**
+   * What clicking a pill for `mention` does, or null when it is not a link.
+   * An attachment mention opens the draft's attachment at that path, so an
+   * attachment tile can ask with `{ kind: "attachment", path, label }`.
+   */
+  resolveMentionLink(
+    mention: ExperimentalComposerMentionTarget,
+  ): (() => void) | null;
+  /** Whether menus fit above or below the box where the host placed it. */
+  mentionMenuPlacement: "top" | "bottom";
+  attachments?: ExperimentalComposerAttachments;
+  promptActions?: readonly ExperimentalComposerPromptAction[];
+  /** Collapse the box at the user's request; absent where it cannot collapse. */
+  onCollapse?(): void;
+  /**
+   * When to show the box's one-line compact form, with `placeholder`;
+   * absent, never. `"always"`: the host collapsed the box, on compact
+   * viewports or after `onCollapse`. `"narrow"`: only while the thread pane
+   * is short or its column narrow, which bb signals in CSS so it applies
+   * without a render; style that form under
+   * `@container follow-up-composer style(--follow-up-composer-container-compact: true)`.
+   * Report the form the box shows in `editor.state.layout`.
+   */
+  compact?: { when: "always" | "narrow"; placeholder: string };
+  history?: ExperimentalComposerHistory;
+  voice?: ExperimentalComposerVoice;
+}
+
+/** A contribution another plugin registered with `app.composer.customize`. */
+export interface ExperimentalComposerContribution {
+  /** Stable across renders; use it as the React key. */
+  key: string;
+  pluginId: string;
+  customizationId: string;
+  generation: number;
+}
+
+export interface ExperimentalComposerPlusMenuContribution extends ExperimentalComposerContribution {
+  item: ComposerPlusMenuItem;
+}
+
+export interface ExperimentalComposerSendMenuContribution extends ExperimentalComposerContribution {
+  item: ComposerSendMenuItem;
+}
+
+export interface ExperimentalComposerPopupContribution extends ExperimentalComposerContribution {
+  popup: ExperimentalComposerPopupRegistration;
+}
+
+/**
+ * Highlight rules to paint over the draft: bb's built-in highlights, other
+ * plugins' `richText.effects` and `useComposer().setTextEffect` effects, in
+ * paint order.
+ */
+export interface ExperimentalComposerDecorationSource {
+  id: string;
+  generation: string | number;
+  pluginId?: string;
+  effects: readonly NonNullable<ComposerRichTextSpec["effects"]>[number][];
+}
+
+/** Editor state a composer box reports so other plugins' `useComposer()` sees it. */
+export interface ExperimentalComposerEditorState {
+  layout: "expanded" | "compact";
+  isRunning: boolean;
+  isSubmitting: boolean;
+  isSubmittingBlocked: boolean;
+  submittingBlockedReason: string | null;
+  isAttaching: boolean;
+  attachmentError: string | null;
+}
+
+/**
+ * What only the composer's editor can do, handed to
+ * `experimental_ComposerRoot`: report its state, insert at its caret, take
+ * focus, accept a dropped thread, run other plugins' popups and take voice
+ * input. bb reaches the composer only through this.
+ */
+export interface ExperimentalComposerEditor {
+  state: ExperimentalComposerEditorState;
+  /** Mention ranges are relative to `value.text`. Return false without a caret. */
+  insertAtCursor(value: ComposerDraft, block: boolean): boolean;
+  /** Focus the editor, keeping its selection; false when it cannot take focus. */
+  focus(): boolean;
+  /** Focus the editor with the caret at the end of the draft. */
+  focusEnd(): void;
+  /** Whether threads dragged from the sidebar can be dropped now. */
+  acceptsThreadDrop(): boolean;
+  /**
+   * Insert one mention per dropped thread, in order, starting at the viewport
+   * point `x`, `y`. A drag from a multi-row sidebar selection drops several.
+   */
+  insertDroppedThreads(
+    threads: readonly ExperimentalDroppedThreadMention[],
+    x: number,
+    y: number,
+  ): void;
+  openPopup(pluginId: string, popupId: string): boolean;
+  closePopup(pluginId: string): boolean;
+  isPopupOpen(): boolean;
+  /** How the composer takes bb's voice input; omit when it has none. */
+  voice?: ExperimentalComposerEditorVoice;
+}
+
+/** What a composer does with bb's voice input; recording and transcription stay bb's. */
+export interface ExperimentalComposerEditorVoice {
+  /** The draft before the caret, sent with a recording to help transcription; null when empty. */
+  textBeforeCursor(): string | null;
+  /** Put a finished transcript at the caret; with `"send"`, submit the draft after. */
+  deliverTranscript(text: string, delivery: ExperimentalVoiceDelivery): void;
+  /** Animate leaving voice mode; resolves when the composer is ready for the transcript. */
+  playCompletionTransition(): Promise<void>;
+}
+
+/** Props of `experimental_ComposerRoot`. */
+export interface ExperimentalComposerRootProps {
+  /** The composer's outermost element. */
+  rootRef: RefObject<HTMLElement | null>;
+  editor: ExperimentalComposerEditor;
+  /**
+   * The composer's @-mention and command menu, and whether it is open, so
+   * hosts that make room for it can measure it.
+   */
+  menuRef?: RefObject<HTMLElement | null>;
+  menuOpen?: boolean;
+}
+
+/** The thread a bb thread link names, before it is resolved. */
+export interface ExperimentalComposerThreadLinkTarget {
+  threadId: string;
+  projectId: string;
+}
+
+/** A thread a pasted bb thread link resolved to. */
+export interface ExperimentalComposerThreadLink extends ExperimentalComposerThreadLinkTarget {
+  label: string;
+}
+
+/** A thread an app drag dropped onto the composer. */
+export interface ExperimentalDroppedThreadMention {
+  threadId: string;
+  label: string;
+}
+
+/** A keyboard shortcut formatted for display. */
+export interface ExperimentalShortcutPresentation {
+  ariaKeyshortcuts: string;
+  label: string;
+}
+
+/** A bb message copied to the clipboard, read back on paste. */
+export interface ExperimentalMessageClipboardPayload {
+  text: string;
+  imageUrl: string;
+}
+
+/** bb thread links in the composer, from `experimental_useComposerRenderer().threadLinks`. */
+export interface ExperimentalComposerThreadLinks {
+  /**
+   * The thread `url` links to when it is a thread link of this bb, or null.
+   * `projectId` is the project the link names, or the personal project for
+   * a link without one; a thread outside that project is not this link.
+   */
+  parse(url: string): ExperimentalComposerThreadLinkTarget | null;
+  /** A linked thread from bb's caches, without a request. */
+  cached(threadId: string): ExperimentalComposerThreadLink | null;
+  /**
+   * Fetch linked threads in batches, calling `onBatch` as each batch lands
+   * so a deadline can keep the batches that finished. Threads that do not
+   * exist are left out. Resolves once every batch has settled.
+   */
+  resolve(
+    threadIds: readonly string[],
+    signal: AbortSignal,
+    onBatch: (threads: readonly ExperimentalComposerThreadLink[]) => void,
+  ): Promise<void>;
+}
+
+/** bb messages copied to the clipboard, from `experimental_useComposerRenderer().clipboard`. */
+export interface ExperimentalComposerClipboard {
+  /** Read a bb message copied as HTML, or null. */
+  readMessage(html: string): ExperimentalMessageClipboardPayload | null;
+  /** Fetch a copied bb message's image as a file; rejects when it is unavailable. */
+  readMessageImage(imageUrl: string, signal: AbortSignal): Promise<File>;
+}
+
+/**
+ * Inputs, host state and host services for one composer box. Only available
+ * inside an `experimental_composer` component; it throws elsewhere.
+ */
+export interface ExperimentalComposerRendererApi {
+  readonly input: ExperimentalComposerInput;
+  /** A plugin locked editing through `useComposer().setInputLock(true)`. */
+  readonly inputLocked: boolean;
+  /** The shortcut of bb's "Focus composer" command, or null when unbound. */
+  readonly focusComposerShortcut: ExperimentalShortcutPresentation | null;
+  /**
+   * Every highlight rule to paint over the draft, in paint order. The host
+   * runs other plugins' draft observers itself.
+   */
+  readonly decorationSources: readonly ExperimentalComposerDecorationSource[];
+  readonly threadLinks: ExperimentalComposerThreadLinks;
+  readonly clipboard: ExperimentalComposerClipboard;
+  /**
+   * Run bb's app keyboard command for `event`, if any; returns whether one
+   * ran. Call it from the editor's key handler before handling the key
+   * itself, skipping IME composition: editors swallow keys before bb's
+   * window-level shortcuts see them.
+   */
+  dispatchAppCommandKey(event: KeyboardEvent): boolean;
+  /** Show an error toast. */
+  showError(message: string): void;
+  /**
+   * Image URL for an attachment: the local preview while it is still
+   * uploading, else the uploaded file, resolved through the project when
+   * given. bb releases local previews when attachments leave the draft.
+   */
+  attachmentSrc(path: string, projectId?: string): string;
+}
+
+/**
+ * Other plugins' contributions to this composer, from
+ * `experimental_useComposerContributions()`, with a host renderer for each
+ * kind. Surfaces that hide plugin customizations return no popups, send
+ * menu items or actions.
+ */
+export interface ExperimentalComposerContributions {
+  /** Popups other plugins open with `useComposer().openPopup`; render the open one with `Popup`. */
+  readonly popups: readonly ExperimentalComposerPopupContribution[];
+  /** Render each with `MenuEntry` and `kind: "plus"`. */
+  readonly plusMenuItems: readonly ExperimentalComposerPlusMenuContribution[];
+  /** Render each with `MenuEntry` and `kind: "send"`. */
+  readonly sendMenuItems: readonly ExperimentalComposerSendMenuContribution[];
+  /** Other plugins' inline actions, for the composer's action row. */
+  readonly Actions: ComponentType;
+  readonly Popup: ComponentType<ExperimentalComposerPopupProps>;
+  readonly MenuEntry: ComponentType<ExperimentalComposerMenuEntryProps>;
+}
+
+/** Props of `ExperimentalComposerContributions.Popup`. */
+export interface ExperimentalComposerPopupProps {
+  contribution: ExperimentalComposerPopupContribution;
+  onClose(): void;
+}
+
+/** What a selected `+` or send menu entry hands back to the menu. */
+export interface ExperimentalComposerMenuSelection {
+  restoreComposerFocus(): void;
+  selectedElement: Element | null;
+}
+
+/** Props of `ExperimentalComposerContributions.MenuEntry`. */
+export type ExperimentalComposerMenuEntryProps =
+  | {
+      kind: "plus";
+      contribution: ExperimentalComposerPlusMenuContribution;
+      onSelected?(selection: ExperimentalComposerMenuSelection): void;
+    }
+  | {
+      kind: "send";
+      contribution: ExperimentalComposerSendMenuContribution;
+      onSelected?(selection: ExperimentalComposerMenuSelection): void;
+    };
+
+/** Props of `experimental_VoiceInputButton`: bb's button with a microphone warning tooltip. */
+export interface ExperimentalVoiceInputButtonProps extends ComponentPropsWithRef<"button"> {
+  warning: string | null;
+  variant?:
+    | "default"
+    | "destructive"
+    | "outline"
+    | "secondary"
+    | "ghost"
+    | "link";
+  size?: "default" | "sm" | "lg" | "icon";
+  "data-promptbox-expanded-only"?: string;
+  "data-promptbox-submit-action"?: string;
+}
+
+/** Props of `experimental_VoiceRecordingBar`. */
+export interface ExperimentalVoiceRecordingBarProps {
+  isCompact: boolean;
+  state: "recording" | "transcribing";
+  delivery: ExperimentalVoiceDelivery;
+  stream: MediaStream | null;
+  microphoneWarning: string | null;
+  submitIcon: BbIconName;
+  onConfirm(): void;
+  onSend(): void;
+  onCancel(): void;
+}
+
+/** Props of `experimental_FailedVoiceRecordings`. */
+export interface ExperimentalFailedVoiceRecordingsProps {
+  recordings: readonly ExperimentalFailedVoiceRecording[];
+  className: string;
+  retryDisabled: boolean;
+  onRetry(recording: ExperimentalFailedVoiceRecording): void;
+  onDownload(recording: ExperimentalFailedVoiceRecording): void;
+  onDiscard(recording: ExperimentalFailedVoiceRecording): void;
+}
+
+/** Props of `experimental_ShortcutHint`. */
+export interface ExperimentalShortcutHintProps {
+  shortcut: ExperimentalShortcutPresentation | null;
+  className?: string;
+}
+
+/** Props of `experimental_ImageLightbox`. */
+export interface ExperimentalImageLightboxProps {
+  hasMultipleImages?: boolean;
+  previousDisabled?: boolean;
+  nextDisabled?: boolean;
+  navigationStatus?: string;
+  mediaType?: "image" | "video";
+  imageAlt: string;
+  imageSrc: string | null;
+  isOpen?: boolean;
+  onClose(): void;
+  onNext?(): void;
+  onPrevious?(): void;
+  title: string;
+}
+
+/** How bb draws an @-mention pill, from `experimental_describePromptMention`. */
+export interface ExperimentalPromptMentionPresentation {
+  /** bb's pill classes; add your own after them. */
+  className: string;
+  /** The pill's tooltip, such as `src/app.ts` or `/review <files>`. */
+  title: string;
+  /** The pill as text, naming its kind: `Thread: Fix login`. */
+  text: string;
+}
+
+/** A pill read back from pasted HTML by `experimental_readPromptMentionClipboard`. */
+export interface ExperimentalPromptMentionClipboardPill {
+  mention: ExperimentalComposerMentionTarget;
+  /** The draft text the pill covers, such as `@src/app.ts`. */
+  text: string;
+}
+
+/** Props of `experimental_PromptMentionIcon`. */
+export interface ExperimentalPromptMentionIconProps {
+  mention: ExperimentalComposerMentionTarget;
+  className?: string;
+}
+
+/** Props of `experimental_PluginIcon`: a plugin's branding icon. */
+export interface ExperimentalPluginIconProps {
+  pluginId: string;
+  icon: string | null;
+  className?: string;
+}
+
+/** Props of `experimental_ThreadTitleText`: a raw thread title with its @-mentions resolved. */
+export interface ExperimentalThreadTitleTextProps {
+  title: string;
+  className?: string;
+}
+
+/**
  * Register a leaf message directive rendered inside assistant (and nested
  * agent) message Markdown. `id` is the directive name: `inline-vis` matches
  * `::inline-vis{file="demo.html"}`.
@@ -2258,15 +3380,40 @@ export interface ThreadChatMessageReference {
   experimental_messageSeq: number;
 }
 
+/** Stable identity and creation time of one rendered conversation message. */
+export type ExperimentalMessageMetadataContext = Pick<
+  ThreadChatMessageReference,
+  "id" | "threadId"
+> & {
+  /** Unix time in milliseconds, supplied by BB's timeline. */
+  createdAt: number;
+  /** The containing turn, or null for a message outside a turn. */
+  turnId: string | null;
+} & (
+    | { role: "user"; initiator: "user" | "agent" | "system" }
+    | { role: "assistant" }
+  );
+
+/** Props for a metadata component mounted only beside realized messages. */
+export interface ExperimentalMessageMetadataProps {
+  message: ExperimentalMessageMetadataContext;
+}
+
 /**
- * What a caller that is *not* itself a panel action passes to open one — a
- * `messageAction`'s `run`, or any component via `useBbNavigate()`. A panel
- * action opening its own tab is already the target, so it passes the bare
- * {@link PluginPanelActionOpenOptions} instead.
+ * Where message metadata renders. `"above"` sits over the message, aligned to
+ * its side. `"actionRow"` sits in the message's action row and shows and hides
+ * with the actions, before them on user messages and after the overflow menu
+ * on assistant messages. It extends into the space beside the message rather
+ * than narrowing the actions.
  */
-export interface PluginTargetedPanelActionOpenOptions extends PluginPanelActionOpenOptions {
-  /** A `threadPanelAction` id registered by this same plugin. */
-  actionId: string;
+export type ExperimentalMessageMetadataPlacement = "above" | "actionRow";
+
+/** A React contribution beside a conversation message. */
+export interface ExperimentalMessageMetadataRegistration {
+  id: string;
+  /** Omitted means above. */
+  placement?: ExperimentalMessageMetadataPlacement;
+  component: ComponentType<ExperimentalMessageMetadataProps>;
 }
 
 /** Context handed to a `messageAction`'s `run`. */
@@ -2279,18 +3426,8 @@ export interface PluginMessageActionContext {
    * the exact text the user highlighted inside `message`.
    */
   selectedText?: string;
-  /**
-   * Open one of this plugin's `threadPanelAction` components in the current
-   * thread's side panel — the registration-callback equivalent of
-   * `useBbNavigate().openThreadPanel`.
-   *
-   * Returns true when the host accepted the open; false when it declined —
-   * `params` was not a JSON value, the action id names no `threadPanelAction`
-   * of this plugin, or the surface has no side panel (only the main thread
-   * view does; a `ThreadChat` embedded in a plugin panel does not). A decline
-   * is never thrown: the host logs it and reports it here.
-   */
-  openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  /** The side panel of the thread view whose timeline surfaced the action. */
+  experimental_panel: ExperimentalPanelController;
   /**
    * The composer of the thread the message is in, or null when that thread's
    * composer is not available on this surface. The same handle
@@ -2326,17 +3463,15 @@ export interface PluginCommandContext {
   threadId: string | null;
   projectId: string | null;
   /**
-   * Open one of this plugin's panel components in the focused side panel.
-   * In a thread, `actionId` resolves against `threadPanelAction`; on the New
-   * thread screen, it resolves against `experimental_newThreadPanelAction`.
-   * Register both slots with the same id to support commands on both screens.
-   *
-   * Returns true when the host accepted the open; false when it declined —
-   * `params` was not a JSON value, the action id names no matching panel action
-   * of this plugin on the focused surface, or the surface has no side panel.
-   * The palette opens anywhere, so guard with `isAvailable` rather than assuming.
+   * The focused surface's side panel: the thread view or New thread screen
+   * in focus, or the focused plugin page. On the New thread screen, a
+   * `{ context: { kind: "thread" }, availability: "action" }` tab resolves
+   * against `experimental_newThreadPanelAction` with the same id, so register
+   * both slots with the same id to support commands on both screens. Calls
+   * return false when the focused surface has no such tab or no side panel;
+   * guard with `isAvailable` rather than assuming.
    */
-  openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  experimental_panel: ExperimentalPanelController;
 }
 
 /** A default keyboard shortcut. Omitted modifiers are false. */
@@ -2602,16 +3737,14 @@ export interface PluginAppSlots {
     registration: ExperimentalAppOverlayRegistration,
   ): void;
   navPanel(registration: PluginNavPanelRegistration): void;
-  /**
-   * Add an action to an existing thread's panel launcher. This slot is
-   * thread-only; use `experimental_newThreadPanelAction` for root compose.
-   */
-  threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
-  /**
-   * Add an action to the root New thread screen's panel launcher (see
-   * {@link PluginNewThreadPanelActionRegistration}). Experimental: see
-   * docs/api_to_audit.md.
-   */
+  /** Register a context-scoped tab. Experimental: see docs/api_to_audit.md. */
+  experimental_tab<
+    C extends ExperimentalTabContext,
+    A extends "fixed" | "action",
+  >(
+    registration: ExperimentalTabInput<C, A>,
+  ): void;
+  experimental_tab(registration: ExperimentalTabRegistration): void;
   experimental_newThreadPanelAction(
     registration: PluginNewThreadPanelActionRegistration,
   ): void;
@@ -2634,12 +3767,53 @@ export interface PluginAppSlots {
     registration: ExperimentalSidebarNavigationRegistration,
   ): void;
   /**
-   * Render a component in the thread header's action row (see
-   * {@link PluginThreadHeaderActionRegistration}). Experimental: see
+   * Add context beside an existing thread's composer (see
+   * {@link ExperimentalThreadContextSegmentRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
-  experimental_threadHeaderAction(
-    registration: PluginThreadHeaderActionRegistration,
+  experimental_threadContextSegment(
+    registration: ExperimentalThreadContextSegmentRegistration,
+  ): void;
+  /**
+   * Add a small item to the metadata line of every thread row in thread
+   * lists (see
+   * {@link ExperimentalThreadRowMetadataRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadRowMetadata<Data = undefined>(
+    registration: ExperimentalThreadRowMetadataRegistration<Data>,
+  ): void;
+  /**
+   * Add a row to the thread Info tab's details block (see
+   * {@link ExperimentalThreadInfoRowRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadInfoRow(
+    registration: ExperimentalThreadInfoRowRegistration,
+  ): void;
+  /**
+   * Add a section to the thread Info tab (see
+   * {@link ExperimentalThreadInfoSectionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadInfoSection(
+    registration: ExperimentalThreadInfoSectionRegistration,
+  ): void;
+  /**
+   * Add a row to the thread context card of every thread pane (see
+   * {@link ExperimentalThreadContextCardRowRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadContextCardRow(
+    registration: ExperimentalThreadContextCardRowRegistration,
+  ): void;
+  /**
+   * Add a titled section to the thread context card of every thread pane (see
+   * {@link ExperimentalThreadContextCardSectionRegistration}). Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_threadContextCardSection(
+    registration: ExperimentalThreadContextCardSectionRegistration,
   ): void;
   /**
    * Add an action to every thread actions menu (see
@@ -2668,6 +3842,12 @@ export interface PluginAppSlots {
    * docs/api_to_audit.md.
    */
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
+  /**
+   * Replace the input box of bb's thread composer (see
+   * {@link ExperimentalComposerRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_composer(registration: ExperimentalComposerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   /**
    * Render fenced code blocks of chosen languages in assistant messages (see
@@ -2678,6 +3858,10 @@ export interface PluginAppSlots {
     registration: ExperimentalCodeFenceRendererRegistration,
   ): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /** Register React message metadata. Experimental: see docs/api_to_audit.md. */
+  experimental_messageMetadata(
+    registration: ExperimentalMessageMetadataRegistration,
+  ): void;
   /**
    * @deprecated Use `app.commands.register` with the same registration.
    * Both entry points share the same command registry and ID namespace.
@@ -3104,6 +4288,13 @@ export type ComposerInsertPart =
   | ComposerMention
   | PluginComposerMention;
 
+/** What an @-mention pill points at: a {@link ComposerMention} without its place in the text. */
+export type ExperimentalComposerMentionTarget = ComposerMention extends infer M
+  ? M extends ComposerMention
+    ? Omit<M, "from" | "to">
+    : never
+  : never;
+
 /** Where `insert` puts its content. */
 export interface ComposerInsertOptions {
   /**
@@ -3287,29 +4478,41 @@ export interface PluginComposerApi {
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
   /**
-   * Submit this composer's draft exactly as pressing Enter would: the same
-   * checks and the same action (send, or queue while the thread is busy; a
-   * provider handoff creates a new thread). The draft's attachments and
+   * Submit this composer's draft through the composer's own send and steer
+   * handlers, the ones Enter and modifier+Enter run, including a
+   * provider handoff that creates a new thread. The draft's attachments and
    * @-mentions, and — in the new-thread composer — the provider, model,
    * reasoning level, service tier, permission mode and environment the user
    * has selected on screen, all travel with it.
    *
-   * While attachments are uploading it waits for them, then checks again; it
-   * rejects if an upload fails. Otherwise, when submitting is blocked it
-   * rejects with `submittingBlockedReason`, a message safe to show to the
-   * user. The queued-message and sent-message editors save edits and reject.
+   * It submits only the draft, so it rejects an empty one, even where the
+   * shortcut would steer the next queued message instead. Otherwise it runs
+   * only when the matching shortcut would. While attachments are uploading it
+   * waits for them, then checks again; it rejects if an upload fails. When
+   * the shortcut could not submit, it rejects with the reason, a message safe
+   * to show to the user. The composer must be on screen. The queued-message
+   * and sent-message editors reject.
    *
-   * `sendAt` queues the submission until that time. `experimental_data` is
-   * opaque JSON delivered to dispatch hooks together with the calling plugin's
-   * id on this initial attempt. Hooks run before operational core waits. If a
-   * hook queues the message, its existing plugin wait identifies the owner on
-   * later attempts; core does not persist or interpret the opaque data.
+   * Every option combines with the others. `experimental_mode` uses the
+   * names `bb.sdk.threads.send` uses. Without it, submit does what Enter
+   * does for this user, which may be to queue or to steer.
+   * `"queue-if-active"` queues behind the running turn, or starts a turn.
+   * `"steer-if-active"` adds the message to the running turn. Where nothing
+   * can be steered, such as on an idle thread, it starts a turn.
+   * `sendAt` makes the chosen action wait until the given time; a scheduled
+   * steer steers whatever turn is running then. `experimental_data` is
+   * opaque JSON delivered to dispatch hooks together with the calling
+   * plugin's id on this initial attempt. Hooks run before operational core
+   * waits. If a hook queues the message, its existing plugin wait identifies
+   * the owner on later attempts; core does not persist or interpret the
+   * opaque data.
    *
-   * Resolves once the host has accepted the submission and cleared the draft.
-   * Failures of the underlying request are reported by bb's own submit error
-   * handling and restore the draft, exactly as an interactive failure does.
+   * Resolves once the composer has accepted the submission and cleared the
+   * draft. Failures of the underlying request show bb's usual error toast
+   * and restore the draft, exactly as an interactive failure does, and then
+   * reject with the toast's message.
    */
-  submit(options: ComposerSubmitOptions): Promise<void>;
+  submit(options?: ComposerSubmitOptions): Promise<void>;
   /**
    * Set this composer's pickers as if each value had been picked by hand.
    *
@@ -3400,16 +4603,22 @@ export interface ComposerSelection {
   permissionMode?: PermissionMode;
 }
 
-/**
- * What `submit` does differently from pressing Enter.
- *
- * `experimental_data` is opaque JSON delivered to dispatch hooks. The runtime
- * associates it with the calling plugin automatically for the initial
- * dispatch attempt.
- */
-export type ComposerSubmitOptions =
-  | { sendAt: number; experimental_data?: JsonValue }
-  | { experimental_data: JsonValue; sendAt?: never };
+/** What `submit` adds to pressing Enter. Every field combines with the others. */
+export interface ComposerSubmitOptions {
+  /**
+   * `"queue-if-active"` queues behind the running turn and
+   * `"steer-if-active"` adds to it; both start a turn when none is running.
+   * Omitted, it does what Enter does for this user.
+   */
+  experimental_mode?: "queue-if-active" | "steer-if-active";
+  /** Epoch ms in the future; the action waits until then. */
+  sendAt?: number;
+  /**
+   * Opaque JSON delivered to dispatch hooks with the calling plugin's id on
+   * the initial dispatch attempt.
+   */
+  experimental_data?: JsonValue;
+}
 
 /** @internal Old name of {@link ComposerSelection}. */
 export type ExperimentalComposerSelection = ComposerSelection;
@@ -3817,7 +5026,18 @@ export interface UrlLinkProps extends Omit<
 
 /** A live file whose identity is complete without ambient route context. */
 export type ExperimentalLiveFileTarget =
-  | { kind: "workspace"; environmentId: string; path: string }
+  | {
+      kind: "workspace";
+      environmentId: string;
+      path: string;
+      /**
+       * Git revision to read instead of the working copy: `"HEAD"` or a 4–40
+       * character commit SHA; other values make the target invalid. Previews
+       * open read-only and are labelled with the ref; external opens ignore it
+       * and open the working copy.
+       */
+      experimental_ref?: string;
+    }
   | { kind: "host"; hostId: string; path: string }
   | { kind: "thread-storage"; threadId: string; path: string };
 
@@ -3845,9 +5065,6 @@ export interface ExperimentalFileLinkProps extends Omit<
   location?: ExperimentalFileLocation | null;
 }
 
-/** The panel surface resolved by the component making the request. */
-export type ExperimentalAppPanelSurface = { kind: "current" };
-
 /**
  * The owning fixed tab's current memory-only target. It survives tab, panel,
  * and route remounts during the current app session, but is never persisted
@@ -3859,18 +5076,118 @@ export interface ExperimentalFixedTabTargetState<Target extends JsonValue> {
   clear(): void;
 }
 
-export type ExperimentalOpenFixedTabOptions<Target extends JsonValue> = {
-  surface: ExperimentalAppPanelSurface;
-  tab: ExperimentalPluginFixedTabReference<Target>;
-  /** Omit to select the tab without replacing its current session target. */
-  target?: NoInfer<Target>;
-};
+/** A fixed tab with an owner-validated target. */
+export type ExperimentalTabTargetReference<Target extends JsonValue> =
+  ExperimentalTabReference & {
+    availability: "fixed";
+    experimental_target: ExperimentalFixedTabTargetContract<Target>;
+  };
 
-/** Surface-aware controller for selecting owner-scoped fixed tabs. */
-export interface ExperimentalAppPanel {
-  openFixedTab<Target extends JsonValue = never>(
-    options: ExperimentalOpenFixedTabOptions<Target>,
-  ): boolean;
+/**
+ * A registered tab of the calling plugin to open on the current surface.
+ * Fixed tabs accept a session-only `target`, validated by the tab's
+ * `experimental_target`. Action tabs accept persisted `params`, which
+ * identify the instance (opening with the same params focuses the existing
+ * tab), and a `title`.
+ */
+export type ExperimentalOpenTabOptions =
+  | {
+      tab: ExperimentalTabReference & { availability: "fixed" };
+      target?: JsonValue;
+      params?: never;
+      title?: never;
+    }
+  | {
+      tab: ExperimentalTabReference & { availability: "action" };
+      params?: JsonValue;
+      title?: string;
+      target?: never;
+    };
+
+/**
+ * The side panel of one surface: a thread view, a plugin page, or the New
+ * thread screen. Every call returns true when the host accepted it and false
+ * when it declined: the surface has no side panel, the tab is not registered
+ * by this plugin for this surface or is hidden, or `target`/`params` is not
+ * a JSON value or fails the tab's validator. A decline is never thrown.
+ */
+export interface ExperimentalPanelController {
+  /** Select the tab and reveal the side panel. */
+  openTab(options: ExperimentalOpenTabOptions): boolean;
+  /**
+   * The tabs open in this controller's side panel right now, the list
+   * `experimental_usePanelTabs()` follows: for commands and other code that is
+   * not a component. Closed and empty without a side panel.
+   */
+  getTabs(): ExperimentalPanelTabs;
+  /**
+   * Select any open tab, bb's or a plugin's, by its
+   * {@link ExperimentalPanelTab.key} and reveal the side panel; false for a
+   * key that is not open.
+   */
+  selectTab(key: string): boolean;
+  /**
+   * Close any open tab by its key, as its close button does; false for a key
+   * that is not open or a tab that cannot be closed. Closing a terminal's tab
+   * ends the terminal.
+   */
+  closeTab(key: string): boolean;
+  /**
+   * Close the side panel if this tab is showing — a fixed tab selected with
+   * the panel open (`target` is ignored), or the action tab instance with the
+   * same `params` selected — otherwise `openTab(options)`.
+   */
+  toggleTab(options: ExperimentalOpenTabOptions): boolean;
+  /** Close the side panel. */
+  close(): boolean;
+}
+
+/** What an open side panel tab shows. */
+export type ExperimentalPanelTabDetail =
+  | { kind: "info" }
+  | { kind: "file"; path: string }
+  | { kind: "browser"; url: string }
+  | { kind: "terminal"; terminalId: string }
+  | { kind: "new-tab" }
+  | {
+      kind: "plugin";
+      pluginId: string;
+      tab: ExperimentalTabReference;
+      /** The action tab's params; null for fixed tabs and action tabs without. */
+      params: JsonValue | null;
+    }
+  | { kind: "plugin-details"; pluginId: string };
+
+/** One tab open in a surface's side panel. */
+export interface ExperimentalPanelTab {
+  /**
+   * Identifies the tab while it stays open; pass it to `selectTab`,
+   * `closeTab`, or `experimental_PanelTabIcon`. Do not store it: a reopened
+   * tab may get another key.
+   */
+  key: string;
+  /** The label bb's tab strip shows. */
+  title: string;
+  /** The strip's secondary label, such as a terminal's exit status. */
+  status: string | null;
+  /** False for tabs without a close button, such as Info and fixed tabs. */
+  closable: boolean;
+  detail: ExperimentalPanelTabDetail;
+}
+
+/** The tabs of one surface's side panel, in the order bb's tab strip shows them. */
+export interface ExperimentalPanelTabs {
+  /** Whether the side panel is showing. */
+  open: boolean;
+  /** The selected tab's key, or null when none is selected. */
+  selectedKey: string | null;
+  tabs: readonly ExperimentalPanelTab[];
+}
+
+/** Props of `experimental_PanelTabIcon`. */
+export interface ExperimentalPanelTabIconProps {
+  /** An {@link ExperimentalPanelTab.key}; renders nothing for a closed tab. */
+  tabKey: string;
 }
 
 /** Current app selection, derived from the route. */
@@ -3890,8 +5207,9 @@ export interface BbNavigate {
   toProject(projectId: string): void;
   /**
    * Navigate to one of this plugin's own nav panels by its `path`.
-   * `subPath` targets a location inside the panel (the component's
-   * `subPath` prop); `replace` swaps the current history entry instead of
+   * `subPath` targets a location inside the panel as unencoded
+   * `/`-separated segments; the component's `subPath` prop receives them
+   * percent-encoded. `replace` swaps the current history entry instead of
    * pushing — use it for redirects so back does not bounce.
    */
   toPluginPanel(
@@ -3918,16 +5236,10 @@ export interface BbNavigate {
     hostId?: string;
   }): void;
   /**
-   * Open one of this plugin's registered panel actions in the current
-   * surface's side panel: a `threadPanelAction` in a thread, or an
-   * `experimental_newThreadPanelAction` on the New thread screen. Plugin
-   * commands and thread actions use the focused thread view's opener. Returns false when the surface has no side
-   * panel actions (plugin pages) or the action is unavailable.
-   */
-  openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
-  /**
-   * Open an HTTP(S) URL using this client's BB browser preference. Returns
-   * false for schemes the host does not own. Experimental: see
+   * Open an HTTP(S) URL using this client's BB browser preference, or request
+   * an application link on this device with confirmation unless its scheme is approved when
+   * the applicationLinks experiment is enabled. Returns false
+   * for blocked or unsupported schemes. True means handled, not launched. See
    * docs/api_to_audit.md.
    */
   openUrl(url: string): boolean;
@@ -3985,14 +5297,22 @@ export interface ExperimentalRpcQueryState<T> {
   isLoading: boolean;
   /** A read attempt is active, including background refreshes. Keyed consumers share this activity for their method; offline-paused reads are not fetching. */
   isFetching: boolean;
-  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh the method's subscribed keys. Failures update error and retain data; this promise resolves rather than rejecting. */
+  /** Force a read regardless of freshness and wait for its attempt/retries. Keyed reads refresh only this hook's keys, batched with other hooks refreshing in the same render. Failures update error and retain data; this promise resolves rather than rejecting. */
   refetch(): Promise<void>;
 }
 
 export interface ExperimentalRpcKeyedQueryState<
   T,
   Selection = Record<string, T>,
-> extends ExperimentalRpcQueryState<Selection> {}
+> extends ExperimentalRpcQueryState<Selection> {
+  /**
+   * Read these keys again and keep every other loaded row, for retrying one
+   * failed row without refreshing the rest. Keys must be among this query's
+   * keys; others are ignored. Resolves once the read settles; failures update
+   * `error` and retain data.
+   */
+  refetchKeys(keys: readonly string[]): Promise<void>;
+}
 
 export interface ExperimentalRpcQueryOptions<
   Contract extends PluginRpcContract,
@@ -4054,10 +5374,10 @@ export interface ExperimentalRpcMutationOptions<
 }
 
 /**
- * One mutation hook's state. `mutate` calls the RPC, invalidates the
- * response's `invalidated` tags on this client immediately, and resolves when
- * the server acknowledges the write. Matched reads refresh in the background. `error` holds the last failure
- * until the next `mutate` or `reset`.
+ * One mutation hook's state. `mutate` calls the RPC and resolves when the
+ * server acknowledges the write. Reads refresh in the background when the
+ * server marks their tags stale with `bb.rpc.experimental_invalidate`.
+ * `error` holds the last failure until the next `mutate` or `reset`.
  */
 export interface ExperimentalRpcMutationState<
   Method extends PluginRpcMethodContract,
@@ -4072,11 +5392,43 @@ export interface ExperimentalRpcMutationState<
 }
 
 /**
+ * A bb server this client can switch to (see
+ * {@link PluginSdkApp.experimental_useServers}).
+ */
+export interface ExperimentalServer {
+  /** Stable while the user keeps the server. Editing a custom server's URL gives it a new id. */
+  id: string;
+  name: string;
+  /** Scheme, host and port only, never login details or a path. */
+  origin: string;
+  /** `local` is bb Desktop's built-in server, `account` comes from the user's bb account, and `custom` is an address the user added. */
+  kind: "local" | "account" | "custom";
+  /** True for the server this page is loaded from. */
+  active: boolean;
+}
+
+/** The viewing client's servers (see {@link PluginSdkApp.experimental_useServers}). */
+export interface ExperimentalServers {
+  /** `loading` until bb Desktop answers, briefly after the page loads. The mobile app's list is ready at once. */
+  status: "loading" | "ready";
+  /** In the client's own order; empty while loading. Changes as the user adds, renames or removes servers. */
+  servers: readonly ExperimentalServer[];
+  /** Switch this client to the server and reload the page on it, unloading every plugin. Ignores the active server and unknown ids. */
+  switchTo(id: string): void;
+}
+
+/**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  /** List URL schemes approved for this BB site in the viewing client's localStorage. Core Settings uses the same implementation. */
+  experimental_getApplicationLinkApprovals(): Promise<string[]>;
+  /** Revoke one scheme, or all with null, for this BB site on this client. Does not grant permission. */
+  experimental_revokeApplicationLinkApproval(
+    scheme: string | null,
+  ): Promise<string[]>;
   experimental_PluginRpcCallError: typeof experimental_PluginRpcCallError;
   experimental_useRpcRefresh(): { refresh(): void; isRefreshing: boolean };
   /** Read tagged plugin data through BB's shared query cache and realtime lifecycle. */
@@ -4093,7 +5445,7 @@ export interface PluginSdkApp {
   >(
     options: ExperimentalRpcMutationOptions<Contract, Method>,
   ): ExperimentalRpcMutationState<Contract[Method]>;
-  /** Cache each key independently and batch missing or invalidated keys in the same render. */
+  /** Cache each key independently and batch missing or invalidated keys in the same render. Each key is watched once while the hook holds it, so a changing key list subscribes only added keys and releases only removed ones. */
   experimental_useRpcKeyedQuery<
     Contract extends PluginRpcContract,
     Method extends ExperimentalRpcKeyedMethod<Contract>,
@@ -4135,6 +5487,22 @@ export interface PluginSdkApp {
    */
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
+  /**
+   * Whether the bb experiment `key` is on (Settings → Experiments,
+   * `bb settings experiment <key>`), following live changes. False while the
+   * app config loads and for keys this bb does not know. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useExperiment(key: string): boolean;
+  /**
+   * How the thread pane the calling component renders in shows its thread
+   * context (see {@link ExperimentalThreadContextKind}); `banner` outside a
+   * thread pane. A context segment whose content is also a thread context card
+   * row or section hides itself in `useVisible` while this is `card`; other
+   * segments keep showing above the composer.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadContextKind(): ExperimentalThreadContextKind;
   useBbContext(): BbContext;
   /**
    * The id of the plugin that owns the calling component: the same id
@@ -4153,11 +5521,48 @@ export interface PluginSdkApp {
    */
   experimental_useQuestionFormHost(): ExperimentalQuestionFormHost;
   useBbNavigate(): BbNavigate;
-  /** Select one of this plugin's eligible fixed tabs on the current surface. */
-  experimental_useAppPanel(): ExperimentalAppPanel;
+  /**
+   * Whether `useBbNavigate().experimental_openFileExternally` can open this
+   * target now: it resolves to a path on its host (a ready environment, a
+   * host, or thread storage) and this client has an external file target for
+   * that host. False while either is loading; the component re-renders when
+   * the answer changes. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useCanOpenFileExternally(
+    target: ExperimentalLiveFileTarget,
+  ): boolean;
+  /**
+   * Whether the panel tab this component renders in is showing: it is the
+   * selected tab of its pane and the side panel is open. False while the panel
+   * is closed or suppressed, while another tab is selected, and outside a
+   * panel tab. bb keeps a closed panel's tab mounted, so pause reads that only
+   * feed what the tab draws while this is false. Works in fixed and action
+   * tabs. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useTabVisible(): boolean;
+  /**
+   * The servers this client can switch between, the list bb's command palette
+   * offers. Null when the client keeps no server list: any web browser.
+   */
+  experimental_useServers(): ExperimentalServers | null;
+  /**
+   * The side panel of the surface the calling component renders in: the
+   * thread view, the plugin page, or the New thread screen.
+   */
+  experimental_useAppPanel(): ExperimentalPanelController;
+  /**
+   * The tabs open in the side panel of the surface the calling component
+   * renders in, following live changes: the same list bb's tab strip shows.
+   * Closed and empty on a surface without a side panel. Act on a tab with
+   * `experimental_useAppPanel().selectTab` or `closeTab`. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_usePanelTabs(): ExperimentalPanelTabs;
   /** Read or clear the owning tab's validated, session-scoped target. */
   experimental_useFixedTabTarget<Target extends JsonValue>(
-    tab: ExperimentalPluginFixedTabReference<Target>,
+    tab:
+      | ExperimentalTabTargetReference<Target>
+      | ExperimentalPluginFixedTabReference<Target>,
   ): ExperimentalFixedTabTargetState<Target> | null;
   useComposer(): PluginComposerApi;
   /**
@@ -4214,7 +5619,7 @@ export interface PluginSdkApp {
     environmentId: string,
   ) => Promise<void>;
   /**
-   * Every thread action for one thread, in menu order (see
+   * Every `"menu"` thread action for one thread, in menu order (see
    * {@link PluginThreadAction} for grouping): bb's own registrations first,
    * then plugins' in registration order. Registrations' `useData` hooks run
    * once for the app, so calling this per sidebar row costs one store
@@ -4226,8 +5631,9 @@ export interface PluginSdkApp {
     options?: PluginThreadActionsOptions,
   ): readonly PluginThreadActionEntry[];
   /**
-   * Every registered thread action with its static title and icon, in menu
-   * order and independent of any thread: what a quick-action picker lists.
+   * Every registered `"menu"` thread action with its static title and icon,
+   * in menu order and independent of any thread: what a quick-action picker
+   * lists.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[];
@@ -4258,19 +5664,41 @@ export interface PluginSdkApp {
     readonly lifecycle: "4_lifecycle";
   };
   /**
-   * The pull request for one thread's branch (see
-   * {@link PluginSidebarThreadPullRequestState}).
-   *
-   * Per row and opt-in, because it costs a git-host lookup: it is NOT on the
-   * thread payload every sidebar loads. Threads sharing an environment share
-   * one query, and the host owns the polling and staleness rules — an open PR
-   * with pending checks refreshes, a merged one does not.
-   *
+   * bb's thread context segment groups, for an
+   * `experimental_threadContextSegment` that joins one: `thread` (Parent
+   * thread) and `git` (Changed files). A plugin names its own
+   * group to sort between them, such as `"2_pullRequest"`. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS: {
+    readonly thread: "1_thread";
+    readonly git: "3_git";
+  };
+  /**
+   * bb's thread Info row groups, for an `experimental_threadInfoRow` that
+   * joins one: `thread` (Parent, Notify parent, Project), `environment`
+   * (Environment, Machine, provisioning failure, Directory), `git` (Branch,
+   * Merge base, Git status), `pullRequest`, and `lifecycle` (Archived).
    * Experimental: see docs/api_to_audit.md.
    */
-  experimental_useSidebarThreadPullRequest(
-    threadId: string,
-  ): PluginSidebarThreadPullRequestState;
+  experimental_THREAD_INFO_ROW_GROUPS: {
+    readonly thread: "1_thread";
+    readonly environment: "2_environment";
+    readonly git: "3_git";
+    readonly pullRequest: "4_pullRequest";
+    readonly lifecycle: "5_lifecycle";
+  };
+  /**
+   * bb's thread Info section groups, for an `experimental_threadInfoSection`
+   * that joins one: `related` (Child threads, Forks), `changes` (Commits,
+   * Uncommitted files), and `storage` (Thread storage). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_THREAD_INFO_SECTION_GROUPS: {
+    readonly related: "1_related";
+    readonly changes: "2_changes";
+    readonly storage: "3_storage";
+  };
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.
@@ -4278,6 +5706,7 @@ export interface PluginSdkApp {
    */
   experimental_useSidebarThreadSplit(
     threadId: string,
+    options?: PluginSidebarThreadSplitOptions,
   ): PluginSidebarThreadSplit;
   /**
    * The sidebar navigation items in the user's saved order, the active item,
@@ -4361,6 +5790,24 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
+  /**
+   * Resolves what bb's lists draw for a row through bb's own status
+   * precedence, folding in hidden threads, a draft, and another plugin's row
+   * status (see {@link PluginThreadStatusInput}). A pure function, not a
+   * hook. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_resolveThreadStatus(
+    input: PluginThreadStatusInput,
+  ): PluginThreadStatus;
+  /**
+   * Every `experimental_threadRowMetadata` contribution for one thread row (see
+   * {@link ExperimentalThreadRowMetadataRegistration}), the items bb's sidebar
+   * draws on its rows' metadata line. Render it under your row's title, in
+   * a flex parent as wide as the line. Badges such as a pull request's status then appear on your rows as they do on
+   * bb's. It renders nothing when no plugin contributes an item.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadRowMetadata: ComponentType<ExperimentalThreadRowMetadataLineProps>;
   /**
    * bb's environment provider catalog (see
    * {@link PluginEnvironmentProvidersState}), the directory a thread's
@@ -4511,6 +5958,120 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_Diff: ComponentType<DiffProps>;
+  /**
+   * The thread Info tab's section frame (see
+   * {@link ExperimentalInfoSectionProps}), the one bb's own sections use.
+   * Inside an `experimental_threadInfoSection` it collapses, and the host
+   * remembers that per registration. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
+  /**
+   * The thread Info tab's label and value row (see
+   * {@link ExperimentalDetailRowProps}), the one bb's own rows use.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_DetailRow: ComponentType<ExperimentalDetailRowProps>;
+  /**
+   * The thread context card's row (see
+   * {@link ExperimentalThreadContextCardRowProps}), the one bb's own entries
+   * use.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadContextCardRow: ComponentType<ExperimentalThreadContextCardRowProps>;
+  /**
+   * The icon bb's tab strip draws for an open side panel tab (see
+   * {@link ExperimentalPanelTabIconProps}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_PanelTabIcon: ComponentType<ExperimentalPanelTabIconProps>;
+  /**
+   * The thread Info tab's list (see {@link ExperimentalInfoListProps}), the
+   * one bb's own sections use. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_InfoList<Item>(
+    props: ExperimentalInfoListProps<Item>,
+  ): ReactNode;
+  /**
+   * One row of `experimental_InfoList` (see
+   * {@link ExperimentalInfoListRowProps}), the row bb's own sections use.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_InfoListRow: ComponentType<ExperimentalInfoListRowProps>;
+  /**
+   * Host-owned inputs and actions for an `experimental_composer` replacement
+   * (see {@link ExperimentalComposerRendererApi}). Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerRenderer(): ExperimentalComposerRendererApi;
+  /**
+   * A raw thread title with its @-mentions replaced by the threads' current
+   * titles. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadTitleDisplayText(title: string): string;
+  /**
+   * Other plugins' popups, `+` and send menu items and inline actions for
+   * this composer, with their host renderers. Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerContributions(): ExperimentalComposerContributions;
+  /**
+   * Search bb's @-mention sources for this composer: files, threads,
+   * projects, sections and plugin mention providers. Report the open menu's
+   * query with `search()`; the results are for the last query reported, and a
+   * composer has one mention search. Throws outside an
+   * `experimental_composer` component. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useComposerMentionSearch(): ExperimentalComposerMentionSearch;
+  /**
+   * Search the slash commands and skills for this composer's provider.
+   * Report the open menu's query with `search()`; the results are for the
+   * last query reported, and a composer has one command search. Throws
+   * outside an `experimental_composer` component. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useComposerCommandSearch(): ExperimentalComposerCommandSearch;
+  /**
+   * Connect a composer to bb: render it inside the composer's root element.
+   * It publishes `editor` to other plugins' `useComposer()`, routes bb's and
+   * other plugins' composer commands to keys inside `rootRef`, and makes the
+   * root the target of pane focus and thread drops. Renders no DOM.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ComposerRoot: ComponentType<ExperimentalComposerRootProps>;
+  /** Composer host components; see docs/api_to_audit.md. */
+  experimental_VoiceInputButton: ComponentType<ExperimentalVoiceInputButtonProps>;
+  experimental_VoiceRecordingBar: ComponentType<ExperimentalVoiceRecordingBarProps>;
+  experimental_FailedVoiceRecordings: ComponentType<ExperimentalFailedVoiceRecordingsProps>;
+  experimental_ShortcutHint: ComponentType<ExperimentalShortcutHintProps>;
+  experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
+  experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
+  /**
+   * The classes, tooltip and text bb gives a pill for `mention`, so pills look
+   * the same in a composer and in bb's messages. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_describePromptMention(
+    mention: ExperimentalComposerMentionTarget,
+  ): ExperimentalPromptMentionPresentation;
+  /**
+   * Attributes to spread onto a pill element so that copying it and pasting
+   * into any bb composer recreates the pill; `text` is the draft text the pill
+   * covers. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_promptMentionClipboardAttributes(
+    mention: ExperimentalComposerMentionTarget,
+    text: string,
+  ): Readonly<Record<string, string>>;
+  /**
+   * The pill a pasted element stands for, when it was copied from a bb
+   * composer or message; null for any other element. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_readPromptMentionClipboard(
+    element: Element,
+  ): ExperimentalPromptMentionClipboardPill | null;
+  experimental_PluginIcon: ComponentType<ExperimentalPluginIconProps>;
+  experimental_ThreadTitleText: ComponentType<ExperimentalThreadTitleTextProps>;
   /** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
   useComposerView(): ComposerView;
 }

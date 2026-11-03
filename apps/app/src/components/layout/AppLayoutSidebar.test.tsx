@@ -87,8 +87,8 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
   };
 });
 
-vi.mock("@/components/settings/SettingsSidebar", () => ({
-  SettingsSidebar: ({ backTo }: { backTo: string | null }) => (
+vi.mock("@/components/settings/LazySettingsSidebar", () => ({
+  LazySettingsSidebar: ({ backTo }: { backTo: string | null }) => (
     <div data-testid="settings-sidebar-body" data-back-to={backTo ?? ""}>
       Settings sidebar
     </div>

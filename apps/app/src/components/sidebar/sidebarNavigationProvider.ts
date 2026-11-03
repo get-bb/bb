@@ -17,6 +17,7 @@ import {
   usePluginSlots,
   type ExperimentalSidebarNavigationSlot,
 } from "@/lib/plugin-slots";
+import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
 export type ResolvedSidebarNavigation =
@@ -156,6 +157,10 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
       placement,
     });
   }, [placement, resolvedKey]);
+  useRememberSurfaceProvider(
+    "sidebar-navigation",
+    resolved.kind === "plugin" ? resolved.slot.pluginId : null,
+  );
   return resolved;
 }
 

@@ -11,6 +11,7 @@ import type { SettingsSearchCondition } from "./settings-search";
 
 export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchCondition> {
   const {
+    composers,
     diffRenderers,
     experimentalSidebarNavigations,
     fileOpeners,
@@ -19,8 +20,10 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   } = usePluginSlots();
   const { accessState } = useLocalHostDaemonAccess();
   const cliCommandSupported = useCliCommandStatus().data?.supported ?? false;
+  const systemConfig = useSystemConfig().data;
   const performanceDiagnosticsAvailable =
-    useSystemConfig().data?.performanceDiagnosticsAvailable ?? false;
+    systemConfig?.performanceDiagnosticsAvailable ?? false;
+  const pluginUpdatesEnabled = systemConfig?.experiments.pluginUpdates ?? false;
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const [rewritesLocalhostLinks] = useState(
     () =>
@@ -31,6 +34,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   const hasFileOpeners = fileOpeners.some(
     (opener) => opener.extensions.length > 0,
   );
+  const hasComposers = composers.length > 0;
   const hasDiffRenderers = diffRenderers.length > 0;
   const hasSourceCodeRenderers = sourceCodeRenderers.length > 0;
   const hasThreadLists = threadLists.length > 0;
@@ -40,12 +44,14 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   return useMemo(() => {
     const conditions: [SettingsSearchCondition, boolean][] = [
       ["cliCommand", cliCommandSupported],
+      ["composers", hasComposers],
       ["desktopBrowser", desktopBrowserAvailable],
       ["diffRenderers", hasDiffRenderers],
       ["fileOpeners", hasFileOpeners],
       ["filePreferences", hasFilePreferences],
       ["localhostLinkRewrite", rewritesLocalhostLinks],
       ["performanceDiagnostics", performanceDiagnosticsAvailable],
+      ["pluginUpdates", pluginUpdatesEnabled],
       ["sidebarNavigations", hasSidebarNavigations],
       ["sourceCodeRenderers", hasSourceCodeRenderers],
       ["threadLists", hasThreadLists],
@@ -56,6 +62,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
   }, [
     cliCommandSupported,
     desktopBrowserAvailable,
+    hasComposers,
     hasDiffRenderers,
     hasFileOpeners,
     hasFilePreferences,
@@ -63,6 +70,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasSourceCodeRenderers,
     hasThreadLists,
     performanceDiagnosticsAvailable,
+    pluginUpdatesEnabled,
     rewritesLocalhostLinks,
   ]);
 }

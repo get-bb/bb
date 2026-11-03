@@ -34,14 +34,23 @@ export function connectDbMigrationStatements(): string[] {
   });
 }
 
-export interface D1LikeDatabase {
-  prepare(query: string): { run(): Promise<unknown> };
-}
-
-export async function applyConnectDbMigrationsToD1(
-  db: D1LikeDatabase,
-): Promise<void> {
+export async function applyConnectDbMigrationsToD1<
+  Statement extends { run(): Promise<unknown> },
+>(db: {
+  prepare(query: string): Statement;
+  batch(statements: Statement[]): Promise<unknown>;
+}): Promise<void> {
+  let pending: Statement[] = [];
   for (const statement of connectDbMigrationStatements()) {
-    await db.prepare(statement).run();
+    if (/^PRAGMA\b/iu.test(statement)) {
+      if (pending.length > 0) {
+        await db.batch(pending);
+        pending = [];
+      }
+      await db.prepare(statement).run();
+    } else {
+      pending.push(db.prepare(statement));
+    }
   }
+  if (pending.length > 0) await db.batch(pending);
 }

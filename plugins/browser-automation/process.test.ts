@@ -53,8 +53,12 @@ try {
   assert.deepEqual(env, original);
   const output = await execute(${JSON.stringify(process.execPath)}, ["-e", "process.stdout.write(JSON.stringify(process.env))"], env, deadline);
   const executedEnv = JSON.parse(output);
-  for (const [key, value] of Object.entries(original)) {
+  const { PATH: originalPath, ...rest } = original;
+  for (const [key, value] of Object.entries(rest)) {
     assert.equal(executedEnv[key], value);
+  }
+  for (const entry of originalPath.split(":")) {
+    assert.ok(executedEnv.PATH.split(":").includes(entry));
   }
   assert.equal(executedEnv.ELECTRON_RUN_AS_NODE, undefined);
   assert.deepEqual(env, original);

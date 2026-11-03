@@ -15,6 +15,7 @@ export const nordThemeCss = `
   --warning-text: #99543a;
   --attention: #ebcb8b;
   --success: #6f9655;
+  --success-foreground: #507535;
   --diff-added: #5e8a52;
   --diff-removed: #bf616a;
   --pr-merged: #9d7cb8;
@@ -65,6 +66,7 @@ export const nordThemeCss = `
   --warning-text: #e0a48f;
   --attention: #ebcb8b;
   --success: #a3be8c;
+  --success-foreground: #a3be8c;
   --diff-added: #a3be8c;
   --diff-removed: #bf616a;
   --pr-merged: #b48ead;

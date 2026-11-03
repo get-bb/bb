@@ -1,3 +1,4 @@
+import { parseApplicationUrl } from "@bb/domain/application-url";
 import { useAtom } from "jotai";
 import { createBooleanPreferenceAtom } from "./browser-storage";
 
@@ -24,11 +25,12 @@ function isHttpOrHttpsUrl(url: string): boolean {
   return HTTP_URL_SCHEME_PATTERN.test(url);
 }
 
-export function resolveUrlOpenTarget({
+function resolveUrlOpenTarget({
   desktopBrowserAvailable,
   openLinksInAppBrowser,
   url,
 }: ResolveUrlOpenTargetArgs): UrlOpenTarget {
+  if (parseApplicationUrl(url) !== null) return "external-browser";
   if (!isHttpOrHttpsUrl(url)) {
     return "unhandled";
   }

@@ -1,35 +1,63 @@
+import { applicationLinkApprovals } from "./application-url";
+import {
+  LazyPluginMarkdown,
+  LazyPluginDiff,
+  LazyPluginSourceCode,
+} from "@/components/plugin/lazy-plugin-renderers";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
-import { useCallback, useMemo } from "react";
-import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
-import { PluginDiff } from "@/components/plugin/PluginDiff";
+import type {
+  ExperimentalInfoListRowProps,
+  ExperimentalPanelTabIconProps,
+  PluginSdkApp,
+} from "@get-bb/plugin-sdk";
+import { useSyncExternalStore } from "react";
 import { PluginBranchPicker } from "@/components/plugin/PluginBranchPicker";
 import {
   usePluginBranches,
   usePluginCheckoutState,
 } from "@/components/plugin/usePluginBranchPickerState";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { useComposerRendererApi } from "@/components/promptbox/ComposerBox";
+import {
+  ComposerRoot,
+  useComposerContributions,
+} from "@/components/promptbox/composer-root";
+import {
+  useComposerCommandSearch,
+  useComposerMentionSearch,
+} from "@/components/promptbox/composer-search";
+import { VoiceInputButton } from "@/components/promptbox/VoiceInputButton";
+import { VoiceRecordingBar } from "@/components/promptbox/VoiceRecordingBar";
+import { FailedVoiceRecordings } from "@/components/promptbox/FailedVoiceRecordings";
+import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { ComposerMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
+import {
+  describePromptMention,
+  promptMentionClipboardAttributes,
+  readPromptMentionClipboard,
+} from "@/components/promptbox/mentions/prompt-mention-pill";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import {
+  ThreadTitle as ThreadTitleText,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
 import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
-import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
-import { MarkdownPreview } from "@/components/ui/markdown-preview";
-import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
-import { buildMarkdownDocumentLinkRouting } from "@/components/ui/markdown-document-link-routing";
-import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
-import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { useQuestionFormHost } from "@bb/shared-ui/question-form-host";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   useBbContext,
   useBbNavigate,
+  usePluginCanOpenFileExternally,
   useComposer,
   useComposers,
   useComposerView,
@@ -46,7 +74,9 @@ import {
   useSettings,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
+  experimental_usePanelTabs,
 } from "./plugin-sdk-hooks";
+import { useAppNavigationHost } from "./app-navigation-host";
 import {
   useSidebarThreadActions,
   useSidebarThreadDraft,
@@ -61,11 +91,15 @@ import {
   useSidebarSplitLayout,
   useSidebarThreadSplit,
 } from "./plugin-sidebar-split";
-import { useAppNavigationHost } from "./app-navigation-host";
+import { useExperiment } from "./plugin-experiments";
 import {
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk";
+import { experimental_resolveThreadStatus } from "@get-bb/plugin-sdk/internal/thread-status";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -83,6 +117,29 @@ import {
   useSidebarNavigationSplit,
 } from "./plugin-sidebar-navigation";
 import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
+import {
+  InfoList,
+  InfoSection,
+} from "@/components/secondary-panel/info/info-list";
+import { InfoListRow } from "@bb/shared-ui/info-list-row";
+import { DetailRow } from "@/components/ui/detail-card";
+import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
+import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
+import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
+import { useServerChoices } from "@/hooks/useServerChoices";
+import { ThreadRowMetadata } from "@/components/plugin/ThreadRowMetadata";
+
+function PluginInfoListRow({
+  onSelect,
+  ...props
+}: ExperimentalInfoListRowProps) {
+  return (
+    <InfoListRow
+      {...props}
+      target={onSelect === undefined ? null : { kind: "button", onSelect }}
+    />
+  );
+}
 
 function useArchiveEnvironmentThreads(): (
   environmentId: string,
@@ -90,7 +147,15 @@ function useArchiveEnvironmentThreads(): (
   return useThreadActions().archiveEnvironmentThreads;
 }
 
+function PanelTabIcon({ tabKey }: ExperimentalPanelTabIconProps) {
+  const { panel } = useAppNavigationHost();
+  useSyncExternalStore(panel.subscribeTabs, panel.getTabs, panel.getTabs);
+  return <>{panel.renderTabIcon(tabKey)}</>;
+}
+
 export const pluginSdkAppImplementation = {
+  experimental_getApplicationLinkApprovals: applicationLinkApprovals.list,
+  experimental_revokeApplicationLinkApproval: applicationLinkApprovals.revoke,
   definePluginApp,
   experimental_Icon: Icon,
   experimental_ProviderIcon: ProviderIcon,
@@ -98,10 +163,33 @@ export const pluginSdkAppImplementation = {
   experimental_usePluginId: usePluginId,
   experimental_useQuestionFormHost: useQuestionFormHost,
   useBbNavigate,
+  experimental_useCanOpenFileExternally: usePluginCanOpenFileExternally,
+  experimental_useTabVisible: useTabVisible,
+  experimental_useServers: useServerChoices,
   experimental_useAppPanel,
   experimental_useFixedTabTarget,
+  experimental_usePanelTabs,
+  experimental_PanelTabIcon: PanelTabIcon,
   useComposer,
   useComposers,
+  experimental_useComposerRenderer: useComposerRendererApi,
+  experimental_useThreadTitleDisplayText: useThreadTitleDisplayText,
+  experimental_useComposerContributions: useComposerContributions,
+  experimental_useComposerMentionSearch: useComposerMentionSearch,
+  experimental_useComposerCommandSearch: useComposerCommandSearch,
+  experimental_ComposerRoot: ComposerRoot,
+  experimental_VoiceInputButton: VoiceInputButton,
+  experimental_VoiceRecordingBar: VoiceRecordingBar,
+  experimental_FailedVoiceRecordings: FailedVoiceRecordings,
+  experimental_ShortcutHint: AppCommandShortcutHint,
+  experimental_ImageLightbox: ImageLightbox,
+  experimental_PromptMentionIcon: ComposerMentionIcon,
+  experimental_describePromptMention: describePromptMention,
+  experimental_promptMentionClipboardAttributes:
+    promptMentionClipboardAttributes,
+  experimental_readPromptMentionClipboard: readPromptMentionClipboard,
+  experimental_PluginIcon: PluginIcon,
+  experimental_ThreadTitleText: ThreadTitleText,
   useComposerView,
   useRealtime,
   useRealtimeConnectionState,
@@ -112,7 +200,7 @@ export const pluginSdkAppImplementation = {
   experimental_useRpcRefresh,
   useSettings,
   ThreadChat: LazyPluginThreadChat,
-  Markdown: PluginMarkdown,
+  Markdown: LazyPluginMarkdown,
   experimental_FileLink: ExperimentalFileLink,
   UrlLink: PluginUrlLink,
   experimental_NewThreadComposer: PluginNewThreadComposer,
@@ -122,8 +210,14 @@ export const pluginSdkAppImplementation = {
   experimental_BranchPicker: PluginBranchPicker,
   experimental_useBranches: usePluginBranches,
   experimental_useCheckoutState: usePluginCheckoutState,
-  experimental_SourceCode: PluginSourceCode,
-  experimental_Diff: PluginDiff,
+  experimental_SourceCode: LazyPluginSourceCode,
+  experimental_Diff: LazyPluginDiff,
+  experimental_InfoSection: InfoSection,
+  experimental_ThreadRowMetadata: ThreadRowMetadata,
+  experimental_DetailRow: DetailRow,
+  experimental_ThreadContextCardRow: ThreadContextCardRow,
+  experimental_InfoList: InfoList,
+  experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,
@@ -133,8 +227,12 @@ export const pluginSdkAppImplementation = {
   experimental_ThreadActionsContextMenu: ThreadActionsContextMenu,
   experimental_PluginRpcCallError,
   experimental_THREAD_ACTION_GROUPS,
-  experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  experimental_useExperiment: useExperiment,
+  experimental_useThreadContextKind: useThreadContextKind,
   experimental_useSidebarNavigation: useSidebarNavigation,
   experimental_useSidebarNavigationSplit: useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,
@@ -146,6 +244,7 @@ export const pluginSdkAppImplementation = {
   useSidebarThreadShortcut,
   ThreadTitle: PluginThreadTitle,
   experimental_ThreadStatusGlyph: ThreadStatusGlyph,
+  experimental_resolveThreadStatus,
   useEnvironmentProviders,
   useSdk,
   experimental_useProviders: useProviders,
@@ -154,49 +253,6 @@ export const pluginSdkAppImplementation = {
   experimental_saveFile: saveFile,
 } satisfies PluginSdkApp;
 
-function PluginMarkdown({
-  content,
-  className,
-  experimental_document,
-}: MarkdownProps) {
-  const timelineNavigation = useThreadTimelineNavigation();
-  const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
-  const threadId = timelineNavigation?.threadId;
-  const workspaceRootPath = timelineNavigation?.workspaceRootPath;
-  const navigation = useAppNavigationHost();
-  const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
-    ({ href }) => navigation.openUrl({ url: href }),
-    [navigation],
-  );
-  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
-    const messageRouting = buildMarkdownMessageLinkRouting({
-      onOpenLink,
-      onOpenLocalFileLink,
-      threadId,
-      workspaceRootPath,
-    }) ?? { onOpenLink };
-    return experimental_document === undefined
-      ? messageRouting
-      : buildMarkdownDocumentLinkRouting({
-          document: experimental_document,
-          messageRouting,
-          openFilePreview: navigation.openFilePreview,
-        });
-  }, [
-    experimental_document,
-    navigation.openFilePreview,
-    onOpenLink,
-    onOpenLocalFileLink,
-    threadId,
-    workspaceRootPath,
-  ]);
-
-  return (
-    <MarkdownPreview
-      allowHtml
-      content={content}
-      className={className}
-      linkRouting={linkRouting}
-    />
-  );
-}
+export const retiredPluginSdkAppMembers = {
+  experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
+};

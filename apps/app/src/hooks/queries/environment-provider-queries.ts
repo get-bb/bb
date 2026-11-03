@@ -42,7 +42,7 @@ export function systemEnvironmentProvidersQueryKey(
 
 const NO_ENVIRONMENT_PROVIDERS: readonly SystemEnvironmentProvider[] = [];
 
-function environmentProvidersQueryOptions(
+export function environmentProvidersQueryOptions(
   query: SystemEnvironmentProvidersQuery,
 ) {
   const cacheKey = environmentProviderListCacheKey({

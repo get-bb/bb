@@ -26,7 +26,14 @@ export default function plugin(bb: BbPluginApi) {
         event: "host:changed",
         callback: (event) => {
           if (event.changes.includes("host-connected"))
-            void storage.reconcileDevelopmentStorage();
+            void (event.id === undefined
+              ? storage.reconcileDevelopmentStorage()
+              : storage.reconcileHostDevelopmentStorage(event.id));
+          if (
+            event.changes.includes("host-connected") ||
+            event.changes.includes("host-disconnected")
+          )
+            bb.realtime.publish("changed", null);
         },
       });
       const unsubscribeConnection = bb.sdk.subscribe({
@@ -71,6 +78,8 @@ export default function plugin(bb: BbPluginApi) {
     storage.clearPendingArchives(cleanupEnabled),
   );
   bb.rpc.register(storageRpc, {
+    startEntryCleanup: storage.startEntryCleanup,
+    entryCleanup: storage.entryCleanup,
     startCleanup: storage.startCleanup,
     hosts: () => storage.hosts(),
     host: storage.host,
@@ -84,6 +93,8 @@ export default function plugin(bb: BbPluginApi) {
     clearArchivedFiles: storage.clearArchivedFiles,
     startClearArchivedFiles: storage.startClearArchivedFiles,
     removeDevInstances: (input) => storage.removeDevInstances(input),
+    removeExternalWorktrees: (input) => storage.removeExternalWorktrees(input),
+    startRemoveExternalWorktree: storage.startRemoveExternalWorktree,
     state: () => service.state(),
     preview: (policy) => service.preview(policy),
     configure: (policy) => service.configure(policy),

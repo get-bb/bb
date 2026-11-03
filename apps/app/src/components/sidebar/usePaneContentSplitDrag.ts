@@ -1,4 +1,7 @@
-import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
+import {
+  resolveThreadMentionDropTarget,
+  type DroppedThreadMention,
+} from "@/lib/thread-mention-drop";
 import {
   useCallback,
   useMemo,
@@ -7,12 +10,6 @@ import {
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import {
-  getPluginPanelRoutePath,
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-  getPluginDetailRoutePath,
-} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import {
@@ -32,22 +29,10 @@ import {
   shouldEngageSidebarSplitDrag,
   type SplitDragFallbackTarget,
 } from "@/lib/split-drag";
+import { paneContentRoute } from "@/views/thread-detail/splitThreadNavigation";
 
 const SIDEBAR_SELECTOR = '[data-sidebar="sidebar"]';
 const MAIN_CONTENT_SELECTOR = "main";
-
-function routeForContent(content: PaneContent): string {
-  if (content.kind === "thread") return getThreadRoutePath(content);
-  if (content.kind === "new-thread") return getRootComposeRoutePath();
-  if (content.kind === "plugin-detail") {
-    return getPluginDetailRoutePath({ pluginId: content.pluginId });
-  }
-  return getPluginPanelRoutePath({
-    pluginId: content.pluginId,
-    path: content.panelPath,
-    subPath: content.subPath,
-  });
-}
 
 export function usePaneContentSplitDrag(options: PaneContentSplitOptions) {
   const actions = usePaneContentSplitActions();
@@ -89,7 +74,7 @@ export function usePaneContentSplitActions() {
         store,
         navigate,
         content,
-        route: routeForContent(content),
+        route: paneContentRoute(content),
         enabled: enabled && !isCompact,
       });
     },
@@ -141,6 +126,7 @@ interface BeginSidebarPaneContentSplitDragArgs {
   onNavigate?: () => void;
   onDragStart?: () => void;
   dragActivation?: "sidebar" | "distance";
+  mentionThreads?: readonly DroppedThreadMention[];
 }
 
 export function beginSidebarPaneContentSplitDrag({
@@ -152,6 +138,9 @@ export function beginSidebarPaneContentSplitDrag({
   onNavigate,
   onDragStart,
   dragActivation = "sidebar",
+  mentionThreads = content.kind === "thread"
+    ? [{ threadId: content.threadId, label }]
+    : [],
 }: BeginSidebarPaneContentSplitDragArgs): void {
   const rowEl = event.currentTarget;
   const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
@@ -159,17 +148,14 @@ export function beginSidebarPaneContentSplitDrag({
   const startX = event.clientX;
   const startY = event.clientY;
   const startLayout = store.get(splitLayoutAtom);
-  const fallback = singlePaneFallback(startLayout);
+  const mentionsOnly = mentionThreads.length > 1;
+  const fallback = mentionsOnly ? null : singlePaneFallback(startLayout);
   beginSplitDrag({
     ghostLabel: label,
     cancelSidebarReorderOnEngage: true,
     resolveAuxiliaryTarget:
-      content.kind === "thread"
-        ? (x, y) =>
-            resolveThreadMentionDropTarget(x, y, {
-              threadId: content.threadId,
-              label,
-            })
+      mentionThreads.length > 0
+        ? (x, y) => resolveThreadMentionDropTarget(x, y, mentionThreads)
         : undefined,
     sourceEl: rowEl,
     fadeSourceOnEngage: false,
@@ -188,7 +174,7 @@ export function beginSidebarPaneContentSplitDrag({
           }),
     decide: (_paneId, zone) => {
       const layout = store.get(splitLayoutAtom);
-      if (layout === null) return null;
+      if (layout === null || mentionsOnly) return null;
       return decideThreadDrop({
         zone,
         threadAlreadyOpen: findPaneByContent(layout.root, content) !== null,
@@ -208,7 +194,7 @@ export function beginSidebarPaneContentSplitDrag({
       if (next !== layout) store.set(splitLayoutAtom, next);
       onNavigate?.();
       void navigate(
-        routeForContent(content),
+        paneContentRoute(content),
         existing !== null ? { replace: true } : undefined,
       );
     },

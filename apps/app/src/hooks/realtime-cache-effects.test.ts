@@ -1,34 +1,16 @@
 import {
-  CORE_TAG_SCOPE,
+  pluginTagScope,
   runTaggedRead,
   taggedQueryOptions,
 } from "@bb/query-tags";
-import { environmentPullRequestTag } from "@bb/server-contract";
-import { machineEnvironmentQueryKey } from "./queries/query-keys";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryObserver } from "@tanstack/react-query";
 import {
-  ENVIRONMENT_CHANGE_KINDS,
-  HOST_CHANGE_KINDS,
-  PROJECT_CHANGE_KINDS,
-  SYSTEM_CHANGE_KINDS,
-  THREAD_CHANGE_KINDS,
-  defaultExperiments,
-} from "@bb/domain";
-import type { QueryClient } from "@tanstack/react-query";
-import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
-import { createAppQueryClient } from "@/lib/query-client";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
-import {
+  machineEnvironmentQueryKey,
   archivedThreadsListQueryKey,
-  environmentDiffFilesQueryKey,
-  environmentDiffPatchQueryKey,
-  environmentPullRequestQueryKey,
   environmentQueryKey,
-  environmentWorkStatusQueryKey,
+  environmentFilePreviewQueryKey,
   hostPathExistenceQueryKey,
   hostsQueryKey,
+  hostProviderCliStatusQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
@@ -57,21 +39,22 @@ import {
   threadTimelineQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKey,
+  pluginContributionsQueryKey,
+  uiPreferencesQueryKey,
 } from "./queries/query-keys";
-import { pluginContributionsQueryKey } from "./queries/query-keys";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryObserver, type QueryClient } from "@tanstack/react-query";
+import { SYSTEM_CHANGE_KINDS, defaultExperiments } from "@bb/domain";
+import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import { createAppQueryClient } from "@/lib/query-client";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
 import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,
-  resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
-import {
-  REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-  REALTIME_HOST_CHANGE_REGISTRY,
-  REALTIME_PROJECT_CHANGE_REGISTRY,
-  REALTIME_SYSTEM_CHANGE_REGISTRY,
-  REALTIME_THREAD_CHANGE_REGISTRY,
-} from "./cache-owners/realtime-cache-registry";
+import { REALTIME_SYSTEM_CHANGE_REGISTRY } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "thread-created",
@@ -141,6 +124,7 @@ function enableTimelinePush(queryClient: QueryClient): void {
 
 function createRealtimeEffectsTestContext(
   visibility?: RealtimeCacheEffectsVisibility,
+  refreshSidebarWhileHidden?: boolean,
 ) {
   const queryClient = createAppQueryClient({
     defaultOptions: {
@@ -151,7 +135,11 @@ function createRealtimeEffectsTestContext(
     },
     showMutationErrorToasts: false,
   });
-  const effects = createRealtimeCacheEffects({ queryClient, visibility });
+  const effects = createRealtimeCacheEffects({
+    queryClient,
+    refreshSidebarWhileHidden,
+    visibility,
+  });
   const firstProjectHistoryKey = projectPromptHistoryQueryKey("project-1");
   const secondProjectHistoryKey = projectPromptHistoryQueryKey("project-2");
   const terminalKey = terminalsQueryKey({
@@ -172,9 +160,19 @@ function createRealtimeEffectsTestContext(
   };
 }
 
-describe("core tag realtime refresh", () => {
+function observeUiPreferences(client: QueryClient, read: () => number) {
+  const observer = new QueryObserver(client, {
+    queryKey: uiPreferencesQueryKey(),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    queryFn: async () => read(),
+  });
+  return { observer, stop: observer.subscribe(() => {}) };
+}
+
+describe("ui preference realtime refresh", () => {
   it.each([true, false])(
-    "refreshes tagged data across visibility changes (visible: %s)",
+    "refreshes ui preferences across visibility changes (visible: %s)",
     async (visible) => {
       const client = createAppQueryClient();
       const visibility = createFakeVisibility();
@@ -183,17 +181,7 @@ describe("core tag realtime refresh", () => {
         visibility,
       });
       let value = 1;
-      const observer = new QueryObserver(client, {
-        queryKey: ["tagged"],
-        staleTime: Infinity,
-        ...taggedQueryOptions<number>(client, ["tagged"], {
-          scope: CORE_TAG_SCOPE,
-          tagsOf: () => ["preferences"],
-        }),
-        queryFn: ({ queryKey }) =>
-          runTaggedRead(client, queryKey, async () => value),
-      });
-      const stop = observer.subscribe(() => {});
+      const { observer, stop } = observeUiPreferences(client, () => value);
       try {
         await vi.waitFor(() =>
           expect(observer.getCurrentResult().data).toBe(1),
@@ -202,8 +190,8 @@ describe("core tag realtime refresh", () => {
         value = 2;
         effects.handleChanged({
           type: "changed",
-          entity: "tags",
-          tags: ["preferences"],
+          entity: "system",
+          changes: ["ui-preferences-changed"],
         });
         if (!visible) {
           expect(observer.getCurrentResult().data).toBe(1);
@@ -219,7 +207,36 @@ describe("core tag realtime refresh", () => {
       }
     },
   );
+
+  it("re-reads ui preferences after a reconnect but not on the first connect", async () => {
+    const client = createAppQueryClient();
+    const effects = createRealtimeCacheEffects({
+      queryClient: client,
+      visibility: createFakeVisibility(),
+    });
+    let value = 1;
+    const { observer, stop } = observeUiPreferences(client, () => value);
+    try {
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
+      value = 2;
+      effects.handleConnected({ reconnected: false });
+      await Promise.resolve();
+      expect(observer.getCurrentResult().data).toBe(1);
+
+      effects.handleConnected({
+        reconnected: true,
+        disconnectedAt: Date.now() - 1_000,
+      });
+      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
+    } finally {
+      stop();
+      effects.dispose();
+      client.clear();
+    }
+  });
 });
+
+const WORKING_TREE = { kind: "working-tree" } as const;
 
 describe("resuming released watches", () => {
   it("refreshes only the data the released watches were keeping live", async () => {
@@ -251,16 +268,18 @@ describe("resuming released watches", () => {
       return { queryFn, stop: observer.subscribe(() => {}) };
     };
     const reads = {
-      environment: observe(environmentWorkStatusQueryKey("env-1", "main")),
+      environment: observe(
+        environmentFilePreviewQueryKey("env-1", "README.md", WORKING_TREE),
+      ),
       threadEnvironment: observe(
-        environmentWorkStatusQueryKey("env-thread", "main"),
+        environmentFilePreviewQueryKey("env-thread", "README.md", WORKING_TREE),
       ),
       otherEnvironment: observe(
-        environmentWorkStatusQueryKey("env-other", "main"),
+        environmentFilePreviewQueryKey("env-other", "README.md", WORKING_TREE),
       ),
-      pullRequest: observe(["pull-request", "env-1"], {
-        scope: CORE_TAG_SCOPE,
-        tag: environmentPullRequestTag("env-1"),
+      pluginRead: observe(["plugin-rpc", "usage", "getUsage"], {
+        scope: pluginTagScope("usage"),
+        tag: "usage",
       }),
     };
     try {
@@ -275,7 +294,12 @@ describe("resuming released watches", () => {
       effects.handleResumed([
         { kind: "environment-detail", environmentId: "env-1" },
         { kind: "thread-detail", threadId: "thr_1" },
-        { kind: "environment-pull-request", environmentId: "env-1" },
+        {
+          kind: "plugin-read",
+          pluginId: "usage",
+          method: "getUsage",
+          read: { input: null },
+        },
         { kind: "thread-list" },
       ]);
       await vi.advanceTimersByTimeAsync(500);
@@ -283,51 +307,10 @@ describe("resuming released watches", () => {
       expect(reads.environment.queryFn).toHaveBeenCalled();
       expect(reads.threadEnvironment.queryFn).toHaveBeenCalled();
       expect(reads.otherEnvironment.queryFn).not.toHaveBeenCalled();
-      expect(reads.pullRequest.queryFn).toHaveBeenCalledTimes(1);
+      expect(reads.pluginRead.queryFn).toHaveBeenCalledTimes(1);
     } finally {
       for (const read of Object.values(reads)) read.stop();
       effects.dispose();
-    }
-  });
-});
-
-describe("core tag reconnect refresh", () => {
-  it("re-reads core tagged data after a reconnect but not on the first connect", async () => {
-    const client = createAppQueryClient();
-    const effects = createRealtimeCacheEffects({
-      queryClient: client,
-      visibility: createFakeVisibility(),
-    });
-    let value = 1;
-    const queryKey = environmentPullRequestQueryKey("env-1");
-    const observer = new QueryObserver(client, {
-      queryKey,
-      staleTime: Infinity,
-      refetchOnWindowFocus: false,
-      ...taggedQueryOptions<number>(client, queryKey, {
-        scope: CORE_TAG_SCOPE,
-        tagsOf: () => [environmentPullRequestTag("env-1")],
-      }),
-      queryFn: ({ queryKey: key }) =>
-        runTaggedRead(client, key, async () => value),
-    });
-    const stop = observer.subscribe(() => {});
-    try {
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(1));
-      value = 2;
-      effects.handleConnected({ reconnected: false });
-      await Promise.resolve();
-      expect(observer.getCurrentResult().data).toBe(1);
-
-      effects.handleConnected({
-        reconnected: true,
-        disconnectedAt: Date.now() - 1_000,
-      });
-      await vi.waitFor(() => expect(observer.getCurrentResult().data).toBe(2));
-    } finally {
-      stop();
-      effects.dispose();
-      client.clear();
     }
   });
 });
@@ -410,30 +393,11 @@ describe("createRealtimeCacheEffects", () => {
     vi.useRealTimers();
   });
 
-  it.each<
-    [
-      string,
-      readonly string[],
-      Record<string, { dirty: readonly unknown[] } | undefined>,
-    ]
-  >([
-    ["thread", THREAD_CHANGE_KINDS, REALTIME_THREAD_CHANGE_REGISTRY],
-    [
-      "environment",
-      ENVIRONMENT_CHANGE_KINDS,
-      REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-    ],
-    ["project", PROJECT_CHANGE_KINDS, REALTIME_PROJECT_CHANGE_REGISTRY],
-    ["host", HOST_CHANGE_KINDS, REALTIME_HOST_CHANGE_REGISTRY],
-    ["system", SYSTEM_CHANGE_KINDS, REALTIME_SYSTEM_CHANGE_REGISTRY],
-  ])(
-    "maps every realtime %s change to at least one dirty handler",
-    (_entity, changeKinds, registry) => {
-      for (const changeKind of changeKinds) {
-        expect(registry[changeKind]?.dirty.length ?? 0).toBeGreaterThan(0);
-      }
-    },
-  );
+  it("maps every realtime system change to a registry entry", () => {
+    for (const changeKind of SYSTEM_CHANGE_KINDS) {
+      expect(REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]).toBeDefined();
+    }
+  });
 
   it("refreshes only the server move status when a move changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -695,6 +659,25 @@ describe("createRealtimeCacheEffects", () => {
       );
       expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
       expect(invalidated()).toEqual([]);
+      effects.dispose();
+    });
+
+    it("refetches only the pushed host's provider CLI status", () => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const hostAKey = hostProviderCliStatusQueryKey("host-a");
+      const hostBKey = hostProviderCliStatusQueryKey("host-b");
+      queryClient.setQueryData(hostAKey, {});
+      queryClient.setQueryData(hostBKey, {});
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "host",
+        id: "host-a",
+        changes: ["provider-cli-status-changed"],
+      });
+
+      expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
       effects.dispose();
     });
   });
@@ -1362,7 +1345,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: { projectId: "project-1" },
         changes: [change],
       });
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(1_000);
     }
 
     expect(activeListQueryFn).toHaveBeenCalledTimes(3);
@@ -1391,57 +1374,6 @@ describe("createRealtimeCacheEffects", () => {
     }
     effects.dispose();
   });
-
-  it.each(["thread detail", "sidebar navigation"] as const)(
-    "refetches the active environment pull request from %s when a turn completes",
-    async (cacheSource) => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const pullRequestKey = environmentPullRequestQueryKey("env-1");
-      const nextPullRequest = {
-        outcome: "available",
-        pullRequest: { number: 42 },
-      };
-      const pullRequestQueryFn = vi.fn(async () => nextPullRequest);
-      if (cacheSource === "thread detail") {
-        queryClient.setQueryData(threadQueryKey("thr_1"), {
-          environmentId: "env-1",
-          id: "thr_1",
-        });
-      } else {
-        queryClient.setQueryData(sidebarNavigationQueryKey(), {
-          personalProject: { threads: [] },
-          projects: [
-            {
-              threads: [{ environmentId: "env-1", id: "thr_1" }],
-            },
-          ],
-        });
-      }
-      queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
-      const pullRequestObserver = new QueryObserver(queryClient, {
-        queryFn: pullRequestQueryFn,
-        queryKey: pullRequestKey,
-        staleTime: Infinity,
-      });
-      const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "thread",
-        id: "thr_1",
-        metadata: { eventTypes: ["turn/completed"] },
-        changes: ["events-appended"],
-      });
-      await vi.advanceTimersByTimeAsync(50);
-
-      expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
-      expect(queryClient.getQueryData(pullRequestKey)).toEqual(nextPullRequest);
-
-      unsubscribePullRequest();
-      effects.dispose();
-    },
-  );
 
   it("invalidates cached thread search results when environment metadata changes", () => {
     vi.useFakeTimers();
@@ -1593,7 +1525,7 @@ describe("createRealtimeCacheEffects", () => {
             metadata: { projectId },
             changes: ["read-state-changed"],
           });
-          await vi.advanceTimersByTimeAsync(50);
+          await vi.advanceTimersByTimeAsync(1_000);
 
           expect(threadListObserver.getCurrentResult().data).toEqual([
             { id: "thr_1", lastReadAt: nextLastReadAt },
@@ -1620,166 +1552,6 @@ describe("createRealtimeCacheEffects", () => {
       }
     },
   );
-
-  it("refetches the active diff TOC and work-status queries while retaining rendered patch cache for work-status changes", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const diffFilesKey = environmentDiffFilesQueryKey(
-      "env-1",
-      "all",
-      "main",
-      false,
-    );
-    const diffPatchKey = environmentDiffPatchQueryKey(
-      "env-1",
-      "all",
-      "main",
-      false,
-      "file.ts",
-    );
-    const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
-    queryClient.setQueryData(diffFilesKey, {
-      outcome: "available",
-      files: [],
-      shortstat: "1 file changed",
-      mergeBaseRef: "base-ref",
-    });
-    queryClient.setQueryData(diffPatchKey, {
-      path: "file.ts",
-      patch: "diff --git a/file.ts b/file.ts\n",
-      truncated: false,
-    });
-    queryClient.setQueryData(workStatusKey, null);
-    const diffFilesQueryFn = vi.fn(async () => ({
-      outcome: "available" as const,
-      files: [],
-      shortstat: "",
-      mergeBaseRef: "base-ref",
-    }));
-    const workStatusQueryFn = vi.fn(async () => null);
-    const diffFilesObserver = new QueryObserver(queryClient, {
-      queryKey: diffFilesKey,
-      queryFn: diffFilesQueryFn,
-      staleTime: Infinity,
-    });
-    const workStatusObserver = new QueryObserver(queryClient, {
-      queryKey: workStatusKey,
-      queryFn: workStatusQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
-    const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
-    diffFilesQueryFn.mockClear();
-    workStatusQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "environment",
-      id: "env-1",
-      changes: ["work-status-changed"],
-    });
-    await vi.advanceTimersByTimeAsync(250);
-
-    expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(diffPatchKey)).toEqual({
-      path: "file.ts",
-      patch: "diff --git a/file.ts b/file.ts\n",
-      truncated: false,
-    });
-
-    unsubscribeDiffFiles();
-    unsubscribeWorkStatus();
-    effects.dispose();
-  });
-
-  it("does not refetch the environment pull request for work-status changes", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const pullRequestKey = environmentPullRequestQueryKey("env-1");
-    const pullRequestQueryFn = vi.fn(async () => ({ outcome: "absent" }));
-    const pullRequestObserver = new QueryObserver(queryClient, {
-      queryFn: pullRequestQueryFn,
-      queryKey: pullRequestKey,
-      staleTime: Infinity,
-    });
-    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
-    pullRequestQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "environment",
-      id: "env-1",
-      changes: ["work-status-changed"],
-    });
-    await vi.advanceTimersByTimeAsync(500);
-
-    expect(pullRequestQueryFn).not.toHaveBeenCalled();
-    expect(queryClient.getQueryState(pullRequestKey)?.isInvalidated).toBe(
-      false,
-    );
-
-    unsubscribePullRequest();
-    effects.dispose();
-  });
-
-  it("paces work-status refetches to one per second and never aborts the probe in flight", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
-    const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
-    const workStatusQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
-      signals.push(signal);
-      return new Promise((resolve) => {
-        resolveFetches.push(resolve);
-      });
-    });
-    const workStatusObserver = new QueryObserver(queryClient, {
-      queryKey: workStatusKey,
-      queryFn: workStatusQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
-    resolveFetches[0]?.(null);
-    await vi.advanceTimersByTimeAsync(0);
-
-    const emitWorkStatusChanged = () => {
-      effects.handleChanged({
-        type: "changed",
-        entity: "environment",
-        id: "env-1",
-        changes: ["work-status-changed"],
-      });
-    };
-
-    emitWorkStatusChanged();
-    await vi.advanceTimersByTimeAsync(250);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
-
-    await vi.advanceTimersByTimeAsync(50);
-    emitWorkStatusChanged();
-    await vi.advanceTimersByTimeAsync(300);
-    emitWorkStatusChanged();
-    await vi.advanceTimersByTimeAsync(300);
-    expect(signals[1]?.aborted).toBe(false);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
-
-    resolveFetches[1]?.(null);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(400);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(3);
-    resolveFetches[2]?.(null);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(workStatusQueryFn).toHaveBeenCalledTimes(3);
-
-    unsubscribeWorkStatus();
-    effects.dispose();
-  });
 
   it("refetches active thread storage preview queries for thread storage changes", async () => {
     vi.useFakeTimers();
@@ -2798,7 +2570,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("restarts a sidebar fetch already in flight so its stale snapshot cannot overwrite the patched status", async () => {
+  it("lets a sidebar fetch already in flight finish without its stale snapshot overwriting the patched status", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const sidebarNavigationKey = sidebarNavigationQueryKey();
@@ -2818,12 +2590,14 @@ describe("createRealtimeCacheEffects", () => {
     };
     let activated = false;
     const responses: { activated: boolean; resolve: () => void }[] = [];
+    const signals: AbortSignal[] = [];
     const sidebarQueryFn = vi.fn(
-      () =>
+      ({ signal }: { signal: AbortSignal }) =>
         new Promise<{
           projects: { threads: (typeof idleRow)[] }[];
           personalProject: { threads: never[] };
         }>((resolve) => {
+          signals.push(signal);
           const snapshot = activated ? activeRow : idleRow;
           responses.push({
             activated,
@@ -2877,8 +2651,18 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[1]?.aborted).toBe(false);
     staleResponse?.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      queryClient.getQueryData<{
+        projects: { threads: (typeof idleRow)[] }[];
+      }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.status,
+    ).toBe("active");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
     responses.shift()?.resolve();
     await vi.advanceTimersByTimeAsync(0);
 
@@ -2887,6 +2671,72 @@ describe("createRealtimeCacheEffects", () => {
         projects: { threads: (typeof idleRow)[] }[];
       }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.status,
     ).toBe("active");
+
+    unsubscribe();
+    effects.dispose();
+  });
+
+  it("completes a slow sidebar read through a steady stream of status changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const signals: AbortSignal[] = [];
+    const pending: (() => void)[] = [];
+    const sidebarQueryFn = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<{
+          projects: never[];
+          personalProject: { threads: never[] };
+        }>((resolve) => {
+          signals.push(signal);
+          pending.push(() =>
+            resolve({ projects: [], personalProject: { threads: [] } }),
+          );
+        }),
+    );
+    queryClient.setQueryData(sidebarNavigationKey, {
+      projects: [],
+      personalProject: { threads: [] },
+    });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    void queryClient.invalidateQueries({ queryKey: sidebarNavigationKey });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    for (let index = 0; index < 10; index += 1) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: `thr_${index}`,
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            activity: NO_THREAD_ACTIVITY,
+            latestAttentionAt: 100,
+            runtime: { displayStatus: "active" },
+            status: "active",
+            updatedAt: 200 + index,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      await vi.advanceTimersByTimeAsync(300);
+    }
+
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+    pending.shift()?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    pending.shift()?.();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    expect(observer.getCurrentResult().fetchStatus).toBe("idle");
 
     unsubscribe();
     effects.dispose();
@@ -3134,16 +2984,49 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("keeps the fine-pointer cadence and widens it for coarse pointers", () => {
-    expect(resolveThreadInvalidationDebounce(false)).toEqual({
-      debounceMs: 50,
-      maxWaitMs: 200,
-    });
-    expect(resolveThreadInvalidationDebounce(true)).toEqual({
-      debounceMs: 150,
-      maxWaitMs: 400,
-    });
-  });
+  it.each([
+    { pointer: "fine", coarse: false, debounceMs: 50, maxWaitMs: 200 },
+    { pointer: "coarse", coarse: true, debounceMs: 150, maxWaitMs: 400 },
+  ])(
+    "flushes thread changes $debounceMs ms after the last one, or $maxWaitMs ms into a burst, for a $pointer pointer",
+    ({ coarse, debounceMs, maxWaitMs }) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("window", {
+        matchMedia: (query: string) => ({
+          matches: coarse && query === "(pointer: coarse)",
+        }),
+      });
+      const { effects, queryClient, terminalKey } =
+        createRealtimeEffectsTestContext();
+      vi.unstubAllGlobals();
+      const changeTerminals = () =>
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: "thr_1",
+          changes: ["terminals-changed"],
+        });
+      const invalidated = () =>
+        queryClient.getQueryState(terminalKey)?.isInvalidated === true;
+
+      changeTerminals();
+      vi.advanceTimersByTime(debounceMs - 1);
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      queryClient.setQueryData(terminalKey, { sessions: [] });
+      for (let elapsed = 0; elapsed < maxWaitMs - 1; elapsed += 10) {
+        changeTerminals();
+        vi.advanceTimersByTime(Math.min(10, maxWaitMs - 1 - elapsed));
+      }
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      effects.dispose();
+    },
+  );
 
   it("applies the reconnect watermark from the connected event", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -3495,13 +3378,53 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
+    it.each([true, false])(
+      "refreshes only the sidebar for hidden thread changes when refreshSidebarWhileHidden is %s",
+      async (refreshSidebarWhileHidden) => {
+        vi.useFakeTimers();
+        const visibility = createFakeVisibility();
+        const { effects, queryClient } = createRealtimeEffectsTestContext(
+          visibility,
+          refreshSidebarWhileHidden,
+        );
+        const sidebarNavigationKey = sidebarNavigationQueryKey();
+        const timelineKey = threadTimelineQueryKey("thr_1");
+        queryClient.setQueryData(sidebarNavigationKey, {
+          projects: [],
+          personalProject: { threads: [] },
+        });
+        queryClient.setQueryData(timelineKey, { rows: [] });
+        visibility.setVisible(false);
+
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: "thr_1",
+          changes: ["events-appended"],
+        });
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(
+          queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+        ).toBe(refreshSidebarWhileHidden);
+        expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(
+          false,
+        );
+        effects.dispose();
+      },
+    );
+
     it("holds a debounce that elapses hidden and non-thread changes until visible", async () => {
       vi.useFakeTimers();
       const visibility = createFakeVisibility();
       const { effects, queryClient } =
         createRealtimeEffectsTestContext(visibility);
       const timelineKey = threadTimelineQueryKey("thr_1");
-      const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
+      const workStatusKey = environmentFilePreviewQueryKey(
+        "env-1",
+        "README.md",
+        WORKING_TREE,
+      );
       const projectsKey = projectsQueryKey();
       const configKey = systemConfigQueryKey();
       queryClient.setQueryData(timelineKey, { rows: [] });

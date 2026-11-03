@@ -27,7 +27,6 @@ const interactionRequestParamsSchema = z.object({
   threadId: z.string().min(1).optional(),
   turnId: z.union([z.string().min(1), z.null()]),
   payload: z.union(interactionRequestPayloadSchema.options),
-  providerNativeIds: z.boolean().optional(),
 });
 
 const fakeAppServerPath = fileURLToPath(
@@ -291,7 +290,6 @@ it.sequential.each(validCases)(
     });
     expect(interaction).toMatchObject({
       turnId: null,
-      providerNativeIds: true,
     });
     expect(interaction.payload).toEqual({
       kind: CODEX_MCP_ELICITATION_KIND,

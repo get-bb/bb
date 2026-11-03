@@ -1,10 +1,11 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import {
+  execHostFile,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 
 export async function pickHostFolder(): Promise<
   HostDaemonOnlineRpcResult<"host.pick_folder">

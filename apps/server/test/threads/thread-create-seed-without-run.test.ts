@@ -8,7 +8,6 @@ import {
 import {
   PERSONAL_PROJECT_ID,
   turnRequestEventDataSchema,
-  turnScope,
   type PermissionMode,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
@@ -25,7 +24,6 @@ import {
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
-  seedEvent,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
@@ -57,49 +55,136 @@ function installTelemetryCaptureSpy(harness: TestAppHarness) {
   return capture;
 }
 
-describe("thread creation telemetry", () => {
-  it("captures initial user messages", async () => {
+describe("thread creation initiator telemetry", () => {
+  it("adds initiator to thread and message events only when the flag is on", async () => {
     await withTestHarness(async (harness) => {
       const capture = installTelemetryCaptureSpy(harness);
       const { host } = seedHostSession(harness.deps, {
-        id: "host-thread-create-telemetry",
+        id: "host-initiator-telemetry",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
-        path: "/tmp/thread-create-telemetry",
+        path: "/tmp/initiator-telemetry",
       });
       seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        path: "/tmp/thread-create-telemetry",
+        path: "/tmp/initiator-telemetry",
       });
-
-      await createThreadFromRequest(harness.deps, {
+      const request = {
         environment: {
-          type: "host",
+          type: "host" as const,
           hostId: host.id,
           workspace: {
-            type: "unmanaged",
-            path: "/tmp/thread-create-telemetry",
+            type: "unmanaged" as const,
+            path: "/tmp/initiator-telemetry",
           },
         },
-        input: textInput("Start with telemetry"),
-        origin: "app",
+        input: textInput("Start with initiator"),
+        origin: "app" as const,
         projectId: project.id,
         providerId: "codex",
         startedOnBehalfOf: null,
+      };
+
+      harness.deps.config.featureFlags = {
+        ...harness.deps.config.featureFlags,
+        initiatorTelemetry: false,
+      };
+      await createThreadFromRequest(harness.deps, request);
+      expect(capture).toHaveBeenCalledWith({
+        name: "thread_created",
+        properties: { is_child_thread: false, provider: "codex" },
       });
 
+      capture.mockClear();
+      harness.deps.config.featureFlags = {
+        ...harness.deps.config.featureFlags,
+        initiatorTelemetry: true,
+      };
+      await createThreadFromRequest(harness.deps, request);
+      expect(capture).toHaveBeenCalledWith({
+        name: "thread_created",
+        properties: {
+          is_child_thread: false,
+          provider: "codex",
+          initiator: "user",
+        },
+      });
       expect(capture).toHaveBeenCalledWith({
         name: "user_message_sent",
         properties: {
           is_child_thread: false,
           message_source: "thread_create",
           provider: "codex",
+          initiator: "user",
         },
       });
     });
   });
+});
+
+describe("thread creation initiator for CLI spawns from a thread", () => {
+  it.each([
+    [true, "agent"],
+    [false, "user"],
+  ] as const)(
+    "labels the spawn %s → %s depending on whether the sender thread is mid-turn",
+    async (senderMidTurn, expected) => {
+      await withTestHarness(async (harness) => {
+        const capture = installTelemetryCaptureSpy(harness);
+        harness.deps.config.featureFlags = {
+          ...harness.deps.config.featureFlags,
+          initiatorTelemetry: true,
+        };
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-sender-${String(senderMidTurn)}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/sender-initiator",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/sender-initiator",
+        });
+        const sender = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        if (senderMidTurn) {
+          seedTurnStarted(harness.deps, {
+            threadId: sender.id,
+            turnId: "turn-sender-1",
+          });
+        }
+
+        await createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path: "/tmp/sender-initiator" },
+          },
+          input: textInput("spawned from a thread"),
+          origin: "cli",
+          projectId: project.id,
+          providerId: "codex",
+          senderThreadId: sender.id,
+          startedOnBehalfOf: null,
+        });
+
+        expect(capture).toHaveBeenCalledWith({
+          name: "thread_created",
+          properties: {
+            is_child_thread: false,
+            provider: "codex",
+            initiator: expected,
+          },
+        });
+      });
+    },
+  );
 });
 
 describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
@@ -179,89 +264,6 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       expect(capture).not.toHaveBeenCalledWith(
         expect.objectContaining({ name: "user_message_sent" }),
       );
-    });
-  });
-
-  it("uses the source provider session at the requested source sequence", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-source-sequence-fork",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/source-sequence-fork-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/source-sequence-fork-project",
-      });
-      const sourceThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      seedTurnStarted(harness.deps, {
-        threadId: sourceThread.id,
-        turnId: "turn-earlier-source",
-        providerThreadId: "provider-earlier-source",
-        sequence: 5,
-      });
-      seedEvent(harness.deps, {
-        threadId: sourceThread.id,
-        environmentId: environment.id,
-        providerThreadId: "provider-earlier-source",
-        sequence: 6,
-        type: "turn/completed",
-        scope: turnScope("turn-earlier-source"),
-        data: {
-          providerThreadId: "provider-earlier-source",
-          status: "completed",
-          providerCheckpointId: "checkpoint-earlier-source",
-        },
-      });
-      seedTurnStarted(harness.deps, {
-        threadId: sourceThread.id,
-        turnId: "turn-later-source",
-        providerThreadId: "provider-later-source",
-        sequence: 9,
-      });
-
-      const forkInput = textInput("Continue from the earlier source sequence");
-      const fork = await createThreadFromRequest(harness.deps, {
-        environment: {
-          type: "host",
-          hostId: host.id,
-          workspace: {
-            type: "unmanaged",
-            path: "/tmp/source-sequence-fork-project",
-          },
-        },
-        input: forkInput,
-        origin: "app",
-        originKind: "fork",
-        projectId: project.id,
-        providerId: "codex",
-        sourceSeqEnd: 5,
-        sourceThreadId: sourceThread.id,
-        startedOnBehalfOf: {
-          initiator: "agent",
-          senderThreadId: sourceThread.id,
-        },
-      });
-
-      const queuedStart = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.start" && command.threadId === fork.id,
-      );
-      if (queuedStart.command.type !== "thread.start") {
-        throw new Error("Expected a thread.start command");
-      }
-      expect(queuedStart.command.input).toEqual(forkInput);
-      expect(queuedStart.command.fork).toEqual({
-        sourceProviderThreadId: "provider-earlier-source",
-        sourceProviderCheckpointId: "checkpoint-earlier-source",
-      });
     });
   });
 

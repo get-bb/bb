@@ -82,20 +82,6 @@ export function useEnvironmentDetailRealtimeSubscription(
   useRealtimeSubscription(target, options);
 }
 
-export function useEnvironmentPullRequestRealtimeSubscription(
-  environmentId: string | null | undefined,
-  options?: RealtimeSubscriptionOptions,
-): void {
-  const target = useMemo<RealtimeSubscriptionTarget | null>(
-    () =>
-      environmentId
-        ? { kind: "environment-pull-request", environmentId }
-        : null,
-    [environmentId],
-  );
-  useRealtimeSubscription(target, options);
-}
-
 export function useProjectDetailRealtimeSubscription(
   projectId: string | null | undefined,
   options?: RealtimeSubscriptionOptions,

@@ -4,7 +4,7 @@ import { deferredTimelineContentItemId } from "@bb/client-core";
 import type { ThreadTimelineViewRow } from "@bb/thread-view";
 import { BbDiffSplit } from "@/components/code/BbDiffSplit";
 import type { ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
-import { prefetchThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
+import { prefetchThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-panel-queries";
 import {
   useRequestPierreWorkerPool,
   useRequirePierreWorkerPool,

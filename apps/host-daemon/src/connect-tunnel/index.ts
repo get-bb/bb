@@ -18,6 +18,8 @@ import {
 import { connectPublicProtocol } from "@bb/connect-client";
 import type { HostDaemonLogger } from "../logger.js";
 
+const MACHINE_TUNNEL_HANDSHAKE_TIMEOUT_MS = 10_000;
+
 type ConnectTunnelState = "connected" | "reconnecting" | "offline";
 
 export interface ConnectTunnelStatus {
@@ -48,6 +50,7 @@ interface ConnectTunnelClientOptions {
   createWebSocket?: CreateTunnelWebSocket;
   fetchFn?: ConnectTunnelFetch;
   reconnectBackoff?: ReconnectBackoffOptions;
+  handshakeTimeoutMs?: number;
 }
 
 interface TrustedConnectGate {
@@ -87,6 +90,23 @@ export function resolveTrustedConnectGate(
   };
 }
 
+export function isConnectNextBaseDomain(baseDomain: string): boolean {
+  return new URL(`https://${baseDomain}`).hostname.startsWith("next.");
+}
+
+function enrolledThroughConnectNext(serverUrl: string): boolean {
+  try {
+    return isConnectNextBaseDomain(
+      resolveTrustedConnectGate(serverUrl).baseDomain,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export const CONNECT_NEXT_ENROLLMENT_MESSAGE =
+  "this machine joined through a connect next address, which has no bb connect machine tunnel; its shared ports answer through connect next";
+
 export function buildMachineTunnelUrl(
   identity: HostDaemonConnectTunnelIdentity,
 ): string {
@@ -110,7 +130,9 @@ export class ConnectTunnelClient {
   private readonly createWebSocket: CreateTunnelWebSocket;
   private readonly fetchFn: ConnectTunnelFetch;
   private readonly backoff: ReconnectBackoff;
+  private readonly handshakeTimeoutMs: number;
   private readonly machineCredential: string | undefined;
+  private readonly servedByNext: boolean;
   private generation = -1;
   private ports = new Set<number>();
   private identity: HostDaemonConnectTunnelIdentity | undefined;
@@ -132,16 +154,22 @@ export class ConnectTunnelClient {
         new NodeWebSocket(url, { headers: websocketOptions.headers }));
     this.fetchFn = options.fetchFn ?? fetch;
     this.backoff = new ReconnectBackoff(options.reconnectBackoff);
+    this.handshakeTimeoutMs =
+      options.handshakeTimeoutMs ?? MACHINE_TUNNEL_HANDSHAKE_TIMEOUT_MS;
     this.machineCredential =
       options.machineCredential?.trim().length === 0
         ? undefined
         : options.machineCredential;
+    this.servedByNext = enrolledThroughConnectNext(options.serverUrl);
   }
 
   status(): ConnectTunnelStatus {
     return {
       state: this.state,
-      lastError: this.lastError,
+      lastError:
+        this.servedByNext && this.ports.size > 0
+          ? CONNECT_NEXT_ENROLLMENT_MESSAGE
+          : this.lastError,
       credentialRejected: this.credentialRejected,
       generation: Math.max(this.generation, 0),
       ports: [...this.ports].sort((a, b) => a - b),
@@ -268,6 +296,7 @@ export class ConnectTunnelClient {
   private hasConnectIntent(): boolean {
     return (
       !this.stopped &&
+      !this.servedByNext &&
       this.ports.size > 0 &&
       this.machineCredential !== undefined &&
       !this.credentialRejected
@@ -348,7 +377,22 @@ export class ConnectTunnelClient {
     let connectedAt = 0;
     let socketSession: TunnelSession | undefined;
     let rejectedStatus: number | undefined;
+    let handshakeTimedOut = false;
+    const handshakeDeadline = setTimeout(() => {
+      if (this.socket !== socket || connectedAt !== 0) {
+        return;
+      }
+      handshakeTimedOut = true;
+      this.lastError = `machine tunnel handshake timed out after ${this.handshakeTimeoutMs}ms`;
+      this.options.logger.warn(
+        { label: identity.label, tunnelUrl },
+        this.lastError,
+      );
+      socket.terminate();
+    }, this.handshakeTimeoutMs);
+    handshakeDeadline.unref?.();
     socket.on("open", () => {
+      clearTimeout(handshakeDeadline);
       if (this.socket !== socket || !this.hasConnectIntent()) {
         socket.terminate();
         return;
@@ -390,7 +434,11 @@ export class ConnectTunnelClient {
       this.publish();
     });
     socket.on("error", (error: Error) => {
-      if (this.socket !== socket || rejectedStatus !== undefined) {
+      if (
+        this.socket !== socket ||
+        rejectedStatus !== undefined ||
+        handshakeTimedOut
+      ) {
         return;
       }
       this.lastError = humanizeTransportError(
@@ -400,6 +448,7 @@ export class ConnectTunnelClient {
       this.publish();
     });
     socket.on("close", (code: number, reason: Buffer) => {
+      clearTimeout(handshakeDeadline);
       socketSession?.dispose();
       if (this.session === socketSession) {
         this.session = undefined;

@@ -25,6 +25,7 @@ export interface CompatibilityProblem {
 
 export interface PluginResolvedUpdateVersion {
   version: string;
+  label: string;
   display: string;
 }
 
@@ -323,6 +324,7 @@ export async function selectNpmCandidate(args: {
     if (!metadata) continue;
     const candidate: NpmResolvedCandidate = {
       version,
+      label: version,
       display: npmDisplay(args.intent.packageName, version),
       integrity: metadata.dist?.integrity ?? "",
       engines: {
@@ -497,10 +499,13 @@ export async function resolveGitRef(args: {
 export function gitResolvedVersion(args: {
   url: string;
   ref: string;
+  tagPrefix: string;
   commit: string;
 }): PluginResolvedUpdateVersion {
   return {
     version: args.commit,
+    label:
+      gitSemverTagVersion(args.ref, args.tagPrefix) ?? args.commit.slice(0, 7),
     display: `${args.url}@${args.ref} (${args.commit.slice(0, 12)})`,
   };
 }
@@ -654,6 +659,7 @@ async function resolveGitRangeUpdate(args: {
     const version = gitResolvedVersion({
       url: args.url,
       ref: candidate.tag,
+      tagPrefix: args.intent.tagPrefix,
       commit: candidate.commit,
     });
     if (candidate.commit === args.currentCommit) {
@@ -717,6 +723,7 @@ export async function resolveGitUpdate(args: {
     url: args.url,
     ref:
       args.intent.kind === "range" ? args.intent.resolvedTag : args.intent.ref,
+    tagPrefix: args.intent.kind === "range" ? args.intent.tagPrefix : "",
     commit: args.currentCommit,
   });
   if (args.intent.kind === "range") {
@@ -745,6 +752,7 @@ export async function resolveGitUpdate(args: {
   const candidate = gitResolvedVersion({
     url: args.url,
     ref: args.intent.ref,
+    tagPrefix: "",
     commit: resolved.commit,
   });
   if (resolved.commit === args.currentCommit) {

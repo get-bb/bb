@@ -5,7 +5,7 @@ import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { queueChildThreadTurnNotificationBestEffort } from "../../../src/services/threads/child-thread-notifications.js";
 import { sendThreadMessage } from "../../../src/services/threads/thread-send.js";
 import {
@@ -116,6 +116,7 @@ describe("child outcome reconciliation", () => {
     await withChildThreadNotificationClock(async (harness) => {
       const fixture = seedFamily(harness, "late-acceptance");
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment: fixture.environment,
         payload: {
           input: textInput("continue"),
@@ -172,7 +173,7 @@ describe("child outcome reconciliation", () => {
       expect(response.status).toBe(200);
       expect(getThread(harness.db, fixture.child.id)?.status).toBe("active");
 
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
 
       expect(getThread(harness.db, fixture.child.id)?.status).toBe("active");
       expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([]);
@@ -187,10 +188,17 @@ describe("child outcome reconciliation", () => {
           childThread: fixture.child,
           parentThreadId: fixture.parent.id,
           turnStatus: "failed",
+          turnId: null,
         });
       }
 
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
+      await vi.waitFor(() => {
+        expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([
+          "child-failed",
+        ]);
+      });
+      await flushChildThreadNotifications(harness);
 
       expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([
         "child-failed",

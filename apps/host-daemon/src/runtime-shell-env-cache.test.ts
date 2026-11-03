@@ -38,13 +38,40 @@ function createFixture({ resolvedAtMs, startupPath }: CacheFixtureArgs) {
 }
 
 describe("createRuntimeShellEnvCache", () => {
+  it("shares a slow refresh and starts its TTL after applying the environment", async () => {
+    const fixture = createFixture({ startupPath: "/old/bin" });
+    const resolve = createDeferredPromise<RuntimeShellEnv>();
+    fixture.resolveShellEnv.mockReturnValue(resolve.promise);
+
+    const first = fixture.cache.refresh({ allowStale: false });
+    fixture.setTime(200);
+    const second = fixture.cache.refresh({ allowStale: false });
+    resolve.resolve({ PATH: "/new/bin" });
+    await expect(first).resolves.toEqual({ PATH: "/new/bin" });
+    await expect(second).resolves.toEqual({ PATH: "/new/bin" });
+    expect(fixture.resolveShellEnv).toHaveBeenCalledOnce();
+
+    fixture.setTime(299);
+    await fixture.cache.refresh({ allowStale: false });
+    expect(fixture.resolveShellEnv).toHaveBeenCalledOnce();
+
+    fixture.setTime(300);
+    fixture.resolveShellEnv.mockResolvedValue({ PATH: "/latest/bin" });
+    await expect(fixture.cache.refresh({ allowStale: false })).resolves.toEqual(
+      {
+        PATH: "/latest/bin",
+      },
+    );
+    expect(fixture.resolveShellEnv).toHaveBeenCalledTimes(2);
+  });
+
   it("blocks on the first resolve when no startup environment was recorded", async () => {
     const fixture = createFixture({ startupPath: "/old/bin" });
     fixture.resolveShellEnv.mockResolvedValue({ PATH: "/new/bin" });
 
-    await expect(
-      fixture.cache.refresh({ allowStale: true }),
-    ).resolves.toEqual({ PATH: "/new/bin" });
+    await expect(fixture.cache.refresh({ allowStale: true })).resolves.toEqual({
+      PATH: "/new/bin",
+    });
     expect(fixture.readAppliedPath()).toBe("/new/bin");
   });
 

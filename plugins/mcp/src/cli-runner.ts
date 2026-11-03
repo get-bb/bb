@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import {
+  experimental_hostToolchain as hostToolchain,
+  experimental_spawnHostProcess as spawn,
+} from "@get-bb/plugin-sdk/process";
 import { homedir } from "node:os";
-import { delimiter, extname, isAbsolute, join } from "node:path";
 import { createLimiter } from "./limiter.js";
 
 const OUTPUT_MAX_BYTES = 512 * 1024;
@@ -45,42 +45,10 @@ export class CliUnavailableError extends Error {
   }
 }
 
-export function bbBinaryCandidates(env: NodeJS.ProcessEnv): string[] {
-  const candidates: string[] = [];
-  const pushIfAbsolute = (candidate: string): void => {
-    if (isAbsolute(candidate)) candidates.push(candidate);
-  };
-  const fromCli = env.BB_CLI?.trim();
-  if (fromCli !== undefined && fromCli.length > 0) pushIfAbsolute(fromCli);
-  const fromCliDir = env.BB_CLI_DIR?.trim();
-  if (fromCliDir !== undefined && fromCliDir.length > 0) {
-    pushIfAbsolute(join(fromCliDir, "bb"));
-  }
-  for (const entry of (env.PATH ?? "").split(delimiter)) {
-    const trimmed = entry.trim();
-    if (trimmed.length > 0) pushIfAbsolute(join(trimmed, "bb"));
-  }
-  candidates.push("/opt/homebrew/bin/bb", "/usr/local/bin/bb");
-  return candidates;
-}
-
-async function isExecutableFile(candidate: string): Promise<boolean> {
-  try {
-    if (!(await stat(candidate)).isFile()) return false;
-    await access(candidate, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function resolveBbBinary(
   env: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-  for (const candidate of bbBinaryCandidates(env)) {
-    if (await isExecutableFile(candidate)) return candidate;
-  }
-  return null;
+  return hostToolchain.resolve("bb", { env });
 }
 
 export function cliEnvironment(
@@ -118,17 +86,6 @@ class BoundedOutput {
   }
 }
 
-export function resolveCliLaunch(
-  binary: string,
-  argv: readonly string[],
-  platform: NodeJS.Platform,
-  nodePath: string,
-): { command: string; args: string[] } {
-  return platform === "win32" && extname(binary) === ""
-    ? { command: nodePath, args: [binary, ...argv] }
-    : { command: binary, args: [...argv] };
-}
-
 export function createCliRunner(options: {
   env: NodeJS.ProcessEnv;
   serverUrl: () => string;
@@ -140,7 +97,6 @@ export function createCliRunner(options: {
     options.maxConcurrent ?? MAX_CONCURRENT_CLI_PROCESSES,
   );
   const ownsProcessGroup = process.platform !== "win32";
-  let binary: Promise<string | null> | null = null;
 
   const runOnce = (
     resolved: string,
@@ -148,13 +104,7 @@ export function createCliRunner(options: {
     runOptions: CliRunOptions,
   ) =>
     new Promise<CliRunResult>((resolveRun, rejectRun) => {
-      const launch = resolveCliLaunch(
-        resolved,
-        argv,
-        process.platform,
-        process.execPath,
-      );
-      const child = spawn(launch.command, launch.args, {
+      const child = spawn(resolved, [...argv], {
         cwd: homedir(),
         detached: ownsProcessGroup,
         env: cliEnvironment(options.env, options.serverUrl()),
@@ -230,10 +180,8 @@ export function createCliRunner(options: {
     });
 
   return async (argv, runOptions) => {
-    binary ??= resolve(options.env);
-    const resolved = await binary;
+    const resolved = await resolve(options.env);
     if (resolved === null) {
-      binary = null;
       throw new CliUnavailableError();
     }
     return limiter.run(

@@ -18,7 +18,7 @@ describe("app.css compact prompt controls", () => {
   it("lets designated controls shrink in both compact containers", () => {
     expect(
       css.match(
-        /\[data-promptbox(?:-shell)?\] \[data-promptbox-shrinkable-control\] \{\s*flex-shrink: 1 !important;\s*\}/g,
+        /\[data-(?:composer-box|promptbox-shell)\] \[data-promptbox-shrinkable-control\] \{\s*flex-shrink: 1 !important;\s*\}/g,
       ),
     ).toHaveLength(2);
   });

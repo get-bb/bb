@@ -6,8 +6,8 @@ const fake = vi.hoisted(() => ({
   responses: new Map<string, string | Error>(),
   calls: [] as string[][],
 }));
-vi.mock("node:child_process", () => ({
-  execFile(
+vi.mock("@get-bb/plugin-sdk/process", () => ({
+  experimental_execHostFileCallback(
     file: string,
     args: string[],
     options: { timeout: number; maxBuffer: number },

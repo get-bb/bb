@@ -2,12 +2,12 @@ import { useMemo } from "react";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { isRawThreadId } from "@bb/domain";
 import type { PromptDraftState } from "@bb/client-core";
-import { THREAD_MENTION_RESOLVE_MAX_IDS } from "@bb/server-contract";
 import {
   resolveSerializedPromptMentions,
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import { sdk } from "@/lib/sdk";
+import { resolveThreadMentionsInBatches } from "@/lib/thread-links";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 
 export async function resolveInitialPromptDraft(
@@ -26,26 +26,19 @@ export async function resolveInitialPromptDraft(
       ),
     ),
   ];
+  if (threadIds.length === 0) return draft;
   const resolvedById = new Map<string, { projectId: string; label: string }>();
   const unavailableIds = new Set<string>();
-  for (
-    let offset = 0;
-    offset < threadIds.length;
-    offset += THREAD_MENTION_RESOLVE_MAX_IDS
-  ) {
-    const batch = threadIds.slice(
-      offset,
-      offset + THREAD_MENTION_RESOLVE_MAX_IDS,
-    );
-    try {
-      const resolutions = await resolveMentions({ threadIds: batch, signal });
-      for (const resolution of resolutions)
-        resolvedById.set(resolution.threadId, resolution);
+  await resolveThreadMentionsInBatches(
+    threadIds,
+    (batch) => resolveMentions({ threadIds: batch, signal }),
+    signal,
+    ({ threadIds: batch, threads }) => {
+      for (const thread of threads) resolvedById.set(thread.threadId, thread);
       for (const id of batch) if (!resolvedById.has(id)) unavailableIds.add(id);
-    } catch {
-      if (signal.aborted) return draft;
-    }
-  }
+    },
+  );
+  if (signal.aborted) return draft;
   return {
     ...draft,
     mentions: draft.mentions.map((mention) => {

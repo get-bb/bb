@@ -68,8 +68,8 @@ function resolveBrowserTabPlacement(
   saved: BbDesktopBrowserTarget | undefined,
   windowTarget: WindowTargetCheck,
 ): BrowserTabPlacement {
-  if (windowTarget.status === "pending") return "pending";
   if (saved === undefined) return "open";
+  if (windowTarget.status === "pending") return "pending";
   const actual = windowTarget.target;
   if (actual === null || actual.hostId !== saved.hostId) return "unavailable";
   return actual.instanceId === saved.instanceId

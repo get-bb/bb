@@ -1,19 +1,17 @@
+import { createMigratedConnection } from "../src/testing.js";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { getHost } from "../src/data/hosts.js";
 import { getThread } from "../src/data/threads.js";
 import { getProject } from "../src/data/projects.js";
 import { getEnvironment } from "../src/data/environments.js";
 import { describe, expect, it, vi } from "vitest";
-import { createConnection } from "../src/connection.js";
-import { migrate } from "../src/migrate.js";
 import { hosts } from "../src/schema.js";
 
 describe("connection prepared queries", () => {
   it.each([getHost, getThread, getProject, getEnvironment])(
     "does not rebuild SQL for warm %s lookups",
     (lookup) => {
-      const db = createConnection(":memory:");
-      migrate(db);
+      const db = createMigratedConnection();
       const compile = vi.spyOn(SQLiteSyncDialect.prototype, "sqlToQuery");
       try {
         expect(lookup(db, "missing-first")).toBeNull();
@@ -31,10 +29,8 @@ describe("connection prepared queries", () => {
   );
 
   it("reuses compiled lookups across transactions while seeing writes and rollbacks", () => {
-    const db = createConnection(":memory:");
-    const other = createConnection(":memory:");
-    migrate(db);
-    migrate(other);
+    const db = createMigratedConnection();
+    const other = createMigratedConnection();
     try {
       db.insert(hosts)
         .values({

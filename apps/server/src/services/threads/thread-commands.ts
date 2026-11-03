@@ -1,9 +1,13 @@
-import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
-import { and, eq, isNull } from "drizzle-orm";
+import {
+  environments,
+  hasStoredSpawnAgentToolCall,
+  liveThread,
+  threads,
+} from "@bb/db";
+import { and, eq } from "drizzle-orm";
 import {
   PromptInput,
   PromptMode,
-  ProjectExecutionDefaults,
   PermissionEscalation,
   ResolvedThreadExecutionOptions,
   RuntimeThreadExecutionOptions,
@@ -44,6 +48,7 @@ import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
+import { projectCheckoutPathOnHost } from "../projects/project-workspace.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
@@ -86,7 +91,11 @@ export interface ThreadStartCommandArgs {
 interface PreparedTurnSubmitCommandBuildArgs {
   deps: Pick<
     AppDeps,
-    "config" | "db" | "providerRegistry" | "pluginHostArtifacts"
+    | "config"
+    | "db"
+    | "providerRegistry"
+    | "pluginHostArtifacts"
+    | "lifecycleDedupers"
   >;
   environmentId: string;
   hostId: string;
@@ -122,7 +131,8 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
-  deps: Pick<AppDeps, "db" | "providerRegistry">;
+  deps: Pick<AppDeps, "db" | "providerRegistry" | "lifecycleDedupers">;
+  workspacePath: string;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
   input: PromptInput[];
@@ -133,8 +143,8 @@ interface RuntimeExecutionOptionsArgs {
 }
 
 interface BuildExecutionOptionsArgs {
+  defaultModel?: string;
   hostId?: string | null;
-  projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
 }
 
@@ -215,10 +225,34 @@ function toRuntimeExecutionOptions(
     args.deps.db,
     args.threadId,
   );
+  const checkoutPath = projectCheckoutPathOnHost(
+    args.deps,
+    args.projectId,
+    args.hostId,
+  );
+  const model = args.deps.lifecycleDedupers.providerModelCatalogs.getCachedModel(
+    args.deps,
+    {
+      hostId: args.hostId,
+      providerId: args.providerId,
+      workspacePaths:
+        checkoutPath === undefined
+          ? [args.workspacePath]
+          : [args.workspacePath, checkoutPath],
+      model: args.execution.model,
+    },
+  );
+  const reasoningLevel =
+    model === null ||
+    model.supportedReasoningEfforts.some(
+      (effort) => effort.reasoningEffort === args.execution.reasoningLevel,
+    )
+      ? args.execution.reasoningLevel
+      : undefined;
   const base = {
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
-    reasoningLevel: args.execution.reasoningLevel,
+    ...(reasoningLevel === undefined ? {} : { reasoningLevel }),
     ...(promptMode !== undefined ? { promptMode } : {}),
     ...(Object.keys(sessionOptions).length > 0 ? { sessionOptions } : {}),
     providerOptions,
@@ -256,8 +290,8 @@ export async function buildExecutionOptions(
   args: BuildExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
   const plan = await resolveExistingThreadExecutionPlan(deps, {
-    ...(args.projectDefaults !== undefined
-      ? { projectDefaults: args.projectDefaults }
+    ...(args.defaultModel !== undefined
+      ? { defaultModel: args.defaultModel }
       : {}),
     ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
     executionSource: "client/turn/requested",
@@ -297,6 +331,7 @@ export async function buildThreadStartCommand(
       ...args,
       deps,
       hostId: args.environment.hostId,
+      workspacePath: runtimeContext.workspacePath,
       input: args.input,
       threadId: args.thread.id,
     }),
@@ -331,6 +366,7 @@ function buildPreparedTurnSubmitCommandPayload(
       input: args.input,
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
+      workspacePath: args.runtimeContext.workspacePath,
     }),
     target: args.target,
     resumeContext: {
@@ -416,8 +452,7 @@ function threadHasLiveChildren(
     .where(
       and(
         eq(threads.parentThreadId, threadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .limit(1)
@@ -448,6 +483,29 @@ export function dispatchThreadRenameCommand(
         "Live thread rename command failed",
       );
     },
+  });
+}
+
+export function syncThreadTitleToProvider(
+  deps: CommandResultSideEffectsDeps,
+  thread: Thread,
+): void {
+  if (!thread.title || !thread.environmentId) {
+    return;
+  }
+  const environment = deps.db
+    .select()
+    .from(environments)
+    .where(eq(environments.id, thread.environmentId))
+    .get();
+  if (environment?.status !== "ready" || !environment.path) {
+    return;
+  }
+  dispatchThreadRenameCommand(deps, {
+    environment: { id: environment.id, hostId: environment.hostId },
+    providerId: thread.providerId,
+    threadId: thread.id,
+    title: thread.title,
   });
 }
 

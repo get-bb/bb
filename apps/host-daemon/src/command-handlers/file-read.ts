@@ -3,15 +3,7 @@ import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
 import mimeTypes from "mime-types";
-import type {
-  HostReadFileIfNoneMatch,
-  HostReadFileRelativeDotfilePolicy,
-} from "@bb/host-daemon-contract";
-import {
-  readGitBlob,
-  WorkspaceError,
-  type GitProcessOptions,
-} from "@bb/host-workspace";
+import type { HostReadFileIfNoneMatch } from "@bb/host-daemon-contract";
 import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   CommandDispatchError,
@@ -20,6 +12,11 @@ import {
 import { isFsErrorWithCode } from "../fs-errors.js";
 import { sha256Hex } from "../sha256-hex.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
+import {
+  type GitProcessOptions,
+  WorkspaceError,
+} from "bb-environment-provider-host/workspace-git";
+import { readGitBlob } from "@bb/host-workspace";
 
 const IMAGE_FILE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024;
 export const NON_IMAGE_FILE_SIZE_LIMIT_BYTES = 25 * 1024 * 1024;
@@ -48,32 +45,16 @@ export type ReadFileForTransportResult =
   | ReadFileNotModifiedForTransportResult;
 
 interface ReadFileForTransportArgs {
+  followRootSymlink: boolean;
   ifNoneMatch?: HostReadFileIfNoneMatch;
   resolvedPath: string;
   resultPath: string;
   rootPath?: string;
 }
 
-interface ReadRootRelativeFileForTransportArgs {
-  followRootSymlink: boolean;
-  rootPath: string;
-  relativePath: string;
-  dotfiles: HostReadFileRelativeDotfilePolicy;
-}
-
 interface ResolveRootPathForReadArgs {
   resultPath: string;
   rootPath: string;
-}
-
-interface ValidateRootRelativePathArgs {
-  relativePath: string;
-  dotfiles: HostReadFileRelativeDotfilePolicy;
-}
-
-interface ValidatedRootRelativePath {
-  segments: readonly string[];
-  resultPath: string;
 }
 
 interface ReadFileFromGitRefArgs extends GitProcessOptions {
@@ -94,6 +75,16 @@ function getFileSizeLimitBytes(mimeType?: string): number {
   return isBinaryImageMimeType(mimeType)
     ? IMAGE_FILE_SIZE_LIMIT_BYTES
     : NON_IMAGE_FILE_SIZE_LIMIT_BYTES;
+}
+
+function assertFileWithinSizeLimit(sizeBytes: number, mimeType?: string) {
+  const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
+  if (sizeBytes > fileSizeLimitBytes) {
+    throw new CommandDispatchError(
+      "file_too_large",
+      `File size ${sizeBytes} bytes exceeds the ${Math.floor(fileSizeLimitBytes / (1024 * 1024))} MB limit`,
+    );
+  }
 }
 
 function getContentEncoding(
@@ -160,15 +151,6 @@ function createReadFileForTransportResult(
   return addFileContent(metadata, args.contents);
 }
 
-function createUnconditionalReadFileForTransportResult(
-  args: ReadFileBytes,
-): ReadFileContentForTransportResult {
-  return addFileContent(
-    createReadFileForTransportMetadata(args),
-    args.contents,
-  );
-}
-
 export function createMissingTargetError(
   resultPath: string,
 ): ExpectedCommandDispatchError {
@@ -176,39 +158,6 @@ export function createMissingTargetError(
     "ENOENT",
     `Path does not exist: ${resultPath}`,
   );
-}
-
-function validateRootRelativePath(
-  args: ValidateRootRelativePathArgs,
-): ValidatedRootRelativePath {
-  if (
-    args.relativePath.includes("\0") ||
-    args.relativePath.includes("\\") ||
-    path.posix.isAbsolute(args.relativePath)
-  ) {
-    throw new CommandDispatchError("invalid_path", "Path must be relative");
-  }
-
-  const segments = args.relativePath.split("/");
-  if (
-    segments.some(
-      (segment) => segment.length === 0 || segment === "." || segment === "..",
-    )
-  ) {
-    throw new CommandDispatchError("invalid_path", "Path must be relative");
-  }
-
-  if (
-    args.dotfiles === "deny" &&
-    segments.some((segment) => segment.startsWith("."))
-  ) {
-    throw createMissingTargetError(args.relativePath);
-  }
-
-  return {
-    segments,
-    resultPath: segments.join("/"),
-  };
 }
 
 async function resolveRootPathOrThrowMissingPath(
@@ -227,25 +176,28 @@ async function resolveRootPathOrThrowMissingPath(
   }
 }
 
-async function throwMissingTargetOrRethrow(
+function throwMissingTargetOrRethrow(
   args: ReadFileForTransportArgs,
   error: unknown,
-): Promise<never> {
-  if (!isFsErrorWithCode(error, "ENOENT")) {
-    throw error;
-  }
-
-  const rootPath = args.rootPath;
-  if (!rootPath) {
+): never {
+  if (isFsErrorWithCode(error, "ENOENT")) {
     throw createMissingTargetError(args.resultPath);
   }
+  throw error;
+}
 
-  await resolveRootPathOrThrowMissingPath({
+async function resolveReadRootPath(
+  args: ReadFileForTransportArgs & { rootPath: string },
+): Promise<string> {
+  const rootPath = args.followRootSymlink
+    ? await fs
+        .realpath(args.rootPath)
+        .catch((error: unknown) => throwMissingTargetOrRethrow(args, error))
+    : args.rootPath;
+  return resolveRootPathOrThrowMissingPath({
     resultPath: args.resultPath,
     rootPath,
   });
-
-  throw createMissingTargetError(args.resultPath);
 }
 
 async function resolveReadablePath(
@@ -256,10 +208,7 @@ async function resolveReadablePath(
     return args.resolvedPath;
   }
 
-  const realRootPath = await resolveRootPathOrThrowMissingPath({
-    resultPath: args.resultPath,
-    rootPath,
-  });
+  const realRootPath = await resolveReadRootPath({ ...args, rootPath });
   const realResolvedPath = await fs
     .realpath(args.resolvedPath)
     .catch((error: unknown) => throwMissingTargetOrRethrow(args, error));
@@ -357,13 +306,7 @@ export async function readFileForTransport(
   }
 
   const mimeType = mimeTypes.lookup(args.resultPath) || undefined;
-  const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
-  if (stat.size > fileSizeLimitBytes) {
-    throw new CommandDispatchError(
-      "file_too_large",
-      `File size ${stat.size} bytes exceeds the ${Math.floor(fileSizeLimitBytes / (1024 * 1024))} MB limit`,
-    );
-  }
+  assertFileWithinSizeLimit(stat.size, mimeType);
 
   const fileContents = await fs
     .readFile(readablePath)
@@ -374,61 +317,6 @@ export async function readFileForTransport(
     mimeType,
     modifiedAtMs: stat.mtimeMs,
     path: args.resultPath,
-    sizeBytes: stat.size,
-  });
-}
-
-export async function readRootRelativeFileForTransport(
-  args: ReadRootRelativeFileForTransportArgs,
-): Promise<ReadFileContentForTransportResult> {
-  if (!path.isAbsolute(args.rootPath)) {
-    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
-  }
-
-  const relativePath = validateRootRelativePath({
-    relativePath: args.relativePath,
-    dotfiles: args.dotfiles,
-  });
-  const rootPath = args.followRootSymlink
-    ? await fs.realpath(args.rootPath).catch((error: unknown) => {
-        if (isFsErrorWithCode(error, "ENOENT")) {
-          throw createMissingTargetError(relativePath.resultPath);
-        }
-        throw error;
-      })
-    : args.rootPath;
-  const resolvedPath = path.join(rootPath, ...relativePath.segments);
-  const readArgs: ReadFileForTransportArgs = {
-    resolvedPath,
-    resultPath: relativePath.resultPath,
-    rootPath,
-  };
-  const readablePath = await resolveReadablePath(readArgs);
-  const stat = await fs
-    .stat(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));
-  if (stat.isDirectory()) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "Path is a directory, not a file",
-    );
-  }
-  if (!stat.isFile()) {
-    throw new CommandDispatchError(
-      "invalid_path",
-      "Path is not a regular file",
-    );
-  }
-
-  const mimeType = mimeTypes.lookup(relativePath.resultPath) || undefined;
-  const fileContents = await fs
-    .readFile(readablePath)
-    .catch((error: unknown) => throwMissingTargetOrRethrow(readArgs, error));
-  return createUnconditionalReadFileForTransportResult({
-    contents: fileContents,
-    mimeType,
-    modifiedAtMs: stat.mtimeMs,
-    path: relativePath.resultPath,
     sizeBytes: stat.size,
   });
 }

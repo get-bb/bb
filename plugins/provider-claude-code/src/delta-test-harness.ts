@@ -132,11 +132,15 @@ interface ClaudeDeltaHarness {
 }
 
 export function createClaudeDeltaHarness(
-  options: { sandboxEnabled?: boolean } = {},
+  options: {
+    sandboxEnabled?: boolean;
+    commandDescriptionsEnabled?: boolean;
+  } = {},
 ): ClaudeDeltaHarness {
   const translator = createClaudeDeltaTranslator({
     cwd: "/workspace",
     sandboxEnabled: options.sandboxEnabled ?? false,
+    commandDescriptionsEnabled: options.commandDescriptionsEnabled ?? false,
   });
   const assembler = createDeltaAssembler({
     providerId: "claude-code",

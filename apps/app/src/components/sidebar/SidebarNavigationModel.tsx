@@ -34,6 +34,7 @@ import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
   getPluginDetailRoutePath,
   getPluginPanelRoutePath,
+  getPluginPanelRoutePluginId,
   getRootComposeRoutePath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
@@ -227,6 +228,7 @@ export function SidebarNavigationModelProvider({
   });
   const isHomeActive =
     !isSettingsPathname(location.pathname) &&
+    getPluginPanelRoutePluginId(location.pathname) === null &&
     (activeItemId === null || activeItemId === NEW_THREAD_NAVIGATION_ITEM_ID);
   const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
   const homeRoutePathRef = useRef(

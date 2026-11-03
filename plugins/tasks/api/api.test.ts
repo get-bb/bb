@@ -8,6 +8,13 @@ import { describe, expect, it, vi } from "vitest";
 import { registerAttachments } from "../attachments";
 import { attachmentDownloadUrl } from "../shared/attachments";
 import { tasksRpcContract } from "../shared/contract";
+import {
+  TASK_META_TAG,
+  attachmentsChangedTags,
+  commentsTag,
+  taskChangedTags,
+  taskTag,
+} from "../shared/tags";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
@@ -67,16 +74,16 @@ describe("Tasks RPC domain API", () => {
         expect(responseReturned).toBe(true);
         const { comment } = await response;
         expect(comment.notifiedCount).toBe(0);
-        expect(harness.realtimeSignals).toEqual([
-          { channel: "comments:changed", payload: { taskId: task.id } },
+        expect(harness.experimental_rpcInvalidations).toEqual([
+          [commentsTag(task.id)],
         ]);
         releaseDelivery();
         await expect
           .poll(() => store.tasks.getComment(comment.id)?.notifiedCount)
           .toBe(1);
-        expect(harness.realtimeSignals).toEqual([
-          { channel: "comments:changed", payload: { taskId: task.id } },
-          { channel: "comments:changed", payload: { taskId: task.id } },
+        expect(harness.experimental_rpcInvalidations).toEqual([
+          [commentsTag(task.id)],
+          [commentsTag(task.id)],
         ]);
       } finally {
         releaseDelivery();
@@ -125,7 +132,9 @@ describe("Tasks RPC domain API", () => {
         }),
       );
       expect(comment.notifiedCount).toBe(0);
-      await expect.poll(() => harness.realtimeSignals.length).toBe(2);
+      await expect
+        .poll(() => harness.experimental_rpcInvalidations.length)
+        .toBe(2);
       expect(store.tasks.getComment(comment.id)).toMatchObject({
         body: "New context",
         notifiedCount: 0,
@@ -164,7 +173,7 @@ describe("Tasks RPC domain API", () => {
     store.tasks.updateTask(task.id, {
       description: `![diagram](${attachmentDownloadUrl(attachmentId)})`,
     });
-    const signalsBeforeConflict = harness.realtimeSignals.length;
+    const signalsBeforeConflict = harness.experimental_rpcInvalidations.length;
 
     const conflict = tasksRpcContract.deleteAttachment.output.parse(
       await harness.callRpc("deleteAttachment", { attachmentId }),
@@ -178,7 +187,9 @@ describe("Tasks RPC domain API", () => {
       },
     });
     expect(store.tasks.getAttachment(attachmentId)).toBeDefined();
-    expect(harness.realtimeSignals).toHaveLength(signalsBeforeConflict);
+    expect(harness.experimental_rpcInvalidations).toHaveLength(
+      signalsBeforeConflict,
+    );
 
     const deleted = tasksRpcContract.deleteAttachment.output.parse(
       await harness.callRpc("deleteAttachment", {
@@ -193,10 +204,9 @@ describe("Tasks RPC domain API", () => {
     });
     expect(store.tasks.getAttachment(attachmentId)).toBeUndefined();
     expect(store.tasks.getTask(task.id)?.description).toBe("");
-    expect(harness.realtimeSignals.at(-1)).toEqual({
-      channel: "tasks:changed",
-      payload: { taskId: task.id, projectId: project.id },
-    });
+    expect(harness.experimental_rpcInvalidations.at(-1)).toEqual(
+      attachmentsChangedTags(task.id, null),
+    );
 
     await expect(
       harness.callRpc("deleteAttachment", { attachmentId }),
@@ -269,10 +279,9 @@ describe("Tasks RPC domain API", () => {
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [expect.objectContaining({ threadId: "thr_two" })],
     ]);
-    expect(harness.realtimeSignals.at(-1)).toEqual({
-      channel: "comments:changed",
-      payload: { taskId: task.id },
-    });
+    expect(harness.experimental_rpcInvalidations.at(-1)).toEqual([
+      commentsTag(task.id),
+    ]);
     await harness.dispose();
   });
 
@@ -697,15 +706,9 @@ describe("Tasks RPC domain API", () => {
     expect(quietResult.comment.notifiedCount).toBe(0);
     expect(agentComment.notifiedCount).toBe(0);
     expect(harness.sdk.callsTo("threads.send")).toEqual([]);
-    expect(harness.realtimeSignals.slice(-2)).toEqual([
-      {
-        channel: "comments:changed",
-        payload: { taskId: task.id },
-      },
-      {
-        channel: "comments:changed",
-        payload: { taskId: task.id },
-      },
+    expect(harness.experimental_rpcInvalidations.slice(-2)).toEqual([
+      [commentsTag(task.id)],
+      [commentsTag(task.id)],
     ]);
     await harness.dispose();
   });
@@ -916,15 +919,12 @@ describe("Tasks RPC domain API", () => {
         harness.callRpc("deleteTask", { taskId: parent.id }),
       ).resolves.toEqual({ deleted: true });
       expect(store.tasks.getTask(child.id)?.parentTaskId).toBeNull();
-      expect(harness.realtimeSignals).toEqual([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: project.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: child.id, projectId: project.id },
-        },
+      expect(harness.experimental_rpcInvalidations).toEqual([
+        [
+          ...taskChangedTags({ id: parent.id, projectId: project.id }),
+          taskTag(child.id),
+          TASK_META_TAG,
+        ],
       ]);
     } finally {
       await harness.dispose();
@@ -1129,20 +1129,11 @@ describe("Tasks RPC domain API", () => {
           "A project must be empty before it can be deleted; pass force: true to delete its tasks",
       },
     });
-    expect(harness.realtimeSignals).toEqual(
+    expect(harness.experimental_rpcInvalidations).toEqual(
       expect.arrayContaining([
-        {
-          channel: "projects:changed",
-          payload: { projectId: project.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: createResult.task.id, projectId: project.id },
-        },
-        {
-          channel: "comments:changed",
-          payload: { taskId: createResult.task.id },
-        },
+        ["projects"],
+        taskChangedTags({ id: createResult.task.id, projectId: project.id }),
+        [commentsTag(createResult.task.id)],
       ]),
     );
 
@@ -1304,16 +1295,12 @@ describe("Tasks RPC domain API", () => {
       kind: "system",
       body: "Moved from OPS-2 to HOME-4 by Jem",
     });
-    expect(harness.realtimeSignals).toEqual(
+    expect(harness.experimental_rpcInvalidations).toEqual(
       expect.arrayContaining([
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: ops.id },
-        },
-        {
-          channel: "tasks:changed",
-          payload: { taskId: parent.id, projectId: home.id },
-        },
+        expect.arrayContaining([
+          ...taskChangedTags({ id: parent.id, projectId: ops.id }),
+          ...taskChangedTags({ id: parent.id, projectId: home.id }),
+        ]),
       ]),
     );
     await harness.dispose();
@@ -1355,7 +1342,7 @@ describe("Tasks RPC domain API", () => {
     });
     expect(store.tasks.listSubtasks(parent.id)).toEqual([]);
 
-    const signalsBeforeNoop = harness.realtimeSignals.length;
+    const signalsBeforeNoop = harness.experimental_rpcInvalidations.length;
     const noop = tasksRpcContract.moveTaskToProject.output.parse(
       await harness.callRpc("moveTaskToProject", {
         taskId: child.id,
@@ -1363,7 +1350,9 @@ describe("Tasks RPC domain API", () => {
       }),
     );
     expect(noop).toMatchObject({ ok: true, task: { key: "HOME-1" } });
-    expect(harness.realtimeSignals).toHaveLength(signalsBeforeNoop);
+    expect(harness.experimental_rpcInvalidations).toHaveLength(
+      signalsBeforeNoop,
+    );
 
     store.tasks.updateProject(ops.id, { prefix: "OPX" });
     const reused = store.tasks.createProject({
@@ -1518,10 +1507,9 @@ describe("Tasks RPC domain API", () => {
             });
           },
         },
-        environments: {
-          pullRequest: async ({ environmentId }: { environmentId: string }) =>
-            pullRequestsByEnvironment[environmentId]!,
-        },
+        plugins: githubPrStatusRpc(
+          (environmentId) => pullRequestsByEnvironment[environmentId]!,
+        ),
       },
     });
     const store = createStore(bb);
@@ -1576,17 +1564,14 @@ describe("Tasks RPC domain API", () => {
       },
     ]);
     expect(result.unavailableThreadIds).toEqual(["thr_deleted00"]);
-    expect(
-      harness.sdk
-        .callsTo("environments.pullRequest")
-        .map(([input]) => (input as { environmentId: string }).environmentId)
-        .sort(),
-    ).toEqual(["env_merged", "env_no_pr", "env_shared"]);
+    expect(pullRequestKeys(harness)).toEqual([
+      ["env_merged", "env_no_pr", "env_shared"],
+    ]);
 
     await harness.dispose();
   });
 
-  it("separates unavailable lookups (auth failure, crash) from genuine absence", async () => {
+  it("separates unavailable lookups (auth failure, asleep machine) from genuine absence", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
@@ -1602,22 +1587,16 @@ describe("Tasks RPC domain API", () => {
                     : "env_no_auth",
             }),
         },
-        environments: {
-          pullRequest: async ({
-            environmentId,
-          }: {
-            environmentId: string;
-          }): Promise<PullRequestLookup> => {
-            if (environmentId === "env_absent") return { outcome: "absent" };
-            if (environmentId === "env_crash") {
-              throw new Error("host offline");
-            }
-            return {
-              outcome: "unavailable",
-              message: "gh pr view failed: authentication required",
-            };
-          },
-        },
+        plugins: githubPrStatusRpc((environmentId) => {
+          if (environmentId === "env_absent") return { outcome: "absent" };
+          if (environmentId === "env_crash") {
+            return { outcome: "unavailable", message: "Host is suspended" };
+          }
+          return {
+            outcome: "unavailable",
+            message: "gh pr view failed: authentication required",
+          };
+        }),
       },
     });
     const store = createStore(bb);
@@ -1659,7 +1638,51 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("overlaps distinct environment lookups while deduplicating shared ones", async () => {
+  it("reports every looked-up thread unavailable when GitHub PR Status can't answer", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({ id: threadId, environmentId: "env_a" }),
+        },
+        plugins: {
+          callRpc: async () => {
+            throw new Error("Plugin bb--github-pr-status is disabled");
+          },
+        },
+      },
+    });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "PRs",
+      prefix: "PR",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Ship it",
+    });
+    store.tasks.upsertTaskThread({
+      taskId: task.id,
+      threadId: "thr_alpha0000",
+      presetName: "Default",
+      title: "thr_alpha0000",
+      liveStatus: "working",
+    });
+
+    await expect(
+      harness.callRpc("listTaskPullRequests", { taskId: task.id }),
+    ).resolves.toEqual({
+      pullRequests: [],
+      unavailableThreadIds: ["thr_alpha0000"],
+    });
+
+    await harness.dispose();
+  });
+
+  it("reads every environment's pull request in one request", async () => {
     const resolvers = new Map<string, (lookup: PullRequestLookup) => void>();
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
@@ -1671,12 +1694,12 @@ describe("Tasks RPC domain API", () => {
               environmentId: threadId === "thr_beta00000" ? "env_b" : "env_a",
             }),
         },
-        environments: {
-          pullRequest: ({ environmentId }: { environmentId: string }) =>
+        plugins: githubPrStatusRpc(
+          (environmentId) =>
             new Promise<PullRequestLookup>((resolve) => {
               resolvers.set(environmentId, resolve);
             }),
-        },
+        ),
       },
     });
     const store = createStore(bb);
@@ -1710,7 +1733,7 @@ describe("Tasks RPC domain API", () => {
     await vi.waitFor(() => {
       expect([...resolvers.keys()].sort()).toEqual(["env_a", "env_b"]);
     });
-    expect(harness.sdk.callsTo("environments.pullRequest")).toHaveLength(2);
+    expect(pullRequestKeys(harness)).toEqual([["env_a", "env_b"]]);
 
     resolvers.get("env_a")!({
       outcome: "available",
@@ -1730,7 +1753,7 @@ describe("Tasks RPC domain API", () => {
       "thr_alpha0000",
       "thr_alpha0001",
     ]);
-    expect(harness.sdk.callsTo("environments.pullRequest")).toHaveLength(2);
+    expect(pullRequestKeys(harness)).toEqual([["env_a", "env_b"]]);
 
     await harness.dispose();
   });
@@ -1769,10 +1792,9 @@ describe("Tasks RPC domain API", () => {
                 threadId === "thr_stale0000" ? "env_stale" : "env_fresh",
             }),
         },
-        environments: {
-          pullRequest: async ({ environmentId }: { environmentId: string }) =>
-            lookupByEnvironment[environmentId]!,
-        },
+        plugins: githubPrStatusRpc(
+          (environmentId) => lookupByEnvironment[environmentId]!,
+        ),
       },
     });
     const store = createStore(bb);
@@ -1823,6 +1845,109 @@ type PullRequestLookup =
   | { outcome: "available"; pullRequest: ReturnType<typeof makePullRequest> }
   | { outcome: "absent" }
   | { outcome: "unavailable"; message: string };
+
+describe("watched pull requests", () => {
+  it("refreshes every minute only while the task's pull request is open", async () => {
+    vi.useFakeTimers();
+    let state: "open" | "merged" = "open";
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({ id: threadId, environmentId: "env_a" }),
+        },
+        plugins: githubPrStatusRpc(() => ({
+          outcome: "available",
+          pullRequest: makePullRequest({ state }),
+        })),
+      },
+    });
+    try {
+      const store = createStore(bb);
+      registerTasksApi(bb, store);
+      const project = store.tasks.createProject({
+        name: "PRs",
+        prefix: "PR",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Ship it",
+      });
+      store.tasks.upsertTaskThread({
+        taskId: task.id,
+        threadId: "thr_alpha0000",
+        presetName: "Default",
+        title: "thr_alpha0000",
+        liveStatus: "working",
+      });
+      const stop = harness.experimental_watchRpc("listTaskPullRequests", {
+        input: { taskId: task.id },
+      });
+      await harness.callRpc("listTaskPullRequests", { taskId: task.id });
+      const refreshes = () =>
+        harness.experimental_rpcInvalidations.filter((tags) =>
+          tags?.includes(`pull-requests:${task.id}`),
+        ).length;
+
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(refreshes()).toBe(0);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(refreshes()).toBe(1);
+
+      state = "merged";
+      await harness.callRpc("listTaskPullRequests", { taskId: task.id });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(refreshes()).toBe(1);
+
+      state = "open";
+      await harness.callRpc("listTaskPullRequests", { taskId: task.id });
+      stop();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(refreshes()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      await harness.dispose();
+    }
+  });
+});
+
+function githubPrStatusRpc(
+  lookup: (
+    environmentId: string,
+  ) => PullRequestLookup | Promise<PullRequestLookup>,
+) {
+  return {
+    async callRpc<TOutput>(args: {
+      pluginId: string;
+      method: string;
+      input?: unknown;
+      outputSchema: { parse(value: unknown): TOutput };
+    }): Promise<TOutput> {
+      expect([args.pluginId, args.method]).toEqual([
+        "bb--github-pr-status",
+        "pullRequests",
+      ]);
+      const { keys } = args.input as { keys: string[] };
+      return args.outputSchema.parse(
+        Object.fromEntries(
+          await Promise.all(keys.map(async (key) => [key, await lookup(key)])),
+        ),
+      );
+    },
+  };
+}
+
+function pullRequestKeys(harness: {
+  sdk: { callsTo(path: string): unknown[][] };
+}) {
+  return harness.sdk
+    .callsTo("plugins.callRpc")
+    .map(([input]) =>
+      [...(input as { input: { keys: string[] } }).input.keys].sort(),
+    );
+}
 
 function makePullRequest(
   overrides: Partial<{

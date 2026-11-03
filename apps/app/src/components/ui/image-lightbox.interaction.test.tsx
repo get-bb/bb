@@ -66,3 +66,15 @@ it("keeps navigation open and restores the trigger after keyboard dismissal", ()
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
+
+it("keeps a zoomed image open on tap and dismisses again after fitting it", () => {
+  render(<Preview />);
+  fireEvent.click(screen.getByRole("button", { name: "Open image" }));
+  const image = screen.getByRole("img", { name: "Image 0" });
+  fireEvent.wheel(window, { deltaY: -100 });
+  fireEvent.click(image);
+  expect(screen.getByRole("dialog", { name: "Image preview" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Fit image to screen" }));
+  fireEvent.click(image);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});

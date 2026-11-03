@@ -16,7 +16,6 @@ interface TimelineDetailScrollProps {
   size: DetailScrollSize;
   overflowX?: "auto" | "hidden";
   streaming?: boolean;
-  contentKey: string;
   className?: string;
   scrollClassName?: string;
   showAboveFade?: boolean;
@@ -27,16 +26,12 @@ export function TimelineDetailScroll({
   size,
   overflowX = "auto",
   streaming = false,
-  contentKey,
   className,
   scrollClassName,
   showAboveFade = true,
   children,
 }: TimelineDetailScrollProps) {
-  const sticky = useStickyBottomScroll<HTMLDivElement>({
-    contentKey,
-    streaming,
-  });
+  const sticky = useStickyBottomScroll<HTMLDivElement>({ streaming });
   const overflow = useScrollOverflowState<HTMLDivElement>();
   const maxHeightClassName = getDetailScrollMaxHeightClass(size);
   const { aboveOverflow, belowOverflow } = overflow;
@@ -60,11 +55,6 @@ export function TimelineDetailScroll({
     >
       <div
         ref={refCallback}
-        onScroll={sticky.onScroll}
-        onPointerDown={sticky.onPointerDown}
-        onTouchMove={sticky.onTouchMove}
-        onTouchStart={sticky.onTouchStart}
-        onWheel={sticky.onWheel}
         data-detail-scroll-area={size}
         className={cn(
           "min-w-0 overflow-y-auto",

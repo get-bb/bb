@@ -1,11 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   TUNNEL_STATUS_HEADER,
   machine,
   presenceWritesOnChange,
   server,
 } from "@bb/connect-db";
+import { type OpenConnectDb, openConnectDb } from "@bb/connect-db-pg";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -18,8 +18,9 @@ import {
   type Frame,
   type HeaderPair,
 } from "@bb/tunnel-contract";
+import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
-import { responseHeadTimeoutMs } from "./response-head-timeout.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import {
   GATE_OWNER_HEADER,
   HOP_HEADERS,
@@ -33,6 +34,8 @@ import {
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
   DB: D1Database;
+  HYPERDRIVE?: Hyperdrive;
+  CONNECT_DB_FLAGS?: KVNamespace;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
   GATE_EVENTS: AnalyticsEngineDataset;
@@ -41,6 +44,8 @@ export interface Env {
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
   WORKER_HELD_RESPONSES?: string;
   PRESENCE_WRITES?: string;
+  GATE_SECRET?: string;
+  NEXT_BASE_DOMAIN?: string;
 }
 
 const TUNNEL_TAG = "tunnel";
@@ -276,8 +281,12 @@ export class TunnelDO {
     const serverId = await this.state.storage.get<string>("serverId");
     const machineId = await this.state.storage.get<string>("machineId");
     if (!serverId && !machineId) return;
+    let opened: OpenConnectDb | null = null;
     try {
-      const db = drizzle(this.env.DB);
+      opened = openConnectDb(this.env, (promise) =>
+        this.state.waitUntil(promise),
+      );
+      const { db } = opened;
       if (machineId) {
         await db
           .update(machine)
@@ -291,7 +300,10 @@ export class TunnelDO {
           .where(eq(server.id, serverId))
           .run();
       }
-    } catch {}
+    } catch {
+    } finally {
+      await opened?.close().catch(() => undefined);
+    }
   }
 
   private async restartIfTunnelVanished(): Promise<void> {
@@ -594,12 +606,6 @@ export class TunnelDO {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
 
-    const headTimeoutMs = responseHeadTimeoutMs(
-      request.method,
-      url,
-      request.headers,
-    );
-
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         this.failHttpStream(
@@ -607,7 +613,7 @@ export class TunnelDO {
           504,
           "timed out waiting for the tunnel client",
         );
-      }, headTimeoutMs);
+      }, RESP_HEAD_TIMEOUT_MS);
       this.pendingHttp.set(streamId, {
         resolve,
         writer: null,
@@ -649,21 +655,12 @@ export class TunnelDO {
     tunnel: WebSocket,
   ): Promise<void> {
     try {
-      const reader = body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (let offset = 0; offset < value.length; offset += 1024 * 1024) {
-          const sent = this.trySend(
-            tunnel,
-            encodeFrame({
-              type: "body-chunk",
-              streamId,
-              data: value.subarray(offset, offset + 1024 * 1024),
-            }),
-          );
-          if (!sent) return;
-        }
+      for await (const data of requestBodyChunks(body)) {
+        const sent = this.trySend(
+          tunnel,
+          encodeFrame({ type: "body-chunk", streamId, data }),
+        );
+        if (!sent) return;
       }
       this.trySend(tunnel, encodeFrame({ type: "body-end", streamId }));
     } catch {

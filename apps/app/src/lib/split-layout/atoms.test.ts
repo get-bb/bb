@@ -5,6 +5,7 @@ import {
   closePanesForThreadsAtom,
   maximizedPaneIdAtom,
   MAXIMIZED_PANE_STORAGE_KEY,
+  multiPaneSplitLayoutAtom,
   splitLayoutAtom,
 } from "./atoms";
 import { countPanes, findPaneByThread, splitPane } from "./ops";
@@ -197,5 +198,22 @@ describe("closePanesForThreadsAtom", () => {
       focusedRoute: null,
     });
     expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
+  });
+});
+
+describe("multiPaneSplitLayoutAtom", () => {
+  it("notifies subscribers only when a split is open or changes", () => {
+    const store = createStore();
+    const changes = vi.fn();
+    store.sub(multiPaneSplitLayoutAtom, changes);
+    store.set(splitLayoutAtom, singlePane("thread-1"));
+    store.set(splitLayoutAtom, singlePane("thread-2"));
+    expect(changes).not.toHaveBeenCalled();
+    expect(store.get(multiPaneSplitLayoutAtom)).toBeNull();
+
+    const split = twoPanes();
+    store.set(splitLayoutAtom, split);
+    expect(changes).toHaveBeenCalledOnce();
+    expect(store.get(multiPaneSplitLayoutAtom)).toBe(split);
   });
 });

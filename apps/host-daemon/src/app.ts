@@ -1,7 +1,9 @@
+import path from "node:path";
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
 import { MachineEnvironment } from "./machine-environment.js";
 import { CommandRouter } from "./command-router.js";
+import { cancelEnvironmentHooks } from "./command-handlers/environment-hook.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
   createEventSink,
@@ -17,7 +19,11 @@ import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
-import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonDaemonWsMessage,
+  HostDaemonInteractiveRequestKey,
+  HostDaemonOpenThreadWork,
+} from "@bb/host-daemon-contract";
 import {
   RuntimeManager,
   type RuntimeManagerReapIdleProviderSessionsArgs,
@@ -25,7 +31,12 @@ import {
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
 import { WatchManager } from "./watch-manager.js";
-import { ConnectTunnelClient } from "./connect-tunnel/index.js";
+import {
+  ConnectTunnelClient,
+  resolveTrustedConnectGate,
+} from "./connect-tunnel/index.js";
+import { MachineNextTunnel, machineNextFrpDir } from "./connect-next/index.js";
+import { defaultTrustedCertificates, resolveFrpc } from "@bb/frp-client";
 import { TerminalManager } from "./terminals/terminal-manager.js";
 import {
   createServerClient,
@@ -44,14 +55,22 @@ import {
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
-import { createRuntimeShellEnvCache } from "./runtime-shell-env-cache.js";
-import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
+import {
+  createRuntimeShellEnvCache,
+  type RuntimeShellEnvRefreshArgs,
+} from "./runtime-shell-env-cache.js";
+import type {
+  AgentRuntime,
+  AgentRuntimeOptions,
+  RuntimeOpenBackgroundWork,
+} from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
 import {
   disposeParcelWatcherBackend,
   type HostWatcher,
 } from "@bb/host-watcher";
 import { PluginHostManager } from "./plugin-host-manager.js";
+import type { SkillTreeTransport } from "./skill-trees.js";
 import { writeMachineSuspensionMarker } from "./suspension-marker.js";
 import {
   defaultServerMoveServiceOptions,
@@ -66,6 +85,33 @@ const INTERACTIVE_INTERRUPT_RETRY_DELAY_MS = 1_000;
 const INTERACTIVE_INTERRUPT_MAX_RETRY_DELAY_MS = 60_000;
 const IDLE_PROVIDER_SESSION_REAP_INTERVAL_MS = 5 * 60 * 1000;
 const RUNTIME_SHELL_ENV_REFRESH_TTL_MS = 10_000;
+const ENDED_INTERACTIVE_REQUEST_REASON =
+  "The question was closed while the host was disconnected";
+
+function collectOpenThreadWork(args: {
+  backgroundWork: readonly RuntimeOpenBackgroundWork[];
+  interactiveRequests: readonly HostDaemonInteractiveRequestKey[];
+}): HostDaemonOpenThreadWork[] {
+  const byThreadId = new Map<string, HostDaemonOpenThreadWork>();
+  const threadWork = (threadId: string): HostDaemonOpenThreadWork => {
+    const existing = byThreadId.get(threadId);
+    if (existing) return existing;
+    const created: HostDaemonOpenThreadWork = {
+      threadId,
+      backgroundItemIds: [],
+      interactiveRequests: [],
+    };
+    byThreadId.set(threadId, created);
+    return created;
+  };
+  for (const work of args.backgroundWork) {
+    threadWork(work.threadId).backgroundItemIds.push(...work.itemIds);
+  }
+  for (const request of args.interactiveRequests) {
+    threadWork(request.threadId).interactiveRequests.push(request);
+  }
+  return [...byThreadId.values()];
+}
 
 interface IdleProviderSessionReaperTimer {
   clear(): void;
@@ -132,6 +178,7 @@ export interface HostDaemonApp {
   runtimeManager: RuntimeManager;
   watchManager: WatchManager;
   connectTunnel: ConnectTunnelClient;
+  machineNextTunnel: MachineNextTunnel;
   terminalManager: TerminalManager;
   router: CommandRouter;
   connection: ServerConnection;
@@ -504,16 +551,46 @@ export async function createHostDaemonApp(
       );
     },
   });
+  const machineNextTunnel = new MachineNextTunnel({
+    frpDir: machineNextFrpDir(options.dataDir),
+    trustedBaseDomain: () => {
+      try {
+        return resolveTrustedConnectGate(options.serverUrl).baseDomain;
+      } catch {
+        return null;
+      }
+    },
+    machineCredential: options.serverHeaders?.["x-bb-connect-machine"],
+    ensureIdentity: () => connectTunnel.ensureTunnelIdentity(),
+    resolveBinary: () =>
+      resolveFrpc({
+        dataDir: path.dirname(machineNextFrpDir(options.dataDir)),
+        env: process.env,
+      }),
+    trustedCertificates: () => defaultTrustedCertificates(process.env),
+    logger: options.logger,
+    onStatusChange: (status) => {
+      sendServerMessage({ type: "connect-next.status", status });
+    },
+  });
+  const skillTreeTransport: SkillTreeTransport = {
+    fetchManifest: (treeHash) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTreeManifest(treeHash),
+      }),
+    fetchContent: (treeHash, paths) =>
+      runSessionRequest({
+        source: "fetchSkillTree",
+        request: () => serverClient.fetchSkillTreeContent(treeHash, paths),
+      }),
+  };
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
-    fetchSkillTree: (treeHash) =>
-      runSessionRequest({
-        source: "fetchSkillTree",
-        request: () => serverClient.fetchSkillTree(treeHash),
-      }),
+    skillTreeTransport,
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
@@ -585,7 +662,8 @@ export async function createHostDaemonApp(
       } catch (error) {
         if (
           error instanceof InteractiveRequestRegistryError &&
-          error.code === "interactive_request_rejected"
+          (error.code === "interactive_request_rejected" ||
+            error.code === "interactive_request_ended")
         ) {
           options.logger.warn(
             {
@@ -667,9 +745,10 @@ export async function createHostDaemonApp(
       : { resolvedAtMs: options.runtimeShellEnvResolvedAtMs }),
   });
   const withMaintenanceRuntime = async <TResult>(
+    shellEnv: RuntimeShellEnvRefreshArgs,
     request: (runtime: AgentRuntime) => Promise<TResult>,
   ): Promise<TResult> => {
-    await runtimeShellEnvCache.refresh({ allowStale: false });
+    await runtimeShellEnvCache.refresh(shellEnv);
     return runtimeManager.withProviderMaintenanceRuntime(
       { dataDir: options.dataDir },
       request,
@@ -761,11 +840,7 @@ export async function createHostDaemonApp(
         source: "fetchProjectAttachment",
         request: () => serverClient.fetchProjectAttachment(args),
       }),
-    fetchSkillTree: (treeHash) =>
-      runSessionRequest({
-        source: "fetchSkillTree",
-        request: () => serverClient.fetchSkillTree(treeHash),
-      }),
+    skillTreeTransport,
     fetchPluginHostArtifact: (args) =>
       runSessionRequest({
         source: "fetchPluginHostArtifact",
@@ -773,19 +848,27 @@ export async function createHostDaemonApp(
       }),
     runtimeManager,
     listModels: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.listModels(args)),
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+        runtime.listModels(args),
+      ),
     listCommands: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.listCommands(args)),
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
+        runtime.listCommands(args),
+      ),
     providerHealth: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.providerHealth(args)),
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+        runtime.providerHealth(args),
+      ),
     providerUsage: (args) =>
-      withMaintenanceRuntime((runtime) => runtime.providerUsage(args)),
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
+        runtime.providerUsage(args),
+      ),
     providerInstallationStatus: (args) =>
-      withMaintenanceRuntime((runtime) =>
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
         runtime.providerInstallationStatus(args),
       ),
     providerInstallationRun: (args) =>
-      withMaintenanceRuntime((runtime) =>
+      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
         runtime.providerInstallationRun(args),
       ),
     refreshShellEnv: async (args) => {
@@ -820,10 +903,13 @@ export async function createHostDaemonApp(
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
       logger: options.logger,
+      serverHeaders: options.serverHeaders ?? {},
       serverUrl: options.serverUrl,
     }),
     onSelfUpdateInstalled: () => requestDaemonRestart(),
     onMachineShutdown: () => requestMachineShutdown(),
+    onInteractiveRequestsEnded: ({ reason, requests }) =>
+      interactiveRequestRegistry.endRequests(requests, reason),
     onServerMoved: (notice) => serverMove.handleServerMoved(notice),
     onMachineEnvironment: (environment) =>
       machineEnvironment.replace(environment.entries),
@@ -832,6 +918,11 @@ export async function createHostDaemonApp(
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getUndeliveredEventThreadIds: () => eventSink.listUndeliveredThreadIds(),
+    getOpenThreadWork: () =>
+      collectOpenThreadWork({
+        backgroundWork: runtimeManager.listOpenBackgroundWork(),
+        interactiveRequests: interactiveRequestRegistry.listOpenRequests(),
+      }),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
       const response = await router.handleOnlineRpcRequest(message);
@@ -850,11 +941,37 @@ export async function createHostDaemonApp(
         generation: message.generation,
         ports: message.ports,
       });
+      void machineNextTunnel.setPorts(connectTunnel.status().ports);
+    },
+    onConnectNextReplace: (message) => {
+      machineNextTunnel.replace({
+        generation: message.generation,
+        config: message.config,
+      });
     },
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
       sessionState.value = session.sessionId;
+      if (session.endedInteractiveRequests.length > 0) {
+        interactiveRequestRegistry.endRequests(
+          session.endedInteractiveRequests,
+          ENDED_INTERACTIVE_REQUEST_REASON,
+        );
+        options.logger.info(
+          {
+            requests: session.endedInteractiveRequests,
+            sessionId: session.sessionId,
+          },
+          "Ended provider questions the server no longer waits on",
+        );
+      }
       connectTunnel.replaceAuthoritativeShareSet(session.connectShares);
+      machineNextTunnel.replaceAuthoritative(session.connectNext);
+      void machineNextTunnel.setPorts(connectTunnel.status().ports);
+      sendServerMessage({
+        type: "connect-next.status",
+        status: machineNextTunnel.status(),
+      });
       await pluginHostManager.reconcileGenerations(
         session.pluginHostGenerations,
       );
@@ -887,6 +1004,8 @@ export async function createHostDaemonApp(
     setSession: (session) => {
       sessionState.value = session?.sessionId ?? null;
       desktopBrowserBroker.setConnected(session !== null);
+      if (session === null) machineNextTunnel.sessionLost();
+      else machineNextTunnel.sessionRestored();
       if (session === null) {
         terminalManager.releaseOutputFlowControl();
         clearInteractiveInterruptRetry();
@@ -943,10 +1062,12 @@ export async function createHostDaemonApp(
       await options.closeMachineAuthProxy?.();
       await localApi?.close();
       connectTunnel.shutdown();
+      await machineNextTunnel.shutdown();
       await watchManager.shutdown();
       disposeParcelWatcherBackend();
       await terminalManager.shutdownAll();
       terminalManager.dispose();
+      await cancelEnvironmentHooks(runtimeManager);
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
@@ -992,6 +1113,7 @@ export async function createHostDaemonApp(
     runtimeManager,
     watchManager,
     connectTunnel,
+    machineNextTunnel,
     terminalManager,
     router,
     connection,

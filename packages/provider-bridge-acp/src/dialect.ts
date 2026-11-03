@@ -1,3 +1,4 @@
+import type { AvailableModel } from "@bb/domain";
 import type { DeltaItemShape } from "@bb/provider-bridge-protocol";
 import { basename } from "node:path";
 import { z } from "zod";
@@ -41,13 +42,21 @@ export interface AcpDialect {
     event: AcpToolCallUpdateEvent,
   ): AcpClassifiedToolCall | undefined;
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
-  normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
+  normalizeCommandEvent?(
+    event: AcpToolCallUpdateEvent,
+    call: AcpToolCallUpdateEvent,
+  ): AcpToolCallUpdateEvent;
+  normalizeToolCallEvent?(
+    event: AcpToolCallUpdateEvent,
+    call: AcpToolCallUpdateEvent,
+  ): AcpToolCallUpdateEvent;
   readonly clientRequestMethods?: readonly string[];
   handleClientRequest?(
     method: string,
     params: unknown,
   ): AcpClientRequestOutcome | undefined;
   maintenance?: AcpMaintenanceDialect;
+  presentModel?(model: AvailableModel): AvailableModel;
 }
 
 export interface AcpClientRequestOutcome {
@@ -391,9 +400,26 @@ export function compactionOutcomeForEndTurn(
     : { status: "failed", error: text };
 }
 
+function presentProviderPrefixedModel(model: AvailableModel): AvailableModel {
+  const separator = model.id.indexOf("/");
+  if (separator <= 0) {
+    return model;
+  }
+  const routeProviderId = model.id.slice(0, separator);
+  const prefix = `${routeProviderId}/`;
+  return {
+    ...model,
+    displayName: model.displayName.startsWith(prefix)
+      ? model.displayName.slice(prefix.length)
+      : model.displayName,
+    routeProviderId,
+  };
+}
+
 export const OMP_ACP_DIALECT: AcpDialect = {
   id: "omp",
   commandResult: ompCommandResult,
+  presentModel: presentProviderPrefixedModel,
 };
 
 const openCodeCommandRawOutputSchema = z
@@ -447,6 +473,7 @@ function normalizeOpenCodeCommandEvent(
 export const OPENCODE_ACP_DIALECT: AcpDialect = {
   id: "opencode",
   normalizeCommandEvent: normalizeOpenCodeCommandEvent,
+  presentModel: presentProviderPrefixedModel,
 };
 
 const BUILT_IN_DIALECTS: readonly AcpDialect[] = [

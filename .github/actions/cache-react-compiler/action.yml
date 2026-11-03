@@ -1,0 +1,13 @@
+name: Cache React Compiler
+description: Reuse content-addressed per-file transforms when the app build changes.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: .git/bb-cache/react-compiler
+        key: react-compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/app/vite*.ts') }}-${{ github.sha }}
+        restore-keys: |
+          react-compiler-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/app/vite*.ts') }}-

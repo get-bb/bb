@@ -202,7 +202,7 @@ export type ApprovalPendingInteractionPayload = z.infer<
   typeof approvalPendingInteractionPayloadSchema
 >;
 
-export const USER_QUESTION_MAX_QUESTIONS = 4;
+export const USER_QUESTION_MAX_QUESTIONS = 10;
 export const USER_QUESTION_MAX_OPTIONS = 4;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
@@ -280,6 +280,7 @@ export const pendingInteractionUserQuestionQuestionSchema = z
       )
       .optional(),
     allowFreeText: z.boolean(),
+    required: z.boolean().default(true),
   })
   .superRefine((question, context) => {
     const optionValues = new Set<string>();

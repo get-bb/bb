@@ -6,7 +6,6 @@ import type {
 } from "../../ui/markdown-local-file-link.js";
 import type { MarkdownPreviewLinkHandler } from "../../ui/markdown-link.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
-import type { MarkdownMessageDirectiveOpenThreadPanel } from "@/components/ui/markdown-message-directives";
 
 export type ThreadTimelineLocalFileLink = MarkdownPreviewLocalFileLink;
 
@@ -14,9 +13,6 @@ export type ThreadTimelineLocalFileLinkHandler =
   MarkdownPreviewLocalFileLinkHandler;
 
 export type ThreadTimelineLinkHandler = MarkdownPreviewLinkHandler;
-
-export type ThreadTimelineOpenPluginPanelHandler =
-  MarkdownMessageDirectiveOpenThreadPanel;
 
 interface ThreadTimelineForkMessageTarget {
   sourceSeqEnd: number;
@@ -63,14 +59,14 @@ export interface ThreadTimelineConsumerMessageAction {
   run(message: ThreadChatMessageReference): void | Promise<void>;
 }
 
-export type ThreadTimelineUnreadDividerPlacement =
-  | {
-      kind: "after-cutoff";
-      cutoffAt: number;
-    }
-  | {
-      kind: "before-first";
-    };
+export type ThreadTimelineUnreadDividerAnchor =
+  | "first-unread-row"
+  | "turn-answer";
+
+export interface ThreadTimelineUnreadDividerPlacement {
+  anchor: ThreadTimelineUnreadDividerAnchor;
+  cutoffAt: number;
+}
 
 export type UserAttachmentImageSrcResolver = (
   pathOrUrl: string,

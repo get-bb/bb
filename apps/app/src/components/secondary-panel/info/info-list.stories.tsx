@@ -3,7 +3,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PanelStage } from "../ThreadMetadataContent.fixtures";
 import { ThreadMetadataCard } from "../ThreadMetadataContent";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
-import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
+import { InfoListRow, InfoRowTime } from "@bb/shared-ui/info-list-row";
+import { InfoList, InfoSection } from "./info-list";
 
 export default {
   title: "right-panel/Info/List primitives",
@@ -64,14 +65,13 @@ export function Rows() {
         </Stage>
       </StoryRow>
       <StoryRow
-        label="overflow and timeline rail"
+        label="overflow"
         hint="five rows, then an 'N more' row that expands in place"
       >
         <Stage>
           <InfoSection label="Section" count={ROWS.length}>
             <InfoList
               items={ROWS}
-              rail
               getKey={(row) => row.id}
               renderItem={(row) => (
                 <InfoListRow

@@ -1,3 +1,4 @@
+import "../../../.ladle/composer-plugin";
 import { useState } from "react";
 import type { PermissionMode, PromptTextMention } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
@@ -11,7 +12,7 @@ import {
 import type {
   HistoryConfig,
   PromptBoxAction,
-} from "@/components/promptbox/PromptBoxInternal";
+} from "@/components/promptbox/ComposerBox";
 import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";

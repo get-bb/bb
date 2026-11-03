@@ -427,3 +427,10 @@ export {
   type ContextCategory,
   type ContextEntry,
 } from "@bb/domain";
+
+export {
+  scanSkillFiles as experimental_scanSkillFiles,
+  selectedSkillMentions as experimental_selectedSkillMentions,
+  type SkillScanRoot as ExperimentalSkillScanRoot,
+  type IndexedSkillFile as ExperimentalIndexedSkillFile,
+} from "@bb/skill-index";

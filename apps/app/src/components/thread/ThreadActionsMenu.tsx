@@ -18,18 +18,22 @@ import type {
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuLabel,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { ActionMenuSeparator } from "@bb/shared-ui/action-menu-items";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { CompactLongPressMenu } from "@bb/shared-ui/compact-long-press-menu";
 import {
   ThreadActionMenuRows,
   useThreadActionMenuGroups,
+  useThreadBulkActionMenuGroups,
   type ThreadActionMenuSurface,
 } from "./ThreadActionMenuItems";
 
@@ -158,61 +162,153 @@ export function ThreadActionsMenu({
   );
 }
 
-export function ThreadActionsContextMenu(
-  props: PluginThreadActionsContextMenuProps,
-) {
-  const isCompactViewport = useIsCompactViewport();
-  return isCompactViewport ? (
-    <ThreadActionsLongPressMenu {...props} />
-  ) : (
-    <ThreadActionsDesktopContextMenu {...props} />
+interface ContextMenuShellProps {
+  label: string;
+  children: ReactNode;
+  disabled: boolean;
+  dragging: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
+  renderItems: (props: MenuItemsRenderProps) => ReactNode;
+}
+
+interface MenuItemsRenderProps {
+  surface: ThreadActionMenuSurface;
+  isDrawer: boolean;
+  drawerStep: string | null;
+  onDrawerStepChange: (key: string | null) => void;
+}
+
+export function ThreadActionsContextMenu({
+  thread,
+  inline,
+  requestRename,
+  experimental_bulkThreads,
+  disabled = false,
+  dragging = false,
+  ...props
+}: PluginThreadActionsContextMenuProps) {
+  const selection =
+    experimental_bulkThreads !== undefined &&
+    experimental_bulkThreads.length > 1
+      ? experimental_bulkThreads
+      : null;
+  return (
+    <ResponsiveContextMenu
+      {...props}
+      label={
+        selection === null
+          ? MENU_LABEL
+          : `Actions for ${describeThreadCount(selection.length)}`
+      }
+      disabled={disabled}
+      dragging={dragging}
+      renderItems={(itemProps) =>
+        selection === null ? (
+          <ThreadActionsMenuItems
+            thread={thread}
+            inline={inline}
+            requestRename={requestRename}
+            {...itemProps}
+          />
+        ) : (
+          <ThreadBulkMenuItems
+            threads={selection}
+            inline={inline}
+            {...itemProps}
+          />
+        )
+      }
+    />
   );
 }
 
-function ThreadActionsLongPressMenu({
-  thread,
-  children,
+function describeThreadCount(count: number): string {
+  return count === 1 ? "1 thread" : `${count} threads`;
+}
+
+function ThreadBulkMenuItems({
+  threads,
   inline,
-  requestRename,
+  surface,
+  isDrawer,
+  drawerStep,
+  onDrawerStepChange,
+}: {
+  threads: readonly PluginThreadActionTarget[];
+  inline?: readonly PluginThreadActionsInlineItem[];
+} & MenuItemsRenderProps) {
+  const groups = useThreadBulkActionMenuGroups({ threads, inline });
+  const Label = surface === "context" ? ContextMenuLabel : DropdownMenuLabel;
+  return (
+    <>
+      {drawerStep === null ? (
+        <>
+          <Label className="text-muted-foreground">
+            {describeThreadCount(threads.length)} selected
+          </Label>
+          {groups.length > 0 ? <ActionMenuSeparator surface={surface} /> : null}
+        </>
+      ) : null}
+      <ThreadActionMenuRows
+        groups={groups}
+        surface={surface}
+        isDrawer={isDrawer}
+        drawerStep={drawerStep}
+        onDrawerStepChange={onDrawerStepChange}
+      />
+    </>
+  );
+}
+
+function ResponsiveContextMenu(props: ContextMenuShellProps) {
+  const isCompactViewport = useIsCompactViewport();
+  return isCompactViewport ? (
+    <LongPressMenuShell {...props} />
+  ) : (
+    <DesktopContextMenuShell {...props} />
+  );
+}
+
+function LongPressMenuShell({
+  label,
+  children,
+  renderItems,
   onOpenChange,
   disabled,
   dragging,
-}: PluginThreadActionsContextMenuProps) {
+}: ContextMenuShellProps) {
   const { drawerStep, setDrawerStep, handleOpenChange } =
     useDrawerStep(onOpenChange);
   return (
     <CompactLongPressMenu
-      label={MENU_LABEL}
+      label={label}
       disabled={disabled}
       dragging={dragging}
       onOpenChange={handleOpenChange}
-      items={
-        <ThreadActionsMenuItems
-          thread={thread}
-          inline={inline}
-          requestRename={requestRename}
-          surface="dropdown"
-          isDrawer
-          drawerStep={drawerStep}
-          onDrawerStepChange={setDrawerStep}
-        />
-      }
+      items={renderItems({
+        surface: "dropdown",
+        isDrawer: true,
+        drawerStep,
+        onDrawerStepChange: setDrawerStep,
+      })}
     >
       {children}
     </CompactLongPressMenu>
   );
 }
 
-function ThreadActionsDesktopContextMenu({
-  thread,
+function DesktopContextMenuShell({
+  label,
   children,
-  inline,
-  requestRename,
+  renderItems,
   onOpenChange,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   disabled,
-  dragging = false,
-}: PluginThreadActionsContextMenuProps) {
+  dragging,
+}: ContextMenuShellProps) {
   const [open, setOpen] = useState(false);
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -231,18 +327,16 @@ function ThreadActionsDesktopContextMenu({
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent
-        aria-label={MENU_LABEL}
+        aria-label={label}
         onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={onEscapeKeyDown}
       >
-        <ThreadActionsMenuItems
-          thread={thread}
-          inline={inline}
-          requestRename={requestRename}
-          surface="context"
-          isDrawer={false}
-          drawerStep={null}
-          onDrawerStepChange={() => {}}
-        />
+        {renderItems({
+          surface: "context",
+          isDrawer: false,
+          drawerStep: null,
+          onDrawerStepChange: () => {},
+        })}
       </ContextMenuContent>
     </ContextMenu>
   );

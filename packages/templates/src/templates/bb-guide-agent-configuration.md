@@ -51,6 +51,14 @@ Skills (.bb/skills/):
   A project skill overrides a user or plugin skill with the same name. Two
   skills with the same name within one source collide and are both dropped.
 
+  User skill roots, directories, and SKILL.md entries may be symlinks. Project
+  skill and command links must stay within the workspace or repository boundary.
+  Supporting files inside injected skill trees must be ordinary files/directories.
+  Listings collapse skills that share a name and identical SKILL.md content
+  across roots; different content or a different name stays distinct. Existing IDs still address the original
+  registration. Linked registrations are read-only. Codex receives a selected
+  skill as a structured name/path input, including when steering an active turn.
+
   Use `bb skill list` to inspect installed and discovered skills and copy the
   opaque skill ID. `bb skill show|files <skill-id>` reads that exact skill;
   `bb skill show <skill-id> --json` returns the revision required by `bb skill

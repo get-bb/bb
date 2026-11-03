@@ -23,7 +23,7 @@ function renderDialog({
   const thread = makeThread({ status });
   const view = render(
     <ThreadArchiveDialog
-      target={{ thread, childThreadCount }}
+      target={{ threads: [thread], childThreadCount }}
       pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
@@ -55,9 +55,7 @@ describe("ThreadArchiveDialog", () => {
     expect(
       screen.getByRole("heading", { name: "Archive thread?" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Archive" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
   });
 
   it.each(["starting", "active", "stopping"] as const)(
@@ -103,6 +101,9 @@ describe("ThreadArchiveDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
-    expect(onArchive).toHaveBeenCalledWith({ thread, childThreadCount: 2 });
+    expect(onArchive).toHaveBeenCalledWith({
+      threads: [thread],
+      childThreadCount: 2,
+    });
   });
 });

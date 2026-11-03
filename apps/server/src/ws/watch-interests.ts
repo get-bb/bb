@@ -1,5 +1,5 @@
-import { environments, threads, type DbConnection } from "@bb/db";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { environments, liveThread, threads, type DbConnection } from "@bb/db";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import {
   realtimeSubscriptionTargetKey,
   type EnvironmentChangeKind,
@@ -265,7 +265,6 @@ export class WatchInterestCoordinator {
       case "host":
       case "system":
       case "plugin":
-      case "tags":
         return keys;
     }
   }
@@ -375,8 +374,7 @@ export class WatchInterestCoordinator {
               threads.id,
               threadIds.slice(offset, offset + WATCH_TARGET_QUERY_BATCH_SIZE),
             ),
-            isNull(threads.deletedAt),
-            isNull(threads.archivedAt),
+            liveThread,
             ne(environments.status, "destroyed"),
           ),
         )

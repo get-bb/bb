@@ -1,3 +1,4 @@
+import { makePanelController } from "../testing/fixtures.js";
 import { describe, expect, it, vi } from "vitest";
 import type {
   PluginAppBuilder,
@@ -74,7 +75,11 @@ describe("app.commands.register", () => {
       const context = {
         threadId: "thread-1",
         projectId: "project-1",
-        openPanel: vi.fn(() => true),
+        experimental_panel: makePanelController({
+          openTab: vi.fn(() => true),
+          toggleTab: vi.fn(() => true),
+          close: vi.fn(() => true),
+        }),
       };
       const command = collected.commandPaletteActions[0]!;
       if (command.target !== "app") throw new Error("expected an app command");

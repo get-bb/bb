@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnHostProcessSync as spawnSync } from "@bb/process-utils/host-process";
 import { realpathSync } from "node:fs";
 import { resolve, win32 } from "node:path";
 

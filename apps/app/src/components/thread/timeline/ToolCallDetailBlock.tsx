@@ -95,7 +95,6 @@ export function ToolCallDetailBlock({
         size="base"
         overflowX="hidden"
         streaming={streaming}
-        contentKey={output}
         scrollClassName="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70"
       >
         <CollapsibleHeader toolName={toolName} argEntries={argEntries} />

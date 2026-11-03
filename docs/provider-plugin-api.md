@@ -76,7 +76,7 @@ bb.providers.register({
     { id: "low", label: "Low" },
     { id: "high", label: "High" },
   ],
-  serviceTiers: undefined, // optional; open list of { id, label, description? },
+  serviceTiers: undefined, // optional; open list of { id, label, description?, experimental_icon? },
   // "default" is the standard tier; model/list is precise
   composerActions: ["plan"], // "plan" | "goal"
   completedTurnDisplay: "flat", // "collapse" (default) | "flat"; the user's per-provider setting wins
@@ -463,6 +463,15 @@ The provider directory is available to plugins through
 mark is the icon its plugin declared — a path or declared icon served as
 `logoUrl` and drawn as a `currentColor` mask, or a host glyph name; core
 vendors no brand marks.
+
+`bb.sdk.providers.models`, `bb provider models`, and
+`GET /api/v1/system/execution-options` wait for model discovery when no good
+catalog is cached, so a recent discovery failure such as a timeout is retried
+instead of answered from cache; a failure of that retry is reported in
+`modelLoadError`. Concurrent reads share one discovery request. Interactive
+pickers pass `preferCached: true` to answer immediately from the cache,
+including a recent model-load failure, while discovery refreshes in the
+background.
 
 ## 6. Distribution
 

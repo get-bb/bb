@@ -37,6 +37,46 @@ Native actions need OS/Electron automation and inspected screenshots.
 | Updates | On a disposable installation, inspect update status, download/apply only a test release and relaunch. | Version and readiness match updater results; failure preserves a usable install and restart path. |
 | Quit and platform appearance | Change theme/transparency settings, then quit with test work idle and inspect owned PIDs. | Window frame/transparency follow platform behavior; quit cleans owned runtime processes and leaves foreign runtimes running. |
 
+## Built-in browser CLI and SDK
+
+Status: **not run**. These recipes extend the map without changing the dated
+audit. They exercise Electron's built-in browser, not the browser-automation
+plugin. A web-only session cannot verify them. Use the isolated source desktop
+and matching source CLI described in [the main skill](../SKILL.md), a synthetic
+thread, and a local HTTP fixture with known content and navigation links.
+
+From the repository root, use `node apps/cli/dist/index.js browser --help` and
+subcommand help. Discover the host with the source CLI's machine list, then run
+`browser instances --host <id> --json` with that CLI prefix. Use returned IDs;
+tab and lease commands require `--host`, `--instance`, `--generation`, and
+`--thread`. Import commands omit `--thread`. Repeat the applicable operations
+through SDK `experimental_desktopBrowsers`, including `subscribe` for watch.
+
+Use an owned temporary directory and fresh output filenames. Connection files
+contain credentials: never print or publish them, and run CDP on the browser
+host. Capture only fixture pages. Cookie import requires explicitly authorized,
+disposable source and destination profiles with synthetic cookies; never copy
+the owner's signed-in profile.
+
+| Feature | Drive | Observable success |
+| --- | --- | --- |
+| Discovery, lifecycle and observation | List instances and tabs; create a fixture tab with --url and --reveal. Exercise reveal and close separately. Run watch while navigating and capture the created tab to a new --output path. Stop watch with Ctrl-C. | IDs, URL, visible native tab and JPEG agree. Watch emits changed snapshots. Close removes only the created tab. Capture refuses an existing filename. |
+| Control lease and CDP | Acquire the created tab with --controller and --ttl-ms; attempt a second acquisition. Write connection to a new --output file, connect on the browser host, navigate the fixture, then release. | Competing control fails. The private connection file has mode 0600 and cannot overwrite an existing path; CLI output omits credentials. Release leaves the tab open and invalidates the CDP endpoint. |
+| Invalid scope and expired control | Request the created tab with a stale generation, another synthetic thread or an unknown tab ID. Open a connection after its lease expires. Refresh instances before retrying with the valid scope. | Invalid requests fail without controlling another tab or thread. Fresh scope and a new valid lease restore access. |
+| Disposable cookie import | Run import-sources, then import-cookies --from <source-id> --profile <directory> using the printed disposable profile directory. Repeat with that source running or unavailable. | Readiness and counts reflect the synthetic fixture. Only test cookies reach the disposable BB profile. Skipped domains are explicit; an unsuccessful import explains the reason and exits nonzero. |
+
+The scanner records the dynamic command `${name} <tabId>` once; both `reveal`
+and `close` still need execution. Source: `apps/cli/src/commands/browser.ts`,
+`packages/sdk/src/areas/desktop-browsers.ts`,
+`apps/server/src/routes/desktop-browsers.ts`,
+`apps/desktop/src/desktop-browser-broker.ts`, and
+`apps/desktop/src/desktop-browser-cdp.ts`.
+
+Record each row separately as passed, failed, not run or blocked. Fixture tests
+and source review are not live verification. Release leases, dispose SDK
+subscriptions, stop watch/CDP, close created tabs, and remove only owned
+credential files, captures and synthetic profiles after saving redacted evidence.
+
 ## Evidence and cleanup
 
 Record each row and platform separately with the actual entry point, observed

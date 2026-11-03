@@ -30,6 +30,8 @@ const updateTarget: ProjectPathDialogTarget = {
   projectId: PROJECT_IDS.bb,
   projectName: PROJECT_NAMES.bb,
   currentPath: "/Users/michael/Projects/bb",
+  hostId: HOST_IDS.local,
+  hostName: HOST_NAMES.local,
 };
 
 const addSourceTarget: ProjectPathDialogTarget = {
@@ -98,6 +100,26 @@ function createBrowsedFoldersQueryClient() {
     },
   );
   queryClient.setQueryData<HostDirectoryListing>(
+    hostDirectoryQueryKey(HOST_IDS.local, "/Users/michael/Projects/bb"),
+    {
+      directory: "/Users/michael/Projects/bb",
+      parent: "/Users/michael/Projects",
+      entries: [
+        {
+          kind: "directory",
+          name: "apps",
+          path: "/Users/michael/Projects/bb/apps",
+        },
+        {
+          kind: "directory",
+          name: "packages",
+          path: "/Users/michael/Projects/bb/packages",
+        },
+      ],
+      roots: ["/"],
+    },
+  );
+  queryClient.setQueryData<HostDirectoryListing>(
     hostDirectoryQueryKey(windowsMachine.id, null),
     {
       directory: "C:\\Users\\sawyer",
@@ -136,18 +158,20 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="update"
-        hint='kind="update" — prefilled with currentPath, submit reads "Save path"'
+        hint='kind="update" — browses the checkout machine from currentPath, submit reads "Save path"'
       >
-        <DialogStage>
-          <ProjectPathDialogContent
-            target={updateTarget}
-            pending={false}
-            platform="darwin"
-            hostId={null}
-            hostName="Sawyer's MacBook"
-            onSubmit={noop}
-          />
-        </DialogStage>
+        <QueryClientProvider client={queryClient}>
+          <DialogStage>
+            <ProjectPathDialogContent
+              target={updateTarget}
+              pending={false}
+              platform="darwin"
+              hostId={null}
+              hostName={null}
+              onSubmit={noop}
+            />
+          </DialogStage>
+        </QueryClientProvider>
       </StoryRow>
       <StoryRow
         label="add-source"
@@ -266,16 +290,18 @@ export function Overview() {
         label="pending"
         hint="submit in flight — input + submit disabled"
       >
-        <DialogStage>
-          <ProjectPathDialogContent
-            target={updateTarget}
-            pending
-            platform="darwin"
-            hostId={null}
-            hostName="Sawyer's MacBook"
-            onSubmit={noop}
-          />
-        </DialogStage>
+        <QueryClientProvider client={queryClient}>
+          <DialogStage>
+            <ProjectPathDialogContent
+              target={updateTarget}
+              pending
+              platform="darwin"
+              hostId={null}
+              hostName={null}
+              onSubmit={noop}
+            />
+          </DialogStage>
+        </QueryClientProvider>
       </StoryRow>
     </StoryCard>
   );

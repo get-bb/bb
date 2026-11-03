@@ -10,6 +10,7 @@ import {
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonProjectAttachmentContentQuerySchema,
+  isCompatibleHostDaemonProtocolVersion,
   hostDaemonSessionOpenRequestSchema,
   SERVER_MOVED_ERROR_CODE,
   typedRoutes,
@@ -27,7 +28,7 @@ import {
   getAuthenticatedDaemon,
 } from "./auth.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
-import { readAttachment } from "../services/projects/attachments.js";
+import { createAttachmentContentResponse } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
@@ -120,7 +121,9 @@ export function registerInternalSessionRoutes(
       hostId: compatibility.data.hostId,
     });
 
-    if (compatibility.data.protocolVersion !== HOST_DAEMON_PROTOCOL_VERSION) {
+    if (
+      !isCompatibleHostDaemonProtocolVersion(compatibility.data.protocolVersion)
+    ) {
       updateHost(deps.db, deps.hub, daemon.hostId, {
         lastRejectedProtocolVersion: compatibility.data.protocolVersion,
       });
@@ -193,8 +196,9 @@ export function registerInternalSessionRoutes(
       hasMachineCredential: payload.hasMachineCredential,
     });
 
-    await handleHostSessionOpened(deps, {
+    const { endedInteractiveRequests } = await handleHostSessionOpened(deps, {
       activeThreads: payload.activeThreads,
+      openThreadWork: payload.openThreadWork,
       hostId: daemon.hostId,
       undeliveredEventThreadIds: payload.undeliveredEventThreadIds,
       openedSession: session,
@@ -221,8 +225,16 @@ export function registerInternalSessionRoutes(
         connectShares: deps.sharedPorts.reconcileSharedPortsForHost(
           daemon.hostId,
         ),
+        ...(deps.sharedPorts.hostSupportsNextTunnel(daemon.hostId)
+          ? {
+              connectNext: deps.sharedPorts.reconcileNextTunnelForHost(
+                daemon.hostId,
+              ),
+            }
+          : {}),
         pluginHostGenerations: plugins.listHostArtifactGenerations(),
         retiredEnvironmentIds,
+        endedInteractiveRequests,
         machineEnvironment: await machineEnvironment.snapshot(daemon.hostId),
         idleProviderSessionTimeoutMinutes: getAppSettings(deps.db)
           .idleProviderSessionTimeoutMinutes,
@@ -260,16 +272,11 @@ export function registerInternalSessionRoutes(
         );
       }
 
-      const attachment = await readAttachment(
-        deps.config.dataDir,
-        query.projectId,
-        query.path,
-      );
-      return new Response(new Uint8Array(attachment.content), {
-        status: 200,
-        headers: {
-          "content-type": attachment.mimeType ?? "application/octet-stream",
-        },
+      return createAttachmentContentResponse({
+        dataDir: deps.config.dataDir,
+        projectId: query.projectId,
+        path: query.path,
+        request: context.req.raw,
       });
     },
   );

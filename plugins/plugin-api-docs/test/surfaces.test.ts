@@ -18,15 +18,19 @@ describe("product-map surfaces", () => {
       "sidebar-navigation",
       "nav-panel",
       "thread-row-status",
+      "thread-row-metadata",
       "thread-list",
       "sidebar-footer",
       "thread-header",
       "thread-actions",
+      "thread-context-card",
       "timeline-renderers",
       "message-directives",
       "code-fence-renderers",
       "message-actions",
+      "message-metadata",
       "pending-interaction",
+      "thread-info",
       "code-renderers",
       "browser-toolbar",
       "thread-panel",
@@ -41,8 +45,9 @@ describe("product-map surfaces", () => {
     expect(surfaceIds("command-palette")).toEqual(["command-palette-actions"]);
   });
 
-  it("reads composer annotations from the banner through the draft and action row", () => {
+  it("reads composer annotations from the box, then the banner through the draft and action row", () => {
     const ordered = [
+      "composer-replacement",
       "composer-banners",
       "composer-state",
       "mention-provider",

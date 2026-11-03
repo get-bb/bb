@@ -204,6 +204,40 @@ describe("buildBridgeInjectionScript", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("installs the server list and replaces it when the shell sends a new one", () => {
+    const studio = {
+      id: "profile-1",
+      name: "Studio",
+      origin: "https://studio.getbb.app",
+      kind: "account" as const,
+      active: true,
+    };
+    const fakeWindow: { bb?: { native?: NativeShellApi } } = {};
+    const run = (script: string) =>
+      // eslint-disable-next-line no-new-func
+      new Function("window", script)(fakeWindow);
+    run(buildBridgeInjectionScript(handshake, [studio]));
+    const native = fakeWindow.bb?.native;
+    if (native === undefined) throw new Error("bridge did not install");
+    expect(native.servers).toEqual([studio]);
+    const seen: unknown[] = [];
+    native.subscribe((event: unknown) => seen.push(event));
+    const switched = [
+      { ...studio, active: false },
+      {
+        id: "profile-2",
+        name: "Laptop",
+        origin: "http://192.168.1.4:38886",
+        kind: "custom" as const,
+        active: true,
+      },
+    ];
+    run(buildBridgeEventScript({ type: "servers", servers: switched }));
+    expect(native.servers).toEqual(switched);
+    expect(seen).toHaveLength(1);
+    expect(installBridge().native.servers).toBeUndefined();
+  });
+
   it("re-applies the handshake instead of installing twice", () => {
     const { native, run, fakeWindow } = installBridge();
     const seen: unknown[] = [];

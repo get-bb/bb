@@ -229,6 +229,7 @@ function createThreadListEntry(
     modelOverride: null,
     reasoningLevelOverride: null,
     storageDeletedAt: null,
+    statusChangedAt: args.thread.updatedAt,
     environmentBranchName: null,
     environmentPath: null,
     environmentProviderId: null,
@@ -236,8 +237,6 @@ function createThreadListEntry(
     environmentHostId: args.environmentHostId,
     environmentName: null,
     hasPendingInteraction: false,
-    // Only a `pending` thread whose first message queued carries one, and
-    // these fixtures are all threads that already started.
     startupContext: null,
   };
 }
@@ -518,9 +517,6 @@ describe("thread runtime display", () => {
     const waiting = createThreadWithEnvironment({ db, hostId, status: "idle" });
     const failed = createThreadWithEnvironment({ db, hostId, status: "idle" });
 
-    // The failed thread holds BOTH a healthy row and a failed one, which is the
-    // case the precedence rule exists for: a thread that queued two messages
-    // and only the first one blew up must not read as merely waiting.
     for (const { thread, count } of [
       { thread: waiting.thread, count: 1 },
       { thread: failed.thread, count: 2 },

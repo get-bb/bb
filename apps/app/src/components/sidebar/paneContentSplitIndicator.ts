@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { atom, useAtomValue } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { multiPaneSplitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   computePaneRects,
   countPanes,
@@ -34,8 +34,8 @@ const NULL_LAYOUT_ATOM = atom<SplitLayout | null>(null);
 export function indicatorSplitLayoutAtom(
   enabled: boolean,
   isCompact: boolean,
-): typeof NULL_LAYOUT_ATOM | typeof splitLayoutAtom {
-  return enabled && !isCompact ? splitLayoutAtom : NULL_LAYOUT_ATOM;
+): typeof NULL_LAYOUT_ATOM | typeof multiPaneSplitLayoutAtom {
+  return enabled && !isCompact ? multiPaneSplitLayoutAtom : NULL_LAYOUT_ATOM;
 }
 
 function useSplitLayoutForIndicator(enabled: boolean): {

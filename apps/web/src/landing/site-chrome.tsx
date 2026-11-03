@@ -274,34 +274,10 @@ function FooterLinks({
 
 export function SiteFooter({ current }: { current?: string }) {
   const platform = useDesktopPlatform();
-  const preserveWaveOneFooter = [
-    "/",
-    "/compare/cursor-alternative",
-    "/claude-code-parallel-agents",
-    "/claude-code-and-codex",
-  ].includes(current ?? "");
-  const comparisons = compareLinks().filter(
-    (link) =>
-      !preserveWaveOneFooter ||
-      !["/compare/devin-alternative", "/compare/orca-alternative"].includes(
-        link.href,
-      ),
-  );
+  const comparisons = compareLinks();
   return (
     <footer className="footer">
-      <div className="footer-brand">
-        <span className="bb-mark footer-mark" aria-hidden="true" />
-        <p className="footer-legal">
-          <a href="/privacy">Privacy</a>
-          <a href="/brand">Brand assets</a>
-          <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
-            Software License
-          </a>
-        </p>
-        <p className="footer-publisher">
-          © {new Date().getFullYear()} Terragon Labs, Inc.
-        </p>
-      </div>
+      <span className="bb-mark footer-mark" aria-hidden="true" />
       <FooterColumn title="Product">
         <li>
           <DownloadLink placement="footer" platform={platform}>
@@ -352,6 +328,22 @@ export function SiteFooter({ current }: { current?: string }) {
           </XLink>
         </li>
       </FooterColumn>
+      <FooterColumn title="Legal">
+        <li>
+          <a href="/privacy">Privacy</a>
+        </li>
+        <li>
+          <a href="/brand">Brand assets</a>
+        </li>
+        <li>
+          <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
+            Software License
+          </a>
+        </li>
+      </FooterColumn>
+      <p className="footer-publisher">
+        © {new Date().getFullYear()} Terragon Labs, Inc.
+      </p>
     </footer>
   );
 }

@@ -1,4 +1,5 @@
-import { type ChildProcess, fork } from "node:child_process";
+import { forkHostProcess as fork } from "@bb/process-utils";
+import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -36,6 +36,7 @@ it("selects only each composer control's own annotation when clicked", () => {
       ),
     );
     for (const id of [
+      "composer-replacement",
       "composer-banners",
       "composer-state",
       "mention-provider",

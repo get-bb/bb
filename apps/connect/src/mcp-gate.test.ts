@@ -20,7 +20,15 @@ import {
 
 const holder = vi.hoisted(() => ({ db: null as unknown }));
 
-vi.mock("drizzle-orm/d1", () => ({ drizzle: () => holder.db }));
+vi.mock("./connect-db.js", () => ({
+  openGateDb: () => ({
+    db: holder.db,
+    backends: async () => {
+      throw new Error("backends are not used by these tests");
+    },
+    close: async () => {},
+  }),
+}));
 
 vi.mock("./cache.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./cache.js")>()),
@@ -147,6 +155,7 @@ beforeEach(() => {
   vi.mocked(verifyMachineCredentialDetails).mockResolvedValue({
     machineId: "machine-owner",
     userId: OWNER,
+    lastSeenAt: null,
   });
 });
 

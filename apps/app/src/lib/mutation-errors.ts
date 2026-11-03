@@ -61,7 +61,6 @@ function toLifecycleErrorOperation(
 
   switch (value) {
     case "archive_thread":
-    case "commit":
     case "create_thread":
     case "edit_message":
     case "load_diff":
@@ -184,4 +183,11 @@ export function showMutationErrorToast({
     title,
     message === title ? undefined : { description: message },
   );
+}
+
+export function reportMutationError(
+  options: MutationErrorMessageOptions,
+): Error {
+  showMutationErrorToast(options);
+  return new Error(getMutationErrorMessage(options));
 }

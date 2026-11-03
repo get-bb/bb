@@ -63,10 +63,14 @@ it.each(
       });
     queryClient.setQueryData(sidebarNavigationQueryKey(), bootstrap([parent]));
     const signals: AbortSignal[] = [];
+    let releaseFirstRead!: () => void;
+    const firstRead = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
     const fetchSidebar = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
       return signals.length === 1
-        ? new Promise<ReturnType<typeof bootstrap>>(() => {})
+        ? firstRead.then(() => bootstrap([parent, child]))
         : Promise.resolve(bootstrap([parent, child]));
     });
     vi.mocked(sdk.threads.markRead).mockResolvedValue(
@@ -117,7 +121,8 @@ it.each(
             : bound.threads.markUnread({ threadId: parent.id });
       if (fails) await expect(marking).rejects.toBe(failure);
       else await marking;
-      if (refreshing) expect(signals[0]?.aborted).toBe(true);
+      if (refreshing) expect(signals[0]?.aborted).toBe(false);
+      releaseFirstRead();
       await vi.waitFor(() =>
         expect(
           sidebar
@@ -125,7 +130,7 @@ it.each(
             .data?.projects[0]?.threads.map((thread) => thread.id),
         ).toEqual(refreshing ? [parent.id, child.id] : [parent.id]),
       );
-      expect(fetchSidebar).toHaveBeenCalledTimes(refreshing ? 2 : 0);
+      expect(fetchSidebar).toHaveBeenCalledTimes(refreshing ? 1 : 0);
     } finally {
       effects.dispose();
       unsubscribe();

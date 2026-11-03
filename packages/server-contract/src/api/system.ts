@@ -22,7 +22,16 @@ import {
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 import { machineEnvironmentSetSchema } from "./machine-environment.js";
-
+import { systemVoiceTranscriptionResponseSchema } from "./system-voice.js";
+import {
+  systemEnvironmentProviderSchema,
+  systemEnvironmentProvidersResponseSchema,
+} from "./system-environment-providers.js";
+export {
+  systemEnvironmentProviderSchema,
+  systemEnvironmentProvidersResponseSchema,
+} from "./system-environment-providers.js";
+export { systemVoiceTranscriptionResponseSchema } from "./system-voice.js";
 const machineEnvironmentReplacementVariableSchema =
   machineEnvironmentSetSchema.extend({
     value: machineEnvironmentSetSchema.shape.value.nullable(),
@@ -100,6 +109,8 @@ export const systemExecutionOptionsQuerySchema = z
     ...systemProviderHostQueryFields,
     providerId: z.string().min(1),
     projectId: z.string().min(1),
+    selectedModel: z.string().min(1),
+    preferCached: z.enum(["true", "false"]),
   })
   .partial()
   .superRefine(rejectMultipleWorkspaceSelectors)
@@ -131,9 +142,6 @@ export interface SystemVoiceTranscriptionForm {
 export { providerInfoSchema as systemProviderInfoSchema } from "@bb/domain";
 export type { ProviderInfo as SystemProviderInfo } from "@bb/domain";
 
-export const systemVoiceTranscriptionResponseSchema = z.object({
-  text: z.string(),
-});
 export type SystemVoiceTranscriptionResponse = z.infer<
   typeof systemVoiceTranscriptionResponseSchema
 >;
@@ -216,7 +224,54 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const telemetryResourceIdSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
+
+const releaseVersionTelemetrySchema = z
+  .string()
+  .max(32)
+  .regex(/^\d+(\.\d+){1,3}$/);
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("recommendation"),
+      properties: z
+        .object({
+          resource_type: z.enum(["plugin"]),
+          resource_id: telemetryResourceIdSchema,
+          recommendation_id: z.string().regex(/^[A-Za-z0-9_-]{21}$/),
+          action: z.enum(["shown", "selected"]),
+          surface: z.enum(["onboarding"]),
+          entry: onboardingEntryTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_operation"),
+      properties: z
+        .object({
+          entry: onboardingEntryTelemetrySchema,
+          step: onboardingStepTelemetrySchema,
+          operation: z.enum([
+            "install",
+            "update",
+            "scan",
+            "import",
+            "remote_access",
+            "add_machine",
+          ]),
+          outcome: z.enum(["started", "succeeded", "failed"]),
+          resource_id: telemetryResourceIdSchema.optional(),
+          item_count: z.number().int().nonnegative().optional(),
+          succeeded_count: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_agent_state"),
@@ -241,6 +296,24 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "exited",
             "failed",
             "cancelled",
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_blocker"),
+      properties: z
+        .object({
+          reason: z.enum([
+            "agent_missing",
+            "agent_update",
+            "sign_in",
+            "model_unavailable",
+            "provider_selection",
+            "model_selection",
+            "project_setup",
           ]),
         })
         .strict(),
@@ -290,6 +363,23 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           last_step: onboardingStepTelemetrySchema,
         })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("release_notes_opened"),
+      properties: z
+        .object({
+          release_version: releaseVersionTelemetrySchema,
+          view: z.enum(["inline", "web"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("plugin_creation_started"),
+      properties: z.object({}).strict(),
     })
     .strict(),
 ]);
@@ -579,54 +669,10 @@ export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;
 
-const systemEnvironmentProviderAvailabilitySchema = z.discriminatedUnion(
-  "status",
-  [
-    z.object({ status: z.literal("available") }),
-    z.object({
-      status: z.literal("setup-required"),
-      message: z.string().min(1),
-    }),
-    z.object({
-      status: z.literal("unavailable"),
-      message: z.string().min(1),
-    }),
-  ],
-);
-
-export const systemEnvironmentProviderSchema = z.object({
-  environmentProviderId: z.string().min(1).optional(),
-  machineProviderId: z.string().min(1).nullable(),
-  id: z.string().min(1),
-  displayName: z.string().min(1),
-  description: z.string().min(1).nullable(),
-  icon: z.string().min(1).nullable(),
-  logoUrl: z.string().min(1).nullable(),
-  pluginId: z.string().min(1),
-  requires: z.object({
-    projectCheckout: z.boolean(),
-    gitCheckout: z.boolean(),
-    gitRemote: z.boolean(),
-    projectless: z.boolean(),
-  }),
-  inputs: jsonValueSchema.nullable(),
-  acceptsEmptyInputs: z.boolean(),
-  availability: systemEnvironmentProviderAvailabilitySchema.nullable(),
-  machineAvailability: z.record(
-    z.string().min(1),
-    systemEnvironmentProviderAvailabilitySchema.nullable(),
-  ),
-  machineInputs: jsonValueSchema.nullable().optional(),
-  machineAcceptsEmptyInputs: z.boolean().optional(),
-  machineProviderPluginId: z.string().min(1).optional(),
-});
 export type SystemEnvironmentProvider = z.infer<
   typeof systemEnvironmentProviderSchema
 >;
 
-export const systemEnvironmentProvidersResponseSchema = z.object({
-  providers: z.array(systemEnvironmentProviderSchema),
-});
 export type SystemEnvironmentProvidersResponse = z.infer<
   typeof systemEnvironmentProvidersResponseSchema
 >;

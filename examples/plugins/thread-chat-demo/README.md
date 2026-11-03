@@ -7,14 +7,15 @@ Demonstrates the SDK's host-owned `ThreadChat` component and the
   that thread's full chat (`<ThreadChat variant="full" layout="contained" />`).
   The "Focus composer" button exercises `focusRequest`.
 - **Targeted fixed tab "Compact thread"** — the nav-page button calls the
-  generic `experimental_useAppPanel().openFixedTab(...)` primitive with the
+  generic `experimental_useAppPanel().openTab(...)` primitive with the
   page-owned registration and a typed thread target. The tab validates and
   renders that session target across panel and route remounts without putting
   it in the URL or persisted panel state. "View source" also demonstrates
   imperative URL opening through BB's preference router.
 - **Message action "Open in demo panel"** — appears on every chat message's
   action bar and in the assistant-message text-selection menu. It opens this
-  plugin's own thread panel via `context.openPanel({ actionId, params })`,
+  plugin's own thread panel via
+  `context.experimental_panel.openTab({ tab, params })`,
   passing the anchored message text (or the exact selection) through `params`,
   and renders the current thread compactly with
   `<ThreadChat variant="compact" />`.

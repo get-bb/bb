@@ -59,6 +59,7 @@ const singleQuestion: PendingInteraction = {
           },
         ],
         allowFreeText: true,
+        required: true,
       },
     ],
   },
@@ -82,6 +83,7 @@ const multiQuestion: PendingInteraction = {
           { value: "tests", label: "Tests" },
         ],
         allowFreeText: false,
+        required: true,
       },
       {
         id: "notes",
@@ -89,6 +91,7 @@ const multiQuestion: PendingInteraction = {
         shortLabel: "Notes",
         multiSelect: false,
         allowFreeText: true,
+        required: true,
       },
     ],
   },

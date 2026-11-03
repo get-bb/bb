@@ -24,7 +24,6 @@ export const managedBranchPrefixSchema = z
 export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
-    showGitChanges: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
     terminalCopyOnSelect: z.boolean(),
     confirmThreadArchive: z.boolean(),
@@ -64,7 +63,6 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
-  showGitChanges: true,
   steerActiveThreadOnEnter: true,
   terminalCopyOnSelect: true,
   confirmThreadArchive: true,
@@ -96,7 +94,6 @@ export const appSettingsUpdateSchema = z.union([
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
-    showGitChanges: z.boolean().optional(),
     keepHistoryAfterContextClear: z.boolean().optional(),
     summarizeShellCommands: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
@@ -110,7 +107,6 @@ export const appSettingsUpdateSchema = z.union([
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
-    showGitChanges: z.boolean().optional(),
     keepHistoryAfterContextClear: z.boolean().optional(),
     summarizeShellCommands: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),

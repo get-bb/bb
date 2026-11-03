@@ -150,7 +150,11 @@ function seedActivePlan(harness: TestAppHarness, fixture: BannerFixture): void {
   });
 }
 
-function seedActiveGoal(harness: TestAppHarness, fixture: BannerFixture): void {
+function seedGoal(
+  harness: TestAppHarness,
+  fixture: BannerFixture,
+  status: "active" | "paused",
+): void {
   seedThreadRuntimeState(harness.deps, {
     environmentId: fixture.environmentId,
     providerThreadId: "provider-thread-1",
@@ -167,7 +171,7 @@ function seedActiveGoal(harness: TestAppHarness, fixture: BannerFixture): void {
     data: {
       providerThreadId: "provider-thread-1",
       objective: "Verify authoritative Goal cancellation",
-      status: "active",
+      status,
       tokenBudget: null,
       tokensUsed: 100,
       timeUsedSeconds: 10,
@@ -554,7 +558,7 @@ describe("public thread banner actions", () => {
       expect(response.status).toBe(409);
       expect(await readJson(response)).toMatchObject({
         code: "invalid_request",
-        message: "No active Goal to clear",
+        message: "No Goal to clear",
       });
     });
   });
@@ -562,7 +566,7 @@ describe("public thread banner actions", () => {
   it("accepts a stale Goal clear result after provider events persist the clear", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });
-      seedActiveGoal(harness, fixture);
+      seedGoal(harness, fixture, "active");
       registerHostRpcResponder(harness, {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
@@ -604,10 +608,46 @@ describe("public thread banner actions", () => {
     });
   });
 
+  it("clears a paused Goal", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "idle" });
+      seedGoal(harness, fixture, "paused");
+      registerHostRpcResponder(harness, {
+        hostId: fixture.hostId,
+        sessionId: fixture.sessionId,
+        handle: ({ command }) => {
+          if (command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
+          seedEvent(harness.deps, {
+            threadId: fixture.threadId,
+            environmentId: fixture.environmentId,
+            providerThreadId: "provider-thread-1",
+            sequence: 4,
+            type: "thread/goal/cleared",
+            scope: threadScope(),
+            data: { providerThreadId: "provider-thread-1" },
+          });
+          return { ok: true, result: { cleared: true } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/goal/clear`,
+        { method: "POST" },
+      );
+
+      expect(
+        response.status,
+        JSON.stringify(await readJson(response.clone())),
+      ).toBe(200);
+    });
+  });
+
   it("keeps Goal active when provider cancellation fails", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });
-      seedActiveGoal(harness, fixture);
+      seedGoal(harness, fixture, "active");
       const responder = registerHostRpcResponder(harness, {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,

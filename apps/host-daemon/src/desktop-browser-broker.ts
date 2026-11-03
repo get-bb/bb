@@ -1,4 +1,9 @@
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
@@ -32,6 +37,7 @@ interface Pending {
 export interface DesktopBrowserBroker {
   descriptor: DesktopBrowserBrokerDescriptor;
   setConnected(connected: boolean): void;
+  prove(challenge: string): { proof: string };
   request<C extends DesktopBrowserCommand>(
     command: C,
   ): Promise<DesktopBrowserResult<C["type"]>>;
@@ -314,6 +320,15 @@ export async function startDesktopBrowserBroker(options: {
   return {
     descriptor,
     request,
+    prove(challenge) {
+      if (!connected || closed)
+        throw new Error("Desktop browser broker is disconnected from server");
+      return {
+        proof: createHmac("sha256", token)
+          .update(`bb-desktop-broker:${challenge}`)
+          .digest("hex"),
+      };
+    },
     setConnected(value) {
       connected = value;
       if (!value) for (const peer of peers) disconnect(peer);

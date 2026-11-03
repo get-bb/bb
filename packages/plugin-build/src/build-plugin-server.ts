@@ -1,3 +1,4 @@
+import { retiredSdkMemberWarningsForInputs } from "./retired-sdk-members.js";
 import {
   mkdir,
   mkdtemp,
@@ -6,10 +7,14 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, extname, join, relative, sep } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { init as initModuleLexer, parse as parseModule } from "es-module-lexer";
 import { renameIntoPlace } from "./rename-into-place.js";
+import {
+  isPluginSdkImportProvided,
+  PLUGIN_SDK_ROOT_FILTER,
+} from "./plugin-sdk-runtime.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
@@ -36,7 +41,6 @@ export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
   "better-sqlite3",
 ];
 
-const PLUGIN_SDK_ROOT_FILTER = /^@get-bb\/plugin-sdk$|^@bb\/plugin-sdk$/;
 const PLUGIN_SDK_SUBPATH_FILTER = /^@get-bb\/plugin-sdk\//;
 const PLUGIN_SDK_SUBPATH_RESOLVE_MARK = "bb-server-sdk-subpath";
 const PLUGIN_RUNTIME_FALLBACK_RESOLVE_MARK = "bb-server-runtime-fallback";
@@ -82,6 +86,8 @@ interface PluginServerBuildResult {
   jsPath: string;
   mapPath: string;
   metaPath: string;
+  migrationWarnings: string[];
+  inputs: string[];
 }
 
 export interface PluginServerBuildOptions {
@@ -153,6 +159,8 @@ export async function buildPluginServer(
   const metaPath = join(distDir, "server.meta.json");
 
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
+  let migrationWarnings: string[] = [];
+  let inputs: string[] = [];
   try {
     const stagedJsPath = join(stageDir, fileName);
     const stagedMetaPath = join(stageDir, "server.meta.json");
@@ -161,7 +169,8 @@ export async function buildPluginServer(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const runtimeImports = options.runtimeImports ?? {};
-    await esbuild.build({
+    const bundle = await esbuild.build({
+      metafile: true,
       entryPoints: [serverEntry],
       outfile: stagedJsPath,
       bundle: true,
@@ -173,7 +182,7 @@ export async function buildPluginServer(
       ...(format === "esm" ? { banner: { js: NODE_ESM_REQUIRE_BANNER } } : {}),
       external: PLUGIN_SERVER_EXTERNALS.filter(
         (specifier) =>
-          !PLUGIN_SDK_ROOT_FILTER.test(specifier) &&
+          !isPluginSdkImportProvided("server", specifier, []) &&
           runtimeImports[specifier] === undefined,
       ).concat(
         Object.values(runtimeImports)
@@ -344,6 +353,14 @@ export async function buildPluginServer(
       ],
       logLevel: "error",
     });
+    migrationWarnings = await retiredSdkMemberWarningsForInputs(
+      bundle.metafile,
+      process.cwd(),
+      sourceRoot,
+    );
+    inputs = Object.keys(bundle.metafile.inputs)
+      .filter((input) => !input.startsWith("(") && !/^[\w-]{2,}:/u.test(input))
+      .map((input) => resolve(process.cwd(), input));
     await writeFile(
       stagedMetaPath,
       JSON.stringify(
@@ -369,5 +386,5 @@ export async function buildPluginServer(
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, mapPath, metaPath };
+  return { jsPath, mapPath, metaPath, migrationWarnings, inputs };
 }

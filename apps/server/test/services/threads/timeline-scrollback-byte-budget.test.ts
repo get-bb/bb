@@ -14,6 +14,7 @@ import {
 } from "@bb/domain";
 import type { TimelinePaginationCursor } from "@bb/server-contract";
 import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
+import { timelineWindowTag } from "../../../src/services/threads/timeline-window-tag.js";
 import { seedEvent, seedThreadFixture } from "../../helpers/seed.js";
 import {
   withTestHarness,
@@ -86,7 +87,7 @@ function buildPage(
   thread: Thread,
   cursor: TimelinePaginationCursor | null,
 ) {
-  return buildThreadTimelineWithProfile(harness.db, thread, {
+  const window = buildThreadTimelineWithProfile(harness.db, thread, {
     completedTurnDisplay: "collapse",
     deferContent: true,
     eventBudget: 1_500,
@@ -102,6 +103,7 @@ function buildPage(
     compactionOfferEnabled: false,
     summarizeShellCommands: true,
   }).response;
+  return { ...window, tag: timelineWindowTag(window) };
 }
 
 function scrolledBackState(

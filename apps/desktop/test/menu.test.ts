@@ -503,6 +503,7 @@ it.each([
     const choices = buildDesktopServerChoices(
       store,
       alternatives && !custom ? [connect] : [],
+      "http://127.0.0.1:38886",
     );
     expect(choices.some((choice) => choice.id === "builtin")).toBe(visible);
     expect(choices.filter((choice) => choice.active)).toHaveLength(1);

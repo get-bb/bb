@@ -95,6 +95,15 @@ were excluded. See the [audit](../MAINTENANCE.md) and
 | [Cloud gateway and tunnel behavior](cloud-gateway.md) | 7 | 4 passed, 3 partial/blocked |
 | [Developer tools, fixtures, and scope boundaries](developer-fixtures.md) | 5 | 2 passed, 3 partial/blocked |
 
+## Additions outside the dated audit
+
+| Feature group | Recipes | Verification status |
+| --- | --- | --- |
+| [Built-in browser CLI and SDK](desktop.md#built-in-browser-cli-and-sdk) | 4 | Not run |
+
+The desktop feature map owns these built-in browser recipes. They do not change
+the historical desktop results or describe the browser-automation plugin.
+
 ## Scope reconciliation
 
 - **Compatibility:** legacy app routes and removed manager commands are

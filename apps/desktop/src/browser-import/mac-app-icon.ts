@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execHostFileCallback as execFile } from "@bb/process-utils";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

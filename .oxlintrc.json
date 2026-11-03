@@ -124,6 +124,13 @@
       }
     },
     {
+      "files": ["packages/process-utils/src/host-toolchain.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "bb/no-blocking-child-process-call": "off"
+      }
+    },
+    {
       "files": [
         "**/__tests__/**",
         "**/*.test.ts",

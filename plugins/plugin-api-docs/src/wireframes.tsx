@@ -473,10 +473,14 @@ function TrafficLights() {
   );
 }
 
-const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
+const SIDEBAR_THREADS: readonly {
+  title: string;
+  glyph?: "spin" | "dot";
+  pullRequest?: boolean;
+}[] = [
   { title: "Fix flaky checkout tests", glyph: "spin" },
   { title: "Refactor settings page" },
-  { title: "Ship dark mode", glyph: "dot" },
+  { title: "Ship dark mode", glyph: "dot", pullRequest: true },
 ];
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
@@ -560,9 +564,28 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       {SIDEBAR_THREADS.map((thread) => (
         <span
           key={thread.title}
-          className="flex h-6.5 items-center gap-2 rounded-md px-2"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-2",
+            thread.pullRequest ? "py-1" : "h-6.5",
+          )}
         >
-          <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">{thread.title}</span>
+            {thread.pullRequest ? (
+              <Mark
+                id="thread-row-metadata"
+                label="A pull request badge a plugin added to the row's metadata line"
+                chip="side"
+                className="z-[2] flex h-4 w-28 items-center gap-1 text-xs tabular-nums text-success"
+              >
+                <MiniIcon icon="GitPullRequestArrow" className="size-3" />
+                <span className="font-mono text-muted-foreground">#412</span>
+                <span className="flex size-3 items-center justify-center">
+                  <span className="size-1.5 rounded-full bg-attention" />
+                </span>
+              </Mark>
+            ) : null}
+          </span>
           {thread.glyph === "spin" ? (
             <Mark
               id="thread-row-status"
@@ -642,6 +665,7 @@ export const ANATOMY_RENDERER_KEYS = {
 };
 
 export type AppShellRightPanelTab =
+  | "thread-info"
   | "browser-toolbar"
   | "thread-panel"
   | "file-opener"
@@ -653,6 +677,13 @@ function RightPanelTabLaneBadges({ mobile }: { mobile: boolean }) {
     : undefined;
   return (
     <>
+      <MeasuredBadge
+        id="thread-info"
+        label="Plugin rows and sections in bb's Info tab"
+        anchor='[data-guide-region="thread-info"]'
+        clipTo={clipTo}
+        at="lane"
+      />
       <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
@@ -961,6 +992,7 @@ export function AppShellWireframe({
 
   useEffect(() => {
     if (
+      expandedId === "thread-info" ||
       expandedId === "browser-toolbar" ||
       expandedId === "code-renderers" ||
       expandedId === "thread-panel" ||
@@ -1009,7 +1041,7 @@ export function AppShellWireframe({
         <>
           <MeasuredBadge
             id="thread-header"
-            label="Plugin thread-header control, left end of the action row"
+            label="Plugin header buttons, after the workspace's Open button"
             anchor='[data-guide-region="thread-header"]'
             at="above"
           />
@@ -1154,30 +1186,38 @@ function AppShellWireframeBody({
             <span className="flex-1" />
             <Mark
               id="thread-header"
-              label="Plugin thread-header control, left end of the action row"
+              label="Plugin header buttons, after the workspace's Open button"
               className="flex h-6.5 items-center gap-1 px-2"
               showChip={false}
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
+            {mobile ? <ThreadContextCardMark compact /> : null}
             {mobile ? <MiniIcon icon="PanelRight" className="size-5" /> : null}
           </div>
 
           <div
             data-guide-fixture="app-window-timeline"
-            className={
+            className={cn(
+              "relative",
               mobile
                 ? "flex min-h-0 flex-1 flex-col justify-end gap-5 overflow-hidden px-4 py-4 text-sm leading-relaxed"
-                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
-            }
+                : "min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6",
+            )}
           >
-            <div className="flex justify-end">
+            {mobile ? null : <ThreadContextCardMark compact={false} />}
+            <div className={cn("flex justify-end", !mobile && "mr-44")}>
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
               </span>
             </div>
 
-            <div className="w-[78%] space-y-1">
+            <div
+              className={cn(
+                "w-[78%] space-y-1",
+                !mobile && "max-w-[calc(100%-11rem)]",
+              )}
+            >
               <span className="flex items-center gap-1.5 text-foreground">
                 <PluginGlyph className="size-3.5" />
                 Re-ran checkout suite
@@ -1292,6 +1332,14 @@ function AppShellWireframeBody({
                   </span>
                 </Mark>
               </div>
+              <Mark
+                id="message-metadata"
+                label="React message metadata beside realized messages"
+                className="inline-flex items-center py-0.5 pr-6 pl-2 text-2xs text-muted-foreground"
+              >
+                <PluginGlyph className="mr-1 size-3" />
+                Yesterday, 3:42 PM
+              </Mark>
             </div>
           </div>
 
@@ -1345,6 +1393,130 @@ function AppShellWireframeBody({
         </span>
       </Mark>
     </WindowFrame>
+  );
+}
+
+function ThreadContextCardMark({ compact }: { compact: boolean }) {
+  const label = "Plugin sections in the thread context card";
+  if (compact) {
+    return (
+      <Mark
+        id="thread-context-card"
+        label={label}
+        chip="corner"
+        className="flex size-7 items-center justify-center"
+      >
+        <MiniIcon icon="LayoutList" className="size-5" />
+      </Mark>
+    );
+  }
+  return (
+    <Mark
+      id="thread-context-card"
+      label={label}
+      chip="corner-inset"
+      className="absolute right-4 top-4 block w-40 rounded-md border border-border bg-popover p-1 text-foreground"
+    >
+      <span className="flex h-6.5 items-center gap-2 px-1.5">
+        <MiniIcon icon="GitPullRequest" className="size-3.5" />
+        <span className="truncate">PR #482</span>
+      </span>
+      <span className="flex h-6.5 items-center gap-2 px-1.5">
+        <MiniIcon icon="FileDiff" className="size-3.5" />
+        Changes
+        <span className="ml-auto font-mono text-2xs">
+          <span className="text-success">+12</span>{" "}
+          <span className="text-destructive">-3</span>
+        </span>
+      </span>
+    </Mark>
+  );
+}
+
+const THREAD_INFO_FIXTURE_ROWS = [
+  { icon: "Folder", label: "Project", value: "checkout-service" },
+  { icon: "GitBranch", label: "Branch", value: "fix/retry-flake" },
+] as const;
+
+function ThreadInfoFixtureRow({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 py-0.5 text-xs leading-5">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="min-w-0 truncate text-foreground">{children}</span>
+    </div>
+  );
+}
+
+function ThreadInfoFixture() {
+  return (
+    <div data-guide-fixture="thread-info" className="flex flex-col text-xs">
+      <div className="flex flex-col gap-1.5">
+        {THREAD_INFO_FIXTURE_ROWS.map((row) => (
+          <ThreadInfoFixtureRow
+            key={row.label}
+            icon={<MiniIcon icon={row.icon} className="size-3" />}
+            label={row.label}
+          >
+            {row.value}
+          </ThreadInfoFixtureRow>
+        ))}
+        <Mark
+          id="thread-info"
+          label="Plugin rows and sections in bb's Info tab"
+          className="block rounded-md"
+          showChip={false}
+        >
+          <ThreadInfoFixtureRow
+            icon={<PluginGlyph className="size-3" />}
+            label="Deploy"
+          >
+            Staging · healthy
+          </ThreadInfoFixtureRow>
+        </Mark>
+      </div>
+      <Mark
+        id="thread-info"
+        label="Plugin rows and sections in bb's Info tab"
+        className="mt-3 block rounded-md border-t border-border-hairline pt-3"
+        showChip={false}
+      >
+        <span className="mb-1 flex items-center font-medium text-muted-foreground">
+          Automations
+          <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal tabular-nums">
+            1
+          </span>
+        </span>
+        <span className="flex h-6 items-center gap-1.5">
+          <MiniIcon icon="Calendar" className="size-3" />
+          <span className="min-w-0 flex-1 truncate text-foreground">
+            Nightly CI check
+          </span>
+          <span className="shrink-0 text-2xs text-subtle-foreground">
+            Next 9:00 AM
+          </span>
+        </span>
+      </Mark>
+      <div className="mt-3 border-t border-border-hairline pt-3">
+        <span className="mb-1 flex items-center font-medium text-muted-foreground">
+          Commits
+          <span className="ml-1.5 rounded-full bg-surface-recessed px-1.5 text-2xs leading-4 font-normal tabular-nums">
+            2
+          </span>
+        </span>
+        <span className="block h-2 w-3/5 rounded-sm bg-muted/60" />
+      </div>
+    </div>
   );
 }
 
@@ -1402,12 +1574,17 @@ export function AppShellRightPanel({
           data-guide-fixture="right-panel-fixed-tabs"
           className="flex shrink-0 items-center gap-1.5"
         >
-          <span
-            data-guide-tab="info"
-            className="flex h-6 items-center rounded-md px-1.5"
+          <Mark
+            id="thread-info"
+            label="Plugin rows and sections in bb's Info tab"
+            className={cn(tabClass("thread-info"), "px-1.5")}
+            showChip={false}
+            onActivate={() => onTabSelect("thread-info")}
           >
-            <MiniIcon icon="Info" className="size-3.5" />
-          </span>
+            <span data-guide-tab="thread-info" className="contents">
+              <MiniIcon icon="Info" className="size-3.5" />
+            </span>
+          </Mark>
           <Mark
             id="code-renderers"
             label="Plugin code and diff renderers on bb's Diff tab"
@@ -1488,7 +1665,9 @@ export function AppShellRightPanel({
           compact && "text-sm leading-relaxed",
         )}
       >
-        {activeTab === "browser-toolbar" ? (
+        {activeTab === "thread-info" ? (
+          <ThreadInfoFixture />
+        ) : activeTab === "browser-toolbar" ? (
           <div data-guide-fixture="browser-toolbar" className="space-y-4">
             <div className="flex items-center gap-2 border-b border-border-hairline pb-3">
               <MiniIcon icon="ChevronLeft" className="size-3.5" />
@@ -1603,6 +1782,7 @@ export function RealComposerAnnotated({
   mobile?: boolean;
 }) {
   const banners = useEngagement("composer-banners");
+  const [contextExpanded, setContextExpanded] = useState(false);
   return (
     <div className={cn("relative pb-2 pt-4", mobile ? "px-6" : "px-7")}>
       <div className="relative w-full select-none text-xs leading-none text-muted-foreground">
@@ -1612,9 +1792,15 @@ export function RealComposerAnnotated({
         >
           <MeasuredBadge
             id="composer-banners"
-            label="Plugin composer banners, above the prompt box"
+            label="Plugin banners and thread context, above the prompt box"
             anchor='[data-guide-target="composer-banners"]'
             at="end"
+          />
+          <MeasuredBadge
+            id="composer-replacement"
+            label="The composer box, replaceable by one plugin"
+            anchor='[data-guide-region="composer-replacement"]'
+            at="start"
           />
           <MeasuredBadge
             id="composer-state"
@@ -1680,16 +1866,37 @@ export function RealComposerAnnotated({
             <div className="px-4 pb-4">
               <Mark
                 id="composer-banners"
-                label="Plugin composer banners, above the prompt box"
+                label="Plugin banners and thread context, above the prompt box"
                 showChip={false}
                 target
                 className={cn(
-                  "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
+                  "relative mb-2.5 block space-y-2 text-sm",
                   engagedRingClass(banners.outlined),
                 )}
+                onActivate={() => setContextExpanded((value) => !value)}
               >
-                <PluginGlyph className="size-3.5" />
-                <span className="text-foreground">Your banner</span>
+                <span className="flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3">
+                  <PluginGlyph className="size-3.5" />
+                  <span className="text-foreground">Your banner</span>
+                </span>
+                <span
+                  data-guide-fixture="thread-context-segment"
+                  className="block overflow-hidden rounded-lg border border-border-hairline bg-surface-raised text-xs"
+                >
+                  <span className="flex items-center gap-2 px-3 py-2">
+                    <MiniIcon icon="UserRound" className="size-3.5" />
+                    <span className="flex items-center gap-1.5 text-foreground">
+                      <PluginGlyph className="size-3.5" />
+                      Your context
+                    </span>
+                    <span className="flex-1">Changed files</span>
+                  </span>
+                  {contextExpanded ? (
+                    <span className="block border-t border-border-hairline px-3 py-2">
+                      Context details
+                    </span>
+                  ) : null}
+                </span>
               </Mark>
 
               <StaticEmbeddedComposer mobile={mobile} />
@@ -1709,173 +1916,184 @@ function StaticEmbeddedComposer({ mobile = false }: { mobile?: boolean }) {
   const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div
+      <RegionMark
+        id="composer-replacement"
+        label="The composer box, replaceable by one plugin"
+        showChip={false}
         className={cn(
-          "relative flex flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-7 shadow-lift",
-          mobile ? "min-h-48 gap-7" : "h-36",
+          "flex flex-col rounded-xl border border-border bg-background shadow-lift",
+          mobile ? "min-h-48" : "h-36",
         )}
       >
         <div
+          data-guide-layer="composer-content"
           className={cn(
-            "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
-            mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
-            engagedRingClass(draft.outlined),
+            "pointer-events-none relative z-[2] flex flex-1 flex-col px-2 pb-2 pt-7 [&_a]:pointer-events-auto",
+            mobile && "gap-7",
           )}
         >
-          <Mark
-            id="composer-state"
-            label="The draft prompt a plugin can read and lock"
-            showChip={false}
-            target
-            className="whitespace-pre"
+          <div
+            className={cn(
+              "mx-2 flex items-center rounded-md text-sm leading-none text-foreground",
+              mobile ? "min-h-7 flex-wrap gap-y-7" : "h-7",
+              engagedRingClass(draft.outlined),
+            )}
           >
-            Summarize{" "}
-          </Mark>
-          <span className="relative">
-            {mention.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="mention-provider"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+            <Mark
+              id="composer-state"
+              label="The draft prompt a plugin can read and lock"
+              showChip={false}
+              target
+              className="whitespace-pre"
+            >
+              Summarize{" "}
+            </Mark>
+            <span className="relative">
+              {mention.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="mention-provider"
+                  className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
+                >
+                  <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
+                    Your plugin
+                  </span>
+                  <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
+                    <PluginGlyph className="size-3.5" />
+                    release-notes
+                  </span>
+                  <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
+                    <PluginGlyph className="size-3.5 opacity-60" />
+                    roadmap
+                  </span>
+                </span>
+              ) : null}
+              <RegionMark
+                id="mention-provider"
+                label="Plugin mention results in the @ typeahead"
+                className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+                chip="outside-above"
+                showChip={!plus.outlined}
               >
-                <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
-                  Your plugin
-                </span>
-                <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
-                  <PluginGlyph className="size-3.5" />
-                  release-notes
-                </span>
-                <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
-                  <PluginGlyph className="size-3.5 opacity-60" />
-                  roadmap
-                </span>
-              </span>
-            ) : null}
+                <span aria-hidden>@release-notes</span>
+              </RegionMark>
+            </span>
+            <span aria-hidden className="whitespace-pre">
+              {" "}
+              and fix the{" "}
+            </span>
             <RegionMark
-              id="mention-provider"
-              label="Plugin mention results in the @ typeahead"
-              className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+              id="composer-rich-text"
+              label="Plugin highlighting, painted over the draft prompt"
+              className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
               chip="outside-above"
               showChip={!plus.outlined}
             >
-              <span aria-hidden>@release-notes</span>
+              <span aria-hidden>TODO</span>
             </RegionMark>
-          </span>
-          <span aria-hidden className="whitespace-pre">
-            {" "}
-            and fix the{" "}
-          </span>
-          <RegionMark
-            id="composer-rich-text"
-            label="Plugin highlighting, painted over the draft prompt"
-            className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
-            chip="outside-above"
-            showChip={!plus.outlined}
-          >
-            <span aria-hidden>TODO</span>
-          </RegionMark>
-          <span aria-hidden className="whitespace-pre">
-            {" "}
-            in checkout.
-          </span>
-        </div>
+            <span aria-hidden className="whitespace-pre">
+              {" "}
+              in checkout.
+            </span>
+          </div>
 
-        <div className="mt-auto flex h-10 items-center gap-1">
-          <span className="relative">
-            {plus.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="composer-plus-menu"
-                className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+          <div className="mt-auto flex h-10 items-center gap-1">
+            <span className="relative">
+              {plus.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="composer-plus-menu"
+                  className="pointer-events-none absolute bottom-full left-0 z-[60] mb-7 block w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+                >
+                  <span className="flex h-6 items-center gap-1.5 px-1.5">
+                    <MiniIcon icon="Paperclip" className="size-3.5" />
+                    Attach files
+                  </span>
+                  <span className="flex h-6 items-center gap-1.5 px-1.5">
+                    <MiniIcon icon="Zap" className="size-3.5" />
+                    Skills
+                  </span>
+                  <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+                    <PluginGlyph className="size-3.5" />
+                    Your action
+                  </span>
+                </span>
+              ) : null}
+              <Mark
+                id="composer-plus-menu"
+                label="Plugin rows in the composer's + menu"
+                showChip={false}
+                target
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-md",
+                  engagedRingClass(plus.outlined),
+                )}
               >
-                <span className="flex h-6 items-center gap-1.5 px-1.5">
-                  <MiniIcon icon="Paperclip" className="size-3.5" />
-                  Attach files
+                <MiniIcon icon="Plus" className="size-4" />
+              </Mark>
+            </span>
+            <Mark
+              id="provider-picker"
+              label="Your agent provider and its mark, in the model picker"
+              showChip={false}
+              target
+              className={cn(
+                "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-foreground",
+                engagedRingClass(picker.outlined),
+              )}
+            >
+              <ProviderGlyph />
+              Fable 5
+              {mobile ? null : (
+                <span className="text-subtle-foreground">High</span>
+              )}
+            </Mark>
+            <span className="flex-1" />
+            <span className="relative">
+              {actions.outlined ? (
+                <span
+                  aria-hidden
+                  data-guide-transient-for="composer-actions"
+                  className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
+                >
+                  <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
+                    Search saved prompts
+                  </span>
+                  <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
+                    Review this change
+                  </span>
                 </span>
-                <span className="flex h-6 items-center gap-1.5 px-1.5">
-                  <MiniIcon icon="Zap" className="size-3.5" />
-                  Skills
-                </span>
-                <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+              ) : null}
+              <Mark
+                id="composer-actions"
+                label="Plugin composer actions, before voice and send"
+                showChip={false}
+                target
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-md bg-state-hover",
+                  engagedRingClass(actions.outlined),
+                )}
+              >
+                <span data-guide-fixture="plugin-composer-action">
                   <PluginGlyph className="size-3.5" />
-                  Your action
                 </span>
-              </span>
-            ) : null}
-            <Mark
-              id="composer-plus-menu"
-              label="Plugin rows in the composer's + menu"
-              showChip={false}
-              target
-              className={cn(
-                "flex size-10 items-center justify-center rounded-md",
-                engagedRingClass(plus.outlined),
-              )}
+              </Mark>
+            </span>
+            <span className="flex size-9 items-center justify-center">
+              <MiniIcon icon="Mic" className="size-4" />
+            </span>
+            <span
+              data-guide-icon="CornerDownLeft"
+              className="flex size-9 items-center justify-center rounded-md bg-foreground"
             >
-              <MiniIcon icon="Plus" className="size-4" />
-            </Mark>
-          </span>
-          <Mark
-            id="provider-picker"
-            label="Your agent provider and its mark, in the model picker"
-            showChip={false}
-            target
-            className={cn(
-              "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-foreground",
-              engagedRingClass(picker.outlined),
-            )}
-          >
-            <ProviderGlyph />
-            Fable 5
-            {mobile ? null : (
-              <span className="text-subtle-foreground">High</span>
-            )}
-          </Mark>
-          <span className="flex-1" />
-          <span className="relative">
-            {actions.outlined ? (
-              <span
-                aria-hidden
-                data-guide-transient-for="composer-actions"
-                className="pointer-events-none absolute bottom-full right-0 z-[60] mb-7 block w-48 rounded-md border border-border bg-popover p-2 shadow-md"
-              >
-                <span className="block border-b border-border pb-1 text-xs text-subtle-foreground">
-                  Search saved prompts
-                </span>
-                <span className="mt-1 block rounded bg-state-hover px-2 py-1 text-xs">
-                  Review this change
-                </span>
-              </span>
-            ) : null}
-            <Mark
-              id="composer-actions"
-              label="Plugin composer actions, before voice and send"
-              showChip={false}
-              target
-              className={cn(
-                "flex size-9 items-center justify-center rounded-md bg-state-hover",
-                engagedRingClass(actions.outlined),
-              )}
-            >
-              <span data-guide-fixture="plugin-composer-action">
-                <PluginGlyph className="size-3.5" />
-              </span>
-            </Mark>
-          </span>
-          <span className="flex size-9 items-center justify-center">
-            <MiniIcon icon="Mic" className="size-4" />
-          </span>
-          <span
-            data-guide-icon="CornerDownLeft"
-            className="flex size-9 items-center justify-center rounded-md bg-foreground"
-          >
-            <MiniIcon
-              icon="CornerDownLeft"
-              className="size-3.5 text-background"
-            />
-          </span>
+              <MiniIcon
+                icon="CornerDownLeft"
+                className="size-3.5 text-background"
+              />
+            </span>
+          </div>
         </div>
-      </div>
+      </RegionMark>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
           <MiniIcon icon="Folder" className="size-3.5" />

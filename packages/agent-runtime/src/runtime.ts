@@ -1877,17 +1877,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             options: execOpts,
             providerId,
           });
-          if (providerThreadId !== undefined) {
-            const ownerThreadId =
-              threadIdentityRegistry.resolveBbThreadIdForProviderThread({
-                providerState: proc.identity,
-                providerThreadId,
-              });
-            if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
-              throw new Error(
-                `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
-              );
-            }
+          const ownerThreadId =
+            threadIdentityRegistry.resolveBbThreadIdForProviderThread({
+              providerState: proc.identity,
+              providerThreadId,
+            });
+          if (ownerThreadId !== undefined && ownerThreadId !== threadId) {
+            throw new Error(
+              `Cannot resume thread "${threadId}" on "${providerId}": provider thread "${providerThreadId}" is already hosted by thread "${ownerThreadId}"`,
+            );
           }
           const resolvedEnvironment = resolveRuntimeThreadEnvironment({
             contributedEnv,
@@ -1916,16 +1914,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             sessionRestorable: false,
           });
 
-          if (providerThreadId) {
-            recordProviderThreadIdentity(proc, threadId, providerThreadId);
-          }
+          recordProviderThreadIdentity(proc, threadId, providerThreadId);
 
           const adapterCommand: AdapterCommand = {
             type: "thread/resume",
             threadId,
             cwd: options.workspacePath,
-            providerThreadId:
-              providerThreadId ?? requireProviderThreadId(threadId),
+            providerThreadId,
             options: toProviderExecutionContext({
               envVars: resolvedEnvironment.envVars,
               execOpts,
@@ -2370,7 +2365,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async listModels({ providerId, bridgeLaunch, cwd, contributedEnv = [] }) {
+    async listModels({
+      providerId,
+      bridgeLaunch,
+      cwd,
+      selectedModel,
+      contributedEnv = [],
+    }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
@@ -2380,6 +2381,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         commandType: "model/list",
         plan: proc.adapter.buildCommandPlan({
           type: "model/list",
+          ...(selectedModel === undefined ? {} : { selectedModel }),
           ...(cwd !== undefined ? { cwd } : {}),
           envVars: resolveContributedEnvironment(
             contributedEnv,
@@ -2594,6 +2596,10 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     hasOpenBackgroundWork() {
       return backgroundWorkState.hasOpenWork();
+    },
+
+    listOpenBackgroundWork() {
+      return backgroundWorkState.listOpenWork();
     },
 
     async shutdown() {

@@ -40,8 +40,18 @@ prints `{"ok":false,"error":{"code":…,"message":…}}` on stdout while the sam
 message stays on stderr.
 
 Server-host shares use `https://<server-label>--<port>.<base-domain>` through
-the server tunnel. Other enrolled hosts use
-`https://<machine-label>--<port>.<base-domain>` through their daemon. If a
+the server tunnel. While bb connect next is on (`bb connect-next status`),
+server-host shares also answer at
+`https://<server-label>--<port>.next.<base-domain>`: `bb connect expose` prints
+that URL on a second line, `bb connect shares` after the first URL, and
+`--json` listings carry it as `nextUrl`. Give the user both, or the one on the
+address they are using. Other enrolled hosts use
+`https://<machine-label>--<port>.<base-domain>` through their daemon, and
+while bb connect next is on also
+`https://<machine-label>--<port>.next.<base-domain>` (the same second line and
+`nextUrl`; a machine whose daemon predates protocol 247 serves it once it
+updates). A machine enrolled through the next address has only the next URL:
+it is the listing's `url`, with no `nextUrl`. If a
 machine was not enrolled through Connect, expose fails with instructions to
 remove and re-add it under Settings > Machines.
 

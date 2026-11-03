@@ -66,7 +66,7 @@ export interface CommandRouterOptions {
   desktopBrowserBroker?: CommandDispatchOptions["desktopBrowserBroker"];
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
-  fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
+  skillTreeTransport?: CommandDispatchOptions["skillTreeTransport"];
   fetchPluginHostArtifact?: CommandDispatchOptions["fetchPluginHostArtifact"];
   runtimeManager: RuntimeManager;
   eventSink: CommandDispatchOptions["eventSink"];
@@ -303,7 +303,7 @@ export class CommandRouter {
   private createDispatchOptions(): CommandDispatchOptions {
     return {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
-      fetchSkillTree: this.options.fetchSkillTree,
+      skillTreeTransport: this.options.skillTreeTransport,
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       desktopBrowserBroker: this.options.desktopBrowserBroker,

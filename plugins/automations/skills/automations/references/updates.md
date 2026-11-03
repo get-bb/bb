@@ -12,13 +12,8 @@ Writes remain strict. Run, pause, and resume reject damaged records; update
 succeeds only when the resulting complete record is canonical. Every successful
 create/update persists the canonical format.
 
-Choose one of two execution update forms:
+Choose one of three execution update forms:
 
-- A complete replacement uses `--prompt`, `--provider`, and `--model` together
-  to replace the execution with an agent, or `--script`/`--script-file` to
-  replace it with a script. Add `--reasoning` and `--service-tier` when needed.
-  Include every desired mode-specific setting;
-  settings from the previous execution do not carry over.
 - A partial agent update preserves every omitted execution field and edits the
   existing agent automation in place. Use any combination of `--prompt`,
   `--provider`, `--model`, `--reasoning`, `--service-tier`, and
@@ -39,16 +34,27 @@ bb automation update <automationId> --project <id> \
 exclusive. These flags apply only to agent automations; script automations have
 no execution environment.
 
-For a script automation, update only its working-directory policy without
-replacing the stored script:
+- A partial script update preserves every omitted execution field and edits the
+  existing script automation in place. Use any combination of `--script` or
+  `--script-file`, `--interpreter`, `--timeout`, `--env-json`, and
+  `--working-directory`. `--env-json` replaces the whole variable map; pass
+  `'{}'` to remove every variable. A new `--script-file` keeps the current
+  interpreter, so pass `--interpreter` when the new file needs another one:
 
 ```bash
+bb automation update <automationId> --project <id> --script-file ./check.sh
+bb automation update <automationId> --project <id> --env-json '{"CHANNEL":"qa"}'
 bb automation update <automationId> --project <id> \
   --working-directory automation-storage|project|<absolute-server-path>
 ```
 
-A complete script replacement preserves the current policy when the flag is
-omitted.
+- A complete replacement discards the previous execution. `--prompt`,
+  `--provider`, and `--model` together always replace the execution with an
+  agent, even on an agent automation; add `--reasoning` and `--service-tier`
+  when needed. Script flags on an agent automation replace
+  it with a script and require `--script` or `--script-file`. Include every
+  desired mode-specific setting; omitted ones take their creation defaults.
+  Agent and script flags cannot be combined.
 
 Every command supports `--json`. For `list` and `show`, the JSON result is a
 union discriminated by `problem`: canonical records omit it, while degraded

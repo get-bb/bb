@@ -337,7 +337,10 @@
       "passThroughEnv": ["*"]
     },
     "@bb/app#dev": {
-      "dependsOn": ["@bb/templates#generate:templates"],
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
@@ -375,7 +378,10 @@
       "passThroughEnv": ["*"]
     },
     "storybook": {
-      "dependsOn": ["@bb/templates#generate:templates"],
+      "dependsOn": [
+        "@bb/templates#generate:templates",
+        "@bb/plugin-build#generate"
+      ],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
@@ -715,7 +721,8 @@
     // `@get-bb/plugin-sdk/provider-bridge` import through the package export
     // map to `packages/plugin-sdk/dist/provider-bridge.js` — the `source`
     // condition that lets vitest read `src/` does not apply inside that
-    // bundling step — so the SDK dist must exist before the suite runs.
+    // bundling step — so the SDK dist must exist before the suite runs. The
+    // marketplace parity suites read apps/web's published JSON schemas.
     "@bb/server#test": {
       "env": ["BB_CI_TEST_SHARD", "VITEST_MAX_WORKERS"],
       "dependsOn": [
@@ -735,6 +742,8 @@
         "$TURBO_ROOT$/examples/plugins/echo-provider/*.ts",
         "$TURBO_ROOT$/examples/plugins/echo-provider/package.json",
         "$TURBO_ROOT$/examples/plugins/echo-provider/src/**",
+        "$TURBO_ROOT$/apps/web/public/schemas/marketplace.schema.json",
+        "$TURBO_ROOT$/apps/web/public/schemas/marketplace-v2.schema.json",
         "$TURBO_ROOT$/vitest*.ts"
       ]
     },
@@ -793,13 +802,30 @@
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
-      // The SVG validator suite reads every first-party branding SVG.
+      // The SVG validator suite reads every first-party branding SVG. The
+      // builtin artifact suites bundle these plugins from source; the
+      // environment plugins inline bb-environment-provider-host. Plugins
+      // devDepend on plugin-build, so these cannot be workspace dependencies.
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/vitest*.ts",
         "$TURBO_ROOT$/plugins/*/icons/**",
-        "$TURBO_ROOT$/examples/plugins/*/icons/**"
+        "$TURBO_ROOT$/examples/plugins/*/icons/**",
+        "$TURBO_ROOT$/plugins/keep-awake/**",
+        "$TURBO_ROOT$/plugins/provider-acp/**",
+        "$TURBO_ROOT$/plugins/provider-claude-code/**",
+        "$TURBO_ROOT$/plugins/provider-codex/**",
+        "$TURBO_ROOT$/plugins/provider-pi/**",
+        "$TURBO_ROOT$/plugins/environment-git-worktree/**",
+        "$TURBO_ROOT$/plugins/environment-modal-sandbox/**",
+        "$TURBO_ROOT$/plugins/environment-personal-workspace/**",
+        "$TURBO_ROOT$/plugins/environment-project-checkout/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
+        "$TURBO_ROOT$/packages/environment-provider-host/package.json",
+        "$TURBO_ROOT$/packages/environment-provider-host/src/**"
       ]
     },
     // Runtime unit suites restart the scripted echo provider repeatedly. Build
@@ -827,19 +853,34 @@
       ],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-codex/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
         "$TURBO_ROOT$/vitest*.ts"
       ]
     },
     // The live-CLI suite's global setup rebuilds every first-party provider
-    // bridge from source, so it needs the SDK dist too.
+    // bridge from source, so it needs the SDK dist too, and those plugin
+    // sources are inputs: agent-runtime does not depend on the plugins.
     "@bb/agent-runtime#test:integration": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest*.ts"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/provider-acp/**",
+        "$TURBO_ROOT$/plugins/provider-claude-code/**",
+        "$TURBO_ROOT$/plugins/provider-codex/**",
+        "$TURBO_ROOT$/plugins/provider-pi/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
+        "$TURBO_ROOT$/vitest*.ts"
+      ],
       // The live-CLI suites spawn real provider CLIs. Turbo strips undeclared
       // variables, so without these they start unauthenticated.
       "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
@@ -847,6 +888,7 @@
     "smoke:tarball": {
       "dependsOn": ["build"],
       "cache": false,
+      "passThroughEnv": ["npm_config_cache"],
       "outputs": []
     },
     "smoke:boot": {
@@ -856,7 +898,8 @@
     },
     // Boots the real server, which installs the first-party provider plugins
     // and builds their host artifacts; those bundles resolve
-    // `@get-bb/plugin-sdk/provider-bridge` to the SDK dist.
+    // `@get-bb/plugin-sdk/provider-bridge` to the SDK dist. The installed
+    // plugins load from plugins/ source, so it is an input.
     "@bb/integration-tests#test": {
       "env": ["VITEST_MAX_WORKERS"],
       "dependsOn": [
@@ -872,6 +915,10 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/plugins/*/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
         "$TURBO_ROOT$/vitest*.ts"
@@ -914,6 +961,10 @@
         "$TURBO_ROOT$/packages/templates/package.json",
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**",
+        "$TURBO_ROOT$/plugins/*/**",
+        "!$TURBO_ROOT$/plugins/*/node_modules/**",
+        "!$TURBO_ROOT$/plugins/*/dist/**",
+        "!$TURBO_ROOT$/plugins/*/.bundled-runtime/**",
         "$TURBO_ROOT$/vitest*.ts"
       ],
       "passThroughEnv": ["CLAUDE_CODE_OAUTH_TOKEN", "BB_CLAUDE_CODE_EXECUTABLE"]
@@ -967,6 +1018,21 @@
     // package `types` field; both land on bundled-types/, a build output.
     "bb-plugin-bb--storage-retention#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--composer#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--composer#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
@@ -1094,6 +1160,24 @@
     "bb-plugin-environment-git-worktree#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
+    "bb-plugin-bb--git#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-bb--git#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"]
+    },
+    "bb-plugin-bb--github-pr-status#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-bb--github-pr-status#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ]
+    },
     "bb-plugin-environment-personal-workspace#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -1125,6 +1209,9 @@
       ]
     },
     "bb-plugin-connect#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-bb--connect-next#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-bb-account#typecheck": {
@@ -1240,6 +1327,25 @@
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
+      ]
+    },
+    "bb-plugin-bb--github-star#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--github-star#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
     "bb-plugin-keep-awake#typecheck": {

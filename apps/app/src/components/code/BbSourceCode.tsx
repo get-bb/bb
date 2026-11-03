@@ -9,8 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { File as PierreFile, VirtualizerContext } from "@pierre/diffs/react";
-import type { FileOptions } from "@pierre/diffs/react";
+import {
+  File as PierreFile,
+  VirtualizerContext,
+  type FileOptions,
+} from "@pierre/diffs/react";
 import {
   Virtualizer as PierreVirtualizer,
   type FileContents as PierreFileContents,
@@ -18,7 +21,7 @@ import {
   type VirtualFileMetrics,
 } from "@pierre/diffs";
 import { Button } from "@bb/shared-ui/button";
-import { getDiffShadowRoots } from "@/components/git-diff/git-diff-patch-text";
+import { getDiffShadowRoots } from "@bb/shared-ui/git-diff/patch-text";
 import { usePierreLineSelectionActions } from "@/components/git-diff/PierreLineSelectionActions.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";

@@ -17,6 +17,7 @@ CLI_OWNERS = {
     'provider': 'composer', 'guide': 'compatibility-api',
     'status': 'compatibility-api',
     'helpers': 'compatibility-api', 'environment-helpers': 'projects-environments',
+    'browser': 'desktop',
     'thread': 'execution-controls',
 }
 CORE_PAGES = [

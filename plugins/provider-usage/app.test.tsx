@@ -27,6 +27,7 @@ function threadOnMachine(
     titleFallback: null,
     displayTitle: "Active thread",
     parentThreadId: null,
+    parentNotifications: "auto",
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     sectionId: null,

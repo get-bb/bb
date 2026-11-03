@@ -1,24 +1,23 @@
 import { randomUUID } from "node:crypto";
-import {
-  mkdir,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  utimes,
-  writeFile,
-} from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
+import { mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  FileTransferVerificationError,
+  hashFile,
+  writeVerifiedFile,
+} from "@bb/file-transfer";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
-import { sha256Hex } from "./sha256-hex.js";
 
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
+const RACY_TIMESTAMP_WINDOW_NS = 2_000_000_000n;
+const ARTIFACT_MODE = 0o600;
 
 type FetchNodeArtifact = (args: {
   digest: string;
   byteLength: number;
-}) => Promise<Uint8Array>;
+}) => Promise<AsyncIterable<Uint8Array>>;
 
 interface EnsureCachedNodeArtifactArgs {
   cacheDir: string;
@@ -30,21 +29,7 @@ interface EnsureCachedNodeArtifactArgs {
 }
 
 const pendingPulls = new Map<string, Promise<string>>();
-
-function describeMismatch(
-  digest: string,
-  byteLength: number,
-  bytes: Uint8Array,
-): string | null {
-  if (bytes.byteLength !== byteLength) {
-    return `expected ${byteLength} bytes, received ${bytes.byteLength}`;
-  }
-  const actual = sha256Hex(bytes);
-  if (actual !== digest) {
-    return `expected sha256 ${digest}, received ${actual}`;
-  }
-  return null;
-}
+const verifiedArtifactStatKeys = new Map<string, string>();
 
 export async function ensureCachedNodeArtifact(
   args: EnsureCachedNodeArtifactArgs,
@@ -91,18 +76,29 @@ async function ensureCachedNodeArtifactUnlocked(
   await mkdir(directory, { recursive: true });
   let lastMismatch = "unknown mismatch";
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const bytes = await args.fetchArtifact({
-      digest: args.digest,
-      byteLength: args.byteLength,
-    });
-    const mismatch = describeMismatch(args.digest, args.byteLength, bytes);
-    if (mismatch !== null) {
-      lastMismatch = mismatch;
-      continue;
-    }
     const staged = join(directory, `.staged-${randomUUID()}.tmp`);
     try {
-      await writeFile(staged, bytes, { mode: 0o600 });
+      await writeVerifiedFile({
+        destinationPath: staged,
+        durable: false,
+        expected: {
+          maxBytes: HOST_ARTIFACT_MAX_BYTES,
+          sha256: args.digest,
+          sizeBytes: args.byteLength,
+        },
+        label: "Host artifact",
+        mode: { kind: "create", mode: ARTIFACT_MODE },
+        source: await args.fetchArtifact({
+          digest: args.digest,
+          byteLength: args.byteLength,
+        }),
+      });
+    } catch (error) {
+      if (!(error instanceof FileTransferVerificationError)) throw error;
+      lastMismatch = error.message;
+      continue;
+    }
+    try {
       await rename(staged, artifactPath);
     } catch (error) {
       await rm(staged, { force: true });
@@ -120,20 +116,45 @@ async function isVerifiedCachedArtifact(
   artifactPath: string,
   args: EnsureCachedNodeArtifactArgs,
 ): Promise<boolean> {
-  let bytes: Buffer;
-  try {
-    bytes = await readFile(artifactPath);
-  } catch {
+  const before = await stat(artifactPath, { bigint: true }).catch(() => null);
+  if (before === null) {
+    verifiedArtifactStatKeys.delete(artifactPath);
     return false;
   }
-  if (
-    bytes.byteLength === args.byteLength &&
-    sha256Hex(bytes) === args.digest
-  ) {
+  const statKey = fileStatKey(before);
+  if (verifiedArtifactStatKeys.get(artifactPath) === statKey) {
     return true;
+  }
+  verifiedArtifactStatKeys.delete(artifactPath);
+  if (before.isFile() && before.size === BigInt(args.byteLength)) {
+    const hashed = await hashFile(artifactPath).catch(() => null);
+    if (
+      hashed?.sha256 === args.digest &&
+      hashed.sizeBytes === args.byteLength
+    ) {
+      const after = await stat(artifactPath, { bigint: true });
+      if (fileStatKey(after) === statKey && !hasRacyTimestamp(after)) {
+        verifiedArtifactStatKeys.set(artifactPath, statKey);
+      }
+      return true;
+    }
   }
   await rm(artifactPath, { force: true });
   return false;
+}
+
+function fileStatKey(stats: BigIntStats): string {
+  return [stats.dev, stats.ino, stats.size, stats.mtimeNs, stats.ctimeNs].join(
+    ":",
+  );
+}
+
+function hasRacyTimestamp(stats: BigIntStats): boolean {
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
+  return (
+    nowNs - stats.mtimeNs < RACY_TIMESTAMP_WINDOW_NS ||
+    nowNs - stats.ctimeNs < RACY_TIMESTAMP_WINDOW_NS
+  );
 }
 
 async function touchDirectory(directory: string): Promise<void> {
@@ -162,6 +183,9 @@ async function pruneStaleDigests(
         DIGEST_PATTERN.test(entry.name),
     )
     .map((entry) => join(args.cacheDir, entry.name));
+  for (const directory of stale) {
+    verifiedArtifactStatKeys.delete(join(directory, args.fileName));
+  }
   const results = await Promise.allSettled(
     stale.map((directory) => rm(directory, { recursive: true, force: true })),
   );

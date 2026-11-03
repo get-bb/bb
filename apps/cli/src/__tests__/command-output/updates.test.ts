@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { Host } from "@bb/domain";
 import type {
   HostProviderCliStatusResponse,
@@ -385,6 +385,10 @@ describe("bb updates app command output", () => {
   });
 
   it("bb updates app apply confirms before interrupting threads, then follows the restart", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const statuses = [
       appUpdateStatus({ runningThreadCount: 2 }),
       appUpdateStatus({
@@ -419,7 +423,9 @@ describe("bb updates app command output", () => {
     });
     readlineMocks.question.mockResolvedValue("y");
 
-    await runCommand(["updates", "app", "apply"], register);
+    const command = runCommand(["updates", "app", "apply"], register);
+    await vi.runAllTimersAsync();
+    await command;
 
     expect(readlineMocks.question).toHaveBeenCalledWith(
       expect.stringContaining("2 threads are running"),
@@ -435,6 +441,10 @@ describe("bb updates app command output", () => {
   });
 
   it("bb updates app apply exits non-zero when the update fails", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const statuses = [
       appUpdateStatus(),
       appUpdateStatus({
@@ -456,9 +466,11 @@ describe("bb updates app command output", () => {
       "v1.system.app-update.apply.$post": vi.fn(async () => appUpdateStatus()),
     });
 
-    await expect(
+    const failed = expect(
       runCommand(["updates", "app", "apply"], register),
     ).rejects.toThrow("process.exit:1");
+    await vi.runAllTimersAsync();
+    await failed;
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
       "Error: Update to 0.0.33 failed: npm install failed",
     );

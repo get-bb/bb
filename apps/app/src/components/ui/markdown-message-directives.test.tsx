@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { useEffect } from "react";
+import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -13,7 +14,8 @@ import {
   type Mock,
 } from "vitest";
 import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
-import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
+import { experimental_useAppPanel } from "@/lib/plugin-sdk-hooks";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { MarkdownPreview } from "./markdown-preview";
 import {
   buildMessageDirectiveRegistry,
@@ -76,13 +78,17 @@ function WorkspaceFileVis(props: PluginMessageDirectiveProps) {
 }
 
 function ThreadPanelVis(_props: PluginMessageDirectiveProps) {
-  const navigate = useBbNavigate();
+  const panel = experimental_useAppPanel();
   return (
     <button
       type="button"
       onClick={() =>
-        navigate.openThreadPanel({
-          actionId: "document",
+        panel.openTab({
+          tab: {
+            id: "document",
+            context: { kind: "thread" },
+            availability: "action",
+          },
           title: "Plan",
           params: { path: "plan.md" },
         })
@@ -610,21 +616,27 @@ describe("ConversationMessageContent assistant directives", () => {
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="charts/demo.html"}'}
-              timestamp={0}
-              projectId="proj_a"
-              workspaceRootPath="/workspace/project"
-              onOpenLocalFileLink={onOpenLocalFileLink}
-            />
-          </MessageDirectiveRegistryProvider>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={() => null}
+            threadId="thr_a"
+            workspaceRootPath="/workspace/project"
+          >
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="charts/demo.html"}'}
+                timestamp={0}
+                projectId="proj_a"
+              />
+            </MessageDirectiveRegistryProvider>
+          </ThreadTimelineNavigationProvider>
         </RouteNavigationProvider>
       </MemoryRouter>,
     );
@@ -640,7 +652,11 @@ describe("ConversationMessageContent assistant directives", () => {
   });
 
   it("scopes directive thread-panel actions to the registering plugin", () => {
-    const onOpenPluginPanel = vi.fn(() => true);
+    const panel = {
+      openTab: vi.fn(() => true),
+      toggleTab: vi.fn(() => true),
+      close: vi.fn(() => true),
+    };
     const registry = buildMessageDirectiveRegistry([
       slot({
         id: "inline-vis",
@@ -652,31 +668,32 @@ describe("ConversationMessageContent assistant directives", () => {
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
           <RouteNavigationProvider>
-            <MessageDirectiveRegistryProvider registry={registry}>
-              <ConversationMessageContent
-                role="assistant"
-                attachments={null}
-                id="msg_a"
-                threadId="thr_a"
-                turnId="turn_a"
-                showActions={false}
-                text={'::inline-vis{file="plan.md"}'}
-                timestamp={0}
-                projectId="proj_a"
-                onOpenPluginPanel={onOpenPluginPanel}
-              />
-            </MessageDirectiveRegistryProvider>
+            <AppNavigationHostProvider capabilities={{ panel }}>
+              <MessageDirectiveRegistryProvider registry={registry}>
+                <ConversationMessageContent
+                  role="assistant"
+                  attachments={null}
+                  id="msg_a"
+                  threadId="thr_a"
+                  turnId="turn_a"
+                  showActions={false}
+                  text={'::inline-vis{file="plan.md"}'}
+                  timestamp={0}
+                  projectId="proj_a"
+                />
+              </MessageDirectiveRegistryProvider>
+            </AppNavigationHostProvider>
           </RouteNavigationProvider>
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open thread panel" }));
-    expect(onOpenPluginPanel).toHaveBeenCalledWith({
-      pluginId: "demo",
-      actionId: "document",
-      title: "Plan",
+    expect(panel.openTab).toHaveBeenCalledWith({
+      tab: { ownerId: "plugin-thread:demo", tabId: "document" },
+      availability: "action",
       params: { path: "plan.md" },
+      title: "Plan",
     });
   });
 
@@ -692,20 +709,26 @@ describe("ConversationMessageContent assistant directives", () => {
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="../secret.html"}'}
-              timestamp={0}
-              workspaceRootPath="/workspace/project"
-              onOpenLocalFileLink={onOpenLocalFileLink}
-            />
-          </MessageDirectiveRegistryProvider>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={() => null}
+            threadId="thr_a"
+            workspaceRootPath="/workspace/project"
+          >
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="../secret.html"}'}
+                timestamp={0}
+              />
+            </MessageDirectiveRegistryProvider>
+          </ThreadTimelineNavigationProvider>
         </RouteNavigationProvider>
       </MemoryRouter>,
     );
@@ -784,7 +807,6 @@ describe("ThreadTimelineRows message directive subscription", () => {
               }),
             ]}
             threadRuntimeDisplayStatus="active"
-            workspaceRootPath={undefined}
           />
         </MemoryRouter>
       </QueryClientProvider>,
@@ -827,7 +849,6 @@ describe("ThreadTimelineRows message directive subscription", () => {
               }),
             ]}
             threadRuntimeDisplayStatus="idle"
-            workspaceRootPath={undefined}
           />
         </MemoryRouter>,
       );

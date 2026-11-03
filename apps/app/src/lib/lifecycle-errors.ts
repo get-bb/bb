@@ -9,7 +9,6 @@ import { HttpError } from "./api";
 type LifecycleErrorSeverity = "info" | "warning" | "error";
 export type LifecycleErrorOperation =
   | "archive_thread"
-  | "commit"
   | "create_thread"
   | "edit_message"
   | "load_diff"
@@ -94,8 +93,6 @@ function operationTitle(operation: LifecycleErrorOperation): string {
   switch (operation) {
     case "archive_thread":
       return "Failed to archive thread";
-    case "commit":
-      return "Commit failed";
     case "create_thread":
       return "Failed to create thread";
     case "edit_message":
@@ -430,7 +427,7 @@ function describeDispatchHookFailed({
   });
 }
 
-export function parseLifecycleError(error: unknown): LifecycleApiError | null {
+function parseLifecycleError(error: unknown): LifecycleApiError | null {
   if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
     return null;
   }

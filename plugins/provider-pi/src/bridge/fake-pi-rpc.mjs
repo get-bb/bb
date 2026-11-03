@@ -166,6 +166,8 @@ if (requestedModel !== undefined && !ignoreRequestedModel) {
 let thinkingLevel = flag("--thinking") ?? "medium";
 let isStreaming = false;
 let isCompacting = false;
+let compactOnSettle = null;
+let announceCompaction = null;
 let leafCounter = 0;
 let leafId = null;
 let turnCounter = 0;
@@ -259,14 +261,19 @@ async function emitExtensionEvent(type, payload = {}) {
   }
 }
 
-async function loadExtension(path) {
-  const runtimeUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
-  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export * from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
+let extensionGeneration = 0;
+let extensionLoadPath = null;
+
+async function prepareExtensionLoadPath(path) {
+  const runtimeUrl = new URL(
+    "./core/session-manager.js",
+    import.meta.resolve("@earendil-works/pi-coding-agent"),
+  ).href;
+  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export { SessionManager } from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
   const aliases = new Map([
     ["@earendil-works/pi-coding-agent", runtimeShim],
     ["typebox", import.meta.resolve("typebox")],
   ]);
-  let hooksRegistered = false;
   if (typeof Bun === "undefined") {
     try {
       const { registerHooks } = await import("node:module");
@@ -279,32 +286,34 @@ async function loadExtension(path) {
               : nextResolve(specifier, context);
           },
         });
-        hooksRegistered = true;
+        return path;
       }
-    } catch {
-      hooksRegistered = false;
-    }
+    } catch {}
   }
-  let loadPath = path;
-  if (!hooksRegistered) {
-    const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
-    const staging = mkdtempSync(join(pkgRoot, "node_modules", ".fake-pi-ext-"));
-    writeFileSync(
-      staging + "/extension.mjs",
-      readFileSync(path, "utf8").replaceAll(
-        '"@earendil-works/pi-coding-agent"',
-        JSON.stringify(runtimeShim),
-      ),
-    );
-    loadPath = staging + "/extension.mjs";
-    process.on("exit", () => {
-      try {
-        rmSync(staging, { recursive: true, force: true });
-      } catch {}
-    });
-  }
-  const module = await import(pathToFileURL(loadPath).href);
-  module.default({
+  const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  const staging = mkdtempSync(join(pkgRoot, "node_modules", ".fake-pi-ext-"));
+  writeFileSync(
+    staging + "/extension.mjs",
+    readFileSync(path, "utf8").replaceAll(
+      '"@earendil-works/pi-coding-agent"',
+      JSON.stringify(runtimeShim),
+    ),
+  );
+  process.on("exit", () => {
+    try {
+      rmSync(staging, { recursive: true, force: true });
+    } catch {}
+  });
+  return staging + "/extension.mjs";
+}
+
+async function loadExtension(path) {
+  extensionGeneration += 1;
+  extensionLoadPath ??= prepareExtensionLoadPath(path);
+  const module = await import(
+    `${pathToFileURL(await extensionLoadPath).href}?generation=${extensionGeneration}`
+  );
+  await module.default({
     registerTool(tool) {
       extensionTools.set(tool.name, tool);
       if (process.env.FAKE_PI_TOOLS_DUMP) {
@@ -368,6 +377,14 @@ async function runExtensionTool(name, toolArgs) {
 async function runPrompt(text) {
   isStreaming = true;
   turnCounter += 1;
+  if (text === "/compact-on-settle" || text === "/compact-on-settle-late") {
+    compactOnSettle = text;
+  }
+  if (text === "/reload") {
+    extensionTools.clear();
+    extensionHandlers.clear();
+    await loadExtension(extensionPath);
+  }
   await emitExtensionEvent("agent_start");
   event({ type: "agent_start" });
   event({ type: "turn_start" });
@@ -644,8 +661,36 @@ async function runPrompt(text) {
   isStreaming = false;
 }
 
+async function waitForCompactionRelease() {
+  const releasePath = process.env.FAKE_PI_COMPACTION_RELEASE_FILE;
+  while (releasePath !== undefined && !existsSync(releasePath)) {
+    await sleep(10);
+  }
+}
+
+function startExtensionCompaction(mode) {
+  isCompacting = true;
+  const announce = () => {
+    announceCompaction = null;
+    event({ type: "compaction_start", reason: "manual" });
+  };
+  if (mode === "/compact-on-settle") announce();
+  else announceCompaction = announce;
+  void waitForCompactionRelease().then(() => {
+    announceCompaction?.();
+    event({ type: "compaction_end", reason: "manual", aborted: false });
+    isCompacting = false;
+    leafCounter += 1;
+    leafId = `leaf-${leafCounter}`;
+  });
+}
+
 async function emitSettlement() {
   if (!supportsSettlement) return;
+  if (compactOnSettle !== null) {
+    startExtensionCompaction(compactOnSettle);
+    compactOnSettle = null;
+  }
   if (process.env.FAKE_PI_FINAL_LEAF) leafId = process.env.FAKE_PI_FINAL_LEAF;
   const payload =
     process.env.FAKE_PI_SETTLED_ABORTED === undefined
@@ -745,6 +790,15 @@ async function handle(command) {
     case "prompt": {
       if (promptDumpPath) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
+      }
+      if (isCompacting) {
+        respondError(
+          id,
+          "prompt",
+          "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
+        );
+        announceCompaction?.();
+        return;
       }
       if (isStreaming && command.streamingBehavior === "steer") {
         steering.push(command.message);

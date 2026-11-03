@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -261,4 +262,17 @@ describe("desktop browser broker", () => {
       broker.request({ type: "desktop.browser.list_tabs", ...scope }),
     ).rejects.toThrow("stale");
   });
+});
+
+it("proves the active broker without exposing its token and retires proofs on disconnect", async () => {
+  const { broker } = await setup();
+  const challenge = "c".repeat(64);
+  expect(broker.prove(challenge)).toEqual({
+    proof: createHmac("sha256", broker.descriptor.token)
+      .update(`bb-desktop-broker:${challenge}`)
+      .digest("hex"),
+  });
+  expect(broker.prove("d".repeat(64))).not.toEqual(broker.prove(challenge));
+  broker.setConnected(false);
+  expect(() => broker.prove(challenge)).toThrow("disconnected");
 });

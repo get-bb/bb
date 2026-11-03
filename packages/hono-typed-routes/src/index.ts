@@ -1,9 +1,10 @@
 export type { EmptyInput, Endpoint } from "./endpoint.js";
 export type {
   ApiSchemaFromRouteDescriptors,
-  RouteTagDeclarations,
-  RouteTagInput,
-  RouteSuccessOutput,
+  NoRouteRequest,
+  JsonRouteRequest,
+  RouteResponseDescriptor,
+  RouteDefinition,
 } from "./route-descriptor.js";
 export {
   binaryResponse,

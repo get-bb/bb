@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalSidebarFooterDisclosureController,
+  PluginAppSlots,
   PluginSidebarFooterActionContext,
 } from "@get-bb/plugin-sdk";
-import { getCollectedSidebarFooterItems } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import {
+  getCollectedSidebarFooterItems,
+  type LegacyThreadHeaderActionRegistration,
+} from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import {
   collectPluginAppRegistrations,
@@ -67,6 +71,7 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
 describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   const item = () => null;
   const useData = () => 1;
+  const experimental_bulkItem = () => null;
 
   it("collects a thread action with its hooks", () => {
     const definition = definePluginApp((app) => {
@@ -78,6 +83,7 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         order: 5,
         useData,
         item,
+        experimental_bulkItem,
       });
     });
     expect(collectPluginAppRegistrations(definition).threadActions).toEqual([
@@ -89,8 +95,25 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         order: 5,
         useData,
         item,
+        experimental_bulkItem,
       },
     ]);
+  });
+
+  it("keeps a header placement", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_threadAction({
+        id: "commit",
+        title: "Commit",
+        icon: "GitBranch",
+        group: "git",
+        placement: "header",
+        item,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).threadActions[0]?.placement,
+    ).toBe("header");
   });
 
   it("rejects two thread actions with the same id", () => {
@@ -116,9 +139,19 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   it.each([
     ["item", { item: null }, '"item" must be a function'],
     ["useData", { item, useData: 1 }, '"useData" must be a function'],
+    [
+      "experimental_bulkItem",
+      { item, experimental_bulkItem: 1 },
+      '"experimental_bulkItem" must be a function',
+    ],
     ["icon", { item, icon: "" }, "icon"],
     ["group", { item, group: "" }, "group"],
     ["order", { item, order: Number.NaN }, '"order" must be a finite number'],
+    [
+      "placement",
+      { item, placement: "toolbar" },
+      '"placement" must be "menu" or "header"',
+    ],
   ])("rejects a malformed %s", (_field, fields, message) => {
     const definition = definePluginApp((app) => {
       app.slots.experimental_threadAction({
@@ -135,10 +168,20 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   });
 });
 
-describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
+interface LegacyHeaderActionSlots {
+  experimental_threadHeaderAction(
+    registration: LegacyThreadHeaderActionRegistration,
+  ): void;
+}
+
+function legacySlots(slots: PluginAppSlots): LegacyHeaderActionSlots {
+  return slots as unknown as LegacyHeaderActionSlots;
+}
+
+describe("collectPluginAppRegistrations — legacy experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "Subagents",
         component: Component,
@@ -151,12 +194,12 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
 
   it("rejects two header actions with the same id", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "One",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         title: "Two",
         component: Component,
@@ -174,7 +217,7 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
         title: "Inbox",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "inbox",
         title: "Inbox",
         component: Component,
@@ -187,7 +230,7 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
 
   it("rejects a missing title", () => {
     const definition = definePluginApp((app) => {
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "subagents",
         component: Component,
       } as never);
@@ -513,7 +556,10 @@ describe("collectPluginAppRegistrations", () => {
         experimental_useBadge: useNoBadge,
         headerContent: Component,
       });
-      app.slots.threadPanelAction({
+      Reflect.get(
+        app.slots,
+        "threadPanelAction",
+      )({
         id: "thread-panel",
         title: "Thread panel",
         icon: "Columns",
@@ -544,7 +590,7 @@ describe("collectPluginAppRegistrations", () => {
         description: "A thread list.",
         component: Component,
       });
-      app.slots.experimental_threadHeaderAction({
+      legacySlots(app.slots).experimental_threadHeaderAction({
         id: "thread-header",
         title: "Thread header",
         component: Component,
@@ -616,7 +662,10 @@ describe("collectPluginAppRegistrations", () => {
         path: "board",
         component: Component,
       });
-      app.slots.threadPanelAction({
+      Reflect.get(
+        app.slots,
+        "threadPanelAction",
+      )({
         id: "issue",
         title: "Issue",
         icon: "Columns",
@@ -688,7 +737,7 @@ describe("collectPluginAppRegistrations", () => {
         component: Component,
       },
     ]);
-    expect(registrations.threadPanelActions).toEqual([
+    expect(registrations.threadPanelActions).toMatchObject([
       {
         id: "issue",
         title: "Issue",
@@ -1058,7 +1107,10 @@ describe("collectPluginAppRegistrations", () => {
       "thread panel action with a non-function run",
       () =>
         definePluginApp((app) => {
-          app.slots.threadPanelAction({
+          app.slots.experimental_tab({
+            context: { kind: "thread" },
+            availability: "action",
+            icon: "Info",
             id: "x",
             title: "X",
             component: Component,

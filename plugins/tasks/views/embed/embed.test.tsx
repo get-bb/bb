@@ -3,6 +3,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeTask } from "../../test-fixtures.js";
+import { projectTasksChangedTags, taskChangedTags } from "../../shared/tags";
 
 const app = await loadPluginApp(() => import("../../app"));
 
@@ -87,16 +88,19 @@ describe("Task directive card", () => {
   });
 
   it("opens the side panel on primary click and the Tasks app from the arrow", async () => {
-    const openThreadPanel = vi.fn(() => true);
+    const openTab = vi.fn(() => true);
     const slot = renderSlot(
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
-      { openThreadPanel, rpc: { getTaskByKey: () => ({ task }) } },
+      {
+        experimental_panel: { openTab },
+        rpc: { getTaskByKey: () => ({ task }) },
+      },
     );
 
     fireEvent.click(await slot.findByText("Ship task embeds"));
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      actionId: "task",
+    expect(openTab).toHaveBeenCalledWith({
+      tab: { id: "task", context: { kind: "thread" }, availability: "action" },
       title: "TSK-4",
       params: { taskKey: "TSK-4" },
     });
@@ -200,7 +204,7 @@ describe("Task directive card", () => {
     await slot.findByText("Ship task embeds");
   });
 
-  it("refetches on matching realtime payloads and ignores unrelated ones", async () => {
+  it("refetches on matching invalidations and ignores unrelated ones", async () => {
     const slot = renderSlot(
       app.messageDirectives[0]!,
       directiveProps({ key: "TSK-4" }),
@@ -213,26 +217,29 @@ describe("Task directive card", () => {
       slot.rpcCalls.filter((call) => call.method === "getTaskByKey").length;
     const baseline = calls();
 
-    await slot.emitRealtime("tasks:changed", {
-      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT9",
-      projectId: PROJECT_ID,
-    });
-    await slot.emitRealtime("projects:changed", {
-      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP9",
-    });
+    await slot.behavior.experimental_invalidateRpc(
+      taskChangedTags({
+        id: "01HZZZZZZZZZZZZZZZZZZZZZT9",
+        projectId: PROJECT_ID,
+      }),
+    );
+    await slot.behavior.experimental_invalidateRpc(
+      projectTasksChangedTags("01HZZZZZZZZZZZZZZZZZZZZZP9"),
+    );
     expect(calls()).toBe(baseline);
 
-    await slot.emitRealtime("tasks:changed", {
-      taskId: TASK_ID,
-      projectId: PROJECT_ID,
-    });
+    await slot.behavior.experimental_invalidateRpc(
+      taskChangedTags({ id: TASK_ID, projectId: PROJECT_ID }),
+    );
     await waitFor(() => expect(calls()).toBe(baseline + 1));
 
-    await slot.emitRealtime("projects:changed", { projectId: PROJECT_ID });
+    await slot.behavior.experimental_invalidateRpc(
+      projectTasksChangedTags(PROJECT_ID),
+    );
     await waitFor(() => expect(calls()).toBe(baseline + 2));
   });
 
-  it("refetches an unresolved card on any tasks event so new tasks appear", async () => {
+  it("refetches an unresolved card on any task change so new tasks appear", async () => {
     let created = false;
     const slot = renderSlot(
       app.messageDirectives[0]!,
@@ -243,10 +250,9 @@ describe("Task directive card", () => {
     );
     await slot.findByText("Task not found — deleted, or its key changed");
     created = true;
-    await slot.emitRealtime("tasks:changed", {
-      taskId: TASK_ID,
-      projectId: PROJECT_ID,
-    });
+    await slot.behavior.experimental_invalidateRpc(
+      taskChangedTags({ id: TASK_ID, projectId: PROJECT_ID }),
+    );
     await slot.findByText("Ship task embeds");
   });
 });
@@ -255,7 +261,7 @@ describe("Task embed panel", () => {
   it("keeps an aliased task in the side panel until the user opens Tasks", async () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,
-      { threadId: "thr_1", params: { taskKey: "OLD-4" } },
+      { threadId: "thr_1", environment: null, params: { taskKey: "OLD-4" } },
       { rpc: taskDetailRpc(() => ({ task })) },
     );
     await slot.findByRole("textbox", { name: "Task title" });
@@ -274,7 +280,7 @@ describe("Task embed panel", () => {
     let title = "Stale embedded detail";
     const slot = renderSlot(
       app.threadPanelActions[0]!,
-      { threadId: "thr_1", params: { taskKey: "TSK-4" } },
+      { threadId: "thr_1", environment: null, params: { taskKey: "TSK-4" } },
       {
         realtimeConnectionState: "connected",
         rpc: taskDetailRpc(() => ({ task: { ...task, title } })),
@@ -292,7 +298,7 @@ describe("Task embed panel", () => {
   it("shows a hint when opened without a task key", () => {
     const slot = renderSlot(
       app.threadPanelActions[0]!,
-      { threadId: "thr_1", params: null },
+      { threadId: "thr_1", environment: null, params: null },
       { rpc: {} },
     );
     slot.getByText("Open a task card from a message to view it here.");

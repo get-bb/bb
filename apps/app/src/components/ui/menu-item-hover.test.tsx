@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MenuHoverProvider,
   useMenuItemHover,
@@ -53,5 +53,32 @@ describe("menu persistent last-hovered", () => {
 
     fireEvent.keyDown(a, { key: "ArrowDown" });
     expect(a.hasAttribute("data-last-hovered")).toBe(false);
+  });
+
+  it("moves the highlight to an item from a separately bundled copy", async () => {
+    vi.resetModules();
+    const pluginCopy = await import("@bb/shared-ui/menu-item-hover");
+    expect(pluginCopy.useMenuItemHover).not.toBe(useMenuItemHover);
+    function PluginItem({ label }: { label: string }) {
+      const { hoverProps } = pluginCopy.useMenuItemHover();
+      return (
+        <button type="button" {...hoverProps}>
+          {label}
+        </button>
+      );
+    }
+    render(
+      <pluginCopy.MenuHoverProvider>
+        <PluginItem label="Attach files" />
+        <HoverItem label="Automation" />
+      </pluginCopy.MenuHoverProvider>,
+    );
+    const attach = screen.getByText("Attach files");
+    const automation = screen.getByText("Automation");
+
+    fireEvent.pointerEnter(attach);
+    fireEvent.pointerEnter(automation);
+    expect(attach.hasAttribute("data-last-hovered")).toBe(false);
+    expect(automation.hasAttribute("data-last-hovered")).toBe(true);
   });
 });

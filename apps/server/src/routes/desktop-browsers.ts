@@ -11,6 +11,7 @@ import {
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import {
+  proveDesktopBrowserBroker,
   acquireDesktopBrowserControl,
   captureDesktopBrowserTab,
   createDesktopBrowserTab,
@@ -45,6 +46,10 @@ export function registerDesktopBrowserRoutes(app: Hono, deps: AppDeps) {
       await next();
     });
   }
+  post(routes.brokerProof, async (c, input) => {
+    c.header("Cache-Control", "no-store");
+    return c.json(await proveDesktopBrowserBroker(deps, input));
+  });
   post(routes.listInstances, async (c, input) =>
     c.json(await listDesktopBrowserInstances(deps, input.hostId)),
   );

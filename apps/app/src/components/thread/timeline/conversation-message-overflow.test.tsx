@@ -37,7 +37,7 @@ function OverflowProbe({ name }: { name: string }) {
 }
 
 describe("useOverflowMeasurement", () => {
-  it("shares one observer and batches measurements for all rows", () => {
+  it("measures every row before its first paint and shares one observer for later changes", () => {
     let observerCallback: ResizeObserverCallback | null = null;
     const observe = vi.fn();
     const unobserve = vi.fn();
@@ -79,13 +79,12 @@ describe("useOverflowMeasurement", () => {
 
     const first = screen.getByTestId("first");
     const second = screen.getByTestId("second");
-    expect(first.dataset.measurement).toBe("unmeasured");
-    expect(second.dataset.measurement).toBe("unmeasured");
-    expect(scrollHeight).not.toHaveBeenCalled();
-    expect(clientHeight).not.toHaveBeenCalled();
-    expect(scrollWidth).not.toHaveBeenCalled();
-    expect(clientWidth).not.toHaveBeenCalled();
+    expect(first.dataset.measurement).toBe("overflowing");
+    expect(second.dataset.measurement).toBe("fits");
+    expect(constructorSpy).toHaveBeenCalledOnce();
+    expect(observe).toHaveBeenCalledTimes(2);
 
+    scrollHeight.mockReturnValue(20);
     act(() => {
       observerCallback?.(
         [
@@ -96,14 +95,11 @@ describe("useOverflowMeasurement", () => {
       );
     });
 
-    expect(constructorSpy).toHaveBeenCalledOnce();
-    expect(observe).toHaveBeenCalledTimes(2);
-    expect(scrollHeight).toHaveBeenCalledTimes(2);
-    expect(clientHeight).toHaveBeenCalledTimes(2);
-    expect(scrollWidth).toHaveBeenCalledTimes(2);
-    expect(clientWidth).toHaveBeenCalledTimes(2);
-    expect(first.dataset.measurement).toBe("overflowing");
+    expect(first.dataset.measurement).toBe("fits");
     expect(second.dataset.measurement).toBe("fits");
+    expect(clientHeight).toHaveBeenCalled();
+    expect(scrollWidth).toHaveBeenCalled();
+    expect(clientWidth).toHaveBeenCalled();
   });
 });
 
@@ -128,7 +124,6 @@ describe("ConversationMessageOverflowToggle", () => {
       isAtBottom: true,
       scrollToBottom: vi.fn(),
       scrollElementIntoView: vi.fn(),
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       positionKeeper: createInertScrollPositionKeeper(),
       holdContentPosition,
     };

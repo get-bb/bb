@@ -3,9 +3,14 @@ import { z } from "zod";
 export const threadTimelineGoalStatusSchema = z.enum([
   "active",
   "paused",
+  "blocked",
+  "usageLimited",
   "budgetLimited",
   "complete",
 ]);
+export type ThreadTimelineGoalStatus = z.infer<
+  typeof threadTimelineGoalStatusSchema
+>;
 
 export const threadTimelineGoalSchema = z.object({
   sourceSeq: z.number().int().nonnegative(),

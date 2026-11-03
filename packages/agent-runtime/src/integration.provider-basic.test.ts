@@ -16,7 +16,6 @@ import {
   newThreadId,
   resolveProviderThreadId,
   resolveRuntimeOptions,
-  turnCompletedCount,
   turnCompletedCountForThread,
   turnStartedCountForThread,
   waitForRuntimeCondition,
@@ -43,49 +42,6 @@ for (const providerId of providers) {
           expect(model.supportedReasoningEfforts.length).toBeGreaterThan(0);
         }
         expect(models.some((m) => m.isDefault)).toBe(true);
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-      }
-    });
-
-    it("starts a thread and runs a single turn", async () => {
-      const ctx = createTestRuntime(providerId);
-      try {
-        const threadId = newThreadId();
-        const options = await resolveRuntimeOptions({
-          ctx,
-          providerId,
-          preset: "full",
-        });
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId,
-          projectId: "test-project",
-          providerId,
-          options,
-        });
-
-        await ctx.runtime.runTurn({
-          threadId,
-          clientRequestId: "creq_23456789ab",
-          options,
-          input: [promptTextInput({ text: "Reply with exactly: PONG" })],
-        });
-
-        await waitForThreadTurnCompleted({
-          ctx,
-          threadId,
-          timeoutMs: 30_000,
-          label: "turn/completed",
-        });
-
-        expect(ctx.events.some((e) => e.type === "turn/started")).toBe(true);
-        expect(ctx.events.some((e) => e.type === "turn/completed")).toBe(true);
-        expectInputAcceptedCount(ctx.events, 1);
-
-        const text = getAgentText(ctx.events) || getStreamedText(ctx.events);
-        expect(text.length).toBeGreaterThan(0);
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);
@@ -144,6 +100,8 @@ for (const providerId of providers) {
         expect(turnStarts.length).toBeGreaterThanOrEqual(2);
         expect(turnEnds.length).toBeGreaterThanOrEqual(2);
         expectInputAcceptedCount(ctx.events, 2);
+        const text = getAgentText(ctx.events) || getStreamedText(ctx.events);
+        expect(text.length).toBeGreaterThan(0);
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);
@@ -375,73 +333,6 @@ for (const providerId of providers) {
 
         const text = getAgentText(ctx.events) || getStreamedText(ctx.events);
         expect(text).toContain("[TEST_TAG]");
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-      }
-    });
-
-    it("recovers from a bad request", async () => {
-      const ctx = createTestRuntime(providerId);
-      try {
-        const threadId = newThreadId();
-        const options = await resolveRuntimeOptions({
-          ctx,
-          providerId,
-          preset: "full",
-        });
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId,
-          projectId: "test-project",
-          providerId,
-          options,
-        });
-
-        await ctx.runtime.runTurn({
-          clientRequestId: "creq_222222224e",
-          threadId,
-          input: [promptTextInput({ text: "Say hello in one word." })],
-          options,
-        });
-
-        await waitForThreadTurnCompleted({
-          ctx,
-          threadId,
-          timeoutMs: 30_000,
-          label: "first turn/completed",
-        });
-
-        const badThreadId = `nonexistent_${Date.now()}`;
-        let badRequestFailed = false;
-        try {
-          await ctx.runtime.runTurn({
-            clientRequestId: "creq_222222224f",
-            threadId: badThreadId,
-            input: [promptTextInput({ text: "This should fail." })],
-            options,
-          });
-        } catch {
-          badRequestFailed = true;
-        }
-        expect(badRequestFailed).toBe(true);
-
-        await ctx.runtime.runTurn({
-          clientRequestId: "creq_222222224g",
-          threadId,
-          input: [promptTextInput({ text: "Say goodbye in one word." })],
-          options,
-        });
-
-        await waitForThreadTurnCompletedCount({
-          ctx,
-          threadId,
-          count: 2,
-          timeoutMs: 30_000,
-          label: "second turn/completed after recovery",
-        });
-
-        expect(turnCompletedCount(ctx.events)).toBeGreaterThanOrEqual(2);
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);

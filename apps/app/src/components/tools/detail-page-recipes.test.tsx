@@ -26,7 +26,7 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
-import { buildMarkdownFileImageRouting } from "@/components/ui/markdown-file-image-routing";
+import { buildMarkdownFileRouting } from "@/components/ui/markdown-file-routing";
 
 afterEach(() => {
   cleanup();
@@ -169,57 +169,6 @@ describe("Plugin detail recipe", () => {
     expect(
       screen.getByText("This plugin does not describe itself."),
     ).toBeTruthy();
-  });
-
-  it("lists declared capabilities without category chrome", () => {
-    const { container } = renderPlugin({
-      ...PLUGIN,
-      cliCommand: { name: "gh", summary: "Work with GitHub" },
-      capabilities: [
-        {
-          kind: "skill",
-          id: "review",
-          label: "review",
-          detail: "Skill this plugin adds to your agents",
-        },
-        {
-          kind: "theme",
-          id: "github.dark",
-          label: "GitHub Dark",
-          detail: null,
-        },
-        {
-          kind: "agent-tool",
-          id: "gh_search",
-          label: "gh_search",
-          detail: "Search GitHub",
-        },
-        {
-          kind: "thread-integration",
-          id: "mention:pr",
-          label: "Pull requests",
-          detail: "Mentions with #",
-        },
-      ],
-    });
-
-    const capabilities = container.querySelector(
-      '[data-resource-detail-section="includes"]',
-    );
-    expect(capabilities?.querySelector("table")).not.toBeNull();
-    expect(
-      capabilities?.querySelector("[data-plugin-capability-group]"),
-    ).toBeNull();
-
-    for (const item of [
-      "bb gh",
-      "review",
-      "gh_search",
-      "Pull requests",
-      "GitHub Dark",
-    ] as const) {
-      expect(screen.getByText(item)).toBeTruthy();
-    }
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -533,7 +482,8 @@ function renderSkill(files: readonly string[]) {
 
 describe("Skill detail recipe", () => {
   it("routes relative images from Markdown skill files", () => {
-    const markdownLinkRouting = buildMarkdownFileImageRouting({
+    const markdownLinkRouting = buildMarkdownFileRouting({
+      hostId: null,
       path: "/skills/writing-voice/SKILL.md",
       rootPath: "/skills/writing-voice",
       threadId: null,

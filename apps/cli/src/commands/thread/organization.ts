@@ -12,17 +12,29 @@ import {
   truncateCell,
 } from "../../table.js";
 import { describeQueueWait } from "./actions.js";
-import { formatQueueSendCountdown } from "./send-time.js";
+import { formatQueueSendCountdown, parseSendAt } from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
+import {
+  requireTextInput,
+  resolveTextInput,
+  TEXT_FILE_HELP_SUFFIX,
+} from "../../text-input.js";
 import {
   collectOption,
   confirmDestructiveAction,
   outputJson,
+  parseReasoningLevel,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import { buildPromptInputs, uploadClientAttachmentInputs } from "./helpers.js";
+import {
+  buildPromptInputs,
+  parsePermissionMode,
+  parseServiceTier,
+  PERMISSION_MODE_HELP,
+  SERVICE_TIER_HELP,
+  uploadClientAttachmentInputs,
+} from "./helpers.js";
 
 interface JsonOptions {
   json?: boolean;
@@ -56,9 +68,15 @@ interface QueueCreateOptions extends JsonOptions {
 }
 
 interface QueueUpdateOptions extends JsonOptions {
+  clearSendAt?: boolean;
   file?: string[];
   image?: string[];
   messageFile?: string;
+  model?: string;
+  permissionMode?: string;
+  reasoningLevel?: string;
+  sendAt?: string;
+  serviceTier?: string;
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -404,7 +422,9 @@ export function registerOrganizationCommands(
     );
   queue
     .command("update <threadId> <messageId> [message]")
-    .description("Update a queued message in place")
+    .description(
+      "Update a queued message's text, send time, or execution options in place",
+    )
     .option(
       "--message-file <path>",
       `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
@@ -421,6 +441,24 @@ export function registerOrganizationCommands(
       collectOption,
       [],
     )
+    .option(
+      "--send-at <when>",
+      "Change when it sends: an ISO 8601 timestamp (2026-08-25T09:00) or a duration from now (30s, 10m, 2h, 7d); the message text is optional",
+    )
+    .option(
+      "--clear-send-at",
+      "Remove its send time so it goes once nothing else holds it; the message text is optional",
+    )
+    .option(
+      "--model <model>",
+      "Model ID to send it with; the message text is optional",
+    )
+    .option(
+      "--reasoning-level <level>",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
+    )
+    .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
+    .option("--service-tier <tier>", SERVICE_TIER_HELP)
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -430,12 +468,38 @@ export function registerOrganizationCommands(
           inlineMessage: string | undefined,
           opts: QueueUpdateOptions,
         ) => {
-          const message = await requireTextInput({
+          if (opts.sendAt !== undefined && opts.clearSendAt === true) {
+            throw new Error(
+              "Provide only one of --send-at or --clear-send-at.",
+            );
+          }
+          const sendAt =
+            opts.sendAt !== undefined
+              ? parseSendAt(opts.sendAt)
+              : opts.clearSendAt === true
+                ? null
+                : undefined;
+          const execution = {
+            model: opts.model,
+            permissionMode: parsePermissionMode(opts.permissionMode),
+            reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
+            serviceTier: parseServiceTier(opts.serviceTier),
+          };
+          const changesExecution = Object.values(execution).some(
+            (value) => value !== undefined,
+          );
+          const textInput = {
             file: opts.messageFile,
             fileLabel: "--message-file",
             inline: inlineMessage,
             inlineLabel: "<message>",
-          });
+          };
+          const attachesFiles =
+            (opts.file?.length ?? 0) > 0 || (opts.image?.length ?? 0) > 0;
+          const message =
+            (sendAt === undefined && !changesExecution) || attachesFiles
+              ? await requireTextInput(textInput)
+              : await resolveTextInput(textInput);
           const sdk = createCliBbSdk(getUrl());
           const queuedMessages = sdk.threads.queuedMessages;
           const existing = (await queuedMessages.list({ threadId })).find(
@@ -446,24 +510,46 @@ export function registerOrganizationCommands(
               `Queued message ${messageId} not found on thread ${threadId}.`,
             );
           }
-          const input = await uploadClientAttachmentInputs({
-            input: buildPromptInputs({
-              message,
-              files: opts.file,
-              images: opts.image,
-            }),
-            resolveProjectId: async () =>
-              (await sdk.threads.get({ threadId })).projectId,
-            sdk,
-          });
+          const input =
+            message === undefined
+              ? undefined
+              : await uploadClientAttachmentInputs({
+                  input: buildPromptInputs({
+                    message,
+                    files: opts.file,
+                    images: opts.image,
+                  }),
+                  resolveProjectId: async () =>
+                    (await sdk.threads.get({ threadId })).projectId,
+                  sdk,
+                });
           const result = await queuedMessages.update({
             threadId,
             queuedMessageId: messageId,
             expectedUpdatedAt: existing.updatedAt,
-            input,
+            ...(input === undefined ? {} : { input }),
+            ...(sendAt === undefined ? {} : { sendAt }),
+            ...(execution.model === undefined
+              ? {}
+              : { model: execution.model }),
+            ...(execution.permissionMode === undefined
+              ? {}
+              : { permissionMode: execution.permissionMode }),
+            ...(execution.reasoningLevel === undefined
+              ? {}
+              : { reasoningLevel: execution.reasoningLevel }),
+            ...(execution.serviceTier === undefined
+              ? {}
+              : { serviceTier: execution.serviceTier }),
           });
           if (outputJson(opts, result)) return;
-          console.log(`Queued message ${messageId} updated`);
+          console.log(
+            sendAt === undefined
+              ? `Queued message ${messageId} updated`
+              : result.sendAt === null
+                ? `Queued message ${messageId} updated; it has no send time`
+                : `Queued message ${messageId} updated; sends at ${new Date(result.sendAt).toLocaleString()}`,
+          );
         },
       ),
     );

@@ -1,3 +1,4 @@
+import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -29,15 +30,16 @@ export default {
 
 const noop = () => {};
 
-const STORY_FILE_PATH = "apps/app/src/views/RootComposeCompactHome.tsx";
-const STORY_FILE_SOURCE = `export function RootComposeCompactHome({
-  children,
+const STORY_FILE_PATH = "apps/app/src/views/RootComposeHome.tsx";
+const STORY_FILE_SOURCE = `export function RootComposeHome({
+  isCompact,
   composer,
-}: RootComposeCompactHomeProps) {
-  const { regionRef, composerRef } = useCompactHomeMetrics();
+  compactScrollContent,
+}: RootComposeHomeProps) {
+  const { regionRef, composerRef } = useCompactHomeMetrics(isCompact);
   return (
     <div ref={regionRef} className="relative min-h-0 flex-1">
-      {children}
+      {compactScrollContent}
       <div ref={composerRef}>{composer}</div>
     </div>
   );
@@ -121,9 +123,6 @@ function ShelfPanel({
   return (
     <ThreadSecondaryPanel
       activeTab={activeTab}
-      canUseGitUi
-      requestedMergeBaseBranch="main"
-      environmentId={undefined}
       isOpen
       metadataContent={<ThreadMetadataContent {...baseMetadataProps} />}
       tabs={tabs}
@@ -131,6 +130,8 @@ function ShelfPanel({
         {
           ariaLabel: "Show thread info panel",
           label: "Info",
+          contentFillsRegion: true,
+          renderContent: () => <ThreadInfoFixedTabContent />,
           leadingVisual: <Icon name="Info" />,
           onSelect: () => onSelectTab(infoTab),
           tab: infoTab,
@@ -139,6 +140,8 @@ function ShelfPanel({
         {
           ariaLabel: "Show diff panel",
           label: "Diff",
+          contentFillsRegion: true,
+          renderContent: () => null,
           leadingVisual: <Icon name="FileDiff" />,
           onSelect: () => onSelectTab(diffTab),
           tab: diffTab,

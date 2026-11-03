@@ -36,7 +36,7 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   prefetchSystemExecutionOptions,
-  useSystemExecutionOptions,
+  useProviderPreviewExecutionOptions,
 } from "@/hooks/queries/system-queries";
 import { resolveModelCatalogSelection } from "@/hooks/thread-creation-options/model-catalog-selection";
 import { formatModelLabel as formatFallbackModelLabel } from "@/hooks/thread-creation-options/selection-state";
@@ -48,15 +48,15 @@ import {
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
-import { type PickerOption } from "./OptionPicker";
+import type { PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 import {
   MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
   splitModelLabelTag,
 } from "./model-picker-menu";
 import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./useResetPickerScroll";
+import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,
@@ -308,31 +308,15 @@ export function ModelReasoningPicker({
     onSelectedProviderChange !== undefined &&
     providerOptions.length > 1;
   const queryClient = useQueryClient();
-  const prefetchRoutingEnvironmentId = providerRouting?.environmentId;
-  const prefetchRoutingHostId = providerRouting?.hostId;
-  const siblingIdsKey = providerOptions
-    .map((option) => option.value)
-    .filter((id) => id !== selectedProviderId)
-    .join("\0");
-  useEffect(() => {
-    if (!open || !canSwitchProviders || siblingIdsKey.length === 0) {
+  const prefetchProviderTab = (providerId: string) => {
+    if (providerId === selectedProviderId) {
       return;
     }
     prefetchSystemExecutionOptions(queryClient, {
-      routing: {
-        environmentId: prefetchRoutingEnvironmentId,
-        hostId: prefetchRoutingHostId,
-      },
-      providerIds: siblingIdsKey.split("\0"),
+      routing: providerRouting ?? {},
+      providerId,
     });
-  }, [
-    canSwitchProviders,
-    open,
-    prefetchRoutingEnvironmentId,
-    prefetchRoutingHostId,
-    queryClient,
-    siblingIdsKey,
-  ]);
+  };
   const hasAlternateSelectionPath =
     modelOptions.length > 0 ||
     (selectedModelLoadErrorMatches && canSwitchProviders);
@@ -371,7 +355,7 @@ export function ModelReasoningPicker({
 
   const isPreviewing =
     previewProviderId !== null && previewProviderId !== selectedProviderId;
-  const previewQuery = useSystemExecutionOptions({
+  const previewQuery = useProviderPreviewExecutionOptions({
     enabled: isPreviewing,
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
@@ -627,7 +611,6 @@ export function ModelReasoningPicker({
 
   const handleHandoffProviderSelect = useCallback(
     (providerId: string) => {
-      handoff?.onStart();
       setHandoffMode(true);
       setPreviewProviderId(
         providerId === selectedProviderId ? null : providerId,
@@ -638,7 +621,7 @@ export function ModelReasoningPicker({
       setSearchQuery("");
       setActiveIndex(-1);
     },
-    [handoff, selectedProviderId],
+    [selectedProviderId],
   );
   const handleProviderSelect = useCallback(
     (providerId: string) => {
@@ -667,8 +650,9 @@ export function ModelReasoningPicker({
     ],
   );
   const startHandoffMode = useCallback(() => {
+    handoff?.onStart();
     handleHandoffProviderSelect(selectedProviderId);
-  }, [handleHandoffProviderSelect, selectedProviderId]);
+  }, [handoff, handleHandoffProviderSelect, selectedProviderId]);
   const exitHandoffMode = useCallback(() => {
     setHandoffMode(false);
     setHandoffReasoningLevel(null);
@@ -979,7 +963,7 @@ export function ModelReasoningPicker({
           </>
         ) : selectedServiceTierOption ? (
           <Icon
-            name="Zap"
+            name={selectedServiceTierOption.icon ?? "Zap"}
             className="size-3.5 shrink-0 fill-current text-subtle-foreground"
           />
         ) : TriggerIcon ? (
@@ -1081,6 +1065,8 @@ export function ModelReasoningPicker({
                       : provider.label
                   }
                   onMouseDown={(event) => event.preventDefault()}
+                  onPointerEnter={() => prefetchProviderTab(provider.value)}
+                  onFocus={() => prefetchProviderTab(provider.value)}
                   onClick={() => {
                     if (provider.value === activeProviderId) {
                       return;

@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeTempDir } from "@bb/test-helpers";
 import { expect, it } from "vitest";
+import { cancelEnvironmentHooks } from "../../src/command-handlers/environment-hook.js";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
 import { createHarness } from "./dispatch-helpers.js";
 
@@ -180,6 +181,44 @@ it("reports unknown after daemon memory is lost without rerunning the script", a
   await expect(readFile(join(path, "completed"))).rejects.toThrow();
 });
 
+it("cancels running hooks when the daemon shuts down", async () => {
+  const path = await makeTempDir("bb-hook-shutdown-");
+  await writeFile(
+    join(path, ".bb-env-setup.sh"),
+    "echo started > started\nsleep 120\necho unsafe > completed\n",
+  );
+  const options = createHarness().dispatchOptions({ dataDir: path });
+  const running = dispatchOnlineRpcCommand(
+    {
+      type: "environment.hook.run",
+      contributedEnv: [],
+      resumeOnly: false,
+      operationId: "shutdown",
+      path,
+      kind: "setup",
+      timeoutMs: 600_000,
+    },
+    options,
+    new AbortController().signal,
+  );
+  const settled = Promise.allSettled([running]);
+  await expect
+    .poll(async () => readFile(join(path, "started"), "utf8").catch(() => ""))
+    .toBe("started\n");
+
+  await cancelEnvironmentHooks(options.runtimeManager);
+
+  expect(await settled).toEqual([
+    {
+      status: "rejected",
+      reason: expect.objectContaining({
+        message: expect.stringContaining("cancelled"),
+      }),
+    },
+  ]);
+  await expect(readFile(join(path, "completed"))).rejects.toThrow();
+});
+
 it.each(["setup", "teardown"] as const)(
   "injects %s contributions and forwards progress as-is",
   async (kind) => {
@@ -315,6 +354,10 @@ it("applies hook NODE_ENV and PATH contributions after sanitizing inherited stat
       expect.stringMatching(/^PATH=[^:]*:\/c\/review-toolchain:/u),
     );
   } else {
-    expect(output).toContain("PATH=/review-toolchain:/usr/bin:/bin");
+    expect(output).toContainEqual(
+      expect.stringMatching(
+        /^PATH=\/review-toolchain:\/usr\/bin:\/bin(?::|$)/u,
+      ),
+    );
   }
 });

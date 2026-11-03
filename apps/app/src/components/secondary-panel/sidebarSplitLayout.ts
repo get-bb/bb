@@ -22,6 +22,7 @@ import type { SplitDropTarget } from "@/lib/split-drag";
 import {
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   createThreadInfoFixedPanelTab,
+  migrateLegacyFixedPanelTabId,
   getFixedPanelTabsStateStorageKey,
 } from "@/lib/fixed-panel-tabs-state";
 
@@ -1003,7 +1004,19 @@ export function parseSidebarSplitState(
       const parsed = sidebarSplitStateSchema.safeParse(JSON.parse(storedValue));
       if (parsed.success) {
         return reconcileSidebarSplitState(
-          parsed.data,
+          {
+            ...parsed.data,
+            groups: Object.fromEntries(
+              Object.entries(parsed.data.groups).map(([id, group]) => [
+                id,
+                {
+                  ...group,
+                  tabIds: group.tabIds.map(migrateLegacyFixedPanelTabId),
+                  activeTabId: migrateLegacyFixedPanelTabId(group.activeTabId),
+                },
+              ]),
+            ),
+          },
           availableTabIds,
           activeTabId,
         );

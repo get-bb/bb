@@ -15,7 +15,8 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
-  applyTimelineDelta,
+  applyThreadTimelineDelta,
+  isThreadTimelineDelta,
   threadTimelineResponseSchema,
   threadTimelineSignalSchema,
   type ThreadTimelineResponse,
@@ -242,26 +243,27 @@ async function refresh(
     return;
   }
   harness.deps.hub.notifyThread(threadId, ["events-appended"]);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await expect
+    .poll(
+      () =>
+        socket.messages.some(
+          (message) => JSON.parse(message).type === "thread-timeline",
+        ),
+      { timeout: 2_000 },
+    )
+    .toBe(true);
   const signals = socket.messages
     .splice(0)
     .map((message) => JSON.parse(message))
     .filter((message) => message.type === "thread-timeline")
     .map((message) => threadTimelineSignalSchema.parse(message));
   expect(signals.length).toBeGreaterThan(0);
-  for (const { afterSequence, timeline } of signals) {
-    const rows =
-      timeline.delta === undefined
-        ? timeline.rows
-        : afterSequence !== null && afterSequence <= client.latest.maxSeq
-          ? applyTimelineDelta(client.latest.rows, timeline.delta)
-          : null;
-    expect(rows).not.toBeNull();
-    receiveLatest(client, threadId, {
-      ...timeline,
-      rows: rows!,
-      delta: undefined,
-    });
+  for (const { timeline } of signals) {
+    const latest = isThreadTimelineDelta(timeline)
+      ? applyThreadTimelineDelta(client.latest, timeline)
+      : timeline;
+    expect(latest).not.toBeNull();
+    receiveLatest(client, threadId, latest!);
   }
 }
 

@@ -312,6 +312,54 @@ describe("bb thread interactions command output", () => {
     });
   });
 
+  it("bb thread interactions answer leaves an optional question unanswered", async () => {
+    const pending = fixtures.makePendingInteraction({
+      id: "int-question-optional",
+      providerId: "claude-code",
+      threadId: "thread-question-optional",
+      payload: fixtures.makeMultiUserQuestionPayload(),
+    });
+    const resolveInteraction = vi.fn(async () => ({
+      ...pending,
+      status: "resolving" as const,
+      resolution: {
+        kind: "user_answer" as const,
+        answers: { "question-1": { selected: ["production"] } },
+      },
+    }));
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": vi.fn(
+        async () => pending,
+      ),
+      "v1.threads.:id.interactions.:interactionId.resolve.$post":
+        resolveInteraction,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "interactions",
+        "answer",
+        "int-question-optional",
+        "thread-question-optional",
+        "--choice",
+        "question-1=production",
+      ],
+      register,
+    );
+
+    expect(resolveInteraction).toHaveBeenCalledWith({
+      param: {
+        id: "thread-question-optional",
+        interactionId: "int-question-optional",
+      },
+      json: {
+        kind: "user_answer",
+        answers: { "question-1": { selected: ["production"] } },
+      },
+    });
+  });
+
   it("bb thread interactions answer rejects shorthand for multi-question interactions", async () => {
     const getInteraction = vi.fn(async () =>
       fixtures.makePendingInteraction({

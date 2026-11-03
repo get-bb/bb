@@ -1,6 +1,8 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { createAccountClient } from "./account-client.js";
-import { AccountLink } from "./account-link.js";
+import {
+  createAccountClient,
+  watchAccount,
+} from "bb-plugin-bb-account/src/client.js";
 import { resolveDefaultConnectBaseUrl } from "@bb/connect-client";
 import { registerConnectCli } from "./cli.js";
 import { HostedConnectApi } from "./hosted.js";
@@ -20,6 +22,12 @@ import {
   createServerAccessRecheck,
   registerServerAccess,
 } from "./server-access.js";
+import { NextAddress, nextSharePublicUrl } from "./next-address.js";
+import {
+  ShareChanges,
+  connectServerSharesRpcContract,
+  createServerSharesHandlers,
+} from "./server-shares.js";
 import { ShareRegistry } from "./shares.js";
 import { ConnectTunnel } from "./tunnel.js";
 import {
@@ -29,6 +37,7 @@ import {
 
 export interface ConnectPluginOptions {
   accountRetryMinMs?: number;
+  serverSharesLongPollMs?: number;
 }
 
 export function createConnectPlugin(options: ConnectPluginOptions = {}) {
@@ -60,6 +69,8 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
         process.env.BB_DEV_APP_PORT,
       ) ?? bb.server.loopbackBaseUrl;
 
+    const shareChanges = new ShareChanges();
+    const nextAddress = new NextAddress(() => bb.sdk);
     const shares = new ShareRegistry({
       kv: bb.storage.kv,
       hosts: bb.hosts,
@@ -68,8 +79,10 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       getIdentity: () => tunnel.getIdentity(),
       log: bb.log,
       onChange: () => {
+        shareChanges.bump();
         bb.realtime.publish(CONNECT_REALTIME_CHANNEL, tunnel.status());
       },
+      nextOrigin: () => nextAddress.refresh(),
     });
 
     bb.events.on("experimental_host.deleted", async ({ host }) => {
@@ -118,6 +131,16 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
         remoteAccess,
       }),
     );
+    bb.rpc.register(
+      connectServerSharesRpcContract,
+      createServerSharesHandlers({
+        changes: shareChanges,
+        serverPorts: () => shares.serverPorts(),
+        ...(options.serverSharesLongPollMs === undefined
+          ? {}
+          : { longPollMs: options.serverSharesLongPollMs }),
+      }),
+    );
     registerConnectCli({
       bb,
       tunnel,
@@ -137,31 +160,38 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
           Date.now() - status.lastRemoteActivityAt <
             REMOTE_ACTIVITY_INSTRUCTIONS_MS);
       if (!recent) return null;
+      const nextOrigin = nextAddress.current();
       return (
         `The user is currently viewing this bb remotely at ${status.url}. ` +
         "Port shares work from a thread on any enrolled host: when you start an HTTP server they should see, run `bb connect expose <port>` from that thread. " +
-        "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely."
+        "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely." +
+        (nextOrigin === null
+          ? ""
+          : ` This bb is also reachable through bb connect next at ${nextOrigin}, so the command prints a second URL on the next address (${nextSharePublicUrl(nextOrigin, "<port>")} for ports on the bb server's machine, <machine-label>--<port> on the same domain for other machines); give the user both, or the one matching the address they use.`)
       );
     });
 
-    const link = new AccountLink({
+    const copy = new CredentialCopy({
       account,
-      copy: new CredentialCopy({
-        account,
-        store: createCredentialCopyStore(bb.storage.kv),
-        log: bb.log,
-      }),
+      store: createCredentialCopyStore(bb.storage.kv),
       log: bb.log,
-      onAccount: (next) => tunnel.setAccount(next),
-      ...(options.accountRetryMinMs === undefined
-        ? {}
-        : { retryMinMs: options.accountRetryMinMs }),
     });
 
     bb.background.service("tunnel", {
       async start(signal) {
         await tunnel.start();
-        await link.run(signal);
+        await watchAccount(
+          {
+            account,
+            log: bb.log,
+            onAccount: (next) => tunnel.setAccount(next),
+            sync: (status) => copy.sync(status),
+            ...(options.accountRetryMinMs === undefined
+              ? {}
+              : { retryMinMs: options.accountRetryMinMs }),
+          },
+          signal,
+        );
         tunnel.stop();
       },
     });

@@ -24,7 +24,19 @@ describe("resolveCloudDevViteSettings", () => {
         DEV_EMAIL_PASSWORD_AUTH: "true",
         GITHUB_CLIENT_ID: "local-cloud-dev-unused",
         GITHUB_CLIENT_SECRET: "local-cloud-dev-unused",
+        NEXT_BASE_DOMAIN: "next.bb.localhost",
       },
     });
+  });
+
+  it("serves the bb connect next gate keys it is given", () => {
+    const keys =
+      '{"keys":[{"kid":"local","kty":"OKP","crv":"Ed25519","x":"AA"}]}';
+    expect(
+      resolveCloudDevViteSettings("serve", {
+        ...localEnv,
+        BB_CLOUD_DEV_GATE_PUBLIC_KEYS: keys,
+      })?.vars.GATE_PUBLIC_KEYS,
+    ).toBe(keys);
   });
 });

@@ -15,7 +15,7 @@ Lifecycle:
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
-  bb thread clear-goal [id]                Clear the provider's active Goal
+  bb thread clear-goal [id]                Clear the provider's Goal
     --self                                 Target current thread
 
   cancel-plan and clear-goal wait for the provider to confirm.
@@ -48,6 +48,13 @@ Lifecycle:
   failed (`no_failed_turn`) or a turn that already has a retry queued
   (`retry_already_queued`). Without --send-at the retry
   is attempted now, and may still queue behind a busy thread or a plugin.
+  With --send-at, an accepted turn on a thread that already has a retry
+  waiting joins that retry instead of queuing another nudge: the waiting row
+  moves to the new time and the response names it.
+  A newer message sent to the thread overtakes a queued retry: a retry that
+  would continue an accepted turn is dropped, and one carrying input the
+  provider never accepted stays queued as Not sent (`waitingOn.kind`
+  `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
@@ -92,8 +99,11 @@ Lifecycle:
   bb thread delete <id>                    Delete permanently
     --yes                                  Skip confirmation
 
-  Deleting a thread removes its record immediately, but provider-owned
-  environment cleanup is asynchronous. Use `bb environment show <id>` to
-  inspect teardown until the lifecycle reaches destroyed. Deleting thread
+  Deleting a thread permanently deletes its sidebar children and lifecycle
+  dependents recursively, including hidden and archived descendants. This also
+  applies to SDK `threads.delete`; set `childThreadsConfirmed: true` to confirm
+  child deletion. Provider-owned environment cleanup is asynchronous. Use
+  `bb environment show <id>` to inspect teardown until the lifecycle reaches
+  destroyed. Deleting thread
   storage first stops processes whose working directory is inside it,
   including dev servers in nested checkouts (macOS and Linux only).

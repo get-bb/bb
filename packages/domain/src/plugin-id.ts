@@ -6,6 +6,8 @@ import { z } from "zod";
  * boundary (a queued row's wait holder) this is what makes it a value the
  * routes and CLI can address back.
  */
+export const GIT_PLUGIN_ID = "bb--git";
+
 export const pluginIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 
 /**

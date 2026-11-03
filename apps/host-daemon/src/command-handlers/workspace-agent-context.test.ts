@@ -237,7 +237,7 @@ describe("readWorkspaceAgentContext", () => {
     });
   });
 
-  it("skips linked files and reports the directory count limit", async () => {
+  it("follows contained linked skill files and reports the directory count limit", async () => {
     const root = await makeWorkspace();
     const skillsRoot = path.join(root, ".bb", "skills");
     await writeFile(path.join(root, "outside.md"), skillMarkdown("linked"));
@@ -256,6 +256,7 @@ describe("readWorkspaceAgentContext", () => {
       sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     });
     expect(result.projectSkills).toEqual([
+      { kind: "file", directoryName: "a", content: skillMarkdown("linked") },
       { kind: "file", directoryName: "b", content: skillMarkdown("b") },
     ]);
     expect(result.projectSkillsTruncated).toBe(true);

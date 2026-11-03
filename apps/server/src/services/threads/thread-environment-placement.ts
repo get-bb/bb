@@ -8,16 +8,37 @@ import {
   projectSourceOwnsPath,
   recordEnvironmentCurrentBranch,
   type DbConnection,
+  getPreparingEnvironment,
+  reserveEnvironment,
+  updatePreparingEnvironment,
+  getProjectSourceByHost,
+  type EnvironmentRow,
 } from "@bb/db";
 import {
   type Environment,
   type ProjectSource,
   type ProvisioningTranscriptEntry,
   type Thread,
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
+  jsonValueSchema,
+  PERSONAL_PROJECT_ID,
+  isLocalPathProjectSource,
+  type EnvironmentMachineSelection,
+  type JsonValue,
+  type GitBranchSelection,
 } from "@bb/domain";
-import { type ThreadProvisionContext } from "./thread-startup-store.js";
+import {
+  type ThreadProvisionContext,
+  getThreadProvisionContext,
+  saveThreadProvisionContext,
+  type ThreadProvisionEnvironmentIntent,
+} from "./thread-startup-store.js";
 import { type ThreadProvisioningDeps } from "./thread-provisioning-environment.js";
-import { buildSuggestedBranchName } from "./thread-create-helpers.js";
+import {
+  buildSuggestedBranchName,
+  requireSourceForHost,
+} from "./thread-create-helpers.js";
 import { toThreadResponseFromThread } from "./thread-runtime-display.js";
 import { toEnvironmentResponse } from "../environments/environment-response.js";
 import {
@@ -25,33 +46,13 @@ import {
   cancelProviderEnvironmentCreation,
   type ProviderOperationContext,
 } from "../environments/environment-engine.js";
-import {
-  getPreparingEnvironment,
-  reserveEnvironment,
-  updatePreparingEnvironment,
-} from "@bb/db";
 import { appendThreadProvisioningEvent } from "./thread-events.js";
 import { scheduleEnvironmentProvisioning } from "./thread-environment-providers.js";
-import {
-  getThreadProvisionContext,
-  saveThreadProvisionContext,
-} from "./thread-startup-store.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
-import { getProjectSourceByHost, type EnvironmentRow } from "@bb/db";
 import { z } from "zod";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "../environments/environment-provider-ids.js";
-import {
-  canonicalizeHostPath,
-  isAbsoluteHostPath,
-  jsonValueSchema,
-  PERSONAL_PROJECT_ID,
-  isLocalPathProjectSource,
-  type EnvironmentMachineSelection,
-  type GitBranchSelection,
-  type JsonValue,
-} from "@bb/domain";
 import type {
   EnvironmentArgs,
   ProviderEnvironmentArgs,
@@ -76,7 +77,6 @@ import {
   prepareMachineProviderSelection,
 } from "../machines/provider-orchestration.js";
 import { ensureProjectSourceOnHost } from "../projects/project-source-setup.js";
-import { requireSourceForHost } from "./thread-create-helpers.js";
 import {
   foreignProjectOwnedPathRefusal,
   suppliedWorkspacePathRefusal,
@@ -94,7 +94,6 @@ import {
   resolvePluginEnvironmentProviderAvailability,
 } from "../environments/provider-availability.js";
 import { resolveStableThreadRequestEnvironment } from "./thread-request-eligibility.js";
-import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 
 type PlacementDeps = LoggedPendingInteractionWorkSessionDeps;
 

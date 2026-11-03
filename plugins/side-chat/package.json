@@ -6,7 +6,7 @@
   "description": "Reply to messages in hidden side-chat forks rendered in a thread panel.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.98"
+    "bbPluginSdk": ">=0.6.88"
   },
   "bb": {
     "name": "Side chat",

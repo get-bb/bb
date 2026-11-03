@@ -43,6 +43,10 @@ import {
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import type { PromptDraftAttachment } from "@bb/client-core";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import { BbHttpError } from "@/lib/sdk";
 import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -56,8 +60,9 @@ import {
 } from "./ThreadDetailPromptArea";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftStorage: () => mocks.promptDraft,
+vi.mock("@/hooks/usePromptDraftStorage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/usePromptDraftStorage")>()),
+  usePromptDraftStorage: vi.fn(),
 }));
 
 function makeQueuedMessage(
@@ -123,6 +128,7 @@ function makePendingInteraction(): PendingInteraction {
           prompt: "Continue?",
           multiSelect: false,
           allowFreeText: true,
+          required: true,
         },
       ],
     },
@@ -143,6 +149,9 @@ interface RenderPromptAreaOptions {
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
+  permissionPolicy?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["permissionPolicy"];
   environmentGoneStatus?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["environmentGoneStatus"];
@@ -161,6 +170,7 @@ function buildPromptAreaElement({
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
+  permissionPolicy = "editable",
   environmentGoneStatus = null,
   queuedMessageCount = 0,
   sentMessageEdit,
@@ -170,29 +180,26 @@ function buildPromptAreaElement({
   return (
     <QueryClientProvider client={testQueryClient}>
       <ThreadDetailPromptArea
-        showGitChanges={true}
         activeBackgroundCommands={[]}
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
-        canUseGitUi={false}
         childThreadsSection={childThreadsSection}
-        composerFocusRequestNonce={0}
-        contextBannerMergeBase={null}
+        composerFocusRequestKey={0}
+        composerId="thread-detail-follow-up-composer"
+        isPrimaryComposer
+        permissionPolicy={permissionPolicy}
         canRestoreEnvironment={false}
         environmentGoneStatus={environmentGoneStatus}
         goal={goal}
         providerCommands={null}
         sessionOptions={sessionOptions}
         modelFallback={modelFallback}
-        isEnvironmentActionPending={false}
-        onChangedFileClick={vi.fn()}
         parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={queuedMessageCount}
         pendingTodos={null}
         projectId="proj_1"
-        pullRequest={null}
-        pullRequestMergeMethod="squash"
+        contextEnvironmentId={null}
         resolveMentionLink={() => null}
         sendMessage={{
           isPending: false,
@@ -201,8 +208,6 @@ function buildPromptAreaElement({
         sentMessageEdit={sentMessageEdit}
         steerActiveThreadOnEnter={false}
         thread={thread}
-        workspaceChangedFilesSection={null}
-        workspaceStatusPending={false}
       />
     </QueryClientProvider>
   );
@@ -214,13 +219,178 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 
 beforeAll(() => LazyQueuedMessagesList.preload());
 
+describe("shared draft submission ownership", () => {
+  let nextId = 0;
+
+  beforeEach(async () => {
+    const storage = await vi.importActual<
+      typeof import("@/hooks/usePromptDraftStorage")
+    >("@/hooks/usePromptDraftStorage");
+    vi.mocked(usePromptDraftStorage).mockImplementation(
+      storage.usePromptDraftStorage,
+    );
+  });
+
+  afterEach(() => {
+    mocks.sendMessageMutateAsync.mockReset().mockResolvedValue(undefined);
+  });
+
+  function openComposer(threadId: string) {
+    const mounted = renderPromptArea({
+      thread: makeThread({
+        id: threadId,
+        status: "active",
+        runtime: { displayStatus: "active" },
+      }),
+    });
+    fireEvent.click(
+      within(mounted.container).getByRole("button", {
+        name: "Capture plugin host",
+      }),
+    );
+    const ordinary = mocks.composerSubmit;
+    const modifier = mocks.composerModifierSubmit;
+    if (!ordinary || !modifier) throw new Error("Missing composer actions");
+    return { ...mounted, ordinary, modifier };
+  }
+
+  function draftFor(threadId: string) {
+    return getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj_1",
+      threadId,
+    });
+  }
+
+  describe.each(["same callback", "remount", "sibling"])("%s", (lifetime) => {
+    it.each([
+      ["ordinary", "ordinary"],
+      ["ordinary", "modifier"],
+      ["modifier", "ordinary"],
+      ["modifier", "modifier"],
+    ] as const)(
+      "serializes %s then %s without losing edits",
+      async (firstAction, secondAction) => {
+        const threadId = `thr_lock_${++nextId}`;
+        const draft = draftFor(threadId);
+        const original = {
+          text: "first message",
+          mentions: [],
+          attachments: [
+            {
+              type: "localFile" as const,
+              path: "uploads/first.txt",
+              name: "first.txt",
+            },
+          ],
+        };
+        const newer = { ...original, text: "edited while pending" };
+        draft.setDraft(original);
+        const response = createDeferredPromise<void>();
+        mocks.sendMessageMutateAsync.mockReturnValue(response.promise);
+        const firstView = openComposer(threadId);
+        const sibling = lifetime === "sibling" ? openComposer(threadId) : null;
+        let firstAttempt: Promise<unknown> = Promise.resolve();
+        let secondAttempt: Promise<unknown> = Promise.resolve();
+        let calls = 0;
+        let pendingVisible = false;
+        try {
+          act(() => {
+            firstAttempt = Promise.resolve(firstView[firstAction]()).catch(
+              (error) => error,
+            );
+            draft.setDraft(newer);
+            if (lifetime === "same callback") {
+              secondAttempt = Promise.resolve(firstView[secondAction]()).catch(
+                (error) => error,
+              );
+            }
+          });
+          if (lifetime !== "same callback") {
+            if (lifetime === "remount") firstView.unmount();
+            const nextView = sibling ?? openComposer(threadId);
+            pendingVisible =
+              within(nextView.container).queryByRole("button", {
+                name: "Modifier submit",
+              }) === null;
+            act(() => {
+              secondAttempt = Promise.resolve(nextView[secondAction]()).catch(
+                (error) => error,
+              );
+            });
+          }
+          calls = mocks.sendMessageMutateAsync.mock.calls.length;
+        } finally {
+          await act(async () => {
+            response.reject(new Error("Simulated transport failure"));
+            await Promise.all([firstAttempt, secondAttempt]);
+          });
+        }
+        expect({ requests: calls, draft: draft.getCurrent() }).toEqual({
+          requests: 1,
+          draft: newer,
+        });
+        expect(await secondAttempt).toBeInstanceOf(Error);
+        if (lifetime !== "same callback") expect(pendingVisible).toBe(true);
+        const retry = openComposer(threadId);
+        mocks.sendMessageMutateAsync.mockResolvedValue(undefined);
+        await act(async () => {
+          await retry.ordinary();
+        });
+        expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(2);
+      },
+    );
+  });
+
+  it("allows a different thread to submit while one scope is pending", async () => {
+    const firstId = `thr_parallel_${++nextId}`;
+    const secondId = `${firstId}_other`;
+    draftFor(firstId).setDraft({ text: "one", mentions: [], attachments: [] });
+    draftFor(secondId).setDraft({ text: "two", mentions: [], attachments: [] });
+    const response = createDeferredPromise<void>();
+    mocks.sendMessageMutateAsync
+      .mockReturnValueOnce(response.promise)
+      .mockResolvedValue(undefined);
+    const firstView = openComposer(firstId);
+    let firstAttempt: Promise<unknown> = Promise.resolve();
+    try {
+      act(() => {
+        firstAttempt = Promise.resolve(firstView.ordinary());
+      });
+      firstView.unmount();
+      const otherView = openComposer(secondId);
+      await act(async () => {
+        await otherView.modifier();
+      });
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledTimes(2);
+      expect(mocks.sendMessageMutateAsync).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: secondId }),
+      );
+    } finally {
+      await act(async () => {
+        response.resolve();
+        await firstAttempt;
+      });
+    }
+  });
+});
+
 beforeEach(() => {
+  vi.mocked(usePromptDraftStorage).mockImplementation(() => ({
+    ...mocks.promptDraft,
+    value: mocks.promptDraft.text,
+    clear: vi.fn(),
+    setAttachments: vi.fn(),
+  }));
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   mocks.defaultExecutionOptions = null;
   mocks.executionInputSources = {};
+  mocks.unknownReasoning = false;
   mocks.pluginComposerHost = null;
+  mocks.composerSubmit = null;
+  mocks.composerModifierSubmit = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
   mocks.promptDraft.attachments = [];
@@ -390,6 +560,129 @@ describe("agent session options", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("sends plugin data through the send endpoint while Enter queues", async () => {
+    mocks.promptDraft.text = "Queue this with data";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = { pluginId: "drafts", data: { kind: "draft" } };
+
+    await act(async () => {
+      await mocks.composerSubmit?.({ pluginSubmission });
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "queue-if-active",
+        pluginSubmission,
+      }),
+    );
+  });
+
+  it("lets the server decide whether an Enter submitted while the thread looks busy queues", async () => {
+    mocks.promptDraft.text = "Try again";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "stopping" },
+        status: "stopping",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "queue-if-active",
+        input: [{ type: "text", text: "Try again", mentions: [] }],
+      }),
+    );
+  });
+
+  it("steers with sendAt and plugin data from the modifier action", async () => {
+    mocks.promptDraft.text = "Steer this later";
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "active" },
+        status: "active",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    const pluginSubmission = { pluginId: "drafts", data: { kind: "note" } };
+
+    await act(async () => {
+      await mocks.composerModifierSubmit?.({
+        sendAt: 1234567890,
+        pluginSubmission,
+      });
+    });
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "thr_1",
+        mode: "steer-if-active",
+        sendAt: 1234567890,
+        pluginSubmission,
+      }),
+    );
+  });
+
+  it("refuses sendAt when the modifier action would steer the next queued message", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+    renderPromptArea({
+      thread: makeThread({
+        runtime: { displayStatus: "idle" },
+        status: "idle",
+      }),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    await expect(
+      mocks.composerModifierSubmit?.({ sendAt: 1234567890 }),
+    ).rejects.toThrow("There is no new message to schedule or attach data to.");
+    expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("preserves the reasoning preference on follow-ups when the selected model's levels are unknown", async () => {
+    mocks.unknownReasoning = true;
+    mocks.executionInputSources = { reasoningLevel: "explicit" };
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Continue";
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledOnce();
+    const request = mocks.sendMessageMutateAsync.mock.calls[0]?.[0];
+    expect(request.reasoningLevel).toBe("medium");
+    expect(request.executionInputSources.reasoningLevel).toBe("explicit");
+  });
+
   it("preserves plugin submission data through a follow-up composer", async () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",
@@ -409,10 +702,7 @@ describe("ThreadDetailPromptArea", () => {
     };
 
     await act(async () => {
-      await mocks.pluginComposerHost?.submit?.(
-        { experimental_data: pluginSubmission.data },
-        pluginSubmission,
-      );
+      await mocks.composerSubmit?.({ pluginSubmission });
     });
 
     expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
@@ -530,7 +820,6 @@ describe("ThreadDetailPromptArea", () => {
       input: [{ type: "text", text: "Edited request", mentions: [] }],
     });
     expect(mocks.promptDraft.clearIfCurrentMatches).not.toHaveBeenCalled();
-    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
 
     fireEvent.click(
       inlineEditor.getByRole("button", {
@@ -765,6 +1054,50 @@ describe("ThreadDetailPromptArea", () => {
       ).toBe("Keep this bottom draft");
     });
     expect(screen.getByTestId("composer-location").textContent).toBe("bottom");
+  });
+
+  it("saves the inline editor's model and permission picks onto the queued message only", async () => {
+    mocks.queuedMessages = [makeQueuedMessage()];
+
+    renderPromptArea();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    const inlineEditor = within(
+      screen.getByTestId("inline-queued-message-editor"),
+    );
+    const queued = mocks.queuedMessages[0]!;
+    expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
+      queued.model,
+    );
+
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Choose model gpt-5-mini" }),
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Choose permission full" }),
+    );
+    expect(inlineEditor.getByTestId("selected-model").textContent).toBe(
+      "gpt-5-mini",
+    );
+    expect(inlineEditor.getByTestId("selected-permission").textContent).toBe(
+      "full",
+    );
+    expect(mocks.setPermissionMode).not.toHaveBeenCalled();
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
+        expectedUpdatedAt: 1,
+        id: "thr_1",
+        input: [{ type: "text", text: "Already queued", mentions: [] }],
+        model: "gpt-5-mini",
+        permissionMode: "full",
+        queuedMessageId: "qmsg_1",
+      });
+    });
   });
 
   it("exposes the inline queued draft to plugins without dropping attachments", async () => {
@@ -1042,10 +1375,10 @@ describe("ThreadDetailPromptArea", () => {
       "full",
     );
     expect(inlineEditor.getByTestId("execution-read-only").textContent).toBe(
-      "true",
+      "false",
     );
     expect(inlineEditor.getByTestId("permission-read-only").textContent).toBe(
-      "true",
+      "false",
     );
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Capture plugin host" }),
@@ -1488,6 +1821,35 @@ describe("ThreadDetailPromptArea", () => {
     return result as unknown as ExperimentalComposerSelection;
   }
 
+  it("pins a snapshot-policy composer to the thread's permission mode", async () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Keep going";
+    renderPromptArea({ permissionPolicy: "snapshot" });
+    expect(screen.getByTestId("permission-read-only").textContent).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capture plugin host" }),
+    );
+
+    const result = await settledSelection(
+      mocks.pluginComposerHost!.setSelection!({ permissionMode: "auto" }),
+    );
+
+    expect(result.permissionMode).toBe("full");
+    expect(mocks.setPermissionMode).not.toHaveBeenCalled();
+    await act(async () => {
+      await mocks.composerSubmit?.();
+    });
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "thr_1", permissionMode: "full" }),
+    );
+  });
+
   it("starts a handoff when a plugin sets another provider, and drops the fields a thread has no picker for", async () => {
     mocks.promptDraft.text = "Keep going";
     mocks.createThreadMutateAsync.mockResolvedValue({
@@ -1622,7 +1984,6 @@ describe("ThreadDetailPromptArea", () => {
       ),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
-    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
   });
 
   it("creates a same-provider handoff with unchanged execution marked explicit", async () => {
@@ -1650,7 +2011,6 @@ describe("ThreadDetailPromptArea", () => {
       ),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
-    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
   });
 
   it("marks a supported handoff service tier explicit", async () => {
@@ -1806,10 +2166,7 @@ describe("ThreadDetailPromptArea", () => {
           screen.getByRole("button", { name: "Capture plugin host" }),
         );
         await act(async () => {
-          await mocks.pluginComposerHost?.submit?.(
-            { sendAt: 1234567890 },
-            undefined,
-          );
+          await mocks.composerSubmit?.({ sendAt: 1234567890 });
         });
       } else {
         fireEvent.click(
@@ -1882,7 +2239,6 @@ describe("ThreadDetailPromptArea", () => {
       }),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
-    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledTimes(1);
   });
 });

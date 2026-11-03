@@ -185,13 +185,23 @@ describe("bindSdkToPlugin", () => {
     });
   });
 
-  it("preserves SDK arguments while applying cache updates", async () => {
-    const { sdk, queryClient, threads, threadSections } = makeSdk();
+  it("adds a created section to the sidebar before resolving", async () => {
+    const { sdk, queryClient, threadSections } = makeSdk();
+    const sidebarKey = sidebarNavigationQueryKey();
+    queryClient.setQueryData(
+      sidebarKey,
+      makeSidebarBootstrapResponse({ sections: [] }),
+    );
     const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
-    await bound.threads.pin({ threadId: "thr_1" });
+
     await bound.threadSections.create({ name: "Later" });
-    expect(threads.pin).toHaveBeenCalledWith({ threadId: "thr_1" });
+
     expect(threadSections.create).toHaveBeenCalledWith({ name: "Later" });
+    expect(
+      queryClient
+        .getQueryData<SidebarBootstrapResponse>(sidebarKey)
+        ?.sections.map((section) => section.id),
+    ).toEqual(["sec_created"]);
   });
 
   it("batches synchronous plugin thread metadata updates into one optimistic transaction", async () => {
@@ -214,7 +224,6 @@ describe("bindSdkToPlugin", () => {
         makeThreadWithRuntime({ id, parentThreadId: null }),
       );
     }
-    const cancelQueries = vi.spyOn(queryClient, "cancelQueries");
     const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
 
     const updates = ["thr_1", "thr_2"].map((threadId) =>
@@ -231,7 +240,7 @@ describe("bindSdkToPlugin", () => {
         ),
       ).toEqual(["thr_parent", "thr_parent"]);
     });
-    expect(cancelQueries).toHaveBeenCalledTimes(4);
+    expect(threads.update).toHaveBeenCalledTimes(2);
 
     for (const id of ["thr_1", "thr_2"]) {
       pending
@@ -436,7 +445,12 @@ describe("bindSdkToPlugin", () => {
         createDeferredPromise<ReturnType<typeof makeThreadResponse>>();
       threads.unpin.mockReturnValueOnce(pending.promise);
       threads.update.mockResolvedValueOnce(
-        makeThreadResponse({ id: entry.id, pinnedAt: null, sectionId: "new" }),
+        makeThreadResponse({
+          id: entry.id,
+          pinnedAt: null,
+          sectionId: "new",
+          updatedAt: entry.updatedAt + 2,
+        }),
       );
       const bound = bindSdkToPlugin(sdk, "thread-list", queryClient);
       const moved = Promise.all([
@@ -461,6 +475,7 @@ describe("bindSdkToPlugin", () => {
             id: entry.id,
             pinnedAt: null,
             sectionId: "old",
+            updatedAt: entry.updatedAt + 1,
           }),
         );
         await moved;
@@ -686,7 +701,7 @@ describe("bindSdkToPlugin", () => {
 
       await vi.waitFor(() => {
         expect(sidebarIds()).toEqual([]);
-        expect(listIds()).toEqual(["thr_other", "thr_archived"]);
+        expect(listIds()).toEqual(["thr_other"]);
       });
       expect(environments.archiveThreads).toHaveBeenCalledWith({
         environmentId: "env_1",
@@ -708,7 +723,11 @@ describe("bindSdkToPlugin", () => {
         pending.reject(new Error("archive failed"));
         await expect(archive).rejects.toThrow("archive failed");
         expect(sidebarIds()).toEqual(["thr_1", "thr_2", "thr_child"]);
-        expect(listIds()).toEqual(entries.map((thread) => thread.id));
+        expect(listIds()).toEqual(
+          entries
+            .filter((thread) => thread.archivedAt === null)
+            .map((thread) => thread.id),
+        );
         expect(
           queryClient.getQueryData<ReturnType<typeof makeThreadWithRuntime>>(
             threadQueryKey("thr_1"),
@@ -721,7 +740,7 @@ describe("bindSdkToPlugin", () => {
         });
         await expect(archive).resolves.toMatchObject({ ok: true });
         expect(sidebarIds()).toEqual([]);
-        expect(listIds()).toEqual(["thr_other", "thr_archived"]);
+        expect(listIds()).toEqual(["thr_other"]);
       }
       expect(
         queryClient

@@ -5,11 +5,9 @@ import type {
   ThreadStatusChangeMetadata,
 } from "@bb/domain";
 import {
-  applyToCachedThreadLists,
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
-import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import { patchCachedQueryData } from "./cache-effect-utils";
 import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
@@ -20,25 +18,17 @@ import type {
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
-  ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-  environmentDiffFilesQueryKeyPrefix,
-  environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentMergeBaseBranchesQueryKeyPrefix,
-  environmentPullRequestQueryKey,
   environmentQueryKey,
-  environmentWorkStatusQueryKey,
-  environmentWorkStatusQueryKeyPrefix,
   SIDEBAR_NAVIGATION_QUERY_KEY,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
-  threadQueryKey,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
-  type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
 } from "../queries/query-keys";
+import { patchThreadEntity } from "./thread-entity-store";
 
 type TimelineRowsUpdater = (
   rows: readonly TimelineRow[],
@@ -57,11 +47,6 @@ interface EnvironmentInvalidationParams {
   environmentId: string;
 }
 
-interface EnvironmentDiffPatchRemovalParams {
-  environmentId: string;
-  queryClient: QueryClient;
-}
-
 interface ProjectThreadListInvalidationParams {
   projectId: string;
   queryClient: QueryClient;
@@ -72,22 +57,10 @@ interface CachedGlobalThreadListInvalidationParams {
 }
 
 type SidebarNavigationProject = SidebarBootstrapResponse["projects"][number];
-export type CachedThreadListsAndSidebarNavigationMapper = (
-  threads: ThreadListEntry[],
-) => ThreadListEntry[];
 type SidebarNavigationThreadMapper = (
   threads: ThreadListEntry[],
   projectId: string,
 ) => ThreadListEntry[];
-
-interface ApplyToCachedSidebarNavigationThreadsArgs {
-  mapper: SidebarNavigationThreadMapper;
-  queryClient: QueryClient;
-}
-
-export type CachedSidebarNavigationSnapshot =
-  | SidebarBootstrapResponse
-  | undefined;
 
 function getThreadListFiltersFromQueryKey(
   queryKey: QueryKey,
@@ -285,45 +258,6 @@ function mapSidebarNavigationProjectThreads(
   };
 }
 
-export function applyToCachedSidebarNavigationThreads({
-  mapper,
-  queryClient,
-}: ApplyToCachedSidebarNavigationThreadsArgs): void {
-  patchCachedQueryData<SidebarBootstrapResponse>(
-    queryClient,
-    sidebarNavigationQueryKey(),
-    (currentNavigation) => {
-      if (!currentNavigation) {
-        return currentNavigation;
-      }
-      return {
-        sections: currentNavigation.sections,
-        projects: currentNavigation.projects.map((project) =>
-          mapSidebarNavigationProjectThreads(project, mapper),
-        ),
-        personalProject: mapSidebarNavigationProjectThreads(
-          currentNavigation.personalProject,
-          mapper,
-        ),
-      };
-    },
-  );
-}
-
-export function applyToCachedThreadListsAndSidebarNavigation(
-  queryClient: QueryClient,
-  mapper: CachedThreadListsAndSidebarNavigationMapper,
-): void {
-  applyToCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-    mapper,
-  });
-  applyToCachedSidebarNavigationThreads({
-    queryClient,
-    mapper,
-  });
-}
-
 export function listSidebarNavigationThreads(
   navigation: SidebarBootstrapResponse,
 ): ThreadListEntry[] {
@@ -366,21 +300,6 @@ export function findSidebarNavigationThreadPlaceholder(
       );
 }
 
-export function snapshotCachedSidebarNavigation(
-  queryClient: QueryClient,
-): CachedSidebarNavigationSnapshot {
-  return queryClient.getQueryData<SidebarBootstrapResponse>(
-    sidebarNavigationQueryKey(),
-  );
-}
-
-export function restoreCachedSidebarNavigation(
-  queryClient: QueryClient,
-  snapshot: CachedSidebarNavigationSnapshot,
-): void {
-  patchCachedQueryData(queryClient, sidebarNavigationQueryKey(), snapshot);
-}
-
 export function getEnvironmentRecordInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
@@ -390,68 +309,7 @@ export function getEnvironmentRecordInvalidationQueryKeys({
 export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
-  return [
-    environmentWorkStatusQueryKeyPrefix(environmentId),
-    environmentPullRequestQueryKey(environmentId),
-    environmentDiffFilesQueryKeyPrefix(environmentId),
-    environmentFilePreviewQueryKeyPrefix(environmentId),
-  ];
-}
-
-export function removeEnvironmentDiffPatchQueries({
-  environmentId,
-  queryClient,
-}: EnvironmentDiffPatchRemovalParams): void {
-  bumpDiffPatchEvictionGeneration(environmentId);
-  queryClient.removeQueries({
-    queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
-  });
-}
-
-export function getEnvironmentBranchListInvalidationQueryKeys({
-  environmentId,
-}: EnvironmentInvalidationParams): QueryKey[] {
-  return [environmentMergeBaseBranchesQueryKeyPrefix(environmentId)];
-}
-
-function isEnvironmentWorkStatusQueryKeyForEnvironment(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    queryKey[0] === ENVIRONMENT_WORK_STATUS_QUERY_KEY &&
-    queryKey[1] === environmentId &&
-    (typeof queryKey[2] === "string" || queryKey[2] === null)
-  );
-}
-
-function isMergeBaseEnvironmentWorkStatusQueryKey(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentWorkStatusQueryKey {
-  return (
-    isEnvironmentWorkStatusQueryKeyForEnvironment(queryKey, environmentId) &&
-    typeof queryKey[2] === "string"
-  );
-}
-
-export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
-  queryClient: QueryClient,
-  { environmentId }: EnvironmentInvalidationParams,
-): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  })) {
-    if (isMergeBaseEnvironmentWorkStatusQueryKey(queryKey, environmentId)) {
-      queryKeys.push(environmentWorkStatusQueryKey(environmentId, queryKey[2]));
-    }
-  }
-
-  queryKeys.push(environmentDiffFilesQueryKeyPrefix(environmentId));
-
-  return queryKeys;
+  return [environmentFilePreviewQueryKeyPrefix(environmentId)];
 }
 
 export function getEnvironmentActionInvalidationQueryKeys({
@@ -459,7 +317,6 @@ export function getEnvironmentActionInvalidationQueryKeys({
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
     ...getEnvironmentWorkspaceStateInvalidationQueryKeys({ environmentId }),
-    ...getEnvironmentBranchListInvalidationQueryKeys({ environmentId }),
     threadsQueryKey(),
   ];
 }
@@ -483,23 +340,6 @@ export function getCachedThreadListPlaceholder(
   }
 
   return undefined;
-}
-
-export function updateCachedThread(
-  queryClient: QueryClient,
-  threadId: string,
-  updater: (thread: ThreadResponse) => ThreadResponse,
-): void {
-  queryClient.setQueryData<ThreadResponse>(
-    threadQueryKey(threadId),
-    (thread) => {
-      if (!thread) {
-        return thread;
-      }
-
-      return updater(thread);
-    },
-  );
 }
 
 function threadMatchesListFilters(
@@ -707,14 +547,7 @@ export function updateCachedThreadListPendingInteractionState(
   threadId: string,
   hasPendingInteraction: boolean,
 ): void {
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) => {
-    if (!list.some((thread) => thread.id === threadId)) {
-      return list;
-    }
-    return list.map((thread) =>
-      thread.id === threadId ? { ...thread, hasPendingInteraction } : thread,
-    );
-  });
+  patchThreadEntity(queryClient, threadId, { hasPendingInteraction });
 }
 
 export function updateCachedThreadListStatusState(
@@ -722,16 +555,12 @@ export function updateCachedThreadListStatusState(
   threadId: string,
   statusChange: ThreadStatusChangeMetadata,
 ): void {
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) => {
-    if (!list.some((thread) => thread.id === threadId)) {
-      return list;
-    }
-    return list.map((thread) =>
-      thread.id === threadId && statusChange.updatedAt >= thread.updatedAt
-        ? { ...thread, ...statusChange }
-        : thread,
-    );
-  });
+  patchThreadEntity(
+    queryClient,
+    threadId,
+    statusChange,
+    statusChange.updatedAt,
+  );
 }
 
 export function updateCachedThreadStatusState(
@@ -739,10 +568,11 @@ export function updateCachedThreadStatusState(
   threadId: string,
   { status, runtime, latestAttentionAt, updatedAt }: ThreadStatusChangeMetadata,
 ): void {
-  updateCachedThread(queryClient, threadId, (thread) =>
-    updatedAt < thread.updatedAt
-      ? thread
-      : { ...thread, status, runtime, latestAttentionAt, updatedAt },
+  patchThreadEntity(
+    queryClient,
+    threadId,
+    { status, runtime, latestAttentionAt, updatedAt },
+    updatedAt,
   );
 }
 

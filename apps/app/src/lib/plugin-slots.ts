@@ -1,16 +1,21 @@
+import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
+import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useSyncExternalStore } from "react";
 import type {
+  ExperimentalTabRegistration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
   ExperimentalCodeFenceRendererRegistration,
   PluginDiffRendererRegistration,
+  ExperimentalComposerRegistration,
   PluginEnvironmentProviderInputsRegistration,
   PluginMachineProviderInputsRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
   PluginMessageActionRegistration,
+  ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
   PluginNewThreadPanelActionRegistration,
@@ -18,15 +23,22 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
-  PluginThreadHeaderActionRegistration,
+  ExperimentalThreadContextSegmentRegistration,
+  ExperimentalThreadInfoRowRegistration,
+  ExperimentalThreadRowMetadataRegistration,
+  ExperimentalThreadInfoSectionRegistration,
+  ExperimentalThreadContextCardRowRegistration,
+  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
-  PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   type CollectedPluginCommandRegistration,
+  type LegacyThreadPanelActionRegistration,
+  type LegacyThreadHeaderActionRegistration,
+  type LegacyNavPanelRegistration,
   adaptSidebarFooterAction,
   getCollectedSidebarFooterItems,
   type CollectedPluginProviderIconRegistration,
@@ -40,8 +52,9 @@ export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
   settingsSections: readonly PluginSettingsSectionRegistration[];
   appOverlays?: readonly ExperimentalAppOverlayRegistration[];
-  navPanels: readonly PluginNavPanelRegistration[];
-  threadPanelActions: readonly PluginThreadPanelActionRegistration[];
+  navPanels: readonly LegacyNavPanelRegistration[];
+  tabs?: readonly ExperimentalTabRegistration[];
+  threadPanelActions: readonly LegacyThreadPanelActionRegistration[];
   newThreadPanelActions?: readonly PluginNewThreadPanelActionRegistration[];
   composerCustomizations?: readonly ComposerCustomization[];
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
@@ -49,15 +62,23 @@ export interface PluginRegistrationSet {
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
   threadLists?: readonly PluginThreadListRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
-  threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
+  threadHeaderActions?: readonly LegacyThreadHeaderActionRegistration[];
+  threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
+  threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
+  threadRowMetadata?: readonly ExperimentalThreadRowMetadataRegistration<unknown>[];
+  threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
+  threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
+  threadContextCardSections?: readonly ExperimentalThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
   sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
   diffRenderers?: readonly PluginDiffRendererRegistration[];
+  composers?: readonly ExperimentalComposerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   codeFenceRenderers?: readonly ExperimentalCodeFenceRendererRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
+  messageMetadata?: readonly ExperimentalMessageMetadataRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
   icons?: readonly ExperimentalIconRegistration[];
@@ -79,8 +100,27 @@ export interface ExperimentalAppOverlaySlot
   extends ExperimentalAppOverlayRegistration, PluginSlotBase {}
 export interface PluginNavPanelSlot
   extends PluginNavPanelRegistration, PluginSlotBase {}
+export type PluginTabSlot = ExperimentalTabRegistration & PluginSlotBase;
+export type PluginThreadTabSlot = Extract<
+  PluginTabSlot,
+  { context: { kind: "thread" } }
+>;
+export type PluginNavTabSlot = Extract<
+  PluginTabSlot,
+  { context: { kind: "nav-panel" } }
+>;
+export type PluginThreadFixedTabSlot = Extract<
+  PluginThreadTabSlot,
+  { availability: "fixed" }
+>;
+export function isThreadTab(tab: PluginTabSlot): tab is PluginThreadTabSlot {
+  return tab.context.kind === "thread";
+}
+export function isNavTab(tab: PluginTabSlot): tab is PluginNavTabSlot {
+  return tab.context.kind === "nav-panel";
+}
 export interface PluginThreadPanelActionSlot
-  extends PluginThreadPanelActionRegistration, PluginSlotBase {}
+  extends LegacyThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginNewThreadPanelActionSlot
   extends PluginNewThreadPanelActionRegistration, PluginSlotBase {}
 export interface PluginComposerCustomizationSlot
@@ -94,7 +134,20 @@ export interface PluginThreadListSlot
 export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
-  extends PluginThreadHeaderActionRegistration, PluginSlotBase {}
+  extends LegacyThreadHeaderActionRegistration, PluginSlotBase {}
+export interface PluginThreadContextSegmentSlot
+  extends ExperimentalThreadContextSegmentRegistration, PluginSlotBase {}
+export interface PluginThreadInfoRowSlot
+  extends ExperimentalThreadInfoRowRegistration, PluginSlotBase {}
+export interface PluginThreadRowMetadataSlot
+  extends ExperimentalThreadRowMetadataRegistration<unknown>,
+    PluginSlotBase {}
+export interface PluginThreadInfoSectionSlot
+  extends ExperimentalThreadInfoSectionRegistration, PluginSlotBase {}
+export interface PluginThreadContextCardRowSlot
+  extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
+export interface PluginThreadContextCardSectionSlot
+  extends ExperimentalThreadContextCardSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
@@ -105,12 +158,16 @@ export interface PluginSourceCodeRendererSlot
   extends PluginSourceCodeRendererRegistration, PluginSlotBase {}
 export interface PluginDiffRendererSlot
   extends PluginDiffRendererRegistration, PluginSlotBase {}
+export interface PluginComposerSlot
+  extends ExperimentalComposerRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginCodeFenceRendererSlot
   extends ExperimentalCodeFenceRendererRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
+export interface PluginMessageMetadataSlot
+  extends ExperimentalMessageMetadataRegistration, PluginSlotBase {}
 export type PluginCommandPaletteActionSlot =
   CollectedPluginCommandRegistration & PluginSlotBase;
 interface PluginIconSlot extends ExperimentalIconRegistration, PluginSlotBase {}
@@ -128,6 +185,7 @@ export interface PluginSlotSnapshot {
   settingsSections: readonly PluginSettingsSectionSlot[];
   appOverlays: readonly ExperimentalAppOverlaySlot[];
   navPanels: readonly PluginNavPanelSlot[];
+  tabs: readonly PluginTabSlot[];
   threadPanelActions: readonly PluginThreadPanelActionSlot[];
   newThreadPanelActions: readonly PluginNewThreadPanelActionSlot[];
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
@@ -136,14 +194,22 @@ export interface PluginSlotSnapshot {
   threadLists: readonly PluginThreadListSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
+  threadContextSegments: readonly PluginThreadContextSegmentSlot[];
+  threadInfoRows: readonly PluginThreadInfoRowSlot[];
+  threadRowMetadata: readonly PluginThreadRowMetadataSlot[];
+  threadInfoSections: readonly PluginThreadInfoSectionSlot[];
+  threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
+  threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
   diffRenderers: readonly PluginDiffRendererSlot[];
+  composers: readonly PluginComposerSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   codeFenceRenderers: readonly PluginCodeFenceRendererSlot[];
   messageActions: readonly PluginMessageActionSlot[];
+  messageMetadata: readonly PluginMessageMetadataSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   icons: readonly PluginIconSlot[];
@@ -157,6 +223,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   settingsSections: [],
   appOverlays: [],
   navPanels: [],
+  tabs: coreTabs,
   threadPanelActions: [],
   newThreadPanelActions: [],
   composerCustomizations: [],
@@ -165,14 +232,22 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadLists: [],
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
+  threadContextSegments: [],
+  threadInfoRows: [],
+  threadRowMetadata: [],
+  threadInfoSections: [],
+  threadContextCardRows: [],
+  threadContextCardSections: [],
   threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
   sourceCodeRenderers: [],
   diffRenderers: [],
+  composers: [],
   messageDirectives: [],
   codeFenceRenderers: [],
   messageActions: [],
+  messageMetadata: coreMessageMetadata,
   commandPaletteActions: [],
   providerIcons: [],
   icons: [],
@@ -193,6 +268,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "settingsSections",
   "appOverlays",
   "navPanels",
+  "tabs",
   "threadPanelActions",
   "newThreadPanelActions",
   "composerCustomizations",
@@ -201,14 +277,22 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadLists",
   "experimentalSidebarNavigations",
   "threadHeaderActions",
+  "threadContextSegments",
+  "threadInfoRows",
+  "threadRowMetadata",
+  "threadInfoSections",
+  "threadContextCardRows",
+  "threadContextCardSections",
   "threadActions",
   "browserToolbarActions",
   "fileOpeners",
   "sourceCodeRenderers",
   "diffRenderers",
+  "composers",
   "messageDirectives",
   "codeFenceRenderers",
   "messageActions",
+  "messageMetadata",
   "commandPaletteActions",
   "providerIcons",
   "icons",
@@ -248,12 +332,37 @@ function flattenRegistrations(
       adaptExperimentalSidebarFooterItem,
     ),
   ];
+  const tabs = set.tabs ?? [
+    ...set.threadPanelActions.map((action) => ({
+      ...action,
+      icon: action.icon ?? "",
+      context: { kind: "thread" as const },
+      availability: "action" as const,
+    })),
+    ...set.navPanels.flatMap((panel) =>
+      (panel.fixedTabs ?? []).map((tab) => ({
+        ...tab,
+        context: { kind: "nav-panel" as const, panelId: panel.id },
+        availability: "fixed" as const,
+      })),
+    ),
+  ];
   return {
     homepageSections: stamp(set.homepageSections),
     settingsSections: stamp(set.settingsSections),
     appOverlays: stamp(set.appOverlays),
     navPanels: stamp(set.navPanels),
-    threadPanelActions: stamp(set.threadPanelActions),
+    tabs: stamp(tabs),
+    threadPanelActions: stamp(
+      tabs.filter(
+        (
+          tab,
+        ): tab is Extract<
+          ExperimentalTabRegistration,
+          { context: { kind: "thread" }; availability: "action" }
+        > => tab.context.kind === "thread" && tab.availability === "action",
+      ),
+    ),
     newThreadPanelActions: stamp(set.newThreadPanelActions),
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
@@ -261,14 +370,22 @@ function flattenRegistrations(
     threadLists: stamp(set.threadLists),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadHeaderActions: stamp(set.threadHeaderActions),
+    threadContextSegments: stamp(set.threadContextSegments),
+    threadInfoRows: stamp(set.threadInfoRows),
+    threadRowMetadata: stamp(set.threadRowMetadata),
+    threadInfoSections: stamp(set.threadInfoSections),
+    threadContextCardRows: stamp(set.threadContextCardRows),
+    threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),
     sourceCodeRenderers: stamp(set.sourceCodeRenderers),
     diffRenderers: stamp(set.diffRenderers),
+    composers: stamp(set.composers),
     messageDirectives: stamp(set.messageDirectives),
     codeFenceRenderers: stamp(set.codeFenceRenderers),
     messageActions: stamp(set.messageActions),
+    messageMetadata: stamp(set.messageMetadata),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     icons: stamp(set.icons),
@@ -294,6 +411,12 @@ function collectKind<K extends SlotKind>(
   pluginIds: readonly string[],
 ): PluginSlotSnapshot[K][number][] {
   const collected: PluginSlotSnapshot[K][number][] = [];
+  if (kind === "tabs") {
+    for (const slot of coreTabs) collected.push(slot);
+  }
+  if (kind === "messageMetadata") {
+    for (const slot of coreMessageMetadata) collected.push(slot);
+  }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);
     if (flattened === undefined) continue;
@@ -448,6 +571,10 @@ export function beginPluginSlotBatch(options: {
   };
 }
 
+export function flushPluginSlotChanges(): void {
+  flushChange();
+}
+
 export function setPluginSlotRegistrations(
   pluginId: string,
   registrations: PluginRegistrationSet,
@@ -482,6 +609,12 @@ export function getPluginSlotSnapshot(): PluginSlotSnapshot {
 
 export function usePluginSlots(): PluginSlotSnapshot {
   return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);
+}
+
+export function usePluginFrontendRegistered(pluginId: string): boolean {
+  return useSyncExternalStore(subscribePluginSlots, () =>
+    registrationsByPluginId.has(pluginId),
+  );
 }
 
 let builtinPluginIds: ReadonlySet<string> = new Set();

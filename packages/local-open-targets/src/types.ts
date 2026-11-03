@@ -1,4 +1,5 @@
 import type {
+  WorkspaceOpenTarget,
   WorkspaceOpenTargetCapabilities,
   WorkspaceOpenTargetIcon,
   WorkspaceOpenTargetId,
@@ -28,6 +29,7 @@ export interface OpenPathInTargetArgs {
 
 export interface ListWorkspaceOpenTargetsOptions {
   path?: string;
+  baseTargets?: WorkspaceOpenTarget[];
 }
 
 export interface ExecFileResult {
@@ -49,6 +51,7 @@ export interface WorkspaceOpenTargetRuntime {
   desktopFileDirectories?: string[];
   env?: NodeJS.ProcessEnv;
   execFile: ExecFileHandler;
+  hasExecutable: (command: string, env?: NodeJS.ProcessEnv) => Promise<boolean>;
   platform: NodeJS.Platform;
 }
 

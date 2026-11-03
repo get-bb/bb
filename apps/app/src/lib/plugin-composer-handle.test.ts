@@ -38,6 +38,7 @@ const published: ComposerEditorBridge[] = [];
 function publishEditor(
   state: Partial<ComposerEditorState> = {},
   insertAtCursor: ComposerEditorBridge["insertAtCursor"] = () => true,
+  submit: ComposerEditorBridge["submit"] = async () => {},
 ): ComposerEditorBridge {
   const bridge: ComposerEditorBridge = {
     openPopup: () => false,
@@ -54,6 +55,7 @@ function publishEditor(
     pluginCustomizable: true,
     state: { ...READY, ...state },
     insertAtCursor,
+    submit,
   };
   publishComposerEditorBridge(KEY, bridge);
   published.push(bridge);
@@ -204,15 +206,14 @@ describe("composer handle", () => {
         text: "See @a.ts",
         mentions: [
           {
-            start: 4,
-            end: 9,
-            resource: {
-              kind: "plugin",
-              pluginId: "demo",
-              icon: null,
-              itemId: "files:a.ts",
-              label: "a.ts",
-            },
+            from: 4,
+            to: 9,
+            kind: "plugin",
+            pluginId: "demo",
+            icon: null,
+            provider: "files",
+            id: "a.ts",
+            label: "a.ts",
           },
         ],
       },
@@ -292,56 +293,63 @@ describe("composer handle", () => {
   });
 
   it("waits for uploads before submitting and rejects when one fails", async () => {
-    const submit = vi.fn(async () => {});
-    const { target } = makeTarget(
-      { text: "ship it", mentions: [], attachments: [] },
-      { submit },
-    );
-    const { handle } = makeHandle(target);
-
-    publishEditor({
-      isAttaching: true,
-      isSubmittingBlocked: true,
-      submittingBlockedReason: "Uploading attachments...",
+    const submit = vi.fn<ComposerEditorBridge["submit"]>(async () => {});
+    const { target } = makeTarget({
+      text: "ship it",
+      mentions: [],
+      attachments: [],
     });
-    const pending = handle.submit({ experimental_data: { kind: "draft" } });
+    const { handle } = makeHandle(target);
+    const sendAt = Date.now() + 60_000;
+
+    publishEditor(
+      {
+        isAttaching: true,
+        isSubmittingBlocked: true,
+        submittingBlockedReason: "Uploading attachments...",
+      },
+      undefined,
+      submit,
+    );
+    const pending = handle.submit({
+      experimental_mode: "steer-if-active",
+      sendAt,
+      experimental_data: { kind: "draft" },
+    });
     await Promise.resolve();
     expect(submit).not.toHaveBeenCalled();
-    publishEditor();
+    publishEditor({}, undefined, submit);
     await pending;
-    expect(submit).toHaveBeenCalledWith(
-      { experimental_data: { kind: "draft" } },
-      { pluginId: "demo", data: { kind: "draft" } },
-    );
-
-    publishEditor({ isAttaching: true, isSubmittingBlocked: true });
-    const failing = handle.submit({ sendAt: Date.now() + 60_000 });
-    publishEditor({
-      isAttaching: false,
-      attachmentError: "Failed to attach: a.png",
+    expect(submit).toHaveBeenCalledWith({
+      mode: "steer-if-active",
+      sendAt,
+      pluginSubmission: { pluginId: "demo", data: { kind: "draft" } },
     });
+
+    publishEditor(
+      { isAttaching: true, isSubmittingBlocked: true },
+      undefined,
+      submit,
+    );
+    const failing = handle.submit({ sendAt });
+    publishEditor(
+      { isAttaching: false, attachmentError: "Failed to attach: a.png" },
+      undefined,
+      submit,
+    );
     await expect(failing).rejects.toThrow("Failed to attach: a.png");
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects submits the host's send button would block", async () => {
-    const submit = vi.fn(async () => {});
-    const { target } = makeTarget(emptyDraft, { submit });
+  it("rejects off screen and passes the composer's own rejection through", async () => {
+    const { target } = makeTarget(emptyDraft);
     const { handle } = makeHandle(target);
 
-    await expect(
-      handle.submit({ sendAt: Date.now() + 60_000 }),
-    ).rejects.toThrow(/isn't on screen/);
-    publishEditor({
-      isSubmittingBlocked: true,
-      submittingBlockedReason: "Select a model.",
+    await expect(handle.submit()).rejects.toThrow(/isn't on screen/);
+    publishEditor({}, undefined, async () => {
+      throw new Error("Select a model.");
     });
-    expect(handle.isSubmittingBlocked).toBe(true);
-    expect(handle.submittingBlockedReason).toBe("Select a model.");
-    await expect(
-      handle.submit({ sendAt: Date.now() + 60_000 }),
-    ).rejects.toThrow("Select a model.");
-    expect(submit).not.toHaveBeenCalled();
+    await expect(handle.submit()).rejects.toThrow("Select a model.");
   });
 
   it("drops old-method writes with a warning and throws from new methods once the draft is gone", async () => {
@@ -349,7 +357,7 @@ describe("composer handle", () => {
     let available = true;
     const { target, current } = makeTarget(
       { text: "keep", mentions: [], attachments: [] },
-      { isAvailable: () => available, submit: async () => {} },
+      { isAvailable: () => available },
     );
     const { handle } = makeHandle(target);
 

@@ -12,7 +12,6 @@ import {
   FAQ_PRIVACY,
   FAQ_SUBSCRIPTIONS,
   cell,
-  linkedCell,
   faqFree,
   faqPhone,
   faqPlatforms,
@@ -20,6 +19,7 @@ import {
   faqTalk,
   faqUsageLimit,
   price,
+  faqScript,
 } from "../compare-content";
 import {
   AGENTS_COPY,
@@ -56,17 +56,14 @@ export const comparison: Comparison = {
     agentsSection(AGENTS_COPY),
   ],
   tableNote:
-    "marks paid Conductor features. Checked October 20, 2026: Pro $50/month; Teams $60/person/month. Sources are linked below.",
+    "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
   table: [
     {
       title: "Price and license",
       rows: [
         {
           ...BB_ROWS.pricing,
-          competitor: {
-            ...price("$0 local", "Pro $50/month; Teams $60/person/month"),
-            href: "https://www.conductor.build/pricing",
-          },
+          competitor: price("$0", "Teams at $60 per person a month"),
         },
         { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
@@ -79,14 +76,7 @@ export const comparison: Comparison = {
         { ...BB_ROWS.macos, competitor: cell("yes", "Mac app") },
         {
           ...BB_ROWS.mobile,
-          competitor: {
-            ...linkedCell(
-              "partial",
-              "iOS: cloud and experimental Mac remote control",
-              "https://www.conductor.build/docs/reference/remote-control",
-            ),
-            pro: true,
-          },
+          competitor: cell("partial", "iOS, for cloud workspaces", true),
         },
       ],
     },
@@ -113,14 +103,7 @@ export const comparison: Comparison = {
         },
         {
           ...BB_ROWS.handoff,
-          competitor: {
-            ...linkedCell(
-              "partial",
-              "Hosted MCP and API for cloud workspaces (beta)",
-              "https://www.conductor.build/docs/api/mcp",
-            ),
-            pro: true,
-          },
+          competitor: cell("partial", "Via MCP, cloud workspaces", true),
         },
       ],
     },
@@ -177,59 +160,6 @@ export const comparison: Comparison = {
       title: "Switching from Conductor",
       items: [
         {
-          question: "When is Conductor a better fit?",
-          answer: (
-            <p>
-              Conductor is a better fit if you want a hosted workspace where
-              teammates can prompt agents together in real time. Pro supports
-              groups of up to five Pro users; Teams adds centralized billing
-              and an admin portal. See{" "}
-              <a href="https://www.conductor.build/pricing">
-                Conductor’s plans
-              </a>
-              .
-            </p>
-          ),
-        },
-        {
-          question: "What do Conductor users value?",
-          answer: (
-            <>
-              <p>
-                Two comments in a public r/conductorbuild thread that asked
-                users for their favourite thing in Conductor describe the
-                appeal of keeping the work together:
-              </p>
-              <blockquote>
-                <p>“I like that it fits my workflow. Everything I need is right there.”</p>
-                <p>
-                  <a href="https://www.reddit.com/r/conductorbuild/comments/1wp7deq/favourite_thing_in_conductor/pbuil6i/">
-                    A Reddit user in r/conductorbuild, September 24, 2026
-                  </a>
-                </p>
-              </blockquote>
-              <blockquote>
-                <p>
-                  “I really like the way the projects are structured with
-                  worktrees, makes it easy to keep things organised and do more
-                  work in parallel.”
-                </p>
-                <p>
-                  <a href="https://www.reddit.com/r/conductorbuild/comments/1wp7deq/favourite_thing_in_conductor/pbxng4x/">
-                    A Reddit user in r/conductorbuild, September 25, 2026
-                  </a>
-                </p>
-              </blockquote>
-              <p>
-                These are individual experiences, not a survey or endorsements
-                of bb. They are good reasons to value Conductor’s workflow.
-                Consider bb if you also want agents to change the app with
-                plugins, or need a Windows or Linux desktop app (both in Alpha).
-              </p>
-            </>
-          ),
-        },
-        {
           question: "What’s the difference between bb and Conductor?",
           answer: (
             <p>
@@ -237,12 +167,8 @@ export const comparison: Comparison = {
               Git worktrees. bb is free for any team size, open source, and runs
               on Mac, Windows, and Linux. Conductor is a closed-source Mac app
               that’s free locally, with cloud workspaces, scheduled routines,
-              multiplayer, and its mobile app on the Pro plan, at $50 a month. Its iOS app
-              also supports experimental remote control of local Mac workspaces.{" "}
-              <a href="https://www.conductor.build/docs/reference/remote-control">
-                Conductor’s remote-control guide
-              </a>{" "}
-              describes the setup. In bb, your agents keep working on any computer you own, follow
+              multiplayer, and its mobile app on the Pro plan, at $50 a month.
+              In bb, your agents keep working on any computer you own, follow
               you to your phone, and can start each other and hear back.
             </p>
           ),
@@ -253,9 +179,8 @@ export const comparison: Comparison = {
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
               use and change it for anything, including at work. Conductor is
-              closed source, with free local Mac workspaces. Its{" "}
-              <a href="https://www.conductor.build/pricing">paid plans</a>
-              {" "}start at $50 a month for Pro and $60 per person a month for Teams.{" "}
+              closed source and free only for local workspaces on a Mac, with
+              Pro at $50 a month and Teams at $60 per person a month.{" "}
               <a href="/download/macos">Download bb</a>.
             </p>
           ),
@@ -366,15 +291,7 @@ export const comparison: Comparison = {
           ),
         },
         faqPhone(
-          <>
-            Conductor’s iOS app supports cloud workspaces and{" "}
-            <a href="https://www.conductor.build/docs/reference/remote-control">
-              experimental remote control of local Mac workspaces
-            </a>
-            . The Mac must stay awake, online, and running Conductor.
-            Conductor’s <a href="https://www.conductor.build/pricing">pricing</a>
-            {" "}lists the mobile app under Pro.
-          </>,
+          "Conductor’s iPhone app works with its cloud workspaces, on the $50-a-month Pro plan.",
         ),
         faqSchedule("Conductor’s routines run only in its cloud, on Pro."),
         FAQ_LAPTOP,
@@ -391,41 +308,14 @@ export const comparison: Comparison = {
         FAQ_PERMISSIONS,
         FAQ_CUSTOMIZE,
         FAQ_PLUGIN_TRUST,
-        {
-          question: "Can another agent or app drive bb and Conductor?",
-          answer: (
-            <p>
-              Yes. In bb, ask an agent to set up a schedule, start threads, or
-              build a plugin that changes the app. Other apps can drive bb
-              through its MCP server and SDK. Conductor’s{" "}
-              <a href="https://www.conductor.build/docs/api">API</a> and{" "}
-              <a href="https://www.conductor.build/docs/api/mcp">hosted MCP server</a>
-              {" "}let agents create cloud workspaces, send tasks, follow progress,
-              and read results. Both Conductor interfaces are in beta; its
-              pricing page includes API access in Pro.
-            </p>
-          ),
-        },
-        {
-          question: "Can I use my ChatGPT plan in Conductor?",
-          answer: (
-            <p>
-              Yes. Conductor added Sign in with ChatGPT in{" "}
-              <a href="https://www.conductor.build/changelog/0.89.0-sign-in-with-chatgpt">
-                version 0.89.0 on September 29, 2026
-              </a>
-              . In Settings → Agents → Codex, choose Continue with ChatGPT.
-              Using an existing AI subscription is something both apps support.
-            </p>
-          ),
-        },
+        faqScript(null),
       ],
     },
     {
       title: "Price, platforms, and privacy",
       items: [
         faqFree(
-          ", while Conductor’s Pro plan includes cloud workspaces, routines, and its mobile app at $50 a month",
+          ", while Conductor puts its mobile app, cloud workspaces, and routines on its Pro plan, at $50 a month",
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),

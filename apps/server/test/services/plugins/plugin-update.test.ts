@@ -2,6 +2,7 @@ import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update
 import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
 import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
 import { execFile } from "node:child_process";
+import { cpSync } from "node:fs";
 import {
   mkdtemp,
   mkdir,
@@ -16,7 +17,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   getInstalledPlugin,
   getPluginKvValue,
@@ -98,6 +108,7 @@ describe("plugin update scheduling", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -132,6 +143,7 @@ describe("plugin update scheduling", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem,
       },
@@ -251,6 +263,7 @@ describe("plugin update scheduling", () => {
         hub: {
           getDaemonSessionIdForHost: () => null,
           notifyPluginChanged: () => {},
+          onWatchedTargets: () => () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
@@ -318,6 +331,7 @@ describe("plugin update scheduling", () => {
 });
 
 describe("plugin update service and routes", () => {
+  let seedDir: string;
   let db: DbConnection;
   let workDir: string;
   let repo: string;
@@ -332,15 +346,51 @@ describe("plugin update service and routes", () => {
       }) => Promise<void>)
     | undefined;
 
+  beforeAll(async () => {
+    seedDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-seeds-"));
+    const seedRepo = join(seedDir, "repo");
+    await mkdir(seedRepo, { recursive: true });
+    await git(seedRepo, ["init", "-q", "-b", "main"]);
+    await git(seedRepo, ["config", "user.email", "test@example.com"]);
+    await git(seedRepo, ["config", "user.name", "Test"]);
+    await commitPlugin(seedRepo, "1.0.0");
+
+    const tagged = join(seedDir, "tagged");
+    await mkdir(tagged, { recursive: true });
+    await git(tagged, ["init", "-q", "-b", "main"]);
+    await git(tagged, ["config", "user.email", "test@example.com"]);
+    await git(tagged, ["config", "user.name", "Test"]);
+    await writeFile(
+      join(tagged, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-tagged",
+        version: "1.0.0",
+        bb: {
+          name: "Tagged fixture",
+          description: "Tagged release fixture.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(tagged, "server.ts"),
+      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
+    );
+    await git(tagged, ["add", "-A"]);
+    await git(tagged, ["commit", "-qm", "1.0.0"]);
+    await git(tagged, ["tag", "v1.0.0"]);
+  });
+
+  afterAll(async () => {
+    await rm(seedDir, { recursive: true, force: true });
+  });
+
   beforeEach(async () => {
     db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-"));
     repo = join(workDir, "repo");
-    await mkdir(repo, { recursive: true });
-    await git(repo, ["init", "-q", "-b", "main"]);
-    await git(repo, ["config", "user.email", "test@example.com"]);
-    await git(repo, ["config", "user.name", "Test"]);
-    await commitPlugin(repo, "1.0.0");
+    cpSync(join(seedDir, "repo"), repo, { recursive: true });
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
@@ -350,6 +400,7 @@ describe("plugin update service and routes", () => {
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -382,6 +433,45 @@ describe("plugin update service and routes", () => {
     db.$client.close();
     await rm(workDir, { recursive: true, force: true });
   });
+
+  it.each(["main", "semver:^1.0.0"])(
+    "keeps healthy plugin results when the git remote for %s is unavailable",
+    async (selector) => {
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@${selector}`, { kind: "root" });
+      const offline = join(workDir, "offline");
+      await rename(tagged, offline);
+
+      const response = await app.request("/plugins/updates/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect({
+        status: response.status,
+        ...(await response.json()),
+      }).toMatchObject({
+        status: 200,
+        results: [
+          {
+            id: "tagged",
+            outcome: "unavailable",
+            detail: expect.stringContaining("git ls-remote failed"),
+          },
+          { id: "updater", outcome: "current" },
+        ],
+      });
+      expect(service.listUpdateResults()).toMatchObject([
+        { id: "tagged", outcome: "unavailable" },
+        { id: "updater", outcome: "current" },
+      ]);
+
+      await rename(offline, tagged);
+      await expect(service.checkForUpdates("tagged")).resolves.toMatchObject([
+        { id: "tagged", outcome: "current" },
+      ]);
+    },
+  );
 
   it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
     const updateState = {
@@ -603,7 +693,7 @@ describe("plugin update service and routes", () => {
           id: "updater",
           outcome: "update-available",
           installed: { version: expect.stringMatching(/^[0-9a-f]{40}$/) },
-          candidate: { version: nextCommit },
+          candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
         },
       ],
     });
@@ -818,12 +908,14 @@ describe("plugin update service and routes", () => {
     vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -921,12 +1013,14 @@ describe("plugin update service and routes", () => {
     );
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -960,12 +1054,14 @@ describe("plugin update service and routes", () => {
 
     await service.stop();
     service = createPluginService({
+      bundledPlugins: [],
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
         notifyPluginSignal: () => 0,
         notifySystem: () => {},
       },
@@ -1078,12 +1174,14 @@ describe("plugin update service and routes", () => {
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
+        bundledPlugins: [],
         aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
           getDaemonSessionIdForHost: () => null,
           notifyPluginChanged: () => {},
+          onWatchedTargets: () => () => {},
           notifyPluginSignal: () => 0,
           notifySystem: () => {},
         },
@@ -1342,30 +1440,7 @@ describe("plugin update service and routes", () => {
   });
   async function taggedRepo(): Promise<string> {
     const tagged = join(workDir, "tagged");
-    await mkdir(tagged, { recursive: true });
-    await git(tagged, ["init", "-q", "-b", "main"]);
-    await git(tagged, ["config", "user.email", "test@example.com"]);
-    await git(tagged, ["config", "user.name", "Test"]);
-    await writeFile(
-      join(tagged, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-tagged",
-        version: "1.0.0",
-        bb: {
-          name: "Tagged fixture",
-          description: "Tagged release fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(tagged, "server.ts"),
-      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
-    );
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "1.0.0"]);
-    await git(tagged, ["tag", "v1.0.0"]);
+    cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
     return tagged;
   }
 
@@ -1388,12 +1463,17 @@ describe("plugin update service and routes", () => {
       {
         id: "tagged",
         outcome: "update-available",
+        installed: { label: "1.0.0" },
         candidate: {
           version: nextCommit,
+          label: "1.1.0",
           display: expect.stringContaining("@v1.1.0"),
         },
       },
     ]);
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({ availableVersion: nextCommit, availableLabel: "1.1.0" });
 
     const applied = await service.applyUpdate("tagged");
     expect(applied).toMatchObject({ ok: true, result: { applied: true } });
@@ -1405,6 +1485,56 @@ describe("plugin update service and routes", () => {
     expect(await service.checkForUpdates("tagged")).toMatchObject([
       { id: "tagged", outcome: "current" },
     ]);
+  });
+
+  it("names a rolled-back release by its tag version", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    await writeFile(
+      join(tagged, "server.ts"),
+      'export default function plugin() { throw new Error("tagged activation failed"); }',
+    );
+    const brokenCommit = await releaseTag(tagged, "v1.1.0");
+
+    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: false, outcome: "rolled-back" },
+    });
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({
+      availableLabel: "1.1.0",
+      lastFailure: { version: brokenCommit, label: "1.1.0" },
+    });
+  });
+
+  it("labels update state saved before versions carried labels", async () => {
+    const tagged = await taggedRepo();
+    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+    const nextCommit = await releaseTag(tagged, "v1.1.0");
+    const [checked] = await service.checkForUpdates("tagged");
+    if (checked?.candidate === undefined) {
+      throw new Error("expected an update candidate");
+    }
+    const { label: _installedLabel, ...installed } = checked.installed;
+    const { label: _candidateLabel, ...candidate } = checked.candidate;
+    db.$client
+      .prepare("UPDATE plugins SET update_status_detail = ? WHERE id = ?")
+      .run(JSON.stringify({ ...checked, installed, candidate }), "tagged");
+
+    expect(
+      service.listUpdateResults().find((entry) => entry.id === "tagged"),
+    ).toMatchObject({
+      installed: { label: checked.installed.version.slice(0, 7) },
+      candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
+    });
+    expect(
+      service.list().find((entry) => entry.id === "tagged")?.updateState,
+    ).toMatchObject({
+      outcome: "update-available",
+      availableVersion: nextCommit,
+      availableLabel: nextCommit.slice(0, 7),
+    });
   });
 
   it("refuses to resolve a release tag that was moved to another commit", async () => {

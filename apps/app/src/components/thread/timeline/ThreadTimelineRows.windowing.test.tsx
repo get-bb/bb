@@ -76,7 +76,6 @@ function renderDelegation() {
             }),
           ]}
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />
       </QueryClientProvider>
     </MemoryRouter>,
@@ -185,7 +184,6 @@ describe("ThreadTimelineRows windowing", () => {
         getScrollElement: () => scrollElement,
         isAtBottom: false,
         scrollElementIntoView: vi.fn(),
-        scrollElementIntoViewClampedToMaxScroll: vi.fn(),
         scrollToBottom: vi.fn(),
       };
       const rows = Array.from({ length: count }, (_, index) =>
@@ -204,7 +202,6 @@ describe("ThreadTimelineRows windowing", () => {
                 <ThreadTimelineRows
                   timelineRows={rows}
                   threadRuntimeDisplayStatus="idle"
-                  workspaceRootPath={undefined}
                 />
               </CompactViewportOverrideProvider>
             </BottomAnchorContext.Provider>
@@ -245,7 +242,6 @@ describe("ThreadTimelineRows windowing", () => {
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       scrollToBottom: vi.fn(),
     };
     const rows = Array.from({ length: 80 }, (_, index) => {
@@ -268,7 +264,6 @@ describe("ThreadTimelineRows windowing", () => {
                 threadId="thr_steer_window"
                 timelineRows={rows}
                 threadRuntimeDisplayStatus="idle"
-                workspaceRootPath={undefined}
               />
             </CompactViewportOverrideProvider>
           </BottomAnchorContext.Provider>
@@ -300,7 +295,6 @@ describe("ThreadTimelineRows windowing", () => {
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
-      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
       scrollToBottom: vi.fn(),
     };
     const rows = Array.from({ length: 80 }, (_, index) =>
@@ -341,7 +335,6 @@ describe("ThreadTimelineRows windowing", () => {
                 timelineRows={rows}
                 timelineNavigationTargetRowId="search-message-40"
                 threadRuntimeDisplayStatus="idle"
-                workspaceRootPath={undefined}
               />
             </CompactViewportOverrideProvider>
           </BottomAnchorContext.Provider>

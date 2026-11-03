@@ -9,10 +9,7 @@ type ServiceTierProviderSource = Pick<ProviderInfo, "serviceTiers"> & {
   capabilities: Pick<ProviderInfo["capabilities"], "supportsServiceTier">;
 };
 
-type ServiceTierModelSource = Pick<
-  AvailableModel,
-  "supportedServiceTiers"
->;
+type ServiceTierModelSource = Pick<AvailableModel, "supportedServiceTiers">;
 
 export function providerServiceTierOptions(
   provider: ServiceTierProviderSource | null | undefined,
@@ -46,6 +43,7 @@ export function resolveServiceTierOptions(args: {
         id: tier.id,
         label: modelTier.label ?? tier.label,
         ...(description === undefined ? {} : { description }),
+        ...(tier.icon === undefined ? {} : { icon: tier.icon }),
       },
     ];
   });

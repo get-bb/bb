@@ -16,19 +16,17 @@ import * as radixPopover from "@radix-ui/react-popover";
 import * as radixSelect from "@radix-ui/react-select";
 import * as radixTooltip from "@radix-ui/react-tooltip";
 import * as sonner from "sonner";
-import { whenToasterSettled } from "@/components/ui/app-toast-runtime";
 import * as vaul from "vaul";
-import * as pierreDiffs from "@pierre/diffs";
 import * as clsx from "clsx";
 import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
 import { createDebouncedCallbackScheduler } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
-import type { QueryClient } from "@tanstack/react-query";
+import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
-import { createRecordingToast } from "@/lib/notifications/plugin-toast-recording";
+import { createPluginToast } from "@/lib/notifications/plugin-toast";
 import { appQueryClient } from "./app-query-client";
 import {
   setServerPluginsStarting,
@@ -43,18 +41,27 @@ import type {
 import { normalizePluginThreadRowStatus } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
-import { applyPluginCss, retainPluginCss } from "./plugin-css";
+import {
+  applyPluginCss,
+  prefetchPluginCss,
+  retainPluginCss,
+} from "./plugin-css";
+import { frontendPriorityPluginIds } from "./plugin-surface-providers";
+import { prefetchPluginModule } from "./plugin-module-preload";
 import {
   collectPluginAppRegistrations,
   isPluginAppDefinition,
 } from "./plugin-app-definition";
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
-import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
-import { getPluginPanelRoutePluginId } from "./route-paths";
-import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
+import { createRetryingModuleLoader } from "./plugin-frontend-lazy";
+import {
+  pluginSdkAppImplementation,
+  retiredPluginSdkAppMembers,
+} from "./plugin-sdk-app-impl";
 import {
   beginPluginSlotBatch,
+  flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
   setPluginSlotRegistrations,
@@ -74,6 +81,7 @@ interface PluginFrontendBundle {
   sdkMajor: number;
   sdkVersion: string;
   compatible: boolean;
+  runtimeSlots: string[];
 }
 
 export interface PluginFrontendCandidate {
@@ -131,6 +139,7 @@ export type PluginFrontendDiagnostic =
 
 interface PluginFrontendLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
+  prefetchModule: (url: string) => void;
   warn: (message: string) => void;
 }
 
@@ -150,6 +159,19 @@ export async function loadPluginFrontend(
     };
   }
   try {
+    const runtimeGroups = lazyRuntimeGroups.filter((group) =>
+      group.slots.some((slot) => bundle.runtimeSlots.includes(slot)),
+    );
+    if (runtimeGroups.length > 0) {
+      const slotsProvided = Promise.all(
+        runtimeGroups.map(async (group) => {
+          const slots = await group.load();
+          Object.assign(installPluginRuntime(), slots);
+        }),
+      );
+      deps.prefetchModule(bundle.jsUrl);
+      await slotsProvided;
+    }
     const mod = await deps.importModule(bundle.jsUrl);
     if (typeof mod !== "object" || mod === null) {
       throw new Error("bundle did not evaluate to a module namespace");
@@ -174,7 +196,7 @@ interface BbPluginRuntime {
   reactDomClient: unknown;
   jsxRuntime: unknown;
   jsxDevRuntime: unknown;
-  pluginSdkApp: PluginSdkApp;
+  pluginSdkApp: PluginSdkApp & typeof retiredPluginSdkAppMembers;
   radixAlertDialog: unknown;
   radixContextMenu: unknown;
   radixDialog: unknown;
@@ -187,8 +209,8 @@ interface BbPluginRuntime {
   radixTooltip: unknown;
   sonner: unknown;
   vaul: unknown;
-  pierreDiffs: unknown;
-  pierreDiffsReact: unknown;
+  pierreDiffs?: unknown;
+  pierreDiffsReact?: unknown;
   clsx: unknown;
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
@@ -199,16 +221,18 @@ interface BbPluginRuntime {
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
 
-export function installPluginRuntime(): void {
+export function installPluginRuntime(): BbPluginRuntime {
   const host = globalThis as RuntimeHost;
-  if (host.__bbPluginRuntime !== undefined) return;
-  host.__bbPluginRuntime = {
+  host.__bbPluginRuntime ??= {
     react,
     reactDom,
     reactDomClient,
     jsxRuntime,
     jsxDevRuntime,
-    pluginSdkApp: pluginSdkAppImplementation,
+    pluginSdkApp: {
+      ...pluginSdkAppImplementation,
+      ...retiredPluginSdkAppMembers,
+    },
     radixAlertDialog,
     radixContextMenu,
     radixDialog,
@@ -219,10 +243,8 @@ export function installPluginRuntime(): void {
     radixPopover,
     radixSelect,
     radixTooltip,
-    sonner: { ...sonner, toast: createRecordingToast(sonner.toast) },
+    sonner: { ...sonner, toast: createPluginToast(sonner.toast) },
     vaul,
-    pierreDiffs,
-    pierreDiffsReact: createGatedPierreDiffsReact(),
     clsx,
     tailwindMerge,
     classVarianceAuthority,
@@ -230,6 +252,32 @@ export function installPluginRuntime(): void {
     questionFormHost,
     voiceInputTextarea,
   };
+  return host.__bbPluginRuntime;
+}
+
+const lazyRuntimeGroups = [
+  {
+    slots: ["pierreDiffs", "pierreDiffsReact"],
+    load: createRetryingModuleLoader(async () => {
+      const { pierreRuntimeSlots } = await import("./plugin-pierre-runtime");
+      return pierreRuntimeSlots;
+    }),
+  },
+] satisfies {
+  slots: (keyof BbPluginRuntime)[];
+  load: () => Promise<Partial<BbPluginRuntime>>;
+}[];
+
+async function fetchEnabledPluginList(queryClient: QueryClient) {
+  for (;;) {
+    try {
+      return await queryClient.fetchQuery(
+        pluginListQueryOptions({ enabled: true }),
+      );
+    } catch (error) {
+      if (!isCancelledError(error)) throw error;
+    }
+  }
 }
 
 export async function fetchFrontendCandidates(
@@ -237,9 +285,7 @@ export async function fetchFrontendCandidates(
 ): Promise<PluginFrontendCandidate[]> {
   let plugins;
   try {
-    plugins = await queryClient.fetchQuery(
-      pluginListQueryOptions({ enabled: true }),
-    );
+    plugins = await fetchEnabledPluginList(queryClient);
   } catch (error) {
     setServerPluginsStarting(false);
     if (
@@ -294,28 +340,33 @@ export async function fetchFrontendCandidates(
 export { applyPluginCss } from "./plugin-css";
 
 const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
+const PLUGIN_FRONTEND_DOWNLOAD_AHEAD = 3;
 
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
-  routePluginId: string | null,
+  priorityPluginIds: readonly string[],
 ): PluginFrontendCandidate[] {
-  return [...candidates].sort((left, right) => {
-    if (left.pluginId === routePluginId) return -1;
-    if (right.pluginId === routePluginId) return 1;
-    return left.bundle.jsBytes - right.bundle.jsBytes;
-  });
+  const rank = (pluginId: string) => {
+    const index = priorityPluginIds.indexOf(pluginId);
+    return index === -1 ? priorityPluginIds.length : index;
+  };
+  return [...candidates].sort(
+    (left, right) =>
+      rank(left.pluginId) - rank(right.pluginId) ||
+      left.bundle.jsBytes - right.bundle.jsBytes,
+  );
 }
 
 async function runWithConcurrencyLimit<T>(
   items: readonly T[],
   limit: number,
-  worker: (item: T) => Promise<void>,
+  worker: (item: T, index: number) => Promise<void>,
 ): Promise<void> {
   let next = 0;
   const lane = async (): Promise<void> => {
     while (next < items.length) {
-      const item = items[next++]!;
-      await worker(item);
+      const index = next++;
+      await worker(items[index]!, index);
     }
   };
   const lanes = Array.from(
@@ -360,6 +411,8 @@ export interface PluginFrontendReconcileDeps {
   importModule: (url: string) => Promise<unknown>;
   importRetryDelaysMs: readonly number[];
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
+  prefetchCss: (url: string) => void;
+  prefetchModule: (url: string) => void;
   retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
   setRegistrations: (
@@ -368,9 +421,11 @@ export interface PluginFrontendReconcileDeps {
   ) => void;
   removeRegistrations: (pluginId: string) => void;
   beginSlotBatch: () => () => void;
+  flushSlotBatch: () => void;
   warn: (message: string) => void;
-  routePluginId: () => string | null;
+  priorityPluginIds: () => readonly string[];
   mountTimeoutMs?: number;
+  cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
 }
 
@@ -390,6 +445,7 @@ interface ActivePluginFrontendGeneration {
 }
 
 const DEFAULT_CONTENT_SCRIPT_MOUNT_TIMEOUT_MS = 10_000;
+const DEFAULT_CSS_READY_TIMEOUT_MS = 15_000;
 
 class ContentScriptMountError extends Error {
   constructor(
@@ -571,6 +627,33 @@ async function mountWithTimeout(
   }
 }
 
+async function applyCssBeforePublish(
+  pluginId: string,
+  url: string | null,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  const applied = Promise.resolve(deps.applyCss(pluginId, url));
+  if (url === null) {
+    await applied;
+    return;
+  }
+  const timeoutMs = deps.cssReadyTimeoutMs ?? DEFAULT_CSS_READY_TIMEOUT_MS;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<void>((resolve) => {
+    timeoutId = setTimeout(() => {
+      deps.warn(
+        `[plugin:${pluginId}] stylesheet ${url} did not load within ${timeoutMs}ms; publishing the frontend without it`,
+      );
+      resolve();
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([applied, timedOut]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 async function activateContentScripts(
   pluginId: string,
   hash: string,
@@ -625,11 +708,18 @@ async function activateContentScripts(
 export async function reconcilePluginFrontends(
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  onChanges?: () => void,
 ): Promise<void> {
   if (state.tornDown) return;
   const candidates = await deps.fetchCandidates();
   if (state.tornDown) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
+  if (
+    [...state.records.keys()].some((pluginId) => !candidateIds.has(pluginId)) ||
+    candidates.some((candidate) => !isCandidateApplied(candidate, state))
+  ) {
+    onChanges?.();
+  }
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
     state.pendingControllers.get(pluginId)?.abort();
@@ -640,9 +730,12 @@ export async function reconcilePluginFrontends(
     state.diagnostics.delete(pluginId);
     deps.diagnosticsChanged?.();
   }
-  const closeSlotBatch = deps.beginSlotBatch();
+  let closeSlotBatch = deps.beginSlotBatch();
   try {
-    await reconcileCandidates(candidates, state, deps);
+    await reconcileCandidates(candidates, state, deps, () => {
+      closeSlotBatch();
+      closeSlotBatch = deps.beginSlotBatch();
+    });
   } finally {
     closeSlotBatch();
   }
@@ -652,187 +745,240 @@ async function reconcileCandidates(
   candidates: readonly PluginFrontendCandidate[],
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  priorityLoaded: () => void,
 ): Promise<void> {
-  await runWithConcurrencyLimit(
-    orderPluginFrontendCandidates(candidates, deps.routePluginId()),
-    PLUGIN_FRONTEND_LOAD_CONCURRENCY,
-    async (candidate) => {
-      const pluginId = candidate.pluginId;
-      const previous = state.records.get(pluginId);
+  const priorityPluginIds = deps.priorityPluginIds();
+  const ordered = orderPluginFrontendCandidates(candidates, priorityPluginIds);
+  let pendingPriority = ordered.filter((candidate) =>
+    priorityPluginIds.includes(candidate.pluginId),
+  ).length;
+  let untaken = 0;
+  const prefetched = new Set<string>();
+  const prefetchAhead = () => {
+    if (pendingPriority > 0) return;
+    for (const candidate of ordered.slice(
+      untaken,
+      untaken + PLUGIN_FRONTEND_DOWNLOAD_AHEAD,
+    )) {
       if (
-        previous !== undefined &&
-        previous.status !== "failed" &&
-        state.appliedHashes.get(pluginId) === candidate.bundle.hash
+        prefetched.has(candidate.pluginId) ||
+        !candidate.bundle.compatible ||
+        isCandidateApplied(candidate, state)
       ) {
-        return;
+        continue;
       }
-      deps.resetCrashedSlots(pluginId);
-      const previousAttempt = state.failedImportAttempts.get(pluginId);
-      let retryCount =
-        previous?.status === "failed" &&
-        previousAttempt?.hash === candidate.bundle.hash
-          ? previousAttempt.count + 1
-          : 0;
-      const importAttempt = () =>
-        loadPluginFrontend(
-          {
-            ...candidate,
-            bundle: {
-              ...candidate.bundle,
-              jsUrl:
-                retryCount === 0
-                  ? candidate.bundle.jsUrl
-                  : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount),
-            },
-          },
-          { importModule: deps.importModule, warn: deps.warn },
-        );
-      let record = await importAttempt();
-      for (const delayMs of deps.importRetryDelaysMs) {
-        if (record.status !== "failed" || state.tornDown) break;
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        retryCount += 1;
-        record = await importAttempt();
-      }
-      if (record.status === "failed") {
-        state.failedImportAttempts.set(pluginId, {
-          hash: candidate.bundle.hash,
-          count: retryCount,
-        });
-        await deactivateCommittedGeneration(pluginId, state, deps);
-        state.records.set(pluginId, record);
-        publishDiagnostic(state, deps, {
-          pluginId,
-          status: "failed",
-          active: null,
-          lastFailure: {
-            phase: "load",
-            message: record.error,
-            scriptId: null,
-          },
-        });
-        return;
-      }
-      state.failedImportAttempts.delete(pluginId);
-      if (record.status === "needs-update") {
-        await deactivateCommittedGeneration(pluginId, state, deps);
-        state.records.set(pluginId, record);
-        publishDiagnostic(state, deps, {
-          pluginId,
-          status: "needs-update",
-          active: null,
-          sdkMajor: record.sdkMajor,
-          sdkVersion: record.sdkVersion,
-          lastFailure: null,
-        });
-        return;
-      }
-
-      let collected: ReturnType<typeof collectPluginAppRegistrations>;
+      prefetched.add(candidate.pluginId);
+      deps.prefetchModule(candidate.bundle.jsUrl);
+    }
+  };
+  if (pendingPriority === 0) priorityLoaded();
+  await runWithConcurrencyLimit(
+    ordered,
+    PLUGIN_FRONTEND_LOAD_CONCURRENCY,
+    async (candidate, index) => {
+      untaken = index + 1;
+      prefetchAhead();
       try {
-        const definition = record.module.default;
-        if (!isPluginAppDefinition(definition)) {
-          throw new Error(
-            "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
-          );
+        await reconcileCandidate(candidate, state, deps);
+      } finally {
+        if (priorityPluginIds.includes(candidate.pluginId)) {
+          pendingPriority -= 1;
+          if (pendingPriority === 0) priorityLoaded();
         }
-        collected = collectPluginAppRegistrations(definition, (message) => {
-          deps.warn(`[plugin:${pluginId}] ${message}`);
-        });
-      } catch (error) {
-        const message = errorMessage(error);
-        deps.warn(
-          `[plugin:${pluginId}] frontend registration failed: ${message}`,
-        );
-        await deactivateCommittedGeneration(pluginId, state, deps);
-        const failed: PluginFrontendRecord = {
-          pluginId,
-          status: "failed",
-          error: message,
-        };
-        state.records.set(pluginId, failed);
-        publishDiagnostic(state, deps, {
-          pluginId,
-          status: "failed",
-          active: null,
-          lastFailure: { phase: "setup", message, scriptId: null },
-        });
-        return;
       }
-
-      const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
-      state.generationByPluginId.set(pluginId, generation);
-      await deps.applyCss(pluginId, candidate.bundle.cssUrl);
-      const cssRelease =
-        collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
-      const disposeFailures = await deactivateCommittedGeneration(
-        pluginId,
-        state,
-        deps,
-        false,
-      );
-      const controller = new AbortController();
-      const statusOwner = Symbol(
-        `${pluginId}:content-script-generation:${generation}`,
-      );
-      state.pendingControllers.set(pluginId, controller);
-      state.pendingStatusOwners.set(pluginId, statusOwner);
-      const activationResult = await activateContentScripts(
-        pluginId,
-        candidate.bundle.hash,
-        generation,
-        collected.contentScripts,
-        controller,
-        statusOwner,
-        cssRelease,
-        deps,
-      );
-      state.pendingControllers.delete(pluginId);
-      state.pendingStatusOwners.delete(pluginId);
-      if (state.tornDown) {
-        if (activationResult.ok) {
-          await disposeGeneration(pluginId, activationResult.activation, deps);
-        }
-        deps.removeRegistrations(pluginId);
-        deps.applyCss(pluginId, null);
-        return;
-      }
-      if (!activationResult.ok) {
-        deps.removeRegistrations(pluginId);
-        deps.applyCss(pluginId, null);
-        const failed: PluginFrontendRecord = {
-          pluginId,
-          status: "failed",
-          error: activationResult.failure.message,
-        };
-        state.records.set(pluginId, failed);
-        publishDiagnostic(state, deps, {
-          pluginId,
-          status: "failed",
-          active: null,
-          lastFailure: activationResult.failure,
-        });
-        return;
-      }
-
-      state.activeGenerations.set(pluginId, activationResult.activation);
-      deps.setRegistrations(pluginId, collected);
-      state.records.set(pluginId, record);
-      state.appliedHashes.set(pluginId, candidate.bundle.hash);
-      publishDiagnostic(state, deps, {
-        pluginId,
-        status: "active",
-        active: {
-          generation: activationResult.activation.generation,
-          hash: activationResult.activation.hash,
-          contentScriptIds: activationResult.activation.scripts.map(
-            ({ id }) => id,
-          ),
-        },
-        lastFailure: disposeFailures[0] ?? null,
-      });
     },
   );
+}
+
+function isCandidateApplied(
+  candidate: PluginFrontendCandidate,
+  state: PluginFrontendReconcileState,
+): boolean {
+  const previous = state.records.get(candidate.pluginId);
+  return (
+    previous !== undefined &&
+    previous.status !== "failed" &&
+    state.appliedHashes.get(candidate.pluginId) === candidate.bundle.hash
+  );
+}
+
+async function reconcileCandidate(
+  candidate: PluginFrontendCandidate,
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+): Promise<void> {
+  const pluginId = candidate.pluginId;
+  if (isCandidateApplied(candidate, state)) return;
+  const previous = state.records.get(pluginId);
+  deps.resetCrashedSlots(pluginId);
+  const previousAttempt = state.failedImportAttempts.get(pluginId);
+  let retryCount =
+    previous?.status === "failed" &&
+    previousAttempt?.hash === candidate.bundle.hash
+      ? previousAttempt.count + 1
+      : 0;
+  const importAttempt = () =>
+    loadPluginFrontend(
+      {
+        ...candidate,
+        bundle: {
+          ...candidate.bundle,
+          jsUrl:
+            retryCount === 0
+              ? candidate.bundle.jsUrl
+              : appendPluginImportRetry(candidate.bundle.jsUrl, retryCount),
+        },
+      },
+      {
+        importModule: deps.importModule,
+        prefetchModule: deps.prefetchModule,
+        warn: deps.warn,
+      },
+    );
+  if (candidate.bundle.cssUrl !== null)
+    deps.prefetchCss(candidate.bundle.cssUrl);
+  let record = await importAttempt();
+  for (const delayMs of deps.importRetryDelaysMs) {
+    if (record.status !== "failed" || state.tornDown) break;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    retryCount += 1;
+    record = await importAttempt();
+  }
+  if (record.status === "failed") {
+    state.failedImportAttempts.set(pluginId, {
+      hash: candidate.bundle.hash,
+      count: retryCount,
+    });
+    await deactivateCommittedGeneration(pluginId, state, deps);
+    state.records.set(pluginId, record);
+    publishDiagnostic(state, deps, {
+      pluginId,
+      status: "failed",
+      active: null,
+      lastFailure: {
+        phase: "load",
+        message: record.error,
+        scriptId: null,
+      },
+    });
+    return;
+  }
+  state.failedImportAttempts.delete(pluginId);
+  if (record.status === "needs-update") {
+    await deactivateCommittedGeneration(pluginId, state, deps);
+    state.records.set(pluginId, record);
+    publishDiagnostic(state, deps, {
+      pluginId,
+      status: "needs-update",
+      active: null,
+      sdkMajor: record.sdkMajor,
+      sdkVersion: record.sdkVersion,
+      lastFailure: null,
+    });
+    return;
+  }
+
+  let collected: ReturnType<typeof collectPluginAppRegistrations>;
+  try {
+    const definition = record.module.default;
+    if (!isPluginAppDefinition(definition)) {
+      throw new Error(
+        "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
+      );
+    }
+    collected = collectPluginAppRegistrations(definition, (message) => {
+      deps.warn(`[plugin:${pluginId}] ${message}`);
+    });
+  } catch (error) {
+    const message = errorMessage(error);
+    deps.warn(`[plugin:${pluginId}] frontend registration failed: ${message}`);
+    await deactivateCommittedGeneration(pluginId, state, deps);
+    const failed: PluginFrontendRecord = {
+      pluginId,
+      status: "failed",
+      error: message,
+    };
+    state.records.set(pluginId, failed);
+    publishDiagnostic(state, deps, {
+      pluginId,
+      status: "failed",
+      active: null,
+      lastFailure: { phase: "setup", message, scriptId: null },
+    });
+    return;
+  }
+
+  const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
+  state.generationByPluginId.set(pluginId, generation);
+  await applyCssBeforePublish(pluginId, candidate.bundle.cssUrl, deps);
+  const replacesActiveGeneration = state.activeGenerations.has(pluginId);
+  const cssRelease =
+    collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
+  const disposeFailures = await deactivateCommittedGeneration(
+    pluginId,
+    state,
+    deps,
+    false,
+  );
+  const controller = new AbortController();
+  const statusOwner = Symbol(
+    `${pluginId}:content-script-generation:${generation}`,
+  );
+  state.pendingControllers.set(pluginId, controller);
+  state.pendingStatusOwners.set(pluginId, statusOwner);
+  const activationResult = await activateContentScripts(
+    pluginId,
+    candidate.bundle.hash,
+    generation,
+    collected.contentScripts,
+    controller,
+    statusOwner,
+    cssRelease,
+    deps,
+  );
+  state.pendingControllers.delete(pluginId);
+  state.pendingStatusOwners.delete(pluginId);
+  if (state.tornDown) {
+    if (activationResult.ok) {
+      await disposeGeneration(pluginId, activationResult.activation, deps);
+    }
+    deps.removeRegistrations(pluginId);
+    deps.applyCss(pluginId, null);
+    return;
+  }
+  if (!activationResult.ok) {
+    deps.removeRegistrations(pluginId);
+    deps.applyCss(pluginId, null);
+    const failed: PluginFrontendRecord = {
+      pluginId,
+      status: "failed",
+      error: activationResult.failure.message,
+    };
+    state.records.set(pluginId, failed);
+    publishDiagnostic(state, deps, {
+      pluginId,
+      status: "failed",
+      active: null,
+      lastFailure: activationResult.failure,
+    });
+    return;
+  }
+
+  state.activeGenerations.set(pluginId, activationResult.activation);
+  deps.setRegistrations(pluginId, collected);
+  if (replacesActiveGeneration) deps.flushSlotBatch();
+  state.records.set(pluginId, record);
+  state.appliedHashes.set(pluginId, candidate.bundle.hash);
+  publishDiagnostic(state, deps, {
+    pluginId,
+    status: "active",
+    active: {
+      generation: activationResult.activation.generation,
+      hash: activationResult.activation.hash,
+      contentScriptIds: activationResult.activation.scripts.map(({ id }) => id),
+    },
+    lastFailure: disposeFailures[0] ?? null,
+  });
 }
 
 export async function disposePluginFrontends(
@@ -909,15 +1055,20 @@ let browserDiagnosticsSnapshot: ReadonlyMap<string, PluginFrontendDiagnostic> =
   new Map();
 const browserDiagnosticsListeners = new Set<() => void>();
 
-function publishBrowserDiagnostics(): void {
-  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+function publishLoadFailed(): void {
   setPluginFrontendLoadFailed(
     [...state.records.values()].some((record) => record.status !== "loaded"),
   );
+}
+
+function publishBrowserDiagnostics(): void {
+  browserDiagnosticsSnapshot = new Map(state.diagnostics);
+  publishLoadFailed();
   for (const listener of browserDiagnosticsListeners) listener();
 }
 
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
+
 const PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS = [500, 2_000];
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
@@ -925,13 +1076,16 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   importModule: (url) => import(/* @vite-ignore */ url),
   importRetryDelaysMs: PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS,
   applyCss: applyPluginCss,
+  prefetchCss: prefetchPluginCss,
+  prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
-  routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
+  priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
   beginSlotBatch: () =>
     beginPluginSlotBatch({ maxHoldMs: PLUGIN_SLOT_BATCH_MAX_HOLD_MS }),
+  flushSlotBatch: flushPluginSlotChanges,
   warn: (message) => console.warn(message),
   diagnosticsChanged: publishBrowserDiagnostics,
 };
@@ -995,9 +1149,10 @@ export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
-    await whenToasterSettled();
     await reconcilePluginFrontends(state, browserReconcileDeps);
+    publishLoadFailed();
   })().catch((error: unknown) => {
+    setPluginFrontendLoadFailed(true);
     console.warn(
       `plugin frontend boot failed: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -1006,17 +1161,20 @@ export function bootPluginFrontends(): Promise<void> {
 }
 
 async function runLiveReconcile(): Promise<void> {
-  setPluginFrontendReconcilePending(true);
   try {
     await bootPromise;
     await markEnabledPluginListStale({ queryClient: appQueryClient });
     if (state.tornDown) {
+      setPluginFrontendReconcilePending(true);
       state.tornDown = false;
       bootPromise = null;
       await bootPluginFrontends();
       return;
     }
-    await reconcilePluginFrontends(state, browserReconcileDeps);
+    await reconcilePluginFrontends(state, browserReconcileDeps, () =>
+      setPluginFrontendReconcilePending(true),
+    );
+    publishLoadFailed();
   } catch (error) {
     console.warn(
       `plugin frontend reconcile failed: ${error instanceof Error ? error.message : String(error)}`,

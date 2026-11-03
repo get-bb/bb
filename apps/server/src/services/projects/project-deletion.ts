@@ -8,7 +8,7 @@ import {
   deleteProject,
   getProject,
   getEnvironment,
-  lifecycleThreadTreeIdsForProject,
+  deletionThreadTreeIdsForProject,
   listEnvironments,
   markProjectDeleted,
   markThreadDeleted,
@@ -60,9 +60,7 @@ function listProjectDeletionThreads(
       status: threads.status,
     })
     .from(threads)
-    .where(
-      inArray(threads.id, lifecycleThreadTreeIdsForProject(args.projectId)),
-    )
+    .where(inArray(threads.id, deletionThreadTreeIdsForProject(args.projectId)))
     .all();
 }
 

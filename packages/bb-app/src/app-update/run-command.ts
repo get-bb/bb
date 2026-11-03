@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnHostProcess as spawn } from "@bb/process-utils";
 
 const OUTPUT_TAIL_LINES = 40;
 const COMMAND_KILL_AFTER_MS = 1_000;

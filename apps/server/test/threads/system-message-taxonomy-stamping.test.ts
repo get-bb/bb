@@ -6,7 +6,7 @@ import {
   type SystemMessageSubject,
   type ThreadEventTurnStatus,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   queueChildThreadNeedsAttentionNotificationBestEffort,
   queueChildThreadTurnNotificationBestEffort,
@@ -19,7 +19,11 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { createTestAppHarness } from "../helpers/test-app.js";
+import {
+  withChildThreadNotificationClock,
+  flushChildThreadNotifications,
+} from "../helpers/child-thread-notification-clock.js";
 
 type TestHarness = Awaited<ReturnType<typeof createTestAppHarness>>;
 
@@ -67,10 +71,9 @@ interface StampedSystemMessage {
 async function waitForStampedSystemMessage(
   harness: TestHarness,
   parentThreadId: string,
-  timeoutMs = 4_000,
 ): Promise<StampedSystemMessage> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  await flushChildThreadNotifications(harness);
+  return vi.waitFor(() => {
     const rows = harness.db
       .select()
       .from(events)
@@ -91,9 +94,10 @@ async function waitForStampedSystemMessage(
         };
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error("Timed out waiting for a stamped system message");
+    throw new Error(
+      "Expected a stamped system message after flushing notifications",
+    );
+  });
 }
 
 describe("Family B emit-site discriminator stamping", () => {
@@ -108,7 +112,7 @@ describe("Family B emit-site discriminator stamping", () => {
 
   for (const { turnStatus, expectedKind } of childTurnStatuses) {
     it(`stamps a single ${turnStatus} child outcome as ${expectedKind}`, async () => {
-      await withTestHarness(async (harness) => {
+      await withChildThreadNotificationClock(async (harness) => {
         const fixture = seedParentFixture(harness, `host-child-${turnStatus}`);
         const child = seedThread(harness.deps, {
           projectId: fixture.projectId,
@@ -120,6 +124,7 @@ describe("Family B emit-site discriminator stamping", () => {
           childThread: child,
           parentThreadId: fixture.parentThreadId,
           turnStatus,
+          turnId: null,
         });
 
         const stamped = await waitForStampedSystemMessage(
@@ -138,7 +143,7 @@ describe("Family B emit-site discriminator stamping", () => {
   }
 
   it("stamps a needs-attention notification as child-needs-attention", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const fixture = seedParentFixture(harness, "host-child-attention");
       const child = seedThread(harness.deps, {
         projectId: fixture.projectId,
@@ -166,7 +171,7 @@ describe("Family B emit-site discriminator stamping", () => {
   });
 
   it("stamps ownership assignment as ownership-assigned naming the child", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const fixture = seedParentFixture(harness, "host-ownership-assign");
       const child = seedThread(harness.deps, {
         projectId: fixture.projectId,
@@ -193,7 +198,7 @@ describe("Family B emit-site discriminator stamping", () => {
   });
 
   it("stamps ownership removal as ownership-removed naming the child", async () => {
-    await withTestHarness(async (harness) => {
+    await withChildThreadNotificationClock(async (harness) => {
       const fixture = seedParentFixture(harness, "host-ownership-remove");
       const child = seedThread(harness.deps, {
         projectId: fixture.projectId,

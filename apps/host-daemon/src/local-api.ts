@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createAsyncTtlMemo } from "@bb/async-cache";
 import { serve } from "@hono/node-server";
 import {
   buildLocalAppOrigins,
@@ -21,13 +22,13 @@ import {
   type HostDaemonLocalSchema,
   type OpenInTargetRequest,
   type WorkspaceOpenTarget,
-  type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import {
   createWorkspaceOpenTargetRuntime,
   listWorkspaceOpenTargetsWithRuntime,
   openPathInTargetWithRuntime,
   type OpenPathInTargetArgs,
+  type ListWorkspaceOpenTargetsOptions,
   WorkspaceOpenTargetError,
 } from "@bb/local-open-targets";
 import { Hono } from "hono";
@@ -39,7 +40,7 @@ import { resolveHostPlatform } from "./host-platform.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type WorkspaceOpenTargetListHandler = (
-  query: WorkspaceOpenTargetsQuery,
+  query: ListWorkspaceOpenTargetsOptions,
 ) => Promise<WorkspaceOpenTarget[]>;
 type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
@@ -73,6 +74,7 @@ interface ResolveOpenPathInTargetArgs {
 }
 
 const CLIENT_CONFIG_CACHE_TTL_MS = 1_000;
+const WORKSPACE_OPEN_TARGETS_CACHE_TTL_MS = 60_000;
 const EMPTY_CLIENT_CONFIG: ClientConfig = { servers: {} };
 
 function isSelfEvidentLocalHostname(hostname: string): boolean {
@@ -89,25 +91,18 @@ function createClientConfigLoader(
   dataDir: string | undefined,
   nowMs: () => number = Date.now,
 ): ClientConfigLoader {
-  let cache: {
-    expiresAtMs: number;
-    promise: Promise<ClientConfig>;
-  } | null = null;
+  const cache = createAsyncTtlMemo<string, ClientConfig>({
+    ttlMs: CLIENT_CONFIG_CACHE_TTL_MS,
+    now: nowMs,
+    maxEntries: 1,
+  });
 
   return {
     async load(): Promise<ClientConfig> {
       if (dataDir === undefined) {
         return EMPTY_CLIENT_CONFIG;
       }
-      const now = nowMs();
-      if (cache !== null && cache.expiresAtMs > now) {
-        return cache.promise;
-      }
-      cache = {
-        expiresAtMs: now + CLIENT_CONFIG_CACHE_TTL_MS,
-        promise: readClientConfig(dataDir),
-      };
-      return cache.promise;
+      return cache.run(dataDir, () => readClientConfig(dataDir));
     },
   };
 }
@@ -185,11 +180,36 @@ function workspaceOpenTargetRuntime(options: StartLocalApiServerOptions) {
   });
 }
 
+function createWorkspaceOpenTargetLoader(
+  options: StartLocalApiServerOptions,
+): WorkspaceOpenTargetListHandler {
+  const cache = createAsyncTtlMemo<string | undefined, WorkspaceOpenTarget[]>({
+    ttlMs: WORKSPACE_OPEN_TARGETS_CACHE_TTL_MS,
+    maxEntries: 1,
+    staleWhileRevalidate: true,
+  });
+
+  return async (query) => {
+    const runtime = workspaceOpenTargetRuntime(options);
+    const load = (query: ListWorkspaceOpenTargetsOptions) =>
+      options.listWorkspaceOpenTargets
+        ? options.listWorkspaceOpenTargets(query)
+        : listWorkspaceOpenTargetsWithRuntime(runtime, query);
+    const shellPath = runtime.env?.PATH;
+    cache.invalidateWhere((key) => key !== shellPath);
+    const baseTargets = await cache.run(shellPath, () => load({}));
+    return query.path === undefined
+      ? baseTargets
+      : load({ path: query.path, baseTargets });
+  };
+}
+
 export async function startLocalApiServer(
   options: StartLocalApiServerOptions,
 ): Promise<LocalApiServer> {
   const app = new Hono();
   const clientConfigLoader = createClientConfigLoader(options.dataDir);
+  const listWorkspaceOpenTargets = createWorkspaceOpenTargetLoader(options);
   const originArgs: BuildLocalAppOriginsArgs = {
     serverPort: options.serverPort,
   };
@@ -273,14 +293,7 @@ export async function startLocalApiServer(
     workspaceOpenTargetsQuerySchema,
     async (c, query) =>
       c.json({
-        targets: await (
-          options.listWorkspaceOpenTargets ??
-          ((query) =>
-            listWorkspaceOpenTargetsWithRuntime(
-              workspaceOpenTargetRuntime(options),
-              query,
-            ))
-        )(query),
+        targets: await listWorkspaceOpenTargets(query),
       }),
   );
 

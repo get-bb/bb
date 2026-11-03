@@ -62,6 +62,61 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
 afterEach(cleanup);
 
 describe("AutomationOverviewView", () => {
+  it.each([
+    {
+      state: "a paused automation whose last run failed",
+      lastRunStatus: "failed",
+      lastError: "Target thread thr_target was archived",
+      shown: true,
+    },
+    {
+      state: "a retry in flight",
+      lastRunStatus: "running",
+      lastError: "Target thread thr_target was archived",
+      shown: false,
+    },
+    {
+      state: "an automation resumed after a failure",
+      lastRunStatus: "failed",
+      lastError: null,
+      shown: false,
+    },
+  ] as const)(
+    "marks a row failed only with its reason, for $state",
+    ({ lastRunStatus, lastError, shown }) => {
+      const [entry] = INSTALLED_AUTOMATIONS;
+      render(
+        <AutomationOverviewView
+          entries={[
+            {
+              ...entry!,
+              automation: {
+                ...(entry!.automation as AutomationResponse),
+                enabled: lastRunStatus !== "failed" || lastError === null,
+                lastRunStatus,
+                lastError,
+              },
+            },
+          ]}
+          error={null}
+          onRetry={() => {}}
+          onOpenDetail={() => {}}
+          onEnabledChange={async () => {}}
+          onRunNow={async () => {}}
+          onDelete={() => {}}
+          onCreateViaChat={() => {}}
+          activeMode="installed"
+          onModeChange={() => {}}
+        />,
+      );
+
+      expect(screen.queryByLabelText("Failed") !== null).toBe(shown);
+      expect(
+        screen.queryByText("Target thread thr_target was archived") !== null,
+      ).toBe(shown);
+    },
+  );
+
   it("keeps lifecycle groups stable around the selected sort", () => {
     const baseEntry = INSTALLED_AUTOMATIONS[0]!;
     if ("problem" in baseEntry.automation) {

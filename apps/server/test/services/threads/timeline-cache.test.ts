@@ -35,6 +35,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     sessionOptions: null,
     modelFallback: null,
     maxSeq: 0,
+    tag: "tag",
     timelinePage: {
       returnedSegmentCount: 0,
       olderCursor: null,

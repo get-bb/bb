@@ -12,7 +12,7 @@ afterEach(() => {
 
 it.each([
   ["app-shell", "thread-header", "app-shell-thread", "1", true],
-  ["app-shell", "browser-toolbar", "app-shell-panel", "2", true],
+  ["app-shell", "browser-toolbar", "app-shell-panel", "3", true],
   ["home", "new-thread-panel", "home-actions", "1", false],
 ] as const)(
   "keeps %s/%s on its matching pane when switching layouts",
@@ -241,13 +241,14 @@ it("pages mobile panes without using annotation selection as navigation", () => 
       [...current().querySelectorAll("[data-guide-badge]")].map(
         (badge) => badge.textContent,
       ),
-    ).toEqual(["1", "2", "3", "4"]);
-    openAnnotation("code-renderers");
+    ).toEqual(["1", "2", "3", "4", "5"]);
+    openAnnotation("thread-info");
     for (const [id, number, title] of [
-      ["code-renderers", "1", "Code & diff renderers"],
-      ["browser-toolbar", "2", "Browser toolbar"],
-      ["thread-panel", "3", "Thread side-panel tabs"],
-      ["file-opener", "4", "File viewers & editors"],
+      ["thread-info", "1", "Thread Info rows and sections"],
+      ["code-renderers", "2", "Code & diff renderers"],
+      ["browser-toolbar", "3", "Browser toolbar"],
+      ["thread-panel", "4", "Thread side-panel tabs"],
+      ["file-opener", "5", "File viewers & editors"],
     ]) {
       expect(
         current().querySelector(`[data-guide-tab-body="${id}"]`),
@@ -274,7 +275,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(visiblePage()).toBe("Command palette");
     act(() => next.click());
     expect(visiblePage()).toBe("The composer");
-    expect(current().querySelectorAll("[data-guide-badge]")).toHaveLength(7);
+    expect(current().querySelectorAll("[data-guide-badge]")).toHaveLength(8);
     const navigation = container.querySelector(
       "[data-guide-page-list-scroll]",
     )!;

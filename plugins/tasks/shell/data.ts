@@ -1,26 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { experimental_useRpcQuery, useRpc } from "@get-bb/plugin-sdk/app";
+import type {
+  PluginRpcResult,
+  StandardSchemaV1InferInput,
+} from "@get-bb/plugin-sdk";
 import type { z } from "zod";
 import {
   TASK_STATUSES,
   tasksRpcContract,
   type TasksRpcContract,
 } from "../shared/contract.js";
-import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
-import { errorMessage } from "../shared/errors.js";
-import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
+import type { TaskStatus } from "../shared/contract.js";
 import type { MentionItem } from "../editor/extensions.js";
-import {
-  claimQuerySnapshotRevision,
-  readQuerySnapshot,
-  writeQuerySnapshot,
-} from "./query-snapshot.js";
-import { useTasksRefresh } from "./refresh.js";
-import {
-  createTaskSignalScheduler,
-  type InvalidationChannel,
-  type TaskSignal,
-} from "./signal-scheduler.js";
+import { readQuerySnapshot, writeQuerySnapshot } from "./query-snapshot.js";
 
 export function useTasksRpc() {
   return useRpc<TasksRpcContract>();
@@ -28,336 +20,114 @@ export function useTasksRpc() {
 
 export type TasksRpc = ReturnType<typeof useTasksRpc>;
 
-interface TaskListQuery {
-  projectId?: string;
-  statuses?: TaskStatus[];
-  priorities?: TaskPriority[];
-  labelIds?: string[];
-  activeOnly?: boolean;
-  parentTaskId?: string | null;
-  search?: string;
-  sort?: TaskSort;
-}
+type TasksMethod = keyof TasksRpcContract & string;
+export type TasksInput<Method extends TasksMethod> = StandardSchemaV1InferInput<
+  TasksRpcContract[Method]["input"]
+>;
+type TasksResult<Method extends TasksMethod> = PluginRpcResult<
+  TasksRpcContract[Method]
+>;
 
-export async function listAllTasks(
-  rpc: TasksRpc,
-  input: TaskListQuery = {},
-): Promise<Task[]> {
-  const tasks: Task[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await rpc.call("listTasks", {
-      ...input,
-      limit: TASKS_PAGE_MAX_LIMIT,
-      ...(cursor === undefined ? {} : { cursor }),
-    });
-    tasks.push(...page.tasks);
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor !== undefined);
-  return tasks;
-}
-
-export const OPEN_TASK_STATUSES: readonly TaskStatus[] = TASK_STATUSES.filter(
-  (status) => status !== "done" && status !== "canceled",
-);
-
-const CLOSED_TASK_STATUSES: readonly TaskStatus[] = ["done", "canceled"];
-
-export async function listTasksOpenFirst(
-  rpc: TasksRpc,
-  input: Omit<TaskListQuery, "statuses">,
-  publish: (open: Task[]) => void,
-): Promise<Task[]> {
-  const openRequest = listAllTasks(rpc, {
-    ...input,
-    statuses: [...OPEN_TASK_STATUSES],
-  }).then((open) => {
-    publish(open);
-    return open;
-  });
-  const closedRequest = listAllTasks(rpc, {
-    ...input,
-    statuses: [...CLOSED_TASK_STATUSES],
-  });
-  const [open, closed] = await Promise.all([openRequest, closedRequest]);
-  const byId = new Map<string, Task>();
-  for (const task of open) byId.set(task.id, task);
-  for (const task of closed) byId.set(task.id, task);
-  return [...byId.values()];
-}
-
-export async function patchTasks(
-  rpc: TasksRpc,
-  current: readonly Task[],
-  taskIds: readonly string[],
-  belongs: (task: Task) => boolean,
-): Promise<Task[]> {
-  if (taskIds.length === 0) return [...current];
-  const fetched = await Promise.all(
-    taskIds.map(async (taskId) => {
-      const { task } = await rpc.call("getTask", { taskId });
-      return [taskId, task] as const;
-    }),
-  );
-  const updates = new Map(fetched);
-  const next: Task[] = [];
-  for (const task of current) {
-    if (!updates.has(task.id)) {
-      next.push(task);
-      continue;
-    }
-    const updated = updates.get(task.id) ?? null;
-    updates.delete(task.id);
-    if (updated !== null && belongs(updated)) next.push(updated);
-  }
-  for (const task of updates.values()) {
-    if (task !== null && belongs(task)) next.push(task);
-  }
-  return next;
-}
-
-interface TasksQuery<T> {
+export interface TasksQuery<T> {
   data: T | undefined;
   error: string | null;
   isLoading: boolean;
   refresh: () => void;
 }
 
-interface TasksQuerySnapshot<T> {
-  name: string;
-  schema: z.ZodType<T>;
-}
-
-type ApplySignals<T> = (
-  rpc: TasksRpc,
-  current: T,
-  signals: readonly TaskSignal[],
-) => Promise<T | null>;
-
-export function useTasksQuery<T>(
-  fetcher: (rpc: TasksRpc, publish: (partial: T) => void) => Promise<T>,
-  channels: readonly InvalidationChannel[],
-  deps: readonly unknown[] = [],
-  options: {
-    snapshot?: TasksQuerySnapshot<T>;
-    applySignals?: ApplySignals<T>;
-    relevantTaskIds?: readonly string[];
-  } = {},
+export function useTasksQuery<Method extends TasksMethod, T>(
+  method: Method,
+  input: TasksInput<Method>,
+  select: (result: TasksResult<Method>) => T,
+  options: { enabled?: boolean } = {},
 ): TasksQuery<T> {
-  const rpc = useTasksRpc();
-  const { generation, beginGenerationWork, endGenerationWork } =
-    useTasksRefresh();
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-  const snapshotRef = useRef(options.snapshot);
-  snapshotRef.current = options.snapshot;
-  const applySignalsRef = useRef(options.applySignals);
-  applySignalsRef.current = options.applySignals;
-  const [state, setState] = useState<{
-    data: T | undefined;
-    error: string | null;
-    isLoading: boolean;
-  }>(() => ({
-    data:
-      options.snapshot === undefined
-        ? undefined
-        : readQuerySnapshot(options.snapshot.name, options.snapshot.schema),
-    error: null,
-    isLoading: true,
-  }));
-  const seqRef = useRef(0);
-  const dataRef = useRef(state.data);
-  const mountedRef = useRef(true);
-  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const signalStateRef = useRef<{
-    channels: readonly InvalidationChannel[];
-    relevantTaskIds: readonly string[] | undefined;
-    refresh: () => Promise<void>;
-    preparePatch: (signals: TaskSignal[]) => (() => Promise<void>) | null;
-  }>({
-    channels,
-    relevantTaskIds: options.relevantTaskIds,
-    refresh: () => Promise.resolve(),
-    preparePatch: () => null,
+  const query = experimental_useRpcQuery({
+    contract: tasksRpcContract,
+    method,
+    input,
+    enabled: options.enabled,
   });
-  const [scheduler] = useState(() =>
-    createTaskSignalScheduler({
-      channels: () => signalStateRef.current.channels,
-      relevantTaskIds: () => signalStateRef.current.relevantTaskIds,
-      isHidden: () => document.visibilityState === "hidden",
-      setTimer: (callback, delayMs) => {
-        const timer = setTimeout(callback, delayMs);
-        return () => clearTimeout(timer);
-      },
-      refetch: () => {
-        void signalStateRef.current.refresh();
-      },
-      refetchAfterFetch: () => {
-        if (mountedRef.current) void refreshRef.current();
-      },
-      preparePatch: (signals) => signalStateRef.current.preparePatch(signals),
-    }),
+  const result = query.data;
+  const data = useMemo(
+    () => (result === undefined ? undefined : select(result)),
+    [result, select],
   );
-  const previousGenerationRef = useRef(generation);
-  const depsKey = JSON.stringify(deps);
-  const dataDepsKeyRef = useRef(depsKey);
+  const refetch = useRef(query.refetch);
+  useEffect(() => {
+    refetch.current = query.refetch;
+  });
   const refresh = useCallback(() => {
-    const seq = ++seqRef.current;
-    const snapshot = snapshotRef.current;
-    const snapshotRevision =
-      snapshot === undefined ? 0 : claimQuerySnapshotRevision(snapshot.name);
-    const publish = (partial: T) => {
-      if (seq !== seqRef.current) return;
-      dataDepsKeyRef.current = depsKey;
-      dataRef.current = partial;
-      setState({ data: partial, error: null, isLoading: true });
-    };
-    return scheduler.trackFetch(() =>
-      fetcherRef.current(rpc, publish).then(
-        (data) => {
-          if (snapshot !== undefined) {
-            writeQuerySnapshot(snapshot.name, data, snapshotRevision);
-          }
-          if (seq !== seqRef.current) return;
-          dataDepsKeyRef.current = depsKey;
-          dataRef.current = data;
-          setState({ data, error: null, isLoading: false });
-        },
-        (error: unknown) => {
-          if (seq !== seqRef.current) return;
-          const keepsData = dataDepsKeyRef.current === depsKey;
-          if (!keepsData) dataRef.current = undefined;
-          setState((current) => ({
-            data: keepsData ? current.data : undefined,
-            error: errorMessage(error),
-            isLoading: false,
-          }));
-        },
-      ),
-    );
-  }, [rpc, depsKey, scheduler]);
-  useEffect(() => {
-    refreshRef.current = refresh;
-  }, [refresh]);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+    void refetch.current();
   }, []);
-  useEffect(() => {
-    const generationBumped = previousGenerationRef.current !== generation;
-    previousGenerationRef.current = generation;
-    setState((current) => ({ ...current, isLoading: true }));
-    if (generationBumped) beginGenerationWork();
-    let settled = false;
-    const finish = () => {
-      if (!generationBumped || settled) return;
-      settled = true;
-      endGenerationWork();
-    };
-    void refresh().finally(finish);
-    return () => {
-      finish();
-    };
-  }, [refresh, generation, beginGenerationWork, endGenerationWork]);
-  const preparePatch = (signals: TaskSignal[]) => {
-    const apply = applySignalsRef.current;
-    if (apply === undefined) return null;
-    const seq = seqRef.current;
-    return async () => {
-      const current = dataRef.current;
-      if (seq !== seqRef.current || current === undefined) return;
-      let next: T | null;
-      try {
-        next = await apply(rpc, current, signals);
-      } catch {
-        next = null;
-      }
-      if (seq !== seqRef.current) return;
-      if (next === null) {
-        void refresh();
-        return;
-      }
-      if (next === current) return;
-      dataRef.current = next;
-      setState((previous) => ({ ...previous, data: next }));
-    };
-  };
-  signalStateRef.current = {
-    channels,
-    relevantTaskIds: options.relevantTaskIds,
+  return {
+    data,
+    error: query.error?.message ?? null,
+    isLoading: query.isLoading,
     refresh,
-    preparePatch,
   };
-  useEffect(() => {
-    document.addEventListener("visibilitychange", scheduler.flush);
-    return () => {
-      document.removeEventListener("visibilitychange", scheduler.flush);
-      scheduler.dispose();
-    };
-  }, [scheduler]);
-  useRealtime("tasks:changed", (payload) =>
-    scheduler.push("tasks:changed", payload),
-  );
-  useRealtime("projects:changed", (payload) =>
-    scheduler.push("projects:changed", payload),
-  );
-  useRealtime("comments:changed", (payload) =>
-    scheduler.push("comments:changed", payload),
-  );
-  useRealtime("threads:changed", (payload) =>
-    scheduler.push("threads:changed", payload),
-  );
-  return { ...state, refresh };
 }
 
-const foldersSnapshot = {
-  name: "folders",
-  schema: tasksRpcContract.listFolders.output.shape.folders,
-};
+function useSnapshotQuery<T>(
+  name: string,
+  schema: z.ZodType<T>,
+  query: TasksQuery<T>,
+): TasksQuery<T> {
+  const [snapshot] = useState(() => readQuerySnapshot(name, schema));
+  useEffect(() => {
+    if (query.data !== undefined) writeQuerySnapshot(name, query.data);
+  }, [name, query.data]);
+  return query.data === undefined ? { ...query, data: snapshot } : query;
+}
+
+export const OPEN_TASK_STATUSES: readonly TaskStatus[] = TASK_STATUSES.filter(
+  (status) => status !== "done" && status !== "canceled",
+);
+
+export const CLOSED_TASK_STATUSES: readonly TaskStatus[] = ["done", "canceled"];
+
+export const selectTasks = (result: TasksResult<"listAllTasks">) =>
+  result.tasks;
+export const selectLabels = (result: TasksResult<"listLabels">) =>
+  result.labels;
+export const selectCards = (result: TasksResult<"listTaskCardMeta">) =>
+  result.cards;
+export const selectProjects = (result: TasksResult<"listProjects">) =>
+  result.projects;
+export const selectPresets = (result: TasksResult<"listPresets">) =>
+  result.presets;
+export const selectMachines = (result: TasksResult<"listMachines">) =>
+  result.machines;
+export const selectBbProjects = (result: TasksResult<"listBbProjects">) =>
+  result.bbProjects;
+const selectFolders = (result: TasksResult<"listFolders">) => result.folders;
+const selectSummary = (result: TasksResult<"sidebarSummary">) =>
+  result.projects;
 
 export function useFolders() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listFolders")).folders,
-    ["projects:changed"],
-    [],
-    { snapshot: foldersSnapshot },
+  return useSnapshotQuery(
+    "folders",
+    tasksRpcContract.listFolders.output.shape.folders,
+    useTasksQuery("listFolders", null, selectFolders),
   );
 }
 
-const projectsSnapshot = {
-  name: "projects",
-  schema: tasksRpcContract.listProjects.output.shape.projects,
-};
-
 export function useProjects() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listProjects", {})).projects,
-    ["projects:changed"],
-    [],
-    { snapshot: projectsSnapshot },
+  return useSnapshotQuery(
+    "projects",
+    tasksRpcContract.listProjects.output.shape.projects,
+    useTasksQuery("listProjects", {}, selectProjects),
   );
 }
 
 export function usePresets() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("listPresets")).presets,
-    ["projects:changed"],
-  );
+  return useTasksQuery("listPresets", null, selectPresets);
 }
 
-const sidebarSummarySnapshot = {
-  name: "sidebar-summary",
-  schema: tasksRpcContract.sidebarSummary.output.shape.projects,
-};
-
 export function useSidebarSummary() {
-  return useTasksQuery(
-    async (rpc) => (await rpc.call("sidebarSummary")).projects,
-    ["tasks:changed", "projects:changed", "threads:changed"],
-    [],
-    { snapshot: sidebarSummarySnapshot },
+  return useSnapshotQuery(
+    "sidebar-summary",
+    tasksRpcContract.sidebarSummary.output.shape.projects,
+    useTasksQuery("sidebarSummary", null, selectSummary),
   );
 }
 
@@ -394,8 +164,5 @@ export function useMentionItems() {
 }
 
 export function useActiveTasks() {
-  return useTasksQuery(
-    async (rpc) => listAllTasks(rpc, { activeOnly: true }),
-    ["tasks:changed", "threads:changed"],
-  );
+  return useTasksQuery("listAllTasks", { activeOnly: true }, selectTasks);
 }

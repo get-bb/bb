@@ -42,23 +42,4 @@ describe("WebSocketManager plugin-signal routing", () => {
     expect(received).toHaveBeenCalledTimes(1);
     expect(received.mock.calls[0]?.[0]).not.toHaveProperty("futureField");
   });
-
-  it("does not misroute other message types to plugin subscribers", () => {
-    const manager = new WebSocketManager();
-    const pluginSignals = vi.fn();
-    const changed = vi.fn();
-    manager.onPluginSignal(pluginSignals);
-    manager.onChanged(changed);
-
-    manager.handleIncomingMessage(
-      JSON.stringify({
-        type: "changed",
-        entity: "system",
-        changes: ["plugins-changed"],
-      }),
-    );
-
-    expect(pluginSignals).not.toHaveBeenCalled();
-    expect(changed).toHaveBeenCalledTimes(1);
-  });
 });

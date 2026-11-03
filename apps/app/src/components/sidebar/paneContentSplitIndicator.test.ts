@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { multiPaneSplitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import {
   indicatorSplitLayoutAtom,
@@ -28,9 +28,15 @@ function twoPanes(focused: string): SplitLayout {
 
 describe("indicatorSplitLayoutAtom", () => {
   it("does not subscribe to the split layout on compact viewports", () => {
-    expect(indicatorSplitLayoutAtom(true, false)).toBe(splitLayoutAtom);
-    expect(indicatorSplitLayoutAtom(true, true)).not.toBe(splitLayoutAtom);
-    expect(indicatorSplitLayoutAtom(false, false)).not.toBe(splitLayoutAtom);
+    expect(indicatorSplitLayoutAtom(true, false)).toBe(
+      multiPaneSplitLayoutAtom,
+    );
+    expect(indicatorSplitLayoutAtom(true, true)).not.toBe(
+      multiPaneSplitLayoutAtom,
+    );
+    expect(indicatorSplitLayoutAtom(false, false)).not.toBe(
+      multiPaneSplitLayoutAtom,
+    );
   });
 });
 

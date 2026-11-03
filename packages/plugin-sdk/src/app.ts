@@ -148,6 +148,24 @@ export const experimental_SourceCode = runtimeComponent(
   "experimental_SourceCode",
 );
 export const experimental_Diff = runtimeComponent("experimental_Diff");
+// The thread Info tab's building blocks (experimental — see
+// docs/api_to_audit.md).
+export const experimental_InfoSection = runtimeComponent(
+  "experimental_InfoSection",
+);
+export const experimental_DetailRow = runtimeComponent(
+  "experimental_DetailRow",
+);
+export const experimental_InfoList = runtimeComponent("experimental_InfoList");
+export const experimental_ThreadContextCardRow = runtimeComponent(
+  "experimental_ThreadContextCardRow",
+);
+export const experimental_PanelTabIcon = runtimeComponent(
+  "experimental_PanelTabIcon",
+);
+export const experimental_InfoListRow = runtimeComponent(
+  "experimental_InfoListRow",
+);
 export const experimental_useRpcQuery = runtimeFunction(
   "experimental_useRpcQuery",
 );
@@ -175,6 +193,16 @@ export const experimental_useQuestionFormHost = runtimeFunction(
   "experimental_useQuestionFormHost",
 );
 export const useBbNavigate = runtimeFunction("useBbNavigate");
+export const experimental_useCanOpenFileExternally = runtimeFunction(
+  "experimental_useCanOpenFileExternally",
+);
+export const experimental_useTabVisible = runtimeFunction(
+  "experimental_useTabVisible",
+);
+// The viewing client's servers (experimental — see docs/api_to_audit.md).
+export const experimental_useServers = runtimeFunction(
+  "experimental_useServers",
+);
 export const experimental_useAppPanel = runtimeFunction(
   "experimental_useAppPanel",
 );
@@ -183,6 +211,57 @@ export const experimental_useFixedTabTarget = runtimeFunction(
 );
 export const useComposer = runtimeFunction("useComposer");
 export const useComposers = runtimeFunction("useComposers");
+export const experimental_useComposerRenderer = runtimeFunction(
+  "experimental_useComposerRenderer",
+);
+export const experimental_useThreadTitleDisplayText = runtimeFunction(
+  "experimental_useThreadTitleDisplayText",
+);
+export const experimental_useComposerContributions = runtimeFunction(
+  "experimental_useComposerContributions",
+);
+export const experimental_useComposerMentionSearch = runtimeFunction(
+  "experimental_useComposerMentionSearch",
+);
+export const experimental_useComposerCommandSearch = runtimeFunction(
+  "experimental_useComposerCommandSearch",
+);
+export const experimental_ComposerRoot = runtimeComponent(
+  "experimental_ComposerRoot",
+);
+export const experimental_VoiceInputButton = runtimeComponent(
+  "experimental_VoiceInputButton",
+);
+export const experimental_VoiceRecordingBar = runtimeComponent(
+  "experimental_VoiceRecordingBar",
+);
+export const experimental_FailedVoiceRecordings = runtimeComponent(
+  "experimental_FailedVoiceRecordings",
+);
+export const experimental_ShortcutHint = runtimeComponent(
+  "experimental_ShortcutHint",
+);
+export const experimental_ImageLightbox = runtimeComponent(
+  "experimental_ImageLightbox",
+);
+export const experimental_PromptMentionIcon = runtimeComponent(
+  "experimental_PromptMentionIcon",
+);
+export const experimental_describePromptMention = runtimeFunction(
+  "experimental_describePromptMention",
+);
+export const experimental_promptMentionClipboardAttributes = runtimeFunction(
+  "experimental_promptMentionClipboardAttributes",
+);
+export const experimental_readPromptMentionClipboard = runtimeFunction(
+  "experimental_readPromptMentionClipboard",
+);
+export const experimental_PluginIcon = runtimeComponent(
+  "experimental_PluginIcon",
+);
+export const experimental_ThreadTitleText = runtimeComponent(
+  "experimental_ThreadTitleText",
+);
 /** @internal Superseded by `useComposer()`; kept for plugins built against older SDKs. */
 export const useComposerView = runtimeFunction("useComposerView");
 // Sidebar surfaces for plugins that replace the thread list (experimental —
@@ -210,8 +289,19 @@ export const experimental_ThreadActionsContextMenu = runtimeComponent(
   "experimental_ThreadActionsContextMenu",
 );
 export { experimental_THREAD_ACTION_GROUPS } from "./thread-action-groups.js";
-export const experimental_useSidebarThreadPullRequest = runtimeFunction(
-  "experimental_useSidebarThreadPullRequest",
+export {
+  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
+  experimental_THREAD_INFO_ROW_GROUPS,
+  experimental_THREAD_INFO_SECTION_GROUPS,
+} from "./thread-info-groups.js";
+export const experimental_useExperiment = runtimeFunction(
+  "experimental_useExperiment",
+);
+export const experimental_useThreadContextKind = runtimeFunction(
+  "experimental_useThreadContextKind",
+);
+export const experimental_usePanelTabs = runtimeFunction(
+  "experimental_usePanelTabs",
 );
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",
@@ -243,6 +333,10 @@ export const ThreadTitle = runtimeComponent("ThreadTitle");
 export const experimental_ThreadStatusGlyph = runtimeComponent(
   "experimental_ThreadStatusGlyph",
 );
+export { experimental_resolveThreadStatus } from "./internal/thread-status.js";
+export const experimental_ThreadRowMetadata = runtimeComponent(
+  "experimental_ThreadRowMetadata",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );
@@ -263,3 +357,10 @@ export const experimental_copyToClipboard = runtimeFunction(
   "experimental_copyToClipboard",
 );
 export const experimental_saveFile = runtimeFunction("experimental_saveFile");
+
+export const experimental_getApplicationLinkApprovals = runtimeFunction(
+  "experimental_getApplicationLinkApprovals",
+);
+export const experimental_revokeApplicationLinkApproval = runtimeFunction(
+  "experimental_revokeApplicationLinkApproval",
+);

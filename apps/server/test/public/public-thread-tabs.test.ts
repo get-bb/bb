@@ -27,6 +27,12 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
   { id: "thread-info", kind: "thread-info" },
   { id: "git-diff", kind: "git-diff" },
   {
+    id: "plugin-fixed:example:status",
+    kind: "plugin-fixed",
+    pluginId: "example",
+    tabId: "status",
+  },
+  {
     actionId: "inspect",
     id: "plugin-panel",
     kind: "plugin-panel",

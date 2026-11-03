@@ -82,6 +82,67 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
   ).toEqual([]);
 }, 30_000);
 
+it("rebuilds the session only when a turn changes or removes an env var", async () => {
+  const original = { BB_TEST_SECRET: "original", BB_TEST_REMOVED: "gone" };
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS, envVars: original },
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  const turnEnvVars: Record<string, string>[] = [
+    { BB_TEST_REMOVED: "gone", BB_TEST_SECRET: "original" },
+    { BB_TEST_SECRET: "rotated", BB_TEST_REMOVED: "gone" },
+    { BB_TEST_SECRET: "rotated" },
+    { BB_TEST_SECRET: "rotated" },
+  ];
+  const replacementsAfterTurn: number[] = [];
+  for (const [index, envVars] of turnEnvVars.entries()) {
+    const id = index + 2;
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: `creq_envswapxx${id}`,
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options: { ...FULL_ACCESS_SESSION_OPTIONS, envVars },
+    });
+    expect((await harness.waitForResponse(id)).error).toBeUndefined();
+    replacementsAfterTurn.push(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ).length,
+    );
+  }
+
+  expect(replacementsAfterTurn).toEqual([0, 1, 2, 2]);
+  const resumeConfigs = recordedRequests()
+    .filter((request) => request.method === "thread/resume")
+    .map((request) =>
+      z
+        .object({ config: z.record(z.string(), z.unknown()) })
+        .parse(request.params),
+    )
+    .map(({ config }) =>
+      Object.fromEntries(
+        Object.entries(config).filter(([key]) =>
+          key.startsWith("shell_environment_policy.set.BB_TEST_"),
+        ),
+      ),
+    );
+  expect(resumeConfigs).toEqual([
+    {
+      "shell_environment_policy.set.BB_TEST_SECRET": "rotated",
+      "shell_environment_policy.set.BB_TEST_REMOVED": "gone",
+    },
+    { "shell_environment_policy.set.BB_TEST_SECRET": "rotated" },
+  ]);
+}, 30_000);
+
 it("keeps an auto-reviewed session when only escalation intent changes", async () => {
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
@@ -143,7 +204,11 @@ it("clears Fast for the next turn without replacing the session", async () => {
       options: { ...FULL_ACCESS_SESSION_OPTIONS, serviceTier },
     });
     expect((await harness.waitForResponse(id)).error).toBeUndefined();
-    expect(recordedRequests().at(-1)).toEqual({
+    expect(
+      recordedRequests()
+        .filter((request) => request.method === "turn/start")
+        .at(-1),
+    ).toEqual({
       method: "turn/start",
       params: expect.objectContaining({
         serviceTier: serviceTier === "default" ? null : "fast",
@@ -357,7 +422,11 @@ it("applies follow-up permission changes in both directions without replacing th
       options: testCase.options,
     });
     expect((await harness.waitForResponse(id)).error).toBeUndefined();
-    expect(recordedRequests().at(-1)).toMatchObject({
+    expect(
+      recordedRequests()
+        .filter((request) => request.method === "turn/start")
+        .at(-1),
+    ).toMatchObject({
       method: "turn/start",
       params: {
         approvalPolicy: testCase.approvalPolicy,

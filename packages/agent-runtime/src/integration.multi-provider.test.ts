@@ -85,76 +85,6 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
       }
     }, 90_000);
   });
-
-  describe.concurrent("multi-provider scenarios", () => {
-    it("uses multiple providers in a single runtime", async () => {
-      const ctx = createTestRuntime("codex");
-      try {
-        const codexThread = newThreadId();
-        const claudeThread = newThreadId();
-        const codexOptions = await resolveRuntimeOptions({
-          ctx,
-          providerId: "codex",
-          preset: "full",
-        });
-        const claudeOptions = await resolveRuntimeOptions({
-          ctx,
-          providerId: "claude-code",
-          preset: "full",
-        });
-
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId: codexThread,
-          projectId: "test-project",
-          providerId: "codex",
-          options: codexOptions,
-        });
-
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId: claudeThread,
-          projectId: "test-project",
-          providerId: "claude-code",
-          options: claudeOptions,
-        });
-
-        await Promise.all([
-          ctx.runtime.runTurn({
-            clientRequestId: "creq_2222222247",
-            threadId: codexThread,
-            input: [promptTextInput({ text: "Reply with exactly: CODEX_OK" })],
-            options: codexOptions,
-          }),
-          ctx.runtime.runTurn({
-            clientRequestId: "creq_2222222248",
-            threadId: claudeThread,
-            input: [promptTextInput({ text: "Reply with exactly: CLAUDE_OK" })],
-            options: claudeOptions,
-          }),
-        ]);
-
-        await waitForTurnCompletedCount({
-          ctx,
-          count: 2,
-          timeoutMs: 45_000,
-          label: "both providers turn/completed",
-        });
-
-        const codexEvents = ctx.events.filter(
-          (e) => "threadId" in e && e.threadId === codexThread,
-        );
-        const claudeEvents = ctx.events.filter(
-          (e) => "threadId" in e && e.threadId === claudeThread,
-        );
-        expect(codexEvents.length).toBeGreaterThan(0);
-        expect(claudeEvents.length).toBeGreaterThan(0);
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-      }
-    }, 45_000);
-  });
 });
 
 describe.concurrent("multi-provider resume scenarios", () => {
@@ -162,8 +92,6 @@ describe.concurrent("multi-provider resume scenarios", () => {
     const ctx1 = createTestRuntime("codex");
     const codexThreadId1 = newThreadId();
     const claudeThreadId1 = newThreadId();
-    let codexProviderThreadId: string | undefined;
-    let claudeProviderThreadId: string | undefined;
     let ctx1Shutdown = false;
 
     try {
@@ -193,9 +121,6 @@ describe.concurrent("multi-provider resume scenarios", () => {
           options: claudeOptions,
         }),
       ]);
-
-      codexProviderThreadId = codexStart.providerThreadId || undefined;
-      claudeProviderThreadId = claudeStart.providerThreadId || undefined;
 
       await Promise.all([
         ctx1.runtime.runTurn({
@@ -227,29 +152,6 @@ describe.concurrent("multi-provider resume scenarios", () => {
         label: "both threads turn/completed",
       });
 
-      if (!codexProviderThreadId) {
-        const identityEvent = ctx1.events.find(
-          (e) =>
-            e.type === "thread/identity" &&
-            "threadId" in e &&
-            e.threadId === codexThreadId1,
-        );
-        if (identityEvent && identityEvent.type === "thread/identity") {
-          codexProviderThreadId = identityEvent.providerThreadId;
-        }
-      }
-      if (!claudeProviderThreadId) {
-        const identityEvent = ctx1.events.find(
-          (e) =>
-            e.type === "thread/identity" &&
-            "threadId" in e &&
-            e.threadId === claudeThreadId1,
-        );
-        if (identityEvent && identityEvent.type === "thread/identity") {
-          claudeProviderThreadId = identityEvent.providerThreadId;
-        }
-      }
-
       await ctx1.runtime.shutdown();
       ctx1Shutdown = true;
 
@@ -262,14 +164,14 @@ describe.concurrent("multi-provider resume scenarios", () => {
           ctx2.runtime.resumeThread({
             environmentId: "env-1",
             threadId: codexThreadId2,
-            providerThreadId: codexProviderThreadId,
+            providerThreadId: codexStart.providerThreadId,
             providerId: "codex",
             options: codexOptions,
           }),
           ctx2.runtime.resumeThread({
             environmentId: "env-1",
             threadId: claudeThreadId2,
-            providerThreadId: claudeProviderThreadId,
+            providerThreadId: claudeStart.providerThreadId,
             providerId: "claude-code",
             options: claudeOptions,
           }),

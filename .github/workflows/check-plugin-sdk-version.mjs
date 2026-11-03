@@ -23,6 +23,7 @@ const SURFACE_PATHS = [
   "packages/plugin-sdk/src/host-contract.ts",
   "packages/plugin-sdk/src/host.ts",
   "packages/plugin-sdk/src/index.ts",
+  "packages/plugin-sdk/src/process.ts",
   "packages/plugin-sdk/src/provider-bridge.ts",
   "packages/plugin-sdk/src/rpc-contract.ts",
 ];

@@ -279,7 +279,7 @@ describe("desktop auto-update service", () => {
     );
   });
 
-  it("does not start duplicate background downloads while one is in flight", async () => {
+  it("downloads each version once, during and after its download", async () => {
     const updater = new DesktopAutoUpdaterAdapterStub();
     const download = createDeferredDownload();
     updater.downloadUpdateResult = download.promise;
@@ -305,7 +305,7 @@ describe("desktop auto-update service", () => {
 
     updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
 
-    expect(updater.downloadUpdateCalls).toBe(2);
+    expect(updater.downloadUpdateCalls).toBe(1);
   });
 
   it("logs updater errors without throwing or clearing current state", () => {
@@ -370,7 +370,7 @@ describe("desktop auto-update service", () => {
     });
   });
 
-  it("holds a downloaded update by skipping re-checks that would tear down its staging", async () => {
+  it("re-checks a downloaded update without restaging the same version", async () => {
     const updater = new DesktopAutoUpdaterAdapterStub();
     updater.updateCheckResult = createUpdateCheckResult("0.0.2");
     let currentTime = Date.parse(checkedAt);
@@ -385,23 +385,93 @@ describe("desktop auto-update service", () => {
     });
 
     await service.checkForUpdates();
-    expect(updater.checkForUpdatesCalls).toBe(1);
-
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+    await Promise.resolve();
+    await Promise.resolve();
     updater.emitUpdateDownloaded(createDownloadedEvent("0.0.2"));
-    await service.checkForUpdates();
+
     currentTime += 16 * 60 * 1000;
     await service.checkAfterActive();
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
 
-    expect(updater.checkForUpdatesCalls).toBe(1);
+    expect(updater.checkForUpdatesCalls).toBe(2);
+    expect(updater.downloadUpdateCalls).toBe(1);
     expect(service.getInfo()).toEqual({
       downloadState: "downloaded",
-      lastCheckedAt: checkedAt,
+      lastCheckedAt: new Date(currentTime).toISOString(),
       latestVersion: "0.0.2",
       pendingVersion: "0.0.2",
       platform: "macos",
       updateAvailable: true,
       updateDownloaded: true,
       version: "0.0.1",
+    });
+  });
+
+  it("replaces a downloaded update when a newer version is published", async () => {
+    const updater = new DesktopAutoUpdaterAdapterStub();
+    const service = createDesktopAutoUpdateService({
+      currentVersion: "0.0.1",
+      enabled: true,
+      forceDevUpdateConfig: false,
+      logger: createLogger(createLoggerMessages()),
+      now: () => Date.parse(checkedAt),
+      platform: "macos",
+      updater,
+    });
+
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+    await Promise.resolve();
+    await Promise.resolve();
+    updater.emitUpdateDownloaded(createDownloadedEvent("0.0.2"));
+
+    const replacement = createDeferredDownload();
+    updater.downloadUpdateResult = replacement.promise;
+    updater.updateCheckResult = createUpdateCheckResult("0.0.3");
+    await service.checkForUpdates();
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.3"));
+
+    expect(updater.downloadUpdateCalls).toBe(2);
+    expect(service.getInfo()).toMatchObject({
+      downloadState: "downloading",
+      latestVersion: "0.0.3",
+      pendingVersion: null,
+      updateDownloaded: false,
+    });
+    await service.installUpdate();
+    expect(updater.quitAndInstallCalls).toBe(0);
+
+    replacement.resolve(["/tmp/bb.zip"]);
+    updater.emitUpdateDownloaded(createDownloadedEvent("0.0.3"));
+
+    expect(service.getInfo()).toMatchObject({
+      downloadState: "downloaded",
+      latestVersion: "0.0.3",
+      pendingVersion: "0.0.3",
+      updateDownloaded: true,
+    });
+  });
+
+  it("keeps a downloaded update when a later check reports nothing newer", () => {
+    const updater = new DesktopAutoUpdaterAdapterStub();
+    const service = createDesktopAutoUpdateService({
+      currentVersion: "0.0.1",
+      enabled: true,
+      forceDevUpdateConfig: false,
+      logger: createLogger(createLoggerMessages()),
+      now: () => Date.parse(checkedAt),
+      platform: "macos",
+      updater,
+    });
+
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+    updater.emitUpdateDownloaded(createDownloadedEvent("0.0.2"));
+    updater.emitUpdateNotAvailable(createUpdateInfo("0.0.1"));
+
+    expect(service.getInfo()).toMatchObject({
+      downloadState: "downloaded",
+      pendingVersion: "0.0.2",
+      updateDownloaded: true,
     });
   });
 

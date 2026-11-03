@@ -87,22 +87,22 @@ export function CommandPaletteBody({
     [navigate, pluginSlots.navPanels],
   );
 
-  const { choices, select } = useServerChoices();
+  const serverChoices = useServerChoices();
   const serverActions = useMemo<PaletteAction[]>(
     () =>
-      select === undefined
+      serverChoices === null
         ? []
-        : choices
-            .filter((choice) => !choice.active)
-            .map((choice) => ({
-              id: `server:${choice.id}`,
-              title: `Switch to ${choice.name}`,
+        : serverChoices.servers
+            .filter((server) => !server.active)
+            .map((server) => ({
+              id: `server:${server.id}`,
+              title: `Switch to ${server.name}`,
               bucket: "Actions",
               group: "Servers",
               shortcut: null,
-              run: () => select(choice.id),
+              run: () => serverChoices.switchTo(server.id),
             })),
-    [choices, select],
+    [serverChoices],
   );
 
   const availableActions = useMemo<readonly PaletteAction[]>(

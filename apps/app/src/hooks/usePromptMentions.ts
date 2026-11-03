@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
   buildProjectMentionSuggestions,
@@ -30,20 +30,20 @@ import { buildPromptMentionResults } from "./promptMentionCandidates";
 
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
-interface UsePromptMentionsOptions {
+export interface PromptMentionSource {
+  projectId: string | undefined;
   currentThreadId?: string;
   threadStorageThreadId?: string;
   environmentId: string | null;
   hostId?: string | null;
 }
 
+interface PromptMentionQuery {
+  text: string;
+  trigger: PluginMentionTrigger;
+}
+
 interface UsePromptMentionsResult {
-  query: string | null;
-  triggers: readonly PluginMentionTrigger[];
-  setQuery: (
-    query: string | null,
-    trigger: PluginMentionTrigger | null,
-  ) => void;
   results: OrderedMentionSuggestions;
   isLoading: boolean;
   isRefreshing: boolean;
@@ -103,29 +103,21 @@ function buildPluginMentionTriggers(
   );
 }
 
-export function usePromptMentions(
-  projectId: string | undefined,
-  options: UsePromptMentionsOptions,
-): UsePromptMentionsResult {
-  const [activeMention, setActiveMention] = useState<{
-    query: string;
-    trigger: PluginMentionTrigger;
-  } | null>(null);
-  const setQuery = useCallback(
-    (query: string | null, trigger: PluginMentionTrigger | null) => {
-      if (query === null) {
-        setActiveMention(null);
-        return;
-      }
-      setActiveMention({
-        query,
-        trigger: trigger ?? DEFAULT_PLUGIN_MENTION_TRIGGER,
-      });
-    },
-    [],
+export function usePromptMentionTriggers(): readonly PluginMentionTrigger[] {
+  const mentionProviders = usePluginContributions().data?.mentionProviders;
+  return useMemo(
+    () => buildPluginMentionTriggers(mentionProviders ?? []),
+    [mentionProviders],
   );
-  const query = activeMention?.query ?? null;
-  const trigger = activeMention?.trigger ?? DEFAULT_PLUGIN_MENTION_TRIGGER;
+}
+
+export function usePromptMentions(
+  options: PromptMentionSource,
+  mention: PromptMentionQuery | null,
+): UsePromptMentionsResult {
+  const projectId = options.projectId;
+  const query = mention?.text ?? null;
+  const trigger = mention?.trigger ?? DEFAULT_PLUGIN_MENTION_TRIGGER;
   const includeBuiltInSources = trigger === DEFAULT_PLUGIN_MENTION_TRIGGER;
   const hasQuery = (query?.trim().length ?? 0) > 0;
   const trimmedQuery = query?.trim() ?? "";
@@ -150,13 +142,6 @@ export function usePromptMentions(
     pluginContributions.data?.mentionProviders.some((provider) =>
       provider.triggers.includes(trigger),
     ) ?? false;
-  const mentionTriggers = useMemo(
-    () =>
-      buildPluginMentionTriggers(
-        pluginContributions.data?.mentionProviders ?? [],
-      ),
-    [pluginContributions.data?.mentionProviders],
-  );
   const debouncedQuery = useDebouncedValue(
     trimmedQuery,
     PATH_SUGGESTION_DEBOUNCE_MS,
@@ -271,6 +256,8 @@ export function usePromptMentions(
       (pathSearch.isDebouncing ||
         pathSearch.isLoading ||
         pathSearch.isRefreshing ||
+        projectNamesQuery.isLoading ||
+        projectNamesQuery.isFetching ||
         threadsQuery.isLoading ||
         threadsQuery.isFetching)) ||
     (hasMentionProviders &&
@@ -280,19 +267,17 @@ export function usePromptMentions(
   const isLoading = hasQuery && results.suggestions.length === 0 && isSearching;
   const isRefreshing =
     hasQuery && results.suggestions.length > 0 && isSearching;
-  const isThreadError =
-    includeBuiltInSources &&
-    hasQuery &&
-    threadsQuery.isError &&
-    !threadsQuery.isLoading &&
-    !threadsQuery.isFetching;
   const isError =
-    (includeBuiltInSources && pathSearch.isError) || isThreadError;
+    hasQuery &&
+    results.suggestions.length === 0 &&
+    !isSearching &&
+    ((includeBuiltInSources &&
+      (pathSearch.isError ||
+        threadsQuery.isError ||
+        projectNamesQuery.isError)) ||
+      (hasMentionProviders && pluginSearch.isError));
 
   return {
-    query,
-    triggers: mentionTriggers,
-    setQuery,
     results,
     isLoading,
     isRefreshing,

@@ -11,7 +11,15 @@ describe("CLAIMED_EXTENSIONS", () => {
 
   it("keeps code files available in the editor", () => {
     expect(CLAIMED_EXTENSIONS).toEqual(
-      expect.arrayContaining(["mdx", "ts", "json", "txt", "vue", "svelte"]),
+      expect.arrayContaining([
+        "mdx",
+        "ts",
+        "json",
+        "txt",
+        "vue",
+        "svelte",
+        "properties",
+      ]),
     );
   });
 
@@ -19,4 +27,13 @@ describe("CLAIMED_EXTENSIONS", () => {
     expect(languageForPath("docs/guide.md")).toBe("markdown");
     expect(languageForPath("README.markdown")).toBe("markdown");
   });
+});
+
+describe("languageForPath", () => {
+  it.each(["properties", "PROPERTIES", "ini", "toml", "cfg", "conf"])(
+    "highlights .%s configuration files as INI",
+    (extension) => {
+      expect(languageForPath(`config/settings.${extension}`)).toBe("ini");
+    },
+  );
 });

@@ -2,13 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runGit } from "@bb/host-workspace";
 import { initRepo } from "@bb/test-helpers";
 import { listWorkspacePaths } from "./file-list.js";
 import { listHostPaths } from "./host-files.js";
+import { runGit } from "bb-environment-provider-host/workspace-git";
 
 const roots: string[] = [];
-const largeTreeTimeoutMs = process.platform === "win32" ? 240_000 : 60_000;
 
 async function createRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-workspace-paths-"));
@@ -44,7 +43,7 @@ afterEach(async () => {
       .splice(0)
       .map((root) => fs.rm(root, { recursive: true, force: true })),
   );
-}, largeTreeTimeoutMs);
+});
 
 describe("workspace path discovery", () => {
   it("includes tracked and non-ignored untracked files while pruning Git-ignored trees", async () => {
@@ -284,23 +283,30 @@ describe("workspace path discovery", () => {
     ]);
   });
 
-  it(
-    "does not overflow the call stack merging a large subdirectory",
-    async () => {
-      const root = await createRoot();
-      const nested = path.join(root, "many");
-      await fs.mkdir(nested, { recursive: true });
-      const fileCount = 150_000;
-      const batchSize = 500;
-      for (let start = 0; start < fileCount; start += batchSize) {
-        const end = Math.min(start + batchSize, fileCount);
-        await Promise.all(
-          Array.from({ length: end - start }, (_, offset) =>
-            fs.writeFile(path.join(nested, `f${start + offset}.txt`), ""),
-          ),
+  it("does not overflow the call stack merging a large subdirectory", async () => {
+    const root = await createRoot();
+    const nested = path.join(root, "many");
+    await write(root, "many/seed.txt", "");
+    const fileCount = 150_000;
+    const readDirectory = fs.readdir;
+    const readdir = vi
+      .spyOn(fs, "readdir")
+      .mockImplementation(async (...args) => {
+        const entries = await readDirectory(...args);
+        if (args[0] !== nested) return entries;
+        const [seed] = entries;
+        return Array.from(
+          { length: fileCount },
+          (_, index) =>
+            new Proxy(seed, {
+              get(target, property, receiver) {
+                if (property === "name") return `f${index}.txt`;
+                return Reflect.get(target, property, receiver);
+              },
+            }),
         );
-      }
-
+      });
+    try {
       const result = await listWorkspacePaths({
         ...listingArgs(root),
         includeDirectories: false,
@@ -309,7 +315,19 @@ describe("workspace path discovery", () => {
       });
 
       expect(result).toHaveLength(fileCount);
-    },
-    largeTreeTimeoutMs,
-  );
+      expect(new Set(result.map((entry) => entry.path)).size).toBe(fileCount);
+      expect(result[0]).toEqual({
+        kind: "file",
+        name: "f0.txt",
+        path: "many/f0.txt",
+      });
+      expect(result.at(-1)).toEqual({
+        kind: "file",
+        name: "f149999.txt",
+        path: "many/f149999.txt",
+      });
+    } finally {
+      readdir.mockRestore();
+    }
+  });
 });

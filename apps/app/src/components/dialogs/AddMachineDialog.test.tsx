@@ -4,6 +4,7 @@ import { createDeferredPromise } from "@bb/test-helpers";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type { ServerAccessStatus } from "@bb/server-contract";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -60,6 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -165,6 +167,7 @@ it("cancels a creating manual launch when the dialog content closes", async () =
 });
 
 it("retrieves the enrollment command after asynchronous access preparation", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const rendered = setup(() => {
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand)
       .mockResolvedValueOnce(null)
@@ -179,12 +182,16 @@ it("retrieves the enrollment command after asynchronous access preparation", asy
       threadStorageRootPath: null,
     });
   });
-  await screen.findByText("delayed enrollment command", {}, { timeout: 3_000 });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  expect(screen.getByText("delayed enrollment command")).toBeDefined();
   expect(sdk.hosts.experimental_getEnrollmentCommand).toHaveBeenCalledTimes(2);
   rendered.unmount();
 });
 
 it("marks a previously available command as used when the server withdraws it", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const rendered = setup(() => {
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand)
       .mockResolvedValueOnce({
@@ -199,8 +206,14 @@ it("marks a previously available command as used when the server withdraws it", 
       threadStorageRootPath: null,
     });
   });
-  await screen.findByText("single-use enrollment command");
-  await screen.findByText("Command used", {}, { timeout: 3_000 });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(screen.getByText("single-use enrollment command")).toBeDefined();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  expect(screen.getByText("Command used")).toBeDefined();
   expect(
     screen.getByRole("button", { name: "Copy" }).hasAttribute("disabled"),
   ).toBe(true);
@@ -208,6 +221,7 @@ it("marks a previously available command as used when the server withdraws it", 
 });
 
 it("accepts a connection before an enrollment command is returned", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const rendered = setup(() => {
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand).mockResolvedValue(
       null,
@@ -220,7 +234,10 @@ it("accepts a connection before an enrollment command is returned", async () => 
       lifecycle: { ...reservedHost.lifecycle, phase: "active" },
     });
   });
-  await screen.findByText("Manual machine connected", {}, { timeout: 3_000 });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  expect(screen.getByText("Manual machine connected")).toBeDefined();
   rendered.unmount();
   expect(sdk.hosts.delete).not.toHaveBeenCalled();
 });

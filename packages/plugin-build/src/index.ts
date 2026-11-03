@@ -8,7 +8,11 @@ export {
   PLUGIN_SERVER_EXTERNALS,
 } from "./build-plugin-server.js";
 export { buildPluginHost } from "./build-plugin-host.js";
-export { resolveBundledNpmCli, resolveBundledNpxCli } from "./npm-cli.js";
+export { pluginBuildCodeDigest } from "./code-digest.js";
+export {
+  findPluginSdkInstallImports,
+  type PluginSdkInstallImport,
+} from "./plugin-sdk-install-imports.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,
@@ -28,3 +32,8 @@ export {
 } from "./plugin-manifest.js";
 
 export { copyPluginRuntime } from "./prepare-plugin-runtime.js";
+export {
+  dropAnonymousPluginRootScope,
+  dropHostProvidedTailwind,
+  findUnnamedPluginRoots,
+} from "./scope-plugin-utilities.js";

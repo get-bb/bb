@@ -99,9 +99,11 @@ export function isSecondaryFileTab(
     case "terminal":
     case "new-tab":
     case "plugin-panel":
+    case "plugin-detail":
       return true;
     case "thread-info":
     case "git-diff":
+    case "plugin-fixed":
     case "plugin-page-fixed":
       return false;
   }
@@ -113,14 +115,29 @@ export function reconcileFixedPanelViewTabsInState({
   state,
 }: ReconcileFixedPanelViewTabsInStateArgs): FixedPanelTabsState {
   const contentTabs = state.secondary.tabs.filter(isSecondaryFileTab);
-  const tabs: readonly FixedPanelTab[] = [...fixedTabs, ...contentTabs];
+  const availableById = new Map(fixedTabs.map((tab) => [tab.id, tab]));
+  const orderedFixedTabs: FixedPanelViewTab[] = [];
+  for (const tab of state.secondary.tabs) {
+    const available = availableById.get(tab.id);
+    if (available !== undefined) {
+      orderedFixedTabs.push(available);
+      availableById.delete(tab.id);
+    } else if (
+      tab.kind === "plugin-fixed" ||
+      tab.kind === "plugin-page-fixed"
+    ) {
+      orderedFixedTabs.push(tab);
+    }
+  }
+  orderedFixedTabs.push(...availableById.values());
+  const tabs: readonly FixedPanelTab[] = [...orderedFixedTabs, ...contentTabs];
   const tabsAreEquivalent =
     tabs.length === state.secondary.tabs.length &&
     tabs.every((tab, index) => {
       const current = state.secondary.tabs[index];
       return current !== undefined && areFixedPanelTabsEquivalent(tab, current);
     });
-  const activeTabStillExists = tabs.some(
+  const activeTabStillExists = [...fixedTabs, ...contentTabs].some(
     (tab) => tab.id === state.secondary.activeTabId,
   );
   const activeTabId = activeTabStillExists
@@ -545,10 +562,12 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "thread-storage-file-preview":
       case "attachment-file-preview":
       case "plugin-panel":
+      case "plugin-detail":
         displayable.push(tab);
         break;
       case "thread-info":
       case "git-diff":
+      case "plugin-fixed":
       case "plugin-page-fixed":
         break;
     }

@@ -1,5 +1,5 @@
 import { cancelOptimisticQueries } from "./optimistic-query-cancellation";
-import type { Host, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import type { Host } from "@bb/domain";
 import type {
   ProjectResponse,
   SidebarBootstrapResponse,
@@ -14,12 +14,10 @@ import {
   sidebarNavigationQueryKey,
   threadsQueryKey,
 } from "../queries/query-keys";
-import { applyToCachedThreadListsAndSidebarNavigation } from "./query-cache";
 import {
-  getCachedThreadLists,
-  iterateThreadListCacheEntries,
-  restoreCachedThreadLists,
-} from "./thread-list-cache-data";
+  beginThreadEntityPrediction,
+  findThreadEntityIds,
+} from "./thread-entity-store";
 
 type GroupMutation =
   | { kind: "project" | "section"; id: string; name: string | null }
@@ -63,18 +61,23 @@ export async function beginSidebarGroupTransaction({
   mutation: GroupMutation;
 }): Promise<{ rollback: () => void; settle: () => void }> {
   const { kind, id, name } = mutation;
-  const keys =
+  const groupKeys =
     kind === "host"
       ? [hostsQueryKey(), hostQueryKey(id)]
       : [
           sidebarNavigationQueryKey(),
           ...(kind === "project" ? [projectsQueryKey()] : []),
-          ...(name === null
-            ? [threadsQueryKey(), allThreadQueryKeyPrefix()]
-            : []),
         ];
+  const keys = [
+    ...groupKeys,
+    ...(name === null && kind !== "host"
+      ? [threadsQueryKey(), allThreadQueryKeyPrefix()]
+      : []),
+  ];
   await Promise.all(
-    keys.map((queryKey) => cancelOptimisticQueries(queryClient, { queryKey })),
+    groupKeys.map((queryKey) =>
+      cancelOptimisticQueries(queryClient, { queryKey }),
+    ),
   );
   const sidebarKey = sidebarNavigationQueryKey();
   const sidebar =
@@ -86,6 +89,7 @@ export async function beginSidebarGroupTransaction({
   );
   const sidebarProjects = entryMutation(sidebar?.projects, id, name);
   const sections = entryMutation(sidebar?.sections, id, name);
+  const deletedAt = Date.now();
   const hostLists = queryClient
     .getQueriesData<Host[]>({ queryKey: hostsQueryKey() })
     .map(([queryKey, hosts]) => ({
@@ -93,35 +97,6 @@ export async function beginSidebarGroupTransaction({
       mutation: entryMutation(hosts, id, name),
     }));
   const previousHost = queryClient.getQueryData<Host>(hostQueryKey(id));
-  const previousLists =
-    name === null
-      ? getCachedThreadLists(queryClient, {
-          queryKey: threadsQueryKey(),
-        })
-      : [];
-  const affectedThreads = new Map<string, ThreadListEntry>();
-  if (name === null) {
-    for (const thread of [
-      ...previousLists.flatMap(({ data }) => [
-        ...iterateThreadListCacheEntries(data),
-      ]),
-      ...(sidebar?.personalProject.threads ?? []),
-      ...(sidebar?.projects.flatMap((project) => project.threads) ?? []),
-    ]) {
-      if (
-        kind === "section" ? thread.sectionId === id : thread.projectId === id
-      )
-        affectedThreads.set(thread.id, thread);
-    }
-  }
-  const previousDetails =
-    kind === "section" && name === null
-      ? queryClient
-          .getQueriesData<ThreadWithRuntime>({
-            queryKey: allThreadQueryKeyPrefix(),
-          })
-          .filter(([, thread]) => thread?.sectionId === id)
-      : [];
   const updateGroup = (rollback: boolean) => {
     const operation = rollback ? "rollback" : "apply";
     if (kind === "host") {
@@ -163,44 +138,32 @@ export async function beginSidebarGroupTransaction({
     );
   };
   updateGroup(false);
-  if (name === null) {
-    applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-      kind === "project"
-        ? list.filter((thread) => thread.projectId !== id)
-        : list.map((thread) =>
-            thread.sectionId === id ? { ...thread, sectionId: null } : thread,
+  const threadPrediction =
+    name === null && kind !== "host"
+      ? beginThreadEntityPrediction(queryClient, {
+          threadIds: findThreadEntityIds(queryClient, (thread) =>
+            kind === "section"
+              ? thread.sectionId === id
+              : thread.projectId === id,
           ),
-    );
-    for (const [queryKey] of previousDetails)
-      queryClient.setQueryData<ThreadWithRuntime>(queryKey, (thread) =>
-        thread ? { ...thread, sectionId: null } : thread,
-      );
-  }
+          update: (entity) => ({
+            ...entity,
+            thread: {
+              ...entity.thread,
+              ...(kind === "section"
+                ? { sectionId: null }
+                : { deletedAt: deletedAt }),
+            },
+          }),
+        })
+      : undefined;
   return {
     rollback: () => {
       updateGroup(true);
-      if (name !== null) return;
-      if (kind === "project")
-        restoreCachedThreadLists(
-          queryClient,
-          previousLists,
-          new Set(affectedThreads.keys()),
-        );
-      else {
-        applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-          list.map((thread) =>
-            affectedThreads.has(thread.id) && thread.sectionId === null
-              ? { ...thread, sectionId: id }
-              : thread,
-          ),
-        );
-        for (const [queryKey] of previousDetails)
-          queryClient.setQueryData<ThreadWithRuntime>(queryKey, (thread) =>
-            thread?.sectionId === null ? { ...thread, sectionId: id } : thread,
-          );
-      }
+      threadPrediction?.fail();
     },
     settle: () => {
+      threadPrediction?.succeed();
       for (const queryKey of keys)
         void queryClient.invalidateQueries({ queryKey });
     },

@@ -255,7 +255,7 @@ export function SurfaceCard({
               disabled={copyState === "copying"}
               aria-label={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
               title={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
-              className={`ml-auto inline-flex shrink-0 cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60 ${mobile ? "size-9 @2xl/guide:size-7 justify-center" : "h-7 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"} ${FOCUS_RING_CLASS}`}
+              className={`ml-auto inline-flex shrink-0 cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:opacity-60 ${mobile ? "size-9 @2xl/guide:size-7 justify-center" : "h-7 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"} ${FOCUS_RING_CLASS}`}
             >
               <Icon
                 name={copyState === "copied" ? "Check" : copyState === "failed" ? "AlertCircle" : "Copy"}

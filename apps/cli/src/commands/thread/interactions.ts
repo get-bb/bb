@@ -192,6 +192,9 @@ function printUserQuestionInteraction(
     if (question.allowFreeText) {
       console.log("      Free text: allowed");
     }
+    if (!question.required) {
+      console.log("      Optional: may be left unanswered");
+    }
   }
 
   if (!interaction.resolution) {
@@ -521,8 +524,9 @@ function buildUserAnswerResolution({
   for (const question of questionInteraction.payload.questions) {
     const answer = answers[question.id];
     if (
-      !answer ||
-      (answer.selected.length === 0 && answer.freeText === undefined)
+      question.required &&
+      (!answer ||
+        (answer.selected.length === 0 && answer.freeText === undefined))
     ) {
       throw new Error(`Missing answer for question '${question.id}'.`);
     }

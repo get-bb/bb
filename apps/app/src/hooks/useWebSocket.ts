@@ -6,7 +6,10 @@ import { createArchivedThreadBrowserOwner } from "./cache-owners/archived-thread
 import { wsManager } from "../lib/ws";
 import { getDesktopBrowserApi } from "../lib/bb-desktop";
 import { sdk } from "../lib/sdk";
-import { applyThreadTimelineSignal } from "./cache-owners/thread-timeline-push-owner";
+import {
+  applyThreadTimelineSignal,
+  trackHeldThreadTimelineTags,
+} from "./cache-owners/thread-timeline-push-owner";
 
 export function useWebSocket(): void {
   const queryClient = useQueryClient();
@@ -17,7 +20,11 @@ export function useWebSocket(): void {
   deletedResourceRouteChangeRef.current = handleDeletedResourceRouteChange;
 
   useEffect(() => {
-    const cacheEffects = createRealtimeCacheEffects({ queryClient });
+    const cacheEffects = createRealtimeCacheEffects({
+      queryClient,
+      refreshSidebarWhileHidden:
+        window.bbDesktop?.setAttentionThreads !== undefined,
+    });
     const handleArchivedThreadBrowsers = createArchivedThreadBrowserOwner({
       desktopBrowser: getDesktopBrowserApi(),
       readArchivedAt: async (threadId) =>
@@ -30,6 +37,8 @@ export function useWebSocket(): void {
       handleArchivedThreadBrowsers.handleConnected,
     );
     const unsubscribeResumed = wsManager.onResumed(cacheEffects.handleResumed);
+    const releaseHeldThreadTimelineTags =
+      trackHeldThreadTimelineTags(queryClient);
     const unsubscribeThreadTimeline = wsManager.onThreadTimeline((signal) => {
       applyThreadTimelineSignal(queryClient, signal);
     });
@@ -46,6 +55,7 @@ export function useWebSocket(): void {
       unsubscribeConnected();
       unsubscribeArchivedThreadBrowsers();
       unsubscribeResumed();
+      releaseHeldThreadTimelineTags();
       unsubscribeThreadTimeline();
       unsubscribe();
     };

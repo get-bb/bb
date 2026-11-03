@@ -9,7 +9,6 @@ import {
   installationVerification,
   npmGlobalInstallSource,
   readCliVersion,
-  selectResolvedExecutable,
   versionFrom,
 } from "./provider-maintenance-kit.js";
 
@@ -194,48 +193,6 @@ describe("provider maintenance kit", () => {
         "install",
       ),
     ).toEqual({ kind: "installed" });
-  });
-
-  it("picks the launcher Windows can run when npm also installs an extensionless shim", () => {
-    const npmBin = "C:\\Users\\me\\AppData\\Roaming\\npm";
-    expect(
-      selectResolvedExecutable({
-        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.cmd`, ""],
-        platform: "win32",
-        pathExt: ".COM;.EXE;.BAT;.CMD",
-      }),
-    ).toBe(`${npmBin}\\codex.cmd`);
-    expect(
-      selectResolvedExecutable({
-        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.CMD`],
-        platform: "win32",
-        pathExt: undefined,
-      }),
-    ).toBe(`${npmBin}\\codex.CMD`);
-    expect(
-      selectResolvedExecutable({
-        candidates: [`${npmBin}\\codex`, `${npmBin}\\codex.cmd`],
-        platform: "win32",
-        pathExt: ".EXE",
-      }),
-    ).toBeNull();
-  });
-
-  it("keeps the first lookup result on macOS and Linux", () => {
-    expect(
-      selectResolvedExecutable({
-        candidates: ["/usr/local/bin/codex", "/opt/bin/codex.cmd"],
-        platform: "linux",
-        pathExt: undefined,
-      }),
-    ).toBe("/usr/local/bin/codex");
-    expect(
-      selectResolvedExecutable({
-        candidates: ["", "  "],
-        platform: "darwin",
-        pathExt: undefined,
-      }),
-    ).toBeNull();
   });
 
   it("runs a PowerShell installer on Windows only when one is published", () => {

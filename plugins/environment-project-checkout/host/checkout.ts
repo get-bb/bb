@@ -1,5 +1,10 @@
 import {
   detectGitRepo,
+  getCheckoutRef,
+  getWorkspaceGitOperation,
+  hasRef,
+  hasUncommittedChanges,
+  pathExists,
   runGit,
   WorkspaceError,
 } from "bb-environment-provider-host/git";
@@ -9,13 +14,6 @@ import {
   throwIfProvisionAborted,
   type ProgressCallback,
 } from "bb-environment-provider-host/transcript";
-import {
-  getCheckoutRef,
-  getWorkspaceGitOperation,
-  hasUncommittedChanges,
-  locateBranch,
-  pathExists,
-} from "./git.js";
 import type { CheckoutBranch, CheckoutInspection } from "../contract.js";
 
 interface AttachCheckoutArgs {
@@ -52,6 +50,19 @@ function checkoutLabel(
           failed: "Failed to switch to",
         }[phase];
   return `${verb} branch ${branch.name}`;
+}
+
+async function locateBranch(
+  cwd: string,
+  name: string,
+): Promise<"local" | "origin" | "missing"> {
+  if (await hasRef(cwd, `refs/heads/${name}`)) {
+    return "local";
+  }
+  if (await hasRef(cwd, `refs/remotes/origin/${name}`)) {
+    return "origin";
+  }
+  return "missing";
 }
 
 async function assertSwitchable(

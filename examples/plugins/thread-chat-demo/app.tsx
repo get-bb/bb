@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   definePluginApp,
   experimental_useAppPanel,
@@ -6,7 +6,7 @@ import {
   ThreadChat,
   useBbContext,
   useBbNavigate,
-  type PluginFixedTabRegistration,
+  type ExperimentalTabRegistration,
   type JsonValue,
 } from "@get-bb/plugin-sdk/app";
 
@@ -52,8 +52,7 @@ function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
           disabled={!activeThreadId}
           className="h-8 cursor-pointer rounded-md border px-2 text-sm hover:bg-surface-recessed disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() =>
-            panel.openFixedTab({
-              surface: { kind: "current" },
+            panel.openTab({
               tab: demoThreadFixedTab,
               target: { kind: "thread", threadId: activeThreadId },
             })
@@ -91,7 +90,7 @@ function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
   );
 }
 
-function DemoThreadFixedTab() {
+function DemoThreadFixedTab(): ReactNode {
   const targetState = experimental_useFixedTabTarget(demoThreadFixedTab);
   return targetState === null ? (
     <p className="p-4 text-sm text-muted-foreground">
@@ -107,15 +106,16 @@ function DemoThreadFixedTab() {
   );
 }
 
-const demoThreadFixedTab: PluginFixedTabRegistration<DemoThreadTarget> = {
-  panelId: "thread-chat-demo",
+const demoThreadFixedTab = {
+  context: { kind: "nav-panel", panelId: "thread-chat-demo" },
+  availability: "fixed",
   id: "compact-thread",
   title: "Compact thread",
   icon: "PanelRight",
   component: DemoThreadFixedTab,
   layout: "flush",
   experimental_target: { validate: isDemoThreadTarget },
-};
+} satisfies ExperimentalTabRegistration;
 
 interface DemoPanelParams {
   anchorText?: string;
@@ -164,9 +164,11 @@ export default definePluginApp((app) => {
     icon: "MessageSquarePlus",
     path: "thread-chat",
     component: ThreadChatDemoPanel,
-    fixedTabs: [demoThreadFixedTab],
   });
-  app.slots.threadPanelAction({
+  app.slots.experimental_tab(demoThreadFixedTab);
+  app.slots.experimental_tab({
+    context: { kind: "thread" },
+    availability: "action",
     id: "demo-panel",
     title: "ThreadChat demo panel",
     icon: "MessageSquarePlus",
@@ -178,8 +180,12 @@ export default definePluginApp((app) => {
     title: "Open in demo panel",
     icon: "MessageSquarePlus",
     run(context) {
-      const opened = context.openPanel({
-        actionId: "demo-panel",
+      const opened = context.experimental_panel.openTab({
+        tab: {
+          id: "demo-panel",
+          context: { kind: "thread" },
+          availability: "action",
+        },
         title: "Demo panel",
         params: {
           anchorText: context.message.text.slice(0, 200),

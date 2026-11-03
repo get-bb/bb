@@ -14,8 +14,9 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
-import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
+import { parseGitDiffFiles } from "@bb/shared-ui/git-diff/parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
+import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
@@ -120,31 +121,6 @@ afterEach(() => {
 });
 
 describe("DiffHost", () => {
-  it("skips BB's renderer and passes full-file contents when a replacement never delegates", async () => {
-    registerDiffRenderer((props) => {
-      receivedProps.push(props);
-      return <div data-testid="plugin-diff">plugin diff</div>;
-    });
-
-    render(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={FULL_FILE_CONTENTS}
-        view="split"
-      />,
-    );
-
-    expect(await screen.findByTestId("plugin-diff")).toBeDefined();
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(bbDiff.lastProps).toBeNull();
-    expect(receivedProps.at(-1)?.experimental_fullFileContents).toBe(
-      FULL_FILE_CONTENTS,
-    );
-  });
-
   it("hands the replacement resolved semantic props, not BB's host-only inputs", async () => {
     registerDiffRenderer((props) => {
       receivedProps.push(props);
@@ -164,6 +140,10 @@ describe("DiffHost", () => {
     );
 
     await screen.findByTestId("plugin-diff");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(bbDiff.lastProps).toBeNull();
     const props = receivedProps.at(-1);
     expect(props?.patch).toBe(PATCH);
     expect(props?.path).toBe("src/app.ts");
@@ -362,6 +342,36 @@ describe("experimental_Diff", () => {
     expect(bbDiff.lastProps?.patchText).toBe(PATCH);
     expect(bbDiff.lastProps?.fullFileContents).toBe(FULL_FILE_CONTENTS);
     expect(bbDiff.lastProps).not.toHaveProperty("expansionLineCount");
+  });
+
+  it("offers Add to chat only inside a thread", async () => {
+    const addToChat = vi.fn();
+    const { unmount } = render(<PluginDiff patch={PATCH} path="src/app.ts" />);
+    await screen.findByTestId("bb-diff");
+    expect(bbDiff.lastProps?.onSelectionAddToChat).toBeUndefined();
+    unmount();
+
+    render(
+      <SelectionAddToChatContext.Provider value={addToChat}>
+        <PluginDiff patch={PATCH} path="src/app.ts" />
+      </SelectionAddToChatContext.Provider>,
+    );
+    await screen.findByTestId("bb-diff");
+    expect(bbDiff.lastProps?.onSelectionAddToChat).toBe(addToChat);
+  });
+
+  it("renders a mode-only git diff as a diff instead of raw text", async () => {
+    render(
+      <PluginDiff
+        patch={
+          "diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n"
+        }
+        path="run.sh"
+      />,
+    );
+
+    await screen.findByTestId("bb-diff");
+    expect(screen.queryByText(/diff --git/)).toBeNull();
   });
 
   it("degrades to plain text instead of an empty diff when the patch will not parse", () => {

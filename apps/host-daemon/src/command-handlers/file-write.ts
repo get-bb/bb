@@ -1,13 +1,12 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { replaceFile } from "@bb/file-transfer";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { isPathWithinDirectory } from "@bb/process-utils";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
-import { sha256Hex } from "../sha256-hex.js";
 import {
   createMissingTargetError,
   NON_IMAGE_FILE_SIZE_LIMIT_BYTES,
@@ -112,105 +111,34 @@ async function writeResolvedHostFile(
     throw createMissingTargetError(path.dirname(command.path));
   }
 
-  let currentContents: Buffer | null = null;
-  let currentMode: number | undefined;
   try {
-    const stat = await fs.stat(target.writePath);
-    if (stat.isDirectory()) {
+    if (command.createParents) {
+      await fs.mkdir(path.dirname(target.writePath), { recursive: true });
+    }
+    return await replaceFile({
+      contents,
+      ...(command.expectedSha256 !== undefined
+        ? { expectedSha256: command.expectedSha256 }
+        : {}),
+      ...(command.mode !== undefined ? { mode: command.mode } : {}),
+      path: target.writePath,
+    });
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      throw createMissingTargetError(path.dirname(command.path));
+    }
+    if (isFsErrorWithCode(error, "EISDIR")) {
       throw new CommandDispatchError(
         "invalid_path",
         "Path is a directory, not a file",
       );
     }
-    currentMode = stat.mode & 0o777;
-    currentContents = await fs.readFile(target.writePath);
-  } catch (error) {
-    if (!isFsErrorWithCode(error, "ENOENT")) {
-      throw error;
-    }
-  }
-  const currentSha256 =
-    currentContents === null ? null : sha256Hex(currentContents);
-
-  if (
-    command.expectedSha256 !== undefined &&
-    command.expectedSha256 !== currentSha256
-  ) {
-    return { outcome: "conflict", currentSha256 };
-  }
-
-  if (command.createParents) {
-    await fs.mkdir(path.dirname(target.writePath), { recursive: true });
-  }
-  const writeOptions = {
-    ...(command.mode !== undefined
-      ? { mode: command.mode }
-      : currentMode !== undefined
-        ? { mode: currentMode }
-        : {}),
-  };
-  let temporaryPath: string | null = null;
-  try {
-    if (command.expectedSha256 === undefined) {
-      await fs.writeFile(target.writePath, contents, writeOptions);
-    } else {
-      temporaryPath = `${target.writePath}.bb-write-${randomUUID()}`;
-      const handle = await fs.open(temporaryPath, "wx", writeOptions.mode);
-      try {
-        await handle.writeFile(contents);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-
-      if (command.expectedSha256 === null) {
-        try {
-          await fs.link(temporaryPath, target.writePath);
-        } catch (error) {
-          if (isFsErrorWithCode(error, "EEXIST")) {
-            const latest = await fs
-              .readFile(target.writePath)
-              .catch(() => null);
-            return {
-              outcome: "conflict",
-              currentSha256: latest === null ? null : sha256Hex(latest),
-            };
-          }
-          throw error;
-        }
-      } else {
-        const latest = await fs.readFile(target.writePath).catch(() => null);
-        const latestSha256 = latest === null ? null : sha256Hex(latest);
-        if (latestSha256 !== command.expectedSha256) {
-          return { outcome: "conflict", currentSha256: latestSha256 };
-        }
-        await fs.rename(temporaryPath, target.writePath);
-        temporaryPath = null;
-      }
-    }
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT")) {
-      throw createMissingTargetError(path.dirname(command.path));
-    }
-    if (
-      isFsErrorWithCode(error, "ENOTDIR") ||
-      isFsErrorWithCode(error, "EISDIR")
-    ) {
+    if (isFsErrorWithCode(error, "ENOTDIR")) {
       throw new CommandDispatchError(
         "invalid_path",
         `Cannot write file at ${command.path}`,
       );
     }
     throw error;
-  } finally {
-    if (temporaryPath !== null) {
-      await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
-    }
   }
-
-  return {
-    outcome: "written",
-    sha256: sha256Hex(contents),
-    sizeBytes: contents.length,
-  };
 }

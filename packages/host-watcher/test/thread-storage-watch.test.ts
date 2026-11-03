@@ -1,54 +1,62 @@
+import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import type { ThreadStorageWatchTarget } from "../src/host-watcher-types.js";
+import parcelWatcher from "@parcel/watcher";
+import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectDataDirSkillsObservedChanges,
-  collectThreadStorageObservedChanges,
+  createParcelHostWatcher,
 } from "../src/parcel-host-watcher.js";
 
-function createResolver(
-  targets: Record<string, ThreadStorageWatchTarget>,
-): (threadId: string) => ThreadStorageWatchTarget | null {
-  return (threadId) => targets[threadId] ?? null;
-}
+type ParcelWatcherSubscribe = (typeof import("@parcel/watcher"))["subscribe"];
+type ParcelWatcherCallback = Parameters<ParcelWatcherSubscribe>[1];
 
-describe("thread storage watcher classification", () => {
-  it("emits broad storage changes for ordinary thread storage changes", () => {
-    const rootPath = path.join("/tmp", "thread-storage");
-    const changes = collectThreadStorageObservedChanges({
-      threadStorageRootPath: rootPath,
-      changedPaths: [
-        path.join(rootPath, "thr_one", "notes.md"),
-        path.join(rootPath, "thr_two", "reports", "summary.html"),
-        path.join(rootPath, "thr_unknown", "notes.md"),
-        path.join(rootPath, "..", "outside", "notes.md"),
-      ],
-      resolveThreadTarget: createResolver({
-        thr_one: {
-          environmentId: "env_one",
-          threadId: "thr_one",
-        },
-        thr_two: {
-          environmentId: "env_two",
-          threadId: "thr_two",
-        },
-      }),
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("thread storage watcher", () => {
+  it("creates and watches only the thread's own storage directory", async () => {
+    const root = await fs.realpath(await makeTempDir("bb-thread-storage-"));
+    const watchedPath = path.join(root, "thr_watched");
+    const subscribed = createDeferredPromise<{
+      callback: ParcelWatcherCallback;
+      rootPath: string;
+    }>();
+    const unsubscribe = vi.fn(async () => undefined);
+    vi.spyOn(parcelWatcher, "subscribe").mockImplementation(
+      async (rootPath, callback) => {
+        subscribed.resolve({ callback, rootPath });
+        return { unsubscribe };
+      },
+    );
+    const onChange = vi.fn();
+    const onWatchError = vi.fn();
+
+    const stopWatching = createParcelHostWatcher().watchThreadStorage({
+      threadStoragePath: watchedPath,
+      onChange,
+      onWatchError,
+    });
+    const { callback, rootPath } = await subscribed.promise;
+
+    expect(rootPath).toBe(watchedPath);
+    expect((await fs.stat(watchedPath)).isDirectory()).toBe(true);
+
+    callback(null, [
+      { path: path.join(watchedPath, "notes.md"), type: "create" },
+    ]);
+    await vi.waitFor(() => {
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    expect(changes).toEqual([
-      {
-        kind: "thread-storage-changed",
-        environmentId: "env_one",
-        threadId: "thr_one",
-      },
-      {
-        kind: "thread-storage-changed",
-        environmentId: "env_two",
-        threadId: "thr_two",
-      },
-    ]);
+    await stopWatching();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(onWatchError).not.toHaveBeenCalled();
   });
+});
 
+describe("data-dir skills watcher classification", () => {
   it("emits injected skill changes for data-dir-level skills", () => {
     const rootPath = path.join("/tmp", "skills");
     const changes = collectDataDirSkillsObservedChanges({

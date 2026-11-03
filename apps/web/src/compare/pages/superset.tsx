@@ -227,19 +227,6 @@ export const comparison: Comparison = {
       title: "Switching from Superset",
       items: [
         {
-          question: "When is Superset a better fit?",
-          answer: (
-            <p>
-              Superset is a better fit if you want to see active ports grouped
-              by workspace and stop their processes directly from the app.{" "}
-              <a href="https://docs.superset.sh/ports">
-                Superset’s port management documentation
-              </a>
-              .
-            </p>
-          ),
-        },
-        {
           question: "What’s the difference between bb and Superset?",
           answer: (
             <p>

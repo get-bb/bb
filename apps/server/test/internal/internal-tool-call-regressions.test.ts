@@ -125,6 +125,7 @@ function installWaitingTool(
           describeSubmission: null,
           timeoutMs: 10_000,
           signal: ctx.signal,
+          owner: { pluginId: "fixture" },
         },
       );
       detachActivePluginToolCallForUserInput();

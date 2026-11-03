@@ -1,11 +1,11 @@
 import { normalizePromptTextMentions } from "@bb/client-core";
-import type { ComponentType } from "react";
+import { createContext, useContext } from "react";
 import type { Nodes, Parent, PhrasingContent, Text } from "mdast";
 import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
 import type { PromptTextMention } from "@bb/domain";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { replaceTextMatches } from "./markdown-text-matches.js";
 
 const SENTINEL_OPEN = String.fromCharCode(0xe000);
@@ -99,7 +99,7 @@ export interface MarkdownPromptMentions {
   resolveMentionLink?: PromptMentionLinkResolver;
 }
 
-interface BuildPromptMentionComponentArgs {
+export interface PromptMentionsContextValue {
   mentions: readonly IndexedPromptMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
 }
@@ -116,27 +116,29 @@ declare module "react" {
   }
 }
 
-export function buildPromptMentionComponent({
-  mentions,
-  resolveMentionLink,
-}: BuildPromptMentionComponentArgs): ComponentType<PromptMentionElementProps> {
-  function PromptMentionElement(props: PromptMentionElementProps) {
-    const rawIndex = props["data-mention-index"];
-    if (rawIndex === undefined) {
-      return null;
-    }
-    const mention = mentions[Number(rawIndex)];
-    if (mention === undefined) {
-      return null;
-    }
-    return (
-      <PromptMentionPill
-        resource={mention.resource}
-        resolveMentionLink={resolveMentionLink}
-        serializedText={mention.serializedText}
-      />
-    );
-  }
+export const EMPTY_PROMPT_MENTIONS: PromptMentionsContextValue = {
+  mentions: [],
+};
 
-  return PromptMentionElement;
+export const PromptMentionsContext = createContext<PromptMentionsContextValue>(
+  EMPTY_PROMPT_MENTIONS,
+);
+
+export function PromptMentionElement(props: PromptMentionElementProps) {
+  const { mentions, resolveMentionLink } = useContext(PromptMentionsContext);
+  const rawIndex = props["data-mention-index"];
+  if (rawIndex === undefined) {
+    return null;
+  }
+  const mention = mentions[Number(rawIndex)];
+  if (mention === undefined) {
+    return null;
+  }
+  return (
+    <PromptMentionPill
+      resource={mention.resource}
+      resolveMentionLink={resolveMentionLink}
+      serializedText={mention.serializedText}
+    />
+  );
 }

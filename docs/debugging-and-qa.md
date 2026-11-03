@@ -25,6 +25,20 @@ the Connect desktop session in both the app and embedded browser cookie stores.
 This also authenticates shared-port links under the same Connect domain. The
 browser keeps its separate profile; unrelated site cookies are not copied.
 
+Desktop browser registration first uses a private local broker descriptor whose
+recorded server URL matches the selected server's origin. Otherwise it discovers
+the other private local broker descriptors and sends a fresh random challenge to the selected server's `/api/v1/desktop-browsers/broker-proof`
+endpoint. The server routes it to the descriptor's enrolled host, whose broker
+returns an HMAC using its local authentication token. The desktop verifies that
+proof against the private descriptor before registering; the token never leaves
+the machine. This works for alternate domains and proxies without hostname rules
+or plugin dependencies. Redirects and invalid proofs are rejected. This internal
+desktop handshake adds `desktop.broker.prove` in daemon protocol 248. Older
+protocol-246/247 daemons remain compatible for existing operations; the server
+rejects proof requests for those daemons with an upgrade-required error before
+sending any RPC. Failed lookups retry with exponential backoff from 2 seconds up
+to 1 minute.
+
 Saved desktop browser tabs keep their URL and owning host/window. Opening one
 in the desktop app attaches the existing view when that window still owns it,
 including after its connection generation changes. While the desktop or host is
@@ -122,14 +136,17 @@ embedded browser session is not implemented by this cache.
 
 ## bb Connect Gate Events
 
-The gate answers every proxied request within the response-head timeout (30 s,
-90 s for voice transcription) from when the Worker receives it; a miss gets a
-504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`,
-`response-head`, or `finishing`. Workers Logs keeps only about 1% of gate
+The gate answers every proxied request within the response-head timeout (30 s)
+from when the Worker receives it; a miss gets a 504 naming the stuck stage:
+`routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`.
+A relayed request still waiting in `response-head` at the deadline gets another
+30 s while the tunnel object reports a heartbeat under 45 s old, up to 10
+minutes from arrival. Workers Logs keeps only about 1% of gate
 requests, so the gate also writes these to the Analytics Engine dataset
 `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging):
 
-- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s);
+- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s, or a
+  relayed request first extended past the response-head timeout);
   `blob2` stage, `blob3` method, `blob4` host, `blob5` path; `double1` elapsed
   ms; `double2` tunnel-object attempts (above 1 means the object restarted and
   the dial was replayed).
@@ -449,6 +466,14 @@ Local machine enrollment follows the same origin: local `http:` server URLs
 produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
 enrollment remains HTTPS-only.
 
+For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
+`NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
+worker's `GATE_SECRET` (the account API answers 404 without it),
+`BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
+`BB_CLOUD_DEV_STATE_DIR` moves the local D1 and Durable Object state away from
+`.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
+see [connect-next.md](connect-next.md#local-end-to-end-run).
+
 The AI gateway answers `503 unavailable` until an OpenRouter key is present.
 Export `OPENROUTER_API_KEY` in the shell before `pnpm cloud:dev` to pass it
 through to the local worker; the startup banner says which mode is active.
@@ -523,10 +548,11 @@ payloads. Use it to reproduce performance problems that only appear at scale.
 task is uncached, and each package's `bench` script turns its benchmark on:
 
 - `@bb/app`: the sidebar thread list mount and update benchmark
-  (`sidebar.bench.test.tsx`) and the composer large-paste benchmark
-  (`prompt-paste-performance.test.ts`). `BB_SIDEBAR_BENCH_THREADS` sets the
-  thread count (default 3000), `BB_SIDEBAR_BENCH_OUT` writes the results as
-  JSON, and `PROMPTBOX_PERF_FIXTURE_OUT` saves the paste fixture.
+  (`sidebar.bench.test.tsx`). `BB_SIDEBAR_BENCH_THREADS` sets the thread
+  count (default 3000) and `BB_SIDEBAR_BENCH_OUT` writes the results as JSON.
+- `bb-plugin-bb--composer`: the composer large-paste benchmark
+  (`prompt-paste-performance.test.ts`). `PROMPTBOX_PERF_FIXTURE_OUT` saves the
+  paste fixture.
 - `@bb/host-watcher`: the root watcher recovery benchmark
   (`root-recovery-benchmark.test.ts`). `BB_WATCHER_BENCHMARK_OUTPUT` writes its
   report.
@@ -738,10 +764,11 @@ HEAD returns full-file headers without reading the body. To check partial reads,
 use `curl -D - -H 'Range: bytes=0-1023' '<attachment-url>' -o /tmp/attachment-part`.
 
 Skill detail reads and file listings resolve symlinked skill directories on
-their owning host. The server opts into `followRootSymlink` for
-`host.read_file_relative` and `host.list_files`; other callers pass `false`.
-Relative skill reads remain confined to the resolved directory and deny dotfiles,
-and listings skip nested symlinks. Linked skills remain read-only in bb.
+their owning host. The server opts into `followRootSymlink` for `host.read_file`
+and `host.list_files`; other callers pass `false`. The server rejects absolute,
+`..`, and dotfile skill paths before reading, the host confines reads to the
+resolved directory, and listings skip nested symlinks. Linked skills remain
+read-only in bb.
 
 ## Prepared Worktree Restarts
 
@@ -968,3 +995,89 @@ For a stale drawer or sidebar, check whether an optimistic mutation canceled
 the last realtime refresh, then whether its recovery ran after the mutation
 callbacks. Cover this ordering with real Query and Mutation observers; an
 isolated rollback helper test does not exercise mutation settlement.
+
+## Shared Async Caches
+
+The server and daemon share `createAsyncTtlMemo` from `@bb/async-cache` for
+keyed asynchronous reads. It shares pending work, starts TTLs at completion,
+retries rejected reads, and prevents invalidated work from repopulating the
+cache. Callers own keys, lifetimes, invalidation, and stale-result policy;
+set `maxEntries` when keys can grow. Invalidation does not cancel existing
+readers or replace their results.
+
+The daemon also uses this helper for client configuration and shell-environment
+refresh. Client configuration keeps its one-second TTL and retries failed reads
+on the next request. Shell refresh preserves startup values and optional stale
+reads, shares even slow pending refreshes, and starts its ten-second TTL after
+the resolved environment is applied.
+
+## Workspace Open-Target Discovery
+
+The host daemon's `GET /workspace-open-targets` shares the installed-app list,
+including icons, between general and file-specific discovery. It stays fresh
+for 60 seconds after discovery completes. After expiry, requests return the
+previous list immediately and share one background refresh. The first request
+after daemon startup or an effective executable search `PATH` change waits for
+a fresh scan. The cache belongs to the local API server instance.
+
+Failed initial scans are retried on the next call. Failed background scans keep
+the previous list and retry on the next request. Discovery's existing per-app
+fallbacks can still produce a successful partial list, which is cached for the
+same TTL. Installing or removing an application appears after the next successful
+refresh; the request that triggers an expired refresh still sees the old list.
+
+Requests with a `path` query reuse that same base list, then check file existence
+and macOS file associations fresh. File-associated apps do not enter the shared
+list, and already-listed apps reuse their cached icons. File discovery still
+waits for its native association lookup and any additional apps' icon extraction.
+
+## Environment Status Loading
+
+Merge-base status is cached per host daemon process at two levels, each a
+least-recently-used cache capped by estimated size. Full comparisons (16 MiB)
+are keyed by checkout path, shell path, resolved HEAD and base commits, base
+label, and file limit; working-tree status is always read fresh. Per-commit
+changed files (64 MiB, skipping any commit over 1 MiB) and patch IDs (8 MiB per
+diff mode) are keyed by commit SHA and shared by every checkout on the host, so
+a new commit or a fetched base commit only needs its own diff. Comparisons where
+a Git command failed or squash detection timed out are not cached. A daemon
+restart clears both levels.
+
+Ahead/behind counts exclude commits whose patch appears on the other side, as
+`git rev-list --cherry-pick` does: only commits touching the same set of paths
+as a commit on the other side are patch-hashed, without rename detection.
+Squash detection reuses the per-commit changed files for the newest 1,000 base
+commits and hashes its candidate patches with Git's rename detection, cached
+separately, within 8 MiB of patch output and a 1-second deadline per attempt.
+When it cannot finish, `mergeBase.squashMergeCheckComplete` is false and the
+counts may include already squash-merged commits; the next refresh retries with
+the cached work. Daemons older than this field report `true`.
+
+## Plugin Stylesheet Version Skew
+
+Plugin CSS URLs in bundle metadata always identify the complete stylesheet.
+The app adds `host-tailwind=<HOST_TAILWIND_VERSION>` when prefetching,
+preloading, or attaching that stylesheet. The version is generated from the
+host's Tailwind registrations, fallback declarations, and theme values.
+Both plugin asset routes strip matching host-provided rules only when that
+query value matches the server's generated version. Missing or mismatched
+values receive the original CSS, so a tab retained across a server update
+keeps working with its old host styles. Compressed responses are cached
+separately for the original and stripped variants.
+
+While the `narrowPluginCss` experiment is on, the app also adds
+`css-scope=owned-root-v1`. When a plugin's `app.js` never sets
+`data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
+drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
+plugin's utility selectors, so its rules cannot match outside its own roots and
+restyles of the rest of the page stay cheap. The server checks the bundle when
+it loads the plugin; any id-less root keeps that plugin on the original CSS, and
+`bb plugin build` warns about it. Authored CSS is never rewritten.
+
+To reproduce version skew, load the production main app in Chrome, restart
+the same isolated server on the branch without reloading the tab, and open
+Automations and Plugin Guide. Normal revision detection reloads the app automatically. To isolate a client
+that has not received that update status yet, retain the old immutable app
+assets and hold the update-status response at the old revision in a test
+proxy. Compare against a fresh tab and confirm the old tab's `performance.timeOrigin` and host stylesheet URL stay unchanged. Inspect
+Plugin Guide's `.font-bold` elements: they must still compute to weight 700.

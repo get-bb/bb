@@ -1,6 +1,6 @@
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
-import crossSpawn from "cross-spawn";
+import { spawnHostProcess } from "./host-process.js";
 
 interface PortableSpawnRequest {
   command: string;
@@ -36,7 +36,7 @@ interface PortableOutputChildProcess extends PortableChildProcess {
 export function spawnPortableProcess(
   request: PortableSpawnRequest,
 ): PortableChildProcess {
-  return crossSpawn(request.command, request.args, {
+  return spawnHostProcess(request.command, request.args, {
     cwd: request.cwd,
     detached: request.detached,
     env: request.env,

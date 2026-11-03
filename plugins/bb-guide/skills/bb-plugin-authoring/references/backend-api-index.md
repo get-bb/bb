@@ -1,14 +1,14 @@
 # Backend API symbol index
 
-Use this index to check backend, host, AI-service, and test imports.
-Read the detailed backend references for behavior, fields, and examples.
-Read the installed declarations for exact current signatures.
+Check imports here, behavior in the Plugin Guide, and signatures in the installed declarations.
 
 ## `@get-bb/plugin-sdk`
 
 - `PLUGIN_CLI_OUTPUT_MAX_BYTES`
 - `defineRpcContract`
 - `experimental_defineHostEntry`
+- `experimental_joinHostPath`, `experimental_getHostPathDirname`, `experimental_getHostPathBasename`, `experimental_getRelativeHostPath`, `experimental_getHostPathComparisonKey`
+- `experimental_normalizeHostPath`, `experimental_resolveHostPath`, `experimental_isHostPathWithin`
 - `defineCli`
 - `cliCommand`
 - `PluginCliError`
@@ -26,8 +26,15 @@ Read the installed declarations for exact current signatures.
 - `ComposerInsertOptions`
 - `DiffProps`
 - `DiffViewMode`
-- `ExperimentalAppPanel`
-- `ExperimentalAppPanelSurface`
+- `ExperimentalTabRegistration`
+- `ExperimentalTabContext`
+- `ExperimentalTabReference`
+- `ExperimentalOpenTabOptions`
+- `ExperimentalTabTargetReference`
+- `ExperimentalThreadActionTabProps`
+- `ExperimentalThreadTabProps`
+- `ExperimentalThreadTabActionContext`
+- `ExperimentalPanelController`
 - `ExperimentalDesktopBrowserAcquireInput`
 - `ExperimentalDesktopBrowserCreateInput`
 - `ExperimentalDesktopBrowserLease`
@@ -57,7 +64,6 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalHostWatchSubscription`
 - `ExperimentalHostWorkerLease`
 - `ExperimentalLiveFileTarget`
-- `ExperimentalOpenFixedTabOptions`
 - `ExperimentalPermissionModePickerProps`
 - `ExperimentalPluginFixedTabReference`
 - `ExperimentalPluginRpcCaller`
@@ -158,7 +164,59 @@ Read the installed declarations for exact current signatures.
 - `PluginCommandContext`
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
+- `ExperimentalComposerAction`
+- `ExperimentalComposerAttachments`
+- `ExperimentalComposerClipboard`
 - `ExperimentalComposerCommandRegistration`
+- `ExperimentalComposerCommandSearch`
+- `ExperimentalComposerCommandSuggestion`
+- `ExperimentalComposerCommandTrigger`
+- `ExperimentalComposerContribution`
+- `ExperimentalComposerContributions`
+- `ExperimentalComposerDecorationSource`
+- `ExperimentalComposerEditor`
+- `ExperimentalComposerEditorState`
+- `ExperimentalComposerEditorVoice`
+- `ExperimentalComposerHistory`
+- `ExperimentalComposerInput`
+- `ExperimentalComposerMentionSearch`
+- `ExperimentalComposerMentionSuggestion`
+- `ExperimentalComposerMentionSuggestionGroup`
+- `ExperimentalComposerMentionTarget`
+- `ExperimentalComposerMenuEntryProps`
+- `ExperimentalComposerMenuSelection`
+- `ExperimentalComposerPendingUpload`
+- `ExperimentalComposerPlusMenuContribution`
+- `ExperimentalComposerPopupContribution`
+- `ExperimentalComposerPopupProps`
+- `ExperimentalComposerPromptAction`
+- `ExperimentalComposerProps`
+- `ExperimentalComposerRegistration`
+- `ExperimentalComposerRendererApi`
+- `ExperimentalComposerRootProps`
+- `ExperimentalComposerSearchQuery`
+- `ExperimentalComposerSelection`
+- `ExperimentalComposerSendMenuContribution`
+- `ExperimentalComposerSubmission`
+- `ExperimentalComposerSubmitOptions`
+- `ExperimentalComposerThreadLink`
+- `ExperimentalComposerThreadLinks`
+- `ExperimentalComposerThreadRelation`
+- `ExperimentalComposerVoice`
+- `ExperimentalDroppedThreadMention`
+- `ExperimentalFailedVoiceRecording`
+- `ExperimentalFailedVoiceRecordingsProps`
+- `ExperimentalImageLightboxProps`
+- `ExperimentalMessageClipboardPayload`
+- `ExperimentalOpenAttachmentRequest`
+- `ExperimentalPluginIconProps`
+- `ExperimentalPromptMentionIconProps`
+- `ExperimentalShortcutHintProps`
+- `ExperimentalShortcutPresentation`
+- `ExperimentalThreadTitleTextProps`
+- `ExperimentalVoiceDelivery`
+- `ExperimentalVoiceInputButtonProps`
+- `ExperimentalVoiceRecordingBarProps`
 - `PluginComposerApi`
 - `PluginComposerMention`
 - `PluginComposerScope`
@@ -173,8 +231,6 @@ Read the installed declarations for exact current signatures.
 - `PluginFileOpenerProps`
 - `PluginFileOpenerRegistration`
 - `PluginFileOpenerSource`
-- `PluginFixedTabDeclaration`
-- `PluginFixedTabRegistration`
 - `PluginHomepageSectionProps`
 - `PluginHomepageSectionRegistration`
 - `PluginHosts`
@@ -194,6 +250,10 @@ Read the installed declarations for exact current signatures.
 - `PluginMentionTrigger`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
+- `ExperimentalMessageMetadataContext`
+- `ExperimentalMessageMetadataPlacement`
+- `ExperimentalMessageMetadataProps`
+- `ExperimentalMessageMetadataRegistration`
 - `PluginMessageDirectiveMessage`
 - `PluginMessageDirectiveOpenWorkspaceFile`
 - `PluginMessageDirectiveProps`
@@ -209,7 +269,6 @@ Read the installed declarations for exact current signatures.
 - `PluginNewThreadPanelActionContext`
 - `PluginNewThreadPanelActionRegistration`
 - `PluginNewThreadPanelProps`
-- `PluginPanelActionOpenOptions`
 - `PluginPendingInteractionProps`
 - `PluginPendingInteractionRegistration`
 - `PluginPendingInteractionView`
@@ -266,29 +325,33 @@ Read the installed declarations for exact current signatures.
 - `PluginSidebarFooterActionProps`
 - `PluginSidebarFooterActionRegistration`
 - `PluginSidebarProject`
-- `PluginSidebarPullRequest`
 - `PluginSidebarSplitPane`
 - `PluginSidebarThread`
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThreadIndicator`
-- `PluginSidebarThreadPullRequestState`
 - `PluginSidebarThreadSplit`
+- `PluginSidebarThreadSplitOptions`
 - `PluginSidebarThreadsState`
 - `PluginSourceCodeRendererProps`
 - `PluginSourceCodeRendererRegistration`
 - `PluginStatusApi`
 - `PluginStorage`
-- `PluginTargetedPanelActionOpenOptions`
 - `PluginThreadEventHandler`
 - `PluginThreadEventName`
 - `PluginThreadEventPayloads`
-- `PluginThreadHeaderActionProps`
-- `PluginThreadHeaderActionRegistration`
+- `ExperimentalThreadInfoProps`
+- `ExperimentalThreadInfoRowRegistration`
+- `ExperimentalThreadInfoSectionRegistration`
+- `ExperimentalThreadContextCardRowRegistration`
+- `ExperimentalThreadContextCardSectionRegistration`
+- `ExperimentalThreadContextCardProps`
+- `ExperimentalThreadContextCardRowProps`
+- `ExperimentalInfoSectionProps`
+- `ExperimentalDetailRowProps`
+- `ExperimentalInfoListProps`
+- `ExperimentalInfoListRowProps`
 - `PluginThreadListProps`
 - `PluginThreadListRegistration`
-- `PluginThreadPanelActionContext`
-- `PluginThreadPanelActionRegistration`
-- `PluginThreadPanelProps`
 - `PluginTimelineRendererProps`
 - `PluginTimelineRendererRegistration`
 - `PluginTimelineRendererRow`
@@ -371,6 +434,7 @@ Read the installed declarations for exact current signatures.
 - `ExperimentalNativeRootsResolveInput`
 - `ExperimentalNativeRootsResolveOutput`
 - `ExperimentalProcessIdentity`
+- `ExperimentalQuestionFormAction`
 - `ExperimentalQuestionFormHost`
 - `ExperimentalQuestionShortcut`
 - `ExperimentalSanitizeInheritedChildProcessEnvArgs`
@@ -388,6 +452,7 @@ Read the installed declarations for exact current signatures.
 - `createFakePluginHost`
 - `createFakeSdk`
 - `experimental_scanPublicSdkOnly`
+- `experimental_makePanelController`
 - `makeHostResponse`
 - `makeMessageDispatchHookContext`
 - `makePluginAgentConfigurationContext`

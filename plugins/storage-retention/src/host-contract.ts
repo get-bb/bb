@@ -70,7 +70,76 @@ export const developerEntryInspectionSchema = z.object({
   running: z.boolean(),
 });
 
+const absolutePathSchema = z.string().min(1);
+const gitWorktreeSkipReasonSchema = z.enum([
+  "notWorktree",
+  "locked",
+  "uncommittedChanges",
+  "unsavedCommits",
+]);
+
 export const hostStorageContract = defineRpcContract({
+  listGitWorktrees: {
+    input: z
+      .object({
+        repositoryPaths: z.array(absolutePathSchema).min(1).max(100),
+      })
+      .strict(),
+    output: z.object({
+      repositories: z.array(
+        z.object({
+          repositoryPath: z.string(),
+          mainPath: z.string(),
+          worktrees: z.array(
+            z.object({
+              path: z.string(),
+              head: z.string().nullable(),
+              branch: z.string().nullable(),
+              locked: z.boolean(),
+              changedFileCount: z.number().int().nonnegative().nullable(),
+              unsavedCommitCount: z.number().int().nonnegative().nullable(),
+              lastActivityAt: z.number().nullable(),
+            }),
+          ),
+        }),
+      ),
+      failures: z.array(
+        z.object({ repositoryPath: z.string(), message: z.string() }),
+      ),
+    }),
+  },
+  inspectGitWorktree: {
+    input: z
+      .object({ repositoryPath: absolutePathSchema, path: absolutePathSchema })
+      .strict(),
+    output: z.object({ reasons: z.array(gitWorktreeSkipReasonSchema) }),
+  },
+  removeGitWorktrees: {
+    input: z
+      .object({
+        repositoryPath: absolutePathSchema,
+        paths: z.array(absolutePathSchema).min(1).max(100),
+        force: z.boolean(),
+      })
+      .strict(),
+    output: z.object({
+      results: z.array(
+        z.discriminatedUnion("outcome", [
+          z.object({ path: z.string(), outcome: z.literal("removed") }),
+          z.object({
+            path: z.string(),
+            outcome: z.literal("skipped"),
+            reasons: z.array(gitWorktreeSkipReasonSchema).min(1),
+          }),
+          z.object({
+            path: z.string(),
+            outcome: z.literal("failed"),
+            message: z.string(),
+          }),
+        ]),
+      ),
+    }),
+  },
   inspectDeveloperEntries: {
     input: z
       .object({

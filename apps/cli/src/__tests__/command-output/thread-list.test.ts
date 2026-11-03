@@ -34,6 +34,7 @@ describe("bb thread list command output", () => {
 
     expect(list).toHaveBeenCalledWith({
       query: {
+        archived: "false",
         projectId: "proj-1",
         parentThreadId: "thread-manager-1",
       },
@@ -67,7 +68,9 @@ describe("bb thread list command output", () => {
       register,
     );
 
-    expect(list).toHaveBeenCalledWith({ query: { hostId: "host_removed123" } });
+    expect(list).toHaveBeenCalledWith({
+      query: { archived: "false", hostId: "host_removed123" },
+    });
     expect(hosts).not.toHaveBeenCalled();
   });
 
@@ -78,8 +81,45 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list", "--include-hidden"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: { includeHidden: "true" },
+      query: { archived: "false", includeHidden: "true" },
     });
+  });
+
+  it.each([
+    { args: [], query: { archived: "false" } },
+    { args: ["--archived"], query: { archived: "true" } },
+    { args: ["--include-archived"], query: {} },
+    {
+      args: ["--thread", "thr_a", "--archived"],
+      query: { archived: "true", threadIds: "thr_a" },
+    },
+  ])(
+    "bb thread list $args filters archived threads like bb thread count",
+    async ({ args, query }) => {
+      const list = vi.fn(async () => []);
+      stubServerApi({ "v1.threads.$get": list });
+
+      await runCommand(["thread", "list", ...args, "--json"], register);
+
+      expect(list).toHaveBeenCalledWith({ query });
+    },
+  );
+
+  it("bb thread list rejects --archived with --include-archived", async () => {
+    const list = vi.fn(async () => []);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await expect(
+      runCommand(
+        ["thread", "list", "--archived", "--include-archived"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --archived with --include-archived.",
+    );
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("bb thread list rejects invalid parent-thread values", async () => {
@@ -141,7 +181,7 @@ describe("bb thread list command output", () => {
       await runCommand(["thread", "list"], register);
 
       expect(list).toHaveBeenCalledWith({
-        query: {},
+        query: { archived: "false" },
       });
       expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
         "",
@@ -171,7 +211,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: {},
+      query: { archived: "false" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
@@ -256,7 +296,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: {},
+      query: { archived: "false" },
     });
   });
 });

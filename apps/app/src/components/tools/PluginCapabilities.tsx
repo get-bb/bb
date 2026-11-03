@@ -250,6 +250,13 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.composers,
+      "composer",
+      "Can replace the thread composer; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadPanelActions,
       "thread-panel",
       "Adds an action that opens a panel beside a thread.",
@@ -289,6 +296,42 @@ function pluginAppSurfaceItems(
       slots.threadHeaderActions,
       "thread-header",
       "Adds an action to thread headers.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextSegments,
+      "thread-context",
+      "Adds context beside a thread's composer.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadRowMetadata,
+      "thread-row-item",
+      "Adds an item to each thread row in the sidebar.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadInfoRows,
+      "thread-info-row",
+      "Adds a row to the thread Info tab.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadInfoSections,
+      "thread-info-section",
+      "Adds a section to the thread Info tab.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextCardRows,
+      "thread-context-card-row",
+      "Adds a row to the thread context card.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadContextCardSections,
+      "thread-context-card-section",
+      "Adds a section to the thread context card.",
     ),
     ...namedSlotItems(
       pluginId,

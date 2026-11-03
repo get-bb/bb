@@ -1,6 +1,7 @@
-import { type HostDaemonRpcCommand } from "@bb/host-daemon-contract";
+import type { HostDaemonRpcCommand } from "@bb/host-daemon-contract";
 
 const hostCommandWakePolicy = {
+  "desktop.broker.prove": "never",
   "server_move.abort": "never",
   "server_move.activate": "never",
   "server_move.delete_old_copy": "never",
@@ -23,7 +24,6 @@ const hostCommandWakePolicy = {
   "project.clone": "work",
   "environment.attach.cancel": "never",
   "workspace.commit": "work",
-  "workspace.pull_request_action": "work",
   "desktop.browser.list_instances": "work",
   "desktop.browser.list_tabs": "work",
   "desktop.browser.create_tab": "work",
@@ -47,6 +47,7 @@ const hostCommandWakePolicy = {
   "host.pick_folder": "work",
   "environment.hook.run": "work",
   "environment.hook.cancel": "never",
+  "environment.inspect_cleanup": "never",
   "plugin.host.call": "work",
   "plugin.host.cancel": "never",
   "plugin.host.dispose": "never",
@@ -62,7 +63,6 @@ const hostCommandWakePolicy = {
   "host.list_branch_options": "work",
   "host.read_file": "work",
   "host.read_file_chunk": "work",
-  "host.read_file_relative": "work",
   "host.write_file": "work",
   "provider.list_models": "work",
   "provider.list_commands": "work",
@@ -71,11 +71,6 @@ const hostCommandWakePolicy = {
   "provider.installation.run": "work",
   "provider.usage": "work",
   "host.discover_repos": "work",
-  "workspace.status": "work",
-  "workspace.diff": "work",
-  "workspace.diffFiles": "work",
-  "workspace.diffPatch": "work",
-  "workspace.pull_request": "work",
 } satisfies Record<HostDaemonRpcCommand["type"], "never" | "work">;
 
 export function hostCommandMayWake(command: HostDaemonRpcCommand): boolean {

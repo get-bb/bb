@@ -2,11 +2,14 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
 } from "react";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport";
+import { usePointerCoarse } from "./hooks/use-pointer-coarse";
 
 export interface InlineRenameArgs {
   kind: "thread" | "project" | "section" | "environment" | "machine";
@@ -72,13 +75,26 @@ export function renameError(error: unknown, kind: RenameSession["kind"]) {
 }
 
 export function useRenameController() {
-  const [session, setSession] = useState<RenameSession | null>(null);
   const sessionRef = useRef<RenameSession | null>(null);
+  const [listeners] = useState(() => new Set<() => void>());
   const startRequestRef = useRef(0);
-  const update = useCallback((next: RenameSession | null) => {
-    sessionRef.current = next;
-    setSession(next);
-  }, []);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    [listeners],
+  );
+  const getSession = useCallback(() => sessionRef.current, []);
+  const update = useCallback(
+    (next: RenameSession | null) => {
+      sessionRef.current = next;
+      for (const listener of listeners) listener();
+    },
+    [listeners],
+  );
 
   const save = useCallback(
     (clear = false): Promise<boolean> => {
@@ -163,21 +179,39 @@ export function useRenameController() {
     update(null);
   }, [update]);
 
-  return {
-    session,
-    start,
-    save,
-    cancel,
-    change: (draft: string) => {
+  const change = useCallback(
+    (draft: string) => {
       const current = sessionRef.current;
       if (current && !current.pending) {
         update({ ...current, draft, error: null, cannotRetry: false });
       }
     },
-  };
+    [update],
+  );
+
+  return useMemo(
+    () => ({ start, save, cancel, change, subscribe, getSession }),
+    [start, save, cancel, change, subscribe, getSession],
+  );
 }
 
 export type RenameController = ReturnType<typeof useRenameController>;
+
+export function useRenameSessionValue<T extends string | number | boolean>(
+  controller: Pick<RenameController, "subscribe" | "getSession">,
+  read: (session: RenameSession) => T,
+): T | null {
+  return useSyncExternalStore(controller.subscribe, () => {
+    const session = controller.getSession();
+    return session === null ? null : read(session);
+  });
+}
+
+export function useRenameSession(
+  controller: RenameController,
+): RenameSession | null {
+  return useSyncExternalStore(controller.subscribe, controller.getSession);
+}
 
 export interface InlineRenameEditorProps {
   session: RenameSession;
@@ -196,23 +230,38 @@ export function useInlineRename(
   { controller, Editor, fitEditorToContent = false }: InlineRenameOptions,
 ) {
   const compact = useIsCompactViewport();
+  const coarse = usePointerCoarse();
   const pendingMenuRename = useRef<(() => void) | null>(null);
   const generatedOwnerKey = useId();
   const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const { session, start, cancel } = controller;
+  const { start, cancel } = controller;
+  const session = useSyncExternalStore(
+    controller.subscribe,
+    useCallback(() => {
+      const current = controller.getSession();
+      return current?.ownerKey === ownerKey ? current : null;
+    }, [controller, ownerKey]),
+  );
   const isEditing =
     session?.ownerKey === ownerKey &&
     session.kind === args.kind &&
     session.id === args.id &&
     session.presentation === "inline";
+  const prefersDialog = compact || coarse;
+  const startEditingAs = useCallback(
+    (presentation: RenamePresentation) => {
+      void start({ ...args, ownerKey, presentation });
+    },
+    [args, start, ownerKey],
+  );
   const startEditing = useCallback(() => {
-    void start({ ...args, ownerKey, presentation: "inline" });
-  }, [args, start, ownerKey]);
+    startEditingAs(prefersDialog ? "dialog" : "inline");
+  }, [prefersDialog, startEditingAs]);
   const startEditingFromDoubleClick = useCallback(() => {
-    if (compact) return false;
-    startEditing();
+    if (coarse) return false;
+    startEditingAs("inline");
     return true;
-  }, [compact, startEditing]);
+  }, [coarse, startEditingAs]);
 
   useEffect(() => {
     if (
@@ -236,11 +285,8 @@ export function useInlineRename(
     startEditing,
     startEditingFromDoubleClick,
     startEditingFromMenu: () => {
-      if (compact) {
-        void start({ ...args, ownerKey, presentation: "dialog" });
-      } else {
-        pendingMenuRename.current = startEditing;
-      }
+      if (prefersDialog) startEditing();
+      else pendingMenuRename.current = startEditing;
     },
     onCloseAutoFocus: (event: Event) => {
       const begin = pendingMenuRename.current;

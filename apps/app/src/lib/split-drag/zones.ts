@@ -145,8 +145,5 @@ export function shouldEngageSidebarSplitDrag({
   }
   const dx = x - startX;
   const dy = y - startY;
-  if (Math.abs(dx) <= Math.abs(dy)) {
-    return false;
-  }
   return Math.hypot(dx, dy) > distance;
 }

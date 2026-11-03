@@ -457,6 +457,7 @@ const UPDATE_AVAILABLE_PLUGIN: PluginListItem = {
   updateState: {
     ...EMPTY_PLUGIN_UPDATE_STATE,
     availableVersion: "1.5.0",
+    availableLabel: "1.5.0",
     lastCheckAt: new Date(2026, 6, 20).getTime(),
   },
 };
@@ -467,8 +468,10 @@ const UPDATE_FAILED_PLUGIN: PluginListItem = {
   updateState: {
     ...EMPTY_PLUGIN_UPDATE_STATE,
     availableVersion: "1.5.0",
+    availableLabel: "1.5.0",
     lastFailure: {
       version: "1.5.0",
+      label: "1.5.0",
       at: new Date(2026, 6, 22).getTime(),
       detail: "The plugin failed to load after the update.",
     },
@@ -530,6 +533,7 @@ const COMPATIBILITY_BLOCKED_PLUGIN: PluginListItem = {
   updateState: {
     ...EMPTY_PLUGIN_UPDATE_STATE,
     blockedVersion: "2.0.0",
+    blockedLabel: "2.0.0",
     blockedReasons: ["Requires bb 0.20 or newer, and this bb is 0.18."],
   },
 };

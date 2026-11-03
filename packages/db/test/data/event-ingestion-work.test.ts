@@ -1,13 +1,12 @@
+import { createMigratedConnection } from "../../src/testing.js";
 import {
   appendDaemonEventsInTransaction,
   appendStoredThreadEventsInTransaction,
   copyStoredThreadEventsInTransaction,
-  createConnection,
   createProject,
   createThread,
   insertEvents,
   listStoredEventRows,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -17,8 +16,7 @@ import { expect, it } from "vitest";
 it.each(["daemon", "stored", "import", "copy"] as const)(
   "bounds pruning writes for %s event batches and rolls them back with events",
   (mode) => {
-    const db = createConnection(":memory:");
-    migrate(db);
+    const db = createMigratedConnection();
     const host = upsertHost(db, noopNotifier, { name: "ingestion" });
     const { project } = createProject(db, noopNotifier, {
       name: "ingestion",

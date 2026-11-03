@@ -220,18 +220,21 @@ describe("TimelineSelectionMenu", () => {
     expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
   });
 
-  it("uses a compact menu that prefers above coarse-pointer selections", () => {
+  it("opens a compact menu below touch selections, away from the native selection toolbar", () => {
     mockPointerCoarse();
     render(
       <TimelineSelectionMenu
-        selection={makeSelection()}
+        selection={makeSelection({
+          anchorPoint: { x: 60, y: 54 },
+          anchorSide: "bottom",
+        })}
         onAddToChat={vi.fn()}
         onDismiss={vi.fn()}
       />,
     );
 
     expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
-    expect(document.body.querySelector('[data-side="top"]')).toBeTruthy();
+    expect(document.body.querySelector('[data-side="bottom"]')).toBeTruthy();
   });
 
   it("activates a touch action on pointer-up without waiting for click", () => {

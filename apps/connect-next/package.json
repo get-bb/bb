@@ -1,0 +1,28 @@
+{
+  "name": "@bb/connect-next",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/gate.mjs",
+    "start": "node dist/gate.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsrs --noEmit"
+  },
+  "dependencies": {
+    "@bb/connect-db": "workspace:*",
+    "@bb/text-utils": "workspace:*",
+    "@bb/tunnel-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.1",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "ws": "^8.19.0"
+  }
+}

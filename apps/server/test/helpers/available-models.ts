@@ -18,6 +18,7 @@ export function availableModelFixture({
     model,
     displayName: model,
     description: "",
+    reasoningDiscovery: "known",
     supportedReasoningEfforts: reasoningLevels.map((reasoningEffort) => ({
       reasoningEffort,
       description: "",

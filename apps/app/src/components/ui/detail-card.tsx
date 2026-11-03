@@ -3,9 +3,9 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const DETAIL_ROW_ICON_CLASS =
-  "size-3 shrink-0 text-subtle-foreground max-md:pointer-coarse:size-4";
+  "size-(--bb-detail-row-icon-size) min-h-0 min-w-0 shrink-0 text-subtle-foreground";
 
-export function DetailRowIconLabel({
+function DetailRowIconLabel({
   icon,
   children,
 }: {
@@ -22,10 +22,9 @@ export function DetailRowIconLabel({
 
 export const DETAIL_GRID_CLASS =
   "grid grid-cols-[var(--detail-label-width,96px)_minmax(0,1fr)] gap-x-3";
-const DETAIL_LABEL_CLASS = "m-0 text-xs leading-5 text-muted-foreground";
-const DETAIL_VALUE_CLASS = "m-0 min-w-0 text-xs leading-5 text-foreground";
-
-type DetailRowOrientation = "horizontal" | "vertical";
+export const DETAIL_LABEL_CLASS = "m-0 text-xs leading-5 text-muted-foreground";
+export const DETAIL_VALUE_CLASS =
+  "m-0 min-w-0 text-xs leading-5 text-foreground";
 
 function labelWidthStyle(
   labelWidth: string | undefined,
@@ -74,42 +73,32 @@ export function DetailCard({
 
 interface DetailRowProps {
   label: ReactNode;
-  children: ReactNode;
-  className?: string;
-  labelClassName?: string;
-  valueClassName?: string;
+  icon?: IconName;
   align?: "start" | "center";
-  orientation?: DetailRowOrientation;
+  children: ReactNode;
 }
 
 export function DetailRow({
   label,
-  children,
-  className,
-  labelClassName,
-  valueClassName,
+  icon,
   align = "center",
-  orientation = "horizontal",
+  children,
 }: DetailRowProps) {
-  if (orientation === "vertical") {
-    return (
-      <div className={cn("flex flex-col gap-1 py-0.5", className)}>
-        <dt className={cn(DETAIL_LABEL_CLASS, labelClassName)}>{label}</dt>
-        <dd className={cn(DETAIL_VALUE_CLASS, valueClassName)}>{children}</dd>
-      </div>
-    );
-  }
-
   return (
     <div
       className={cn(
         DETAIL_GRID_CLASS,
         align === "center" ? "items-center py-0.5" : "py-0.5",
-        className,
       )}
     >
-      <dt className={cn(DETAIL_LABEL_CLASS, labelClassName)}>{label}</dt>
-      <dd className={cn(DETAIL_VALUE_CLASS, valueClassName)}>{children}</dd>
+      <dt className={DETAIL_LABEL_CLASS}>
+        {icon === undefined ? (
+          label
+        ) : (
+          <DetailRowIconLabel icon={icon}>{label}</DetailRowIconLabel>
+        )}
+      </dt>
+      <dd className={DETAIL_VALUE_CLASS}>{children}</dd>
     </div>
   );
 }

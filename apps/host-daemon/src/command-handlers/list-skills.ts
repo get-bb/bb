@@ -40,6 +40,9 @@ function createBbSkillScanRoot(
 ): SkillScanRoot {
   return {
     rootPath,
+    ...(rootKind === "bb-project"
+      ? { boundaryPath: path.dirname(path.dirname(rootPath)) }
+      : {}),
     shape: "skill",
     namePrefix: "",
     source: "skill",

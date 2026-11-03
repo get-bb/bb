@@ -2,7 +2,6 @@ import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PLUGIN_ICON_MAX_BYTES } from "@bb/domain";
 import {
   createTestAppHarness,
   type TestAppHarness,
@@ -60,12 +59,17 @@ async function writeIconPluginFixture(
   }
 }
 
-const PROVIDER_SOURCE = (icon: string): string => `
+const PROVIDER_SOURCE = (icon: string, tierIcon?: string): string => `
   export default function plugin(bb: any) {
     bb.providers.register({
       id: "marked-agent",
       displayName: "Marked Agent",
       icon: ${JSON.stringify(icon)},
+      ${
+        tierIcon === undefined
+          ? ""
+          : `serviceTiers: [{ id: "turbo", label: "Turbo", experimental_icon: ${JSON.stringify(tierIcon)} }],`
+      }
       maintenance: { health: false, usage: false, installation: false },
       capabilities: {
         supportsServiceTier: false,
@@ -190,30 +194,6 @@ describe("plugin-declared icons", () => {
         "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>`,
       },
       /experimental_icons\["receipt"\] must not contain a <script> element/,
-    ],
-    [
-      "an event handler attribute",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><path onload="x()" d="M0 0"/></svg>`,
-      },
-      /experimental_icons\["receipt"\] must not contain a <path onload> event handler/,
-    ],
-    [
-      "an external reference",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg xmlns="http://www.w3.org/2000/svg"><use href="https://example.com/x.svg#p"/></svg>`,
-      },
-      /experimental_icons\["receipt"\].*only same-document "#" references/,
-    ],
-    [
-      "an oversized file",
-      { receipt: "./icons/receipt.svg" },
-      {
-        "icons/receipt.svg": `<svg>${" ".repeat(PLUGIN_ICON_MAX_BYTES)}</svg>`,
-      },
-      /experimental_icons\["receipt"\] is \d+ bytes; the limit is/,
     ],
   ])(
     "fails the load naming the icon for %s",
@@ -403,4 +383,31 @@ describe("plugin-declared icons", () => {
     );
     expect(harness.deps.providerRegistry.get("marked-agent")).toBeNull();
   });
+
+  it.each([
+    ["an undeclared name", "unmarked/badge"],
+    ["another plugin's icon", "other-plugin/agent"],
+  ])(
+    "fails the load when a service tier icon names %s",
+    async (_case, tierIcon) => {
+      const rootDir = join(
+        harness.config.dataDir,
+        "fixtures",
+        "bb-plugin-unmarked",
+      );
+      await writeIconPluginFixture(rootDir, {
+        name: "bb-plugin-unmarked",
+        icons: { agent: "./icons/agent.svg" },
+        files: { "icons/agent.svg": SVG },
+        serverSource: PROVIDER_SOURCE("unmarked/agent", tierIcon),
+        withHost: true,
+      });
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain(
+        `provider "marked-agent" serviceTiers[0].experimental_icon "${tierIcon}" is not an icon declared by plugin "unmarked"`,
+      );
+      expect(harness.deps.providerRegistry.get("marked-agent")).toBeNull();
+    },
+  );
 });

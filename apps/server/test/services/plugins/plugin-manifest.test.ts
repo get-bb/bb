@@ -148,12 +148,6 @@ describe("plugin manifest", () => {
 
   it.each([
     ["non-SVG XML", "<html/>", /<svg> root element/],
-    ["malformed XML", "<svg><path></svg>", /not valid SVG XML/],
-    [
-      "entity declarations",
-      '<!DOCTYPE svg [<!ENTITY mark "x">]><svg>&mark;</svg>',
-      /must not contain a doctype declaration/,
-    ],
     ["a foreign namespace", '<x:svg xmlns:x="urn:not-svg"/>', /<svg> root/],
   ])(
     "rejects a path-shaped branding.icon with %s",

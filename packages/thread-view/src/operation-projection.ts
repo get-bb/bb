@@ -643,6 +643,23 @@ function replaceFileEditMessagesForCall(
   callId: string,
   nextRows: readonly EventProjectionFileEditMessage[],
 ): void {
+  const previousRows = state.fileEditsByCallId.get(callId);
+  if (!previousRows || previousRows.length === 0) {
+    state.messages.push(...nextRows);
+    return;
+  }
+  const firstPreviousRow = previousRows[0];
+  if (
+    firstPreviousRow &&
+    previousRows.length === nextRows.length &&
+    previousRows.every(
+      (row, index) =>
+        row === nextRows[index] &&
+        haveCompatibleEventProjectionMessageScope(row, firstPreviousRow),
+    )
+  ) {
+    return;
+  }
   const insertionIndex = state.messages.findIndex(
     (message) => message.kind === "file-edit" && message.callId === callId,
   );

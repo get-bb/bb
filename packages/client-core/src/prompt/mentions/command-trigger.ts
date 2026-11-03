@@ -51,13 +51,3 @@ export function buildProviderPromptActionProps(
 function serializedProviderCommand(command: ProviderComposerCommand): string {
   return `${command.trigger}${command.name}${command.trailingText}`;
 }
-
-export function commandPillDismissedRangeEnd({
-  triggerPosition,
-  trailingText,
-}: {
-  triggerPosition: number;
-  trailingText: string;
-}): number {
-  return triggerPosition + 1 + trailingText.length;
-}

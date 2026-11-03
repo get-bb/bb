@@ -339,16 +339,17 @@ WORKTREE_THREAD_ID=$(bb thread spawn \
 
 bb thread wait "$WORKTREE_THREAD_ID" --status idle --timeout 120
 WORKTREE_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$WORKTREE_THREAD_ID" | jq -r '.environmentId')
+WORKTREE_BASE_BRANCH=$(bb environment show "$WORKTREE_ENV_ID" --json | jq -er '.mergeBaseBranch // .baseBranch // .defaultBranch')
 
 bb thread show "$WORKTREE_THREAD_ID"
 bb thread output "$WORKTREE_THREAD_ID"
-bb thread show "$WORKTREE_THREAD_ID" --work-status
-bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target uncommitted
-bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target branch_committed
-bb thread show "$WORKTREE_THREAD_ID" --git-diff --diff-target all
+bb git status "$WORKTREE_ENV_ID" --merge-base-branch "$WORKTREE_BASE_BRANCH"
+bb git diff "$WORKTREE_ENV_ID" --target uncommitted
+bb git diff "$WORKTREE_ENV_ID" --target branch_committed --merge-base-branch "$WORKTREE_BASE_BRANCH"
+bb git diff "$WORKTREE_ENV_ID" --target all --merge-base-branch "$WORKTREE_BASE_BRANCH"
 curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID" | jq
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID/status" | jq
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_ID/diff/branches" | jq
+bb git status "$WORKTREE_ENV_ID" --json | jq
+bb git branches "$WORKTREE_ENV_ID" --json | jq
 ```
 
 Verify Codex-backed helper inference for environment commit. This catches
@@ -369,7 +370,8 @@ MERGE_BASE_BRANCH=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$WORKTREE_ENV_
 
 bb environment update "$WORKTREE_ENV_ID" --merge-base-branch "$MERGE_BASE_BRANCH"
 bb environment show "$WORKTREE_ENV_ID" --json | jq -e --arg branch "$MERGE_BASE_BRANCH" '.mergeBaseBranch == $branch'
-bb thread show "$WORKTREE_THREAD_ID" --work-status --git-diff --diff-target all
+bb git status "$WORKTREE_ENV_ID" --merge-base-branch "$MERGE_BASE_BRANCH"
+bb git diff "$WORKTREE_ENV_ID" --target all --merge-base-branch "$MERGE_BASE_BRANCH"
 
 bb environment update "$WORKTREE_ENV_ID" --clear-merge-base-branch
 bb environment show "$WORKTREE_ENV_ID" --json | jq -e '.mergeBaseBranch == null'
@@ -410,7 +412,7 @@ bb thread wait "$DIRTY_ARCHIVE_THREAD_ID" --status idle --timeout 120
 DIRTY_ARCHIVE_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$DIRTY_ARCHIVE_THREAD_ID" | jq -r '.environmentId')
 DIRTY_ARCHIVE_ENV_PATH=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" | jq -er '.path')
 printf 'dirty archive safety\n' > "$DIRTY_ARCHIVE_ENV_PATH/dirty-archive.txt"
-bb thread show "$DIRTY_ARCHIVE_THREAD_ID" --work-status
+bb git status "$DIRTY_ARCHIVE_ENV_ID"
 
 bb thread archive "$DIRTY_ARCHIVE_THREAD_ID"
 
@@ -780,7 +782,7 @@ bb thread wait "$PROVIDER_WORKTREE_THREAD_ID" --status idle --timeout 120
 PROVIDER_WORKTREE_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$PROVIDER_WORKTREE_THREAD_ID" | jq -r '.environmentId')
 
 bb thread output "$PROVIDER_WORKTREE_THREAD_ID"
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVIDER_WORKTREE_ENV_ID/status" | jq
+bb git status "$PROVIDER_WORKTREE_ENV_ID" --json | jq
 ```
 
 Run a pending-interaction pass with permission-restricted turns:

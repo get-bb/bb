@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import type {
-  HostFileTabState,
-  ThreadStorageFileTabState,
-  WorkspaceFileTabState,
+import {
+  getEnvironmentFilePreviewSourceAtRef,
+  type ThreadStorageFileTabState,
+  type WorkspaceFileTabState,
 } from "@bb/client-core";
 import type { AppFilePreviewIntent } from "@/lib/app-navigation-host";
 import {
@@ -34,10 +34,6 @@ interface UsePanelFilesArgs {
 
 export interface PanelFiles {
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
-  openHostFile: (
-    file: HostFileTabState,
-    options?: PanelFileOpenOptions,
-  ) => void;
   openStorageFile: (
     file: ThreadStorageFileTabState,
     options?: PanelFileOpenOptions,
@@ -67,23 +63,22 @@ function livePreviewRequest(
         tab: {
           lineRange,
           path: target.path,
-          source: { kind: "working-tree" },
+          source: getEnvironmentFilePreviewSourceAtRef(target.experimental_ref),
           statusLabel: null,
         },
       };
     case "host":
-      if (scope === null) {
+      if (scope === null || scope.threadId === null) {
+        if (scope?.hostId != null && target.hostId !== scope.hostId) {
+          return null;
+        }
         return {
           kind: "host-file-preview",
           hostId: target.hostId,
           tab: { lineRange, path: target.path },
         };
       }
-      if (
-        scope.threadId === null ||
-        scope.environmentId === null ||
-        target.hostId !== scope.hostId
-      ) {
+      if (scope.environmentId === null || target.hostId !== scope.hostId) {
         return null;
       }
       return {
@@ -118,16 +113,23 @@ export function usePanelFiles({
     },
     [openTab],
   );
-  const openHostFile = useCallback(
-    (file: HostFileTabState, options?: PanelFileOpenOptions) => {
-      openTab({ kind: "host-file-preview", tab: file }, options);
-    },
-    [openTab],
-  );
+  const hasScope = scope !== null;
+  const scopeThreadId = scope?.threadId ?? null;
+  const scopeEnvironmentId = scope?.environmentId ?? null;
+  const scopeHostId = scope?.hostId ?? null;
   const openFilePreview = useCallback(
     (intent: AppFilePreviewIntent) => {
       if (!available) return false;
-      const request = livePreviewRequest(intent, scope);
+      const request = livePreviewRequest(
+        intent,
+        hasScope
+          ? {
+              threadId: scopeThreadId,
+              environmentId: scopeEnvironmentId,
+              hostId: scopeHostId,
+            }
+          : null,
+      );
       if (request === null) return false;
       const tab = openTab(
         request,
@@ -137,7 +139,15 @@ export function usePanelFiles({
       reveal();
       return true;
     },
-    [available, openTab, reveal, scope],
+    [
+      available,
+      hasScope,
+      openTab,
+      reveal,
+      scopeEnvironmentId,
+      scopeHostId,
+      scopeThreadId,
+    ],
   );
-  return { openFilePreview, openHostFile, openStorageFile, openWorkspaceFile };
+  return { openFilePreview, openStorageFile, openWorkspaceFile };
 }

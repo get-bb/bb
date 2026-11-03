@@ -1,115 +1,99 @@
 import { describe, expect, it } from "vitest";
-import {
-  openUrlByPreference,
-  resolveUrlOpenTarget,
-} from "./in-app-browser-link-preference";
-
-describe("resolveUrlOpenTarget", () => {
-  it("routes http(s) links into the in-app browser on desktop when enabled", () => {
-    expect(
-      resolveUrlOpenTarget({
-        desktopBrowserAvailable: true,
-        openLinksInAppBrowser: true,
-        url: "https://example.com/docs",
-      }),
-    ).toBe("in-app-browser");
-    expect(
-      resolveUrlOpenTarget({
-        desktopBrowserAvailable: true,
-        openLinksInAppBrowser: true,
-        url: "HTTP://EXAMPLE.COM",
-      }),
-    ).toBe("in-app-browser");
-  });
-
-  it("routes http(s) links to the external browser when the preference is off", () => {
-    expect(
-      resolveUrlOpenTarget({
-        desktopBrowserAvailable: true,
-        openLinksInAppBrowser: false,
-        url: "https://example.com/docs",
-      }),
-    ).toBe("external-browser");
-  });
-
-  it("routes http(s) links to the external browser when the desktop browser is unavailable (web)", () => {
-    expect(
-      resolveUrlOpenTarget({
-        desktopBrowserAvailable: false,
-        openLinksInAppBrowser: true,
-        url: "https://example.com/docs",
-      }),
-    ).toBe("external-browser");
-  });
-
-  it("does not handle non-http links, even on desktop with the preference on", () => {
-    for (const url of [
-      "mailto:hi@example.com",
-      "file:///Users/me/app.ts",
-      "/projects/abc",
-      "#section",
-      "//example.com",
-      "javascript:alert(1)",
-    ]) {
-      expect(
-        resolveUrlOpenTarget({
-          desktopBrowserAvailable: true,
-          openLinksInAppBrowser: true,
-          url,
-        }),
-      ).toBe("unhandled");
-    }
-  });
-});
+import { openUrlByPreference } from "./in-app-browser-link-preference";
 
 describe("openUrlByPreference", () => {
-  it("opens http(s) URLs in the in-app browser when enabled", () => {
+  it.each([
+    {
+      name: "opens http(s) URLs in the in-app browser when enabled on desktop",
+      desktopBrowserAvailable: true,
+      openLinksInAppBrowser: true,
+      url: "https://example.com/docs",
+      handled: true,
+      inApp: ["https://example.com/docs"],
+      external: [],
+    },
+    {
+      name: "matches the http scheme case-insensitively",
+      desktopBrowserAvailable: true,
+      openLinksInAppBrowser: true,
+      url: "HTTP://EXAMPLE.COM",
+      handled: true,
+      inApp: ["HTTP://EXAMPLE.COM"],
+      external: [],
+    },
+    {
+      name: "opens http(s) URLs externally when the preference is off",
+      desktopBrowserAvailable: true,
+      openLinksInAppBrowser: false,
+      url: "https://example.com/docs",
+      handled: true,
+      inApp: [],
+      external: ["https://example.com/docs"],
+    },
+    {
+      name: "opens http(s) URLs externally when the desktop browser is unavailable (web)",
+      desktopBrowserAvailable: false,
+      openLinksInAppBrowser: true,
+      url: "https://example.com/docs",
+      handled: true,
+      inApp: [],
+      external: ["https://example.com/docs"],
+    },
+    {
+      name: "routes application links externally even when the in-app browser is preferred",
+      desktopBrowserAvailable: true,
+      openLinksInAppBrowser: true,
+      url: "reflect://note/Project%20X",
+      handled: true,
+      inApp: [],
+      external: ["reflect://note/Project%20X"],
+    },
+  ])(
+    "$name",
+    ({
+      desktopBrowserAvailable,
+      openLinksInAppBrowser,
+      url,
+      handled,
+      inApp,
+      external,
+    }) => {
+      const openedInApp: string[] = [];
+      const openedExternally: string[] = [];
+
+      expect(
+        openUrlByPreference({
+          desktopBrowserAvailable,
+          openLinksInAppBrowser,
+          openExternalBrowser: (opened) => openedExternally.push(opened),
+          openInAppBrowser: (opened) => openedInApp.push(opened),
+          url,
+        }),
+      ).toBe(handled);
+
+      expect(openedInApp).toEqual(inApp);
+      expect(openedExternally).toEqual(external);
+    },
+  );
+
+  it.each([
+    "mailto:hi@example.com",
+    "file:///Users/me/app.ts",
+    "/projects/abc",
+    "#section",
+    "//example.com",
+    "javascript:alert(1)",
+  ])("leaves %s to its dedicated handler", (url) => {
     const openedInApp: string[] = [];
     const openedExternally: string[] = [];
 
     expect(
       openUrlByPreference({
         desktopBrowserAvailable: true,
-        openExternalBrowser: (url) => openedExternally.push(url),
-        openInAppBrowser: (url) => openedInApp.push(url),
         openLinksInAppBrowser: true,
-        url: "https://example.com/docs",
-      }),
-    ).toBe(true);
-
-    expect(openedInApp).toEqual(["https://example.com/docs"]);
-    expect(openedExternally).toEqual([]);
-  });
-
-  it("opens http(s) URLs externally when disabled", () => {
-    const openedInApp: string[] = [];
-    const openedExternally: string[] = [];
-
-    expect(
-      openUrlByPreference({
-        desktopBrowserAvailable: true,
-        openExternalBrowser: (url) => openedExternally.push(url),
-        openInAppBrowser: (url) => openedInApp.push(url),
-        openLinksInAppBrowser: false,
-        url: "https://example.com/docs",
-      }),
-    ).toBe(true);
-
-    expect(openedInApp).toEqual([]);
-    expect(openedExternally).toEqual(["https://example.com/docs"]);
-  });
-
-  it("leaves file links and non-web schemes to their dedicated handlers", () => {
-    const openedInApp: string[] = [];
-    const openedExternally: string[] = [];
-
-    expect(
-      openUrlByPreference({
-        desktopBrowserAvailable: true,
-        openExternalBrowser: (url) => openedExternally.push(url),
-        openInAppBrowser: (url) => openedInApp.push(url),
-        openLinksInAppBrowser: true,
-        url: "file:///Users/me/app.ts",
+        openExternalBrowser: (opened) => openedExternally.push(opened),
+        openInAppBrowser: (opened) => openedInApp.push(opened),
+        url,
       }),
     ).toBe(false);
 

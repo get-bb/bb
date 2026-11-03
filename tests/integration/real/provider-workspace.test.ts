@@ -37,12 +37,10 @@ describe("real provider workspace integration", () => {
             harness,
             providerId,
           });
-          const initialStatus = await getEnvironmentStatus(
-            harness.api,
+          const initialStatus = await getEnvironmentStatus(harness.api, harness.serverUrl,
             environment.id,
           );
-          const branches = await getEnvironmentBranches(
-            harness.api,
+          const branches = await getEnvironmentBranches(harness.serverUrl,
             environment.id,
           );
           expect(initialStatus.outcome).toBe("available");
@@ -69,11 +67,10 @@ describe("real provider workspace integration", () => {
             harness.api,
             environment.id,
           );
-          const refreshedStatus = await getEnvironmentStatus(
-            harness.api,
+          const refreshedStatus = await getEnvironmentStatus(harness.api, harness.serverUrl,
             environment.id,
           );
-          const diff = await getEnvironmentDiff(harness.api, environment.id);
+          const diff = await getEnvironmentDiff(harness.api, harness.serverUrl, environment.id);
           expect(refreshedStatus.outcome).toBe("available");
           if (refreshedStatus.outcome !== "available") {
             throw new Error(

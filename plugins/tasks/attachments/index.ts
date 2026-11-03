@@ -7,6 +7,7 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from "../shared/attachments";
 import { errorMessage } from "../shared/errors";
+import { attachmentsChangedTags } from "../shared/tags";
 
 const INLINE_RASTER_MIMES = new Set([
   "image/png",
@@ -457,11 +458,11 @@ export async function deleteAttachmentById(
     store.updateTask(ownerTask.id, { description: nextDescription });
   }
   if (!store.deleteAttachment(attachment.id)) return null;
-  publishAttachmentChanged(bb, store, attachment);
+  invalidateAttachmentChanged(bb, store, attachment);
   return attachment;
 }
 
-export function publishAttachmentChanged(
+export function invalidateAttachmentChanged(
   bb: BbPluginApi,
   store: TasksStore,
   attachment: Attachment,
@@ -473,13 +474,12 @@ export function publishAttachmentChanged(
       : undefined);
   const task = taskId ? store.getTask(taskId) : undefined;
   if (!task) {
-    bb.log.warn(`failed to publish attachment change ${attachment.id}`);
+    bb.log.warn(`failed to invalidate attachment change ${attachment.id}`);
     return;
   }
-  bb.realtime.publish("tasks:changed", {
-    taskId: task.id,
-    projectId: task.projectId,
-  });
+  bb.rpc.experimental_invalidate(
+    attachmentsChangedTags(task.id, attachment.commentId),
+  );
 }
 
 export function registerAttachments(
@@ -507,7 +507,7 @@ export function registerAttachments(
           body.byteLength,
           (destinationPath) => writeFile(destinationPath, body),
         );
-        publishAttachmentChanged(bb, store, attachment);
+        invalidateAttachmentChanged(bb, store, attachment);
         return context.json(
           {
             attachmentId: attachment.id,

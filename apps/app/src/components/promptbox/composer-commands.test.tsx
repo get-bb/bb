@@ -2,10 +2,10 @@
 
 import { useEffect } from "react";
 import { act, cleanup, render } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerComposerPlugin } from "@/test/fixtures/composer-plugin";
+import { ComposerTestProviders } from "@/test/fixtures/composer-test-providers";
 import { defaultAppSettings, pluginCommandId } from "@bb/domain";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import {
   AppCommandProvider,
   useAppCommandContext,
@@ -21,10 +21,8 @@ import {
   PluginComposerHostProvider,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  PromptBoxInternal,
-} from "./PromptBoxInternal";
+import { ComposerBox } from "./ComposerBox";
+import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
 
 const SHORTCUT = {
   mod: false,
@@ -103,7 +101,8 @@ function Composer({
         data-app-composer=""
         data-app-composer-role={role}
       >
-        <PromptBoxInternal
+        <ComposerBox
+          surface="thread"
           value=""
           mentionRanges={[]}
           onChange={vi.fn()}
@@ -111,16 +110,7 @@ function Composer({
           onFocusCommand={onFocusCommand}
           autoFocus={false}
           mentionMenuPlacement="bottom"
-          typeahead={{
-            mention: {
-              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-              isLoading: false,
-              isRefreshing: false,
-              isError: false,
-              onQueryChange: vi.fn(),
-            },
-            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-          }}
+          typeahead={testTypeaheadConfig()}
         />
       </div>
     </PluginComposerHostProvider>
@@ -146,7 +136,7 @@ function renderComposers() {
   const focused: string[] = [];
   const runner: { current: AppCommandRunner | null } = { current: null };
   const view = render(
-    <MemoryRouter>
+    <ComposerTestProviders>
       <AppCommandProvider>
         <PromptAvailable />
         <RunnerProbe
@@ -169,7 +159,7 @@ function renderComposers() {
           Terminal
         </div>
       </AppCommandProvider>
-    </MemoryRouter>,
+    </ComposerTestProviders>,
   );
   const editorIn = (composerKey: string) => {
     const editor = view
@@ -198,6 +188,10 @@ function press(target: HTMLElement, key: string): KeyboardEvent {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+});
+
+beforeEach(async () => {
+  await registerComposerPlugin();
 });
 
 describe("composer commands", () => {

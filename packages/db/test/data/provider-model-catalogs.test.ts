@@ -1,11 +1,10 @@
+import { createMigratedConnection } from "../../src/testing.js";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   deleteStoredProviderModelCatalogsForHost,
   getStoredProviderModelCatalog,
   hosts,
-  migrate,
   noopNotifier,
   providerModelCatalogs,
   replaceStoredProviderModelCatalog,
@@ -53,8 +52,7 @@ describe("provider model catalogs data", () => {
   let db: DbConnection;
 
   beforeEach(() => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     upsertHost(db, noopNotifier, { id: "h1", name: "Host 1" });
     upsertHost(db, noopNotifier, { id: "h2", name: "Host 2" });
   });

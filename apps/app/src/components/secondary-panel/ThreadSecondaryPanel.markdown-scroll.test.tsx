@@ -15,14 +15,12 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 import { WorkspaceFilePreviewTabContent } from "./ThreadSecondaryPanelTabContent";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 const loading = vi.hoisted(() => ({ current: false }));
 
 vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({ data: { path: "/workspace" } }),
-  useEnvironmentDiffFiles: () => ({ data: undefined, isLoading: false }),
-  useEnvironmentDiffViewed: () => ({ data: undefined }),
-  useEnvironmentWorkStatus: () => ({ data: undefined }),
   useEnvironmentFilePreview: (_environmentId: string, path: string) => ({
     data: loading.current
       ? undefined
@@ -94,13 +92,6 @@ function Harness({
           isPanelOpen
           lineRange={null}
           source={document.source}
-          statusLabel={null}
-          markdownLinkRouting={{
-            onOpenLink: () => {
-              setActiveId(browserTab.id);
-              return true;
-            },
-          }}
         />
       ),
     }));
@@ -114,7 +105,14 @@ function Harness({
     renderContent: () => null,
   });
   return (
-    <>
+    <AppNavigationHostProvider
+      capabilities={{
+        openUrl: () => {
+          setActiveId(browserTab.id);
+          return true;
+        },
+      }}
+    >
       <button
         onClick={() => {
           setClosed(true);
@@ -135,7 +133,6 @@ function Harness({
         <ThreadSecondaryPanel
           splitPanelStateId={panelStateId}
           activeTab={tabs.find((tab) => tab.tab.id === activeId)?.tab ?? null}
-          canUseGitUi={false}
           fixedTabs={[]}
           tabs={tabs}
           isOpen
@@ -153,7 +150,7 @@ function Harness({
           }
         />
       </PanelGroup>
-    </>
+    </AppNavigationHostProvider>
   );
 }
 

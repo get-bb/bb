@@ -29,12 +29,17 @@ describe("saving", () => {
     await sendMenuItem.run({
       composer: fakeComposer({
         isEmpty: false,
-        submit: async (options) => {
+        submit: async (options = {}) => {
           submits.push(options);
         },
       }),
     });
-    expect(submits).toEqual([{ experimental_data: { kind: "draft" } }]);
+    expect(submits).toEqual([
+      {
+        experimental_mode: "queue-if-active",
+        experimental_data: { kind: "draft" },
+      },
+    ]);
   });
 
   it("does not submit an empty draft", async () => {

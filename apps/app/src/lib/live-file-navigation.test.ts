@@ -53,8 +53,54 @@ describe("normalizeExperimentalLiveFileTarget", () => {
       path: "src/app.tsx",
       ambientThreadId: "thr_1",
     },
+    {
+      kind: "workspace",
+      environmentId: "env_1",
+      path: "src/app.tsx",
+      experimental_ref: "",
+    },
+    {
+      kind: "workspace",
+      environmentId: "env_1",
+      path: "src/app.tsx",
+      experimental_ref: "HEAD~1",
+    },
+    {
+      kind: "workspace",
+      environmentId: "env_1",
+      path: "src/app.tsx",
+      experimental_ref: null,
+    },
+    {
+      kind: "workspace",
+      environmentId: "env_1",
+      path: "src/app.tsx",
+      experimental_ref: "origin/main",
+    },
+    {
+      kind: "thread-storage",
+      threadId: "thr_1",
+      path: "notes.md",
+      experimental_ref: "HEAD",
+    },
   ])("rejects ambiguous or non-exact target %#", (target) => {
     expect(normalizeExperimentalLiveFileTarget(target)).toBeNull();
+  });
+
+  it("keeps a workspace revision ref", () => {
+    expect(
+      normalizeExperimentalLiveFileTarget({
+        kind: "workspace",
+        environmentId: "env_1",
+        path: "src/app.tsx",
+        experimental_ref: "abc1234",
+      }),
+    ).toEqual({
+      kind: "workspace",
+      environmentId: "env_1",
+      path: "src/app.tsx",
+      experimental_ref: "abc1234",
+    });
   });
 
   it("accepts valid surrogate pairs and rejects unpaired surrogates", () => {

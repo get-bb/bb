@@ -3,7 +3,11 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
-import { makeTask } from "../../test-fixtures.js";
+import {
+  makeTask,
+  labelsByProject,
+  matchingTasks,
+} from "../../test-fixtures.js";
 
 const app = await loadPluginApp(() => import("../../app"));
 
@@ -65,7 +69,19 @@ function renderList() {
         listPresets: () => ({ presets: [] }),
         sidebarSummary: () => ({ projects: [] }),
         listLabels: () => ({ labels }),
-        listTasks: () => ({ tasks: [busyTask] }),
+        labelsByProject: labelsByProject(labels),
+        listAllTasks: (raw: unknown) => ({
+          tasks: matchingTasks([busyTask], raw),
+        }),
+        listTaskCardMeta: () => ({
+          cards: [
+            {
+              taskId: busyTask.id,
+              attachmentCount: 0,
+              activeThreads: [workerThread],
+            },
+          ],
+        }),
         listTaskThreads: () => ({ taskThreads: [workerThread] }),
         listComments: () => ({ comments: [] }),
         listAttachments: () => ({ attachments: [] }),

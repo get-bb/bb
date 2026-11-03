@@ -13,7 +13,8 @@ import { definePluginApp } from "@/lib/plugin-app-definition";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 
 const scheduled = vi.hoisted(() => ({ run: () => {} }));
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
+vi.mock(import("@/lib/plugin-frontend-lazy"), async (importOriginal) => ({
+  ...(await importOriginal()),
   schedulePluginFrontendReconcile: () => scheduled.run(),
 }));
 
@@ -41,6 +42,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
             sdkMajor: 0,
             sdkVersion: "0.1.0",
             compatible: true,
+            runtimeSlots: [],
           },
         },
       }),
@@ -62,13 +64,16 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       importModule: async () => ({ default: definePluginApp(() => {}) }),
       importRetryDelaysMs: [],
       applyCss: () => {},
+      prefetchCss: () => {},
+      prefetchModule: () => {},
       retainCss: () => () => {},
       resetCrashedSlots: () => {},
       setRegistrations: register,
       removeRegistrations: () => {},
       beginSlotBatch: () => () => {},
+      flushSlotBatch: () => {},
       warn: () => {},
-      routePluginId: () => null,
+      priorityPluginIds: () => [],
     };
     const effects = createRealtimeCacheEffects({ queryClient });
     let reconcile = Promise.resolve();

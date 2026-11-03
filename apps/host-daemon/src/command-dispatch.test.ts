@@ -61,8 +61,8 @@ async function writeInjectedSkillSource(
     "utf8",
   );
   return {
-    kind: "workspace-path",
-    sourceType: "project",
+    kind: "host-path",
+    sourceType: "shared-user",
     name: "release-notes",
     description: "Use release-notes when command dispatch tests run.",
     sourceRootPath,
@@ -114,15 +114,9 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
     getHeadSha: unexpectedWorkspaceCall,
-    getLocalStateFingerprint: unexpectedWorkspaceCall,
-    getSharedGitRefsFingerprint: unexpectedWorkspaceCall,
+    getLocalStateSnapshot: unexpectedWorkspaceCall,
+    getSharedGitRefsSnapshot: unexpectedWorkspaceCall,
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: unexpectedWorkspaceCall,
-    getDiff: unexpectedWorkspaceCall,
-    diffFiles: unexpectedWorkspaceCall,
-    diffPatch: unexpectedWorkspaceCall,
-    getPullRequest: unexpectedWorkspaceCall,
-    runPullRequestAction: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
   };
 }
@@ -186,6 +180,7 @@ function createRuntime(): FakeDispatchRuntime {
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getLiveThreadIds: vi.fn(() => [...activeTurnsByThreadId.keys()]),
     hasOpenBackgroundWork: () => false,
+    listOpenBackgroundWork: () => [],
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {
       hostedThreadIds.add(threadId);
@@ -2322,6 +2317,7 @@ describe("dispatchCommand", () => {
     expect(result.providerThreadId).toBe("provider-thread-1");
     expect(fixture.runtime.startThread).toHaveBeenCalledTimes(1);
     const currentCatalog = await stageInjectedSkillSources({
+      workspacePath: fixture.dataDir,
       dataDir: fixture.dataDir,
       injectedSkillSources: [fixture.source],
     });

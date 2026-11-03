@@ -1,6 +1,7 @@
 import {
   clipboard,
   Menu,
+  shell,
   type ContextMenuParams,
   type Event,
   type MenuItemConstructorOptions,
@@ -12,6 +13,8 @@ export interface DesktopContextMenuWebContents {
     eventName: "context-menu",
     listener: (event: Event, params: ContextMenuParams) => void,
   ): void;
+  copyImageAt(x: number, y: number): void;
+  downloadURL(url: string): void;
   replaceMisspelling(text: string): void;
   session: Pick<
     Session,
@@ -26,9 +29,10 @@ interface DesktopContextMenuSpellcheckContext {
 
 interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
+  allowSameOriginLinks: boolean;
   webContents: Pick<
     DesktopContextMenuWebContents,
-    "replaceMisspelling" | "session"
+    "copyImageAt" | "downloadURL" | "replaceMisspelling" | "session"
   >;
 }
 
@@ -55,6 +59,28 @@ function trimTrailingSeparator(
   return template.slice(0, -1);
 }
 
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function isWebLink(
+  { linkURL, pageURL }: Pick<ContextMenuParams, "linkURL" | "pageURL">,
+  allowSameOriginLinks: boolean,
+): boolean {
+  const link = parseUrl(linkURL);
+  if (link === null) {
+    return false;
+  }
+  return (
+    (link.protocol === "http:" || link.protocol === "https:") &&
+    (allowSameOriginLinks || link.origin !== parseUrl(pageURL)?.origin)
+  );
+}
+
 function getSpellcheckContextFromParams(
   params: ContextMenuParams,
 ): DesktopContextMenuSpellcheckContext | null {
@@ -70,6 +96,7 @@ function getSpellcheckContextFromParams(
 export function buildDesktopContextMenuTemplate({
   params,
   webContents,
+  allowSameOriginLinks,
 }: BuildDesktopContextMenuTemplateArgs): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [];
   const spellcheckContext = getSpellcheckContextFromParams(params);
@@ -101,6 +128,14 @@ export function buildDesktopContextMenuTemplate({
     pushSeparatorIfNeeded(template);
   }
 
+  if (isWebLink(params, allowSameOriginLinks)) {
+    template.push({
+      label: "Open in Browser",
+      click: () => {
+        void shell.openExternal(params.linkURL);
+      },
+    });
+  }
   if (params.linkURL.length > 0) {
     template.push({
       label: "Copy Link",
@@ -108,6 +143,25 @@ export function buildDesktopContextMenuTemplate({
         clipboard.writeText(params.linkURL);
       },
     });
+    pushSeparatorIfNeeded(template);
+  }
+
+  if (params.mediaType === "image" && params.srcURL.length > 0) {
+    template.push(
+      {
+        label: "Copy Image",
+        enabled: params.hasImageContents,
+        click: () => {
+          webContents.copyImageAt(params.x, params.y);
+        },
+      },
+      {
+        label: "Save Image As…",
+        click: () => {
+          webContents.downloadURL(params.srcURL);
+        },
+      },
+    );
     pushSeparatorIfNeeded(template);
   }
 
@@ -144,6 +198,7 @@ function showDesktopContextMenu({
   params: ContextMenuParams;
 }): void {
   const template = buildDesktopContextMenuTemplate({
+    allowSameOriginLinks: false,
     params,
     webContents,
   });

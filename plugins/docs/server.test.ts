@@ -11,10 +11,6 @@ import simpleNotes from "./server";
 
 const temporaryDirectories: string[] = [];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -76,13 +72,27 @@ async function loadNotebook(
       hosts: { list: async () => [] },
     },
   });
+  const watchedReads = new Map<
+    string,
+    Parameters<typeof host.bb.rpc.experimental_whileWatched>[1]
+  >();
+  const whileWatched = host.bb.rpc.experimental_whileWatched.bind(host.bb.rpc);
+  host.bb.rpc.experimental_whileWatched = (method, handler) => {
+    watchedReads.set(method, handler);
+    whileWatched(method, handler);
+  };
   await simpleNotes(host.bb, watchVault);
   host.bb.storage
     .database()
     .prepare("UPDATE vaults SET root_path = ? WHERE id = 'personal'")
     .run(directory);
   host.harness.sdk.calls.length = 0;
-  return host;
+  const watchRead = (method: string, input: Record<string, string>) => {
+    const controller = new AbortController();
+    void watchedReads.get(method)!({ input }, controller.signal);
+    return controller;
+  };
+  return { ...host, directory, watchRead };
 }
 
 interface VirtualFile {
@@ -309,17 +319,6 @@ describe("Docs RPC contract", () => {
     });
   });
 });
-
-async function waitForSignal(
-  predicate: () => boolean,
-  timeoutMs = 2_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("Timed out waiting for signal");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
 
 describe("Docs mention provider", () => {
   it("shares note reads across overlapping searches and subsequent keystrokes", async () => {
@@ -687,28 +686,56 @@ describe("Docs vault operations", () => {
     });
 
     await expect(
-      harness.callRpc("renameToTitle", {
+      harness.callRpc("saveDocument", {
         vaultId: "personal",
         path: "stable-wiki-slug.md",
+        content: [
+          "---",
+          "title: A different display title",
+          "---",
+          "# Edited heading",
+        ].join("\n"),
+        expectedSha256: "test-sha",
+        renameToTitle: true,
       }),
-    ).resolves.toEqual({ path: "stable-wiki-slug.md" });
+    ).resolves.toEqual({ path: "stable-wiki-slug.md", sha256: "written-sha" });
     expect(harness.sdk.callsTo("files.move")).toEqual([]);
   });
 
-  it("still follows the H1 when frontmatter has no title", async () => {
+  it("names an Untitled note after its first heading when it is saved", async () => {
     const { harness } = await loadNotebook({
-      "old-slug.md": ["---", "tags: [a]", "---", "# Brand new title"].join(
+      "Untitled 2.md": ["---", "tags: [a]", "---", "# Brand new title"].join(
         "\n",
       ),
     });
 
     await expect(
-      harness.callRpc("renameToTitle", {
+      harness.callRpc("saveDocument", {
+        vaultId: "personal",
+        path: "Untitled 2.md",
+        content: ["---", "tags: [a]", "---", "# Brand new title"].join("\n"),
+        expectedSha256: "test-sha",
+        renameToTitle: true,
+      }),
+    ).resolves.toEqual({ path: "brand-new-title.md", sha256: "written-sha" });
+    expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
+  });
+
+  it("keeps a named note at its path when its heading changes", async () => {
+    const { harness } = await loadNotebook({
+      "old-slug.md": "# Old title\n",
+    });
+
+    await expect(
+      harness.callRpc("saveDocument", {
         vaultId: "personal",
         path: "old-slug.md",
+        content: "# Brand new title\n",
+        expectedSha256: "test-sha",
+        renameToTitle: true,
       }),
-    ).resolves.toEqual({ path: "brand-new-title.md" });
-    expect(harness.sdk.callsTo("files.move")).toHaveLength(1);
+    ).resolves.toEqual({ path: "old-slug.md", sha256: "written-sha" });
+    expect(harness.sdk.callsTo("files.move")).toEqual([]);
   });
 
   it("round-trips a folder edit through pull and push without changing binary assets", async () => {
@@ -1228,96 +1255,121 @@ describe("Docs vault operations", () => {
     ]);
   });
 
-  it("routes explicit host opener reads, previews, and saves to that host", async () => {
-    const rootPath = "/shared";
-    const filePath = "/shared/plan.md";
-    const host = createFakePluginHost({
-      pluginId: "simple-notes",
-      sdk: {
-        files: {
-          mkdir: async () => ({ ok: true as const }),
-          read: async ({ hostId, path: openedPath }) => ({
-            path: openedPath,
-            content:
-              hostId === "host_remote" ? "# Remote plan" : "# Primary plan",
-            contentEncoding: "utf8" as const,
-            mimeType: "text/markdown",
-            sizeBytes: 13,
-            modifiedAtMs: 1,
-            sha256: hostId === "host_remote" ? "remote-sha" : "primary-sha",
-          }),
-          write: async ({ hostId }) => ({
-            outcome: "written" as const,
-            sha256:
-              hostId === "host_remote"
-                ? "remote-written-sha"
-                : "primary-written-sha",
-            sizeBytes: 21,
-          }),
-          createPreview: async ({ hostId }) => ({
-            baseUrl:
-              hostId === "host_remote" ? "/remote-preview" : "/primary-preview",
-            expiresAtMs: Date.now() + 60_000,
-          }),
+  it.each([
+    {
+      name: "an explicit host",
+      source: {
+        kind: "host",
+        threadId: "thread_1",
+        environmentId: null,
+        projectId: "project_1",
+        experimental_hostId: "host_remote",
+      },
+    },
+    {
+      name: "the thread environment's host",
+      source: {
+        kind: "host",
+        threadId: "thread_1",
+        environmentId: "env_remote",
+        projectId: "project_1",
+      },
+    },
+  ])(
+    "routes host opener reads, previews, and saves to $name",
+    async ({ source }) => {
+      const rootPath = "/shared";
+      const filePath = "/shared/plan.md";
+      const host = createFakePluginHost({
+        pluginId: "simple-notes",
+        sdk: {
+          files: {
+            mkdir: async () => ({ ok: true as const }),
+            read: async ({ hostId, path: openedPath }) => ({
+              path: openedPath,
+              content:
+                hostId === "host_remote" ? "# Remote plan" : "# Primary plan",
+              contentEncoding: "utf8" as const,
+              mimeType: "text/markdown",
+              sizeBytes: 13,
+              modifiedAtMs: 1,
+              sha256: hostId === "host_remote" ? "remote-sha" : "primary-sha",
+            }),
+            write: async ({ hostId }) => ({
+              outcome: "written" as const,
+              sha256:
+                hostId === "host_remote"
+                  ? "remote-written-sha"
+                  : "primary-written-sha",
+              sizeBytes: 21,
+            }),
+            createPreview: async ({ hostId }) => ({
+              baseUrl:
+                hostId === "host_remote"
+                  ? "/remote-preview"
+                  : "/primary-preview",
+              expiresAtMs: Date.now() + 60_000,
+            }),
+          },
+          environments: {
+            get: async ({ environmentId }) => ({
+              id: environmentId,
+              hostId: "host_remote",
+              path: null,
+            }),
+          },
         },
-      },
-    });
-    await simpleNotes(host.bb);
-    host.harness.sdk.calls.length = 0;
-    const source = {
-      kind: "host",
-      threadId: "thread_1",
-      environmentId: null,
-      projectId: "project_1",
-      experimental_hostId: "host_remote",
-    };
+      });
+      await simpleNotes(host.bb);
+      host.harness.sdk.calls.length = 0;
 
-    await expect(
-      host.harness.callRpc("openFile", { source, path: filePath }),
-    ).resolves.toEqual({
-      file: {
-        path: filePath,
-        content: "# Remote plan",
-        contentEncoding: "utf8",
-        mimeType: "text/markdown",
-        sizeBytes: 13,
-        modifiedAtMs: 1,
-        sha256: "remote-sha",
-      },
-      preview: expect.objectContaining({ baseUrl: "/remote-preview" }),
-      previewPath: "plan.md",
-    });
-    await expect(
-      host.harness.callRpc("saveOpenedFile", {
-        source,
-        path: filePath,
-        content: "# Updated remote plan",
-        expectedSha256: "remote-sha",
-      }),
-    ).resolves.toEqual({
-      outcome: "written",
-      sha256: "remote-written-sha",
-      sizeBytes: 21,
-    });
-
-    expect(host.harness.sdk.callsTo("files.read")).toEqual([
-      [{ hostId: "host_remote", path: filePath, rootPath }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
-      [{ hostId: "host_remote", rootPath }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.write")).toEqual([
-      [
-        {
-          hostId: "host_remote",
+      await expect(
+        host.harness.callRpc("openFile", { source, path: filePath }),
+      ).resolves.toEqual({
+        file: {
           path: filePath,
-          rootPath,
+          content: "# Remote plan",
+          contentEncoding: "utf8",
+          mimeType: "text/markdown",
+          sizeBytes: 13,
+          modifiedAtMs: 1,
+          sha256: "remote-sha",
+        },
+        preview: expect.objectContaining({ baseUrl: "/remote-preview" }),
+        previewPath: "plan.md",
+      });
+      await expect(
+        host.harness.callRpc("saveOpenedFile", {
+          source,
+          path: filePath,
           content: "# Updated remote plan",
           expectedSha256: "remote-sha",
-        },
-      ],
-    ]);
-  });
+        }),
+      ).resolves.toEqual({
+        outcome: "written",
+        sha256: "remote-written-sha",
+        sizeBytes: 21,
+      });
+
+      expect(host.harness.sdk.callsTo("files.read")).toEqual([
+        [{ hostId: "host_remote", path: filePath, rootPath }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
+        [{ hostId: "host_remote", rootPath }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.write")).toEqual([
+        [
+          {
+            hostId: "host_remote",
+            path: filePath,
+            rootPath,
+            content: "# Updated remote plan",
+            expectedSha256: "remote-sha",
+          },
+        ],
+      ]);
+    },
+  );
 
   it("routes project-backed workspace files through the selected or primary source", async () => {
     const host = createFakePluginHost({
@@ -1451,99 +1503,112 @@ describe("Docs vault operations", () => {
     ]);
   });
 
-  it("opens and saves thread-storage Markdown files on the thread's host", async () => {
-    const storageRootPath = String.raw`C:\bb\thread-storage\thread_1`;
-    const openedPath = String.raw`C:\bb\thread-storage\thread_1\reports\plan.md`;
-    const host = createFakePluginHost({
-      pluginId: "simple-notes",
-      sdk: {
-        files: {
-          mkdir: async () => ({ ok: true as const }),
-          read: async ({ path: filePath }) => ({
-            path: filePath,
-            content: "# Thread plan",
-            contentEncoding: "utf8" as const,
-            mimeType: "text/markdown",
-            sizeBytes: 13,
-            modifiedAtMs: 1,
-            sha256: "thread-sha",
-          }),
-          write: async () => ({
-            outcome: "written" as const,
-            sha256: "updated-thread-sha",
-            sizeBytes: 17,
-          }),
-          createPreview: async () => ({
-            baseUrl: "/api/v1/file-previews/thread-storage",
-            expiresAtMs: Date.now() + 60_000,
-          }),
+  it.each([
+    [
+      "C:\\bb\\thread-storage\\thread_1",
+      "C:\\bb\\thread-storage\\thread_1\\reports\\plan.md",
+      "C:\\bb\\thread-storage\\thread_1",
+    ],
+    [
+      "//server/share/thread_1",
+      "\\\\server\\share\\thread_1\\reports\\plan.md",
+      "\\\\server\\share\\thread_1",
+    ],
+    ["C:", "C:\\reports\\plan.md", "C:\\"],
+  ])(
+    "opens and saves thread-storage Markdown on %s",
+    async (storageRootPath, openedPath, canonicalRoot) => {
+      const host = createFakePluginHost({
+        pluginId: "simple-notes",
+        sdk: {
+          files: {
+            mkdir: async () => ({ ok: true as const }),
+            read: async ({ path: filePath }) => ({
+              path: filePath,
+              content: "# Thread plan",
+              contentEncoding: "utf8" as const,
+              mimeType: "text/markdown",
+              sizeBytes: 13,
+              modifiedAtMs: 1,
+              sha256: "thread-sha",
+            }),
+            write: async () => ({
+              outcome: "written" as const,
+              sha256: "updated-thread-sha",
+              sizeBytes: 17,
+            }),
+            createPreview: async () => ({
+              baseUrl: "/api/v1/file-previews/thread-storage",
+              expiresAtMs: Date.now() + 60_000,
+            }),
+          },
+          threads: {
+            storageLocation: async () => ({
+              hostId: "host_remote",
+              storageRootPath,
+            }),
+          },
         },
-        threads: {
-          storageLocation: async () => ({
-            hostId: "host_remote",
-            storageRootPath,
-          }),
-        },
-      },
-    });
-    await simpleNotes(host.bb);
-    host.harness.sdk.calls.length = 0;
-    const source = {
-      kind: "thread-storage",
-      threadId: "thread_1",
-      environmentId: "stale_environment",
-      projectId: "project_1",
-    };
+      });
+      await simpleNotes(host.bb);
+      host.harness.sdk.calls.length = 0;
+      const source = {
+        kind: "thread-storage",
+        threadId: "thread_1",
+        environmentId: "stale_environment",
+        projectId: "project_1",
+      };
 
-    await expect(
-      host.harness.callRpc("openFile", {
-        source,
-        path: "reports/plan.md",
-      }),
-    ).resolves.toMatchObject({
-      file: { content: "# Thread plan", sha256: "thread-sha" },
-      previewPath: "reports/plan.md",
-    });
-    await expect(
-      host.harness.callRpc("saveOpenedFile", {
-        source,
-        path: "reports/plan.md",
-        content: "# Updated thread",
-        expectedSha256: "thread-sha",
-      }),
-    ).resolves.toMatchObject({
-      outcome: "written",
-      sha256: "updated-thread-sha",
-    });
-
-    expect(host.harness.sdk.callsTo("threads.storageLocation")).toEqual([
-      [{ threadId: "thread_1" }],
-      [{ threadId: "thread_1" }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.read")).toEqual([
-      [
-        {
-          hostId: "host_remote",
-          path: openedPath,
-          rootPath: storageRootPath,
-        },
-      ],
-    ]);
-    expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
-      [{ hostId: "host_remote", rootPath: storageRootPath }],
-    ]);
-    expect(host.harness.sdk.callsTo("files.write")).toEqual([
-      [
-        {
-          hostId: "host_remote",
-          path: openedPath,
-          rootPath: storageRootPath,
+      await expect(
+        host.harness.callRpc("openFile", {
+          source,
+          path: "reports/plan.md",
+        }),
+      ).resolves.toMatchObject({
+        file: { content: "# Thread plan", sha256: "thread-sha" },
+        previewPath: "reports/plan.md",
+      });
+      await expect(
+        host.harness.callRpc("saveOpenedFile", {
+          source,
+          path: "reports/plan.md",
           content: "# Updated thread",
           expectedSha256: "thread-sha",
-        },
-      ],
-    ]);
-  });
+        }),
+      ).resolves.toMatchObject({
+        outcome: "written",
+        sha256: "updated-thread-sha",
+      });
+
+      expect(host.harness.sdk.callsTo("threads.storageLocation")).toEqual([
+        [{ threadId: "thread_1" }],
+        [{ threadId: "thread_1" }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.read")).toEqual([
+        [
+          {
+            hostId: "host_remote",
+            path: openedPath,
+            rootPath: canonicalRoot,
+          },
+        ],
+      ]);
+      expect(host.harness.sdk.callsTo("files.createPreview")).toEqual([
+        [{ hostId: "host_remote", rootPath: canonicalRoot }],
+      ]);
+      expect(host.harness.sdk.callsTo("files.write")).toEqual([
+        [
+          {
+            hostId: "host_remote",
+            path: openedPath,
+            rootPath: canonicalRoot,
+            content: "# Updated thread",
+            expectedSha256: "thread-sha",
+          },
+        ],
+      ]);
+    },
+  );
 
   it("rejects thread-storage paths that escape the confined root", async () => {
     const { harness } = await loadNotebook({ "plan.md": "# Plan" });
@@ -1562,59 +1627,134 @@ describe("Docs vault operations", () => {
     expect(harness.sdk.callsTo("threads.storageLocation")).toEqual([]);
   });
 
-  it("publishes watched filesystem changes without waiting for the poll", async () => {
-    const changeListeners: Array<() => void> = [];
-    const closeWatcher = vi.fn();
-    const watchedRoots: string[] = [];
-    const { harness } = await loadNotebook(
+  function fakeWatchers() {
+    const watchers: Array<{
+      rootPath: string;
+      onChange(relativePath: string | null): void;
+      close: ReturnType<typeof vi.fn>;
+    }> = [];
+    const watchVault = (
+      rootPath: string,
+      onChange: (relativePath: string | null) => void,
+    ) => {
+      const watcher = { rootPath, onChange, close: vi.fn() };
+      watchers.push(watcher);
+      return { close: watcher.close, on: () => undefined };
+    };
+    return { watchers, watchVault };
+  }
+
+  it("watches a vault only while one of its documents is on screen and publishes external edits", async () => {
+    const { watchers, watchVault } = fakeWatchers();
+    const { harness, directory, watchRead } = await loadNotebook(
       { "plan.md": "# Plan" },
-      (rootPath, onChange) => {
-        watchedRoots.push(rootPath);
-        changeListeners.push(onChange);
-        return {
-          close: closeWatcher,
-          on: () => undefined,
-        };
-      },
+      watchVault,
     );
-    const service = harness.runService("watch-vaults");
-    try {
-      expect(watchedRoots).toEqual([temporaryDirectories[0]]);
-      const notifyChange = changeListeners[0];
-      if (!notifyChange) {
-        throw new Error("Expected vault watcher callback");
-      }
-      const provider = harness.registrations.mentionProviders[0]!;
-      const context = {
-        trigger: "@" as const,
-        query: "",
-        projectId: null,
-        threadId: null,
-      };
-      expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
-      await writeFile(
-        path.join(temporaryDirectories[0]!, "plan.md"),
-        "# Updated",
-      );
-      notifyChange();
-      expect(await provider.search(context)).toMatchObject([
-        { title: "Updated" },
-      ]);
-      await waitForSignal(
-        () =>
-          harness.realtimeSignals.some(
-            (signal) =>
-              signal.channel === "vault-changed" &&
-              isRecord(signal.payload) &&
-              signal.payload.vaultId === "personal",
-          ),
-        1_000,
-      );
-    } finally {
-      service.controller.abort();
-      await service.done;
-    }
-    expect(closeWatcher).toHaveBeenCalledOnce();
+    expect(watchers).toHaveLength(0);
+    const first = watchRead("readDocument", {
+      vaultId: "personal",
+      path: "plan.md",
+    });
+    const second = watchRead("listNotes", { vaultId: "personal" });
+    expect(watchers.map((watcher) => watcher.rootPath)).toEqual([directory]);
+    const provider = harness.registrations.mentionProviders[0]!;
+    const context = {
+      trigger: "@" as const,
+      query: "",
+      projectId: null,
+      threadId: null,
+    };
+    expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
+    await harness.callRpc("listNotes", { vaultId: "personal" });
+    await writeFile(path.join(directory, "plan.md"), "# Plan\n\nNew body");
+    harness.experimental_rpcInvalidations.length = 0;
+    watchers[0]!.onChange("plan.md");
+    await vi.waitFor(() =>
+      expect(harness.experimental_rpcInvalidations).toEqual([
+        ["doc:personal:plan.md", "folder:personal:plan.md"],
+      ]),
+    );
+    await writeFile(path.join(directory, "plan.md"), "# Updated");
+    harness.experimental_rpcInvalidations.length = 0;
+    watchers[0]!.onChange("plan.md");
+    watchers[0]!.onChange(".plan.md.tmp-1");
+    await vi.waitFor(() =>
+      expect(harness.experimental_rpcInvalidations).toEqual([
+        ["tree:personal", "doc:personal:plan.md", "folder:personal:plan.md"],
+      ]),
+    );
+    expect(await provider.search(context)).toMatchObject([
+      { title: "Updated" },
+    ]);
+    first.abort();
+    expect(watchers[0]!.close).not.toHaveBeenCalled();
+    second.abort();
+    expect(watchers[0]!.close).toHaveBeenCalledOnce();
+  });
+
+  it("drops the watcher echo of its own save but publishes a later external edit", async () => {
+    const { watchers, watchVault } = fakeWatchers();
+    const { harness, directory, watchRead } = await loadNotebook(
+      { "plan.md": "# Plan" },
+      watchVault,
+    );
+    const watching = watchRead("readDocument", {
+      vaultId: "personal",
+      path: "plan.md",
+    });
+    await harness.callRpc("saveDocument", {
+      vaultId: "personal",
+      path: "plan.md",
+      content: "# Plan",
+      expectedSha256: "test-sha",
+      renameToTitle: false,
+    });
+    await harness.callRpc("listNotes", { vaultId: "personal" });
+    harness.experimental_rpcInvalidations.length = 0;
+    watchers[0]!.onChange("plan.md");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(harness.experimental_rpcInvalidations).toEqual([]);
+    await harness.callRpc("saveDocument", {
+      vaultId: "personal",
+      path: "plan.md",
+      content: "# Plan\n\nBody typed after the echo.",
+      expectedSha256: "test-sha",
+      renameToTitle: false,
+    });
+    expect(harness.experimental_rpcInvalidations).toEqual([
+      ["doc:personal:plan.md"],
+    ]);
+    harness.experimental_rpcInvalidations.length = 0;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeFile(path.join(directory, "plan.md"), "# Plan edited outside");
+    watchers[0]!.onChange("plan.md");
+    await vi.waitFor(() =>
+      expect(harness.experimental_rpcInvalidations).toHaveLength(1),
+    );
+    watching.abort();
+  });
+
+  it("publishes changes in two vaults that land within one debounce", async () => {
+    const { watchers, watchVault } = fakeWatchers();
+    const { harness, watchRead } = await loadNotebook(
+      { "plan.md": "# Plan" },
+      watchVault,
+    );
+    const other = await mkdtemp(path.join(os.tmpdir(), "bb-simple-notes-"));
+    temporaryDirectories.push(other);
+    await harness.callRpc("createVault", { name: "Work", rootPath: other });
+    const personal = watchRead("listNotes", { vaultId: "personal" });
+    const work = watchRead("listNotes", { vaultId: "work" });
+    harness.experimental_rpcInvalidations.length = 0;
+    watchers[0]!.onChange("plan.md");
+    watchers[1]!.onChange("notes.md");
+    await vi.waitFor(() =>
+      expect(harness.experimental_rpcInvalidations.flat()).toEqual(
+        expect.arrayContaining(["doc:personal:plan.md", "doc:work:notes.md"]),
+      ),
+    );
+    personal.abort();
+    work.abort();
   });
 });
 

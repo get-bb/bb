@@ -14,10 +14,10 @@ interface ResolveSkillCatalogSourcesArgs {
   sharedSkillSources?: readonly SharedInjectedSkillSource[];
 }
 
-export function resolveSkillCatalog(
+export async function resolveSkillCatalog(
   deps: Pick<LoggedWorkSessionDeps, "config" | "logger" | "skillTreeRegistry">,
   args: ResolveSkillCatalogSourcesArgs = {},
-): ResolvedSkillCatalogEntry[] {
+): Promise<ResolvedSkillCatalogEntry[]> {
   return resolveSkillCatalogEntries(deps.logger, {
     additionalSkillsRootPaths: [
       ...deps.config.inheritedSkillsRootPaths,

@@ -110,7 +110,7 @@ describe("provider gating", () => {
       properties: {
         questions: {
           minItems: 1,
-          maxItems: 4,
+          maxItems: 10,
           items: {
             additionalProperties: false,
             required: ["question", "header", "options"],
@@ -256,6 +256,27 @@ describe("asking a question", () => {
       preview: "CREATE TABLE users (id uuid primary key);",
       notes: "with pgbouncer",
     });
+  });
+
+  it("asks seven questions in one card (#3264)", async () => {
+    const host = createHost();
+    const seven = Array.from({ length: 7 }, (_, index) => ({
+      ...questions[0]!,
+      question: `Decision ${index + 1}?`,
+      header: `D${index + 1}`,
+    }));
+    void host.harness.callAgentTool(TOOL_NAME, { questions: seven });
+
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    const pending = host.harness.pendingInteractions[0]!;
+    expect(pending.title).toBe("7 questions");
+    expect(
+      (pending.payload as InteractionPayload).questions.map(
+        (question) => question.shortLabel,
+      ),
+    ).toEqual(["D1", "D2", "D3", "D4", "D5", "D6", "D7"]);
   });
 
   it("keeps a question open for the configured timeout", async () => {

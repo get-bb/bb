@@ -3,10 +3,15 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultExperiments } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type {
+  ReceivedThreadTimelineSignal,
+  ThreadTimelineReadResponse,
+  ThreadTimelineResponse,
+} from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -15,7 +20,7 @@ import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
 } from "../cache-owners/thread-timeline-push-owner";
 import { systemConfigQueryKey, threadTimelineQueryKey } from "./query-keys";
-import { useThreadTimeline } from "./thread-queries";
+import { useThreadTimeline } from "./thread-panel-queries";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -96,28 +101,39 @@ describe("pushed thread timeline", () => {
     );
   }
 
-  function seedTimeline(maxSeq: number, timelinePush = true) {
+  function seedTimeline(
+    maxSeq: number,
+    timelinePush = true,
+    tag = `timeline-${maxSeq}`,
+  ) {
     mockMatchMedia([]);
     const harness = createQueryClientTestHarness();
     setTimelinePush(harness.queryClient, timelinePush);
     harness.queryClient.setQueryData(
       threadTimelineQueryKey("thread-1"),
-      makeThreadTimelineResponse({ rows: [firstRow], maxSeq }),
+      makeThreadTimelineResponse({ rows: [firstRow], maxSeq, tag }),
     );
     return harness;
   }
 
-  function deltaSignal(afterSequence: number, maxSeq = 9) {
+  function deltaSignal(
+    afterTag: string,
+    maxSeq = 9,
+  ): ReceivedThreadTimelineSignal {
     return {
       type: "thread-timeline",
       target,
-      afterSequence,
-      timeline: makeThreadTimelineResponse({
-        rows: [],
+      timeline: {
         maxSeq,
-        delta: { upsertRows: [secondRow], rowOrder: ["row-1", "row-2"] },
-      }),
-    } as const;
+        tag: `timeline-${maxSeq}`,
+        delta: {
+          afterTag,
+          upsertRows: [secondRow],
+          rowOrder: [[0, 1], "row-2"],
+          fields: {},
+        },
+      },
+    };
   }
 
   function cachedTimeline(
@@ -152,53 +168,106 @@ describe("pushed thread timeline", () => {
       "thread-1",
       { deferContent: true, enabled: false, segmentLimit: null },
     );
-    applyThreadTimelineSignal(queryClient, deltaSignal(7));
+    applyThreadTimelineSignal(queryClient, deltaSignal("timeline-7"));
     expect(cachedTimeline(queryClient)).toMatchObject({
       maxSeq: 7,
       rows: [firstRow],
     });
   });
 
-  it("applies a delta at or past its base without fetching", () => {
-    for (const cachedSeq of [7, 8]) {
-      const { queryClient } = seedTimeline(cachedSeq);
-      applyThreadTimelineSignal(queryClient, deltaSignal(7));
-      expect(cachedTimeline(queryClient)).toMatchObject({
-        maxSeq: 9,
-        rows: [firstRow, secondRow],
-        delta: undefined,
-      });
-    }
+  it("applies a delta built on the held window without fetching", () => {
+    const { queryClient } = seedTimeline(7);
+    applyThreadTimelineSignal(queryClient, deltaSignal("timeline-7"));
+    expect(cachedTimeline(queryClient)).toEqual(
+      makeThreadTimelineResponse({ rows: [firstRow, secondRow], maxSeq: 9 }),
+    );
     expect(sdk.threads.timeline).not.toHaveBeenCalled();
   });
 
-  it("refetches when a push was missed and ignores stale or foreign windows", async () => {
+  it("refetches from its own tag when a delta was built on another window", async () => {
+    for (const held of [
+      { maxSeq: 8, tag: "timeline-8" },
+      { maxSeq: 7, tag: "idle-built-7" },
+    ]) {
+      const { queryClient, wrapper } = seedTimeline(
+        held.maxSeq,
+        true,
+        held.tag,
+      );
+      renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+        wrapper,
+      });
+      applyThreadTimelineSignal(queryClient, deltaSignal("timeline-7"));
+      expect(cachedTimeline(queryClient)).toMatchObject({
+        maxSeq: held.maxSeq,
+        rows: [firstRow],
+      });
+      await waitFor(() => {
+        expect(sdk.threads.timeline).toHaveBeenCalledWith(
+          expect.objectContaining({ afterTag: held.tag }),
+        );
+      });
+      cleanup();
+      vi.mocked(sdk.threads.timeline).mockClear();
+    }
+  });
+
+  it("refetches missed or unreadable pushes and ignores stale or foreign windows", async () => {
     const { queryClient, wrapper } = seedTimeline(5);
     renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
       wrapper,
     });
     applyThreadTimelineSignal(queryClient, {
-      ...deltaSignal(7),
+      ...deltaSignal("timeline-5"),
       target: {
         ...target,
         segmentLimit: COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
       },
     });
-    applyThreadTimelineSignal(queryClient, deltaSignal(3, 5));
-    expect(cachedTimeline(queryClient)?.maxSeq).toBe(5);
+    applyThreadTimelineSignal(queryClient, deltaSignal("timeline-3", 5));
+    applyThreadTimelineSignal(queryClient, {
+      type: "thread-timeline",
+      target,
+      timeline: makeThreadTimelineResponse({ maxSeq: 4 }),
+    });
+    expect(cachedTimeline(queryClient)).toMatchObject({
+      maxSeq: 5,
+      rows: [firstRow],
+    });
     expect(sdk.threads.timeline).not.toHaveBeenCalled();
 
-    applyThreadTimelineSignal(queryClient, deltaSignal(7));
+    applyThreadTimelineSignal(queryClient, {
+      type: "thread-timeline",
+      target,
+      timeline: null,
+    });
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith(
-        expect.objectContaining({ afterSequence: "5" }),
+        expect.objectContaining({ afterTag: "timeline-5" }),
       );
     });
   });
 
+  it("reports each fetched window's tag to the timeline subscription", async () => {
+    const sync = vi.spyOn(wsManager, "syncThreadTimelineTag");
+    const { queryClient, wrapper } = seedTimeline(7);
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
+      maxSeq: 8,
+      tag: "timeline-8",
+      delta: { afterTag: "timeline-7", upsertRows: [], fields: {} },
+    });
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    await queryClient.refetchQueries({
+      queryKey: threadTimelineQueryKey("thread-1"),
+    });
+    expect(sync).toHaveBeenLastCalledWith(target, "timeline-8");
+  });
+
   it("keeps a pushed window that lands while an older fetch is in flight", async () => {
     const { queryClient, wrapper } = seedTimeline(7);
-    let resolveFetch: (value: ThreadTimelineResponse) => void = () => {};
+    let resolveFetch: (value: ThreadTimelineReadResponse) => void = () => {};
     vi.mocked(sdk.threads.timeline).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -215,14 +284,12 @@ describe("pushed thread timeline", () => {
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(1);
     });
-    applyThreadTimelineSignal(queryClient, deltaSignal(7));
-    resolveFetch(
-      makeThreadTimelineResponse({
-        rows: [],
-        maxSeq: 8,
-        delta: { upsertRows: [] },
-      }),
-    );
+    applyThreadTimelineSignal(queryClient, deltaSignal("timeline-7"));
+    resolveFetch({
+      maxSeq: 8,
+      tag: "timeline-8",
+      delta: { afterTag: "timeline-7", upsertRows: [], fields: {} },
+    });
     await refetch;
     await waitFor(() => {
       expect(result.current.data).toMatchObject({

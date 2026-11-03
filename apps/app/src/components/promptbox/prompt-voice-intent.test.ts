@@ -1,17 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@bb/client-core";
-import type { PromptBoxHandle } from "./PromptBoxInternal";
+import type { PromptBoxHandle } from "./ComposerBox";
 import { deliverPromptVoiceTranscript } from "./prompt-voice-intent";
 
 function createPromptBox() {
-  return {
-    captureHeightForLayoutChange: vi.fn(),
-    focusEnd: vi.fn(),
-    getTextBeforeCursor: vi.fn(),
-    insertTextAtCursor: vi.fn(),
-    sendVoiceTranscript: vi.fn(),
-    playVoiceCompletionTransition: vi.fn(async () => {}),
-  } satisfies PromptBoxHandle;
+  const voice = {
+    textBeforeCursor: vi.fn(() => null),
+    deliverTranscript: vi.fn(),
+    playCompletionTransition: vi.fn(async () => {}),
+  };
+  return { focusEnd: vi.fn(), voice } satisfies PromptBoxHandle;
 }
 
 describe("deliverPromptVoiceTranscript", () => {
@@ -46,8 +44,7 @@ describe("deliverPromptVoiceTranscript", () => {
       });
 
       expect(draft.text).toBe("Existing and later edits late transcript");
-      expect(promptBox.sendVoiceTranscript).not.toHaveBeenCalled();
-      expect(promptBox.insertTextAtCursor).not.toHaveBeenCalled();
+      expect(promptBox.voice.deliverTranscript).not.toHaveBeenCalled();
       expect(submit).toHaveBeenCalledTimes(send ? 1 : 0);
     },
   );

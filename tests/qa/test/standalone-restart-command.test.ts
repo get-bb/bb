@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { killProcessesReferencingPath } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
   buildDaemonRestartCommand,
@@ -67,22 +68,6 @@ function isProcessRunning(pid: number): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-async function stopProcess(pid: number): Promise<void> {
-  if (!isProcessRunning(pid)) {
-    return;
-  }
-  process.kill(pid, "SIGTERM");
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (!isProcessRunning(pid)) {
-      return;
-    }
-    await delay(50);
-  }
-  if (isProcessRunning(pid)) {
-    process.kill(pid, "SIGKILL");
   }
 }
 
@@ -383,7 +368,6 @@ describe("standalone restart command", () => {
     const pidPath = path.join(tempDir, "daemon.pid");
     const logPath = path.join(tempDir, "host-daemon.log");
     const entrypoint = path.join(tempDir, "daemon-child.mjs");
-    let daemonPid: number | null = null;
     const server = createServer((request, response) => {
       if (request.url === "/api/v1/hosts") {
         response.setHeader("content-type", "application/json");
@@ -431,26 +415,23 @@ describe("standalone restart command", () => {
       const shellResult = await runShellCommand(command, {
         PATH: process.env.PATH ?? "",
       });
-      daemonPid = await waitForPidFile(pidPath);
-      expect(isProcessRunning(daemonPid)).toBe(true);
+      const firstDaemonPid = await waitForPidFile(pidPath);
+      expect(isProcessRunning(firstDaemonPid)).toBe(true);
 
       signalProcessGroup(shellResult.processGroupId);
       await delay(500);
 
-      expect(isProcessRunning(daemonPid)).toBe(true);
+      expect(isProcessRunning(firstDaemonPid)).toBe(true);
 
-      const firstDaemonPid = daemonPid;
       await runShellCommand(command, {
         PATH: process.env.PATH ?? "",
       });
-      daemonPid = await waitForPidFile(pidPath, firstDaemonPid);
+      const restartedDaemonPid = await waitForPidFile(pidPath, firstDaemonPid);
 
       expect(isProcessRunning(firstDaemonPid)).toBe(false);
-      expect(isProcessRunning(daemonPid)).toBe(true);
+      expect(isProcessRunning(restartedDaemonPid)).toBe(true);
     } finally {
-      if (daemonPid) {
-        await stopProcess(daemonPid);
-      }
+      await killProcessesReferencingPath(tempDir);
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

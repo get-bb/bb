@@ -1,3 +1,9 @@
-import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
+import type { HostDaemonSkillTreeManifest } from "@bb/host-daemon-contract";
 
-export type FetchSkillTree = (treeHash: string) => Promise<HostDaemonSkillTree>;
+export interface SkillTreeTransport {
+  fetchManifest(treeHash: string): Promise<HostDaemonSkillTreeManifest>;
+  fetchContent(
+    treeHash: string,
+    paths: readonly string[],
+  ): Promise<AsyncIterable<Uint8Array>>;
+}

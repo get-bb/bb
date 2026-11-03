@@ -7,6 +7,7 @@ import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
   PromptInput,
+  QueuedMessageSystemNotice,
   ResolvedThreadExecutionOptions,
   Thread,
   ThreadTurnInitiator,
@@ -77,7 +78,14 @@ import {
   type GroupedPrompt,
   type PromptWithGroups,
 } from "./deferred-first-turn-context.js";
-import type { TelemetryEvent } from "../system/telemetry.js";
+import type {
+  TelemetryEvent,
+  TelemetryInitiator,
+} from "../system/telemetry.js";
+import {
+  initiatorTelemetryProperty,
+  resolveTelemetryInitiator,
+} from "./telemetry-initiator.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
@@ -101,7 +109,9 @@ interface SendThreadMessageArgs {
     forkSourceProviderThreadId: string | null;
     onCommandSettled?: () => void | Promise<void>;
   };
+  originPluginId: string | null;
   payload: SendThreadMessagePayload;
+  systemNotice?: QueuedMessageSystemNotice;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
 }
@@ -154,9 +164,11 @@ interface AppendAndQueueSendThreadMessageArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  originPluginId: string | null;
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
+  systemNotice: QueuedMessageSystemNotice | undefined;
   target: TurnRequestTarget;
   thread: Thread;
 }
@@ -380,11 +392,12 @@ type UserMessageSentProperties = Extract<
 >["properties"];
 
 export function captureUserMessageSentTelemetry(
-  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "telemetry">,
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "config" | "telemetry">,
   args: {
     isChildThread: boolean;
     messageSource: UserMessageSentProperties["message_source"];
     providerId: string;
+    initiator: TelemetryInitiator;
   },
 ): void {
   deps.telemetry.capture({
@@ -393,6 +406,7 @@ export function captureUserMessageSentTelemetry(
       is_child_thread: args.isChildThread,
       message_source: args.messageSource,
       provider: args.providerId,
+      ...initiatorTelemetryProperty(deps.config.featureFlags, args.initiator),
     },
   });
 }
@@ -406,9 +420,11 @@ function appendAndQueueSendThreadMessageInTransaction({
   initiator,
   input,
   inputGroups,
+  originPluginId,
   queueInTransaction,
   requestId,
   senderThreadId,
+  systemNotice,
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
@@ -429,7 +445,14 @@ function appendAndQueueSendThreadMessageInTransaction({
             ...(inputGroups !== undefined ? { inputGroups } : {}),
             execution,
             initiator,
+            originPluginId,
             senderThreadId,
+            ...(systemNotice !== undefined
+              ? {
+                  systemMessageKind: systemNotice.kind,
+                  systemMessageSubject: systemNotice.subject,
+                }
+              : {}),
             requestMethod: "turn/start",
             source: "tell",
             target,
@@ -467,6 +490,9 @@ export async function sendThreadMessage(
 ): Promise<void> {
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     await clearThreadContext(deps, {
+      ...(args.beforeAppendInTransaction !== undefined
+        ? { beforeCommitInTransaction: args.beforeAppendInTransaction }
+        : {}),
       environment: args.environment,
       thread: args.thread,
     });
@@ -518,10 +544,10 @@ async function sendThreadMessageWithoutContextClear(
     input,
     ...(inputGroups !== undefined ? { inputGroups } : {}),
   }));
-  const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
-    deps.db,
-    thread.id,
-  );
+  const deferredFirstTurnContext =
+    args.retryOf === undefined
+      ? resolveDeferredFirstTurnContext(deps.db, thread.id)
+      : null;
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
@@ -558,11 +584,17 @@ async function sendThreadMessageWithoutContextClear(
   // however many times the provider happened to be rate limited.
   const { initiator } = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
+    systemNotice: args.systemNotice !== undefined,
     senderThreadId,
     startedOnBehalfOf: null,
   });
   const shouldCaptureUserMessageSent =
     args.trigger === "user" && initiator === "user" && input.length > 0;
+  const telemetryInitiator = resolveTelemetryInitiator({
+    origin: args.payload.originPluginId === undefined ? null : "plugin",
+    originPluginId: args.payload.originPluginId ?? null,
+    initiator,
+  });
   const expectedSteerTurnId =
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
@@ -570,7 +602,7 @@ async function sendThreadMessageWithoutContextClear(
   // A retry's model is provenance — the failed attempt's tuple, replayed —
   // not a fresh model choice, so it must not rewrite the thread's sticky
   // override the way an explicit user send's model does.
-  if (senderThreadId === null && args.retryOf === undefined) {
+  if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource:
@@ -606,7 +638,15 @@ async function sendThreadMessageWithoutContextClear(
       initiator,
       input,
       inputGroups,
+      originPluginId: args.originPluginId,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       senderThreadId,
+      ...(args.systemNotice !== undefined
+        ? {
+            systemMessageKind: args.systemNotice.kind,
+            systemMessageSubject: args.systemNotice.subject,
+          }
+        : {}),
       thread,
     })
   ) {
@@ -615,6 +655,7 @@ async function sendThreadMessageWithoutContextClear(
         isChildThread: thread.parentThreadId !== null,
         messageSource: "thread_send",
         providerId: thread.providerId,
+        initiator: telemetryInitiator,
       });
     }
     return;
@@ -643,7 +684,6 @@ async function sendThreadMessageWithoutContextClear(
   if (mode === "start") {
     const commandArgs = {
       thread,
-      fork: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
       requestId,
@@ -686,6 +726,7 @@ async function sendThreadMessageWithoutContextClear(
       initiator,
       input,
       inputGroups,
+      originPluginId: args.originPluginId,
       queueInTransaction: ({ tx }) => {
         const dispatchKind = command.mode;
         const currentThread = getThread(tx, thread.id);
@@ -707,6 +748,7 @@ async function sendThreadMessageWithoutContextClear(
       },
       requestId,
       senderThreadId,
+      systemNotice: args.systemNotice,
       target,
       thread,
     });
@@ -741,6 +783,7 @@ async function sendThreadMessageWithoutContextClear(
         isChildThread: thread.parentThreadId !== null,
         messageSource: "thread_send",
         providerId: thread.providerId,
+        initiator: telemetryInitiator,
       });
     }
     return;
@@ -779,11 +822,13 @@ async function sendThreadMessageWithoutContextClear(
     initiator,
     input,
     inputGroups,
+    originPluginId: args.originPluginId,
     queueInTransaction: () => {
       return { activeThread: null };
     },
     requestId,
     senderThreadId,
+    systemNotice: args.systemNotice,
     target,
     thread,
   });
@@ -808,6 +853,7 @@ async function sendThreadMessageWithoutContextClear(
       isChildThread: thread.parentThreadId !== null,
       messageSource: "thread_send",
       providerId: thread.providerId,
+      initiator: telemetryInitiator,
     });
   }
 }

@@ -200,13 +200,18 @@ describe("plugin install routes", () => {
         await response.json(),
       );
       let listed: PluginInstallJob | undefined;
-      await vi.waitFor(async () => {
-        const list = await h.app.request(`${BASE}/api/v1/plugins/install-jobs`);
-        listed = pluginInstallJobListResponseSchema
-          .parse(await list.json())
-          .jobs.find((candidate) => candidate.id === job.id);
-        expect(listed?.state).toBe("succeeded");
-      });
+      await vi.waitFor(
+        async () => {
+          const list = await h.app.request(
+            `${BASE}/api/v1/plugins/install-jobs`,
+          );
+          listed = pluginInstallJobListResponseSchema
+            .parse(await list.json())
+            .jobs.find((candidate) => candidate.id === job.id);
+          expect(listed?.state).toBe("succeeded");
+        },
+        { timeout: 10_000 },
+      );
       expect(listed).toMatchObject({ plugin: { id: "keep-awake" } });
       expect(notify).toHaveBeenCalledWith(["plugin-install-jobs-changed"]);
     });

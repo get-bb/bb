@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 import {
   experimental_THREAD_ACTION_GROUPS,
   experimental_useRpcKeyedQuery,
@@ -27,7 +28,10 @@ export interface ThreadNotificationsData {
   error: string | null;
   unloadedThreadIds: ReadonlySet<string> | null;
   retry(): Promise<void>;
-  setLevel(threadId: string, level: OwnNotificationLevel): Promise<void>;
+  setLevels(
+    threadIds: readonly string[],
+    level: OwnNotificationLevel,
+  ): Promise<void>;
 }
 
 function parseDefaults(
@@ -85,9 +89,17 @@ function useThreadNotificationsData({
     () => new Map(Object.entries(query.data?.levels ?? {})),
     [query.data?.levels],
   );
-  const setLevel = useCallback(
-    async (threadId: string, level: OwnNotificationLevel) => {
-      await saveLevel({ threadId, level });
+  const setLevels = useCallback(
+    async (threadIds: readonly string[], level: OwnNotificationLevel) => {
+      try {
+        await Promise.all(
+          threadIds.map((threadId) => saveLevel({ threadId, level })),
+        );
+      } catch (error) {
+        toast.error("Failed to update notifications", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
     },
     [saveLevel],
   );
@@ -95,8 +107,8 @@ function useThreadNotificationsData({
   const defaults = useMemo(() => parseDefaults(values), [values]);
 
   return useMemo(
-    () => ({ levels, defaults, setLevel, error, unloadedThreadIds, retry }),
-    [defaults, levels, setLevel, error, unloadedThreadIds, retry],
+    () => ({ levels, defaults, setLevels, error, unloadedThreadIds, retry }),
+    [defaults, levels, setLevels, error, unloadedThreadIds, retry],
   );
 }
 
@@ -162,7 +174,81 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
           }
           const level = ownNotificationLevelSchema.safeParse(value);
           if (!level.success) return;
-          await data.setLevel(thread.id, level.data);
+          await data.setLevels([thread.id], level.data);
+        },
+      };
+    },
+    experimental_bulkItem: ({ threads, data }) => {
+      const active = threads.filter((thread) => thread.archivedAt === null);
+      const [first] = active;
+      if (first === undefined) return null;
+      const stored = active.map(
+        (thread) => data.levels.get(thread.id) ?? UNSET_THREAD_NOTIFICATIONS,
+      );
+      const sharedOwn = stored.every((row) => row.own === stored[0]?.own)
+        ? (stored[0]?.own ?? null)
+        : null;
+      const defaults = data.defaults;
+      const resolved =
+        defaults === null
+          ? null
+          : active.map((thread, index) =>
+              resolveThreadNotifications(
+                stored[index] ?? UNSET_THREAD_NOTIFICATIONS,
+                { parentThreadId: thread.parentThreadId },
+                defaults,
+              ),
+            );
+      const sharedEffective =
+        resolved !== null &&
+        resolved.every((row) => row.effective === resolved[0]?.effective)
+          ? (resolved[0]?.effective ?? null)
+          : null;
+      const unavailable = active.some(
+        (thread) => data.unloadedThreadIds?.has(thread.id) ?? false,
+      );
+      const capped = resolved?.some((row) => capHint(row) !== undefined);
+      const hint =
+        data.error ??
+        (capped ? "Some threads are limited by a parent thread" : undefined);
+      return {
+        label: "Notifications",
+        ...(unavailable
+          ? { detail: "Notifications unavailable" }
+          : resolved === null
+            ? {}
+            : {
+                detail:
+                  sharedEffective === null
+                    ? "Mixed"
+                    : NOTIFICATION_LEVEL_LABELS[sharedEffective],
+              }),
+        icon:
+          sharedEffective === null ? "BellDot" : LEVEL_ICONS[sharedEffective],
+        choices: {
+          ...(hint === undefined ? {} : { hint }),
+          items: [
+            ...(unavailable
+              ? []
+              : ownNotificationLevelSchema.options.map((id) => ({
+                  id,
+                  label: NOTIFICATION_LEVEL_LABELS[id],
+                  selected: id === sharedOwn,
+                }))),
+            ...(data.error === null ? [] : [{ id: "retry", label: "Retry" }]),
+          ],
+        },
+        run: async ({ value }) => {
+          if (value === "retry") {
+            await data.retry();
+            return;
+          }
+          const level = ownNotificationLevelSchema.safeParse(value);
+          if (!level.success) return;
+          await data.setLevels(
+            active.map((thread) => thread.id),
+            level.data,
+          );
         },
       };
     },

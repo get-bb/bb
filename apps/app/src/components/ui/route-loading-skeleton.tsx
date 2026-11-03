@@ -10,6 +10,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { ComposerLoadingSkeleton } from "@/components/promptbox/ComposerPlaceholder";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useEffect, type ReactNode } from "react";
 
@@ -49,46 +50,44 @@ export function RouteLoadingSkeleton({
     <div
       className={cn(
         SHELL_CLASS,
-        !isBoundedPane && STANDALONE_SHELL_BLEED_CLASS,
+        (!isBoundedPane || isRootCompose) && STANDALONE_SHELL_BLEED_CLASS,
+        isRootCompose && "pt-(--bb-window-frame-top)",
       )}
       role="status"
       aria-busy="true"
       aria-label="Loading"
       data-testid="route-loading-skeleton"
     >
-      <div
-        className={cn(
-          CHROME_ROW_CLASS,
-          "shrink-0 gap-2",
-          isInTitleBar
-            ? [MACOS_TITLE_BAR_BAND_CLASS, "px-4"]
-            : [
-                !isRootCompose && HEADER_SEAM_CLASS,
-                isBoundedPane ? "px-4" : "px-3 pl-12",
-              ],
-        )}
-      >
+      {!isRootCompose ? (
         <div
           className={cn(
-            "flex min-w-0 flex-1 items-center",
-            isInTitleBar &&
-              isSidebarShowing === false &&
-              MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+            CHROME_ROW_CLASS,
+            "shrink-0 gap-2",
+            isInTitleBar
+              ? [MACOS_TITLE_BAR_BAND_CLASS, "px-4"]
+              : [HEADER_SEAM_CLASS, isBoundedPane ? "px-4" : "px-3 pl-12"],
           )}
         >
-          {!isRootCompose ? (
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 items-center",
+              isInTitleBar &&
+                isSidebarShowing === false &&
+                MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
+            )}
+          >
             <Skeleton className="h-4 w-40 max-w-[50%]" />
-          ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
       {isRootCompose ? (
         <div
           className={cn(
-            "mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col px-4 pb-4 pt-2",
-            isCompactViewport && "justify-end",
+            "mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col px-4 pb-4",
+            isCompactViewport ? "justify-end pt-2" : "pt-14",
           )}
         >
-          <Skeleton className="h-32 w-full shrink-0 rounded-xl max-md:pointer-coarse:h-34" />
+          <ComposerLoadingSkeleton shape="new-thread" />
           <div className="mt-1 flex h-8 shrink-0 items-center justify-between px-3.5 max-md:mt-0 max-md:px-1 max-md:pointer-coarse:h-11">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="h-3 w-24 max-md:w-12" />
@@ -100,9 +99,13 @@ export function RouteLoadingSkeleton({
             {children}
           </div>
           <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-4">
-            <div className="pb-7 max-md:pb-6 max-md:pointer-coarse:pb-11">
-              <Skeleton className="h-[151px] w-full rounded-xl" />
-            </div>
+            {isCompactViewport ? (
+              <ComposerLoadingSkeleton shape="thread-compact" />
+            ) : (
+              <div className="pb-7 max-md:pb-6 max-md:pointer-coarse:pb-11">
+                <ComposerLoadingSkeleton shape="thread" />
+              </div>
+            )}
           </div>
         </>
       )}

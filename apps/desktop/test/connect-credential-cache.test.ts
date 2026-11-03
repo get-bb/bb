@@ -53,6 +53,19 @@ function createFs(seed: Buffer | null = null): ConnectCredentialCacheFs & {
 }
 
 describe("createConnectCredentialCache", () => {
+  it("does not access the keychain when the profile has no saved credential", async () => {
+    const encryption = createEncryption();
+    vi.spyOn(encryption, "isEncryptionAvailable").mockImplementation(() => {
+      throw new Error("Keychain access requires user interaction");
+    });
+    const cache = createConnectCredentialCache({
+      encryption,
+      fs: createFs(),
+      userDataPath: "/data",
+    });
+    await expect(cache.read()).resolves.toBeNull();
+  });
+
   it("round-trips a credential through the keychain", async () => {
     const fs = createFs();
     const cache = createConnectCredentialCache({

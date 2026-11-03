@@ -24,9 +24,11 @@ export interface GateDelay {
 interface WithGateDeadlineArgs {
   request: Request;
   deadlineMs: number;
+  maxWaitMs: number;
   slowAfterMs: number | null;
   progress: GateProgress;
-  run: () => Promise<Response>;
+  run: (signal: AbortSignal) => Promise<Response>;
+  tunnelServing: () => Promise<boolean>;
   onDelay: (delay: GateDelay) => void;
 }
 
@@ -37,8 +39,6 @@ const STALL_MESSAGES: Record<GateStage, string> = {
   "response-head": "waiting for the tunnel client",
   finishing: "finishing the response",
 };
-
-const STALLED = Symbol("stalled");
 
 function discardLateResponse(work: Promise<Response>): void {
   void work
@@ -56,12 +56,15 @@ function discardLateResponse(work: Promise<Response>): void {
 export async function withGateDeadline({
   request,
   deadlineMs,
+  maxWaitMs,
   slowAfterMs,
   progress,
   run,
+  tunnelServing,
   onDelay,
 }: WithGateDeadlineArgs): Promise<Response> {
   const url = new URL(request.url);
+  const startedAt = Date.now();
   const report = (kind: GateDelay["kind"], elapsedMs: number) =>
     onDelay({
       kind,
@@ -72,24 +75,50 @@ export async function withGateDeadline({
       elapsedMs,
       tunnelObjectAttempts: progress.tunnelObjectAttempts,
     });
+  let settled = false;
+  let reportedSlowTunnel = false;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const slowTimer =
     slowAfterMs === null
       ? undefined
       : setTimeout(() => report("slow", slowAfterMs), slowAfterMs);
-  const deadline = new Promise<typeof STALLED>((resolve) => {
-    deadlineTimer = setTimeout(() => resolve(STALLED), deadlineMs);
+  const waitingOnLiveTunnel = async (elapsedMs: number) =>
+    progress.stage === "response-head" &&
+    elapsedMs + deadlineMs <= maxWaitMs &&
+    (await tunnelServing());
+  const deadline = new Promise<number>((resolve) => {
+    const arm = () => {
+      deadlineTimer = setTimeout(async () => {
+        const elapsedMs = Date.now() - startedAt;
+        if (!(await waitingOnLiveTunnel(elapsedMs))) {
+          resolve(elapsedMs);
+          return;
+        }
+        if (settled) return;
+        if (!reportedSlowTunnel) {
+          reportedSlowTunnel = true;
+          report("slow", elapsedMs);
+        }
+        arm();
+      }, deadlineMs);
+    };
+    arm();
   });
-  const work = run();
+  const abort = new AbortController();
+  const work = run(abort.signal);
+  let stalledAfterMs: number;
   try {
     const winner = await Promise.race([work, deadline]);
-    if (winner !== STALLED) return winner;
+    if (typeof winner !== "number") return winner;
+    stalledAfterMs = winner;
   } finally {
+    settled = true;
     clearTimeout(deadlineTimer);
     clearTimeout(slowTimer);
   }
+  abort.abort();
   discardLateResponse(work);
-  report("stall", deadlineMs);
+  report("stall", stalledAfterMs);
   return new Response(
     `bb connect: timed out ${STALL_MESSAGES[progress.stage]} (stage: ${progress.stage})\n`,
     {

@@ -67,7 +67,8 @@ export function registerCli(
             machine: MACHINE,
             kind: {
               type: "string",
-              description: "orphans, development, or worktrees",
+              description:
+                "orphans, development, worktrees, or externalWorktrees",
             },
             yes: YES,
           },
@@ -79,10 +80,11 @@ export function registerCli(
               if (
                 kind !== "orphans" &&
                 kind !== "development" &&
-                kind !== "worktrees"
+                kind !== "worktrees" &&
+                kind !== "externalWorktrees"
               )
                 throw new Error(
-                  "Use --kind orphans, development, or worktrees.",
+                  "Use --kind orphans, development, worktrees, or externalWorktrees.",
                 );
               await storage.startCleanup({
                 hostId: required(options.machine, "machine"),
@@ -221,6 +223,42 @@ export function registerCli(
             output(async () => {
               return storage.retryWorktreeCleanup({
                 hostId: required(input.options.machine, "machine"),
+              });
+            }),
+        }),
+        "remove-external-worktrees": cliCommand({
+          summary:
+            "Remove git worktrees of project repositories that BB did not create, keeping branches and skipping worktrees with uncommitted changes, locked worktrees, or commits on no branch",
+          options: {
+            machine: MACHINE,
+            path: {
+              type: "string",
+              description:
+                "Remove only this worktree path from the last scan (default: every worktree created outside BB)",
+            },
+            force: {
+              type: "boolean",
+              description:
+                "With --path, also remove a locked worktree or one with uncommitted changes or commits on no branch, discarding them",
+            },
+            yes: YES,
+          },
+          run: (input) =>
+            output(async () => {
+              if (!input.options.yes)
+                throw new Error(
+                  "Pass --yes to permanently delete these worktree checkouts.",
+                );
+              const hostId = required(input.options.machine, "machine");
+              if (input.options.path === undefined) {
+                if (input.options.force)
+                  throw new Error("--force requires --path.");
+                return storage.removeExternalWorktrees({ hostId, paths: null });
+              }
+              return storage.removeExternalWorktrees({
+                hostId,
+                paths: [input.options.path],
+                force: input.options.force === true,
               });
             }),
         }),

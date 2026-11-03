@@ -174,6 +174,11 @@
       "types": "./src/components/ui/resource-pagination.tsx",
       "default": "./src/components/ui/resource-pagination.tsx"
     },
+    "./prompt-banner-actions": {
+      "source": "./src/components/ui/prompt-banner-actions.tsx",
+      "types": "./src/components/ui/prompt-banner-actions.tsx",
+      "default": "./src/components/ui/prompt-banner-actions.tsx"
+    },
     "./prompt-stack-disclosure": {
       "source": "./src/components/ui/prompt-stack-disclosure.tsx",
       "types": "./src/components/ui/prompt-stack-disclosure.tsx",
@@ -188,6 +193,11 @@
       "source": "./src/components/ui/responsive-overlay.tsx",
       "types": "./src/components/ui/responsive-overlay.tsx",
       "default": "./src/components/ui/responsive-overlay.tsx"
+    },
+    "./schedule-time-fields": {
+      "source": "./src/components/ui/schedule-time-fields.tsx",
+      "types": "./src/components/ui/schedule-time-fields.tsx",
+      "default": "./src/components/ui/schedule-time-fields.tsx"
     },
     "./select": {
       "source": "./src/components/ui/select.tsx",
@@ -244,6 +254,11 @@
       "types": "./src/components/ui/hooks/use-pointer-coarse.ts",
       "default": "./src/components/ui/hooks/use-pointer-coarse.ts"
     },
+    "./lib/schedule-time": {
+      "source": "./src/lib/schedule-time.ts",
+      "types": "./src/lib/schedule-time.ts",
+      "default": "./src/lib/schedule-time.ts"
+    },
     "./lib/utils": {
       "source": "./src/lib/utils.ts",
       "types": "./src/lib/utils.ts",
@@ -299,6 +314,11 @@
       "types": "./src/components/ui/inline-rename.tsx",
       "default": "./src/components/ui/inline-rename.tsx"
     },
+    "./inline-rename-presentation-cases": {
+      "source": "./src/components/ui/inline-rename-presentation-cases.ts",
+      "types": "./src/components/ui/inline-rename-presentation-cases.ts",
+      "default": "./src/components/ui/inline-rename-presentation-cases.ts"
+    },
     "./inline-rename-editor": {
       "source": "./src/components/ui/inline-rename-editor.tsx",
       "types": "./src/components/ui/inline-rename-editor.tsx",
@@ -308,6 +328,11 @@
       "source": "./src/components/ui/rename-dialog.tsx",
       "types": "./src/components/ui/rename-dialog.tsx",
       "default": "./src/components/ui/rename-dialog.tsx"
+    },
+    "./rename-session-dialog": {
+      "source": "./src/components/ui/rename-session-dialog.tsx",
+      "types": "./src/components/ui/rename-session-dialog.tsx",
+      "default": "./src/components/ui/rename-session-dialog.tsx"
     },
     "./sidebar-customize-panel": {
       "source": "./src/components/ui/sidebar-customize-panel.tsx",
@@ -373,11 +398,132 @@
       "source": "./src/components/ui/split-pane-mini-map.tsx",
       "types": "./src/components/ui/split-pane-mini-map.tsx",
       "default": "./src/components/ui/split-pane-mini-map.tsx"
+    },
+    "./truncate-start": {
+      "source": "./src/components/ui/truncate-start.tsx",
+      "types": "./src/components/ui/truncate-start.tsx",
+      "default": "./src/components/ui/truncate-start.tsx"
+    },
+    "./video": {
+      "source": "./src/components/ui/video.tsx",
+      "types": "./src/components/ui/video.tsx",
+      "default": "./src/components/ui/video.tsx"
+    },
+    "./video-thumbnail": {
+      "source": "./src/components/ui/video-thumbnail.tsx",
+      "types": "./src/components/ui/video-thumbnail.tsx",
+      "default": "./src/components/ui/video-thumbnail.tsx"
+    },
+    "./copy-button": {
+      "source": "./src/components/ui/copy-button.tsx",
+      "types": "./src/components/ui/copy-button.tsx",
+      "default": "./src/components/ui/copy-button.tsx"
+    },
+    "./sdk-clipboard-copy": {
+      "source": "./src/components/ui/sdk-clipboard-copy.ts",
+      "types": "./src/components/ui/sdk-clipboard-copy.ts",
+      "default": "./src/components/ui/sdk-clipboard-copy.ts"
+    },
+    "./diff-loading-skeleton": {
+      "source": "./src/components/ui/diff-loading-skeleton.tsx",
+      "types": "./src/components/ui/diff-loading-skeleton.tsx",
+      "default": "./src/components/ui/diff-loading-skeleton.tsx"
+    },
+    "./diff-stats-tally": {
+      "source": "./src/components/ui/diff-stats-tally.tsx",
+      "types": "./src/components/ui/diff-stats-tally.tsx",
+      "default": "./src/components/ui/diff-stats-tally.tsx"
+    },
+    "./info-list-row": {
+      "source": "./src/components/ui/info-list-row.tsx",
+      "types": "./src/components/ui/info-list-row.tsx",
+      "default": "./src/components/ui/info-list-row.tsx"
+    },
+    "./file-path-link": {
+      "source": "./src/components/ui/file-path-link.tsx",
+      "types": "./src/components/ui/file-path-link.tsx",
+      "default": "./src/components/ui/file-path-link.tsx"
+    },
+    "./open-in-editor-button": {
+      "source": "./src/components/ui/open-in-editor-button.tsx",
+      "types": "./src/components/ui/open-in-editor-button.tsx",
+      "default": "./src/components/ui/open-in-editor-button.tsx"
+    },
+    "./git-diff/parsing": {
+      "source": "./src/components/git-diff/git-diff-parsing.ts",
+      "types": "./src/components/git-diff/git-diff-parsing.ts",
+      "default": "./src/components/git-diff/git-diff-parsing.ts"
+    },
+    "./git-diff/patch-text": {
+      "source": "./src/components/git-diff/git-diff-patch-text.ts",
+      "types": "./src/components/git-diff/git-diff-patch-text.ts",
+      "default": "./src/components/git-diff/git-diff-patch-text.ts"
+    },
+    "./git-diff/card-body": {
+      "source": "./src/components/git-diff/GitDiffCardBody.tsx",
+      "types": "./src/components/git-diff/GitDiffCardBody.tsx",
+      "default": "./src/components/git-diff/GitDiffCardBody.tsx"
+    },
+    "./git-diff/card-header": {
+      "source": "./src/components/git-diff/GitDiffCardHeader.tsx",
+      "types": "./src/components/git-diff/GitDiffCardHeader.tsx",
+      "default": "./src/components/git-diff/GitDiffCardHeader.tsx"
+    },
+    "./git-diff/renderers": {
+      "source": "./src/components/git-diff/renderers.tsx",
+      "types": "./src/components/git-diff/renderers.tsx",
+      "default": "./src/components/git-diff/renderers.tsx"
+    },
+    "./lib/absolute-file-path": {
+      "source": "./src/lib/absolute-file-path.ts",
+      "types": "./src/lib/absolute-file-path.ts",
+      "default": "./src/lib/absolute-file-path.ts"
+    },
+    "./lib/format-byte-size": {
+      "source": "./src/lib/format-byte-size.ts",
+      "types": "./src/lib/format-byte-size.ts",
+      "default": "./src/lib/format-byte-size.ts"
+    },
+    "./lib/image-preview": {
+      "source": "./src/lib/image-preview.ts",
+      "types": "./src/lib/image-preview.ts",
+      "default": "./src/lib/image-preview.ts"
+    },
+    "./lib/workspace-checkout-display": {
+      "source": "./src/lib/workspace-checkout-display.ts",
+      "types": "./src/lib/workspace-checkout-display.ts",
+      "default": "./src/lib/workspace-checkout-display.ts"
+    },
+    "./branch-picker": {
+      "source": "./src/components/pickers/BranchPicker.tsx",
+      "types": "./src/components/pickers/BranchPicker.tsx",
+      "default": "./src/components/pickers/BranchPicker.tsx"
+    },
+    "./picker-layout": {
+      "source": "./src/components/pickers/picker-layout.ts",
+      "types": "./src/components/pickers/picker-layout.ts",
+      "default": "./src/components/pickers/picker-layout.ts"
+    },
+    "./picker-search": {
+      "source": "./src/components/pickers/picker-search.ts",
+      "types": "./src/components/pickers/picker-search.ts",
+      "default": "./src/components/pickers/picker-search.ts"
+    },
+    "./hooks/use-reset-picker-scroll": {
+      "source": "./src/components/pickers/use-reset-picker-scroll.ts",
+      "types": "./src/components/pickers/use-reset-picker-scroll.ts",
+      "default": "./src/components/pickers/use-reset-picker-scroll.ts"
+    },
+    "./list-loading-placeholder": {
+      "source": "./src/components/ui/list-loading-placeholder.tsx",
+      "types": "./src/components/ui/list-loading-placeholder.tsx",
+      "default": "./src/components/ui/list-loading-placeholder.tsx"
     }
   },
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
-    "typecheck": "tsrs --noEmit"
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest run --config vitest.config.ts"
   },
   "bb": {
     "pluginTailwindContent": [
@@ -385,11 +531,17 @@
     ]
   },
   "dependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/fuzzy-match": "workspace:*",
+    "@bb/thread-view": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@hugeicons/core-free-icons": "^4.3.4",
     "@hugeicons/react": "^1.1.6",
+    "@pierre/diffs": "^1.2.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "usehooks-ts": "^3.1.1"
   },
   "peerDependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -400,9 +552,11 @@
     "@radix-ui/react-slot": "^1.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -432,20 +586,24 @@
     "@radix-ui/react-toggle": "^1.1.14",
     "@radix-ui/react-toggle-group": "^1.1.15",
     "@radix-ui/react-tooltip": "^1.2.12",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "cmdk": "^1.1.1",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
+    "jsdom": "^29.0.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "react-day-picker": "^10.0.1",
+    "react-dom": "^19.0.0",
     "react-hook-form": "^7.80.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.4",
+    "sonner": "^1.7.4",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "vitest": "^4.1.1"
   }
 }

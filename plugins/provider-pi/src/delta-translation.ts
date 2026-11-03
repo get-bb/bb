@@ -2,6 +2,11 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import {
+  isContextOverflow,
+  isRetryableAssistantError,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
+import {
   ZERO_TOKEN_USAGE,
   addTokenUsage,
   bashArgsSchema,
@@ -20,6 +25,7 @@ import {
   type DeltaNoTurnFallback,
   type JsonRpcMessage,
   type ProviderRawEvent,
+  type ProviderErrorInfo,
   type ThreadDelta,
   type ThreadEventTokenUsageBreakdown,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -116,6 +122,13 @@ const piCustomMessageBoundaryEventSchema = z
   })
   .passthrough();
 
+const piAssistantMessageBoundaryEventSchema = z
+  .object({
+    type: z.enum(["message_end", "message_start"]),
+    message: piAssistantMessageSchema,
+  })
+  .passthrough();
+
 const piAgentEndEventSchema = z
   .object({
     type: z.literal("agent_end"),
@@ -153,6 +166,69 @@ const piCompactionNoopMessages = new Set([
 
 function isPiCompactionNoop(errorMessage: string): boolean {
   return piCompactionNoopMessages.has(errorMessage.trim());
+}
+
+function piFailedAssistantMessage(errorMessage: string): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [],
+    api: "pi-messages",
+    provider: "pi",
+    model: "",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "error",
+    errorMessage,
+    timestamp: 0,
+  };
+}
+
+function piErrorInfo(message: string): ProviderErrorInfo {
+  const status = message.match(
+    /\b(?:HTTP(?:\/[\d.]+)?\s+|status(?:\s+code)?[=:\s]+)([45]\d{2})\b|(?:^|:\s*)([45]\d{2})(?=[\s:]|$)/i,
+  );
+  const httpStatusCode = status ? Number(status[1] ?? status[2]) : null;
+  const failed = piFailedAssistantMessage(message);
+  const category = (): ProviderErrorInfo["category"] => {
+    if (
+      httpStatusCode === 401 ||
+      httpStatusCode === 403 ||
+      /unauthorized|authentication[_ ](?:error|failed)|invalid api key/i.test(
+        message,
+      )
+    )
+      return "unauthorized";
+    if (isContextOverflow(failed)) return "context-window-exceeded";
+    if (
+      httpStatusCode === 402 ||
+      /insufficient[_ ]quota|\bbilling\b/i.test(message)
+    )
+      return "billing";
+    if (
+      httpStatusCode === 429 ||
+      /rate[_ -]?limit(?:ed|_error)?\b|too many requests/i.test(message)
+    )
+      return "rate-limit";
+    if (
+      httpStatusCode !== 529 &&
+      !/\bE(?:CONNRESET|CONNREFUSED|PIPE|TIMEDOUT)\b/.test(message) &&
+      !isRetryableAssistantError(failed)
+    )
+      return httpStatusCode !== null && httpStatusCode < 500
+        ? "bad-request"
+        : "unknown";
+    if (httpStatusCode === 529 || /\boverloaded(?:_error)?\b/i.test(message))
+      return "overloaded";
+    if (httpStatusCode !== null && httpStatusCode >= 500) return "internal";
+    return "connection-failed";
+  };
+  return { category: category(), providerCode: null, httpStatusCode };
 }
 
 const piMessageUpdateEventSchema = z
@@ -448,11 +524,55 @@ export function createPiDeltaTranslator(
     ThreadEventTokenUsageBreakdown
   >();
   const promptCacheTtlMsByThreadId = new Map<string, number>();
+  const closedAssistantStreams = new Set<string>();
+  const openThinkingStreams = new Map<string, Set<number>>();
 
   function resetThread(threadId: string): void {
     cumulativeTokensByThreadId.delete(threadId);
     promptCacheTtlMsByThreadId.delete(threadId);
     clearThreadToolShapes({ threadId });
+    const prefix = `${threadId} `;
+    for (const key of [...closedAssistantStreams]) {
+      if (key.startsWith(prefix)) {
+        closedAssistantStreams.delete(key);
+      }
+    }
+    for (const key of [...openThinkingStreams.keys()]) {
+      if (key.startsWith(prefix)) {
+        openThinkingStreams.delete(key);
+      }
+    }
+  }
+
+  function closeUnfinishedAssistantStreams(
+    streamKey: string,
+    parentRefField: { parentRef?: string },
+  ): ThreadDelta[] {
+    const thinkingIndexes = openThinkingStreams.get(streamKey) ?? [];
+    openThinkingStreams.delete(streamKey);
+    return [
+      ...[...thinkingIndexes].map(
+        (contentIndex): ThreadDelta => ({
+          kind: "item.textClose",
+          key: {
+            channel: thinkingStreamChannel(contentIndex),
+            ...parentRefField,
+          },
+          channel: "reasoningText",
+        }),
+      ),
+      {
+        kind: "item.textClose",
+        key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+        channel: "agentMessage",
+      },
+    ];
+  }
+
+  function assistantStreamKey(
+    context: PiDeltaTranslationContext | undefined,
+  ): string {
+    return `${context?.threadId ?? ""} ${context?.parentToolCallId ?? ""}`;
   }
 
   function toolShapeKey(
@@ -628,6 +748,9 @@ export function createPiDeltaTranslator(
           kind: "provider.error",
           message: "Provider error",
           detail: errorEnvelope.data.params?.message ?? "unknown error",
+          errorInfo: piErrorInfo(
+            errorEnvelope.data.params?.message ?? "unknown error",
+          ),
           settlesTurn: true,
         },
       ];
@@ -658,6 +781,35 @@ export function createPiDeltaTranslator(
 
       case "message_end":
       case "message_start": {
+        const assistantEvent =
+          piAssistantMessageBoundaryEventSchema.safeParse(event);
+        if (assistantEvent.success) {
+          const streamKey = assistantStreamKey(context);
+          const message = assistantEvent.data.message;
+          if (assistantEvent.data.type === "message_start") {
+            closedAssistantStreams.delete(streamKey);
+            return closeUnfinishedAssistantStreams(streamKey, parentRefField);
+          }
+          if (
+            message.stopReason === "error" ||
+            message.stopReason === "aborted"
+          ) {
+            return [];
+          }
+          closedAssistantStreams.add(streamKey);
+          const text = extractAssistantText(message);
+          if (!text) {
+            return [];
+          }
+          return [
+            {
+              kind: "item.textClose",
+              key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+              channel: "agentMessage",
+              text,
+            },
+          ];
+        }
         const piEvent = piCustomMessageBoundaryEventSchema.safeParse(event);
         if (!piEvent.success) {
           return [];
@@ -751,6 +903,10 @@ export function createPiDeltaTranslator(
             detail:
               parsed.data.errorMessage ??
               "Automatic context compaction was interrupted",
+            errorInfo: piErrorInfo(
+              parsed.data.errorMessage ??
+                "Automatic context compaction was interrupted",
+            ),
           },
         ];
       }
@@ -768,6 +924,7 @@ export function createPiDeltaTranslator(
                 kind: "provider.error",
                 message: "Provider error",
                 detail: lastAssistant.errorMessage,
+                errorInfo: piErrorInfo(lastAssistant.errorMessage),
                 willRetry: true,
               },
             ];
@@ -785,6 +942,7 @@ export function createPiDeltaTranslator(
               kind: "provider.error",
               message: "Provider error",
               detail: settlementError,
+              errorInfo: piErrorInfo(settlementError),
             });
           }
           failure.push({
@@ -807,10 +965,19 @@ export function createPiDeltaTranslator(
             kind: "provider.error",
             message: "Provider error",
             detail: settlementError,
+            errorInfo: piErrorInfo(settlementError),
             ...(piEvent.data.willRetry ? { willRetry: true } : {}),
           });
         }
-        if (lastAssistant && !piEvent.data.settlementOnly && !settlementError) {
+        const assistantClosed = closedAssistantStreams.delete(
+          assistantStreamKey(context),
+        );
+        if (
+          lastAssistant &&
+          !assistantClosed &&
+          !piEvent.data.settlementOnly &&
+          !settlementError
+        ) {
           const text = extractAssistantText(lastAssistant);
           if (text) {
             deltas.push({
@@ -884,6 +1051,11 @@ export function createPiDeltaTranslator(
           if (typeof assistantEvent.contentIndex !== "number") {
             return unexpectedSdkEventDeltas(event, context);
           }
+          const streamKey = assistantStreamKey(context);
+          const thinkingIndexes =
+            openThinkingStreams.get(streamKey) ?? new Set<number>();
+          thinkingIndexes.add(assistantEvent.contentIndex);
+          openThinkingStreams.set(streamKey, thinkingIndexes);
           return [
             {
               kind: "item.textDelta",
@@ -904,6 +1076,9 @@ export function createPiDeltaTranslator(
           if (typeof assistantEvent.contentIndex !== "number") {
             return unexpectedSdkEventDeltas(event, context);
           }
+          openThinkingStreams
+            .get(assistantStreamKey(context))
+            ?.delete(assistantEvent.contentIndex);
           return [
             {
               kind: "item.textClose",

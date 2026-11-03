@@ -1,5 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_getHostPathComparisonKey as getHostPathComparisonKey,
+  experimental_getRelativeHostPath as getRelativeHostPath,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   diskCapacitySchema,
@@ -8,8 +13,17 @@ import {
 } from "./host-contract.js";
 import { readThreads, readThreadsById } from "./sdk-data.js";
 import { LARGE_FILE_MIN_BYTES } from "./rules.js";
-import { developerStorageScanSchema } from "./storage-types.js";
+import {
+  developerStorageScanSchema,
+  externalWorktreeScanSchema,
+} from "./storage-types.js";
 import type {
+  EntryCleanupInput,
+  EntryCleanupStatus,
+  ExternalWorktreeRemoval,
+  ExternalWorktreeSkipReason,
+  HostStorageRemoveExternalWorktreesResponse,
+  MaintenanceKind,
   HostStorageReport,
   HostStorageResponse,
   HostStorageScanStatus,
@@ -21,6 +35,9 @@ import type {
 type Thread = Awaited<ReturnType<typeof readThreads>>[number];
 type Environment = Awaited<
   ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
+>[number];
+type Project = Awaited<
+  ReturnType<BbPluginApi["sdk"]["projects"]["list"]>
 >[number];
 const cachedScanSchema = z.object({
   scannedAt: z.number(),
@@ -45,12 +62,14 @@ const cachedScanSchema = z.object({
       sizeBytes: z.number().int().nonnegative(),
     }),
   ),
+  externalWorktrees: z.array(externalWorktreeScanSchema).default([]),
 });
 type Scan = z.infer<typeof cachedScanSchema>;
 type Removal = {
   entries: Set<string>;
   largeFiles: Set<string>;
   developer: Set<string>;
+  externalWorktrees: Set<string>;
 };
 function withoutRemoved(scan: Scan, removal: Removal): Scan {
   const largeBytes = new Map(
@@ -86,6 +105,9 @@ function withoutRemoved(scan: Scan, removal: Removal): Scan {
         (entry) => !removal.developer.has(entry.name),
       ),
     },
+    externalWorktrees: scan.externalWorktrees.filter(
+      (worktree) => !removal.externalWorktrees.has(worktree.path),
+    ),
   };
 }
 const clearableArchived = (
@@ -95,27 +117,84 @@ const clearableArchived = (
   thread.archivedAt + ARCHIVE_UNDO_GRACE_MS <= Date.now() &&
   thread.pinnedAt === null &&
   !["starting", "active", "stopping"].includes(thread.status);
-const hostPath = (value: string) =>
-  value.replaceAll("\\", "/").replace(/\/$/, "");
+const hostPath = (value: string) => getHostPathComparisonKey(value);
+function ownedByBb(owned: Set<string>, path: string): boolean {
+  const key = hostPath(path);
+  return key === null || owned.has(key);
+}
+const liveEnvironment = (
+  env: Environment,
+): env is Environment & { path: string } =>
+  env.path !== null &&
+  env.status !== "destroyed" &&
+  env.lifecycle.teardown?.status !== "removed";
+function bbOwnedPaths(
+  hostId: string,
+  environments: Environment[],
+  projects: Project[],
+) {
+  return new Set(
+    [
+      ...environments.flatMap((env) =>
+        liveEnvironment(env) ? [env.path] : [],
+      ),
+      ...projects.flatMap((project) =>
+        project.sources
+          .filter((source) => source.hostId === hostId)
+          .map((source) => source.path),
+      ),
+    ].flatMap((path) => hostPath(path) ?? []),
+  );
+}
+function linkedThreads(
+  path: string,
+  environments: Environment[],
+  threads: Thread[],
+) {
+  const sourcePath = hostPath(path);
+  if (sourcePath === null) return [];
+  const environmentIds = new Set(
+    environments
+      .filter((env) => env.path !== null && hostPath(env.path) === sourcePath)
+      .map((env) => env.id),
+  );
+  const encodedThreadId = sourcePath
+    .replaceAll("\\", "/")
+    .match(
+      /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
+    )?.[1];
+  return threads
+    .filter(
+      (thread) =>
+        (thread.environmentId !== null &&
+          environmentIds.has(thread.environmentId)) ||
+        thread.id === encodedThreadId,
+    )
+    .map((thread) => ({
+      threadId: thread.id,
+      title: thread.title ?? thread.titleFallback ?? thread.id,
+      archived: thread.archivedAt !== null,
+    }));
+}
 function entriesHoldingWorkspaces(
   rootPath: string,
   environments: Environment[],
 ) {
-  const root = `${hostPath(rootPath)}/`;
   const workspaces = new Map<string, string>();
+  const key = (name: string) => hostPath(`${rootPath}/${name}`);
   for (const env of environments) {
-    if (
-      env.path === null ||
-      env.status === "destroyed" ||
-      env.lifecycle.teardown?.status === "removed"
-    )
-      continue;
-    const envPath = hostPath(env.path);
-    if (!envPath.startsWith(root)) continue;
-    const [name] = envPath.slice(root.length).split("/");
-    if (name && !workspaces.has(name)) workspaces.set(name, env.path);
+    if (!liveEnvironment(env)) continue;
+    const relative = getRelativeHostPath({ rootPath, candidatePath: env.path });
+    const name = relative?.split("/")[0];
+    const entryKey = name ? key(name) : null;
+    if (entryKey !== null && !workspaces.has(entryKey))
+      workspaces.set(entryKey, env.path);
   }
-  return workspaces;
+  const get = (name: string) => {
+    const entryKey = key(name);
+    return entryKey === null ? undefined : workspaces.get(entryKey);
+  };
+  return { has: (name: string) => get(name) !== undefined, get };
 }
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
@@ -145,14 +224,19 @@ export function createStorage(
   const lifecycle = new AbortController();
   const busy = new Set<string>();
   const pendingDevelopmentCleanups = new Set<string>();
-  const entryClears = new Map<
+  const waiters = new Map<string, Array<() => void>>();
+  const maintenanceJobs = new Map<
     string,
-    { keys: Set<string>; release: () => void }
+    Map<MaintenanceKind, MaintenanceStatus>
   >();
   const maintenance = new Map<string, MaintenanceStatus>();
   const scans = new Map<string, HostStorageScanStatus>();
   const archivedFileCleanups = new Map<string, ArchivedFileCleanupStatus>();
   const largeFileCleanups = new Map<string, LargeFileCleanupStatus>();
+  const worktreeRemovals = new Map<
+    string,
+    Map<string, ExternalWorktreeRemoval>
+  >();
   const jobs = new Set<Promise<void>>();
   bb.onDispose(async () => {
     lifecycle.abort();
@@ -163,9 +247,10 @@ export function createStorage(
   };
   function read(hostId: string): Scan | null {
     const row = db
-      .prepare<[string], { result_json: string }>(
-        "SELECT result_json FROM scans WHERE host_id = ?",
-      )
+      .prepare<
+        [string],
+        { result_json: string }
+      >("SELECT result_json FROM scans WHERE host_id = ?")
       .get(hostId);
     return row ? cachedScanSchema.parse(JSON.parse(row.result_json)) : null;
   }
@@ -176,15 +261,37 @@ export function createStorage(
     changed();
   }
   const scanRemovals = new Map<string, Removal>();
+  const removedTargets = new Map<
+    string,
+    {
+      developer: Set<string>;
+      externalWorktrees: Set<string>;
+      entries: Set<string>;
+    }
+  >();
   function forget(hostId: string, removed: Partial<Removal>) {
     const removal = {
       entries: removed.entries ?? new Set<string>(),
       largeFiles: removed.largeFiles ?? new Set<string>(),
       developer: removed.developer ?? new Set<string>(),
+      externalWorktrees: removed.externalWorktrees ?? new Set<string>(),
     };
+    const completed = removedTargets.get(hostId) ?? {
+      developer: new Set<string>(),
+      externalWorktrees: new Set<string>(),
+      entries: new Set<string>(),
+    };
+    for (const key of ["developer", "externalWorktrees", "entries"] as const)
+      for (const target of removal[key]) completed[key].add(target);
+    removedTargets.set(hostId, completed);
     const pending = scanRemovals.get(hostId);
     if (pending)
-      for (const key of ["entries", "largeFiles", "developer"] as const)
+      for (const key of [
+        "entries",
+        "largeFiles",
+        "developer",
+        "externalWorktrees",
+      ] as const)
         for (const name of removal[key]) pending[key].add(name);
     const cached = read(hostId);
     if (cached) store(hostId, withoutRemoved(cached, removal));
@@ -203,37 +310,46 @@ export function createStorage(
       throw new Error("The machine has not reported its filesystem locations");
     return host.threadStorageRootPath;
   }
-  function acquire(hostId: string) {
-    if (busy.has(hostId))
-      throw new Error("Storage maintenance is already running on this machine");
-    busy.add(hostId);
-    return () => {
-      busy.delete(hostId);
-      if (pendingDevelopmentCleanups.has(hostId))
-        void cleanDevelopmentStorage(hostId);
-    };
-  }
-  function acquireEntries(
-    hostId: string,
-    keys: string[],
-    duplicateMessage: string,
-  ) {
-    const existing = entryClears.get(hostId);
-    if (existing && keys.some((key) => existing.keys.has(key)))
-      throw new Error(duplicateMessage);
-    const group = existing ?? {
-      keys: new Set<string>(),
-      release: acquire(hostId),
-    };
-    entryClears.set(hostId, group);
-    for (const key of keys) group.keys.add(key);
-    return () => {
-      for (const key of keys) group.keys.delete(key);
-      if (group.keys.size === 0) {
-        entryClears.delete(hostId);
-        group.release();
+  async function acquire(hostId: string, started?: () => void) {
+    lifecycle.signal.throwIfAborted();
+    if (busy.has(hostId)) {
+      await new Promise<void>((resolve) => {
+        const queued = waiters.get(hostId) ?? [];
+        queued.push(resolve);
+        waiters.set(hostId, queued);
+      });
+    } else busy.add(hostId);
+    const release = () => {
+      const queued = waiters.get(hostId);
+      const next = queued?.shift();
+      if (next) next();
+      else {
+        waiters.delete(hostId);
+        busy.delete(hostId);
+        if (pendingDevelopmentCleanups.has(hostId))
+          void cleanDevelopmentStorage(hostId);
       }
     };
+    if (lifecycle.signal.aborted) {
+      release();
+      lifecycle.signal.throwIfAborted();
+    }
+    started?.();
+    return release;
+  }
+  function setMaintenance(
+    hostId: string,
+    status: MaintenanceStatus & { kind: MaintenanceKind },
+  ) {
+    const statuses = maintenanceJobs.get(hostId) ?? new Map();
+    statuses.set(status.kind, status);
+    maintenanceJobs.set(hostId, statuses);
+    maintenance.set(hostId, status);
+    changed();
+  }
+  function isCurrentInstance(developerPath: string, name: string) {
+    const entry = hostPath(`${developerPath}/${name}`);
+    return entry !== null && entry === hostPath(bb.server.experimental_dataDir);
   }
   async function readEnvironments(hostId: string) {
     const environments: Environment[] = [];
@@ -332,6 +448,24 @@ export function createStorage(
       if (environments.has(env.id)) counts.pendingPaths.add(env.path);
       projectCounts.set(env.projectId, counts);
     }
+    const bbPaths = bbOwnedPaths(hostId, allEnvironments, projects);
+    const externalWorktrees = scan.externalWorktrees
+      .filter((worktree) => !ownedByBb(bbPaths, worktree.path))
+      .map((worktree) => ({
+        ...worktree,
+        threads: linkedThreads(worktree.path, allEnvironments, threads),
+      }))
+      .sort((a, b) => b.sizeBytes - a.sizeBytes);
+    const externalCounts = new Map<string, { count: number; bytes: number }>();
+    for (const worktree of externalWorktrees) {
+      const counts = externalCounts.get(worktree.projectId) ?? {
+        count: 0,
+        bytes: 0,
+      };
+      counts.count++;
+      counts.bytes += worktree.sizeBytes;
+      externalCounts.set(worktree.projectId, counts);
+    }
     const owned = scan.entries.flatMap((entry) => {
       const thread = byId.get(entry.name);
       return thread ? [{ ...entry, thread }] : [];
@@ -420,7 +554,8 @@ export function createStorage(
         .filter(
           (project) =>
             project.sources.some((source) => source.hostId === hostId) ||
-            projectCounts.has(project.id),
+            projectCounts.has(project.id) ||
+            externalCounts.has(project.id),
         )
         .map((project) => ({
           projectId: project.id,
@@ -428,48 +563,31 @@ export function createStorage(
           worktreeCount: projectCounts.get(project.id)?.paths.size ?? 0,
           cleanupPendingCount:
             projectCounts.get(project.id)?.pendingPaths.size ?? 0,
+          externalCount: externalCounts.get(project.id)?.count ?? 0,
+          externalBytes: externalCounts.get(project.id)?.bytes ?? 0,
         }))
         .sort(
           (a, b) =>
-            b.worktreeCount - a.worktreeCount ||
+            b.worktreeCount +
+              b.externalCount -
+              (a.worktreeCount + a.externalCount) ||
             a.projectName.localeCompare(b.projectName),
         ),
+      externalWorktrees,
       developerStorage: scan.developerStorage
         ? {
             ...scan.developerStorage,
-            entries: scan.developerStorage.entries.map((entry) => {
-              const sourcePath =
+            entries: scan.developerStorage.entries.map((entry) => ({
+              ...entry,
+              current: isCurrentInstance(
+                scan.developerStorage!.path,
+                entry.name,
+              ),
+              threads:
                 entry.sourcePath === null
-                  ? undefined
-                  : hostPath(entry.sourcePath);
-              const environmentIds = new Set(
-                allEnvironments
-                  .filter(
-                    (env) =>
-                      sourcePath !== undefined &&
-                      env.path !== null &&
-                      hostPath(env.path) === sourcePath,
-                  )
-                  .map((env) => env.id),
-              );
-              const encodedThreadId = sourcePath?.match(
-                /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
-              )?.[1];
-              const linked = threads.filter(
-                (thread) =>
-                  (thread.environmentId !== null &&
-                    environmentIds.has(thread.environmentId)) ||
-                  thread.id === encodedThreadId,
-              );
-              return {
-                ...entry,
-                threads: linked.map((thread) => ({
-                  threadId: thread.id,
-                  title: thread.title ?? thread.titleFallback ?? thread.id,
-                  archived: thread.archivedAt !== null,
-                })),
-              };
-            }),
+                  ? []
+                  : linkedThreads(entry.sourcePath, allEnvironments, threads),
+            })),
           }
         : null,
     };
@@ -489,12 +607,16 @@ export function createStorage(
     const cached = read(hostId);
     return {
       maintenance: maintenance.get(hostId) ?? { state: "idle" },
+      maintenanceJobs: [...(maintenanceJobs.get(hostId)?.values() ?? [])],
       report: cached ? await report(hostId, cached, context) : null,
       scan: scans.get(hostId) ?? { state: "idle" },
       largeFileCleanup: largeFileCleanups.get(hostId) ?? { state: "idle" },
       archivedFileCleanup: archivedFileCleanups.get(hostId) ?? {
         state: "idle",
       },
+      externalWorktreeRemovals: [
+        ...(worktreeRemovals.get(hostId)?.values() ?? []),
+      ],
     };
   }
   async function hosts() {
@@ -513,7 +635,7 @@ export function createStorage(
   function developerCandidatePaths(
     hostId: string,
     environments: Environment[],
-    projects: Awaited<ReturnType<BbPluginApi["sdk"]["projects"]["list"]>>,
+    projects: Project[],
   ) {
     return [
       ...new Set([
@@ -530,7 +652,7 @@ export function createStorage(
     hostId: string,
     homeDirectory: string,
     environments: Environment[],
-    projects: Awaited<ReturnType<BbPluginApi["sdk"]["projects"]["list"]>>,
+    projects: Project[],
   ): Promise<Scan["developerStorage"]> {
     const developerRoot = `${homeDirectory.replace(/[\\/]$/, "")}/.bb-dev`;
     const result = await worker.call(
@@ -589,13 +711,58 @@ export function createStorage(
         .sort((a, b) => b.sizeBytes - a.sizeBytes),
     };
   }
+  async function discoverExternalWorktrees(
+    hostId: string,
+    environments: Environment[],
+    projects: Project[],
+  ) {
+    const projectByRepository = new Map<string, string>();
+    for (const project of projects)
+      for (const source of project.sources)
+        if (source.hostId === hostId && !projectByRepository.has(source.path))
+          projectByRepository.set(source.path, project.id);
+    const repositoryPaths = [...projectByRepository.keys()];
+    const owned = bbOwnedPaths(hostId, environments, projects);
+    const found = new Map<
+      string,
+      Omit<Scan["externalWorktrees"][number], "sizeBytes">
+    >();
+    for (let offset = 0; offset < repositoryPaths.length; offset += 100) {
+      const result = await worker.call(
+        "listGitWorktrees",
+        { repositoryPaths: repositoryPaths.slice(offset, offset + 100) },
+        { hostId, timeoutMs: 10 * 60_000, signal: lifecycle.signal },
+      );
+      for (const repository of result.repositories)
+        for (const worktree of repository.worktrees) {
+          if (ownedByBb(owned, worktree.path) || found.has(worktree.path))
+            continue;
+          found.set(worktree.path, {
+            projectId: projectByRepository.get(repository.repositoryPath)!,
+            repositoryPath: repository.repositoryPath,
+            path: worktree.path,
+            branch: worktree.branch,
+            locked: worktree.locked,
+            changedFileCount: worktree.changedFileCount,
+            unsavedCommitCount: worktree.unsavedCommitCount,
+            lastActivityAt: worktree.lastActivityAt,
+          });
+        }
+    }
+    return [...found.values()];
+  }
   async function scanHost({ hostId }: { hostId: string }) {
+    await startScan(hostId);
+    return host({ hostId });
+  }
+  async function startScan(hostId: string) {
     await requireHost(hostId, true);
-    if (scans.get(hostId)?.state === "scanning") return host({ hostId });
+    if (scans.get(hostId)?.state === "scanning") return;
     const removal: Removal = {
       entries: new Set(),
       largeFiles: new Set(),
       developer: new Set(),
+      externalWorktrees: new Set(),
     };
     scanRemovals.set(hostId, removal);
     scans.set(hostId, { state: "scanning", startedAt: Date.now() });
@@ -634,9 +801,20 @@ export function createStorage(
             largeFileMinBytes: LARGE_FILE_MIN_BYTES,
           },
         ];
-        const worktreeTargets = environments.flatMap((env) =>
-          env.path === null ? [] : [{ path: env.path, perChild: false }],
+        const externals = await discoverExternalWorktrees(
+          hostId,
+          allEnvironments,
+          projects,
         );
+        const worktreeTargets = [
+          ...environments.flatMap((env) =>
+            env.path === null ? [] : [{ path: env.path, perChild: false }],
+          ),
+          ...externals.map((worktree) => ({
+            path: worktree.path,
+            perChild: false,
+          })),
+        ];
         for (let offset = 0; offset < worktreeTargets.length; offset += 500)
           batches.push({
             targets: worktreeTargets.slice(offset, offset + 500),
@@ -652,13 +830,11 @@ export function createStorage(
           for (const target of result.targets)
             measured.set(target.path, target);
           for (const file of result.largeFiles) {
-            const [name] = file.path.slice(rootPath.length + 1).split(/[\\/]/);
-            if (
-              !file.path.startsWith(rootPath) ||
-              name === undefined ||
-              !isStorageEntry(name)
-            )
-              continue;
+            const name = getRelativeHostPath({
+              rootPath,
+              candidatePath: file.path,
+            })?.split("/")[0];
+            if (name === undefined || !isStorageEntry(name)) continue;
             const total = largeFiles.get(name) ?? { sizeBytes: 0, count: 0 };
             total.sizeBytes += file.sizeBytes;
             total.count++;
@@ -700,6 +876,12 @@ export function createStorage(
                 ]
               : [];
           }),
+          externalWorktrees: externals.flatMap((worktree) => {
+            const entry = measured.get(worktree.path);
+            return entry?.outcome === "measured"
+              ? [{ ...worktree, sizeBytes: entry.sizeBytes }]
+              : [];
+          }),
         };
         store(hostId, withoutRemoved(scan, removal));
         completed = true;
@@ -719,7 +901,6 @@ export function createStorage(
     })();
     jobs.add(job);
     void job.finally(() => jobs.delete(job));
-    return host({ hostId });
   }
   async function discard(
     hostId: string,
@@ -771,7 +952,7 @@ export function createStorage(
     { hostId }: { hostId: string },
     reserved: (() => void) | null = null,
   ) {
-    const release = reserved ?? acquire(hostId);
+    const release = reserved ?? (await acquire(hostId));
     try {
       await requireHost(hostId, true);
       const cached = read(hostId);
@@ -791,7 +972,11 @@ export function createStorage(
       release();
     }
   }
-  async function clearLargeFilesOn(hostId: string, release = acquire(hostId)) {
+  async function clearLargeFilesOn(
+    hostId: string,
+    reserved: (() => void) | null = null,
+  ) {
+    const release = reserved ?? (await acquire(hostId));
     try {
       await requireHost(hostId, true);
       const cached = read(hostId);
@@ -841,23 +1026,32 @@ export function createStorage(
   }
   async function clearArchivedFiles({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
-    return clearArchivedFilesOn(hostId, acquire(hostId), null);
+    return clearArchivedFilesOn(hostId, await acquire(hostId), null);
   }
   async function startClearArchivedFiles({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
     if (!read(hostId))
       throw new Error("Scan the machine before clearing archived thread files");
-    const release = acquire(hostId);
+    const existing = archivedFileCleanups.get(hostId)?.state;
+    if (existing === "queued" || existing === "running") return null;
+    const reservation = acquire(hostId);
     let clearedThreads = 0;
     let clearedBytes = 0;
     archivedFileCleanups.set(hostId, {
-      state: "running",
+      state: "queued",
       clearedThreads,
       clearedBytes,
     });
     changed();
     const job = (async () => {
       try {
+        const release = await reservation;
+        archivedFileCleanups.set(hostId, {
+          state: "running",
+          clearedThreads,
+          clearedBytes,
+        });
+        changed();
         const result = await clearArchivedFilesOn(
           hostId,
           release,
@@ -916,17 +1110,10 @@ export function createStorage(
       | { hostId: string; names: null }
       | { hostId: string; names: string[]; stopRunning: boolean },
     reserved: (() => void) | null = null,
+    started?: () => void,
   ) {
     const { hostId, names } = input;
-    const release =
-      reserved ??
-      (names === null
-        ? acquire(hostId)
-        : acquireEntries(
-            hostId,
-            names.map((name) => `dev:${name}`),
-            "This development instance is already being removed",
-          ));
+    const release = reserved ?? (await acquire(hostId, started));
     try {
       await requireHost(hostId, true);
       const developer = read(hostId)?.developerStorage;
@@ -943,13 +1130,21 @@ export function createStorage(
         environments,
         projects,
       );
-      const targets = developer.entries.filter((entry) =>
-        names === null
-          ? entry.sourcePathState === "missing"
-          : names.includes(entry.name),
+      if (names?.some((name) => isCurrentInstance(developer.path, name)))
+        throw new Error(
+          "Cannot remove the development instance this BB is running from",
+        );
+      const targets = developer.entries.filter(
+        (entry) =>
+          !isCurrentInstance(developer.path, entry.name) &&
+          (names === null
+            ? entry.sourcePathState === "missing"
+            : names.includes(entry.name)),
       );
       const unknown = (names ?? []).filter(
-        (name) => !targets.some((entry) => entry.name === name),
+        (name) =>
+          !targets.some((entry) => entry.name === name) &&
+          !removedTargets.get(hostId)?.developer.has(name),
       );
       if (unknown.length > 0)
         throw new Error(
@@ -1027,16 +1222,22 @@ export function createStorage(
       if (!read(target))
         throw new Error("Scan the machine before clearing large files");
     }
-    if (targets.some((target) => busy.has(target)))
-      throw new Error("Storage maintenance is already running on this machine");
     for (const target of targets) {
-      const release = acquire(target);
+      const existing = largeFileCleanups.get(target)?.state;
+      if (existing === "queued" || existing === "running") continue;
+      const reservation = acquire(target);
       largeFileCleanups.set(target, {
-        state: "running",
+        state: "queued",
         startedAt: Date.now(),
       });
       const job = (async () => {
         try {
+          const release = await reservation;
+          largeFileCleanups.set(target, {
+            state: "running",
+            startedAt: Date.now(),
+          });
+          changed();
           const result = await clearLargeFilesOn(target, release);
           largeFileCleanups.set(target, {
             state: "completed",
@@ -1091,8 +1292,8 @@ export function createStorage(
           if (next === undefined) return;
           pendingDevelopmentCleanups.delete(next);
           try {
-            if (read(next) === null) await scanHost({ hostId: next });
-            else await removeMissingDevelopment(next, acquire(next));
+            if (read(next) === null) await startScan(next);
+            else await removeMissingDevelopment(next, await acquire(next));
           } catch (error) {
             if (!lifecycle.signal.aborted)
               bb.log.warn(
@@ -1142,6 +1343,17 @@ export function createStorage(
       if (!handedOff) release();
     }
   }
+  async function reconcileHostDevelopmentStorage(hostId: string) {
+    try {
+      if (lifecycle.signal.aborted || !(await devCleanupEnabled())) return;
+      await startScan(hostId);
+    } catch (error) {
+      if (!lifecycle.signal.aborted)
+        bb.log.warn(
+          `Could not reconcile development storage on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+  }
   let reconcilingDevelopment = false;
   function reconcileDevelopmentStorage() {
     if (reconcilingDevelopment || lifecycle.signal.aborted)
@@ -1171,7 +1383,7 @@ export function createStorage(
         machine.status === "connected" &&
         scans.get(machine.id)?.state !== "scanning"
       )
-        await scanHost({ hostId: machine.id });
+        await startScan(machine.id);
     return hosts();
   }
   async function clearThread({ threadId }: { threadId: string }) {
@@ -1180,6 +1392,7 @@ export function createStorage(
   async function clearThreadStorage(
     threadId: string,
     archivedAt: number | null,
+    started?: () => void,
   ) {
     lifecycle.signal.throwIfAborted();
     const thread = await bb.sdk.threads.get({ threadId });
@@ -1190,25 +1403,31 @@ export function createStorage(
       hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
     } else {
       const matches = db
-        .prepare<[string], { host_id: string }>(
-          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
-        )
+        .prepare<
+          [string],
+          { host_id: string }
+        >("SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)")
         .all(threadId);
       const match = matches[0];
+      if (
+        matches.length === 0 &&
+        [...removedTargets.values()].some((removed) =>
+          removed.entries.has(threadId),
+        )
+      )
+        return { ok: true as const };
       if (matches.length !== 1 || match === undefined)
         throw new StorageLocationUnavailable();
       hostId = match.host_id;
     }
     await requireHost(hostId, true);
-    const release = acquireEntries(
-      hostId,
-      [threadId],
-      "This thread’s files are already being cleared",
-    );
+    const release = await acquire(hostId, started);
     try {
       const rootPath = await storageRoot(hostId);
+      const current = await bb.sdk.threads.get({ threadId });
+      if (["starting", "active", "stopping"].includes(current.status))
+        throw new Error("Stop the thread before clearing its storage");
       if (archivedAt !== null) {
-        const current = await bb.sdk.threads.get({ threadId });
         if (
           current.archivedAt !== archivedAt ||
           current.deletedAt !== null ||
@@ -1270,9 +1489,7 @@ export function createStorage(
       .prepare<
         [number],
         { thread_id: string; archived_at: number; failure_count: number }
-      >(
-        "SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at",
-      )
+      >("SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at")
       .all(Date.now());
     for (const entry of pending) {
       if (lifecycle.signal.aborted) return;
@@ -1329,7 +1546,7 @@ export function createStorage(
     { hostId }: { hostId: string },
     reserved: (() => void) | null = null,
   ) {
-    const release = reserved ?? acquire(hostId);
+    const release = reserved ?? (await acquire(hostId));
     try {
       await requireHost(hostId, true);
       const [allEnvironments, threads] = await Promise.all([
@@ -1351,21 +1568,226 @@ export function createStorage(
       release();
     }
   }
+  async function externalWorktreeTargets(
+    hostId: string,
+    paths: string[] | null,
+  ) {
+    await requireHost(hostId, true);
+    const scanned = read(hostId)?.externalWorktrees;
+    if (!scanned) throw new Error("Scan the machine before removing worktrees");
+    const targets = scanned.filter(
+      (worktree) => paths === null || paths.includes(worktree.path),
+    );
+    const unknown = (paths ?? []).filter(
+      (target) =>
+        !targets.some((worktree) => worktree.path === target) &&
+        !removedTargets.get(hostId)?.externalWorktrees.has(target),
+    );
+    if (unknown.length > 0)
+      throw new Error(
+        `Not a worktree created outside BB in the last scan: ${unknown.join(", ")}`,
+      );
+    const [environments, projects] = await Promise.all([
+      readEnvironments(hostId),
+      bb.sdk.projects.list({ signal: lifecycle.signal }),
+    ]);
+    return { targets, owned: bbOwnedPaths(hostId, environments, projects) };
+  }
+  function setWorktreeRemoval(
+    hostId: string,
+    removal: ExternalWorktreeRemoval,
+  ) {
+    const removals = worktreeRemovals.get(hostId) ?? new Map();
+    removals.set(removal.path, removal);
+    worktreeRemovals.set(hostId, removals);
+    changed();
+  }
+  async function startRemoveExternalWorktree({
+    hostId,
+    path: target,
+    force,
+  }: {
+    hostId: string;
+    path: string;
+    force: boolean;
+  }) {
+    const existing = worktreeRemovals.get(hostId)?.get(target);
+    if (existing?.state === "queued" || existing?.state === "running")
+      return { state: "started" as const };
+    const { targets, owned } = await externalWorktreeTargets(hostId, [target]);
+    const worktree = targets[0];
+    if (!worktree) {
+      setWorktreeRemoval(hostId, {
+        path: target,
+        state: "completed",
+        removedBytes: 0,
+      });
+      return { state: "started" as const };
+    }
+    const reasons: ExternalWorktreeSkipReason[] = ownedByBb(owned, target)
+      ? ["inUseByBb"]
+      : force
+        ? []
+        : busy.has(hostId)
+          ? [
+              ...(worktree.locked ? ["locked" as const] : []),
+              ...((worktree.changedFileCount ?? 0) > 0
+                ? ["uncommittedChanges" as const]
+                : []),
+              ...((worktree.unsavedCommitCount ?? 0) > 0
+                ? ["unsavedCommits" as const]
+                : []),
+            ]
+          : (
+              await worker.call(
+                "inspectGitWorktree",
+                {
+                  repositoryPath: worktree.repositoryPath,
+                  path: target,
+                },
+                { hostId, signal: lifecycle.signal },
+              )
+            ).reasons;
+    if (reasons.length > 0) return { state: "skipped" as const, reasons };
+    const latest = worktreeRemovals.get(hostId)?.get(target)?.state;
+    if (latest === "queued" || latest === "running")
+      return { state: "started" as const };
+    const reservation = acquire(hostId);
+    setWorktreeRemoval(hostId, { path: target, state: "queued" });
+    const job = (async () => {
+      try {
+        const release = await reservation;
+        setWorktreeRemoval(hostId, { path: target, state: "running" });
+        const remains = read(hostId)?.externalWorktrees.some(
+          (entry) => entry.path === target,
+        );
+        if (!remains) {
+          release();
+          setWorktreeRemoval(hostId, {
+            path: target,
+            state: "completed",
+            removedBytes: 0,
+          });
+          return;
+        }
+        const result = await removeExternalWorktrees(
+          { hostId, paths: [target], force },
+          release,
+        );
+        const skipped = result.skipped[0];
+        const failed = result.failed[0];
+        setWorktreeRemoval(
+          hostId,
+          skipped
+            ? { path: target, state: "skipped", reasons: skipped.reasons }
+            : failed
+              ? { path: target, state: "failed", message: failed.message }
+              : {
+                  path: target,
+                  state: "completed",
+                  removedBytes: result.removedBytes,
+                },
+        );
+      } catch (error) {
+        if (!lifecycle.signal.aborted)
+          setWorktreeRemoval(hostId, {
+            path: target,
+            state: "failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return { state: "started" as const };
+  }
+  async function removeExternalWorktrees(
+    input:
+      | { hostId: string; paths: null }
+      | { hostId: string; paths: string[]; force: boolean },
+    reserved: (() => void) | null = null,
+  ): Promise<HostStorageRemoveExternalWorktreesResponse> {
+    const { hostId, paths } = input;
+    const force = input.paths !== null && input.force;
+    const release = reserved ?? (await acquire(hostId));
+    try {
+      const { targets, owned } = await externalWorktreeTargets(hostId, paths);
+      const response: HostStorageRemoveExternalWorktreesResponse = {
+        removedCount: 0,
+        removedBytes: 0,
+        skipped: [],
+        failed: [],
+      };
+      const byRepository = new Map<string, typeof targets>();
+      for (const worktree of targets) {
+        if (ownedByBb(owned, worktree.path)) {
+          response.skipped.push({
+            path: worktree.path,
+            reasons: ["inUseByBb"],
+          });
+          continue;
+        }
+        const group = byRepository.get(worktree.repositoryPath) ?? [];
+        group.push(worktree);
+        byRepository.set(worktree.repositoryPath, group);
+      }
+      for (const [repositoryPath, group] of byRepository)
+        for (let offset = 0; offset < group.length; offset += 100) {
+          lifecycle.signal.throwIfAborted();
+          const batch = group.slice(offset, offset + 100);
+          const { results } = await worker.call(
+            "removeGitWorktrees",
+            {
+              repositoryPath,
+              paths: batch.map((worktree) => worktree.path),
+              force,
+            },
+            { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
+          );
+          const removed = new Set<string>();
+          for (const result of results) {
+            if (result.outcome === "removed") removed.add(result.path);
+            else if (result.outcome === "skipped")
+              response.skipped.push({
+                path: result.path,
+                reasons: result.reasons,
+              });
+            else
+              response.failed.push({
+                path: result.path,
+                message: result.message,
+              });
+          }
+          response.removedCount += removed.size;
+          response.removedBytes += batch
+            .filter((worktree) => removed.has(worktree.path))
+            .reduce((total, worktree) => total + worktree.sizeBytes, 0);
+          forget(hostId, { externalWorktrees: removed });
+        }
+      return response;
+    } finally {
+      release();
+    }
+  }
   async function startCleanup({
     hostId,
     kind,
   }: {
     hostId: string;
-    kind: "orphans" | "development" | "worktrees";
+    kind: MaintenanceKind;
   }) {
     await requireHost(hostId, true);
     if (!read(hostId))
       throw new Error("Scan the machine before cleaning up storage");
-    const release = acquire(hostId);
-    maintenance.set(hostId, { state: "running", kind });
+    const existing = maintenanceJobs.get(hostId)?.get(kind)?.state;
+    if (existing === "queued" || existing === "running") return null;
+    const reservation = acquire(hostId);
+    setMaintenance(hostId, { state: "queued", kind });
     changed();
     const job = (async () => {
       try {
+        const release = await reservation;
+        setMaintenance(hostId, { state: "running", kind });
         let message: string;
         if (kind === "orphans") {
           const result = await removeOrphans({ hostId }, release);
@@ -1376,14 +1798,20 @@ export function createStorage(
             release,
           );
           message = `Removed ${result.removedCount} development instances; ${result.skippedCount} skipped`;
+        } else if (kind === "externalWorktrees") {
+          const result = await removeExternalWorktrees(
+            { hostId, paths: null },
+            release,
+          );
+          message = `Removed ${result.removedCount} worktrees created outside BB; ${result.skipped.length + result.failed.length} kept`;
         } else {
           const result = await retryWorktreeCleanup({ hostId }, release);
           message = `Retried cleanup for ${result.retriedCount} worktrees`;
         }
-        maintenance.set(hostId, { state: "completed", kind, message });
+        setMaintenance(hostId, { state: "completed", kind, message });
       } catch (error) {
         if (!lifecycle.signal.aborted)
-          maintenance.set(hostId, {
+          setMaintenance(hostId, {
             state: "failed",
             kind,
             message: error instanceof Error ? error.message : String(error),
@@ -1396,13 +1824,62 @@ export function createStorage(
     void job.finally(() => jobs.delete(job));
     return null;
   }
+  const entryJobs = new Map<string, EntryCleanupStatus>();
+  const pendingEntries = new Map<string, string>();
+  function entryCleanup({ id }: { id: string }) {
+    const status = entryJobs.get(id);
+    if (!status)
+      throw new Error("Cleanup is no longer available; refresh Storage");
+    return status;
+  }
+  function startEntryCleanup(input: EntryCleanupInput) {
+    const key = JSON.stringify(
+      input.kind === "development"
+        ? { ...input, names: [...new Set(input.names)].sort() }
+        : input,
+    );
+    const current = pendingEntries.get(key);
+    if (current) return { id: current };
+    const id = randomUUID();
+    pendingEntries.set(key, id);
+    entryJobs.set(id, { state: "queued" });
+    const started = () => entryJobs.set(id, { state: "running" });
+    const job = (async () => {
+      try {
+        const result =
+          input.kind === "thread"
+            ? {
+                kind: input.kind,
+                ...(await clearThreadStorage(input.threadId, null, started)),
+              }
+            : {
+                kind: input.kind,
+                ...(await removeDevInstances(input, null, started)),
+              };
+        entryJobs.set(id, { state: "completed", result });
+      } catch (error) {
+        entryJobs.set(id, {
+          state: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        pendingEntries.delete(key);
+      }
+    })();
+    jobs.add(job);
+    void job.finally(() => jobs.delete(job));
+    return { id };
+  }
   return {
+    startEntryCleanup,
+    entryCleanup,
     startCleanup,
     host,
     hosts,
     scanHost,
     scanAll,
     reconcileDevelopmentStorage,
+    reconcileHostDevelopmentStorage,
     cleanDevelopmentStorage,
     removeOrphans,
     clearLargeFiles,
@@ -1410,6 +1887,8 @@ export function createStorage(
     clearArchivedFiles,
     startClearArchivedFiles,
     removeDevInstances,
+    removeExternalWorktrees,
+    startRemoveExternalWorktree,
     clearThread,
     queueArchivedStorage,
     cancelArchivedStorage,

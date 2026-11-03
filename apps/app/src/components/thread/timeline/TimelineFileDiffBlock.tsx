@@ -8,7 +8,7 @@ import {
 } from "@bb/client-core";
 import { GitDiffCard } from "../../git-diff/GitDiffCard.js";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
-import type { DiffPresentation } from "@/components/code/code-rendering";
+import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
 export interface TimelineFileDiffBlockProps {
@@ -108,13 +108,10 @@ export const TimelineFileDiffBlock = memo(function TimelineFileDiffBlock({
     );
   }
 
-  const diffContentKey = `${renderablePatch ? "p" : "n"}:${renderedChange.plainDiff?.length ?? 0}`;
-
   if (renderablePatch && cardPresentation) {
     return (
       <TimelineDetailScroll
         size="base"
-        contentKey={diffContentKey}
         className="mt-1"
         scrollClassName="rounded-lg border border-border bg-background"
         showAboveFade={false}
@@ -137,7 +134,6 @@ export const TimelineFileDiffBlock = memo(function TimelineFileDiffBlock({
   return (
     <TimelineDetailScroll
       size="base"
-      contentKey={diffContentKey}
       className="mt-1 rounded-md border border-border bg-surface-raised"
     >
       <div className="min-w-fit">

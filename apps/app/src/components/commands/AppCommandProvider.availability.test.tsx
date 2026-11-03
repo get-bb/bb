@@ -64,7 +64,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         defaultBinding("thread.rename", { unassigned: true }),
         defaultBinding("pane.close", { all: ["mainSurface", "splitActive"] }),
         defaultBinding("window.new", { desktopOnly: true }),
-        defaultBinding("diff.toggle", {
+        defaultBinding("terminal.open", {
           none: ["modalOpen", "editableFocus", "terminalFocus"],
         }),
       ],
@@ -172,14 +172,14 @@ describe("isCommandAvailable", () => {
       <>
         <div aria-modal="true" />
         <input aria-label="query" />
-        <Handler command="diff.toggle" />
+        <Handler command="terminal.open" />
         <Availability
-          command="diff.toggle"
+          command="terminal.open"
           target={document.createElement("input")}
         />
       </>,
     );
-    expect(availabilityOf("diff.toggle")).toBe("yes");
+    expect(availabilityOf("terminal.open")).toBe("yes");
   });
 
   it("is true for a command the user left unbound", () => {

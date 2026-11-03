@@ -12,7 +12,10 @@ import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import {
+  installTestPluginRuntime,
+  renderSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/ui/sidebar-row-classes";
 import {
   sidebarThreadLifecyclesAtom,
@@ -21,6 +24,7 @@ import {
   sidebarEnvironmentGroupingAtom,
   sidebarSortDirectionAtom,
   sidebarShowProviderIconsAtom,
+  sidebarShowRowMetadataAtom,
 } from "../preferences/atoms.js";
 import type { OrganizationMode } from "../../shared/preferences.js";
 
@@ -40,6 +44,7 @@ function setup(
   section = false,
   organization: OrganizationMode = "project",
   compact = false,
+  experiments: string[] = [],
 ) {
   const store = createStore();
   store.set(sidebarThreadLifecyclesAtom, ["active"]);
@@ -48,9 +53,10 @@ function setup(
   store.set(sidebarSortDirectionAtom, "default");
   store.set(sidebarEnvironmentGroupingAtom, "auto");
   store.set(sidebarShowProviderIconsAtom, false);
+  store.set(sidebarShowRowMetadataAtom, false);
   const newThread = vi.fn();
   const newSection = vi.fn();
-  render(
+  const Harness = () => (
     <Provider store={store}>
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <TooltipProvider>
@@ -66,8 +72,9 @@ function setup(
           </SidebarHeaderActionsProvider>
         </TooltipProvider>
       </CompactViewportOverrideProvider>
-    </Provider>,
+    </Provider>
   );
+  renderSlot({ component: Harness }, {}, { experiments });
   return { store, newThread, newSection };
 }
 
@@ -269,6 +276,31 @@ describe("sidebar header controls", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
     expect(store.get(sidebarShowProviderIconsAtom)).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("offers row metadata only while its experiment is on", async () => {
+    setup();
+    await openMenu();
+    await openSubmenu("Organize");
+    await screen.findByRole("menuitemcheckbox", { name: "Provider icons" });
+    expect(
+      screen.queryByRole("menuitemcheckbox", { name: "Metadata" }),
+    ).toBeNull();
+  });
+
+  it("toggles row metadata in the Organize Rows group", async () => {
+    const { store } = setup("Pinned", false, "project", false, [
+      "threadRowMetadata",
+    ]);
+    await openMenu();
+    await openSubmenu("Organize");
+    const toggle = await screen.findByRole("menuitemcheckbox", {
+      name: "Metadata",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(store.get(sidebarShowRowMetadataAtom)).toBe(true);
     expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 

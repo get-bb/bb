@@ -1,5 +1,6 @@
 import { startStallWindowCollector } from "./stall-windows.js";
 import { Worker } from "node:worker_threads";
+import { setImmediate } from "node:timers/promises";
 import {
   monitorEventLoopDelay,
   performance,
@@ -77,6 +78,9 @@ export async function startPerformanceDiagnostics(options: {
     eval: true,
     workerData: options.dataDir,
   });
+  const exited = new Promise<void>((resolve) =>
+    worker.once("exit", () => resolve()),
+  );
   const stallWindows = startStallWindowCollector();
   let failed = false;
   let terminating = false;
@@ -96,9 +100,15 @@ export async function startPerformanceDiagnostics(options: {
   };
   worker.on("error", fail);
   worker.on("exit", (code) => {
-    if (!terminating) fail(new Error(`CPU profiling worker exited (${code})`));
+    if (!terminating || pending !== undefined)
+      fail(new Error(`CPU profiling worker exited (${code})`));
   });
-  worker.on("message", (value: unknown) => {
+  worker.on("message", async (value: unknown) => {
+    if (value === "disconnected") {
+      await setImmediate();
+      worker.postMessage("drained");
+      return;
+    }
     if (
       typeof value !== "object" ||
       value === null ||
@@ -155,9 +165,10 @@ export async function startPerformanceDiagnostics(options: {
         worker.ref();
         await rotation;
         stallWindows.stop();
-        await request("stop");
         terminating = true;
-        await worker.terminate();
+        await request("stop");
+        if (failed) await worker.terminate();
+        await exited;
       })();
       return stopPromise;
     },

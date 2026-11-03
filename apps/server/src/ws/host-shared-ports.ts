@@ -1,6 +1,11 @@
 import { getNonDestroyedHost, getSessionById, type DbConnection } from "@bb/db";
 import {
+  hostDaemonConnectNextConfigSchema,
+  hostDaemonConnectNextStatusSchema,
   hostDaemonConnectTunnelIdentitySchema,
+  type HostDaemonConnectNext,
+  type HostDaemonConnectNextConfig,
+  type HostDaemonConnectNextStatus,
   type HostDaemonConnectShares,
   type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
@@ -24,6 +29,18 @@ interface HostConnectCapability {
 interface HostConnectCapabilityState {
   capability: HostConnectCapability;
   leaseExpiresAt: number;
+  protocolVersion: number;
+}
+
+export interface HostNextTunnelStatus {
+  hostId: string;
+  hostName: string;
+  status: HostDaemonConnectNextStatus;
+}
+
+interface NextTunnelOwnership {
+  ownerId: string;
+  config: HostDaemonConnectNextConfig;
 }
 
 function normalizePorts(ports: readonly number[]): number[] {
@@ -62,6 +79,13 @@ export class HostSharedPortCoordinator {
     string,
     HostConnectCapability
   >();
+  private nextTunnel: NextTunnelOwnership | null = null;
+  private nextTunnelGeneration = 0;
+  private readonly nextTunnelStatusByHost = new Map<
+    string,
+    { sessionId: string; status: HostDaemonConnectNextStatus }
+  >();
+  private readonly nextTunnelListeners = new Set<() => void>();
 
   constructor(private readonly deps: HostSharedPortCoordinatorDeps) {}
 
@@ -82,6 +106,118 @@ export class HostSharedPortCoordinator {
       if (capability.sessionId === sessionId) {
         this.connectCapabilityByHost.delete(hostId);
       }
+    }
+    let changed = false;
+    for (const [hostId, entry] of this.nextTunnelStatusByHost) {
+      if (entry.sessionId === sessionId) {
+        this.nextTunnelStatusByHost.delete(hostId);
+        changed = true;
+      }
+    }
+    if (changed) this.notifyNextTunnelListeners();
+  }
+
+  setNextTunnelConfig(
+    ownerId: string,
+    config: HostDaemonConnectNextConfig | null,
+  ): void {
+    if (ownerId.trim().length === 0) {
+      throw new Error("connect next ownerId must be non-empty");
+    }
+    const current = this.nextTunnel;
+    if (config === null) {
+      if (current === null || current.ownerId !== ownerId) return;
+      this.nextTunnel = null;
+    } else {
+      if (current !== null && current.ownerId !== ownerId) {
+        throw new Error(
+          `connect next machine tunnels are already configured by plugin "${current.ownerId}"`,
+        );
+      }
+      const parsed = hostDaemonConnectNextConfigSchema.parse(config);
+      if (
+        current !== null &&
+        JSON.stringify(current.config) === JSON.stringify(parsed)
+      ) {
+        return;
+      }
+      this.nextTunnel = { ownerId, config: parsed };
+    }
+    this.nextTunnelGeneration += 1;
+    for (const hostId of this.connectCapabilityByHost.keys()) {
+      this.pushCurrentNextTunnelForHost(hostId);
+    }
+  }
+
+  reconcileNextTunnelForHost(hostId: string): HostDaemonConnectNext {
+    return {
+      generation: this.nextTunnelGeneration,
+      config: this.canReceiveSharedPorts(hostId)
+        ? (this.nextTunnel?.config ?? null)
+        : null,
+    };
+  }
+
+  hostSupportsNextTunnel(hostId: string): boolean {
+    return this.connectCapabilityState(hostId) !== null;
+  }
+
+  pushCurrentNextTunnelForHost(hostId: string): void {
+    if (!this.hostSupportsNextTunnel(hostId)) return;
+    this.deps.hub.sendDaemonMessage(hostId, {
+      type: "connect-next.replace",
+      ...this.reconcileNextTunnelForHost(hostId),
+    });
+  }
+
+  recordNextTunnelStatus(args: {
+    hostId: string;
+    sessionId: string;
+    status: HostDaemonConnectNextStatus;
+  }): void {
+    const capability = this.connectCapabilityByHost.get(args.hostId);
+    if (capability?.sessionId !== args.sessionId) return;
+    const status = hostDaemonConnectNextStatusSchema.parse(args.status);
+    const previous = this.nextTunnelStatusByHost.get(args.hostId);
+    if (
+      previous?.sessionId === args.sessionId &&
+      JSON.stringify(previous.status) === JSON.stringify(status)
+    ) {
+      return;
+    }
+    this.nextTunnelStatusByHost.set(args.hostId, {
+      sessionId: args.sessionId,
+      status,
+    });
+    this.notifyNextTunnelListeners();
+  }
+
+  listNextTunnelStatuses(): HostNextTunnelStatus[] {
+    const statuses: HostNextTunnelStatus[] = [];
+    for (const [hostId, entry] of this.nextTunnelStatusByHost) {
+      const host = getNonDestroyedHost(this.deps.db, hostId);
+      if (!host) continue;
+      statuses.push({ hostId, hostName: host.name, status: entry.status });
+    }
+    return statuses.sort(
+      (a, b) =>
+        a.hostName.localeCompare(b.hostName) ||
+        a.hostId.localeCompare(b.hostId),
+    );
+  }
+
+  onNextTunnelStatusChange(listener: () => void): () => void {
+    this.nextTunnelListeners.add(listener);
+    return () => {
+      this.nextTunnelListeners.delete(listener);
+    };
+  }
+
+  private notifyNextTunnelListeners(): void {
+    for (const listener of [...this.nextTunnelListeners]) {
+      try {
+        listener();
+      } catch {}
     }
   }
 
@@ -161,6 +297,7 @@ export class HostSharedPortCoordinator {
   }
 
   clearDeclarationsForOwner(ownerId: string): void {
+    this.setNextTunnelConfig(ownerId, null);
     for (const [hostId, declarations] of this.declarationsByHost) {
       if (!declarations.delete(ownerId)) {
         continue;
@@ -269,7 +406,11 @@ export class HostSharedPortCoordinator {
     ) {
       return null;
     }
-    return { capability, leaseExpiresAt: session.leaseExpiresAt };
+    return {
+      capability,
+      leaseExpiresAt: session.leaseExpiresAt,
+      protocolVersion: session.protocolVersion,
+    };
   }
 
   private canReceiveSharedPorts(hostId: string): boolean {

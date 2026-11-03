@@ -1,3 +1,4 @@
+import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
 import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
@@ -47,10 +48,15 @@ export interface ServiceRuntime {
 }
 
 export interface LoadedPlugin {
+  pluginId: string;
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
   moduleRootUrls: Set<string>;
+  hostArtifact: PluginHostArtifactSnapshot | null;
+  stopping: AbortController;
+  released: AbortController;
+  invocations: Set<Promise<void>>;
 }
 
 export interface PluginHostArtifactSnapshot {
@@ -69,6 +75,9 @@ export interface PluginServiceDeps {
     | "validateSharedPortDeclaration"
     | "replaceDeclarationsForOwner"
     | "clearDeclarationsForOwner"
+    | "setNextTunnelConfig"
+    | "listNextTunnelStatuses"
+    | "onNextTunnelStatusChange"
   >;
   ensureSharedPortTunnel?: (
     hostId: string,
@@ -98,6 +107,7 @@ export interface PluginServiceDeps {
     | "notifyPluginSignal"
     | "notifySystem"
     | "notifyPluginChanged"
+    | "onWatchedTargets"
   >;
   logger: ServerLogger;
   telemetry: TelemetryService;
@@ -105,6 +115,7 @@ export interface PluginServiceDeps {
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
     | "requestPluginInteraction"
     | "interruptPluginInteractions"
+    | "interruptOwnedPluginInteractions"
     | "setPluginDirectory"
   >;
   getAppUrl?: () => string | null;
@@ -156,6 +167,7 @@ export interface PluginServiceDeps {
     pluginId: string;
     generation: string;
   }) => Promise<void>;
+  openTunnelIngress?: (audience: string) => Promise<TunnelIngressLease>;
 }
 
 export interface PluginAgentToolContribution {
@@ -234,6 +246,7 @@ export interface PluginThreadEventEmitter {
     previousParentThreadId: string | null,
   ): void;
   emitThreadDeleted(thread: Thread): void;
+  emitThreadRead(threadId: string): void;
   emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**
    * Queue lifecycle. The row is already in its new state when these fire; the
@@ -259,7 +272,7 @@ export type PluginWireLookup<T> =
       detail: string | null;
     }
   | { outcome: "not-found" }
-  | { outcome: "found"; value: T };
+  | { outcome: "found"; value: T; owner: LoadedPlugin };
 
 export type PluginApplyUpdateOutcome =
   | { ok: true; result: PluginApplyUpdateResult }

@@ -181,7 +181,7 @@ function SecretRequestInteraction({
         </p>
       ) : null}
 
-      <div className="sticky -bottom-3 -mb-3 z-10 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-4 @min-[24rem]/secrets:flex-row @min-[24rem]/secrets:items-center @min-[24rem]/secrets:justify-end">
+      <div className="sticky -bottom-3 z-10 -mx-3 -mb-3 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid px-3 pb-3 pt-4 @min-[24rem]/secrets:flex-row @min-[24rem]/secrets:items-center @min-[24rem]/secrets:justify-end">
         <Button
           type="button"
           variant="ghost"

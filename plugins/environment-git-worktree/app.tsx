@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
+  BranchPickerNavigation,
   BranchPickerRow,
   BranchPickerSearch,
   BranchPickerSectionHeader,
@@ -19,7 +20,6 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { MenuHoverProvider } from "@bb/shared-ui/menu-item-hover";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
   OPTION_BASE_CLASS_NAME,
@@ -45,6 +45,9 @@ const NEW_WORKTREE_LABEL = "New worktree";
 const BRANCH_FROM_PREFIX = "Branch from:";
 const REUSE_PREFIX = "Reuse:";
 const EXISTING_WORKTREE_LABEL = "Existing worktree";
+const NEW_WORKTREE_ROW_VALUE = "intent:new";
+const EXISTING_WORKTREE_ROW_VALUE = "intent:existing";
+const DEFAULT_BRANCH_ROW_VALUE = "default-branch";
 
 type WorktreeIntent = "new" | "existing";
 
@@ -68,6 +71,14 @@ function selectedExistingPath(value: JsonValue | null): string | null {
   return value.kind === "existing" && typeof value.path === "string"
     ? value.path
     : null;
+}
+
+function branchRowValue(branch: string): string {
+  return `branch:${branch}`;
+}
+
+function worktreeRowValue(path: string): string {
+  return `worktree:${path}`;
 }
 
 function worktreePathLabel(path: string): string {
@@ -214,6 +225,18 @@ function WorktreeInputsControl({
     ),
   );
 
+  const firstSelectableWorktree = worktreeOptions.find(
+    (worktree) => !worktree.prunable,
+  );
+  const searchHighlight =
+    intent === "new"
+      ? branchOptions[0] === undefined
+        ? undefined
+        : branchRowValue(branchOptions[0])
+      : firstSelectableWorktree === undefined
+        ? undefined
+        : worktreeRowValue(firstSelectableWorktree.path);
+
   const defaultBase =
     baseResult?.projectId === projectId && baseResult?.hostId === hostId
       ? baseResult.branch
@@ -298,22 +321,13 @@ function WorktreeInputsControl({
         autoFocusRef={inputRef}
         className={cn(BRANCH_PICKER_CONTENT_CLASS_NAME, "md:w-72")}
       >
-        <MenuHoverProvider>
+        <BranchPickerNavigation
+          highlight={searchHighlight}
+          query={deferredQuery}
+        >
           <BranchPickerSearch
             inputRef={inputRef}
             query={query}
-            enterSelection={
-              intent === "new"
-                ? branchOptions[0]
-                : worktreeOptions.find((worktree) => !worktree.prunable)?.path
-            }
-            onEnterSelection={(selection) =>
-              submit(
-                intent === "new"
-                  ? { branch: { kind: "named", name: selection } }
-                  : { kind: "existing", path: selection },
-              )
-            }
             onQueryChange={setQuery}
             ariaLabel={
               intent === "new" ? "Search branches" : "Search worktrees"
@@ -329,6 +343,7 @@ function WorktreeInputsControl({
           >
             <BranchPickerSectionHeader label="Work in:" sticky={false} />
             <BranchPickerRow
+              value={NEW_WORKTREE_ROW_VALUE}
               icon="Plus"
               selected={intent === "new"}
               title="Create a worktree for this thread"
@@ -342,6 +357,7 @@ function WorktreeInputsControl({
               </span>
             </BranchPickerRow>
             <BranchPickerRow
+              value={EXISTING_WORKTREE_ROW_VALUE}
               icon="FolderGit"
               disabled={projectId === null || hostId === null}
               selected={intent === "existing"}
@@ -361,6 +377,7 @@ function WorktreeInputsControl({
               <>
                 <BranchPickerSectionHeader label="Branch from:" />
                 <BranchPickerRow
+                  value={DEFAULT_BRANCH_ROW_VALUE}
                   icon="GitMerge"
                   selected={existingPath === null && branchName === null}
                   title="Use the repository's default branch"
@@ -373,6 +390,7 @@ function WorktreeInputsControl({
                 {branchOptions.map((branch) => (
                   <BranchPickerRow
                     key={branch}
+                    value={branchRowValue(branch)}
                     icon="GitMerge"
                     selected={branch === branchName}
                     title={branch}
@@ -410,6 +428,7 @@ function WorktreeInputsControl({
                 {worktreeOptions.map((worktree) => (
                   <BranchPickerRow
                     key={worktree.path}
+                    value={worktreeRowValue(worktree.path)}
                     icon="FolderGit"
                     selected={worktree.path === existingPath}
                     disabled={worktree.prunable}
@@ -433,7 +452,7 @@ function WorktreeInputsControl({
               </>
             )}
           </div>
-        </MenuHoverProvider>
+        </BranchPickerNavigation>
       </PopoverContent>
     </Popover>
   );

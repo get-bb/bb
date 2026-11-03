@@ -12,7 +12,7 @@ script Run a stored server-side script and capture stdout/stderr/exit.
 
 Use the top-level `bb automation` command. The CLI routes it to this plugin.
 
-Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Automation-spawned threads cannot create automations.
+Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Threads created by automations cannot create automations, and neither can a thread while an automation run is executing in it; once that run finishes, the thread can create automations again.
 
 Personal supports automations with `--project proj_personal`. Use `bb project list --include-personal --json` to include it in discovery; an empty default project list does not mean Personal is unavailable.
 
@@ -40,14 +40,19 @@ Managing:
 
 ```bash
 bb automation list --project <id>
+bb automation list --target-thread <threadId>
 bb automation show <automationId> --project <id>
-bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [complete execution flags | partial agent update flags]
+bb automation update <automationId> --project <id> [--name <name>] [schedule flags] [partial agent or script flags | complete execution flags]
 bb automation pause <automationId> --project <id>
 bb automation resume <automationId> --project <id>
 bb automation run <automationId> --project <id> [--idempotency-key <key>]
 bb automation runs <automationId> --project <id> [--limit <count>] [--output <runId>]
 bb automation delete <automationId> --project <id> --yes
 ```
+
+`list --target-thread` returns automations in any project that re-prompt that
+thread; the thread's Info tab shows the same list. It does not include
+automations the thread merely created.
 
 For partial updates, mode replacement, execution targets, or damaged records,
 read [references/updates.md](references/updates.md). Every command supports `--json`.

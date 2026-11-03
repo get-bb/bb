@@ -7,7 +7,10 @@ export interface ServerAccessProviderRecord {
 
 export interface ServerAccessBridge {
   list(): ServerAccessProviderRecord[];
-  invoke<T>(pluginId: string, run: () => Promise<T>): Promise<T>;
+  invoke<T>(
+    record: ServerAccessProviderRecord,
+    run: () => Promise<T>,
+  ): Promise<T>;
 }
 
 let bridge: ServerAccessBridge | undefined;
@@ -27,7 +30,7 @@ export async function invokeServerAccessProvider<T>(
   run: () => Promise<T>,
 ): Promise<T> {
   if (!bridge) throw new Error("Server access provider is unavailable");
-  return bridge.invoke(record.pluginId, run);
+  return bridge.invoke(record, run);
 }
 
 let recheckHandler: ((pluginId: string) => void) | undefined;

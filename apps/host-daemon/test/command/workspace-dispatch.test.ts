@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { GitHostPullRequest } from "@bb/domain";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
@@ -14,69 +13,27 @@ import {
 } from "./dispatch-helpers.js";
 
 describe("workspace command dispatch", () => {
-  it("covers workspace git commands", async () => {
+  it("commits through the resolved workspace runtime", async () => {
     const harness = createHarness();
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
 
-    const statusResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-1",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-        mergeBaseBranch: "main",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    const diffResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.diff",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-        target: { type: "all", mergeBaseBranch: "main" },
-        maxDiffBytes: 2 * 1024 * 1024,
-        maxFileListBytes: 256 * 1024,
-        maxUntrackedFiles: 5000,
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
     const commitResult = await dispatchCommand(
       {
         type: "workspace.commit",
         environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
+        workspaceContext: { workspacePath: "/tmp/env-1" },
         message: "Commit message",
       },
       harness.dispatchOptions(),
     );
-    expect(statusResult.outcome).toBe("available");
-    expect(diffResult.outcome).toBe("available");
-    if (statusResult.outcome !== "available") {
-      throw new Error("Expected workspace status to be available");
-    }
-    if (diffResult.outcome !== "available") {
-      throw new Error("Expected workspace diff to be available");
-    }
-    expect(statusResult.workspaceStatus.workingTree.state).toBe("clean");
-    expect(diffResult.diff.diff).toBe("");
+
     expect(commitResult).toEqual({
       commitSha: "commit-1",
       commitSubject: "Commit message",
     });
-    expect(harness.workspaceState.statusReads).toBe(1);
     expect(harness.workspaceState.lastCommitMessage).toBe("Commit message");
   });
 
@@ -92,234 +49,34 @@ describe("workspace command dispatch", () => {
     const refreshed = createFakeWorkspace(workspacePath);
     harness.setProvisionedWorkspace(refreshed.workspace);
 
-    const result = await dispatchOnlineRpcCommand(
+    await dispatchCommand(
       {
-        type: "workspace.status",
-        maxFiles: 200,
+        type: "workspace.commit",
         environmentId: "env-late-git",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath,
-        },
+        workspaceContext: { workspacePath },
+        message: "Late git",
       },
       harness.dispatchOptions(),
-      new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("available");
-    expect(refreshed.state.statusReads).toBe(1);
+    expect(refreshed.state.lastCommitMessage).toBe("Late git");
     expect(harness.manager.get("env-late-git")?.workspace.isGitRepo).toBe(true);
-  });
-
-  it("covers workspace.pull_request", async () => {
-    const harness = createHarness();
-    await harness.manager.replaceBaseShellEnv({
-      PATH: "/Users/test/.local/bin:/usr/bin",
-    });
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    const pullRequest: GitHostPullRequest = {
-      number: 42,
-      title: "Add timeline polish",
-      state: "OPEN",
-      url: "https://github.com/bb/bb/pull/42",
-      isDraft: false,
-      baseRefName: "main",
-      headRefName: "bb/timeline-polish",
-      updatedAt: "2026-06-16T12:30:00Z",
-      autoMerge: false,
-      inMergeQueue: false,
-      checks: [],
-      reviewDecision: null,
-      reviewRequestCount: 0,
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    };
-    harness.workspaceState.pullRequest = pullRequest;
-
-    const presentResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.pull_request",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    expect(presentResult).toEqual({ outcome: "available", pullRequest });
-    expect(harness.workspaceState.pullRequestLookupShellPath).toBe(
-      "/Users/test/.local/bin:/usr/bin",
-    );
-
-    harness.workspaceState.pullRequest = null;
-    const absentResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.pull_request",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    expect(absentResult).toEqual({ outcome: "absent" });
-
-    harness.workspaceState.pullRequestLookupError =
-      "gh pr view failed: authentication required";
-    const unavailableResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.pull_request",
-        environmentId: "env-1",
-        workspaceContext: {
-          workspacePath: "/tmp/env-1",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    expect(unavailableResult).toEqual({
-      outcome: "unavailable",
-      message: "gh pr view failed: authentication required",
-    });
-  });
-
-  it("returns no pull request when the workspace is not a git repo", async () => {
-    const harness = createHarness({ workspacePath: "/tmp/non-git-pr-env" });
-    harness.workspace.isGitRepo = false;
-    harness.workspaceState.pullRequest = {
-      number: 7,
-      title: "Should not surface",
-      state: "OPEN",
-      url: "https://github.com/bb/bb/pull/7",
-      isDraft: false,
-      baseRefName: "main",
-      headRefName: "bb/hidden-pr",
-      updatedAt: "2026-06-16T12:30:00Z",
-      autoMerge: false,
-      inMergeQueue: false,
-      checks: [],
-      reviewDecision: null,
-      reviewRequestCount: 0,
-      mergeStateStatus: "CLEAN",
-      mergeable: "MERGEABLE",
-    };
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-non-git-pr",
-      workspacePath: "/tmp/non-git-pr-env",
-    });
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.pull_request",
-        environmentId: "env-non-git-pr",
-        workspaceContext: {
-          workspacePath: "/tmp/non-git-pr-env",
-        },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result).toEqual({ outcome: "absent" });
-  });
-
-  it("covers workspace.pull_request_action", async () => {
-    const harness = createHarness({ isWorktree: true });
-    await harness.manager.replaceBaseShellEnv({
-      PATH: "/Users/test/.local/bin:/usr/bin",
-    });
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    await expect(
-      dispatchCommand(
-        {
-          type: "workspace.pull_request_action",
-          operation: "ready",
-          environmentId: "env-1",
-          workspaceContext: {
-            workspacePath: "/tmp/env-1",
-          },
-        },
-        harness.dispatchOptions(),
-      ),
-    ).resolves.toEqual({});
-    expect(harness.workspaceState.lastPullRequestAction).toEqual({
-      operation: "ready",
-    });
-    expect(harness.workspaceState.pullRequestActionShellPath).toBe(
-      "/Users/test/.local/bin:/usr/bin",
-    );
-
-    await expect(
-      dispatchCommand(
-        {
-          type: "workspace.pull_request_action",
-          operation: "draft",
-          environmentId: "env-1",
-          workspaceContext: {
-            workspacePath: "/tmp/env-1",
-          },
-        },
-        harness.dispatchOptions(),
-      ),
-    ).resolves.toEqual({});
-    expect(harness.workspaceState.lastPullRequestAction).toEqual({
-      operation: "draft",
-    });
-
-    await expect(
-      dispatchCommand(
-        {
-          type: "workspace.pull_request_action",
-          operation: "merge",
-          method: "rebase",
-          environmentId: "env-1",
-          workspaceContext: {
-            workspacePath: "/tmp/env-1",
-          },
-        },
-        harness.dispatchOptions(),
-      ),
-    ).resolves.toEqual({});
-    expect(harness.workspaceState.lastPullRequestAction).toEqual({
-      operation: "merge",
-      method: "rebase",
-    });
   });
 
   it("rehydrates a missing workspace runtime from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-rehydrate" });
 
-    const result = await dispatchOnlineRpcCommand(
+    await dispatchCommand(
       {
-        type: "workspace.status",
-        maxFiles: 200,
+        type: "workspace.commit",
         environmentId: "env-rehydrate",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/env-rehydrate",
-        },
+        workspaceContext: { workspacePath: "/tmp/env-rehydrate" },
+        message: "Rehydrated",
       },
       harness.dispatchOptions(),
-      new AbortController().signal,
     );
 
-    expect(result.outcome).toBe("available");
-    if (result.outcome !== "available") {
-      throw new Error("Expected workspace status to be available");
-    }
-    expect(result.workspaceStatus.workingTree.state).toBe("clean");
+    expect(harness.workspaceState.lastCommitMessage).toBe("Rehydrated");
     expect(harness.provisions).toEqual([
       expect.objectContaining({
         path: "/tmp/env-rehydrate",
@@ -328,7 +85,7 @@ describe("workspace command dispatch", () => {
     ]);
   });
 
-  it("returns unavailable workspace reads for non-git workspaces", async () => {
+  it("rejects commits for non-git workspaces", async () => {
     const harness = createHarness({ workspacePath: "/tmp/non-git-env" });
     harness.workspace.isGitRepo = false;
     await harness.manager.ensureEnvironment({
@@ -336,47 +93,18 @@ describe("workspace command dispatch", () => {
       workspacePath: "/tmp/non-git-env",
     });
 
-    const statusResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.status",
-        maxFiles: 200,
-        environmentId: "env-non-git",
-        maxUntrackedLineStatFiles: 50,
-        maxUntrackedLineStatBytes: 8 * 1024 * 1024,
-        workspaceContext: {
-          workspacePath: "/tmp/non-git-env",
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.commit",
+          environmentId: "env-non-git",
+          workspaceContext: { workspacePath: "/tmp/non-git-env" },
+          message: "Nope",
         },
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-    const diffResult = await dispatchOnlineRpcCommand(
-      {
-        type: "workspace.diff",
-        environmentId: "env-non-git",
-        workspaceContext: {
-          workspacePath: "/tmp/non-git-env",
-        },
-        target: { type: "uncommitted" },
-        maxDiffBytes: 2 * 1024 * 1024,
-        maxFileListBytes: 256 * 1024,
-        maxUntrackedFiles: 5000,
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(statusResult).toEqual({
-      outcome: "unavailable",
-      failure: {
-        code: "not_git_repo",
-        workspacePath: "/tmp/non-git-env",
-        message: "Path is not a git repository: /tmp/non-git-env",
-      },
-    });
-    expect(diffResult).toEqual(statusResult);
-    expect(harness.workspaceState.statusReads).toBe(0);
-    expect(harness.workspaceState.lastDiffTarget).toBeUndefined();
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toMatchObject({ code: "not_git_repo" });
+    expect(harness.workspaceState.lastCommitMessage).toBeUndefined();
   });
 
   it("covers host.list_files", async () => {
@@ -563,11 +291,10 @@ describe("workspace command dispatch", () => {
     const read = (relativePath: string) =>
       dispatchOnlineRpcCommand(
         {
-          type: "host.read_file_relative",
-          followRootSymlink: true,
+          type: "host.read_file",
+          path: path.join(linkedRoot, relativePath),
           rootPath: linkedRoot,
-          path: relativePath,
-          dotfiles: "deny",
+          followRootSymlink: true,
         },
         harness.dispatchOptions(),
         signal,
@@ -585,7 +312,6 @@ describe("workspace command dispatch", () => {
     await expect(read("../outside.md")).rejects.toMatchObject({
       code: "invalid_path",
     });
-    await expect(read(".env")).rejects.toMatchObject({ code: "ENOENT" });
 
     await fs.rm(skillRoot, { recursive: true });
     await expect(read("SKILL.md")).rejects.toMatchObject({ code: "ENOENT" });
@@ -601,6 +327,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: imagePath,
         rootPath: tempDir,
       },
@@ -615,162 +342,6 @@ describe("workspace command dispatch", () => {
     expect(result.contentEncoding).toBe("base64");
     expect(result.mimeType).toBe("image/png");
     expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
-  it("covers host.read_file_relative for nested status assets", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-");
-    const assetDir = path.join(tempDir, "assets");
-    const assetPath = path.join(assetDir, "logo.png");
-    const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    await fs.mkdir(assetDir);
-    await fs.writeFile(assetPath, imageBytes);
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: tempDir,
-        path: "assets/logo.png",
-        dotfiles: "deny",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.path).toBe("assets/logo.png");
-    expect(result.content).toBe(imageBytes.toString("base64"));
-    expect(result.contentEncoding).toBe("base64");
-    expect(result.mimeType).toBe("image/png");
-    expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
-  it("does not apply host.read_file size caps to host.read_file_relative", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-large-");
-    const imagePath = path.join(tempDir, "large.png");
-    const imageBytes = Buffer.alloc(10 * 1024 * 1024 + 1);
-    await fs.writeFile(imagePath, imageBytes);
-
-    const harness = createHarness();
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "host.read_file_relative",
-        followRootSymlink: false,
-        rootPath: tempDir,
-        path: "large.png",
-        dotfiles: "deny",
-      },
-      harness.dispatchOptions(),
-      new AbortController().signal,
-    );
-
-    expect(result.path).toBe("large.png");
-    expect(result.contentEncoding).toBe("base64");
-    expect(result.sizeBytes).toBe(imageBytes.length);
-  });
-
-  it("rejects host.read_file_relative traversal", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-dotdot-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: "../secrets.txt",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: "Path must be relative",
-    });
-  });
-
-  it("hides host.read_file_relative dotfiles when dotfiles are denied", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-dotfile-",
-    );
-    await fs.writeFile(path.join(tempDir, ".env"), "secret");
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: ".env",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "ENOENT",
-      message: expect.stringContaining("Path does not exist"),
-    });
-  });
-
-  it("rejects host.read_file_relative symlink escapes", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-symlink-",
-    );
-    const outsidePath = path.join(tempDir, "..", "outside.txt");
-    await fs.writeFile(outsidePath, "outside");
-    await fs.symlink(outsidePath, path.join(tempDir, "outside-link.txt"));
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: tempDir,
-          path: "outside-link.txt",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("escapes read root"),
-    });
-  });
-
-  it("rejects host.read_file_relative when rootPath itself is a symlink", async () => {
-    const tempDir = await makeTempDir(
-      "bb-dispatch-host-read-relative-root-symlink-",
-    );
-    const targetRoot = path.join(tempDir, "target-root");
-    const symlinkRoot = path.join(tempDir, "root-link");
-    await fs.mkdir(targetRoot);
-    await fs.writeFile(path.join(targetRoot, "index.html"), "<p>Status</p>");
-    await fs.symlink(targetRoot, symlinkRoot);
-
-    const harness = createHarness();
-
-    await expect(
-      dispatchOnlineRpcCommand(
-        {
-          type: "host.read_file_relative",
-          followRootSymlink: false,
-          rootPath: symlinkRoot,
-          path: "index.html",
-          dotfiles: "deny",
-        },
-        harness.dispatchOptions(),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("must not be a symlink"),
-    });
   });
 
   it("rejects host.read_file when the resolved path escapes rootPath through a symlink", async () => {
@@ -788,6 +359,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: symlinkPath,
           rootPath: tempDir,
         },
@@ -815,6 +387,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
           rootPath: symlinkRoot,
         },
@@ -838,6 +411,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: imagePath,
           rootPath: tempDir,
         },
@@ -861,6 +435,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
+          followRootSymlink: false,
           path: filePath,
           rootPath: tempDir,
         },
@@ -883,6 +458,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: filePath,
         rootPath: tempDir,
       },
@@ -905,6 +481,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "host.read_file",
+        followRootSymlink: false,
         path: filePath,
         rootPath: tempDir,
       },

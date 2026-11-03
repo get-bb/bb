@@ -1,4 +1,8 @@
-import { execFile } from "node:child_process";
+import {
+  execHostFile,
+  hostToolchain,
+  omitNpmScriptPolicyEnv,
+} from "@bb/process-utils";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -15,12 +19,9 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import { resolveBundledNpmCli } from "@bb/plugin-build";
-import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = execHostFile;
 const HOST_DEPENDENCIES = [
   "@parcel/watcher",
   "fs-native-extensions",
@@ -73,7 +74,7 @@ export async function defaultCommandRunner(
   args: readonly string[],
   cwd: string,
 ): Promise<string> {
-  const npmCliPath = command === "npm" ? resolveBundledNpmCli() : null;
+  const npmCliPath = command === "npm" ? hostToolchain.bundledNpmCli() : null;
   const result = await execFileAsync(
     npmCliPath === null ? command : process.execPath,
     npmCliPath === null ? [...args] : [npmCliPath, ...args],

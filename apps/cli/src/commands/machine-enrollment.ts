@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execHostFile } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import {
   mkdir,
@@ -202,11 +201,9 @@ export async function enrollMachine(
     try {
       await access(launcher);
     } catch {
-      const result = await promisify(execFile)(
-        "sh",
-        ["-c", "command -v bb-app"],
-        { env },
-      ).catch(() => null);
+      const result = await execHostFile("sh", ["-c", "command -v bb-app"], {
+        env,
+      }).catch(() => null);
       if (result?.stdout.trim()) {
         await mkdir(join(dataDir, "npm", "bin"), { recursive: true });
         await symlink(result.stdout.trim(), launcher);

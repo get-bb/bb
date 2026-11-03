@@ -88,6 +88,16 @@
       "source": "./src/prompt-attachment-limits.ts",
       "types": "./src/prompt-attachment-limits.ts",
       "default": "./src/prompt-attachment-limits.ts"
+    },
+    "./application-url": {
+      "source": "./src/application-url.ts",
+      "types": "./src/application-url.ts",
+      "default": "./src/application-url.ts"
+    },
+    "./application-link-approvals": {
+      "source": "./src/application-link-approvals.ts",
+      "types": "./src/application-link-approvals.ts",
+      "default": "./src/application-link-approvals.ts"
     }
   },
   "types": "./src/index.ts",

@@ -37,14 +37,6 @@ type HookRegistry = {
   [K in PluginHookName]: PluginHookRegistration<K>[];
 };
 
-/**
- * A thread with a queued row on a host that is either connected or not.
- *
- * `seedHostSession` opens a daemon session; `seedHost` alone leaves the host
- * enrolled but away, which is exactly the state a drain hits when a laptop
- * shuts. Nothing else about the fixture differs, so a test that flips this flag
- * is testing the host's liveness and nothing else.
- */
 function seedQueuedRow(
   harness: TestAppHarness,
   args: { hostConnected: boolean; hostName: string; sendAt?: number },
@@ -257,8 +249,6 @@ describe("recordQueuedMessageDrainFailure", () => {
       const { thread, row } = seedQueuedRow(harness, {
         hostConnected: false,
         hostName: "M4",
-        // A due row that could not be delivered: the instant has passed and
-        // keeping it would leave the due sweep re-claiming a row that cannot go.
         sendAt: Date.now() - 1_000,
       });
 
@@ -275,10 +265,7 @@ describe("recordQueuedMessageDrainFailure", () => {
         hostName: "M4",
       });
       expect(queued.sendAt).toBeNull();
-      // An absent machine is a wait, not a failure: the row recovers by itself
-      // when the host comes back, so presenting it as an error would be wrong.
       expect(queued.failureReason).toBeNull();
-      // A drain failure changes the row, not the transcript.
       expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
   });
@@ -299,9 +286,6 @@ describe("recordQueuedMessageDrainFailure", () => {
 
       const queued = reread(harness, row.id);
       expect(queued.failureReason).toBe("Thread is archived");
-      // The row is still waiting on what queued it. A failure says what went
-      // wrong last time, not what the row is waiting for, and a queue would
-      // have erased it on the very next attempt.
       expect(queued.waitingOn).toEqual({ kind: "thread-busy" });
       expect(listEvents(harness.db, { threadId: thread.id })).toEqual([]);
     });
@@ -321,8 +305,6 @@ describe("recordQueuedMessageDrainFailure", () => {
         thread,
       });
 
-      // `ApiError` messages are written for a caller; anything else was
-      // written for a log and has no business on a queued row.
       expect(reread(harness, row.id).failureReason).toBe(
         "The message could not be sent.",
       );
@@ -333,11 +315,6 @@ describe("recordQueuedMessageDrainFailure", () => {
 describe("a failed row's booked retry", () => {
   const [FIRST_DELAY_MS, SECOND_DELAY_MS] = QUEUED_MESSAGE_RETRY_DELAYS_MS;
 
-  /**
-   * A dispatch hook that refuses everything, counting the attempts. Rejection
-   * is the shortest route to a recorded failure that is not the host being
-   * away, which is the one failure the drain turns into a wait instead.
-   */
   function installRejector(): { attempts: () => number; dispose(): void } {
     let attempts = 0;
     const registry: HookRegistry = { "message.dispatch": [] };
@@ -412,8 +389,6 @@ describe("a failed row's booked retry", () => {
         });
         expect(rejector.attempts()).toBe(2);
 
-        // A second failure spends a second attempt and books a later one, so a
-        // row that keeps failing backs off instead of spinning on every tick.
         const retried = rereadRow(harness, row.id);
         expect(retried.failureCount).toBe(2);
         expect(retried.nextAttemptAt).toBe(booked + SECOND_DELAY_MS!);
@@ -431,11 +406,6 @@ describe("a failed row's booked retry", () => {
       });
       const now = Date.now();
 
-      // How the stuck row is actually made: the host is away, so the drain
-      // parks the row on `host-offline`; the machine comes back, and the
-      // attempt that follows fails for its own reason and leaves that wait in
-      // place. From then on the wait describes a condition that has already
-      // cleared, and the host-reconnect wake it names has been and gone.
       recordQueuedMessageDrainFailure(harness.deps, {
         error: new ApiError(502, "host_unavailable", "Host is not connected"),
         now,
@@ -472,8 +442,6 @@ describe("a failed row's booked retry", () => {
         now: stale.nextAttemptAt!,
       });
 
-      // The retry re-asks the whole question instead of waiting on an edge
-      // that already passed, so the row goes out.
       expect(getQueuedThreadMessage(harness.db, row.id)).toBeNull();
     });
   });
@@ -505,8 +473,6 @@ describe("a failed row's booked retry", () => {
         expect(spent.nextAttemptAt).toBeNull();
         expect(rejector.attempts()).toBe(4);
 
-        // Nothing automatic can reach it now: it is a row for a person, and
-        // the thread list has been showing it as failed the whole time.
         await runQueuedMessageDispatch(harness.deps, {
           kind: "failed-retry",
           now: Date.now() + 86_400_000,
@@ -541,9 +507,6 @@ describe("a failed row's booked retry", () => {
         thread,
       });
 
-      // Re-queueing is a fresh, successful statement of why the row waits, so
-      // the row starts its budget over rather than carrying attempts it spent
-      // against a condition it has since got past.
       const requeued = rereadRow(harness, row.id);
       expect(requeued.failureReason).toBeNull();
       expect(requeued.failureCount).toBe(0);

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
-import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
+import type { HostWorkspace } from "@bb/host-workspace";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {
@@ -11,6 +11,7 @@ import {
   makeDispatchOptions,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 function streamedEntries(emitted: EventSinkInput[]) {
   return emitted.flatMap((input) =>
@@ -536,4 +537,39 @@ it("cancels setup with contributions even when another attach is waiting", async
     await harness.manager.shutdownAll();
     await settled;
   }
+});
+
+it("stops a running setup script when the runtime manager shuts down", async () => {
+  const sourcePath = await makeTempDir("bb-setup-env-shutdown-");
+  const harness = createHarness({ workspacePath: sourcePath });
+  await fs.writeFile(
+    `${sourcePath}/.bb-env-setup.sh`,
+    "echo started > started\nsleep 120\nprintf unsafe > after-shutdown\n",
+  );
+  const attached = dispatchCommand(
+    {
+      type: "environment.attach",
+      contributedEnv: [],
+      environmentId: "env-setup-shutdown",
+      initiator: null,
+      path: sourcePath,
+      setupScriptTimeoutMs: 600_000,
+    },
+    harness.dispatchOptions(),
+  );
+  const settled = Promise.allSettled([attached]);
+  await expect
+    .poll(async () => fs.readFile(`${sourcePath}/started`, "utf8"))
+    .toBe("started\n");
+
+  await harness.manager.shutdownAll();
+
+  expect(await settled).toEqual([
+    {
+      status: "rejected",
+      reason: expect.objectContaining({ code: "provision_cancelled" }),
+    },
+  ]);
+  await expect(fs.stat(`${sourcePath}/after-shutdown`)).rejects.toThrow();
+  expect(harness.provisions).toHaveLength(0);
 });

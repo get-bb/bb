@@ -1,3 +1,4 @@
+import { isIOSWebKit } from "@/lib/ios-webkit";
 import { selectionClipboard } from "@/lib/markdown-clipboard";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -29,6 +30,7 @@ interface SelectableMessageProseProps {
 
 export const MULTI_CLICK_SELECTION_REPORT_DELAY_MS = 180;
 const SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+export const TOUCH_SELECTION_HANDLE_CLEARANCE_PX = 24;
 const CLIPBOARD_REPLACED_CONTENT_SELECTOR =
   "audio, canvas, embed, iframe, img, object, video";
 
@@ -67,6 +69,29 @@ export function firstClientRect(range: Range): DOMRect | null {
   }
   const rect = range.getBoundingClientRect();
   return rect.width > 0 || rect.height > 0 ? rect : null;
+}
+
+function lastClientRect(range: Range): DOMRect | null {
+  const rects = range.getClientRects();
+  for (let index = rects.length - 1; index >= 0; index -= 1) {
+    const rect = rects.item(index);
+    if (rect !== null && (rect.width > 0 || rect.height > 0)) {
+      return rect;
+    }
+  }
+  return null;
+}
+
+function touchSelectionAnchor(range: Range): SelectionAnchor | null {
+  const rect = lastClientRect(range);
+  if (rect === null) return null;
+  return {
+    point: {
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + TOUCH_SELECTION_HANDLE_CLEARANCE_PX,
+    },
+    side: "bottom",
+  };
 }
 
 function normalizeSelectionText(text: string): string {
@@ -206,22 +231,22 @@ function readSelectionWithinNode(
     focusNode: selection.focusNode,
     commonAncestorContainer: range.commonAncestorContainer,
   });
-  if (accepted) {
-    return toMessageProseSelection({
-      anchor,
+  const report = () =>
+    toMessageProseSelection({
+      anchor:
+        anchor ??
+        (lastPointerUsedLiveSelectionRange && !isIOSWebKit(navigator)
+          ? touchSelectionAnchor(range)
+          : null),
       rect: facts.firstClientRect(),
       text: facts.selectionText(),
     });
-  }
+  if (accepted) return report();
 
   if (selection.isCollapsed) return null;
 
   if (isSelectionBoundarySpillWithinNode(node, facts, intersectsNode)) {
-    return toMessageProseSelection({
-      anchor,
-      rect: facts.firstClientRect(),
-      text: facts.selectionText(),
-    });
+    return report();
   }
 
   return null;
@@ -334,6 +359,7 @@ const instanceByNode = new Map<HTMLElement, SelectableProseInstance>();
 let sharedFrame: number | null = null;
 let pointerIsDown = false;
 let pointerUsesLiveSelectionRange = false;
+let lastPointerUsedLiveSelectionRange = false;
 let pointerActiveInstance: SelectableProseInstance | null = null;
 let pointerStartPoint: SelectionAnchorPoint | null = null;
 
@@ -485,6 +511,7 @@ function handleSharedPointerDown(event: PointerEvent): void {
   pointerStartPoint =
     pointerActiveInstance !== null ? anchorPointFromMouseEvent(event) : null;
   pointerUsesLiveSelectionRange = usesLiveSelectionRange(event.pointerType);
+  lastPointerUsedLiveSelectionRange = pointerUsesLiveSelectionRange;
   pointerIsDown = true;
 }
 
@@ -530,7 +557,9 @@ export function readSelectedMessageMarkdown(): string | null {
     node.contains(range.startContainer) && node.contains(range.endContainer)
       ? range
       : clippedRangeForWhitespaceBoundarySpill(node, range);
-  return clipped === null ? null : selectionClipboard(clipped, node).text;
+  return clipped === null
+    ? null
+    : selectionClipboard(clipped, node, "markdown").text;
 }
 
 function handleSharedCopy(event: ClipboardEvent): void {
@@ -556,7 +585,11 @@ function handleSharedCopy(event: ClipboardEvent): void {
         clipped.setStart(instance.node, 0);
       if (!instance.node.contains(range.endContainer))
         clipped.setEnd(instance.node, instance.node.childNodes.length);
-      return selectionClipboard(clipped, instance.node);
+      return selectionClipboard(
+        clipped,
+        instance.node,
+        instances.length === 1 ? "text" : "markdown",
+      );
     });
     const payload = {
       text: parts.map((part) => part.text).join("\n\n"),
@@ -576,7 +609,7 @@ function handleSharedCopy(event: ClipboardEvent): void {
         range,
       );
       if (clipped) {
-        const payload = selectionClipboard(clipped, instance.node);
+        const payload = selectionClipboard(clipped, instance.node, "text");
         event.clipboardData.setData("text/plain", payload.text);
         event.clipboardData.setData("text/html", payload.html);
         event.preventDefault();

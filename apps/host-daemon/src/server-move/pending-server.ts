@@ -1,10 +1,12 @@
-import { dirname } from "node:path";
-import { delimiter } from "node:path";
+import {
+  hostToolchain,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import {
   serverHealthResponseSchema,
+  serverHealthUrl,
   type ServerMoveHealth,
 } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { z } from "zod";
 import type { FetchFn } from "../server-client.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";
@@ -60,13 +62,9 @@ export function createPendingServerEnv(
   hostDaemonPort: number | null,
 ): NodeJS.ProcessEnv {
   const sanitized = sanitizeInheritedChildProcessEnv({ env });
-  const executableDirectory = dirname(process.execPath);
   return {
     ...sanitized,
-    PATH:
-      sanitized.PATH === undefined
-        ? executableDirectory
-        : `${executableDirectory}${delimiter}${sanitized.PATH}`,
+    PATH: hostToolchain.environment(sanitized).PATH,
     ...(hostDaemonPort === null
       ? {}
       : { BB_HOST_DAEMON_PORT: String(hostDaemonPort) }),
@@ -170,7 +168,7 @@ export async function readServerMoveHealth(
   const health = serverHealthResponseSchema.parse(
     await fetchJson({
       fetchFn: args.fetchFn,
-      url: `${baseUrl(args.serverUrl)}/health`,
+      url: serverHealthUrl(args.serverUrl),
       signal: args.signal,
       timeoutMs: args.timeoutMs,
     }),

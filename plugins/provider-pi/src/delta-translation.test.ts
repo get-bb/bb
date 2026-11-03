@@ -239,6 +239,175 @@ describe("pi delta translation equivalence", () => {
     expect(events.some((event) => event.type === "provider/error")).toBe(false);
   });
 
+  it("completes each assistant message at its own message_end, once", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+    const assistant = (text: string) => {
+      const message = {
+        role: "assistant",
+        content: [{ type: "text", text }],
+        stopReason: "stop",
+      };
+      const events = [
+        ...harness.translate({ type: "message_start", message }),
+        ...harness.translate({
+          type: "message_update",
+          message,
+          assistantMessageEvent: {
+            type: "text_delta",
+            contentIndex: 0,
+            delta: text,
+          },
+        }),
+        ...harness.translate({ type: "message_end", message }),
+      ];
+      return { message, events };
+    };
+    const completedMessages = (events: ThreadEvent[]) =>
+      events.flatMap((event) =>
+        event.type === "item/completed" && event.item.type === "agentMessage"
+          ? [event.item]
+          : [],
+      );
+
+    const first = assistant("Checking the workspace.");
+    expect(completedMessages(first.events)).toEqual([
+      expect.objectContaining({
+        id: agentMessageDeltaId(first.events),
+        text: "Checking the workspace.",
+      }),
+    ]);
+
+    harness.translate(
+      createPiBashStartEvent({ command: "pwd", toolCallId: "tool-1" }),
+    );
+    harness.translate(loadFixture("tool-execution-end-bash.json"));
+    const last = assistant("The workspace is ready.");
+    const end = harness.translate({
+      type: "agent_end",
+      messages: [first.message, last.message],
+    });
+
+    expect(completedMessages(last.events)).toEqual([
+      expect.objectContaining({
+        id: agentMessageDeltaId(last.events),
+        text: "The workspace is ready.",
+      }),
+    ]);
+    expect(agentMessageDeltaId(last.events)).not.toBe(
+      agentMessageDeltaId(first.events),
+    );
+    expect(completedMessages(end)).toEqual([]);
+    expect(end).toContainEqual(
+      expect.objectContaining({ type: "turn/completed", status: "completed" }),
+    );
+  });
+
+  it.each([
+    {
+      name: "the stream ends with an error",
+      failureContent: [
+        { type: "thinking", thinking: "Planning the report." },
+        { type: "text", text: "Full report text." },
+      ],
+    },
+    {
+      name: "the stream throws before message_end",
+      failureContent: [{ type: "text", text: "" }],
+    },
+  ])(
+    "keeps a failed message when a retried message answers a queued steer after $name",
+    ({ failureContent }) => {
+      const harness = createHarness();
+      const events: ThreadEvent[] = [];
+      const send = (event: unknown) => {
+        events.push(...harness.translate(event));
+      };
+      const update = (assistantMessageEvent: Record<string, unknown>) => {
+        send({ type: "message_update", assistantMessageEvent });
+      };
+      const failure = {
+        role: "assistant",
+        content: failureContent,
+        stopReason: "error",
+        errorMessage: "terminated",
+      };
+      const steer = {
+        role: "user",
+        content: [{ type: "text", text: "Reply with one sentence." }],
+      };
+      const reply = {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Reading the steer." },
+          { type: "text", text: "Steer received." },
+        ],
+        stopReason: "stop",
+      };
+
+      send(loadFixture("agent-start.json"));
+      send({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      update({
+        type: "thinking_delta",
+        contentIndex: 0,
+        delta: "Planning the report.",
+      });
+      update({
+        type: "text_delta",
+        contentIndex: 1,
+        delta: "Full report text.",
+      });
+      if (failureContent.length === 1) {
+        send({ type: "message_start", message: failure });
+      }
+      send({ type: "message_end", message: failure });
+      send({ type: "agent_end", messages: [failure], willRetry: true });
+      send(loadFixture("agent-start.json"));
+      send({ type: "message_start", message: steer });
+      send({ type: "message_end", message: steer });
+      send({ type: "message_start", message: reply });
+      update({
+        type: "thinking_delta",
+        contentIndex: 0,
+        delta: "Reading the steer.",
+      });
+      update({
+        type: "thinking_end",
+        contentIndex: 0,
+        content: "Reading the steer.",
+      });
+      update({ type: "text_delta", contentIndex: 1, delta: "Steer received." });
+      send({ type: "message_end", message: reply });
+      send({ type: "agent_end", messages: [steer, reply] });
+
+      const completed = events.flatMap((event) =>
+        event.type === "item/completed" ? [event.item] : [],
+      );
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "reasoning",
+          content: ["Planning the report."],
+        }),
+        expect.objectContaining({
+          type: "agentMessage",
+          text: "Full report text.",
+        }),
+        expect.objectContaining({
+          type: "reasoning",
+          content: ["Reading the steer."],
+        }),
+        expect.objectContaining({
+          type: "agentMessage",
+          text: "Steer received.",
+        }),
+      ]);
+      expect(new Set(completed.map((item) => item.id)).size).toBe(4);
+    },
+  );
+
   it("completes extension-triggered turns when agent_end includes string custom content", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
@@ -413,6 +582,11 @@ describe("pi delta translation equivalence", () => {
         scope: turnScope(turnId),
         message: "Provider error",
         detail: quotaMessage,
+        errorInfo: {
+          category: "bad-request",
+          providerCode: null,
+          httpStatusCode: 400,
+        },
       },
       {
         type: "turn/completed",
@@ -2001,6 +2175,11 @@ describe("pi delta translation equivalence", () => {
         kind: "provider.error",
         message: "Provider error",
         detail: "original prompt failed",
+        errorInfo: {
+          category: "unknown",
+          providerCode: null,
+          httpStatusCode: null,
+        },
       },
     ]);
   });

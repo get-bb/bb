@@ -1,7 +1,4 @@
-import {
-  createAsyncTtlMemo,
-  type AsyncTtlMemo,
-} from "../lib/async-ttl-memo.js";
+import { createAsyncTtlMemo, type AsyncTtlMemo } from "@bb/async-cache";
 import type {
   ProviderUsage,
   ProviderUsageResponse,
@@ -77,7 +74,7 @@ export async function getProviderUsageLimits(
                 bridgeLaunch,
               },
             }),
-          query.refresh === "true",
+          { refresh: query.refresh === "true" },
         );
         return result.supported ? [provider.id, result.usage] : null;
       } catch {

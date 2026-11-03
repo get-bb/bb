@@ -79,7 +79,7 @@ describe("workflow source resolution", () => {
     );
     expect(() =>
       resolveConfinedWorkflowPath("/repo", "C:\\outside\\flow.js"),
-    ).toThrow("absolute path form");
+    ).toThrow("inside the origin workspace");
     expect(resolveConfinedWorkflowPath("C:\\repo", "flows\\a.js")).toBe(
       "C:\\repo\\flows\\a.js",
     );
@@ -92,6 +92,26 @@ describe("workflow source resolution", () => {
     expect(() =>
       resolveConfinedWorkflowPath("C:\\repo", "\\\\server\\share\\a.js"),
     ).toThrow("inside the origin workspace");
+  });
+
+  it.each([
+    [
+      "//server/share/repo",
+      "flows\\a.js",
+      "\\\\server\\share\\repo\\flows\\a.js",
+    ],
+    ["C:", "flows/a.js", "C:\\flows\\a.js"],
+    ["c:/repo", "flows/a.js", "C:\\repo\\flows\\a.js"],
+  ])("resolves host paths from %s", (root, requested, expected) => {
+    expect(resolveConfinedWorkflowPath(root, requested)).toBe(expected);
+  });
+
+  it.each([
+    ["C:\\", "\\foo"],
+    ["/repo", "C:flow.js"],
+    ["//server/share/repo", "..\\secret.js"],
+  ])("rejects invalid or escaping paths from %s: %s", (root, requested) => {
+    expect(() => resolveConfinedWorkflowPath(root, requested)).toThrow();
   });
 
   it("resolves names on the origin host under .bb/workflows", async () => {

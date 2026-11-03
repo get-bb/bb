@@ -16,7 +16,6 @@ import {
 import {
   applyThreadReadStateResult,
   applyThreadUpdateResult,
-  applyThreadPinStateResult,
   applyPinnedThreadOrderResult,
   applyThreadMetadataBatchResult,
   beginThreadMetadataBatchTransaction,
@@ -147,6 +146,8 @@ describe("thread state cache owner", () => {
       });
       expect(queryClient.getQueryData(threadQueryKey(original.id))).toEqual({
         ...activeThread,
+        title: "Updated title",
+        latestAttentionAt: 200,
         lastReadAt,
       });
       expect(queryClient.getQueryData(listKey)).toEqual(
@@ -311,68 +312,6 @@ describe("thread state cache owner", () => {
         });
     },
   );
-
-  it("optimistically renames thread in thread, list, and sidebar caches", async () => {
-    const { queryClient } = createQueryClientTestHarness();
-    const threadId = "thread-1";
-    const thread = makeThreadWithRuntime({
-      id: threadId,
-      title: "Old title",
-    });
-    const listEntry = makeThreadListEntry({
-      id: threadId,
-      title: "Old title",
-    });
-    const threadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-
-    queryClient.setQueryData(threadQueryKey(threadId), thread);
-    queryClient.setQueryData(threadListKey, [listEntry]);
-    queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([listEntry]),
-    );
-
-    const transaction = await beginThreadMetadataTransaction({
-      queryClient,
-      threadId,
-      title: "New title",
-    });
-
-    expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-        ?.title,
-    ).toBe("New title");
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.title,
-    ).toBe("New title");
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.title,
-    ).toBe("New title");
-
-    rollbackThreadListMutationTransaction({
-      queryClient,
-      threadId,
-      transaction,
-    });
-
-    expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
-        ?.title,
-    ).toBe("Old title");
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]?.title,
-    ).toBe("Old title");
-    expect(
-      queryClient.getQueryData<SidebarBootstrapResponse>(
-        sidebarNavigationQueryKey(),
-      )?.projects[0]?.threads[0]?.title,
-    ).toBe("Old title");
-  });
 
   it("optimistically marks read state in thread, list, and sidebar caches", async () => {
     const { queryClient } = createQueryClientTestHarness();
@@ -541,7 +480,7 @@ function seedConcurrentThreadCaches() {
   return { queryClient, listKey, original, seed, read };
 }
 
-it.each(["rename", "pin", "reorder", "batch"])(
+it.each(["rename", "reorder", "batch"])(
   "preserves concurrent state on a delayed %s response",
   (operation) => {
     const { queryClient, original, seed, read } = seedConcurrentThreadCaches();
@@ -566,12 +505,6 @@ it.each(["rename", "pin", "reorder", "batch"])(
         thread: response,
         request: { title: "Renamed" },
       });
-    if (operation === "pin")
-      applyThreadPinStateResult({
-        queryClient,
-        thread: response,
-        pinSortKey: null,
-      });
     if (operation === "reorder")
       applyPinnedThreadOrderResult({ queryClient, orderedRoots: [response] });
     if (operation === "batch")
@@ -593,7 +526,6 @@ it.each(["rename", "pin", "reorder", "batch"])(
           : "Original",
       );
     }
-    if (operation === "pin") expect(read()[0]?.pinnedAt).toBe(20);
     if (operation === "reorder")
       expect(read()[1]).toMatchObject({ pinnedAt: 20, pinSortKey: "a" });
   },
@@ -604,20 +536,33 @@ it.each(["single", "batch"])(
   async (operation) => {
     const { queryClient, original, seed, read, listKey } =
       seedConcurrentThreadCaches();
-    const transaction =
+    const rollback =
       operation === "single"
         ? await beginThreadMetadataTransaction({
             queryClient,
             threadId: original.id,
             title: "Pending",
             sectionId: "pending",
-          })
+          }).then(
+            (transaction) => () =>
+              rollbackThreadListMutationTransaction({
+                queryClient,
+                threadId: original.id,
+                transaction,
+              }),
+          )
         : await beginThreadMetadataBatchTransaction({
             queryClient,
             updates: [
               { threadId: original.id, title: "Pending", sectionId: "pending" },
             ],
-          });
+          }).then(
+            (transaction) => () =>
+              rollbackThreadMetadataBatchTransaction({
+                queryClient,
+                transaction,
+              }),
+          );
     const sibling = makeThreadListEntry({ id: "new-sibling" });
     seed(
       makeThreadListEntry({
@@ -630,15 +575,7 @@ it.each(["single", "batch"])(
       }),
       [sibling],
     );
-    transaction.releasePendingPatches();
-    if ("previousThreads" in transaction)
-      rollbackThreadMetadataBatchTransaction({ queryClient, transaction });
-    else
-      rollbackThreadListMutationTransaction({
-        queryClient,
-        threadId: original.id,
-        transaction,
-      });
+    rollback();
     for (const thread of read())
       expect(thread).toMatchObject({
         title: "Original",

@@ -51,7 +51,7 @@ import {
   oneShotLifecycleAllowsToggle,
   PERSONAL_PROJECT_ID,
 } from "./lib/format-schedule";
-import { AutomationMetadataItem } from "./metadata";
+import { AutomationMetadataItem, automationErrorMessage } from "./metadata";
 import { AutomationActionsMenu } from "./actions-menu";
 
 interface AutomationRunsViewState {
@@ -397,8 +397,8 @@ export function RunRow({
   const duration = formatRunDuration(run);
   const silent = isSilentRun(run);
   const showOutput =
-    run.runMode === "script" &&
-    (run.output !== null || run.error !== null || silent);
+    run.error !== null ||
+    (run.runMode === "script" && (run.output !== null || silent));
   const visual = AUTOMATION_RUN_STATUS_VISUALS[run.status];
   const running = run.status === "running";
   const openable = run.runMode === "agent" && run.threadId !== null;
@@ -768,6 +768,7 @@ export function AutomationDetailView({
   const execution = automation.execution;
   const projectContextLabel = projectLabel;
   const personalProject = automation.projectId === PERSONAL_PROJECT_ID;
+  const errorMessage = automationErrorMessage(automation);
 
   return (
     <ResourceDetailPage
@@ -780,23 +781,45 @@ export function AutomationDetailView({
       }
       title={automation.name}
       metadata={
-        <ResourceMeta
-          items={[
-            <AutomationMetadataItem
-              icon="Folder"
-              iconLabel={
-                personalProject ? `Project: ${projectContextLabel}` : "Project"
-              }
-              title={projectContextLabel}
+        <>
+          <ResourceMeta
+            items={[
+              <AutomationMetadataItem
+                icon="Folder"
+                iconLabel={
+                  personalProject
+                    ? `Project: ${projectContextLabel}`
+                    : "Project"
+                }
+                title={projectContextLabel}
+              >
+                {projectContextLabel}
+              </AutomationMetadataItem>,
+              <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
+                {formatAutomationTrigger(automation.trigger)}
+              </AutomationMetadataItem>,
+              automationDetailNextRun(automation),
+            ]}
+          />
+          {errorMessage !== null ? (
+            <p
+              data-automation-error=""
+              className="mt-1.5 flex min-w-0 items-start gap-1.5 text-destructive"
             >
-              {projectContextLabel}
-            </AutomationMetadataItem>,
-            <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
-              {formatAutomationTrigger(automation.trigger)}
-            </AutomationMetadataItem>,
-            automationDetailNextRun(automation),
-          ]}
-        />
+              <Icon
+                name="CircleX"
+                className="mt-px size-3.5 shrink-0"
+                aria-hidden
+              />
+              <span
+                className="min-w-0 break-words line-clamp-3"
+                title={errorMessage}
+              >
+                {errorMessage}
+              </span>
+            </p>
+          ) : null}
+        </>
       }
       lifecycleControl={
         <AutomationLifecycleControl

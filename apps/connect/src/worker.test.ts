@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+import {
+  MAX_CHUNK_BYTES,
+  decodeFrame,
+  encodeFrame,
+  type Frame,
+} from "@bb/tunnel-contract";
 import {
   GATE_OAUTH_CLIENT_HEADER,
   GATE_OAUTH_GRANT_HEADER,
@@ -173,11 +178,25 @@ vi.mock("./cache.js", async () => {
   };
 });
 
-vi.mock("drizzle-orm/d1", () => ({
-  drizzle: vi.fn(() => ({})),
+vi.mock("@bb/connect-db-pg", () => ({
+  openConnectDb: vi.fn(() => ({
+    db: {},
+    backends: async () => ({ mode: "d1", primary: null, secondary: null }),
+    close: async () => {},
+  })),
 }));
 
-import { drizzle } from "drizzle-orm/d1";
+import { openConnectDb } from "@bb/connect-db-pg";
+
+function mockConnectDb(db: unknown): void {
+  vi.mocked(openConnectDb).mockReturnValue({
+    db,
+    backends: async () => {
+      throw new Error("backends are not used by these tests");
+    },
+    close: async () => {},
+  } as never);
+}
 
 import {
   invalidateSessionCookie,
@@ -197,7 +216,10 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
-import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
+import {
+  RESP_HEAD_MAX_WAIT_MS,
+  RESP_HEAD_TIMEOUT_MS,
+} from "./response-head-timeout.js";
 import { RELAY_HEADER } from "./protocol-headers.js";
 import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
@@ -390,7 +412,11 @@ describe("POST /api/connect/disconnect", () => {
     const response = await worker.fetch(request, env as never, ctx);
 
     expect(response.status).toBe(200);
-    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
+    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(
+      request,
+      env,
+      expect.anything(),
+    );
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -418,7 +444,11 @@ describe("POST /api/connect/machine-label", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
-    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(request, env);
+    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(
+      request,
+      env,
+      expect.anything(),
+    );
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -580,6 +610,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValueOnce(null).mockResolvedValueOnce({
       machineId: "machine-other",
       userId: OTHER,
+      lastSeenAt: null,
     });
     const bogus = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
@@ -604,6 +635,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(
       () =>
@@ -672,7 +704,7 @@ describe("machine gate auth", () => {
       ),
     ).toBe(true);
     expect(mockMarkMachineSeen).toHaveBeenCalledWith(
-      "machine-owner",
+      expect.objectContaining({ machineId: "machine-owner" }),
       expect.anything(),
     );
     expect(internal.headers.get("set-cookie")).toBe(
@@ -685,6 +717,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
@@ -703,6 +736,7 @@ describe("machine gate auth", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const response = await worker.fetch(
@@ -783,6 +817,7 @@ describe("gate replays through a tunnel object restart", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
   });
 
@@ -964,6 +999,7 @@ describe("gate request deadline", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
   });
 
@@ -1176,6 +1212,103 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: response-head)");
+  });
+
+  describe("a relayed request whose head outlasts the deadline", () => {
+    function relayedRequest(status: () => Response | Promise<Response>) {
+      const socket = new SilentRelaySocket();
+      const { env, ctx } = makeEnv((request) =>
+        isStatusCheck(request) ? status() : relayUpgrade(socket),
+      );
+      let settled = false;
+      const pending = worker
+        .fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+          ctx,
+        )
+        .then((response) => {
+          settled = true;
+          return response;
+        });
+      return { socket, env, ctx, pending, settled: () => settled };
+    }
+
+    function tunnelStatus(lastHeartbeatAgeMs: number) {
+      return () =>
+        Response.json(
+          { connected: true, lastHeartbeatAgeMs },
+          { headers: { "x-bb-tunnel-status": "1" } },
+        );
+    }
+
+    function deliver(socket: SilentRelaySocket, frame: Frame) {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: frameBuffer(frame) });
+      socket.dispatchEvent(event);
+    }
+
+    it("keeps waiting while the tunnel heartbeat is fresh", async () => {
+      const { socket, env, pending, settled } = relayedRequest(
+        tunnelStatus(5_000),
+      );
+      await vi.advanceTimersByTimeAsync(70_000);
+      expect(settled()).toBe(false);
+      deliver(socket, {
+        type: "resp-head",
+        streamId: 0,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      });
+      deliver(socket, {
+        type: "body-chunk",
+        streamId: 0,
+        data: new TextEncoder().encode("ok"),
+      });
+      deliver(socket, { type: "body-end", streamId: 0 });
+      const response = await pending;
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe("ok");
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledTimes(1);
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blobs: expect.arrayContaining(["slow", "response-head"]),
+          doubles: [RESP_HEAD_TIMEOUT_MS, 1, -1],
+        }),
+      );
+    });
+
+    it("answers 504 and closes the relay when the tunnel heartbeat is stale", async () => {
+      const { socket, pending } = relayedRequest(tunnelStatus(60_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
+
+    it("answers 504 when the tunnel object does not report its status", async () => {
+      const { pending, settled } = relayedRequest(
+        () => new Promise<Response>(() => {}),
+      );
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect((await pending).status).toBe(504);
+    });
+
+    it("answers 504 at the ten minute cap even with a fresh heartbeat", async () => {
+      const { socket, pending, settled } = relayedRequest(tunnelStatus(5_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_MAX_WAIT_MS - 1_000);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
   });
 
   it.each(["HTTP", "WebSocket"])(
@@ -2067,6 +2200,7 @@ describe("gate worker share hosts", () => {
     mockVerifyMachine.mockResolvedValue({
       machineId: "machine-owner",
       userId: OWNER,
+      lastSeenAt: null,
     });
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
@@ -2356,7 +2490,7 @@ describe("TunnelDO machine presence", () => {
     const where = vi.fn(() => ({ run }));
     const set = vi.fn(() => ({ where }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ machineId: "machine-air", protocolVersion: 1 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
@@ -2374,7 +2508,7 @@ describe("TunnelDO machine presence", () => {
     const update = vi.fn(() => ({
       set: () => ({ where: () => ({ run }) }),
     }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
     const setAlarm = vi.fn(async (_at: number) => {});
     state.api.storage.setAlarm = setAlarm;
@@ -2393,11 +2527,11 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("spreads presence alarms across the interval instead of a fixed period", async () => {
-    vi.mocked(drizzle).mockReturnValue({
+    mockConnectDb({
       update: () => ({
         set: () => ({ where: () => ({ run: async () => {} }) }),
       }),
-    } as never);
+    });
     const offsets: number[] = [];
     for (const roll of [0, 0.5, 0.999]) {
       const random = vi.spyOn(Math, "random").mockReturnValue(roll);
@@ -2524,78 +2658,46 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
   return frame.streamId;
 }
 
-describe("TunnelDO voice transcription response head", () => {
-  async function voicePost() {
+describe("TunnelDO request body", () => {
+  it("coalesces small body reads into full-size frames", async () => {
     const sent: Uint8Array[] = [];
     const state = mockDoState({ protocolVersion: 1 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
     const tunnel = fakeTunnelSocket(captureSent(sent));
     state.addSocket(tunnel, ["tunnel"]);
-    let settled = false;
-    const pending = Promise.resolve(
-      dob.fetch(
-        new Request("https://do.internal/api/v1/system/voice-transcription", {
-          method: "POST",
-          body: "audio",
-        }),
-      ),
-    ).then((response) => {
-      settled = true;
-      return response;
-    });
-    return {
-      dob,
-      tunnel,
-      pending,
-      streamId: openHttpStreamId(sent, 0),
-      settled: () => settled,
-    };
-  }
+    const readBytes = 4 * 1024;
+    const bytes = new Uint8Array(2 * MAX_CHUNK_BYTES + readBytes).map(
+      (_, index) => index % 251,
+    );
 
-  it("relays a transcript whose head arrives after 85 seconds", async () => {
-    vi.useFakeTimers();
-    try {
-      const { dob, tunnel, pending, streamId, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(85_000);
-      expect(settled()).toBe(false);
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "resp-head",
-          streamId,
-          status: 200,
-          headers: [["content-type", "application/json"]],
+    void dob.fetch(
+      new Request("https://do.internal/upload", {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += readBytes) {
+              controller.enqueue(bytes.slice(offset, offset + readBytes));
+            }
+            controller.close();
+          },
         }),
-      );
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "body-chunk",
-          streamId,
-          data: new TextEncoder().encode('{"text":"a long note"}'),
-        }),
-      );
-      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
-      const response = await pending;
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ text: "a long note" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        duplex: "half",
+      } as RequestInit),
+    );
 
-  it("answers 504 after 90 seconds without a head", async () => {
-    vi.useFakeTimers();
-    try {
-      const { pending, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(89_999);
-      expect(settled()).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect((await pending).status).toBe(504);
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.waitFor(() =>
+      expect(decodeFrame(sent.at(-1)!).type).toBe("body-end"),
+    );
+    const chunks = sent
+      .map(decodeFrame)
+      .flatMap((frame) => (frame.type === "body-chunk" ? [frame.data] : []));
+    expect(chunks.map((chunk) => chunk.length)).toEqual([
+      MAX_CHUNK_BYTES,
+      MAX_CHUNK_BYTES,
+      readBytes,
+    ]);
+    expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
   });
 });
 
@@ -3642,7 +3744,7 @@ describe("TunnelDO status and on-change presence", () => {
     const run = vi.fn(async () => {});
     const set = vi.fn(() => ({ where: () => ({ run }) }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     return { run, set, update };
   }
 

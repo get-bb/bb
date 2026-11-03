@@ -45,7 +45,6 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
   useEnvironment: () => ({
     data: { path: "/workspace", projectId: "proj_preview" },
   }),
-  useEnvironmentDiffFiles: vi.fn(),
   useEnvironmentFilePreview: (_environmentId: string, path: string) =>
     previewQuery(path),
 }));
@@ -56,7 +55,7 @@ vi.mock("@/hooks/queries/project-queries", () => ({
   ),
 }));
 
-vi.mock("@/hooks/queries/thread-queries", () => ({
+vi.mock("@/hooks/queries/thread-panel-queries", () => ({
   useThreadHostFilePreview: (
     _threadId: string,
     _environmentId: string,
@@ -64,6 +63,12 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   ) => previewQuery(path),
   useThreadStorageFilePreview: (_threadId: string, path: string) =>
     previewQuery(path),
+  useThreadStorageLocation: () => ({ data: undefined }),
+}));
+
+vi.mock("@/hooks/useLocalFileLinkOpener", () => ({
+  useLocalFileLinkOpener: () => ({ openLink: () => false }),
+  useThreadFileLinkOpener: () => ({ openLink: () => false }),
 }));
 
 vi.mock("@/hooks/queries/host-file-preview-query", () => ({
@@ -95,7 +100,6 @@ describe("secondary-panel Markdown image routing", () => {
         isPanelOpen
         lineRange={null}
         source={{ kind: "working-tree" }}
-        statusLabel={null}
         threadId="thr_preview"
       />,
     );

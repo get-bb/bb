@@ -45,3 +45,24 @@ export function parseNativeShellHandshake(
   const parsed = nativeShellHandshakeSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
+
+export const bridgeServerSchema = z
+  .object({
+    id: z.string().min(1).max(256),
+    name: z.string().min(1),
+    origin: z.url(),
+    kind: z.enum(["local", "account", "custom"]),
+    active: z.boolean(),
+  })
+  .strict();
+
+export const bridgeServersSchema = z.array(bridgeServerSchema).readonly();
+
+export type BridgeServer = z.infer<typeof bridgeServerSchema>;
+
+export function parseBridgeServers(
+  value: unknown,
+): readonly BridgeServer[] | null {
+  const parsed = bridgeServersSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}

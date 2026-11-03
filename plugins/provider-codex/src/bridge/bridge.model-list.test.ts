@@ -5,7 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
-import { stubFakeCodexAppServer } from "./fake-codex-app-server-harness.js";
+import {
+  FULL_ACCESS_SESSION_OPTIONS,
+  stubFakeCodexAppServer,
+} from "./fake-codex-app-server-harness.js";
 
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 const temporaryDirectories: string[] = [];
@@ -26,15 +29,76 @@ afterEach(async () => {
   );
 });
 
-it("reuses one initialized app-server across model catalog requests", async () => {
+it("refreshes the catalog when new models become available", async () => {
+  const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-refresh-"));
+  temporaryDirectories.push(workDir);
+  const scriptPath = join(workDir, "script.json");
+  const firstCatalog = [{ id: "first", model: "first", isDefault: true }];
+  const nextCatalog = [
+    ...firstCatalog,
+    { id: "new", model: "new", isDefault: false },
+  ];
+  await writeFile(
+    scriptPath,
+    JSON.stringify({ modelList: { data: firstCatalog }, turns: [] }),
+  );
+  stubFakeCodexAppServer(scriptPath);
   harness.sendRequest(1, "model/list", {});
   const first = await harness.waitForResponse(1);
+  await writeFile(
+    scriptPath,
+    JSON.stringify({ modelList: { data: nextCatalog }, turns: [] }),
+  );
   harness.sendRequest(2, "model/list", {});
   const second = await harness.waitForResponse(2);
 
   expect(first.error).toBeUndefined();
   expect(second.error).toBeUndefined();
-  expect(second.result).toEqual(first.result);
+  expect(first.result).toMatchObject({ models: [{ model: "first" }] });
+  expect(second.result).toMatchObject({
+    models: [{ model: "first" }, { model: "new" }],
+  });
+});
+
+it("publishes the model catalog returned by a newly opened session", async () => {
+  const workDir = await mkdtemp(join(tmpdir(), "bb-codex-session-catalog-"));
+  temporaryDirectories.push(workDir);
+  const scriptPath = join(workDir, "script.json");
+  await writeFile(
+    scriptPath,
+    JSON.stringify({
+      modelList: { data: [{ id: "session-model", model: "session-model" }] },
+      turns: [],
+    }),
+  );
+  stubFakeCodexAppServer(scriptPath);
+  harness.sendRequest(1, "thread/start", {
+    threadId: "thr_session_catalog",
+    cwd: workDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+  await vi.waitFor(() => {
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        method: "thread/delta",
+        params: expect.objectContaining({
+          threadId: "thr_session_catalog",
+          deltas: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "extension.state",
+              extensionKind: "bb/provider-model-catalog",
+              payload: expect.objectContaining({
+                models: [expect.objectContaining({ model: "session-model" })],
+                selectedOnlyModels: [],
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
 });
 
 it("launches the catalog app-server on the requested pool route", async () => {
@@ -61,7 +125,7 @@ it("launches the catalog app-server on the requested pool route", async () => {
     undefined,
     undefined,
   ]);
-  expect(repeated.result).toEqual(first.result);
+  expect(repeated.result).not.toEqual(first.result);
   expect(local.result).not.toEqual(first.result);
   const launches = (await readFile(launchLogPath, "utf8"))
     .trim()
@@ -70,14 +134,16 @@ it("launches the catalog app-server on the requested pool route", async () => {
       (line) =>
         JSON.parse(line) as { args: string[]; poolToken: string | null },
     );
-  expect(launches).toHaveLength(2);
+  expect(launches).toHaveLength(3);
   expect(launches[0]?.args).toContain('model_provider="bb-account-pool"');
   expect(launches[0]?.args).toContain(
     'openai_base_url="http://127.0.0.1:1/pool/v1"',
   );
   expect(launches[0]?.poolToken).toBe("machine-token");
-  expect(launches[1]?.args).not.toContain('model_provider="bb-account-pool"');
-  expect(launches[1]?.poolToken).toBeNull();
+  expect(launches[1]?.args).toContain('model_provider="bb-account-pool"');
+  expect(launches[1]?.poolToken).toBe("machine-token");
+  expect(launches[2]?.args).not.toContain('model_provider="bb-account-pool"');
+  expect(launches[2]?.poolToken).toBeNull();
 });
 
 it.each([
@@ -142,9 +208,40 @@ it.each([
     })),
     selectedOnlyModels: [],
   });
+
+  harness.sendRequest(2, "thread/start", {
+    threadId: "thr_catalog_defaults",
+    cwd: workDir,
+    instructionMode: "append",
+    options: FULL_ACCESS_SESSION_OPTIONS,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  await vi.waitFor(() => {
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        method: "thread/delta",
+        params: expect.objectContaining({
+          deltas: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "extension.state",
+              extensionKind: "bb/provider-model-catalog",
+              payload: expect.objectContaining({
+                models: catalog.map((model, index) =>
+                  expect.objectContaining({
+                    model: model.model,
+                    isDefault: scenario.expectedDefaults[index],
+                  }),
+                ),
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
 });
 
-it("replaces the cached app-server after a model catalog failure", async () => {
+it("recovers with a fresh app-server after a model catalog failure", async () => {
   const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-list-"));
   temporaryDirectories.push(workDir);
   const scriptPath = join(workDir, "script.json");

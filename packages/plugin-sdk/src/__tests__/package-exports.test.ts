@@ -38,6 +38,7 @@ describe("packed plugin SDK exports", () => {
       "./internal/composer-customization-validation",
       "./internal/composer-handle",
       "./internal/composer-view",
+      "./internal/thread-status",
       "./internal/file-navigation-validation",
       "./internal/host-policy",
       "./internal/plugin-app-collector",
@@ -46,6 +47,7 @@ describe("packed plugin SDK exports", () => {
       "./testing/host",
       "./internal/rpc-tags",
       "./internal/rpc-query-host",
+      "./process",
     ]);
 
     for (const entry of Object.values(packageJson.exports)) {

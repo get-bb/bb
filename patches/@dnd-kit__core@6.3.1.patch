@@ -1,0 +1,92 @@
+diff --git a/dist/core.cjs.development.js b/dist/core.cjs.development.js
+index d32e86caa11de9c8d9e654552c6e3c7f067d4809..6df6b00d1da22bdb6594665ad2bf69f39419a520 100644
+--- a/dist/core.cjs.development.js
++++ b/dist/core.cjs.development.js
+@@ -3010,6 +3010,7 @@ const DndContext = /*#__PURE__*/React.memo(function DndContext(_ref) {
+     }
+ 
+     const activatorEvent = event.nativeEvent;
++    let startedActive = null;
+     const sensorInstance = new Sensor({
+       active: activeRef.current,
+       activeNode,
+@@ -3086,6 +3087,7 @@ const DndContext = /*#__PURE__*/React.memo(function DndContext(_ref) {
+             rect: activeRects
+           }
+         };
++        startedActive = event.active;
+         reactDom.unstable_batchedUpdates(() => {
+           onDragStart == null ? void 0 : onDragStart(event);
+           setStatus(Status.Initializing);
+@@ -3144,6 +3146,18 @@ const DndContext = /*#__PURE__*/React.memo(function DndContext(_ref) {
+               type = Action.DragCancel;
+             }
+           }
++        } else if (startedActive) {
++          type = Action.DragCancel;
++          event = {
++            activatorEvent,
++            active: startedActive,
++            collisions: null,
++            delta: {
++              x: 0,
++              y: 0
++            },
++            over: null
++          };
+         }
+ 
+         activeRef.current = null;
+diff --git a/dist/core.esm.js b/dist/core.esm.js
+index 3cc765e96338bfac3d3d8ee540925833513af367..055aff27e200eeab7a2d8eb543bf33abc325d30c 100644
+--- a/dist/core.esm.js
++++ b/dist/core.esm.js
+@@ -3013,6 +3013,7 @@ const DndContext = /*#__PURE__*/memo(function DndContext(_ref) {
+     }
+ 
+     const activatorEvent = event.nativeEvent;
++    let startedActive = null;
+     const sensorInstance = new Sensor({
+       active: activeRef.current,
+       activeNode,
+@@ -3089,6 +3090,7 @@ const DndContext = /*#__PURE__*/memo(function DndContext(_ref) {
+             rect: activeRects
+           }
+         };
++        startedActive = event.active;
+         unstable_batchedUpdates(() => {
+           onDragStart == null ? void 0 : onDragStart(event);
+           setStatus(Status.Initializing);
+@@ -3147,6 +3149,18 @@ const DndContext = /*#__PURE__*/memo(function DndContext(_ref) {
+               type = Action.DragCancel;
+             }
+           }
++        } else if (startedActive) {
++          type = Action.DragCancel;
++          event = {
++            activatorEvent,
++            active: startedActive,
++            collisions: null,
++            delta: {
++              x: 0,
++              y: 0
++            },
++            over: null
++          };
+         }
+ 
+         activeRef.current = null;
+diff --git a/dist/index.js b/dist/index.js
+index 5fec47389d27ef25efb49191ba16af960622c77c..6abcea1a3c6a6824d26910a25de5e8f8dd15e39b 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,8 +1,4 @@
+ 
+ 'use strict'
+ 
+-if (process.env.NODE_ENV === 'production') {
+-  module.exports = require('./core.cjs.production.min.js')
+-} else {
+-  module.exports = require('./core.cjs.development.js')
+-}
++module.exports = require('./core.cjs.development.js')

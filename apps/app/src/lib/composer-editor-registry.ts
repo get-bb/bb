@@ -1,22 +1,21 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { PromptTextMention } from "@bb/domain";
-import type { ComposerEditorState } from "@get-bb/plugin-sdk/internal/composer-handle";
+import type { ComposerDraft } from "@get-bb/plugin-sdk";
+import type {
+  ComposerEditorState,
+  ComposerEditorSubmission,
+} from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { createKeyedListeners } from "./keyed-listeners";
-
-export interface ComposerEditorInsertValue {
-  text: string;
-  mentions: PromptTextMention[];
-}
 
 export interface ComposerEditorBridge {
   host: PluginComposerHost;
   pluginCustomizable: boolean;
   state: ComposerEditorState;
-  insertAtCursor(value: ComposerEditorInsertValue, block: boolean): boolean;
+  insertAtCursor(value: ComposerDraft, block: boolean): boolean;
   openPopup(pluginId: string, popupId: string): boolean;
   closePopup(pluginId: string): boolean;
   isPopupOpen(): boolean;
+  submit(submission: ComposerEditorSubmission): Promise<void>;
 }
 
 const bridgesByKey = new Map<string, ComposerEditorBridge>();

@@ -24,7 +24,6 @@ import {
   readFileForTransport,
   readFileChunkForTransport,
   readFileFromGitRef,
-  readRootRelativeFileForTransport,
   type ReadFileContentForTransportResult,
 } from "./file-read.js";
 import { listFilesystemRoots } from "./filesystem-roots.js";
@@ -247,6 +246,7 @@ export async function readHostFile(
     ...(command.ifNoneMatch !== undefined
       ? { ifNoneMatch: command.ifNoneMatch }
       : {}),
+    followRootSymlink: command.followRootSymlink,
     resolvedPath: command.path,
     resultPath: command.path,
     ...(command.rootPath !== undefined ? { rootPath: command.rootPath } : {}),
@@ -258,23 +258,13 @@ export async function readHostFileChunk(
 ): Promise<HostDaemonOnlineRpcResult<"host.read_file_chunk">> {
   assertAbsoluteHostDiskPathCommand(command);
   return readFileChunkForTransport({
+    followRootSymlink: false,
     resolvedPath: command.path,
     resultPath: command.path,
     rootPath: command.rootPath,
     offset: command.offset,
     length: command.length,
     revision: command.revision,
-  });
-}
-
-export async function readHostRelativeFile(
-  command: CommandOf<"host.read_file_relative">,
-): Promise<HostDaemonOnlineRpcResult<"host.read_file_relative">> {
-  return readRootRelativeFileForTransport({
-    followRootSymlink: command.followRootSymlink,
-    rootPath: command.rootPath,
-    relativePath: command.path,
-    dotfiles: command.dotfiles,
   });
 }
 

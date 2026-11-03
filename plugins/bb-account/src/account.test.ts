@@ -746,7 +746,7 @@ describe("sign-out, profile refresh, and adoption", () => {
     expect(stub.revokedCredentials).toEqual([]);
   });
 
-  it("hands the raw server credential to connect and to no one else", async () => {
+  it("hands the raw server credential to the connect plugins and to no one else", async () => {
     const host = await loadAccount();
     await expect(
       host.harness.callRpc(CONNECT_CREDENTIAL_METHOD, {}, AS_CONNECT),
@@ -767,6 +767,17 @@ describe("sign-out, profile refresh, and adoption", () => {
         credential: stored.credential,
       },
     });
+    await expect(
+      host.harness.callRpc(
+        CONNECT_CREDENTIAL_METHOD,
+        {},
+        {
+          experimental_caller: { kind: "plugin", pluginId: "bb--connect-next" },
+        },
+      ),
+    ).resolves.toMatchObject({
+      credential: { credential: stored.credential },
+    });
     for (const caller of [
       undefined,
       {
@@ -775,8 +786,30 @@ describe("sign-out, profile refresh, and adoption", () => {
     ]) {
       await expect(
         host.harness.callRpc(CONNECT_CREDENTIAL_METHOD, {}, caller),
-      ).rejects.toThrow("only the connect plugin");
+      ).rejects.toThrow("only the connect plugins");
     }
+  });
+
+  it("keeps adoption and refusal reports to connect alone", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    const asNext = {
+      experimental_caller: { kind: "plugin", pluginId: "bb--connect-next" },
+    } as const;
+    await expect(
+      host.harness.callRpc(
+        CONFIRM_REFUSED_CREDENTIAL_METHOD,
+        { credential: "bbcred_x" },
+        asNext,
+      ),
+    ).rejects.toThrow("only the connect plugin");
+    await expect(
+      host.harness.callRpc(
+        ADOPT_CONNECT_CREDENTIAL_METHOD,
+        { credential: "bbcred_x", baseUrl: stub.apexUrl, replaces: null },
+        asNext,
+      ),
+    ).rejects.toThrow("only the connect plugin");
   });
 
   it("signs out when connect reports a refused credential that getbb.app no longer accepts", async () => {

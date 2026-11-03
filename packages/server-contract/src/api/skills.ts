@@ -1,5 +1,6 @@
 import { z } from "zod";
-
+import { REGISTRY_ENTRY_BATCH_LIMIT } from "./skill-client-constants.js";
+export { REGISTRY_ENTRY_BATCH_LIMIT } from "./skill-client-constants.js";
 export const registrySkillSchema = z.object({
   id: z.string().min(1),
   source: z.string().min(1),
@@ -53,8 +54,6 @@ export const registrySkillDetailSchema = z.object({
   files: z.array(registrySkillFileSchema).nullable(),
 });
 export type RegistrySkillDetail = z.infer<typeof registrySkillDetailSchema>;
-
-export const REGISTRY_ENTRY_BATCH_LIMIT = 200;
 
 export const registrySkillEntriesRequestSchema = z
   .object({

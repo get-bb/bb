@@ -1,3 +1,4 @@
+import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   PI_EXTENSION_UI_KIND,
   piExtensionUiPayloadDataSchema,
@@ -57,6 +58,24 @@ function rawId(request: Record<string, unknown>): string | number | null {
   return typeof id === "string" || typeof id === "number" ? id : null;
 }
 
+function cardTitle(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length <= PLUGIN_INTERACTION_MAX_TITLE_LENGTH) {
+    return trimmed;
+  }
+  let shortened = "";
+  for (const codePoint of trimmed) {
+    if (
+      shortened.length + codePoint.length >
+      PLUGIN_INTERACTION_MAX_TITLE_LENGTH - 1
+    ) {
+      break;
+    }
+    shortened += codePoint;
+  }
+  return `${shortened.trimEnd()}…`;
+}
+
 export function createExtensionUiCoordinator(
   options: ExtensionUiCoordinatorOptions,
 ): ExtensionUiCoordinator {
@@ -77,8 +96,10 @@ export function createExtensionUiCoordinator(
         return;
       }
       const request: PiExtensionUiRequest = parsed.data;
+      const title = cardTitle(request.title);
       const data = piExtensionUiPayloadDataSchema.parse({
         requestId: String(request.id),
+        ...(title === request.title.trim() ? {} : { fullTitle: request.title }),
         method: request.method,
         ...(request.options ? { options: request.options } : {}),
         ...(request.message !== undefined ? { message: request.message } : {}),
@@ -105,7 +126,7 @@ export function createExtensionUiCoordinator(
             turnId: null,
             payload: {
               kind: PI_EXTENSION_UI_KIND,
-              title: request.title,
+              title,
               data,
             },
           },

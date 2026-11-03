@@ -7,6 +7,7 @@
    overlay, icon sizing — get purged from the app's CSS. */
 @source "../../../../../packages/shared-ui/src";
 @source "../../../../../plugins/thread-list/app";
+@source "../../../../../plugins/composer/src";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -129,8 +130,13 @@
   --text-2xs--line-height: 0.875rem;
 }
 
+:root {
+  --bb-detail-row-icon-size: calc(var(--spacing) * 3);
+}
+
 @media (max-width: 767px) and (pointer: coarse) {
   :root {
+    --bb-detail-row-icon-size: calc(var(--spacing) * 4);
     --text-2xs: 0.6875rem;
     --text-2xs--line-height: 0.9375rem;
     --text-xs: 0.875rem;
@@ -179,6 +185,13 @@
     --bb-sidebar-sticky-parent-base-z: 40;
 
     padding: var(--bb-sidebar-sticky-stack-padding-top)
+      max(
+        0px,
+        calc(
+          var(--bb-sidebar-sticky-stack-padding) -
+            var(--bb-sidebar-scrollbar-lane, 0px)
+        )
+      )
       var(--bb-sidebar-sticky-stack-padding)
       var(--bb-sidebar-sticky-stack-padding);
   }
@@ -513,7 +526,7 @@
   --warning: oklch(0.7 0.16 50);
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
-  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  --success-foreground: oklch(0.53 0.14 155);
   --diff-added: oklch(0.4 0.13 163);
   --pr-merged: oklch(0.53 0.2 295);
   --brand-discord: oklch(0.5774 0.2091 273.85);
@@ -744,7 +757,7 @@
   --warning: oklch(0.75 0.16 50);
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
-  --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  --success-foreground: var(--success);
   --diff-added: oklch(0.77 0.17 163);
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
@@ -923,6 +936,24 @@
   .bb-icon-stroke {
     stroke-width: var(--icon-stroke-width);
   }
+
+  [data-surface-tone="sidebar"] {
+    --surface-recessed-solid: color-mix(
+      in oklab,
+      var(--ink) 6%,
+      var(--sidebar)
+    );
+    --surface-recessed-soft-solid: color-mix(
+      in oklch,
+      var(--ink) 4.2%,
+      var(--sidebar)
+    );
+    --surface-raised-solid: color-mix(
+      in oklab,
+      var(--ink) 2.5%,
+      var(--sidebar)
+    );
+  }
 }
 
 /*
@@ -1069,19 +1100,3 @@ body.sidebar-resizing [data-sidebar="panel"] {
   transition-property: opacity;
 }
 
-/*
- * Bottom-anchored scroll bodies (see bottom-anchored-scroll-body.tsx). The
- * class goes on the content wrapper alone: scroll anchoring skips an excluded
- * element's whole subtree, so no descendant rule is needed. A `*` descendant
- * rule here would restyle every timeline node each time the class toggles.
- * The sentinel is a sibling of the wrapper, so it stays eligible.
- */
-.scroll-bottom-anchor-content {
-  overflow-anchor: none;
-}
-
-.scroll-bottom-anchor {
-  height: 1px;
-  flex-shrink: 0;
-  overflow-anchor: auto;
-}

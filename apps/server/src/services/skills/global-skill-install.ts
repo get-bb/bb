@@ -50,15 +50,17 @@ interface InstallGlobalCliSkillsArgs {
   hostIds: readonly string[];
 }
 
-function resolveGlobalCliSkills(
+async function resolveGlobalCliSkills(
   deps: GlobalSkillInstallDeps,
-): HostInstallGlobalSkill[] {
-  return resolveServerOwnedSkillCatalogEntries({
-    builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
-    dataDir: deps.config.dataDir,
-    logger: deps.logger,
-    skillTreeRegistry: deps.skillTreeRegistry,
-  }).flatMap(({ provenance, runtimeSource }) =>
+): Promise<HostInstallGlobalSkill[]> {
+  return (
+    await resolveServerOwnedSkillCatalogEntries({
+      builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
+      dataDir: deps.config.dataDir,
+      logger: deps.logger,
+      skillTreeRegistry: deps.skillTreeRegistry,
+    })
+  ).flatMap(({ provenance, runtimeSource }) =>
     provenance.kind === "builtin" &&
     runtimeSource.kind === "tree" &&
     GLOBAL_CLI_SKILL_NAMES.includes(runtimeSource.name)
@@ -98,7 +100,7 @@ export async function readGlobalCliSkillStatus(
   args: InstallGlobalCliSkillsArgs,
 ): Promise<SystemCliSkillsStatusResponse> {
   const hosts = listNonDestroyedHostsByIds(deps.db, args.hostIds);
-  const skills = resolveGlobalCliSkills(deps);
+  const skills = await resolveGlobalCliSkills(deps);
   const machines = await Promise.all(
     hosts.map(async (host) => {
       const base = { hostId: host.id, hostName: host.name };
@@ -154,7 +156,7 @@ export async function installGlobalCliSkills(
       `Machine ${missingHostId} was not found`,
     );
   }
-  const skills = resolveGlobalCliSkills(deps);
+  const skills = await resolveGlobalCliSkills(deps);
   if (skills.length === 0) {
     throw new ApiError(
       500,

@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { createContext, useContext } from "react";
 import type { InlineCode, Nodes, Parent, PhrasingContent, Text } from "mdast";
 import type {} from "mdast-util-to-hast";
 import { visit } from "unist-util-visit";
@@ -398,10 +398,6 @@ export function remarkThreadMentions() {
   };
 }
 
-interface BuildThreadMentionComponentArgs {
-  mentions: readonly PromptTextMention[];
-}
-
 interface ThreadMentionElementProps {
   "data-message-seq"?: string;
   "data-raw-thread-id"?: string;
@@ -417,114 +413,112 @@ declare module "react" {
   }
 }
 
-export function buildThreadMentionComponent({
-  mentions,
-}: BuildThreadMentionComponentArgs): ComponentType<ThreadMentionElementProps> {
-  function RawThreadMentionPillWithQuery({
-    inlineCode,
-    threadId,
-  }: {
-    inlineCode: boolean;
-    threadId: string;
-  }) {
-    const resource = useRawThreadMentionResource(threadId);
-    if (resource === null) {
-      return inlineCode ? (
-        <code className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs">
-          {threadId}
-        </code>
-      ) : (
-        threadId
-      );
-    }
-    return <PromptMentionPill resource={resource} serializedText={threadId} />;
-  }
+export const EMPTY_THREAD_MENTIONS: readonly PromptTextMention[] = [];
 
-  function ResolvedThreadMentionPill({
-    messageSeq,
-    resource,
-    threadId,
-  }: {
-    messageSeq: number | null;
-    resource: PromptMentionResource;
-    threadId: string;
-  }) {
-    if (messageSeq !== null) {
-      return (
-        <MessageMentionPill
-          messageSeq={messageSeq}
-          resource={resource}
-          threadId={threadId}
-        />
-      );
-    }
-    return (
-      <PromptMentionPill
-        resource={resource}
-        serializedText={`@thread:${threadId}`}
-      />
+export const ThreadMentionsContext = createContext<
+  readonly PromptTextMention[]
+>(EMPTY_THREAD_MENTIONS);
+
+function RawThreadMentionPillWithQuery({
+  inlineCode,
+  threadId,
+}: {
+  inlineCode: boolean;
+  threadId: string;
+}) {
+  const resource = useRawThreadMentionResource(threadId);
+  if (resource === null) {
+    return inlineCode ? (
+      <code className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs">
+        {threadId}
+      </code>
+    ) : (
+      threadId
     );
   }
+  return <PromptMentionPill resource={resource} serializedText={threadId} />;
+}
 
-  function ThreadMentionPillWithQuery({
-    messageSeq,
-    threadId,
-  }: {
-    messageSeq: number | null;
-    threadId: string;
-  }) {
-    const liveResource = useThreadMentionResource(threadId);
-    const resource =
-      liveResource ?? resolveThreadMentionResource(mentions, threadId);
+function ResolvedThreadMentionPill({
+  messageSeq,
+  resource,
+  threadId,
+}: {
+  messageSeq: number | null;
+  resource: PromptMentionResource;
+  threadId: string;
+}) {
+  if (messageSeq !== null) {
     return (
-      <ResolvedThreadMentionPill
+      <MessageMentionPill
         messageSeq={messageSeq}
         resource={resource}
         threadId={threadId}
       />
     );
   }
+  return (
+    <PromptMentionPill
+      resource={resource}
+      serializedText={`@thread:${threadId}`}
+    />
+  );
+}
 
-  function ThreadMentionElement(props: ThreadMentionElementProps) {
-    const threadId = props["data-thread-id"] ?? "";
-    const rawThreadId = props["data-raw-thread-id"];
-    const rawMessageSeq = props["data-message-seq"];
-    const messageSeq =
-      rawMessageSeq === undefined ? null : Number(rawMessageSeq);
-    const sidebarResource = useSidebarThreadMentionResource(threadId);
-    if (threadId.length === 0) {
-      return null;
-    }
-    if (rawThreadId !== undefined) {
-      return (
-        <RawThreadMentionPillWithQuery
-          inlineCode={props["data-raw-thread-inline-code"] !== undefined}
-          threadId={threadId}
-        />
-      );
-    }
-    const persistedResource = mentions.find(
-      (mention) =>
-        mention.resource.kind === "thread" &&
-        mention.resource.threadId === threadId,
-    )?.resource;
-    const resource = sidebarResource ?? persistedResource;
-    if (resource === undefined) {
-      return (
-        <ThreadMentionPillWithQuery
-          messageSeq={messageSeq}
-          threadId={threadId}
-        />
-      );
-    }
+function ThreadMentionPillWithQuery({
+  messageSeq,
+  threadId,
+}: {
+  messageSeq: number | null;
+  threadId: string;
+}) {
+  const mentions = useContext(ThreadMentionsContext);
+  const liveResource = useThreadMentionResource(threadId);
+  const resource =
+    liveResource ?? resolveThreadMentionResource(mentions, threadId);
+  return (
+    <ResolvedThreadMentionPill
+      messageSeq={messageSeq}
+      resource={resource}
+      threadId={threadId}
+    />
+  );
+}
+
+export function ThreadMentionElement(props: ThreadMentionElementProps) {
+  const mentions = useContext(ThreadMentionsContext);
+  const threadId = props["data-thread-id"] ?? "";
+  const rawThreadId = props["data-raw-thread-id"];
+  const rawMessageSeq = props["data-message-seq"];
+  const messageSeq = rawMessageSeq === undefined ? null : Number(rawMessageSeq);
+  const sidebarResource = useSidebarThreadMentionResource(threadId);
+  if (threadId.length === 0) {
+    return null;
+  }
+  if (rawThreadId !== undefined) {
     return (
-      <ResolvedThreadMentionPill
-        messageSeq={messageSeq}
-        resource={resource}
+      <RawThreadMentionPillWithQuery
+        inlineCode={props["data-raw-thread-inline-code"] !== undefined}
         threadId={threadId}
       />
     );
   }
-
-  return ThreadMentionElement;
+  const persistedResource = mentions.find(
+    (mention) =>
+      mention.resource.kind === "thread" &&
+      mention.resource.threadId === threadId,
+  )?.resource;
+  const resource = sidebarResource ?? persistedResource;
+  if (resource === undefined) {
+    return (
+      <ThreadMentionPillWithQuery messageSeq={messageSeq} threadId={threadId} />
+    );
+  }
+  return (
+    <ResolvedThreadMentionPill
+      messageSeq={messageSeq}
+      resource={resource}
+      threadId={threadId}
+    />
+  );
 }

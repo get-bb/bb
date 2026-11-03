@@ -1,3 +1,4 @@
+import { inheritedNodeNetworkArgs } from "@bb/process-utils";
 import {
   createBridgeProtocolAdapter,
   type BridgeProtocolAdapter,
@@ -34,6 +35,7 @@ export function createProviderForId(
     process: {
       command: adapterOptions.bridgeNodeExecutablePath ?? "node",
       args: [
+        ...inheritedNodeNetworkArgs(process.execArgv),
         ...resolveBridgeWorkerProcessArgs({
           ...(adapterOptions.bridgeBundleDir === undefined
             ? {}

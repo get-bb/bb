@@ -64,6 +64,7 @@ function buildModel(
     model,
     displayName,
     description: modelInfo.description,
+    reasoningDiscovery: "known",
     supportedReasoningEfforts,
     defaultReasoningEffort,
     isDefault: false,

@@ -41,24 +41,7 @@ export const page: LandingPage = {
   faq: [
     {
       title: "Claude Code and Codex",
-      items: [
-        FAQ_SUBSCRIPTIONS,
-        FAQ_PARALLEL,
-        FAQ_LIMIT_RESET,
-        FAQ_AGENTS,
-        {
-          question: "Where can I check each agent’s usage and reset times?",
-          answer: (
-            <p>
-              <a href="/guides/codex-claude-code-usage-limits">
-                Check Codex and Claude Code usage limits
-              </a>
-              , see the windows your accounts report in bb, and choose which
-              agent takes the next task.
-            </p>
-          ),
-        },
-      ],
+      items: [FAQ_SUBSCRIPTIONS, FAQ_PARALLEL, FAQ_LIMIT_RESET, FAQ_AGENTS],
     },
     START_FAQ,
     PHONE_FAQ,

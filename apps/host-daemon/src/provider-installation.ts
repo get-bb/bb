@@ -1,5 +1,9 @@
 import { PassThrough, type Readable } from "node:stream";
-import { resolvePortableCommand } from "@bb/process-utils";
+import {
+  prepareHostPtyCommand,
+  hostToolchain,
+  resolvePortableCommand,
+} from "@bb/process-utils";
 import type { ProviderInstallationCommand } from "@bb/provider-bridge-protocol";
 import {
   providerCliInstallEventSchema,
@@ -58,15 +62,17 @@ function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProc
         throw new Error(`Command not found: ${args.command}`);
       }
       ensureNodePtySpawnHelperExecutable(nodePtyLogger);
-      const pty = spawnPty(command, args.args, {
+      const launch = prepareHostPtyCommand(command, args.args, { cwd, env });
+      const pty = spawnPty(launch.command, launch.args, {
         cols: 120,
         cwd,
-        env,
+        env: launch.env,
         name: "xterm-256color",
         rows: 30,
       });
       pty.onData((data) => stdout.write(data));
-      pty.onExit(() => {
+      pty.onExit(({ exitCode }) => {
+        hostToolchain.invalidateFailure(exitCode);
         stdout.end();
         stderr.end();
       });

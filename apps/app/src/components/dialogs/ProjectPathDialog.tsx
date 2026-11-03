@@ -24,7 +24,7 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { RemotePathBrowser } from "@/components/dialogs/RemotePathBrowser";
+import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowser";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { selectHosts } from "@/hooks/queries/host-queries";
@@ -38,6 +38,8 @@ export type ProjectPathDialogTarget =
       projectId: string;
       projectName: string;
       currentPath: string;
+      hostId: string;
+      hostName: string;
     }
   | {
       kind: "add-source";
@@ -164,13 +166,15 @@ export function ProjectPathDialogContent({
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
+  const targetHostId = target.kind === "update" ? target.hostId : hostId;
+  const targetHostName = target.kind === "update" ? target.hostName : hostName;
   const machineOptions =
     target.kind === "create" ? selectHosts(hosts, "all") : undefined;
   const firstConnectedHostId = machineOptions?.find(
     (host) => host.status === "connected",
   )?.id;
   const [selectedHostIdState, setSelectedHostId] = useState(
-    hostId ?? firstConnectedHostId ?? null,
+    targetHostId ?? firstConnectedHostId ?? null,
   );
   const selectedHostId =
     machineOptions === undefined ||
@@ -182,7 +186,7 @@ export function ProjectPathDialogContent({
   const selectedHost = machineOptions?.find(
     (host) => host.id === selectedHostId,
   );
-  const selectedHostName = selectedHost?.name ?? hostName;
+  const selectedHostName = selectedHost?.name ?? targetHostName;
   const selectedHostConnected =
     selectedHost === undefined || selectedHost.status === "connected";
   const showMachinePicker = (machineOptions?.length ?? 0) > 1;
@@ -322,7 +326,7 @@ export function ProjectPathDialogContent({
           </DropdownMenu>
         ) : null}
         {selectedHostId ? (
-          <RemotePathBrowser
+          <LazyRemotePathBrowser
             key={selectedHostId}
             hostId={selectedHostId}
             initialPath={target.kind === "update" ? target.currentPath : null}

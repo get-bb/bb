@@ -1,7 +1,10 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   type HostDaemonActiveThread,
+  type HostDaemonInteractiveRequestKey,
+  type HostDaemonOpenThreadWork,
   type HostDaemonLoadedEnvironment,
+  type HostDaemonConnectNextReplaceMessage,
   type HostDaemonConnectSharesReplaceMessage,
   type HostDaemonOnlineRpcCancelMessage,
   type HostDaemonOnlineRpcRequestMessage,
@@ -44,6 +47,7 @@ export type CreateReconnectingWebSocket = (
 export type HostDaemonServerTerminalMessage = Exclude<
   HostDaemonServerWsMessage,
   | { type: "machine.shutdown" }
+  | { type: "interactive-requests.end" }
   | { type: "server.moved" }
   | { type: "session-close" }
   | { type: "heartbeat-ack" }
@@ -53,6 +57,7 @@ export type HostDaemonServerTerminalMessage = Exclude<
   | HostDaemonOnlineRpcCancelMessage
   | HostDaemonWatchSetReplaceMessage
   | HostDaemonConnectSharesReplaceMessage
+  | HostDaemonConnectNextReplaceMessage
 >;
 
 export type ServerMovedNotice =
@@ -87,6 +92,7 @@ export interface ServerConnectionOptions {
     | HostDaemonActiveThread[]
     | Promise<HostDaemonActiveThread[]>;
   getUndeliveredEventThreadIds?: () => string[];
+  getOpenThreadWork?: () => HostDaemonOpenThreadWork[];
   getLoadedEnvironments?: () =>
     | HostDaemonLoadedEnvironment[]
     | Promise<HostDaemonLoadedEnvironment[]>;
@@ -103,6 +109,7 @@ export interface ServerConnectionOptions {
   onConnectSharesReplace?: (
     message: HostDaemonConnectSharesReplaceMessage,
   ) => void | Promise<void>;
+  onConnectNextReplace?: (message: HostDaemonConnectNextReplaceMessage) => void;
   onSessionOpened?: (
     session: HostDaemonSessionOpenResponse,
   ) => void | Promise<void>;
@@ -111,6 +118,10 @@ export interface ServerConnectionOptions {
     environment: HostDaemonSessionOpenResponse["machineEnvironment"],
   ) => void;
   onMachineShutdown?: () => void | Promise<void>;
+  onInteractiveRequestsEnded?: (args: {
+    reason: string;
+    requests: HostDaemonInteractiveRequestKey[];
+  }) => void;
   onServerMoved?: (move: ServerMovedNotice) => Promise<void>;
   createWebSocket?: CreateReconnectingWebSocket;
   startupTimeoutMs?: number;

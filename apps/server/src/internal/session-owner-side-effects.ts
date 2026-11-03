@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   closeSession,
+  getSessionById,
   hostDaemonSessions,
   listActiveHostThreads,
   listHostThreadIds,
@@ -8,6 +9,8 @@ import {
 } from "@bb/db";
 import type {
   HostDaemonActiveThread,
+  HostDaemonInteractiveRequestKey,
+  HostDaemonOpenThreadWork,
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import { HOST_RECONNECT_GRACE_MS, LEASE_TIMEOUT_MS } from "../constants.js";
@@ -18,9 +21,11 @@ import type {
 import {
   interruptActiveThreadsForHost,
   reconcileDaemonReportedThreads,
+  resendStopsAwaitingDaemon,
 } from "../services/threads/thread-lifecycle.js";
 import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
+import { reconcileDaemonReportedOpenWork } from "../services/threads/open-work-reconciliation.js";
 import { interruptEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -39,6 +44,7 @@ type LostHostWorkDeps = LoggedPendingInteractionWorkSessionDeps;
 
 interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
+  openThreadWork: HostDaemonOpenThreadWork[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
   previousSession: HostDaemonSessionRow | null;
@@ -65,7 +71,7 @@ interface HandleHostRemovedArgs {
 export async function handleHostSessionOpened(
   deps: HostSessionOpenedDeps,
   args: HandleHostSessionOpenedArgs,
-): Promise<void> {
+): Promise<{ endedInteractiveRequests: HostDaemonInteractiveRequestKey[] }> {
   deps.logger.info(
     {
       sessionId: args.openedSession.id,
@@ -77,39 +83,48 @@ export async function handleHostSessionOpened(
 
   const sameDaemonInstance =
     args.previousSession?.instanceId === args.openedSession.instanceId;
-  if (
-    args.previousSession &&
-    args.previousSession.id !== args.openedSession.id
-  ) {
-    deps.hub.cancelPendingDaemonDisconnect(args.previousSession.id);
+  const replacedSession =
+    args.previousSession?.id === args.openedSession.id
+      ? null
+      : args.previousSession;
+  if (replacedSession) {
+    deps.hub.cancelPendingDaemonDisconnect(replacedSession.id);
 
-    if (args.previousSession.status === "active") {
+    if (replacedSession.status === "active") {
       if (sameDaemonInstance) {
-        deps.hub.closeDaemonSessionSocket(args.previousSession.id, "replaced");
+        deps.hub.closeDaemonSessionSocket(replacedSession.id, "replaced");
       } else {
-        deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+        deps.hub.closeDaemonSession(replacedSession.id, "replaced");
       }
       deps.terminalSessions.handleDaemonSessionClosed({
-        sessionId: args.previousSession.id,
+        sessionId: replacedSession.id,
       });
     }
+  }
 
-    if (!sameDaemonInstance) {
-      interruptEnvironmentProvisioningForHost(deps, {
-        hostId: args.hostId,
-        reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
-      });
-      interruptPendingInteractionsForHostThreads(deps, {
-        hostId: args.hostId,
-        reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
-      });
-      interruptActiveThreadsForHost(deps, {
-        includeStopping: false,
-        hostId: args.hostId,
-        reason: "host-daemon-restarted",
-      });
-      settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
-    }
+  await deps.providerRegistry.whenRegistrationsSettled();
+  if (
+    getSessionById(deps.db, { sessionId: args.openedSession.id })?.status !==
+    "active"
+  ) {
+    return { endedInteractiveRequests: [] };
+  }
+
+  if (replacedSession && !sameDaemonInstance) {
+    interruptEnvironmentProvisioningForHost(deps, {
+      hostId: args.hostId,
+      reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
+    });
+    interruptPendingInteractionsForHostThreads(deps, {
+      hostId: args.hostId,
+      reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
+    });
+    interruptActiveThreadsForHost(deps, {
+      includeStopping: false,
+      hostId: args.hostId,
+      reason: "host-daemon-restarted",
+    });
+    settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   }
 
   await reconcileDaemonReportedThreads(deps, {
@@ -118,6 +133,14 @@ export async function handleHostSessionOpened(
     sameDaemonInstance,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,
   });
+
+  return {
+    endedInteractiveRequests: reconcileDaemonReportedOpenWork(deps, {
+      hostId: args.hostId,
+      openThreadWork: args.openThreadWork,
+      undeliveredEventThreadIds: args.undeliveredEventThreadIds,
+    }),
+  };
 }
 
 export function handleDaemonSocketClosed(
@@ -132,10 +155,12 @@ export function handleDaemonSocketClosed(
 }
 
 export function handleDaemonSocketOpened(
-  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  deps: LoggedPendingInteractionWorkSessionDeps,
   args: { hostId: string },
 ): void {
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
+  deps.pendingInteractions.redeliverAnswersAwaitingDaemon(args.hostId);
+  resendStopsAwaitingDaemon(deps, args.hostId);
 }
 
 export function handleDaemonSessionSilent(

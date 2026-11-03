@@ -8,8 +8,8 @@ const fake = vi.hoisted(() => ({
   latency: 0,
 }));
 
-vi.mock("node:child_process", () => ({
-  execFile(
+vi.mock("@get-bb/plugin-sdk/process", () => ({
+  experimental_execHostFileCallback(
     file: string,
     args: string[],
     _options: object,

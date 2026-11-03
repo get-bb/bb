@@ -6,6 +6,7 @@ import type {
 import {
   SplitButton,
   type SplitButtonAction,
+  type SplitButtonMenuAction,
 } from "@/components/ui/split-button.js";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -66,7 +67,8 @@ export function ThreadWorkspaceOpenButton({
       />
     ),
   };
-  const secondaryActions: SplitButtonAction[] = targets.map((target) => ({
+  const secondaryActions: SplitButtonMenuAction[] = targets.map((target) => ({
+    id: target.id,
     label: target.label,
     onSelect: () => {
       void openTarget(target, () => onOpenTarget(target.id));

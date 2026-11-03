@@ -12,6 +12,7 @@ import {
   recordedThreadExecutionOptionsSchema,
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
+import { pluginIdSchema } from "./plugin-id.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 import {
   systemMessageKindSchema,
@@ -19,23 +20,7 @@ import {
   systemThreadInterruptedReasonSchema,
 } from "./system-message.js";
 
-export const systemEventTypeValues = [
-  "client/thread/start",
-  "client/turn/requested",
-  "client/turn/rejected",
-  "client/turn/start",
-  "system/error",
-  "system/manager/user_message",
-  "system/thread/interrupted",
-  "system/operation",
-  "system/interaction/lifecycle",
-  "system/permissionGrant/lifecycle",
-  "system/userQuestion/lifecycle",
-  "system/thread-provisioning",
-  // Legacy persisted watchdog diagnostic; retained for read/decode/render
-  // only, with no current producer.
-  "system/provider-turn-watchdog",
-] as const;
+export { systemEventTypeValues } from "./thread-event-types.js";
 
 const threadTurnInitiatorValues = ["user", "agent", "system"] as const;
 export const threadTurnInitiatorSchema = z.enum(threadTurnInitiatorValues);
@@ -90,6 +75,7 @@ export const turnRequestEventDataSchema = z.object({
   source: z.enum(["spawn", "tell"]),
   initiator: threadTurnInitiatorSchema,
   senderThreadId: z.string().nullable(),
+  originPluginId: pluginIdSchema.optional(),
   systemMessageKind: systemMessageKindSchema.optional(),
   systemMessageSubject: systemMessageSubjectSchema.nullable().optional(),
   input: z.array(promptInputSchema),

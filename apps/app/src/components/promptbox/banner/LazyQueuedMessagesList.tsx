@@ -12,7 +12,7 @@ import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
 } from "@/components/promptbox/banner/queued-messages-layout";
-import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 
@@ -27,6 +27,12 @@ export interface QueuedMessageGroupBoundaryRequest {
 export interface QueuedMessageEditRequest {
   queuedMessageId: string;
   queuedMessageIndex: number;
+}
+
+export interface QueuedMessageSendTimeRequest {
+  expectedUpdatedAt: number;
+  queuedMessageId: string;
+  sendAt: number | null;
 }
 
 export interface QueuedMessageInlineEditor {
@@ -50,6 +56,7 @@ export interface QueuedMessagesListProps {
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
   onDelete: (id: string) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;

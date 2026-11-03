@@ -37,7 +37,7 @@ const AUTOMATION_RUN_COLUMNS = `id, automation_id AS automationId, run_mode AS r
 
 export type Db = Database.Database;
 
-const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
+export const AUTOMATION_QUICK_RETRY_LIMIT = 2;
 export const AUTOMATION_RETRY_BASE_MS = 30_000;
 
 export interface AutomationRow {
@@ -217,6 +217,7 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `DROP TABLE IF EXISTS automation_thread_marks;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -485,6 +486,22 @@ export function listAutomationsForProject(
     .map(requiredAutomationRow);
 }
 
+export function listAutomationsTargetingThread(
+  db: Db,
+  targetThreadId: string,
+): AutomationRow[] {
+  return db
+    .prepare(
+      `SELECT
+         ${AUTOMATION_COLUMNS}
+       FROM automations
+       WHERE target_thread_id = ?
+       ORDER BY created_at DESC, id DESC`,
+    )
+    .all(targetThreadId)
+    .map(requiredAutomationRow);
+}
+
 export function listAllAutomations(db: Db): AutomationRow[] {
   return db
     .prepare(
@@ -589,9 +606,6 @@ export function deleteAutomation(
   const existing = getAutomationForProject(db, args);
   if (!existing) return false;
   db.prepare(`DELETE FROM automation_runs WHERE automation_id = ?`).run(
-    args.automationId,
-  );
-  db.prepare(`DELETE FROM automation_thread_marks WHERE automation_id = ?`).run(
     args.automationId,
   );
   db.prepare(`DELETE FROM automations WHERE id = ? AND project_id = ?`).run(
@@ -743,27 +757,22 @@ function recordAutomationFailure(
     error: string;
     now: number;
   },
-): { consecutiveFailures: number; paused: boolean; retryAt: number | null } {
+): void {
   const automation = getAutomation(db, args.automationId);
-  if (!automation) {
-    return { consecutiveFailures: 0, paused: false, retryAt: null };
-  }
+  if (!automation) return;
   const consecutiveFailures = automation.consecutiveFailures + 1;
-  const paused = consecutiveFailures >= AUTOMATION_MAX_CONSECUTIVE_FAILURES;
   const retryAt =
-    args.retrySchedule && automation.enabled && !paused
+    args.retrySchedule &&
+    automation.enabled &&
+    consecutiveFailures <= AUTOMATION_QUICK_RETRY_LIMIT
       ? args.now + automationRetryDelayMs(consecutiveFailures)
       : null;
-  const lastError = paused
-    ? `${args.error} (automation paused after ${consecutiveFailures} consecutive failures)`
-    : args.error;
   db.prepare(
     `UPDATE automations SET
-       enabled = CASE WHEN @paused = 1 THEN 0 ELSE enabled END,
        next_run_at = CASE
-         WHEN @paused = 1 THEN NULL
-         WHEN @retryAt IS NOT NULL THEN @retryAt
-         ELSE next_run_at
+         WHEN @retryAt IS NULL THEN next_run_at
+         WHEN next_run_at IS NULL THEN @retryAt
+         ELSE MIN(@retryAt, next_run_at)
        END,
        consecutive_failures = @consecutiveFailures,
        last_run_status = 'failed',
@@ -772,13 +781,11 @@ function recordAutomationFailure(
      WHERE id = @automationId`,
   ).run({
     automationId: args.automationId,
-    paused: boolToInt(paused),
     retryAt,
     consecutiveFailures,
-    lastError,
+    lastError: args.error,
     now: args.now,
   });
-  return { consecutiveFailures, paused, retryAt };
 }
 
 export function closeAutomationRun(
@@ -935,30 +942,6 @@ export function setAutomationRunThread(
   return getAutomationRun(db, args.runId);
 }
 
-export function markAutomationThread(
-  db: Db,
-  args: { threadId: string; automationId: string; runId: string; now: number },
-): void {
-  db.prepare(
-    `INSERT OR REPLACE INTO automation_thread_marks (
-       thread_id, automation_id, run_id, created_at
-     ) VALUES (?, ?, ?, ?)`,
-  ).run(args.threadId, args.automationId, args.runId, args.now);
-}
-
-export function isAutomationSpawnedThread(db: Db, threadId: string): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT thread_id FROM automation_thread_marks WHERE thread_id = ? LIMIT 1`,
-      )
-      .get(threadId) !== undefined ||
-    db
-      .prepare(`SELECT id FROM automation_runs WHERE thread_id = ? LIMIT 1`)
-      .get(threadId) !== undefined
-  );
-}
-
 export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
   return db
     .prepare(
@@ -984,6 +967,24 @@ export function listRunningAutomationRunsByThread(
          ORDER BY started_at DESC, id DESC`,
     )
     .all(threadId) as AutomationRunRow[];
+}
+
+export function getLatestAutomationRunForThread(
+  db: Db,
+  threadId: string,
+): AutomationRunRow | null {
+  return optionalRunRow(
+    db
+      .prepare(
+        `SELECT
+           ${AUTOMATION_RUN_COLUMNS}
+         FROM automation_runs
+         WHERE thread_id = ?
+         ORDER BY started_at DESC, id DESC
+         LIMIT 1`,
+      )
+      .get(threadId),
+  );
 }
 
 export function listAutomationRuns(
@@ -1025,25 +1026,20 @@ export function listAutomationRuns(
   return rows.map(requiredRunRow);
 }
 
-export function disableAutomationsForDeletedThread(
+export function disableAutomationsForTargetThread(
   db: Db,
-  args: { threadId: string; now: number },
+  args: { threadId: string; error: string; now: number },
 ): AutomationRow[] {
-  db.prepare(
-    `UPDATE automations SET
-       enabled = 0,
-       next_run_at = NULL,
-       last_error = 'target thread deleted',
-       updated_at = @now
-     WHERE target_thread_id = @threadId AND enabled = 1`,
-  ).run(args);
   return db
     .prepare(
-      `SELECT
-         ${AUTOMATION_COLUMNS}
-       FROM automations
-       WHERE target_thread_id = @threadId AND last_error = 'target thread deleted'
-       ORDER BY updated_at DESC`,
+      `UPDATE automations SET
+         enabled = 0,
+         next_run_at = NULL,
+         last_error = @error,
+         updated_at = @now
+       WHERE target_thread_id = @threadId AND enabled = 1
+       RETURNING
+         ${AUTOMATION_COLUMNS}`,
     )
     .all(args)
     .map(requiredAutomationRow);

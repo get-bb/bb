@@ -24,20 +24,24 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { type ThreadQueuedMessage } from "@bb/domain";
+import {
+  getRelativeHostPathSegments,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import {
   emitPluginMessageCancelled,
+  emitPluginMessageQueued,
   emitPluginThreadUnarchived,
 } from "../../services/plugins/plugin-thread-events.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import { retryFailedTurn } from "../../services/threads/turn-retry.js";
+import { regenerateThreadTitle } from "../../services/threads/title-generation.js";
 import {
   requireConnectedHostSession,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
-import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { resolvePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
   compactThreadContext,
@@ -48,8 +52,10 @@ import {
   holdQueuedMessageForEdit,
   releaseQueuedMessageEditHold,
   requestEditReleasedQueuedMessageDispatch,
+  resolveQueuedMessageExecutionChange,
   sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
+import { requestQueuedMessageDispatch } from "../../services/threads/queued-message-dispatch.js";
 import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
@@ -68,6 +74,7 @@ import { stopThreadForCurrentState } from "../../services/threads/thread-lifecyc
 import {
   buildThreadStatusChangeMetadata,
   getThreadPromptBannerActivity,
+  getThreadTimelineGoal,
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
@@ -292,15 +299,38 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
-    const input = await resolvePromptAttachmentReferences({
-      db: deps.db,
-      dataDir: deps.config.dataDir,
-      input: payload.input,
-      projectId: thread.projectId,
-      hostId: threadTargetHostId(deps, thread),
+    if (
+      payload.sendAt !== undefined &&
+      payload.sendAt !== null &&
+      payload.sendAt <= Date.now()
+    ) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "sendAt must be in the future; pass null to clear the send time",
+      );
+    }
+    const content =
+      payload.input === undefined
+        ? null
+        : await resolvePromptAttachmentReferences({
+            db: deps.db,
+            dataDir: deps.config.dataDir,
+            input: payload.input,
+            projectId: thread.projectId,
+            hostId: threadTargetHostId(deps, thread),
+          });
+    const execution = await resolveQueuedMessageExecutionChange(deps, {
+      expectedUpdatedAt: payload.expectedUpdatedAt,
+      queuedMessageId: context.req.param("queuedMessageId"),
+      request: payload,
+      thread,
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
-      content: input,
+      content,
+      execution,
+      reschedule:
+        payload.sendAt === undefined ? null : { sendAt: payload.sendAt },
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,
@@ -322,13 +352,29 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Queued message changed since editing began",
       );
     }
+    if (result.kind === "invalid_execution_options") {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "This queued message is grouped with messages that use different execution options; ungroup it first",
+      );
+    }
+    const queuedMessage = toThreadQueuedMessage(result.queuedMessage);
+    if (result.rescheduled) {
+      emitPluginMessageQueued(queuedMessage);
+    }
     if (result.releasedEditHold) {
       requestEditReleasedQueuedMessageDispatch(deps, {
-        queuedMessageId: result.queuedMessage.id,
+        queuedMessageId: queuedMessage.id,
+        threadId: thread.id,
+      });
+    } else if (result.rescheduled && queuedMessage.sendAt === null) {
+      requestQueuedMessageDispatch(deps, {
+        kind: "thread-ready",
         threadId: thread.id,
       });
     }
-    return context.json(toThreadQueuedMessage(result.queuedMessage));
+    return context.json(queuedMessage);
   });
 
   post(routes.holdQueuedMessageForEdit, (context) => {
@@ -436,9 +482,8 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.clearGoal, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const activity = getThreadPromptBannerActivity(deps, thread);
-    if (activity.activeGoalCount === 0) {
-      throw new ApiError(409, "invalid_request", "No active Goal to clear");
+    if (getThreadTimelineGoal(deps, thread) === null) {
+      throw new ApiError(409, "invalid_request", "No Goal to clear");
     }
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
@@ -470,19 +515,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     });
     const updatedThread = requirePublicThread(deps.db, thread.id);
-    const updatedActivity = getThreadPromptBannerActivity(deps, updatedThread);
-    if (updatedActivity.activeGoalCount > 0 && !result.cleared) {
+    if (getThreadTimelineGoal(deps, updatedThread) !== null) {
       throw new ApiError(
         409,
         "invalid_request",
-        "The provider did not clear the active Goal",
-      );
-    }
-    if (updatedActivity.activeGoalCount > 0) {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "The provider did not confirm that the active Goal was cleared",
+        result.cleared
+          ? "The provider did not confirm that the Goal was cleared"
+          : "The provider did not clear the Goal",
       );
     }
     return context.json({ ok: true });
@@ -490,8 +529,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.open, (context, payload) => {
     const publicThread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.file !== null) {
-      parseSafeRelativeRoutePath(payload.file.path);
+    if (
+      payload.file !== null &&
+      getRelativeHostPathSegments(payload.file.path) === null
+    ) {
+      throw new ApiError(400, "invalid_path", "Invalid file path");
     }
     const delivered = deps.hub.notifyThreadOpen(
       { projectId: publicThread.projectId, threadId: publicThread.id },
@@ -528,6 +570,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     if (!thread) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
+    return context.json(toThreadResponseFromThread(deps, { thread }));
+  });
+
+  post(routes.regenerateTitle, async (context) => {
+    const thread = await regenerateThreadTitle(deps, {
+      thread: requirePublicThread(deps.db, context.req.param("id")),
+    });
     return context.json(toThreadResponseFromThread(deps, { thread }));
   });
 

@@ -18,6 +18,7 @@ export {
   type FakeLogLevel,
   type FakeMentionProviderRecord,
   type ExperimentalFakeHostRpcCall,
+  type InternalDoNotUseFakeTunnelIngress,
   type FakePluginHarness,
   type FakePluginHost,
   type FakePluginBehaviorDrivers,
@@ -41,6 +42,7 @@ export {
   makeQueueEntry,
   makeThreadResponse,
   makeTurnFailedEvent,
+  makePanelController as experimental_makePanelController,
 } from "./fixtures.js";
 export {
   scanPublicSdkOnly as experimental_scanPublicSdkOnly,

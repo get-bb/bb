@@ -8,17 +8,12 @@ import {
   type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type {
-  CreateQueuedMessageRequest,
   ExistingThreadExecutionInputSources,
   SendMessageRequest,
 } from "@bb/server-contract";
 import type { FollowUpSubmitMode } from "./follow-up-submit-mode.js";
 
 export interface SendMessageMutationRequest extends SendMessageRequest {
-  id: string;
-}
-
-export interface CreateQueuedFollowUpRequest extends CreateQueuedMessageRequest {
   id: string;
 }
 
@@ -57,10 +52,6 @@ interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   execution: FollowUpExecutionSelection;
 }
 
-interface BuildCreateQueuedFollowUpRequestArgs extends BaseFollowUpRequestArgs {
-  execution: FollowUpExecutionSelection;
-}
-
 interface BuildSendQueuedMessageByIdRequestArgs {
   queuedMessageId: string;
   threadId: string;
@@ -85,15 +76,6 @@ interface CanSubmitFollowUpShortcutArgs {
 }
 
 interface BuildFollowUpSubmitModeArgs {
-  hasPendingInteraction: boolean;
-  isDefaultExecutionOptionsLoading: boolean;
-  isStopRequested: boolean;
-  onStop: () => void;
-  runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
-}
-
-interface BuildSideChatSubmitModeArgs {
-  childThreadId: string | null;
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
   isStopRequested: boolean;
@@ -152,28 +134,6 @@ export function buildFollowUpSubmitMode({
     return { kind: "blocked", reason: "loading-execution-options" };
   }
   return { kind: "ready" };
-}
-
-export function buildSideChatSubmitMode({
-  childThreadId,
-  hasPendingInteraction,
-  isDefaultExecutionOptionsLoading,
-  isStopRequested,
-  onStop,
-  runtimeDisplayStatus,
-}: BuildSideChatSubmitModeArgs): FollowUpSubmitMode {
-  if (childThreadId === null) {
-    return isDefaultExecutionOptionsLoading
-      ? { kind: "blocked", reason: "loading-execution-options" }
-      : { kind: "ready" };
-  }
-  return buildFollowUpSubmitMode({
-    hasPendingInteraction,
-    isDefaultExecutionOptionsLoading,
-    isStopRequested,
-    onStop,
-    runtimeDisplayStatus,
-  });
 }
 
 export function canSubmitFollowUpShortcut({
@@ -262,22 +222,6 @@ function buildSteerFollowUpRequest({
     id: threadId,
     input,
     mode: "steer-if-active",
-    ...buildSharedThreadExecutionRequestFields(execution),
-  };
-}
-
-export function buildCreateQueuedFollowUpRequest({
-  execution,
-  input,
-  threadId,
-}: BuildCreateQueuedFollowUpRequestArgs): CreateQueuedFollowUpRequest | null {
-  if (input.length === 0) {
-    return null;
-  }
-
-  return {
-    id: threadId,
-    input,
     ...buildSharedThreadExecutionRequestFields(execution),
   };
 }

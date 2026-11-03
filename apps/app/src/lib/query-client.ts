@@ -9,6 +9,7 @@ import {
   showMutationErrorToast,
 } from "./mutation-errors";
 import { createBrowserLifecycleFetchController } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
+import { registerThreadEntityViews } from "@/hooks/cache-owners/thread-entity-store";
 import {
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
@@ -101,7 +102,7 @@ export function createAppQueryClient(
   const showMutationErrorToasts = options.showMutationErrorToasts ?? true;
   const shouldRefetchOnWindowFocus = options.shouldRefetchOnWindowFocus;
 
-  return new QueryClient({
+  const queryClient = new QueryClient({
     mutationCache: new MutationCache({
       onError: (error, _variables, _context, mutation) => {
         if (!showMutationErrorToasts) {
@@ -138,4 +139,6 @@ export function createAppQueryClient(
       },
     },
   });
+  registerThreadEntityViews(queryClient);
+  return queryClient;
 }

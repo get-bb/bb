@@ -21,14 +21,10 @@ export function WorkflowWorkRowBody({
     );
   }
 
-  const contentKey = row.workflow.agents
-    .map((agent) => `${agent.index}:${agent.state}:${agent.lastProgressAt}`)
-    .join("|");
   return (
     <TimelineDetailScroll
       size={size}
       streaming={collapsiblePhases ? false : row.status === "pending"}
-      contentKey={contentKey}
       scrollClassName={collapsiblePhases ? "px-2.5 py-2" : undefined}
     >
       <WorkflowProgress

@@ -28,7 +28,7 @@ import {
   buildPluginPaletteActions,
 } from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
@@ -114,7 +114,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       slots: [slot],
       threadId,
       projectId,
-      openThreadPanel: getActiveThreadPanelOpener(),
+      panel: getFocusedAppPanelController(),
     })[0];
     if (!action) return false;
     action.run();
@@ -136,7 +136,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           slots: appPluginCommands,
           threadId,
           projectId,
-          openThreadPanel: getActiveThreadPanelOpener(),
+          panel: getFocusedAppPanelController(),
         }),
         ...buildPluginComposerCommandActions({
           slots: composerPluginCommands,

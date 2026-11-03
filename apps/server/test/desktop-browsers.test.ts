@@ -1,4 +1,9 @@
-import { getStoredThreadTabs, markThreadDeleted } from "@bb/db";
+import { eq } from "drizzle-orm";
+import {
+  getStoredThreadTabs,
+  hostDaemonSessions,
+  markThreadDeleted,
+} from "@bb/db";
 import {
   desktopBrowserLeaseSchema,
   desktopBrowserResultSchemas,
@@ -242,6 +247,7 @@ describe("desktop browser public API", () => {
   it("blocks hostile origins and simple requests before any host RPC", async () => {
     await withBrowserTest(async (test) => {
       for (const action of [
+        "broker-proof",
         "instances",
         "tabs",
         "create",
@@ -1123,5 +1129,55 @@ describe("desktop browser public API", () => {
       test.change({ generation: "reconnected-generation" }, []);
       expect(test.stored()).toEqual([]);
     });
+  });
+});
+
+it("routes broker challenges to the selected host and rejects legacy daemons before RPC", async () => {
+  await withBrowserTest(async (test, harness) => {
+    const challenge = "c".repeat(64);
+    const proof = "a".repeat(64);
+    test.intercept(({ command }) =>
+      command.type === "desktop.broker.prove"
+        ? { ok: true, result: { proof } }
+        : null,
+    );
+    const response = await test.post("broker-proof", {
+      hostId: test.host.id,
+      challenge,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ proof });
+    expect(test.responder.requests.at(-1)?.command).toEqual({
+      type: "desktop.broker.prove",
+      challenge,
+    });
+    const count = test.responder.requests.length;
+    expect(
+      (await test.post("broker-proof", { hostId: "missing-host", challenge }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await test.post("broker-proof", {
+          hostId: test.host.id,
+          challenge: "short",
+        })
+      ).status,
+    ).toBe(400);
+    expect(test.responder.requests).toHaveLength(count);
+    for (const protocolVersion of [246, 247]) {
+      harness.db
+        .update(hostDaemonSessions)
+        .set({ protocolVersion })
+        .where(eq(hostDaemonSessions.id, test.session.id))
+        .run();
+      const legacy = await test.post("broker-proof", {
+        hostId: test.host.id,
+        challenge,
+      });
+      expect(legacy.status).toBe(409);
+      expect(test.responder.requests).toHaveLength(count);
+    }
   });
 });

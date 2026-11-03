@@ -1,3 +1,4 @@
+import "../../../.ladle/composer-plugin";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   Environment,
@@ -6,14 +7,12 @@ import type {
   PromptMentionResource,
   PromptTextMention,
   ThreadQueuedMessage,
-  WorkspaceStatus,
 } from "@bb/domain";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import type {
   SystemExecutionOptionsModelLoadError,
   ThreadContextWindowUsage,
@@ -30,12 +29,10 @@ import {
   findEnvironmentDisplayProvider,
   getEnvironmentSummaryChrome,
 } from "@/lib/environment-workspace-display";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  type AttachmentsConfig,
-  type PromptBoxAction,
-  type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+import type {
+  AttachmentsConfig,
+  PromptBoxAction,
+} from "@/components/promptbox/ComposerBox";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   QueuedMessageEditRequest,
@@ -47,14 +44,21 @@ import type { CompactBeforeSendOffer } from "@/components/promptbox/CompactBefor
 import {
   formatWorkspaceCheckoutDisplay,
   type WorkspaceCheckoutDisplay,
-} from "@/lib/workspace-checkout-display";
+} from "@bb/shared-ui/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import {
+  selectWorkspaceChangedFilesSection,
+} from "../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import {
+  GitSegmentFixtureProvider,
+  gitSegmentFixtureMergeBase,
+} from "@/test/fixtures/git-segment-plugin";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  makeTypeaheadConfig,
   useInteractiveExecutionControls,
   STORY_ENVIRONMENT_PROVIDERS,
   PROJECT_NAMES,
@@ -65,14 +69,19 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
-import { queuedInputToDraft } from "@bb/client-core";
+import {
+  promptDraftToInput,
+  type PromptDraftState,
+  queuedInputToDraft,
+} from "@bb/client-core";
+import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 const baseExecution = makeExecutionControlsProps({
@@ -282,16 +291,7 @@ const usage: ThreadContextWindowUsage = {
   estimated: false,
 };
 
-const typeaheadBase: TypeaheadConfig = {
-  mention: {
-    results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
-    isLoading: false,
-    isRefreshing: false,
-    isError: false,
-    onQueryChange: noop,
-  },
-  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-};
+const typeaheadBase = makeTypeaheadConfig();
 
 const attachmentsBase: AttachmentsConfig = {
   items: [],
@@ -421,58 +421,72 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     headSha: null,
   },
   mergeBase: null,
+  allChanges: {
+    insertions: 128,
+    deletions: 24,
+    lineStatsComplete: true,
+    fileCount: 3,
+  },
 };
 
 const dirtyContextBannerSection =
   selectWorkspaceChangedFilesSection(dirtyWorkspaceStatus);
 
 const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
+  <GitSegmentFixtureProvider
+    value={{
+      section: dirtyContextBannerSection,
+      mergeBase: gitSegmentFixtureMergeBase(),
+    }}
+  >
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      parentThread: null,
+    }}
     archivedSection={null}
     environmentGoneSection={null}
-    gitSection={{
-      changedFiles: dirtyContextBannerSection,
-      mergeBase: {
-        branch: "main",
-        options: ["main", "develop", "release/2026-05"],
-        onChange: noop,
-      },
-      onPromptBannerFileClick: noop,
-    }}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
+  </GitSegmentFixtureProvider>
 ) : null;
 
 const archivedContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      parentThread: null,
+    }}
     archivedSection={{ archivedAt: 1_731_456_000_000 }}
     environmentGoneSection={null}
-    gitSection={null}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
 );
 
 const environmentGoneContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
+    input={{
+      threadId: "thr_story",
+      projectId: "proj_story",
+      environment: null,
+    }}
+    core={{
+      parentThread: null,
+    }}
     archivedSection={null}
     environmentGoneSection={{ status: "destroyed" }}
-    gitSection={null}
-    gitSectionPending={false}
-    parentThreadSection={null}
-    childThreadsSection={null}
-    pullRequestSection={null}
-    expandedSection={null}
-    onToggleSection={noop}
+    expandedSegment={null}
+    onToggleSegment={noop}
   />
 );
 
@@ -740,6 +754,7 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        onChangeSendTime={noopAsync}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
         onDelete={(id) =>

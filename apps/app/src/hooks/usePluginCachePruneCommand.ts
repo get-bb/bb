@@ -1,6 +1,6 @@
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast } from "@/components/ui/app-toast";
-import { formatByteSize } from "@/lib/format-byte-size";
+import { formatByteSize } from "@bb/shared-ui/lib/format-byte-size";
 import { prunePluginCache } from "@/hooks/queries/plugin-settings-queries";
 
 export function usePluginCachePruneCommand(): void {

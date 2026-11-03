@@ -32,7 +32,7 @@ bb status --json
 | Enroll, create, update, suspend, or remove machines; move the server    | `bb guide machines`            |
 | Projects, sources, attachments, project files                           | `bb guide projects`            |
 | Providers, models, service tiers, custom models                         | `bb guide providers`           |
-| Dev servers and other long-running commands                             | `bb guide terminals`           |
+| Run a command on another machine; dev servers and long-running commands | `bb guide terminals`           |
 | Settings, keyboard shortcuts, sidebar preferences, themes, files, voice | `bb guide customization`       |
 | `AGENTS.md` and skills                                                  | `bb guide agent-configuration` |
 | Plugins and marketplaces                                                | `bb guide plugins`             |
@@ -111,7 +111,6 @@ bb environment providers --json
 bb provider list --environment "$BB_ENVIRONMENT_ID" --json
 bb thread show "$BB_THREAD_ID" --json
 bb thread context --self --json
-bb environment status "$BB_ENVIRONMENT_ID" --json
 bb plugin list --json
 bb skill list --environment "$BB_ENVIRONMENT_ID" --json
 ```

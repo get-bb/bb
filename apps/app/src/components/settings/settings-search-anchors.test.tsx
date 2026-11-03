@@ -44,6 +44,9 @@ function registerReplacementPlugin() {
       diffRenderers: [
         { id: "diffs", title: "Inkwell diffs", component: () => null },
       ],
+      composers: [
+        { id: "composer", title: "Inkwell composer", component: () => null },
+      ],
       fileOpeners: [
         {
           id: "editor",

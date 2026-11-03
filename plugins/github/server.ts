@@ -1,8 +1,8 @@
+import { experimental_execHostFileCallback as execFile } from "@get-bb/plugin-sdk/process";
 import {
   experimental_runVcsProcess as runVcsProcess,
   type ExperimentalVcsProcessPriority as VcsProcessPriority,
 } from "@get-bb/plugin-sdk/host";
-import { execFile } from "node:child_process";
 import {
   defineRpcContract,
   PluginCliError,
@@ -348,6 +348,17 @@ function describeIgnoredExtraRepos(ignored: string[]): string {
     `that ${ignored.length === 1 ? "is" : "are"} not "owner/repo": ${ignored.join(", ")}`
   );
 }
+
+const environmentPullRequestUrlsSchema = z.record(
+  z.string(),
+  z.union([
+    z.object({
+      outcome: z.literal("available"),
+      pullRequest: z.object({ url: z.string() }),
+    }),
+    z.object({ outcome: z.enum(["absent", "unavailable"]) }),
+  ]),
+);
 
 function run(
   file: string,
@@ -1448,11 +1459,15 @@ export default async function plugin(bb: BbPluginApi) {
         const thread = await bb.sdk.threads.get({ threadId });
         if (thread?.environmentId) {
           environmentId = thread.environmentId;
-          const result = await bb.sdk.environments.pullRequest({
-            environmentId: thread.environmentId,
+          const rows = await bb.sdk.plugins.callRpc({
+            pluginId: "bb--github-pr-status",
+            method: "pullRequests",
+            input: { keys: [thread.environmentId] },
+            outputSchema: environmentPullRequestUrlsSchema,
           });
+          const result = rows[thread.environmentId];
           const url =
-            result.outcome === "available" ? result.pullRequest.url : null;
+            result?.outcome === "available" ? result.pullRequest.url : null;
           const match =
             typeof url === "string"
               ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)

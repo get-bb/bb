@@ -149,6 +149,7 @@ describe("parseModelsResponse", () => {
         model: "good",
         displayName: "Good",
         description: "",
+        reasoningDiscovery: "known",
         supportedReasoningEfforts: [
           { reasoningEffort: "medium", description: "Medium" },
         ],

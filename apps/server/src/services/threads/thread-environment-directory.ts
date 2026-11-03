@@ -18,7 +18,7 @@ import {
 } from "@bb/domain";
 import type { DynamicTool, Thread, ToolCallResponse } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
-import { runLiveHostCommand } from "../hosts/live-command.js";
+import { runTrackedEnvironmentAttach } from "../environments/environment-engine.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
@@ -242,7 +242,7 @@ async function provisionUnmanagedEnvironmentForPath(
   });
 
   try {
-    await runLiveHostCommand(deps, {
+    await runTrackedEnvironmentAttach(deps, {
       hostId: args.currentEnvironment.hostId,
       command,
       timeoutMs: UPDATE_ENVIRONMENT_DIRECTORY_TIMEOUT_MS,

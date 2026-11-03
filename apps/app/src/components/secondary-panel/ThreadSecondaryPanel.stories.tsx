@@ -1,3 +1,4 @@
+import { ThreadInfoFixedTabContent } from "@/components/secondary-panel/thread-info-registration";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,6 @@ import {
   type SecondaryPanelFixedTab,
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
-import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -38,13 +38,13 @@ import {
 } from "./ThreadMetadataContent";
 import {
   baseProps as baseMetadataProps,
-  makePullRequest,
-  makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileIconName } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { FilePreview } from "./FilePreview";
 import { threadListQueryKey } from "@/hooks/queries/query-keys";
+
+type ThreadSecondaryPanelTab = "git-diff" | "thread-info";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -68,6 +68,8 @@ function createStoryFixedTabs(
     {
       ariaLabel: "Show thread info panel",
       label: "Info",
+      contentFillsRegion: true,
+      renderContent: () => <ThreadInfoFixedTabContent />,
       leadingVisual: <Icon name="Info" />,
       onSelect: () => onSelectPanel("thread-info"),
       tab: createThreadInfoFixedPanelTab(),
@@ -78,6 +80,8 @@ function createStoryFixedTabs(
           {
             ariaLabel: "Show diff panel",
             label: "Diff",
+            contentFillsRegion: true,
+            renderContent: () => null,
             leadingVisual: <Icon name="FileDiff" />,
             onSelect: () => onSelectPanel("git-diff"),
             tab: createGitDiffFixedPanelTab(),
@@ -142,74 +146,6 @@ const INFO_STORAGE_FILES: readonly WorkspaceFile[] = [
   { path: "screenshots/right-panel-light.png", name: "right-panel-light.png" },
 ];
 
-const INFO_COMMITS = [
-  {
-    sha: "48a1bd6700000000000000000000000000000000",
-    shortSha: "48a1bd67",
-    subject: "Match right panel surfaces to the themed sidebar",
-    authorName: "Ada Lovelace",
-    authoredAt: 1_785_733_200_000,
-  },
-  {
-    sha: "e6cf24b100000000000000000000000000000000",
-    shortSha: "e6cf24b1",
-    subject: "Keep tab overflow controls visible",
-    authorName: "Grace Hopper",
-    authoredAt: 1_785_729_600_000,
-  },
-];
-
-const representativeWorkspaceStatus = makeWorkspaceStatus({
-  workingTree: {
-    hasUncommittedChanges: true,
-    state: "dirty_and_committed_unmerged",
-    insertions: 41,
-    deletions: 12,
-    lineStatsComplete: true,
-    fileCount: 2,
-    files: [
-      {
-        path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.stories.tsx",
-        status: "M",
-        insertions: 34,
-        deletions: 8,
-      },
-      {
-        path: "apps/app/src/components/secondary-panel/SecondaryPanelTabStrip.tsx",
-        status: "M",
-        insertions: 7,
-        deletions: 4,
-      },
-    ],
-  },
-  mergeBase: {
-    mergeBaseBranch: "main",
-    baseRef: "main",
-    aheadCount: INFO_COMMITS.length,
-    behindCount: 0,
-    hasCommittedUnmergedChanges: true,
-    commits: INFO_COMMITS,
-    insertions: 86,
-    deletions: 19,
-    lineStatsComplete: true,
-    fileCount: 2,
-    files: [
-      {
-        path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx",
-        status: "M",
-        insertions: 58,
-        deletions: 11,
-      },
-      {
-        path: "apps/app/src/components/secondary-panel/NewTabPage.tsx",
-        status: "M",
-        insertions: 28,
-        deletions: 8,
-      },
-    ],
-  },
-});
-
 function RepresentativeInfoContent() {
   const [selectedStoragePath, setSelectedStoragePath] = useState<string | null>(
     null,
@@ -222,17 +158,10 @@ function RepresentativeInfoContent() {
   });
   const props: ThreadMetadataContentProps = {
     ...baseMetadataProps,
-    pullRequest: makePullRequest({
-      number: 947,
-      title: "Use the sidebar surface throughout the right panel",
-    }),
-    selectedMergeBaseBranch: "main",
-    workspaceStatus: representativeWorkspaceStatus,
     storage: {
       controller: storageController,
       filesError: null,
     },
-    onCommitClick: noop,
   };
   const [queryClient] = useState(() => {
     const client = new QueryClient({
@@ -260,13 +189,11 @@ function RepresentativeInfoContent() {
 interface ShellArgs {
   initialPanel: ThreadSecondaryPanelTab;
   includeGitDiffTab?: boolean;
-  canUseGitUi?: boolean;
 }
 
 function ShellRow({
   initialPanel,
   includeGitDiffTab = true,
-  canUseGitUi = true,
 }: ShellArgs) {
   return (
     <PanelHarness initialPanel={initialPanel}>
@@ -274,9 +201,6 @@ function ShellRow({
         <PanelStage height="info">
           <ThreadSecondaryPanel
             activeTab={createStoryFixedPanelTab(panel)}
-            canUseGitUi={canUseGitUi}
-            requestedMergeBaseBranch="main"
-            environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
             fixedTabs={createStoryFixedTabs(setPanel, includeGitDiffTab)}
@@ -435,9 +359,6 @@ function FileTabsShellInner({
     <PanelStage width={stage} height={stage === "shelf" ? "info" : "compact"}>
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi
-        requestedMergeBaseBranch="main"
-        environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         tabs={panelTabs}
@@ -542,9 +463,6 @@ function TerminalTabsShellInner({
     <PanelStage>
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        canUseGitUi
-        requestedMergeBaseBranch="main"
-        environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
         tabs={panelTabs}
@@ -649,9 +567,6 @@ function ProductionSplitPanesStory() {
         <PanelStage height="info">
           <ThreadSecondaryPanel
             activeTab={activeTab}
-            canUseGitUi
-            requestedMergeBaseBranch="main"
-            environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
             tabs={panelTabs}
@@ -764,12 +679,6 @@ export function Overview() {
         hint="no Diff for this parent thread; workspace tree is rendered inside the info tab body"
       >
         <ShellRow initialPanel="thread-info" includeGitDiffTab={false} />
-      </StoryRow>
-      <StoryRow
-        label="git UI disabled"
-        hint="canUseGitUi=false hides the Diff tab and falls back to Info"
-      >
-        <ShellRow initialPanel="thread-info" canUseGitUi={false} />
       </StoryRow>
       <StoryRow
         label="file tab selected"

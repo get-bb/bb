@@ -1,3 +1,4 @@
+import { createMigratedConnection } from "../src/testing.js";
 import { describe, expect, it } from "vitest";
 import {
   defaultAppSettings,
@@ -5,14 +6,12 @@ import {
   earlyAdopterExperiments,
 } from "@bb/domain";
 import {
-  createConnection,
   getExperiments,
-  migrate,
   setAppSettings,
   setExperiments,
 } from "../src/index.js";
 
-function storedExperimentRows(db: ReturnType<typeof createConnection>) {
+function storedExperimentRows(db: ReturnType<typeof createMigratedConnection>) {
   return db.$client
     .prepare<[], { key: string; value: number }>(
       "SELECT key, value FROM system_experiments ORDER BY key",
@@ -22,22 +21,21 @@ function storedExperimentRows(db: ReturnType<typeof createConnection>) {
 
 describe("experiments", () => {
   it("stores typed experiment keys and ignores unknown stored keys", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
 
     try {
-      migrate(db);
       expect(getExperiments(db)).toEqual(defaultExperiments);
 
-      setExperiments(db, { changelogPreview: true });
+      setExperiments(db, { serverMove: true });
       db.$client
         .prepare(
-          "INSERT INTO system_experiments (key, value, updated_at) VALUES ('futureExperiment', true, 1)",
+          "INSERT INTO system_experiments (key, value, updated_at) VALUES ('futureExperiment', true, 1), ('changelogPreview', true, 1)",
         )
         .run();
 
       expect(getExperiments(db)).toEqual({
         ...defaultExperiments,
-        changelogPreview: true,
+        serverMove: true,
       });
     } finally {
       db.$client.close();
@@ -45,10 +43,9 @@ describe("experiments", () => {
   });
 
   it("stores only the experiments a write names so the rest follow their defaults", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
 
     try {
-      migrate(db);
       setExperiments(db, { serverMove: true });
       setExperiments(db, { serverMove: false });
 
@@ -65,17 +62,16 @@ describe("experiments", () => {
   });
 
   it("follows the early adopter defaults only for experiments the user has not set", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
 
     try {
-      migrate(db);
-      setExperiments(db, { timelinePush: false, changelogPreview: true });
+      setExperiments(db, { timelinePush: false, serverMove: true });
       setAppSettings(db, { ...defaultAppSettings, earlyAdopter: true });
 
       expect(getExperiments(db)).toEqual({
         ...earlyAdopterExperiments,
         timelinePush: false,
-        changelogPreview: true,
+        serverMove: true,
       });
 
       db.$client.prepare("DELETE FROM system_experiments").run();

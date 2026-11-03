@@ -4,9 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   definePluginApp,
+  experimental_InfoList as InfoList,
+  experimental_InfoListRow as InfoListRow,
+  experimental_InfoSection as InfoSection,
+  experimental_THREAD_INFO_SECTION_GROUPS,
   useBbNavigate,
   useRealtime,
   useRpc,
+  type ExperimentalThreadInfoProps,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
 import type { automationRpcContract } from "./src/rpc.js";
@@ -16,17 +21,23 @@ import type {
   AutomationDetailResponse,
   AutomationResponse,
   AgentExecutionUpdate,
+  AutomationReadResult,
   AutomationRunListResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "./src/rpc-types";
-import { AutomationDetailView } from "./detail-view";
+import { AutomationDetailView, automationIconName } from "./detail-view";
 import {
   AutomationOverviewView,
+  automationProblemLabel,
   automationProjectLabel,
   type AutomationCollectionMode,
 } from "./overview-view";
-import { PERSONAL_PROJECT_ID } from "./lib/format-schedule";
+import {
+  formatScheduleStatusLabel,
+  PERSONAL_PROJECT_ID,
+} from "./lib/format-schedule";
+import { Icon } from "@/components/ui/icon";
 import { buildAutomationEditThreadPrompt } from "./lib/edit-prompt";
 import { Button } from "@/components/ui/button";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
@@ -212,6 +223,96 @@ function useAutomation(route: DetailRoute | null): {
       void query.refetch();
     },
   };
+}
+
+const THREAD_INFO_AUTOMATION_LIMIT = 3;
+
+function useTargetThreadAutomations(
+  threadId: string,
+): readonly AutomationReadResult[] {
+  const rpc = useRpc<typeof automationRpcContract>();
+  const queryKey = ["automations-targeting-thread", threadId];
+  const query = useQuery(
+    {
+      queryKey,
+      queryFn: () => rpc.call("automations_list", { targetThreadId: threadId }),
+      staleTime: 30_000,
+      retry: false,
+    },
+    automationQueryClient,
+  );
+  useRealtime("automations", (payload) => {
+    if (asSignal(payload)?.kind === "automations-changed") {
+      void automationQueryClient.invalidateQueries(
+        { queryKey },
+        { cancelRefetch: false },
+      );
+    }
+  });
+  return query.data ?? [];
+}
+
+function AutomationThreadInfoRow({
+  automation,
+}: {
+  automation: AutomationReadResult;
+}) {
+  const navigate = useBbNavigate();
+  const problem = "problem" in automation;
+  const repairable = problem && automation.problem === "missing-agent-prompt";
+  const status = problem
+    ? automationProblemLabel(automation)
+    : formatScheduleStatusLabel(automation);
+  return (
+    <InfoListRow
+      leading={
+        <Icon
+          name={
+            problem
+              ? repairable
+                ? "AlertCircle"
+                : "CircleX"
+              : automationIconName(automation)
+          }
+          className="size-3 text-subtle-foreground"
+          aria-hidden
+        />
+      }
+      name={automation.name}
+      title={automation.name}
+      trailing={
+        <span className="shrink-0 text-2xs text-subtle-foreground tabular-nums">
+          {status}
+        </span>
+      }
+      onSelect={() =>
+        navigate.toPluginPanel(PANEL_PATH, {
+          subPath: `${automation.projectId}/${automation.id}${
+            repairable ? "/edit" : ""
+          }`,
+        })
+      }
+    />
+  );
+}
+
+function AutomationsThreadInfoSection({
+  threadId,
+}: ExperimentalThreadInfoProps) {
+  const automations = useTargetThreadAutomations(threadId);
+  if (automations.length === 0) return null;
+  return (
+    <InfoSection label="Automations" count={automations.length}>
+      <InfoList
+        items={automations}
+        getKey={(automation) => automation.id}
+        limit={THREAD_INFO_AUTOMATION_LIMIT}
+        renderItem={(automation) => (
+          <AutomationThreadInfoRow automation={automation} />
+        )}
+      />
+    </InfoSection>
+  );
 }
 
 function useAutomationsPageTitle({ subPath }: PluginNavPanelProps) {
@@ -778,5 +879,11 @@ export default definePluginApp((app) => {
     path: PANEL_PATH,
     component: AutomationsPanel,
     experimental_usePageTitle: useAutomationsPageTitle,
+  });
+  app.slots.experimental_threadInfoSection({
+    id: "automations",
+    group: experimental_THREAD_INFO_SECTION_GROUPS.related,
+    order: 0,
+    component: AutomationsThreadInfoSection,
   });
 });

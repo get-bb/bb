@@ -5,8 +5,8 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
@@ -18,10 +18,8 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
-import { RootComposeCompactHome } from "./RootComposeCompactHome";
+import { RootComposeHome } from "./RootComposeHome";
 import { useOptionalPaneContext } from "./thread-detail/PaneContext";
-
-const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
 const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
@@ -126,31 +124,13 @@ export function RootComposeSecondaryContent({
           ) : null}
         </div>
       ) : null}
-      {isCompactHomeLayout ? (
-        <div
-          className="@container/page flex min-h-0 flex-1 flex-col"
-          style={PAGE_SHELL_CONTENT_STYLE}
-        >
-          <RootComposeCompactHome composer={children}>
-            {compactScrollContent}
-            <PluginHomepageSections />
-          </RootComposeCompactHome>
-        </div>
-      ) : (
-        <div className="@container/page min-h-0 flex-1 overflow-y-auto">
-          <div
-            className={cn(
-              "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
-              ROOT_COMPOSE_MAX_WIDTH_CLASS,
-              contentClassName,
-            )}
-            style={PAGE_SHELL_CONTENT_STYLE}
-          >
-            {children}
-            <PluginHomepageSections />
-          </div>
-        </div>
-      )}
+      <RootComposeHome
+        isCompact={isCompactHomeLayout}
+        composer={children}
+        compactScrollContent={compactScrollContent}
+        homepageSections={<PluginHomepageSections />}
+        wideContentClassName={contentClassName}
+      />
     </div>
   );
 
@@ -168,6 +148,7 @@ export function RootComposeSecondaryContent({
         mainPanelId="root-compose-main-panel"
         main={mainContent}
         composerHost={composerHost}
+        widthPercentAtom={secondaryPanelWidthPercentAtom}
         renderPanel={({
           presentation,
           canShowNativeBrowserView,

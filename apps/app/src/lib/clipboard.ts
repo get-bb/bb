@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { z } from "zod";
+import { useCopiedFeedback } from "@bb/shared-ui/copy-button";
 import { appToast } from "@/components/ui/app-toast";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { getNativeShell } from "@/lib/native-shell/native-shell";
@@ -229,13 +230,7 @@ export function useClipboardCopy({
   errorMessage = "Failed to copy",
   imageUrl,
 }: ClipboardCopyOptions) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timeoutId = window.setTimeout(() => setCopied(false), 2000);
-    return () => window.clearTimeout(timeoutId);
-  }, [copied]);
+  const { copied, markCopied } = useCopiedFeedback();
 
   const copy = useCallback(async () => {
     if ((!text && !imageUrl) || copied) return;
@@ -244,8 +239,8 @@ export function useClipboardCopy({
       errorMessage,
       imageUrl,
     });
-    if (success) setCopied(true);
-  }, [text, imageUrl, copied, successMessage, errorMessage]);
+    if (success) markCopied();
+  }, [text, imageUrl, copied, successMessage, errorMessage, markCopied]);
 
   return { copied, copy };
 }

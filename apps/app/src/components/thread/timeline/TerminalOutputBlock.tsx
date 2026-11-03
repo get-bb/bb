@@ -12,13 +12,6 @@ export interface TerminalOutputBlockProps {
   streaming: boolean;
 }
 
-interface TerminalScrollContentKeyArgs {
-  commandLine: string;
-  exitCode: number | null;
-  metadataLines: readonly string[];
-  output: string;
-}
-
 const ANSI_THEME_COLORS: Record<number, string> = {
   0: "var(--ansi-0)",
   1: "var(--ansi-1)",
@@ -65,28 +58,6 @@ const ANSI_TO_HTML = new Convert({
   colors: ANSI_THEME_COLORS,
 });
 
-function stringLengthSum(values: readonly string[]): number {
-  let length = 0;
-  for (const value of values) {
-    length += value.length;
-  }
-  return length;
-}
-
-function terminalScrollContentKey({
-  commandLine,
-  exitCode,
-  metadataLines,
-  output,
-}: TerminalScrollContentKeyArgs): string {
-  return [
-    commandLine.length,
-    stringLengthSum(metadataLines),
-    output.length,
-    exitCode ?? "",
-  ].join(":");
-}
-
 export function TerminalOutputBlock({
   commandLine,
   exitCode,
@@ -103,12 +74,6 @@ export function TerminalOutputBlock({
   );
 
   const showExitCode = exitCode !== null;
-  const outputContentKey = terminalScrollContentKey({
-    commandLine,
-    exitCode,
-    metadataLines,
-    output,
-  });
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -132,7 +97,6 @@ export function TerminalOutputBlock({
           <TimelineDetailScroll
             size="base"
             streaming={streaming}
-            contentKey={outputContentKey}
             className="mt-1.5"
             scrollClassName="whitespace-pre leading-tight text-muted-foreground"
           >
