@@ -1113,32 +1113,19 @@ function dissolve(
     glide(el, move, dur);
     glide(wrap, move, dur);
   }
-  let lift: (() => void) | undefined;
-  if (seq) {
-    const was = {
-      position: el.style.position,
-      zIndex: el.style.zIndex,
-      background: el.style.background,
-    };
-    if (getComputedStyle(el).position === "static")
-      el.style.position = "relative";
-    el.style.zIndex = "4";
-    el.style.background = solidBg(host);
+  if (seq)
     el.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: 260,
+      delay: 150,
       fill: "backwards",
       easing: "ease-out",
     });
-    lift = () => Object.assign(el.style, was);
-  }
   const anim = wrap.animate([{ opacity: 1 }, { opacity: 0 }], {
     duration: 150,
-    delay: seq ? 260 : 0,
     easing: "cubic-bezier(0.7, 0, 0.3, 1)",
     fill: "forwards",
   });
   anim.onfinish = () => {
-    lift?.();
     wrap.remove();
     if (
       host.dataset.rhbPos !== undefined &&
@@ -1390,7 +1377,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
           pb,
           (top && moved.get(top)) || { x: 0, y: 0 },
           s.pad,
-          drawer,
+          drawer || el.matches(".rhb-feed"),
           dur,
         );
       else if (s.r.width < 2) glide(el, [{ opacity: 0 }, { opacity: 1 }], 250);
