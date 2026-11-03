@@ -37,7 +37,6 @@ import {
   PullRequestIcon as PrIcon,
   SearchIcon,
   Spinner,
-  SubagentIcon,
   TerminalIcon as TermIcon,
   TestIcon,
   ThreadStatus,
@@ -74,7 +73,7 @@ type Flag =
   | "strip"
   | "grouped";
 
-type StepKind = "plugin" | "cmd" | "file" | "work" | "sub";
+type StepKind = "plugin" | "cmd" | "file" | "work";
 type Step = {
   kind: StepKind;
   plugin?: string;
@@ -733,7 +732,6 @@ function StepIcon({ kind }: { kind: StepKind }) {
     return <PluginsIcon className="rhb-step-ic is-plugin" />;
   if (kind === "cmd") return <TermIcon className="rhb-step-ic" />;
   if (kind === "file") return <EditIcon className="rhb-step-ic" />;
-  if (kind === "sub") return <SubagentIcon className="rhb-step-ic" />;
   return <SearchIcon className="rhb-step-ic" />;
 }
 

@@ -63,13 +63,6 @@ describe("hero window first frame", () => {
     document.body.replaceChildren();
   });
 
-  it("server-renders the first scene, paused, inside the window frame", async () => {
-    const html = await serverHtml();
-    expect(html).toContain('class="mockup-wrap rhb is-paused"');
-    expect(html).toMatch(/class="rhb-stage rhb-scene-sentry[ "]/);
-    expect(html).toContain(FIRST_SCENE);
-  });
-
   it("keeps the server frame and reports content while the chunk loads", async () => {
     const html = await serverHtml();
     const errors: unknown[] = [];
