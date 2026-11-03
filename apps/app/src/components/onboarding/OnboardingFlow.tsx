@@ -997,7 +997,7 @@ function PluginsStepContainer({
       primaryLabel="Continue"
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (redesign && !(entries ?? []).some(isEnabled)) onSkip();
+        if (!(entries ?? []).some(isEnabled)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}

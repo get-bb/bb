@@ -370,7 +370,8 @@ getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
 not when the bb connect panel is merely opened), and `add_machine` (`started`
 when the machine setup command is shown). Continue on the projects step counts
 as completed in the new guide when a project was added during the guide by
-either route.
+either route. Continue on the plugins step counts as completed in both guides
+only when a featured plugin is on, otherwise as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves both flag assignments, adds
 `setup_guide_variant`, `setup_guide_source`, `featured_plugins_variant`, and
