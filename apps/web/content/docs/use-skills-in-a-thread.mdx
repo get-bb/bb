@@ -1,0 +1,76 @@
+---
+title: Use skills in a thread
+description: Have an agent follow one of your skills. Type / or $ in the composer and pick it, and bb passes it on in the form that agent expects.
+type: how-to
+sources:
+  - apps/app/src/hooks/useCommandSuggestions.ts
+  - apps/server/src/services/providers/plugin-provider-registration.ts
+  - apps/server/src/services/skills/**
+  - plugins/composer/src/mentions/**
+  - plugins/provider-codex/src/session-params.ts
+  - plugins/bb-guide/**
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+A skill is a saved set of instructions, such as "write release notes". To add your own, see Add and share skills.
+
+## Pick a skill from the / menu
+
+1. In the composer, type `/` at the start of your message or after a space.
+2. Keep typing to filter.
+3. Pick a skill with the arrow keys and Enter, or click it. It becomes a pill in your message.
+4. Add the rest of your request, and send.
+
+`$` lists only skills, without commands.
+
+<Screenshot
+  src="/docs-images/use-skills-in-a-thread/slash-menu"
+  alt="Typing /aut in the composer opens a menu of matching skills."
+  width={760}
+  height={232}
+/>
+
+The menu depends on the thread's agent, machine and project:
+
+| Listed | Where it comes from |
+| --- | --- |
+| Your skills and the project's skills | The agent's own skill folders, plus `~/.bb/skills` and the project's `.bb/skills` |
+| Plugin skills | Plugins you've turned on, such as Automations |
+| bb's bundled skills | The **BB guide** plugin, such as `bb-cli` |
+| Commands | The agent's and bb's commands, such as `/clear` |
+
+## How each agent gets the skill
+
+| Agent | Receives |
+| --- | --- |
+| Claude Code | `/<skill-name>` and the rest of your message |
+| Codex | The skill itself, like Codex's own `$skill-name` |
+| Pi | `/skill:<skill-name>` and the rest of your message |
+| ACP agents, such as Cursor | Your text as typed |
+
+Most agents also load a skill on their own when your request matches its description.
+
+## Turn skills off
+
+| To stop | Do this |
+| --- | --- |
+| bb's bundled skills | **Settings → BB guide** → turn off **Enable bundled skills**. CLI: `bb plugin config bb-guide set skills false` |
+| A plugin's skills | Turn off the plugin in **Settings → Installed plugins** |
+| One of your own skills | **Skills** in the sidebar → the skill's **⋯** menu → **Delete** |
+
+Changes reach an agent the next time bb starts it. To apply them now, run `bb thread stop <thread-id>` and send your next message; the thread keeps its history.
+
+## Check it worked
+
+- The skill shows as a pill in your sent message, and the reply follows it.
+- `bb project commands <project-id> --provider <provider-id>` lists what the menu offers.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| A skill isn't in the menu | See A skill is missing from the / menu |
+| "Failed to load commands" | bb couldn't reach the thread's machine. Check **Settings → Machines** |
+| The agent ignores a skill you just added | Run `bb thread stop <thread-id>`, then send again |
