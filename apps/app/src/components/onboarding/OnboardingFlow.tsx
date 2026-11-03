@@ -9,7 +9,10 @@ import {
 } from "@bb/domain";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
-import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
+import {
+  AddMachineDialog,
+  AddMachineInline,
+} from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
@@ -1083,9 +1086,10 @@ function DevicesStepContainer({
     }
     setAddMachineOpen(true);
   };
-  const addMachineDialog = (
-    <AddMachineDialog open={addMachineOpen} onOpenChange={setAddMachineOpen} />
-  );
+  const closeAddMachine = () => {
+    void hostsQuery.refetch();
+    setAddMachineOpen(false);
+  };
   if (redesign) {
     return (
       <OnboardingLayout
@@ -1108,9 +1112,14 @@ function DevicesStepContainer({
               fallback={<ConnectUnavailableRow />}
             />
           }
+          addMachinePanel={
+            addMachineOpen ? (
+              <AddMachineInline onClose={closeAddMachine} />
+            ) : null
+          }
           onAddMachine={addMachine}
+          onCloseAddMachine={closeAddMachine}
         />
-        {addMachineDialog}
       </OnboardingLayout>
     );
   }
@@ -1137,7 +1146,10 @@ function DevicesStepContainer({
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={addMachine}
       />
-      {addMachineDialog}
+      <AddMachineDialog
+        open={addMachineOpen}
+        onOpenChange={setAddMachineOpen}
+      />
     </OnboardingLayout>
   );
 }

@@ -2,7 +2,14 @@ import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -14,6 +21,7 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
@@ -23,6 +31,67 @@ import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
+
+type AddMachineSurface = "dialog" | "inline";
+
+const AddMachineSurfaceContext = createContext<AddMachineSurface>("dialog");
+
+function SetupHeading({
+  title,
+  description,
+  descriptionClassName,
+  inlineTitle = true,
+}: {
+  title: string;
+  description: ReactNode;
+  descriptionClassName?: string;
+  inlineTitle?: boolean;
+}) {
+  const surface = useContext(AddMachineSurfaceContext);
+  if (surface === "inline") {
+    return (
+      <div className="flex flex-col gap-1">
+        {inlineTitle ? (
+          <p className="text-sm font-medium text-foreground">{title}</p>
+        ) : null}
+        <p
+          className={cn("text-sm text-muted-foreground", descriptionClassName)}
+        >
+          {description}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <DialogHeader>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogDescription className={descriptionClassName}>
+        {description}
+      </DialogDescription>
+    </DialogHeader>
+  );
+}
+
+function CheckingTitle() {
+  const surface = useContext(AddMachineSurfaceContext);
+  return surface === "inline" ? null : (
+    <DialogTitle className="sr-only">Add a machine</DialogTitle>
+  );
+}
+
+export function AddMachineInline({ onClose }: { onClose: () => void }) {
+  return (
+    <AddMachineSurfaceContext.Provider value="inline">
+      <div className="flex flex-col gap-3">
+        <AddMachineContent
+          onOpenChange={(open) => {
+            if (!open) onClose();
+          }}
+        />
+      </div>
+    </AddMachineSurfaceContext.Provider>
+  );
+}
 
 export function AddMachineDialog({
   open,
@@ -100,7 +169,7 @@ export function MachineAccessGate({
   if (state.status === "checking") {
     return (
       <>
-        <DialogTitle className="sr-only">Add a machine</DialogTitle>
+        <CheckingTitle />
         <p role="status" className="text-sm text-subtle-foreground">
           Checking machine access…
         </p>
@@ -110,12 +179,12 @@ export function MachineAccessGate({
   if (state.status === "failed") {
     return (
       <>
-        <DialogHeader>
-          <DialogTitle>Add a machine</DialogTitle>
-          <DialogDescription className="text-destructive-text">
-            Couldn’t check whether machines can reach this server.
-          </DialogDescription>
-        </DialogHeader>
+        <SetupHeading
+          title="Add a machine"
+          inlineTitle={false}
+          descriptionClassName="text-destructive-text"
+          description="Couldn’t check whether machines can reach this server."
+        />
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={state.onRetry}>
             Try again
@@ -126,13 +195,10 @@ export function MachineAccessGate({
   }
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>Set up machine access</DialogTitle>
-        <DialogDescription>
-          A new machine has to reach this server over the network. Choose the
-          address it should use.
-        </DialogDescription>
-      </DialogHeader>
+      <SetupHeading
+        title="Set up machine access"
+        description="A new machine has to reach this server over the network. Choose the address it should use."
+      />
       {children}
     </>
   );
@@ -298,17 +364,17 @@ export function ManualMachineSetupView({
 }) {
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>Add a machine</DialogTitle>
-        <DialogDescription
-          className={
-            errorMessage === null ? undefined : "text-destructive-text"
-          }
-        >
-          {errorMessage ??
-            "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
-        </DialogDescription>
-      </DialogHeader>
+      <SetupHeading
+        title="Add a machine"
+        inlineTitle={false}
+        {...(errorMessage === null
+          ? {}
+          : { descriptionClassName: "text-destructive-text" })}
+        description={
+          errorMessage ??
+          "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."
+        }
+      />
       {errorMessage === null ? null : (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={onRetry}>

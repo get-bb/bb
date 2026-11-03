@@ -18,7 +18,11 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { Dialog, DialogContent } from "@bb/shared-ui/dialog";
-import { AddMachineContent, ManualMachineSetup } from "./AddMachineDialog";
+import {
+  AddMachineContent,
+  AddMachineInline,
+  ManualMachineSetup,
+} from "./AddMachineDialog";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -292,4 +296,34 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
   expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: reservedHost.id });
   await screen.findByText("expired enrollment command");
   rendered.unmount();
+});
+
+it("shows the same enrollment steps inline, outside a dialog", async () => {
+  stubManualLaunch(() => {
+    vi.mocked(sdk.system.config).mockResolvedValue(
+      makeSystemConfig({
+        serverAccess: READY_SERVER_ACCESS,
+        primaryHostId: "host_server",
+      }),
+    );
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      makeHost({ id: "host_server", name: "Mac mini" }),
+    ]);
+  });
+  const { wrapper } = createQueryClientTestHarness();
+  const rendered = render(
+    <MemoryRouter>
+      <AddMachineInline onClose={() => {}} />
+    </MemoryRouter>,
+    { wrapper },
+  );
+
+  await screen.findByText("bb machine enroll test");
+  screen.getByText(/Run this command on the machine you want to add/u);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText("Add a machine")).toBeNull();
+  rendered.unmount();
+  await waitFor(() =>
+    expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: "host-reserved" }),
+  );
 });

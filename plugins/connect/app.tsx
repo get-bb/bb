@@ -2048,6 +2048,19 @@ function ConnectSetupGuideSection({
   const { login, starting, error, start } = useConnectAccountLogin(refetch);
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
+  const signedInLoginId = login?.state === "signed-in" ? login.id : null;
+  const remoteAccessOff = status !== null && status.paired && !status.enabled;
+  const turnedOnForLoginRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (signedInLoginId === null || !remoteAccessOff) return;
+    if (turnedOnForLoginRef.current === signedInLoginId) return;
+    turnedOnForLoginRef.current = signedInLoginId;
+    rpc
+      .call("setRemoteAccess", { enabled: true })
+      .then(refetch, (rpcError: unknown) =>
+        setTurnOnError(errorText(rpcError)),
+      );
+  }, [refetch, remoteAccessOff, rpc, signedInLoginId]);
 
   if (
     status !== null &&
@@ -2063,7 +2076,8 @@ function ConnectSetupGuideSection({
   const connecting = connectingState !== null;
   const signingIn =
     login !== null &&
-    (login.state === "pending" || login.state === "signed-in");
+    (login.state === "pending" ||
+      (login.state === "signed-in" && turnOnError === null));
   const setUp = () => {
     onSetupStarted();
     setTurnOnError(null);
@@ -2135,7 +2149,7 @@ function ConnectSetupGuideSection({
                 ? "bb connect is reconnecting…"
                 : "bb connect is starting…"}
             </p>
-          ) : (
+          ) : turnOnError !== null ? null : (
             setupGuideLoginContent(login)
           )}
           {error !== null ? <SetupGuideError>{error}</SetupGuideError> : null}

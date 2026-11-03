@@ -903,6 +903,82 @@ describe("connect setup guide section", () => {
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
+  it("turns bb connect on after signing in when it was turned off before", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let signedIn = false;
+    let currentStatus = status({ paired: false, enabled: false });
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => {
+        signedIn = true;
+        currentStatus = status({ paired: true, enabled: false });
+        return { login: pendingLogin("signed-in"), status: signedInAccount };
+      },
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: {
+          status: () => currentStatus,
+          setRemoteAccess: (input: unknown) => {
+            expect(signedIn).toBe(true);
+            expect(input).toEqual({ enabled: true });
+            currentStatus = connected();
+            return currentStatus;
+          },
+          createMachineCode: () => ({
+            code: "PAIR-CODE",
+            expiresAt: Date.now() + 600_000,
+            serverUrl: "https://workstation.getbb.app",
+          }),
+          lookupMachineCode: () => ({ consumed: false, machineId: null }),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await slot.findByText("bb connect is on");
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "setRemoteAccess"),
+    ).toHaveLength(1);
+  });
+
+  it("shows why bb connect couldn't turn on after signing in", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let currentStatus = status({ paired: false, enabled: false });
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => {
+        currentStatus = status({ paired: true, enabled: false });
+        return { login: pendingLogin("signed-in"), status: signedInAccount };
+      },
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: {
+          status: () => currentStatus,
+          setRemoteAccess: () => {
+            throw new Error("Remote access is unavailable right now.");
+          },
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await slot.findByText(/Remote access is unavailable right now/u);
+    expect(slot.queryByText(/Turning on bb connect/u)).toBeNull();
+    slot.getByRole("button", { name: "Set up" });
+  });
+
   it("turns remote access back on when this bb is already signed in", async () => {
     let currentStatus = status({ paired: true, enabled: false });
     const slot = renderSlot(
