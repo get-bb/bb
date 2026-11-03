@@ -26,55 +26,55 @@ function renderNav(bootstrap: ExperimentBootstrap) {
   });
 }
 
-describe("homepage-sticky-header exposure", () => {
-  beforeEach(() => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn(() => ({
-        matches: false,
-        addEventListener() {},
-        removeEventListener() {},
-      })),
-    );
-  });
-
-  afterEach(() => {
-    vi.mocked(exposeExperiment).mockClear();
-    vi.unstubAllGlobals();
-    document.body.replaceChildren();
-  });
-
-  it.each(["test", "control"])(
-    "fires from the nav on a non-home page for %s",
-    (variant) => {
-      renderNav({
-        distinctID: "id",
-        featureFlags: { "homepage-sticky-header": variant },
-        preview: false,
-      });
-      expect(exposeExperiment).toHaveBeenCalledWith(
-        "homepage-sticky-header",
-        "desktop",
+describe.each(["homepage-sticky-header", "homepage-header-download"])(
+  "%s exposure",
+  (key) => {
+    beforeEach(() => {
+      vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+      vi.stubGlobal(
+        "matchMedia",
+        vi.fn(() => ({
+          matches: false,
+          addEventListener() {},
+          removeEventListener() {},
+        })),
       );
-    },
-  );
+    });
 
-  it.each([
-    [
-      "an unassigned visitor",
-      { distinctID: "id", featureFlags: {}, preview: false },
-    ],
-    [
-      "a preview",
-      {
-        distinctID: "id",
-        featureFlags: { "homepage-sticky-header": "test" },
-        preview: true,
+    afterEach(() => {
+      vi.mocked(exposeExperiment).mockClear();
+      vi.unstubAllGlobals();
+      document.body.replaceChildren();
+    });
+
+    it.each(["test", "control"])(
+      "fires from the nav on a non-home page for %s",
+      (variant) => {
+        renderNav({
+          distinctID: "id",
+          featureFlags: { [key]: variant },
+          preview: false,
+        });
+        expect(exposeExperiment).toHaveBeenCalledWith(key, "desktop");
       },
-    ],
-  ])("stays silent for %s", (_name, bootstrap) => {
-    renderNav(bootstrap);
-    expect(exposeExperiment).not.toHaveBeenCalled();
-  });
-});
+    );
+
+    it.each([
+      [
+        "an unassigned visitor",
+        { distinctID: "id", featureFlags: {}, preview: false },
+      ],
+      [
+        "a preview",
+        {
+          distinctID: "id",
+          featureFlags: { [key]: "test" },
+          preview: true,
+        },
+      ],
+    ])("stays silent for %s", (_name, bootstrap) => {
+      renderNav(bootstrap);
+      expect(exposeExperiment).not.toHaveBeenCalled();
+    });
+  },
+);

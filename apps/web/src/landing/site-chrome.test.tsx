@@ -20,6 +20,20 @@ function navFor(key: string, variant: string): string {
   );
 }
 
+function navFor(key: string, variant: string): string {
+  return renderToStaticMarkup(
+    <ExperimentsProvider
+      value={{
+        distinctID: null,
+        featureFlags: { [key]: variant },
+        preview: false,
+      }}
+    >
+      <SiteNav current="blog" />
+    </ExperimentsProvider>,
+  );
+}
+
 describe("site navigation", () => {
   it("shows the compact link set with an icon-only GitHub button", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugins" />);
@@ -61,8 +75,11 @@ describe("site navigation", () => {
     );
   });
 
-  it("can send the header button to the download page", () => {
-    const html = renderToStaticMarkup(<SiteNav downloadPage />);
+  it("sends the header button to the download page on any page in the test", () => {
+    expect(navFor("homepage-header-download", "control")).toContain(
+      "/download/macos",
+    );
+    const html = navFor("homepage-header-download", "test");
     expect(html).toContain(
       '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
     );
