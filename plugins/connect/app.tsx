@@ -1879,6 +1879,7 @@ function PhonePairingSteps({
             type="button"
             size="sm"
             variant="outline"
+            className="text-foreground"
             onClick={() => onStepChange("pair")}
           >
             I have the app
