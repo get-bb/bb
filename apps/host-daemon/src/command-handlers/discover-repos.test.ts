@@ -172,21 +172,21 @@ describe("discoverRepos", () => {
       walkBudgetMs: -1,
     });
 
-    expect(result).toEqual({ repos: [], truncated: true, unreadablePaths: [] });
+    expect(result).toEqual({ repos: [], truncated: true, unreadableCount: 0 });
   });
 
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
-    "reports folders it is not allowed to read and keeps scanning the rest",
+    "counts folders it is not allowed to read and keeps scanning the rest",
     async () => {
       await makeRepo("projects/app");
       await makeRepo("Documents/hidden");
       await chmod(join(home, "Documents"), 0o000);
 
-      const { repos, truncated, unreadablePaths } = await run();
+      const { repos, truncated, unreadableCount } = await run();
 
       expect(truncated).toBe(false);
       expect(repos.map((repo) => repo.name)).toEqual(["app"]);
-      expect(unreadablePaths).toEqual([join(home, "Documents")]);
+      expect(unreadableCount).toBe(1);
     },
   );
 });

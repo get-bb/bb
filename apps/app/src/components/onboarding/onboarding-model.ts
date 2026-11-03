@@ -146,17 +146,13 @@ export function defaultSelectedRepoPaths(
   return new Set(chosen.map((repo) => repo.path));
 }
 
-export type RepoScanFailureReason = "host_unavailable" | "timed_out" | "other";
+export type OperationFailureReason = "host_unavailable" | "timed_out" | "other";
 
-export function repoScanFailureReason(error: unknown): RepoScanFailureReason {
+export function operationFailureReason(error: unknown): OperationFailureReason {
   if (!(error instanceof BbHttpError)) return "other";
   if (error.code === "host_unavailable") return "host_unavailable";
   if (error.code === "command_timeout") return "timed_out";
   return "other";
-}
-
-export function folderName(path: string): string {
-  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
 }
 
 export function shortRemoteName(originUrl: string | null): string | null {

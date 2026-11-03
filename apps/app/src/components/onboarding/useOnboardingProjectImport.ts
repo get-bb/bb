@@ -7,8 +7,7 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
-
-const IMPORT_CONCURRENCY = 4;
+import { operationFailureReason } from "./onboarding-model";
 
 export function useOnboardingProjectImport({
   entry,
@@ -19,14 +18,13 @@ export function useOnboardingProjectImport({
   onContinue: () => void;
   onSettled: () => void;
 }) {
-  const createProject = useCreateProject({ showErrorToast: false });
+  const createProject = useCreateProject();
   const setImportedProjectDefault = useImportedProjectDefault();
   const draft = usePromptDraftController({ kind: "new-thread" });
   const lifetimeRef = useRef<{ active: boolean; canSelect: boolean } | null>(
     null,
   );
   const [importing, setImporting] = useState(false);
-  const [failedPaths, setFailedPaths] = useState<readonly string[]>([]);
 
   useEffect(() => {
     const lifetime = {
@@ -53,10 +51,11 @@ export function useOnboardingProjectImport({
     const lifetime = lifetimeRef.current;
     if (importing || !lifetime?.active) return;
     setImporting(true);
-    setFailedPaths([]);
+    let lastImportedProjectId: string | null = null;
+    let succeededCount = 0;
     const recordOutcome = (
       outcome: "started" | "succeeded" | "failed",
-      succeededCount: number,
+      error?: unknown,
     ) =>
       recordTelemetryEvent({
         name: "onboarding_operation",
@@ -67,50 +66,37 @@ export function useOnboardingProjectImport({
           outcome,
           item_count: repos.length,
           succeeded_count: succeededCount,
+          ...(outcome === "failed"
+            ? { failure_reason: operationFailureReason(error) }
+            : {}),
         },
       });
-    recordOutcome("started", 0);
-    const projectIds: (string | null)[] = repos.map(() => null);
-    let nextIndex = 0;
-    const importNext = async (): Promise<void> => {
-      while (lifetime.active && nextIndex < repos.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        const repo = repos[index];
-        if (repo === undefined) return;
-        try {
-          const project = await createProject.mutateAsync({
-            name: repo.name,
-            source: { type: "local_path", hostId, path: repo.path },
-          });
-          projectIds[index] = project.id;
-        } catch {
-          projectIds[index] = null;
-        }
+    recordOutcome("started");
+    try {
+      for (const repo of repos) {
+        if (!lifetime.active) return;
+        const project = await createProject.mutateAsync({
+          name: repo.name,
+          source: { type: "local_path", hostId, path: repo.path },
+        });
+        lastImportedProjectId = project.id;
+        succeededCount += 1;
       }
-    };
-    await Promise.all(
-      Array.from(
-        { length: Math.min(IMPORT_CONCURRENCY, repos.length) },
-        importNext,
-      ),
-    );
-    if (!lifetime.active) return;
-    const importedIds = projectIds.filter((id) => id !== null);
-    const failed = repos.filter((_, index) => projectIds[index] === null);
-    recordOutcome(
-      failed.length === 0 ? "succeeded" : "failed",
-      importedIds.length,
-    );
-    const lastImportedProjectId = importedIds.at(-1);
-    if (lifetime.canSelect && lastImportedProjectId !== undefined) {
-      setImportedProjectDefault(lastImportedProjectId);
+      recordOutcome("succeeded");
+    } catch (error) {
+      recordOutcome("failed", error);
+      return;
+    } finally {
+      if (lifetime.active) {
+        if (lifetime.canSelect && lastImportedProjectId !== null) {
+          setImportedProjectDefault(lastImportedProjectId);
+        }
+        setImporting(false);
+        onSettled();
+      }
     }
-    setImporting(false);
-    setFailedPaths(failed.map((repo) => repo.path));
-    onSettled();
-    if (failed.length === 0) onContinue();
+    if (lifetime.active) onContinue();
   };
 
-  return { importing, failedPaths, importProjects };
+  return { importing, importProjects };
 }

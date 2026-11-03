@@ -88,6 +88,7 @@ describe("client telemetry events", () => {
             outcome: "failed",
             item_count: 3,
             succeeded_count: 1,
+            failure_reason: "host_unavailable",
           },
         },
         {
@@ -109,7 +110,7 @@ describe("client telemetry events", () => {
             step: "projects",
             operation: "scan",
             outcome: "failed",
-            failure_reason: "host_unavailable",
+            failure_reason: "no_host",
           },
         },
         { name: "plugin_creation_started", properties: {} },
@@ -230,6 +231,26 @@ describe("client telemetry events", () => {
       expect(unknown.status).toBe(400);
       expect(extra.status).toBe(400);
       for (const event of [
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "projects",
+            operation: "scan",
+            outcome: "failed",
+            failure_reason: "EACCES: permission denied, opendir '/Users/a'",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "projects",
+            operation: "scan",
+            outcome: "succeeded",
+            unreadable_count: -1,
+          },
+        },
         {
           name: "onboarding_agent_state",
           properties: {

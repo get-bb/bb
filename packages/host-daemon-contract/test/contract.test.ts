@@ -400,7 +400,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     truncated: false,
-    unreadablePaths: [],
+    unreadableCount: 0,
   },
   "provider.installation.status": {
     executableName: "codex",

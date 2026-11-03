@@ -40,7 +40,7 @@ describe("bb project command output", () => {
         },
       ],
       truncated: true,
-      unreadablePaths: ["/home/user/Documents", "/home/user/Desktop"],
+      unreadableCount: 0,
     }));
     stubServerApi({ "v1.hosts.:id.discovered-repos.$get": get });
 
@@ -54,10 +54,9 @@ describe("bb project command output", () => {
     expect(lines.join("\n")).toMatch(
       /fresh\s+\/home\/user\/code\/fresh\s+2026-10-01\s+-/u,
     );
-    expect(lines.slice(-2)).toEqual([
+    expect(lines.at(-1)).toBe(
       "The scan ran out of time, so the list may be partial.",
-      "bb couldn't read these folders: /home/user/Documents, /home/user/Desktop",
-    ]);
+    );
   });
 
   it("says so when no recently used repos are found", async () => {
@@ -66,7 +65,7 @@ describe("bb project command output", () => {
       "v1.hosts.:id.discovered-repos.$get": vi.fn(async () => ({
         repos: [],
         truncated: false,
-        unreadablePaths: [],
+        unreadableCount: 0,
       })),
     });
 

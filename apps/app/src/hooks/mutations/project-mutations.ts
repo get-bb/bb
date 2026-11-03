@@ -50,13 +50,12 @@ interface UploadPromptAttachmentRequest {
   file: File;
 }
 
-export function useCreateProject(options?: { showErrorToast?: boolean }) {
+export function useCreateProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: {
       errorMessage: "Failed to create project.",
-      showErrorToast: options?.showErrorToast ?? true,
     },
     mutationFn: (request: CreateProjectRequest) => sdk.projects.create(request),
     onSuccess: (project) => {

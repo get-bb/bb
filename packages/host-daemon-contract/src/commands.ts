@@ -1218,7 +1218,7 @@ export const discoverReposResultSchema = z
   .object({
     repos: z.array(discoveredRepoSchema),
     truncated: z.boolean(),
-    unreadablePaths: z.array(z.string().min(1)),
+    unreadableCount: z.number().int().nonnegative(),
   })
   .strict();
 export type DiscoverReposResult = z.infer<typeof discoverReposResultSchema>;
@@ -1955,9 +1955,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

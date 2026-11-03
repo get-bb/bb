@@ -344,10 +344,9 @@ function AgentFrame({
 }
 
 function ProjectsFrame({
-  status = { kind: "results", truncated: false, unreadableFolderNames: [] },
+  status = { kind: "results", truncated: false },
   repos = REPOS,
   selectedIds = new Set(DEFAULT_REPO_IDS),
-  failedNames = [],
   importing = false,
   onToggle = noop,
   onSelectAll = noop,
@@ -357,7 +356,6 @@ function ProjectsFrame({
   status?: Parameters<typeof ProjectsStep>[0]["status"];
   repos?: readonly OnboardingRepo[];
   selectedIds?: ReadonlySet<string>;
-  failedNames?: readonly string[];
   importing?: boolean;
   onToggle?: (id: string) => void;
   onSelectAll?: () => void;
@@ -388,7 +386,6 @@ function ProjectsFrame({
         status={status}
         repos={repos}
         selectedIds={selectedIds}
-        failedNames={failedNames}
         onToggle={onToggle}
         onSelectAll={onSelectAll}
         onSelectNone={onSelectNone}
@@ -620,11 +617,7 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
           status={
             scanning
               ? { kind: "scanning" }
-              : {
-                  kind: "results",
-                  truncated: false,
-                  unreadableFolderNames: [],
-                }
+              : { kind: "results", truncated: false }
           }
           selectedIds={selectedRepoIds}
           onToggle={(id) =>
@@ -854,53 +847,28 @@ export function Step2ProjectStates() {
           <ProjectsFrame />
         </StoryWindow>
       </Captioned>
-      <Captioned label="Scanning" hint="The scan starts when the step opens.">
+      <Captioned
+        label="Scanning"
+        hint="The scan starts as soon as setup opens."
+      >
         <StoryWindow>
           <ProjectsFrame status={{ kind: "scanning" }} />
         </StoryWindow>
       </Captioned>
       <Captioned
-        label="Importing, with a partial scan"
-        hint="The note appears when the walk ran out of time or could not open folders."
+        label="Importing, with a truncated scan"
+        hint="Projects are created one at a time; the note appears when the walk ran out of time."
       >
         <StoryWindow>
           <ProjectsFrame
             importing
-            status={{
-              kind: "results",
-              truncated: true,
-              unreadableFolderNames: ["Documents", "Desktop"],
-            }}
+            status={{ kind: "results", truncated: true }}
           />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Some imports failed"
-        hint="The others are added; the failed ones stay selected."
-      >
-        <StoryWindow>
-          <ProjectsFrame failedNames={["api", "web"]} />
         </StoryWindow>
       </Captioned>
       <Captioned label="Nothing found" hint="Falls back to the folder picker.">
         <StoryWindow>
           <ProjectsFrame repos={[]} selectedIds={new Set()} />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Nothing found, scan ran out of time"
-        hint="Says why the list is empty."
-      >
-        <StoryWindow>
-          <ProjectsFrame
-            repos={[]}
-            selectedIds={new Set()}
-            status={{
-              kind: "results",
-              truncated: true,
-              unreadableFolderNames: ["Documents"],
-            }}
-          />
         </StoryWindow>
       </Captioned>
       <Captioned label="Scan failed" hint="Retry, or pick a folder by hand.">
@@ -911,36 +879,6 @@ export function Step2ProjectStates() {
             status={{
               kind: "error",
               message: "bb couldn't scan this computer for git repos.",
-            }}
-          />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Machine offline"
-        hint="Scans again when the machine reconnects."
-      >
-        <StoryWindow>
-          <ProjectsFrame
-            repos={[]}
-            selectedIds={new Set()}
-            status={{
-              kind: "unavailable",
-              message:
-                "Studio Mac is offline. bb will look for projects when it reconnects.",
-              canRetry: true,
-            }}
-          />
-        </StoryWindow>
-      </Captioned>
-      <Captioned label="No machine yet" hint="Continue stays available.">
-        <StoryWindow>
-          <ProjectsFrame
-            repos={[]}
-            selectedIds={new Set()}
-            status={{
-              kind: "unavailable",
-              message: "Add a computer to bb to find your projects.",
-              canRetry: false,
             }}
           />
         </StoryWindow>

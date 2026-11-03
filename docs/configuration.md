@@ -348,6 +348,16 @@ first-send events through `POST /api/v1/system/telemetry/events`
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
+`onboarding_operation` records a setup-guide action's `started`,
+`succeeded`, or `failed` outcome with counts only. A Projects step `scan`
+adds `timed_out` (true when the repo scan ran out of time and the list may be
+partial) and `unreadable_count` (how many folders the scan was not allowed to
+open, such as macOS Documents or Desktop; never their paths). A failed scan
+adds `failure_reason`: `no_host` (no computer was available when the step
+opened, recorded once per guide), `host_unavailable`, `timed_out`, or `other`.
+A failed Projects `import` reports `item_count` (repos selected),
+`succeeded_count` (imported before the failure), and the same
+`failure_reason` values except `no_host`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The

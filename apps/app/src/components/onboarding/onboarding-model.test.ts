@@ -4,11 +4,13 @@ import type {
   ServerAccessStatus,
   SystemProviderState,
 } from "@bb/server-contract";
+import { BbHttpError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
   connectAccessUrl,
   defaultSelectedRepoPaths,
   hasReadyAgent,
+  operationFailureReason,
   parseSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
@@ -507,5 +509,26 @@ describe("parseSignInOutput", () => {
       userCode: null,
       acceptsPastedCode: false,
     });
+  });
+});
+
+describe("operationFailureReason", () => {
+  it.each([
+    ["host_unavailable", "host_unavailable"],
+    ["command_timeout", "timed_out"],
+    ["project_not_found", "other"],
+    [null, "other"],
+  ] as const)("maps the %s error code to %s", (code, reason) => {
+    expect(
+      operationFailureReason(
+        new BbHttpError({ body: null, code, message: "failed", status: 502 }),
+      ),
+    ).toBe(reason);
+  });
+
+  it("reports errors without an HTTP code as other", () => {
+    expect(operationFailureReason(new TypeError("Failed to fetch"))).toBe(
+      "other",
+    );
   });
 });
