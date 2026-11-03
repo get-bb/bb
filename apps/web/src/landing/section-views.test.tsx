@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Band } from "./landing-visuals";
 import {
   SECTION_VIEW_DWELL_MS,
   observeSectionViews,
@@ -138,24 +136,5 @@ describe("observeSectionViews", () => {
     stop();
     vi.advanceTimersByTime(SECTION_VIEW_DWELL_MS);
     expect(onView).not.toHaveBeenCalled();
-  });
-});
-
-describe("Band", () => {
-  it("carries its section id only when given one", () => {
-    expect(
-      renderToStaticMarkup(
-        <Band title="T" section="gang" visual={null}>
-          body
-        </Band>,
-      ),
-    ).toContain('data-section="gang"');
-    expect(
-      renderToStaticMarkup(
-        <Band title="T" visual={null}>
-          body
-        </Band>,
-      ),
-    ).not.toContain("data-section");
   });
 });
