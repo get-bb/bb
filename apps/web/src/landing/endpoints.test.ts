@@ -5,7 +5,13 @@ import {
   DOWNLOAD_FALLBACK_URL,
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
 } from "./site";
-import { handleDownload, handleSubscribe } from "./endpoints";
+import {
+  downloadLinkEmail,
+  downloadLinkIdempotencyKey,
+  handleDownload,
+  handleEmailDownloadLink,
+  handleSubscribe,
+} from "./endpoints";
 
 describe("marketing download", () => {
   afterEach(() => {
@@ -439,5 +445,276 @@ describe("marketing subscribe endpoint", () => {
 
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("email download link endpoint", () => {
+  const SEGMENT = "seg_download_link";
+  const ENV = {
+    APP_URL: "https://getbb.app",
+    RESEND_API_KEY: "re_test",
+    RESEND_DOWNLOAD_LINK_AUDIENCE_ID: SEGMENT,
+    RESEND_DOWNLOAD_LINK_FROM: "bb <updates@mail.getbb.app>",
+    RESEND_DOWNLOAD_LINK_REPLY_TO: "support@example.com",
+  };
+  const NOW = () => new Date("2026-11-03T12:00:00Z");
+  const CONTACT_URL = "https://api.resend.com/contacts/me%40example.com";
+
+  type Call = { url: string; method: string; body: unknown; headers: Headers };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function linkRequest(body: unknown): Request {
+    return new Request("https://getbb.app/api/email-download-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function stubResend(
+    respond: (call: Call) => Response | undefined,
+  ): Call[] {
+    const calls: Call[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const call = {
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          headers: new Headers(init?.headers),
+        };
+        calls.push(call);
+        return respond(call) ?? new Response("{}", { status: 200 });
+      }),
+    );
+    return calls;
+  }
+
+  const newContact = (call: Call) =>
+    call.url === CONTACT_URL && call.method === "GET"
+      ? new Response('{"message":"Contact not found"}', { status: 404 })
+      : undefined;
+
+  it("creates a new contact unsubscribed in the segment and sends one email", async () => {
+    const calls = stubResend(newContact);
+    const response = await handleEmailDownloadLink(
+      linkRequest({
+        email: " me@example.com ",
+        search: "?utm_source=google&gclid=abc&ref=x&via=share",
+      }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(200);
+    expect(calls.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `GET ${CONTACT_URL}`,
+      "POST https://api.resend.com/contacts",
+      "POST https://api.resend.com/emails",
+    ]);
+    expect(calls[1]?.body).toEqual({
+      email: "me@example.com",
+      unsubscribed: true,
+      segments: [{ id: SEGMENT }],
+    });
+    const link = "https://getbb.app/?utm_source=google&gclid=abc&via=email";
+    expect(calls[2]?.body).toEqual({
+      from: "bb <updates@mail.getbb.app>",
+      to: ["me@example.com"],
+      reply_to: "support@example.com",
+      ...downloadLinkEmail(link, "getbb.app"),
+    });
+    expect(calls[2]?.headers.get("Idempotency-Key")).toBe(
+      await downloadLinkIdempotencyKey("me@example.com", NOW()),
+    );
+  });
+
+  it("adds an existing contact to the segment without touching its subscription", async () => {
+    const calls = stubResend((call) =>
+      call.url === CONTACT_URL && call.method === "GET"
+        ? Response.json({ object: "contact", unsubscribed: false })
+        : undefined,
+    );
+    const response = await handleEmailDownloadLink(
+      linkRequest({ email: "me@example.com" }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(200);
+    expect(calls.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      `GET ${CONTACT_URL}`,
+      `POST ${CONTACT_URL}/segments/${SEGMENT}`,
+      "POST https://api.resend.com/emails",
+    ]);
+    expect(calls[1]?.body).toBeUndefined();
+    expect(
+      calls.some(
+        (call) => JSON.stringify(call.body ?? {}).includes("unsubscribed"),
+      ),
+    ).toBe(false);
+  });
+
+  it("joins the segment when the contact appeared between lookup and create", async () => {
+    const calls = stubResend((call) => {
+      if (call.url === CONTACT_URL) {
+        return newContact(call);
+      }
+      return call.url === "https://api.resend.com/contacts"
+        ? new Response('{"message":"Contact already exists"}', { status: 409 })
+        : undefined;
+    });
+    const response = await handleEmailDownloadLink(
+      linkRequest({ email: "me@example.com" }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(200);
+    expect(calls[2]?.url).toBe(`${CONTACT_URL}/segments/${SEGMENT}`);
+  });
+
+  it("reports not-configured without the segment, sender or key", async () => {
+    const calls = stubResend(() => undefined);
+    for (const missing of [
+      "RESEND_API_KEY",
+      "RESEND_DOWNLOAD_LINK_AUDIENCE_ID",
+      "RESEND_DOWNLOAD_LINK_FROM",
+    ] as const) {
+      const response = await handleEmailDownloadLink(
+        linkRequest({ email: "me@example.com" }),
+        { ...ENV, [missing]: "" },
+        NOW,
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "not_configured" });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it.each([["not-an-email"], [""], [42], [`${"a".repeat(250)}@b.co`]])(
+    "rejects %s without calling Resend",
+    async (email) => {
+      const calls = stubResend(() => undefined);
+      const response = await handleEmailDownloadLink(
+        linkRequest({ email }),
+        ENV,
+        NOW,
+      );
+      expect(response.status).toBe(400);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it("keys the send to the address and UTC day so a repeat that day sends nothing new", async () => {
+    const first = await downloadLinkIdempotencyKey("Me@Example.com", NOW());
+    expect(first).toBe(
+      await downloadLinkIdempotencyKey(
+        "me@example.com",
+        new Date("2026-11-03T23:59:59Z"),
+      ),
+    );
+    expect(first).not.toBe(
+      await downloadLinkIdempotencyKey(
+        "me@example.com",
+        new Date("2026-11-04T00:00:00Z"),
+      ),
+    );
+    expect(first).not.toContain("example");
+    expect(first.length).toBeLessThanOrEqual(256);
+  });
+
+  it("treats Resend's repeat-key conflict as already sent", async () => {
+    stubResend((call) =>
+      call.url === "https://api.resend.com/emails"
+        ? new Response('{"name":"invalid_idempotent_request"}', { status: 409 })
+        : newContact(call),
+    );
+    const response = await handleEmailDownloadLink(
+      linkRequest({ email: "me@example.com", search: "?utm_source=x" }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it.each([
+    ["the send", "https://api.resend.com/emails", "POST"],
+    ["the contact lookup", CONTACT_URL, "GET"],
+    ["the contact create", "https://api.resend.com/contacts", "POST"],
+  ])("returns a send failure when %s fails", async (_name, url, method) => {
+    const calls = stubResend((call) =>
+      call.url === url && call.method === method
+        ? new Response('{"message":"boom"}', { status: 500 })
+        : newContact(call),
+    );
+    const response = await handleEmailDownloadLink(
+      linkRequest({ email: "me@example.com" }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "send_failed" });
+    if (url !== "https://api.resend.com/emails") {
+      expect(calls.map((call) => call.url)).not.toContain(
+        "https://api.resend.com/emails",
+      );
+    }
+  });
+
+  it("returns a send failure when Resend is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network");
+      }),
+    );
+    const response = await handleEmailDownloadLink(
+      linkRequest({ email: "me@example.com" }),
+      ENV,
+      NOW,
+    );
+    expect(response.status).toBe(502);
+  });
+
+  it("writes a minimal email with one button, one line, and the plain link", () => {
+    const link = "https://getbb.app/?utm_source=a&via=email";
+    const email = downloadLinkEmail(link, "getbb.app");
+    expect(email.subject).toBe("Your bb download link");
+    expect(email.text).toBe(
+      `Download bb: ${link}\n\nYou asked for this link on getbb.app. We won't email you again.\n`,
+    );
+    expect(email.html.match(/<a /g)).toHaveLength(2);
+    expect(email.html).toContain(
+      'href="https://getbb.app/?utm_source=a&amp;via=email"',
+    );
+    expect(email.html).toContain(">Download bb</a>");
+    expect(email.html).not.toMatch(/unsubscribe|<img/i);
+  });
+
+  it("attributes a download that came from the email link", async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) => new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const waitUntil = vi.fn<(promise: Promise<void>) => void>();
+    await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos?placement=hero", {
+        headers: { referer: "https://getbb.app/?utm_source=x&via=email" },
+      }),
+      { LANDING_POSTHOG_KEY: "phc_test" },
+      waitUntil,
+    );
+    await waitUntil.mock.calls[0]?.[0];
+    const capture = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("posthog"),
+    );
+    const body = JSON.parse(String(capture?.[1]?.body)) as {
+      properties: { send_link_via?: string; placement: string };
+    };
+    expect(body.properties.send_link_via).toBe("email");
+    expect(body.properties.placement).toBe("hero");
   });
 });

@@ -1206,6 +1206,8 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
+  const phoneEmail = useExperiment("homepage-phone-email");
+  useExperimentExposure("homepage-phone-email", "touch");
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1240,7 +1242,10 @@ function LandingPage() {
           for your own software factory.
         </p>
 
-        <InstallOptions placement="hero" />
+        <InstallOptions
+          placement="hero"
+          touchAction={phoneEmail === "test" ? "email" : "share"}
+        />
 
         <div className="providers">
           <span className="label">Works with</span>

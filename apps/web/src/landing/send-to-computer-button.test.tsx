@@ -45,7 +45,7 @@ describe("send download link URL", () => {
   it("leaves out click IDs already removed for Global Privacy Control", () => {
     vi.stubGlobal("navigator", { globalPrivacyControl: true });
     history.replaceState(null, "", "/?utm_source=google&gclid=abc&wbraid=wb");
-    const stop = carryUtmToDownloadLinks();
+    const stop = carryUtmToDownloadLinks(() => null);
     stop();
     expect(sendLinkUrl(window.location.href)).toBe(
       `${window.location.origin}/?utm_source=google&via=share`,

@@ -16,6 +16,12 @@ export type SendToComputerOutcome =
   | "copied"
   | "copy_failed";
 
+export type EmailLinkFailure =
+  | "invalid_email"
+  | "not_configured"
+  | "send_failed"
+  | "network";
+
 type LandingEvent =
   | {
       name: "landing_github_clicked";
@@ -40,6 +46,18 @@ type LandingEvent =
   | {
       name: "landing_send_to_computer_result";
       properties: { placement: CtaPlacement; outcome: SendToComputerOutcome };
+    }
+  | {
+      name: "landing_email_link_submitted";
+      properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_email_link_sent";
+      properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_email_link_failed";
+      properties: { placement: CtaPlacement; reason: EmailLinkFailure };
     }
   | {
       name: "guide_prompt_copied";

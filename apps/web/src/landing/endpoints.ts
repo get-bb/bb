@@ -4,14 +4,20 @@ import {
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
   CAMPAIGN_PARAM_NAMES,
   CLICK_ID_PARAM_NAMES,
+  SEND_LINK_VIA_PARAM,
   VISIT_PARAM_NAMES,
+  parseSendLinkVia,
 } from "./site";
-import type { CtaPlacement, DesktopPlatform } from "./site";
+import type { CtaPlacement, DesktopPlatform, SendLinkVia } from "./site";
 
 const POSTHOG_CAPTURE_URL = "https://us.i.posthog.com/capture/?ip=0";
 const TRACKING_SOURCE = "landing_worker_redirect";
 const MAX_URL_PROPERTY_LENGTH = 2048;
 const RESEND_CONTACTS_URL = "https://api.resend.com/audiences";
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+const RESEND_GLOBAL_CONTACTS_URL = "https://api.resend.com/contacts";
+const MAX_CAMPAIGN_VALUE_LENGTH = 200;
+const MAX_SEARCH_LENGTH = 2048;
 const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const POSTHOG_ID_PATTERN =
@@ -26,6 +32,14 @@ type MarketingEnv = {
   RESEND_AUDIENCE_ID?: string;
 };
 
+type DownloadLinkEnv = {
+  APP_URL: string;
+  RESEND_API_KEY?: string;
+  RESEND_DOWNLOAD_LINK_AUDIENCE_ID?: string;
+  RESEND_DOWNLOAD_LINK_FROM?: string;
+  RESEND_DOWNLOAD_LINK_REPLY_TO?: string;
+};
+
 type DownloadEventProperties = {
   $current_url: string;
   $referrer?: string;
@@ -36,6 +50,7 @@ type DownloadEventProperties = {
   gbraid?: string;
   gclid?: string;
   placement: DownloadPlacement;
+  send_link_via?: SendLinkVia;
   tracking_source: typeof TRACKING_SOURCE;
   utm_campaign?: string;
   utm_content?: string;
@@ -176,7 +191,7 @@ export async function handleSubscribe(
     return jsonResponse({ error: "Email signup is not configured." }, 503);
   }
 
-  const email = await readEmail(request);
+  const email = parseEmail(await readPayload(request));
   if (!email) {
     return jsonResponse({ error: "Enter a valid email address." }, 400);
   }
@@ -204,17 +219,20 @@ export async function handleSubscribe(
   return jsonResponse({ error: "Could not add you to the list." }, 502);
 }
 
-async function readEmail(request: Request): Promise<string | null> {
+async function readPayload(
+  request: Request,
+): Promise<Record<string, unknown> | null> {
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
     return null;
   }
-  if (typeof payload !== "object" || payload === null) {
-    return null;
-  }
-  const value = (payload as { email?: unknown }).email;
+  return isRecord(payload) ? payload : null;
+}
+
+function parseEmail(payload: Record<string, unknown> | null): string | null {
+  const value = payload?.email;
   if (typeof value !== "string") {
     return null;
   }
@@ -223,6 +241,175 @@ async function readEmail(request: Request): Promise<string | null> {
     return null;
   }
   return email;
+}
+
+function parseCampaignParams(value: unknown): URLSearchParams {
+  const campaign = new URLSearchParams();
+  if (typeof value !== "string" || value.length > MAX_SEARCH_LENGTH) {
+    return campaign;
+  }
+  const params = new URLSearchParams(value);
+  for (const name of CAMPAIGN_PARAM_NAMES) {
+    const param = params.get(name);
+    if (param && param.length <= MAX_CAMPAIGN_VALUE_LENGTH) {
+      campaign.set(name, param);
+    }
+  }
+  return campaign;
+}
+
+export function emailDownloadLinkUrl(
+  appUrl: string,
+  campaign: URLSearchParams,
+): string {
+  const link = new URL("/", appUrl);
+  for (const [name, value] of campaign) {
+    link.searchParams.set(name, value);
+  }
+  link.searchParams.set(SEND_LINK_VIA_PARAM, "email");
+  return link.href;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+export function downloadLinkEmail(
+  link: string,
+  siteHost: string,
+): { subject: string; html: string; text: string } {
+  const note = `You asked for this link on ${siteHost}. We won't email you again.`;
+  const href = escapeHtml(link);
+  return {
+    subject: "Your bb download link",
+    html: [
+      '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#111">',
+      `<p style="margin:0 0 20px"><a href="${href}" style="display:inline-block;padding:12px 22px;border-radius:8px;background:#111;color:#fff;font-weight:600;text-decoration:none">Download bb</a></p>`,
+      `<p style="margin:0 0 12px">${escapeHtml(note)}</p>`,
+      `<p style="margin:0;font-size:13px;color:#666">Or open this link on your computer: <a href="${href}" style="color:#666">${href}</a></p>`,
+      "</div>",
+    ].join(""),
+    text: `Download bb: ${link}\n\n${note}\n`,
+  };
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export async function downloadLinkIdempotencyKey(
+  email: string,
+  now: Date,
+): Promise<string> {
+  const day = now.toISOString().slice(0, 10);
+  return `download-link/${await sha256Hex(email.toLowerCase())}/${day}`;
+}
+
+type ContactRequest = {
+  email: string;
+  segmentId: string;
+  headers: Record<string, string>;
+};
+
+async function addDownloadLinkContact(args: ContactRequest): Promise<boolean> {
+  const contactUrl = `${RESEND_GLOBAL_CONTACTS_URL}/${encodeURIComponent(args.email)}`;
+  const existing = await fetch(contactUrl, { headers: args.headers });
+  if (existing.ok) {
+    return addContactToSegment(contactUrl, args);
+  }
+  if (existing.status !== 404) {
+    return false;
+  }
+  const created = await fetch(RESEND_GLOBAL_CONTACTS_URL, {
+    body: JSON.stringify({
+      email: args.email,
+      unsubscribed: true,
+      segments: [{ id: args.segmentId }],
+    }),
+    headers: args.headers,
+    method: "POST",
+  });
+  if (created.ok) {
+    return true;
+  }
+  return (
+    (await isAlreadySubscribed(created)) && addContactToSegment(contactUrl, args)
+  );
+}
+
+async function addContactToSegment(
+  contactUrl: string,
+  args: ContactRequest,
+): Promise<boolean> {
+  const added = await fetch(`${contactUrl}/segments/${args.segmentId}`, {
+    headers: args.headers,
+    method: "POST",
+  });
+  return added.ok || (await isAlreadySubscribed(added));
+}
+
+export async function handleEmailDownloadLink(
+  request: Request,
+  env: DownloadLinkEnv,
+  now: () => Date = () => new Date(),
+): Promise<Response> {
+  const apiKey = env.RESEND_API_KEY;
+  const segmentId = env.RESEND_DOWNLOAD_LINK_AUDIENCE_ID;
+  const from = env.RESEND_DOWNLOAD_LINK_FROM;
+  if (!apiKey || !segmentId || !from) {
+    return jsonResponse({ error: "not_configured" }, 503);
+  }
+  const payload = await readPayload(request);
+  const email = parseEmail(payload);
+  if (!email) {
+    return jsonResponse({ error: "invalid_email" }, 400);
+  }
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+
+  try {
+    if (!(await addDownloadLinkContact({ email, segmentId, headers }))) {
+      return jsonResponse({ error: "send_failed" }, 502);
+    }
+
+    const link = emailDownloadLinkUrl(
+      env.APP_URL,
+      parseCampaignParams(payload?.search),
+    );
+    const sent = await fetch(RESEND_EMAILS_URL, {
+      body: JSON.stringify({
+        from,
+        to: [email],
+        ...(env.RESEND_DOWNLOAD_LINK_REPLY_TO
+          ? { reply_to: env.RESEND_DOWNLOAD_LINK_REPLY_TO }
+          : {}),
+        ...downloadLinkEmail(link, new URL(env.APP_URL).host),
+      }),
+      headers: {
+        ...headers,
+        "Idempotency-Key": await downloadLinkIdempotencyKey(email, now()),
+      },
+      method: "POST",
+    });
+    if (sent.ok || sent.status === 409) {
+      return jsonResponse({ ok: true }, 200);
+    }
+  } catch {
+    return jsonResponse({ error: "send_failed" }, 502);
+  }
+  return jsonResponse({ error: "send_failed" }, 502);
 }
 
 async function isAlreadySubscribed(response: Response): Promise<boolean> {
@@ -373,6 +560,12 @@ function buildDownloadEventProperties(
 
   if (referrer) {
     properties.$referrer = truncateProperty(referrer);
+  }
+  const sendLinkVia = parseSendLinkVia(
+    referrerSearchParams?.get(SEND_LINK_VIA_PARAM) ?? null,
+  );
+  if (sendLinkVia) {
+    properties.send_link_via = sendLinkVia;
   }
 
   const searchParams = args.requestUrl.searchParams;

@@ -6,9 +6,12 @@ import { copyPlainText } from "../lib/copy-plain-text";
 import type { SendToComputerOutcome } from "./analytics";
 import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
-import { CAMPAIGN_PARAM_NAMES, SITE_TITLE } from "./site";
+import { CAMPAIGN_PARAM_NAMES, SEND_LINK_VIA_PARAM, SITE_TITLE } from "./site";
 
-export const SEND_LINK_MARKER = { name: "via", value: "share" } as const;
+export const SEND_LINK_MARKER = {
+  name: SEND_LINK_VIA_PARAM,
+  value: "share",
+} as const;
 
 export function sendLinkUrl(pageHref: string): string {
   const page = new URL(pageHref);

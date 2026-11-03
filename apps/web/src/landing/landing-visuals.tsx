@@ -15,6 +15,7 @@ import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { EmailDownloadLinkForm } from "./email-download-link-form";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -29,7 +30,13 @@ import {
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 
-export function InstallOptions({ placement }: { placement: CtaPlacement }) {
+export function InstallOptions({
+  placement,
+  touchAction = "share",
+}: {
+  placement: CtaPlacement;
+  touchAction?: "share" | "email";
+}) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
@@ -43,7 +50,11 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             platform={platform}
             className="btn btn-primary btn-install desktop-only"
           />
-          <SendToComputerButton placement={placement} />
+          {touchAction === "email" ? (
+            <EmailDownloadLinkForm placement={placement} />
+          ) : (
+            <SendToComputerButton placement={placement} />
+          )}
           <span className="install-note desktop-only">
             {download.note}
             {" · "}
