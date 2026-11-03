@@ -1,5 +1,6 @@
 import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
+import { useExperimentBootstrap } from "../experiments/context";
 import {
   TOUCH_QUERY,
   type ExperimentBootstrap,
@@ -112,7 +113,8 @@ export function initAnalytics(experiments?: ExperimentBootstrap): void {
   });
 }
 
-export function useInitAnalytics(experiments?: ExperimentBootstrap): void {
+export function useInitAnalytics(): void {
+  const experiments = useExperimentBootstrap();
   useEffect(() => {
     initAnalytics(experiments);
   }, [experiments]);
