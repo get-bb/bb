@@ -177,7 +177,7 @@ export interface ResumeThreadArgs {
   environmentId: string;
   threadId: string;
   projectId?: string;
-  providerThreadId?: string;
+  providerThreadId: string;
   providerId: string;
   contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
   options: AgentRuntimeExecutionOptions;

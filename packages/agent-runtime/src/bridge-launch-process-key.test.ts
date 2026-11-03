@@ -19,7 +19,7 @@ describe("bridgeLaunchProcessKey", () => {
       supportsThreadRename: false,
       fork: "none",
     },
-    providerOptions: { launch: { command: "example" } },
+    providerOptions: { launch: { command: "example", args: ["serve"] } },
     envPassthrough: [],
   };
 
@@ -27,7 +27,7 @@ describe("bridgeLaunchProcessKey", () => {
     expect(bridgeLaunchProcessKey(base)).toBe(
       bridgeLaunchProcessKey({
         ...base,
-        providerOptions: { launch: { command: "example" } },
+        providerOptions: { launch: { args: ["serve"], command: "example" } },
       }),
     );
     expect(bridgeLaunchProcessKey(base)).not.toBe(

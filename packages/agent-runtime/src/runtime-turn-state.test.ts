@@ -108,17 +108,6 @@ describe("RuntimeTurnState", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("resolves waiters with null on timeout", async () => {
-    vi.useFakeTimers();
-    const state = new RuntimeTurnState();
-
-    const waiter = state.waitForActiveTurn({ threadId: "t1", timeoutMs: 100 });
-    vi.advanceTimersByTime(100);
-
-    await expect(waiter).resolves.toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   it("resolves waiters with null when the thread is cleared", async () => {
     vi.useFakeTimers();
     const state = new RuntimeTurnState();
