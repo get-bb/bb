@@ -93,9 +93,15 @@ function RowAction({ kind }: { kind: DownloadKind }) {
   }
 }
 
-function DownloadRows({ kinds }: { kinds: readonly DownloadKind[] }) {
+function DownloadRows({
+  kinds,
+  className = "dl-rows",
+}: {
+  kinds: readonly DownloadKind[];
+  className?: string;
+}) {
   return (
-    <div className="dl-rows">
+    <div className={className}>
       {kinds.map((kind) => (
         <div className="dl-row" key={kind}>
           <span className="dl-row-name">{ROWS[kind].name}</span>
@@ -142,6 +148,7 @@ export function DownloadPage() {
       <div className="dl-body">
         <DownloadRows
           kinds={COMPUTER_KINDS.filter((kind) => kind !== platform)}
+          className="dl-rows dl-computers"
         />
         <h2 className="dl-h2">Phones</h2>
         <DownloadRows kinds={PHONE_KINDS} />

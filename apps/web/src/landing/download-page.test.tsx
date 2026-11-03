@@ -41,6 +41,22 @@ describe("/download page", () => {
     expect(body).toContain("bb-android.apk");
   });
 
+  it("hides the computer rows on phones and keeps the phone options", () => {
+    const html = renderToStaticMarkup(<DownloadPage />);
+    const computers = html.slice(
+      html.indexOf('class="dl-rows dl-computers"'),
+      html.indexOf('class="dl-h2"'),
+    );
+    expect(computers).toContain("/download/windows");
+    expect(computers).toContain("/download/linux");
+    expect(computers).toContain(CLI_COMMAND);
+    const phones = html.slice(html.indexOf('class="dl-h2"'));
+    expect(phones).toContain('<div class="dl-rows">');
+    expect(phones).toContain("testflight.apple.com");
+    expect(html).toContain('class="install-note install-note-touch"');
+    expect(html).toContain("install-send");
+  });
+
   it("starts page-view analytics", async () => {
     vi.stubEnv("VITE_POSTHOG_KEY", "phc_test");
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
