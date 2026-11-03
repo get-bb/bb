@@ -346,7 +346,9 @@ first-send events through `POST /api/v1/system/telemetry/events`
 `onboarding_sign_in`, `new_thread_composer_viewed` (each time a new-thread
 box mounts, including plugin-hosted ones), `new_thread_draft_started` (the
 first time that box holds text), `new_thread_blocker` (each blocker reason
-shown, once without a draft and once with one, marked by `has_draft`),
+shown, once without a draft and once with one, marked by `has_draft`; `sign_in`
+appears only when the agent's model list needs sign-in, so a signed-out Codex,
+which still lists models, reports no blocker),
 `new_thread_submit` (started, accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
