@@ -476,6 +476,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
+  environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
@@ -582,25 +583,26 @@ function requestedDaybreak(options: BridgeExecutionOptions): boolean | null {
   return typeof requested === "boolean" ? requested : null;
 }
 
+function environmentHash(
+  envVars: Readonly<Record<string, string>> | undefined,
+): string {
+  const entries = Object.entries(envVars ?? {}).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+}
+
 function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
+  envHash: string,
 ): string {
-  const poolBaseUrl = sessionOptions.envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolToken = sessionOptions.envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    codexHome: sessionOptions.envVars?.[CODEX_HOME_ENV] ?? null,
-    poolRoute:
-      poolBaseUrl === undefined || poolToken === undefined
-        ? null
-        : {
-            baseUrl: poolBaseUrl,
-            tokenHash: createHash("sha256").update(poolToken).digest("hex"),
-          },
+    envHash,
   });
 }
 
@@ -1233,6 +1235,7 @@ async function constructThreadSession(
     })),
   );
   const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
+  const envHash = environmentHash(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
@@ -1248,7 +1251,9 @@ async function constructThreadSession(
     constructionSignature: constructionSignature(
       args.cwd,
       decoded.sessionOptions,
+      envHash,
     ),
+    environmentHash: envHash,
     turnPermissionSettings: toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots: [],
@@ -1476,6 +1481,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
+    environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
     responseOpenedTurns: new Map(),
@@ -1684,9 +1690,13 @@ async function requireLiveSessionForTurn(
   }
 
   const decoded = decodeCodexOptions(params.options);
+  const turnEnvVars = decoded.sessionOptions.envVars ?? {};
   const signature = constructionSignature(
     session.construction.cwd,
     decoded.sessionOptions,
+    Object.keys(turnEnvVars).length === 0
+      ? session.environmentHash
+      : environmentHash(turnEnvVars),
   );
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
