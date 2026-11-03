@@ -7,7 +7,7 @@ import type { CtaPlacement, DesktopPlatform } from "./site";
 
 export type TouchAction = "share" | "email";
 
-export const PLATFORMS_NOTE = "bb runs on macOS, Windows, and Linux";
+const PLATFORMS_NOTE = "bb runs on macOS, Windows, and Linux";
 
 export function DesktopInstallChoice({
   placement,
