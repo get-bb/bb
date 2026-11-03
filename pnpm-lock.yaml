@@ -669,9 +669,6 @@ importers:
       '@bb/connect-db':
         specifier: workspace:*
         version: link:../../packages/connect-db
-      '@bb/process-utils':
-        specifier: workspace:*
-        version: link:../../packages/process-utils
       '@bb/text-utils':
         specifier: workspace:*
         version: link:../../packages/text-utils
