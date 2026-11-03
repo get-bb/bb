@@ -69,6 +69,7 @@ import {
   seedThreadFixture,
   seedThreadIdentity,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -2371,12 +2372,17 @@ describe("public thread data routes", () => {
           source: "tell",
         },
       });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-1",
+      });
       seedEvent(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
         scope: turnScope("turn-1"),
-        sequence: 2,
+        sequence: 3,
         type: "item/completed",
         data: {
           item: {
@@ -2386,12 +2392,17 @@ describe("public thread data routes", () => {
           },
         },
       });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-2",
+      });
       seedEvent(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
         scope: turnScope("turn-2"),
-        sequence: 3,
+        sequence: 5,
         type: "item/completed",
         data: {
           item: {
@@ -2424,22 +2435,14 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("returns a user-visible system output when a later assistant item is empty", async () => {
+  it("skips malformed item/completed events and returns the last valid output", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
 
-      seedEvent(harness.deps, {
+      seedTurnStarted(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
-        providerThreadId: "provider-output",
-        scope: turnScope("turn-1"),
-        sequence: 1,
-        type: "system/manager/user_message",
-        data: {
-          text: "Visible system update",
-          toolCallId: "call-1",
-          turnId: "turn-1",
-        },
+        turnId: "turn-1",
       });
       seedEvent(harness.deps, {
         threadId: thread.id,
@@ -2447,36 +2450,6 @@ describe("public thread data routes", () => {
         providerThreadId: "provider-output",
         scope: turnScope("turn-1"),
         sequence: 2,
-        type: "item/completed",
-        data: {
-          item: {
-            type: "agentMessage",
-            id: "msg-1",
-            text: "",
-          },
-        },
-      });
-
-      const outputResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/output`,
-      );
-      expect(outputResponse.status).toBe(200);
-      await expect(readJson(outputResponse)).resolves.toEqual({
-        output: "Visible system update",
-      });
-    });
-  });
-
-  it("skips malformed item/completed events and returns the last valid output", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedThreadFixture(harness);
-
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        providerThreadId: "provider-output",
-        scope: turnScope("turn-1"),
-        sequence: 1,
         type: "item/completed",
         data: {
           item: {
@@ -2490,10 +2463,10 @@ describe("public thread data routes", () => {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
-        scope: turnScope("turn-2"),
+        scope: turnScope("turn-1"),
         itemId: "msg-2",
         itemKind: null,
-        sequence: 2,
+        sequence: 3,
         type: "item/completed",
         data: {
           item: {

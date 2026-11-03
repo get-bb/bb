@@ -34,7 +34,6 @@ import {
   getLatestCompletedThreadContextClearSequence,
   getLatestStoredConversationOutlineSequence,
   getLastStoredTurnRequestEvent,
-  getLatestThreadOutputEventRow,
   getLatestThreadSequence,
   insertEvents,
   listContextWindowUsageRows,
@@ -1270,91 +1269,6 @@ describe("events", () => {
     }
   });
 
-  it("finds the latest output event row without scanning unrelated event types", () => {
-    const { db, thread } = setup();
-
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        ...threadEventFields,
-        data: JSON.stringify({ text: "manager output" }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "item/completed",
-        scope: turnScope("turn-1"),
-        itemId: "msg_1",
-        itemKind: "agentMessage",
-        parentToolCallId: null,
-        data: JSON.stringify({
-          item: { id: "msg_1", type: "agentMessage", text: "assistant output" },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 3,
-        type: "item/completed",
-        scope: turnScope("turn-1"),
-        itemId: "call_1",
-        itemKind: "toolCall",
-        parentToolCallId: null,
-        data: JSON.stringify({ item: { id: "call_1", type: "toolCall" } }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 4,
-        type: "system/error",
-        ...threadEventFields,
-        data: JSON.stringify({ message: "ignored" }),
-      },
-    ]);
-
-    expect(
-      getLatestThreadOutputEventRow(db, { threadId: thread.id }),
-    ).toMatchObject({
-      sequence: 2,
-      itemKind: "agentMessage",
-      parentToolCallId: null,
-      type: "item/completed",
-    });
-  });
-
-  it("skips empty assistant output when a manager user message is the latest visible output", () => {
-    const { db, thread } = setup();
-
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "system/manager/user_message",
-        ...threadEventFields,
-        data: JSON.stringify({ text: "manager output" }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "item/completed",
-        scope: turnScope("turn-1"),
-        itemId: "msg_1",
-        itemKind: "agentMessage",
-        parentToolCallId: null,
-        data: JSON.stringify({
-          item: { id: "msg_1", type: "agentMessage", text: "" },
-        }),
-      },
-    ]);
-
-    expect(
-      getLatestThreadOutputEventRow(db, { threadId: thread.id }),
-    ).toMatchObject({
-      sequence: 1,
-      type: "system/manager/user_message",
-    });
-  });
-
   it("keeps nested-turn context usage from replacing the root turn report", () => {
     const { db, thread } = setup();
 
@@ -1634,11 +1548,7 @@ describe("events", () => {
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([
-      { sequence: 7 },
-      { sequence: 6 },
-      { sequence: 5 },
-    ]);
+    ).toEqual([{ sequence: 7 }, { sequence: 6 }, { sequence: 5 }]);
   });
 
   it("keeps window-hint lookup bounded as request history grows", () => {
@@ -1647,11 +1557,18 @@ describe("events", () => {
       const statement = db.$client.prepare(
         "INSERT INTO events (id, thread_id, scope_kind, sequence, type, data, created_at) VALUES (?, ?, 'thread', ?, 'client/turn/requested', ?, 0)",
       );
-      const payload = JSON.stringify({ input: [{ type: "text", text: "x".repeat(2_000) }] });
+      const payload = JSON.stringify({
+        input: [{ type: "text", text: "x".repeat(2_000) }],
+      });
       const seed = (start: number, end: number): void => {
         db.$client.transaction(() => {
           for (let sequence = start; sequence <= end; sequence += 1) {
-            statement.run(`request-${sequence}`, thread.id, sequence, sequence % 20 === 0 ? "{}" : payload);
+            statement.run(
+              `request-${sequence}`,
+              thread.id,
+              sequence,
+              sequence % 20 === 0 ? "{}" : payload,
+            );
           }
         })();
       };
@@ -1743,7 +1660,12 @@ describe("events", () => {
         sequenceStart: 0,
         threadId: thread.id,
       }),
-    ).toEqual([{ sequence: 9 }, { sequence: 6 }, { sequence: 2 }, { sequence: 1 }]);
+    ).toEqual([
+      { sequence: 9 },
+      { sequence: 6 },
+      { sequence: 2 },
+      { sequence: 1 },
+    ]);
     expect(
       listTimelineWindowHintsDescending(db, {
         beforeSequence: 100,

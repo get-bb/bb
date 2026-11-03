@@ -143,12 +143,17 @@ describe("plugin thread lifecycle events", () => {
       const { environment, thread } = seedThreadFixture(harness, {
         thread: { status: "active" },
       });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-1",
+      });
       seedEvent(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-1",
         scope: turnScope("turn-1"),
-        sequence: 1,
+        sequence: 2,
         type: "item/completed",
         data: {
           item: { type: "agentMessage", id: "assistant-1", text: "All done." },
@@ -179,6 +184,93 @@ describe("plugin thread lifecycle events", () => {
       expect(entry?.handlerStats.errorCount).toBe(0);
     } finally {
       delete globals.__idleEvents;
+      await cleanup();
+    }
+  });
+
+  it("reports only the ended turn's root reply in thread.idle and the output route", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__turnIdleEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.idle", (payload: any) => {
+          (globalThis as any).__turnIdleEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const runTurn = async (
+        turnId: string,
+        messages: { text: string; parentToolCallId?: string }[],
+      ) => {
+        seedTurnStarted(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          turnId,
+        });
+        for (const [index, message] of messages.entries()) {
+          seedEvent(harness.deps, {
+            threadId: thread.id,
+            environmentId: environment.id,
+            providerThreadId: `provider-${turnId}`,
+            scope: turnScope(turnId),
+            sequence:
+              getLatestThreadSequence(harness.db, {
+                threadId: thread.id,
+              }) + 1,
+            type: "item/completed",
+            data: {
+              item: {
+                type: "agentMessage",
+                id: `${turnId}-message-${index}`,
+                text: message.text,
+                ...(message.parentToolCallId
+                  ? { parentToolCallId: message.parentToolCallId }
+                  : {}),
+              },
+            },
+          });
+        }
+        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+          threadId: thread.id,
+          event: { type: "run.succeeded" },
+        });
+        await vi.waitFor(() => expect(recorded.length).toBeGreaterThan(0));
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/output`,
+        );
+        const { output } = (await response.json()) as { output: string | null };
+        const idleText = recorded.pop()?.lastAssistantText;
+        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+          threadId: thread.id,
+          event: { type: "run.started" },
+        });
+        return { idleText, output };
+      };
+
+      await expect(
+        runTurn("turn-1", [
+          { text: "Subagent detail.", parentToolCallId: "spawn-1" },
+          { text: "First result." },
+        ]),
+      ).resolves.toEqual({
+        idleText: "First result.",
+        output: "First result.",
+      });
+      await expect(runTurn("turn-2", [])).resolves.toEqual({
+        idleText: null,
+        output: null,
+      });
+      await expect(
+        runTurn("turn-3", [
+          { text: "Nested only.", parentToolCallId: "spawn-3" },
+        ]),
+      ).resolves.toEqual({ idleText: null, output: null });
+    } finally {
+      delete globals.__turnIdleEvents;
       await cleanup();
     }
   });
