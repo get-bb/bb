@@ -92,7 +92,7 @@ function parseAppSourceOriginEnvValue(args: EnvVarParseArgs): AppSourceOrigin {
   );
 }
 
-export const setupGuideVariantSchema = z.enum(["control", "new"]);
+const setupGuideVariantSchema = z.enum(["control", "new"]);
 export type SetupGuideVariant = z.infer<typeof setupGuideVariantSchema>;
 
 function parseSetupGuideVariantEnvValue(
