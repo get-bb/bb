@@ -314,14 +314,27 @@ function LiveDraftNewThreadPromptBox({
 }: LiveDraftNewThreadPromptBoxProps) {
   const draft = usePromptDraftSnapshot(promptDraft);
   const hasDraft = !isPromptDraftEmpty(draft);
-  const reportedBlockers = useRef(new Set<NewThreadBlockerReason>());
+  const reportedBlockers = useRef(new Set<string>());
+  const reportedDraftStarted = useRef(false);
   useEffect(() => {
-    if (!hasDraft || blockerReason === null) return;
-    if (reportedBlockers.current.has(blockerReason)) return;
-    reportedBlockers.current.add(blockerReason);
+    recordTelemetryEvent({
+      name: "new_thread_composer_viewed",
+      properties: {},
+    });
+  }, []);
+  useEffect(() => {
+    if (!hasDraft || reportedDraftStarted.current) return;
+    reportedDraftStarted.current = true;
+    recordTelemetryEvent({ name: "new_thread_draft_started", properties: {} });
+  }, [hasDraft]);
+  useEffect(() => {
+    if (blockerReason === null) return;
+    const key = `${blockerReason}:${hasDraft}`;
+    if (reportedBlockers.current.has(key)) return;
+    reportedBlockers.current.add(key);
     recordTelemetryEvent({
       name: "new_thread_blocker",
-      properties: { reason: blockerReason },
+      properties: { reason: blockerReason, has_draft: hasDraft },
     });
   }, [blockerReason, hasDraft]);
   return (

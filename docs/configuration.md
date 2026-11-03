@@ -343,7 +343,11 @@ first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
+`onboarding_sign_in`, `new_thread_composer_viewed` (each time a new-thread
+box mounts, including plugin-hosted ones), `new_thread_draft_started` (the
+first time that box holds text), `new_thread_blocker` (each blocker reason
+shown, once without a draft and once with one, marked by `has_draft`),
+`new_thread_submit` (started, accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the

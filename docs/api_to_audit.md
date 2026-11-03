@@ -3910,14 +3910,15 @@ setup-guide, new-thread-submit, plugin-creation-started, and release notes
 events; anything else is a 400. App callers, all through `recordTelemetryEvent`
 in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
 (`OnboardingFlow`, `useOnboardingProjectImport`, and agent installs it starts
-through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit` outcomes,
+through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_composer_viewed`, `new_thread_draft_started` and `new_thread_submit` outcomes,
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method. The setup guide's
 Plugins step reports `recommendation` `shown` and `selected` with a per-visit
 `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
-reports `new_thread_blocker` once per blocker reason while a draft exists.
+reports `new_thread_blocker` once per blocker reason with no draft and once with
+a draft, marked by `has_draft`.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
 
