@@ -21,6 +21,7 @@ import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
 import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
 import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
+import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
@@ -38,7 +39,9 @@ import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01I
 import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
 import ExpandIcon from "@hugeicons/core-free-icons/ExpandIcon";
 import FilterIcon from "@hugeicons/core-free-icons/FilterIcon";
-import { HugeiconsIcon } from "@hugeicons/react";
+import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
+import RoboticIcon from "@hugeicons/core-free-icons/RoboticIcon";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   useCallback,
   useEffect,
@@ -828,7 +831,7 @@ function WindowBar({
   title,
   panelOpen = false,
 }: {
-  title: string;
+  title: ReactNode;
   panelOpen?: boolean;
 }) {
   return (
@@ -862,7 +865,7 @@ function NavRail({
   active = "home",
   children,
 }: {
-  active?: RailDestination;
+  active?: RailDestination | null;
   children?: ReactNode;
 }) {
   const button = (destination: RailDestination) =>
@@ -1369,6 +1372,824 @@ export function PluginMap() {
   );
 }
 
+type MorphScene = "stock" | "files" | "graph" | "taskboard" | "shelves";
+
+const MORPH_SCENES: readonly MorphScene[] = [
+  "stock",
+  "files",
+  "graph",
+  "taskboard",
+  "shelves",
+];
+const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
+const MORPH_FIRST_HOLD_MS = 1500;
+const MORPH_HOLD_MS = 2600;
+const MORPH_CHANGE_MS = 1100;
+
+type MorphCenter = "thread" | "files" | "taskboard";
+type MorphSide = "threads" | "shelves" | null;
+
+const MORPH_CENTER: Record<MorphScene, MorphCenter> = {
+  stock: "thread",
+  files: "files",
+  graph: "thread",
+  taskboard: "taskboard",
+  shelves: "thread",
+};
+
+const MORPH_SIDE: Record<MorphScene, MorphSide> = {
+  stock: "threads",
+  files: null,
+  graph: null,
+  taskboard: null,
+  shelves: "shelves",
+};
+
+const MORPH_THREAD = "Fix the checkout bug";
+
+const MORPH_TITLES: Record<MorphCenter, string> = {
+  thread: MORPH_THREAD,
+  files: "Files",
+  taskboard: "Taskboard",
+};
+
+type MorphState = { scene: number; previous: number | null };
+
+function useMorphTimeline(ref: RefObject<Element | null>) {
+  const [state, setState] = useState<MorphState>({
+    scene: 0,
+    previous: null,
+  });
+  const [inView, setInView] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const target = ref.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1];
+      if (latest) setInView(latest.isIntersecting);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ref]);
+  useEffect(() => {
+    const sync = () => setHidden(document.hidden);
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+  const active = inView && !hidden;
+  useEffect(() => {
+    if (!active) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setState({ scene: MORPH_STATIC_SCENE, previous: null });
+      return;
+    }
+    let timer = 0;
+    let first = true;
+    const hold = () => {
+      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_HOLD_MS;
+      first = false;
+      timer = window.setTimeout(() => {
+        setState((current) => ({
+          scene: (current.scene + 1) % MORPH_SCENES.length,
+          previous: current.scene,
+        }));
+        timer = window.setTimeout(() => {
+          setState((current) => ({ ...current, previous: null }));
+          hold();
+        }, MORPH_CHANGE_MS);
+      }, wait);
+    };
+    hold();
+    return () => window.clearTimeout(timer);
+  }, [active]);
+  return {
+    scene: MORPH_SCENES[state.scene]!,
+    previous: state.previous === null ? null : MORPH_SCENES[state.previous]!,
+    paused: !active,
+  };
+}
+
+function morphLayer<T extends string>(
+  base: string,
+  key: T,
+  current: T | null,
+  previous: T | null,
+  changing: boolean,
+) {
+  if (key === current) {
+    return changing && previous !== key
+      ? `${base} mx-layer is-on is-entering`
+      : `${base} mx-layer is-on`;
+  }
+  if (changing && key === previous) return `${base} mx-layer is-under`;
+  return `${base} mx-layer`;
+}
+
+function PluginMark({ id, className }: { id: string; className: string }) {
+  const plugin = CATALOG_PLUGINS.find((entry) => entry.id === id)!;
+  if ("glyph" in plugin.icon) {
+    return <HugeiconsIcon icon={plugin.icon.glyph} className={className} />;
+  }
+  const mask = `url(${JSON.stringify(plugin.icon.url)})`;
+  return (
+    <span
+      className={`${className} bw-pc-mask`}
+      style={{ maskImage: mask, WebkitMaskImage: mask }}
+    />
+  );
+}
+
+function MorphThreads() {
+  return (
+    <>
+      <div className="side-act">
+        <NewThreadIcon className="sa-ic" />
+        New thread
+      </div>
+      <div className="side-label">Threads</div>
+      <ThreadRow title={MORPH_THREAD} status="done" active />
+      <ThreadRow title="Signups by plan" status="done" />
+      <ThreadRow title="Bump the SDK" status="done" />
+      <ThreadRow title="Refactor auth" status="waiting" />
+      <ThreadRow title="Weekly changelog" status="done" />
+      <div className="side-foot bw-side-foot" aria-hidden>
+        <PhoneIcon className="bw-foot-ic" />
+        <BugIcon className="bw-foot-ic" />
+      </div>
+    </>
+  );
+}
+
+function ShelfCard({
+  project,
+  age,
+  title,
+  branch,
+  active = false,
+}: {
+  project: string;
+  age: string;
+  title: string;
+  branch: string;
+  active?: boolean;
+}) {
+  return (
+    <div className={active ? "mx-sh-card is-active" : "mx-sh-card"}>
+      <span className="mx-sh-proj">
+        {project}
+        <span className="mx-sh-age">{age}</span>
+      </span>
+      <span className="mx-sh-title">{title}</span>
+      <span className="mx-sh-branch">
+        <GitBranchIcon className="mx-sh-branch-ic" />
+        {branch}
+      </span>
+    </div>
+  );
+}
+
+function MorphShelves() {
+  return (
+    <>
+      <div className="side-act">
+        <NewThreadIcon className="sa-ic" />
+        New thread
+      </div>
+      <div className="mx-sh-scope">
+        All projects
+        <ChevronDown className="mx-sh-chev" />
+      </div>
+      <div className="mx-sh-shelf">
+        Active
+        <i />
+      </div>
+      <ShelfCard
+        project="checkout-web"
+        age="now"
+        title={MORPH_THREAD}
+        branch="fix/checkout-timeout"
+        active
+      />
+      <div className="mx-sh-kids">
+        <div className="mx-sh-kid">
+          <i className="mx-dot is-ok" />
+          <span className="mx-sh-kid-title">Plan the fix</span>
+          <span className="mx-sh-badge is-run">Running</span>
+        </div>
+        <div className="mx-sh-kid">
+          <i className="mx-dot is-red" />
+          <span className="mx-sh-kid-title">Review the diff</span>
+          <span className="mx-sh-badge is-ask">Needs you</span>
+        </div>
+      </div>
+      <ShelfCard
+        project="billing-api"
+        age="59m"
+        title="Retry failed webhooks"
+        branch="fix/webhook-retry"
+      />
+      {["Inactive (2)", "Snoozed (3)", "Settled (23)"].map((shelf) => (
+        <div key={shelf} className="mx-sh-shelf is-closed">
+          {shelf}
+          <i />
+          <ChevronDown className="mx-sh-chev" />
+        </div>
+      ))}
+      <div className="side-foot bw-side-foot" aria-hidden>
+        <PhoneIcon className="bw-foot-ic" />
+        <BugIcon className="bw-foot-ic" />
+      </div>
+    </>
+  );
+}
+
+function MorphThread() {
+  return (
+    <>
+      <div className="feed bw-feed mx-feed">
+        <div className="msg-user">
+          Checkout times out on slow networks. Find the cause and fix it.
+        </div>
+        <div className="msg-step">
+          <ChevronRight className="step-chev" />
+          Explored 4 files, ran 2 commands
+        </div>
+        <div className="msg-say">
+          Found it: the payment request gives up after 5 seconds. I raised the
+          timeout to 30 seconds, added one retry, and the checkout tests pass.
+        </div>
+      </div>
+      <ComposerBox
+        placeholder="Ask for a follow-up"
+        model="Opus 5.5"
+        modelIcon={ClaudeIcon}
+      />
+    </>
+  );
+}
+
+type WorkState = "todo" | "progress" | "review" | "done";
+
+function WorkGlyph({ state }: { state: WorkState }) {
+  return (
+    <svg className={`mx-state is-${state}`} viewBox="0 0 16 16" aria-hidden>
+      {state === "progress" ? (
+        <>
+          <circle cx="8" cy="8" r="5.25" opacity="0.35" />
+          <path d="M8 2.75a5.25 5.25 0 0 1 0 10.5" strokeWidth="2" />
+        </>
+      ) : state === "review" ? (
+        <>
+          <circle cx="8" cy="8" r="5.25" opacity="0.35" />
+          <path d="M8 2.75a5.25 5.25 0 1 1-5.25 5.25" strokeWidth="2" />
+        </>
+      ) : state === "done" ? (
+        <>
+          <circle cx="8" cy="8" r="5.25" />
+          <path d="m5.35 8.05 1.7 1.75 3.65-3.7" />
+        </>
+      ) : (
+        <circle cx="8" cy="8" r="5.25" />
+      )}
+    </svg>
+  );
+}
+
+type BoardCard = {
+  key: string;
+  title: string;
+  labels: readonly string[];
+  updated: string;
+  who: string;
+};
+
+const BOARD_LANES: readonly {
+  name: string;
+  state: WorkState;
+  cards: readonly BoardCard[];
+}[] = [
+  {
+    name: "Todo",
+    state: "todo",
+    cards: [
+      {
+        key: "BB-231",
+        title: "Add Apple Pay to checkout",
+        labels: ["checkout", "feature"],
+        updated: "Nov 2",
+        who: "MC",
+      },
+      {
+        key: "BB-229",
+        title: "Show order history on the account page",
+        labels: ["account"],
+        updated: "Oct 31",
+        who: "YA",
+      },
+    ],
+  },
+  {
+    name: "In Progress",
+    state: "progress",
+    cards: [
+      {
+        key: "BB-224",
+        title: "Checkout times out on slow networks",
+        labels: ["bug", "checkout"],
+        updated: "Nov 3",
+        who: "BB",
+      },
+      {
+        key: "BB-226",
+        title: "Cache plan prices",
+        labels: ["billing"],
+        updated: "Nov 1",
+        who: "SH",
+      },
+    ],
+  },
+  {
+    name: "In Review",
+    state: "review",
+    cards: [
+      {
+        key: "BB-219",
+        title: "Retry failed webhooks",
+        labels: ["billing"],
+        updated: "Nov 2",
+        who: "VB",
+      },
+    ],
+  },
+  {
+    name: "Done",
+    state: "done",
+    cards: [
+      {
+        key: "BB-214",
+        title: "Bump the SDK",
+        labels: ["chore"],
+        updated: "Oct 30",
+        who: "BB",
+      },
+    ],
+  },
+];
+
+function MorphTaskboard() {
+  return (
+    <div className="mx-tb">
+      <div className="mx-tb-bar">
+        <span className="mx-seg">
+          <span>List</span>
+          <span className="is-on">Kanban</span>
+        </span>
+      </div>
+      <div className="mx-tb-lanes">
+        {BOARD_LANES.map((lane) => (
+          <section key={lane.name} className="mx-tb-lane">
+            <div className="mx-tb-head">
+              <WorkGlyph state={lane.state} />
+              <span className="mx-tb-name">{lane.name}</span>
+              <span className="mx-tb-count">{lane.cards.length}</span>
+            </div>
+            {lane.cards.map((card) => (
+              <div key={card.key} className="mx-tb-card">
+                <span className="mx-tb-key">{card.key}</span>
+                <span className="mx-tb-title">
+                  <WorkGlyph state={lane.state} />
+                  {card.title}
+                </span>
+                <span className="mx-tb-labels">
+                  {card.labels.map((label) => (
+                    <span key={label} className="mx-tb-label">
+                      {label}
+                    </span>
+                  ))}
+                </span>
+                <span className="mx-tb-meta">
+                  Updated {card.updated}
+                  <span className="mx-avatar">{card.who}</span>
+                </span>
+                {lane.state === "done" ? null : (
+                  <span className="mx-tb-start">
+                    <HugeiconsIcon
+                      icon={AiContentGenerator01Icon}
+                      className="mx-tb-start-ic"
+                    />
+                    Start task
+                  </span>
+                )}
+              </div>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type FileKind = "folder" | "ts" | "md" | "json" | "plain";
+
+const FILE_TREE: readonly {
+  name: string;
+  kind: FileKind;
+  depth: number;
+  open?: boolean;
+  active?: boolean;
+}[] = [
+  { name: ".github", kind: "folder", depth: 0 },
+  { name: "src", kind: "folder", depth: 0, open: true },
+  { name: "components", kind: "folder", depth: 1 },
+  { name: "pay", kind: "folder", depth: 1, open: true },
+  { name: "client.ts", kind: "ts", depth: 2 },
+  { name: "retry.ts", kind: "ts", depth: 2 },
+  { name: "app.tsx", kind: "ts", depth: 1 },
+  { name: "tests", kind: "folder", depth: 0 },
+  { name: ".gitignore", kind: "plain", depth: 0 },
+  { name: "CONTRIBUTING.md", kind: "md", depth: 0 },
+  { name: "package.json", kind: "json", depth: 0 },
+  { name: "README.md", kind: "md", depth: 0, active: true },
+];
+
+const FILE_TABS = ["client.ts", "README.md", "CONTRIBUTING.md"] as const;
+
+function MorphFiles() {
+  return (
+    <div className="mx-fe">
+      <div className="mx-fe-tree">
+        <span className="mx-fe-pick">
+          <HugeiconsIcon icon={Folder01Icon} className="mx-fe-ic" />
+          <span className="mx-fe-pick-text">checkout-web</span>
+          <ChevronDown className="mx-fe-chev" />
+        </span>
+        <span className="mx-fe-pick">
+          <GitBranchIcon className="mx-fe-ic" />
+          <span className="mx-fe-pick-text">fix/checkout-timeout</span>
+          <ChevronDown className="mx-fe-chev" />
+        </span>
+        <span className="mx-fe-pick mx-fe-search">
+          <SearchIcon className="mx-fe-ic" />
+          Search in files
+        </span>
+        <div className="mx-fe-rows">
+          {FILE_TREE.map((row) => (
+            <span
+              key={`${row.depth}-${row.name}`}
+              className={row.active ? "mx-fe-row is-active" : "mx-fe-row"}
+              style={{ paddingLeft: 6 + row.depth * 14 }}
+            >
+              {row.kind === "folder" ? (
+                <>
+                  {row.open ? (
+                    <ChevronDown className="mx-fe-twist" />
+                  ) : (
+                    <ChevronRight className="mx-fe-twist" />
+                  )}
+                  <HugeiconsIcon icon={Folder01Icon} className="mx-fe-ic" />
+                </>
+              ) : (
+                <FileReadIcon
+                  className={`mx-fe-ic mx-fe-file is-${row.kind}`}
+                />
+              )}
+              {row.name}
+            </span>
+          ))}
+        </div>
+        <span className="mx-fe-foot">
+          1,284 files · excluding .git, node_modules
+        </span>
+      </div>
+      <div className="mx-fe-editor">
+        <div className="mx-fe-tabs">
+          {FILE_TABS.map((tab) => (
+            <span
+              key={tab}
+              className={tab === "README.md" ? "mx-fe-tab is-on" : "mx-fe-tab"}
+            >
+              <FileReadIcon
+                className={`mx-fe-ic mx-fe-file is-${tab.endsWith(".md") ? "md" : "ts"}`}
+              />
+              {tab}
+              <ClearGlyph className="mx-fe-x" />
+            </span>
+          ))}
+        </div>
+        <div className="mx-fe-crumbs">
+          <span className="mx-fe-path">
+            checkout-web
+            <ChevronRight className="mx-fe-sep" />
+            <span className="mx-fe-here">README.md</span>
+          </span>
+          <span className="mx-fe-meta">Markdown · 42 lines</span>
+          <span className="mx-seg">
+            <span className="is-on">Preview</span>
+            <span>Read</span>
+            <span>Edit</span>
+          </span>
+        </div>
+        <div className="mx-fe-doc">
+          <span className="mx-fe-h1">checkout-web</span>
+          <span className="mx-fe-p">
+            The storefront checkout. Payment calls live in <code>src/pay</code>;
+            the UI is in <code>src/components</code>.
+          </span>
+          <span className="mx-fe-h2">Getting started</span>
+          <span className="mx-fe-pre">
+            <span>
+              <em>npm</em> install
+            </span>
+            <span>
+              <em>npm</em> run dev
+            </span>
+          </span>
+          <span className="mx-fe-h2">Timeouts</span>
+          <span className="mx-fe-p">
+            Payment requests wait 30 seconds and retry once before checkout
+            shows an error.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type GraphKind = "thread" | "turn" | "subagent" | "bash" | "read";
+
+const GRAPH_ICONS: Record<GraphKind, IconSvgElement> = {
+  thread: BubbleChatAddIcon,
+  turn: ZapIcon,
+  subagent: RoboticIcon,
+  bash: ComputerTerminal01Icon,
+  read: Search01Icon,
+};
+
+const GRAPH_NODES: readonly {
+  kind: GraphKind;
+  title: string;
+  detail: string;
+  x: number;
+  y: number;
+  running?: boolean;
+}[] = [
+  { kind: "thread", title: MORPH_THREAD, detail: "2 turns", x: 8, y: 196 },
+  {
+    kind: "turn",
+    title: "Checkout times out on slow networks",
+    detail: "12 steps",
+    x: 120,
+    y: 110,
+  },
+  {
+    kind: "turn",
+    title: "Ship it with a retry",
+    detail: "5 steps",
+    x: 120,
+    y: 282,
+    running: true,
+  },
+  {
+    kind: "subagent",
+    title: "Review the diff",
+    detail: "Subagent · 8 steps",
+    x: 258,
+    y: 170,
+  },
+  {
+    kind: "read",
+    title: "client.ts",
+    detail: "src/pay/client.ts",
+    x: 258,
+    y: 230,
+  },
+  {
+    kind: "bash",
+    title: "Bash",
+    detail: "pnpm test checkout",
+    x: 258,
+    y: 290,
+    running: true,
+  },
+  {
+    kind: "bash",
+    title: "Bash",
+    detail: "git push",
+    x: 258,
+    y: 350,
+  },
+];
+
+const GRAPH_EDGES: readonly [number, number][] = [
+  [0, 1],
+  [0, 2],
+  [2, 3],
+  [2, 4],
+  [2, 5],
+  [2, 6],
+];
+
+const GRAPH_NODE_H = 44;
+
+function graphNodeWidth(x: number) {
+  if (x < 100) return 100;
+  if (x < 250) return 124;
+  return 134;
+}
+
+function MorphAgentGraph() {
+  return (
+    <div className="mx-ag">
+      <div className="mx-ag-tabs">
+        <span className="mx-ag-tab">
+          <PluginMark id="agent-graph" className="mx-ag-tab-ic" />
+          Agent graph
+        </span>
+        <PlusGlyph className="mx-ag-plus" />
+      </div>
+      <div className="mx-ag-canvas">
+        <div className="mx-ag-tools">
+          <span className="mx-seg">
+            <span className="is-on">This thread</span>
+            <span>All threads</span>
+          </span>
+          <span className="mx-seg">
+            <span>Active only</span>
+            <span>Color: Type</span>
+          </span>
+        </div>
+        <svg className="mx-ag-edges" viewBox="0 0 400 420" aria-hidden>
+          {GRAPH_EDGES.map(([from, to]) => {
+            const a = GRAPH_NODES[from]!;
+            const b = GRAPH_NODES[to]!;
+            const x1 = a.x + graphNodeWidth(a.x);
+            const y1 = a.y + GRAPH_NODE_H / 2;
+            const y2 = b.y + GRAPH_NODE_H / 2;
+            const mid = (x1 + b.x) / 2;
+            return (
+              <path
+                key={`${from}-${to}`}
+                d={`M${x1} ${y1}C${mid} ${y1} ${mid} ${y2} ${b.x} ${y2}`}
+              />
+            );
+          })}
+        </svg>
+        {GRAPH_NODES.map((node, index) => (
+          <div
+            key={index}
+            className={`mx-ag-node is-${node.kind}`}
+            style={{
+              left: node.x,
+              top: node.y,
+              width: graphNodeWidth(node.x),
+            }}
+          >
+            <span className="mx-ag-chip">
+              <HugeiconsIcon
+                icon={GRAPH_ICONS[node.kind]}
+                className="mx-ag-ic"
+              />
+            </span>
+            <span className="mx-ag-text">
+              <span className="mx-ag-title">{node.title}</span>
+              <span className="mx-ag-detail">{node.detail}</span>
+            </span>
+            <i className={node.running ? "mx-dot is-run" : "mx-dot is-ok"} />
+          </div>
+        ))}
+        <div className="mx-ag-foot">
+          <span className="mx-ag-pill">
+            <i className="mx-dot is-run" />
+            Running 1
+          </span>
+          <span className="mx-ag-pill">
+            <span>−</span>
+            84%
+            <span>+</span>
+            Fit
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PluginMorph() {
+  const ref = useRef<HTMLDivElement>(null);
+  useFitWindow(ref);
+  const { scene, previous, paused } = useMorphTimeline(ref);
+  const changing = previous !== null;
+  const center = MORPH_CENTER[scene];
+  const side = MORPH_SIDE[scene];
+  const before = previous === null ? null : MORPH_CENTER[previous];
+  const sideBefore = previous === null ? null : MORPH_SIDE[previous];
+  const titles = [...new Set(Object.values(MORPH_TITLES))];
+  return (
+    <div
+      ref={ref}
+      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${paused ? " fw-paused" : ""}`}
+      data-scene={scene}
+      role="img"
+      aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
+    >
+      <div className="mock bw-window mx-window">
+        <WindowBar
+          panelOpen={scene === "graph"}
+          title={
+            <span className="mx-titles">
+              {titles.map((title) => (
+                <span
+                  key={title}
+                  className={
+                    title === MORPH_TITLES[center]
+                      ? "mx-title is-on"
+                      : "mx-title"
+                  }
+                >
+                  {title}
+                </span>
+              ))}
+            </span>
+          }
+        />
+        <div className="mock-body bw-body mx-body" aria-hidden>
+          <NavRail active={center === "thread" ? "home" : null}>
+            {(["files-editor", "taskboard"] as const).map((id) => (
+              <span
+                key={id}
+                className={
+                  center === (id === "files-editor" ? "files" : id)
+                    ? "bw-rail-btn mx-rail-plugin is-on"
+                    : "bw-rail-btn mx-rail-plugin"
+                }
+              >
+                <PluginMark id={id} className="bw-rail-ic" />
+              </span>
+            ))}
+          </NavRail>
+          <div className="mx-side-slot">
+            <aside
+              className={morphLayer(
+                "side mx-side-threads",
+                "threads",
+                side,
+                sideBefore,
+                changing,
+              )}
+            >
+              <MorphThreads />
+            </aside>
+            <aside
+              className={morphLayer(
+                "side mx-side-shelves",
+                "shelves",
+                side,
+                sideBefore,
+                changing,
+              )}
+            >
+              <MorphShelves />
+            </aside>
+          </div>
+          <div className="mx-center">
+            <div
+              className={morphLayer("main", "thread", center, before, changing)}
+            >
+              <MorphThread />
+            </div>
+            <div
+              className={morphLayer("main", "files", center, before, changing)}
+            >
+              <MorphFiles />
+            </div>
+            <div
+              className={morphLayer(
+                "main",
+                "taskboard",
+                center,
+                before,
+                changing,
+              )}
+            >
+              <MorphTaskboard />
+            </div>
+          </div>
+          <div className="mx-panel-slot">
+            <div className="mx-panel">
+              <MorphAgentGraph />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const DELEGATION_LEAD = "Ship the checkout fix";
 
 const DELEGATION_CHILDREN = [
@@ -1606,7 +2427,11 @@ const START_DIFF: readonly DiffLine[] = [
   { n: 13, kind: "del", text: "  return post(PAY_URL, order);" },
   { n: 13, kind: "add", text: "  return retry(1, () =>" },
   { n: 14, kind: "add", text: "    post(PAY_URL, order, {" },
-  { n: 15, kind: "add", text: "      signal: AbortSignal.timeout(TIMEOUT_MS)," },
+  {
+    n: 15,
+    kind: "add",
+    text: "      signal: AbortSignal.timeout(TIMEOUT_MS),",
+  },
   { n: 16, kind: "add", text: "    })," },
   { n: 17, kind: "add", text: "  );" },
   { n: 18, kind: "ctx", text: "}" },

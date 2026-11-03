@@ -87,7 +87,7 @@ import {
   ProviderChips,
   CustomizeBuild,
   DelegationTree,
-  PluginMap,
+  PluginMorph,
   SpawnSidebar,
   StartAnywhere,
   useCycle,
@@ -1312,7 +1312,7 @@ function RefreshedBelowFold() {
         title="Make bb yours. No need to fork."
         stacked
         section="make-it-yours"
-        visual={<PluginMap />}
+        visual={<PluginMorph />}
       >
         <p>
           bb adapts to how you work, not the other way around. Prompt an agent
