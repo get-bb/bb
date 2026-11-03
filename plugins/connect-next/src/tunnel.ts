@@ -14,7 +14,6 @@ import {
   type TunnelServer,
 } from "@bb/frp-client";
 import { gateAudienceForServer } from "@bb/tunnel-contract/next";
-import type { ServerCredential, ServerIdentity } from "./account.js";
 import { nextSiteForAccount } from "./next-site.js";
 import { shareProxyName, shareSubdomain } from "./shares.js";
 import type { OpenTunnelIngress, TunnelIngress } from "./ingress.js";
@@ -44,6 +43,17 @@ export interface NextTunnelOptions {
     config: InternalDoNotUsePluginNextTunnelConfig | null,
   ): void;
   machineStatuses?(): InternalDoNotUsePluginHostNextTunnelStatus[];
+}
+
+interface ServerIdentity {
+  serverId: string;
+  label: string;
+  baseUrl: string;
+}
+
+interface ServerCredential {
+  serverId: string;
+  credential: string;
 }
 
 interface Session {

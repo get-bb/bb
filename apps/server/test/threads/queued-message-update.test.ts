@@ -82,6 +82,7 @@ function recordQueuedAnnouncements(): ThreadQueuedMessage[] {
     emitThreadFailed: () => {},
     emitThreadArchived: () => {},
     emitThreadDeleted: () => {},
+    emitThreadRead: () => {},
     emitInteractionPending: () => {},
     emitMessageQueued: (entry) => announced.push(entry),
     emitMessageDispatched: () => {},

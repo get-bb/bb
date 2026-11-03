@@ -207,6 +207,7 @@
       "type": "required",
       "command": "required",
       "cwd": "required",
+      "description": "optional",
       "aggregatedOutput": "optional",
       "exitCode": "optional",
       "durationMs": "optional"

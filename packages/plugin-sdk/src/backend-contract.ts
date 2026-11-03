@@ -293,6 +293,13 @@ export interface PluginThreadEventPayloads {
     thread: ThreadResponse;
     previousParentThreadId: string | null;
   };
+  /**
+   * Fired after a thread's read state changes and the thread is now read
+   * (`lastReadAt >= latestAttentionAt`): a client opened it or marked it
+   * read, or the user sent it a turn. Marking a thread unread does not fire
+   * it. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.read": { thread: ThreadResponse };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
   /**

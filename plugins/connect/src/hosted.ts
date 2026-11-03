@@ -9,8 +9,8 @@ import {
   AccountUnavailableError,
   type AccountClient,
   type AccountFetchRequest,
-  type AccountFetchResult,
-} from "./account-client.js";
+} from "bb-plugin-bb-account/src/client.js";
+import type { AccountFetchResult } from "bb-plugin-bb-account/src/contract.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 
 export class NotSignedInError extends Error {

@@ -53,7 +53,7 @@ vi.mock("ws", async (importOriginal) => {
 });
 
 import { ConnectTunnel } from "./tunnel.js";
-import type { SharedCredential } from "./account-client.js";
+import type { SharedCredential } from "bb-plugin-bb-account/src/client.js";
 import { DEFAULT_CONNECT_BASE_URL } from "@bb/connect-client";
 
 const SERVER_CREDENTIAL: SharedCredential = {

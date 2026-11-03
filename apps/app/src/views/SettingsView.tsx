@@ -1129,6 +1129,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
+  dismissReadNotifications: {
+    label: "Clear notifications once a thread is read",
+    description:
+      "When you read a thread on any device, remove its notifications from your phones and tablets and from open bb windows and tabs. Phones need an app version that supports it.",
+  },
   narrowPluginCss: {
     label: "Faster plugin styles",
     description:

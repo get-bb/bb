@@ -11,10 +11,10 @@ import {
   type MobilePairingPayload,
 } from "@bb/connect-client";
 import {
-  accountErrorCode,
   AccountUnavailableError,
   type AccountClient,
-} from "./account-client.js";
+} from "bb-plugin-bb-account/src/client.js";
+import { accountErrorCode } from "bb-plugin-bb-account/src/schemas.js";
 import type { HostedConnectApi } from "./hosted.js";
 import type { ShareHostResolver } from "./hosts.js";
 import { MachineCodeError } from "./machine-code.js";

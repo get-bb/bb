@@ -281,7 +281,10 @@ describe("claude item presentation", () => {
   });
 
   it("emits a bb-injected tool call as server:bb with the definition's presentation", () => {
-    const translator = createClaudeDeltaTranslator({ sandboxEnabled: false });
+    const translator = createClaudeDeltaTranslator({
+      sandboxEnabled: false,
+      commandDescriptionsEnabled: false,
+    });
     translator.configureInjectedTools([
       {
         name: "bb_workflow_result",
@@ -730,7 +733,10 @@ describe("claude item presentation", () => {
   });
 
   it("attaches a presentation to every item.open and item.close delta", () => {
-    const translator = createClaudeDeltaTranslator({ sandboxEnabled: false });
+    const translator = createClaudeDeltaTranslator({
+      sandboxEnabled: false,
+      commandDescriptionsEnabled: false,
+    });
     const context = { threadId: "t" };
     const deltas = [
       ...translator.translate(

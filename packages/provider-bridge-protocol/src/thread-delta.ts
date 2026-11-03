@@ -120,6 +120,7 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
     type: z.literal("command"),
     command: z.string(),
     cwd: z.string(),
+    description: z.string().optional(),
     aggregatedOutput: z.string().optional(),
     exitCode: z.number().optional(),
     durationMs: z.number().optional(),
