@@ -4171,10 +4171,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Testimonials ───────────────────────────────────────────────── */
 
-/* One plain card per quote, whatever the source, and the whole card links to
-   the original post. Four columns on desktop (twelve cards fill three rows),
-   two on tablets, and a swipeable row on phones with the next card peeking
-   in. */
 .testimonials {
   border-top: 1px solid var(--border-soft);
   padding: 52px 0 56px;
@@ -4211,7 +4207,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 100%;
   padding: 14px;
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   transition:
     background 0.15s ease,
@@ -4233,7 +4229,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-size: 14px;
   line-height: 1.45;
   text-wrap: pretty;
-  /* Keep a post's own line breaks. */
   white-space: pre-line;
 }
 
@@ -4259,7 +4254,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--surface-recessed);
   border: 1px solid var(--border-soft);
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--text-label-small);
   font-weight: 600;
 }
 
@@ -4273,7 +4268,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .tm-name {
   color: var(--heading);
-  font-size: 13.5px;
+  font-size: var(--text-body-sm);
   font-weight: 600;
 }
 
@@ -4303,18 +4298,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* Phones: one swipeable row. The track bleeds past .wrap's 28px side padding
-   so cards scroll edge to edge, and snaps each card to the content edge. */
 @media (max-width: 767px) {
   .tm-grid {
     display: flex;
     gap: 10px;
-    margin: 0 -28px;
-    padding: 0 28px 4px;
+    margin: 0 calc(-1 * var(--wrap-gutter));
+    padding: 0 var(--wrap-gutter) 4px;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: 28px;
+    scroll-padding-inline: var(--wrap-gutter);
     scrollbar-width: none;
   }
 
