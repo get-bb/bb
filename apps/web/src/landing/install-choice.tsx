@@ -1,30 +1,41 @@
 import type { ReactNode } from "react";
 
 import { DesktopDownloadButton } from "./cta";
+import { EmailDownloadLinkForm } from "./email-download-link-form";
 import { SendToComputerButton } from "./send-to-computer-button";
 import type { CtaPlacement, DesktopPlatform } from "./site";
+
+export type TouchAction = "share" | "email";
+
+export const PLATFORMS_NOTE = "bb runs on macOS, Windows, and Linux";
 
 export function DesktopInstallChoice({
   placement,
   platform,
   note,
-  touchNote = "bb runs on macOS, Windows, and Linux",
+  touchNote = PLATFORMS_NOTE,
+  touchAction = "share",
 }: {
   placement: CtaPlacement;
   platform: DesktopPlatform;
   note: ReactNode;
   touchNote?: ReactNode;
+  touchAction?: TouchAction;
 }) {
   return (
     <span className="install-choice">
       <DesktopDownloadButton
         placement={placement}
         platform={platform}
-        className="btn btn-primary btn-install install-download"
+        className="btn btn-primary btn-install desktop-only"
       />
-      <SendToComputerButton placement={placement} />
-      <span className="install-note install-note-desktop">{note}</span>
-      <span className="install-note install-note-touch">{touchNote}</span>
+      {touchAction === "email" ? (
+        <EmailDownloadLinkForm placement={placement} />
+      ) : (
+        <SendToComputerButton placement={placement} />
+      )}
+      <span className="install-note desktop-only">{note}</span>
+      <span className="install-note touch-only">{touchNote}</span>
     </span>
   );
 }

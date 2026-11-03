@@ -44,16 +44,23 @@ describe("/download page", () => {
     const phones = html.slice(html.indexOf('class="dl-h2"'));
     expect(phones).toContain("testflight.apple.com");
     expect(phones).toContain("bb-android.apk");
-    expect(html).toContain('class="install-note install-note-touch"');
-    expect(html).toContain("install-send");
   });
 
   it("shows no note under the macOS button and tags the alpha installers", () => {
     const html = renderToStaticMarkup(<DownloadPage />);
-    expect(html).not.toContain("install-note-desktop");
+    expect(html).not.toContain("install-note desktop-only");
     expect(html).not.toContain("Apple Silicon");
     expect(html).toContain('<span class="dl-row-tag">Alpha</span>');
     expect(html).toContain('<span class="dl-row-tag">Alpha · AppImage</span>');
+  });
+
+  it("shows the installer only on computers and the share button only on phones", () => {
+    const html = renderToStaticMarkup(<DownloadPage />);
+    expect(html).toContain(
+      'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=download_page"',
+    );
+    expect(html).toContain("install-send touch-only");
+    expect(html).toContain('class="install-note touch-only"');
   });
 
   it("starts page-view analytics", async () => {

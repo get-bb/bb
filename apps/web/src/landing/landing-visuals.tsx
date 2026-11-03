@@ -84,7 +84,11 @@ import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import { DesktopInstallChoice } from "./install-choice";
+import {
+  DesktopInstallChoice,
+  PLATFORMS_NOTE,
+  type TouchAction,
+} from "./install-choice";
 import {
   ClaudeIcon,
   CopilotIcon,
@@ -102,7 +106,13 @@ import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 import { useActiveWhileVisible, usePageHidden } from "./visibility";
 
-export function InstallOptions({ placement }: { placement: CtaPlacement }) {
+export function InstallOptions({
+  placement,
+  touchAction = "share",
+}: {
+  placement: CtaPlacement;
+  touchAction?: TouchAction;
+}) {
   const simple = useExperiment("homepage-download-path") === "test";
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
@@ -123,6 +133,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
         <DesktopInstallChoice
           placement={placement}
           platform={platform}
+          touchAction={touchAction}
           note={
             simple ? (
               <>
@@ -143,10 +154,22 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
               </>
             )
           }
-          touchNote={simple ? simpleLinks : undefined}
+          touchNote={
+            simple ? (
+              simpleLinks
+            ) : touchAction === "email" ? (
+              <PhoneEmailNote />
+            ) : undefined
+          }
         />
         {simple ? null : (
-          <span className="install-choice">
+          <span
+            className={
+              touchAction === "email"
+                ? "install-choice desktop-only"
+                : "install-choice"
+            }
+          >
             <CommandButton
               command={CLI_COMMAND}
               label={`Copy browser install command: ${CLI_COMMAND}`}
@@ -178,6 +201,10 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
       </div>
     </div>
   );
+}
+
+function PhoneEmailNote() {
+  return <>{PLATFORMS_NOTE}</>;
 }
 
 function OpenSourceLink({ placement }: { placement: CtaPlacement }) {

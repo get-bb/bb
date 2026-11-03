@@ -34,6 +34,7 @@ import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
+import { Route as ApiEmailDownloadLinkRouteImport } from "./routes/api.email-download-link";
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
 import { Route as DotwellKnownBbConnectGateKeysDotjsonRouteImport } from "./routes/[.]well-known.bb-connect-gate-keys[.]json";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
@@ -180,6 +181,11 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: "/api/subscribe",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ApiEmailDownloadLinkRoute = ApiEmailDownloadLinkRouteImport.update({
+  id: "/api/email-download-link",
+  path: "/api/email-download-link",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DotwellKnownOauthAuthorizationServerRoute =
   DotwellKnownOauthAuthorizationServerRouteImport.update({
     id: "/.well-known/oauth-authorization-server",
@@ -305,6 +311,7 @@ export interface FileRoutesByFullPath {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
+  "/api/email-download-link": typeof ApiEmailDownloadLinkRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -352,6 +359,7 @@ export interface FileRoutesByTo {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
+  "/api/email-download-link": typeof ApiEmailDownloadLinkRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -400,6 +408,7 @@ export interface FileRoutesById {
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/.well-known/bb-connect-gate-keys.json": typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
+  "/api/email-download-link": typeof ApiEmailDownloadLinkRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -449,6 +458,7 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
+    | "/api/email-download-link"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -496,6 +506,7 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
+    | "/api/email-download-link"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -543,6 +554,7 @@ export interface FileRouteTypes {
     | "/.well-known/assetlinks.json"
     | "/.well-known/bb-connect-gate-keys.json"
     | "/.well-known/oauth-authorization-server"
+    | "/api/email-download-link"
     | "/api/subscribe"
     | "/blog_/$slug"
     | "/compare/$slug"
@@ -591,6 +603,7 @@ export interface RootRouteChildren {
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
   DotwellKnownBbConnectGateKeysDotjsonRoute: typeof DotwellKnownBbConnectGateKeysDotjsonRoute;
   DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute;
+  ApiEmailDownloadLinkRoute: typeof ApiEmailDownloadLinkRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
@@ -796,6 +809,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiSubscribeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/api/email-download-link": {
+      id: "/api/email-download-link";
+      path: "/api/email-download-link";
+      fullPath: "/api/email-download-link";
+      preLoaderRoute: typeof ApiEmailDownloadLinkRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/.well-known/oauth-authorization-server": {
       id: "/.well-known/oauth-authorization-server";
       path: "/.well-known/oauth-authorization-server";
@@ -974,6 +994,7 @@ const rootRouteChildren: RootRouteChildren = {
     DotwellKnownBbConnectGateKeysDotjsonRoute,
   DotwellKnownOauthAuthorizationServerRoute:
     DotwellKnownOauthAuthorizationServerRoute,
+  ApiEmailDownloadLinkRoute: ApiEmailDownloadLinkRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
