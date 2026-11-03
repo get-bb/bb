@@ -75,7 +75,7 @@
     "NewThreadPage decide how slow bb feels on a phone after boot. Their",
     "forbiddenPackages are the diff engine, math, file tree and terminal code",
     "that only a user action needs.",
-    "The composer (tiptap/prosemirror) is visible on both pages and is allowed.",
+    "The composer is the bundled Composer plugin, so core ships no tiptap.",
     "Run `node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the route.",
     "",

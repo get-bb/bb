@@ -4,7 +4,7 @@ import { orderMentionCandidates } from "../src/prompt/mentions/mention-candidate
 import { composerMentionGroupsFromOrdered } from "../src/prompt/mentions/composer-suggestions.js";
 import type { PromptMentionSuggestion } from "../src/prompt/mentions/types.js";
 import {
-  composerDraftFromPromptDraft,
+  composerMentionFromPromptTextMention,
   composerMentionTargetFromResource,
   promptDraftFromComposerDraft,
   promptMentionResourceFromComposerMention,
@@ -54,7 +54,10 @@ describe("composer mention conversion", () => {
         { type: "localFile" as const, path: "a.txt", name: "a.txt" },
       ],
     };
-    const composer = composerDraftFromPromptDraft(draft);
+    const composer = {
+      ...draft,
+      mentions: draft.mentions.map(composerMentionFromPromptTextMention),
+    };
     expect(composer.mentions[0]).toMatchObject({
       from: 4,
       to: 11,

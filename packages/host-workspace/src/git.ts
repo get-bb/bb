@@ -10,7 +10,6 @@ import {
   type GitProcessOptions,
   type GitTimeoutOptions,
   parseOriginHeadBranchName,
-  type PorcelainEntry,
   resolveGitProcessEnv,
   resolvePreferredLocalDefaultBranch,
   runGit,
@@ -49,11 +48,6 @@ interface WorkspaceGitOperationMarker {
   markerNames: string[];
 }
 
-interface ParsedPorcelainPathToken {
-  nextIndex: number;
-  value: string;
-}
-
 const CONFLICT_PORCELAIN_STATUSES = new Set<string>([
   "DD",
   "AU",
@@ -70,18 +64,6 @@ const WORKSPACE_GIT_OPERATION_MARKERS: WorkspaceGitOperationMarker[] = [
   { kind: "cherry-pick", markerNames: ["CHERRY_PICK_HEAD"] },
   { kind: "revert", markerNames: ["REVERT_HEAD"] },
 ];
-
-const GIT_QUOTED_PATH_ESCAPE_BYTES = new Map<string, number>([
-  ['"', 34],
-  ["\\", 92],
-  ["a", 7],
-  ["b", 8],
-  ["f", 12],
-  ["n", 10],
-  ["r", 13],
-  ["t", 9],
-  ["v", 11],
-]);
 
 function isMissingGitBlobTargetError(stderr: string): boolean {
   return (
@@ -245,132 +227,11 @@ export async function getCheckoutRef(
   };
 }
 
-function appendUtf8Bytes(bytes: number[], value: string): void {
-  bytes.push(...Buffer.from(value, "utf8"));
-}
-
-function isOctalDigit(value: string | undefined): boolean {
-  return value !== undefined && value >= "0" && value <= "7";
-}
-
-function readEscapedPorcelainPathBytes(
-  bytes: number[],
-  rawPath: string,
-  startIndex: number,
-): number {
-  const escapeChar = rawPath[startIndex + 1];
-  if (escapeChar === undefined) {
-    return startIndex + 1;
-  }
-  if (isOctalDigit(escapeChar)) {
-    let octalValue = escapeChar;
-    let index = startIndex + 2;
-    while (octalValue.length < 3 && isOctalDigit(rawPath[index])) {
-      octalValue += rawPath[index] ?? "";
-      index += 1;
-    }
-    bytes.push(Number.parseInt(octalValue, 8));
-    return index;
-  }
-  const escapedByte = GIT_QUOTED_PATH_ESCAPE_BYTES.get(escapeChar);
-  if (escapedByte !== undefined) {
-    bytes.push(escapedByte);
-  } else {
-    appendUtf8Bytes(bytes, escapeChar);
-  }
-  return startIndex + 2;
-}
-
-function parseQuotedPorcelainPathToken(
-  rawPath: string,
-  startIndex: number,
-): ParsedPorcelainPathToken {
-  const bytes: number[] = [];
-  let index = startIndex + 1;
-  while (index < rawPath.length) {
-    const currentChar = rawPath[index];
-    if (currentChar === '"') {
-      return {
-        nextIndex: index + 1,
-        value: Buffer.from(bytes).toString("utf8"),
-      };
-    }
-    if (currentChar === "\\") {
-      index = readEscapedPorcelainPathBytes(bytes, rawPath, index);
-      continue;
-    }
-    const codePoint = rawPath.codePointAt(index);
-    if (codePoint === undefined) {
-      break;
-    }
-    const character = String.fromCodePoint(codePoint);
-    appendUtf8Bytes(bytes, character);
-    index += character.length;
-  }
-  return {
-    nextIndex: rawPath.length,
-    value: rawPath.slice(startIndex),
-  };
-}
-
-function parseUnquotedPorcelainPathToken(
-  rawPath: string,
-  startIndex: number,
-): ParsedPorcelainPathToken {
-  const separatorIndex = rawPath.indexOf(" -> ", startIndex);
-  const endIndex = separatorIndex === -1 ? rawPath.length : separatorIndex;
-  return {
-    nextIndex: endIndex,
-    value: rawPath.slice(startIndex, endIndex),
-  };
-}
-
-function parsePorcelainPathToken(
-  rawPath: string,
-  startIndex: number,
-): ParsedPorcelainPathToken {
-  if (rawPath[startIndex] === '"') {
-    return parseQuotedPorcelainPathToken(rawPath, startIndex);
-  }
-  return parseUnquotedPorcelainPathToken(rawPath, startIndex);
-}
-
-function parsePorcelainPath(rawPath: string): string {
-  const sourcePath = parsePorcelainPathToken(rawPath, 0);
-  if (
-    rawPath.slice(sourcePath.nextIndex, sourcePath.nextIndex + 4) !== " -> "
-  ) {
-    return sourcePath.value;
-  }
-  return parsePorcelainPathToken(rawPath, sourcePath.nextIndex + 4).value;
-}
-
-export function parsePorcelainEntries(statusOutput: string): PorcelainEntry[] {
-  return statusOutput
-    .split("\n")
-    .filter((line) => line && !line.startsWith("##"))
-    .map((line) => {
-      const indexStatus = line[0] ?? " ";
-      const worktreeStatus = line[1] ?? " ";
-      const status = line.slice(0, 2).trim() || line.slice(0, 2);
-      const rawPath = line.slice(3).trim();
-
-      return {
-        path: parsePorcelainPath(rawPath),
-        status,
-        indexStatus,
-        worktreeStatus,
-      };
-    });
-}
-
-function hasPorcelainConflict(entries: PorcelainEntry[]): boolean {
-  return entries.some(
-    (entry) =>
-      entry.indexStatus === "U" ||
-      entry.worktreeStatus === "U" ||
-      CONFLICT_PORCELAIN_STATUSES.has(entry.status),
-  );
+function hasPorcelainConflict(statusOutput: string): boolean {
+  return statusOutput.split("\n").some((line) => {
+    const status = line.slice(0, 2);
+    return status.includes("U") || CONFLICT_PORCELAIN_STATUSES.has(status);
+  });
 }
 
 function buildActiveWorkspaceGitOperation(
@@ -407,9 +268,7 @@ export async function getWorkspaceGitOperation(
       { cwd, ...options },
     ),
   ]);
-  const hasConflicts = hasPorcelainConflict(
-    parsePorcelainEntries(status.stdout),
-  );
+  const hasConflicts = hasPorcelainConflict(status.stdout);
   const marker = await findWorkspaceGitOperationMarker(gitDir);
   if (!marker) {
     return { kind: "none" };

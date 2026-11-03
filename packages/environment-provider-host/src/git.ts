@@ -19,7 +19,7 @@ export interface RunGitOptions extends GitProcessOptions {
   signal?: AbortSignal;
 }
 
-export type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
+type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
 
 export function runGit(
   args: string[],

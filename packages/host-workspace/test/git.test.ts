@@ -15,7 +15,6 @@ import {
   detectLinkedWorktree,
   getCheckoutRef,
   getWorkspaceGitOperation,
-  parsePorcelainEntries,
   readGitBlob,
 } from "../src/git.js";
 
@@ -250,70 +249,6 @@ describe("readGitBlob", () => {
       code: "blob_too_large",
       message: "Blob size 11 bytes exceeds the 0 MB limit",
     });
-  });
-});
-
-describe("parsePorcelainEntries", () => {
-  it("parses ordinary entries and renamed targets", () => {
-    expect(
-      parsePorcelainEntries(
-        [
-          " M README.md",
-          "R  old-name.ts -> new-name.ts",
-          "D  removed.txt",
-        ].join("\n"),
-      ),
-    ).toEqual([
-      {
-        path: "README.md",
-        status: "M",
-        indexStatus: " ",
-        worktreeStatus: "M",
-      },
-      {
-        path: "new-name.ts",
-        status: "R",
-        indexStatus: "R",
-        worktreeStatus: " ",
-      },
-      {
-        path: "removed.txt",
-        status: "D",
-        indexStatus: "D",
-        worktreeStatus: " ",
-      },
-    ]);
-  });
-
-  it("decodes quoted git paths and octal escapes", () => {
-    expect(
-      parsePorcelainEntries(
-        [
-          '?? "a b.txt"',
-          '?? "quote\\\\and\\\"slash.txt"',
-          'R  "old\\040name.txt" -> "new\\040name.txt"',
-        ].join("\n"),
-      ),
-    ).toEqual([
-      {
-        path: "a b.txt",
-        status: "??",
-        indexStatus: "?",
-        worktreeStatus: "?",
-      },
-      {
-        path: 'quote\\and"slash.txt',
-        status: "??",
-        indexStatus: "?",
-        worktreeStatus: "?",
-      },
-      {
-        path: "new name.txt",
-        status: "R",
-        indexStatus: "R",
-        worktreeStatus: " ",
-      },
-    ]);
   });
 });
 

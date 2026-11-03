@@ -15,7 +15,7 @@ import {
   type WorkspaceResolutionFailure,
 } from "./git-types.js";
 
-export const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
+const DEFAULT_BUFFER_BYTES = 16 * 1024 * 1024;
 
 export class WorkspaceError extends Error {
   readonly code: string;
@@ -125,7 +125,7 @@ export function resolveGitProcessEnv(
   };
 }
 
-export function createGitCommandTimedOutError(
+function createGitCommandTimedOutError(
   args: string[],
   timeoutMs: number,
   cause?: unknown,
@@ -137,7 +137,7 @@ export function createGitCommandTimedOutError(
   );
 }
 
-export function createGitCommandCancelledError(
+function createGitCommandCancelledError(
   args: string[],
   cause?: unknown,
 ): WorkspaceError {

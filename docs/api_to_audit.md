@@ -3225,9 +3225,10 @@ hook on the initial attempt as an `experimental_submission` envelope carrying
 the submitting plugin's id. Core validates the data as JSON but neither
 persists nor interprets it.
 
-There is one implementation. `PromptBoxInternal` publishes `submit` on the
-composer editor bridge; it picks Enter's handler, the queue handler or the
-steer handler and gates it exactly as the matching shortcut is gated, then
+There is one implementation. The host's `ComposerBox` publishes `submit` on
+the composer editor bridge for every composer plugin; it picks Enter's handler,
+the queue handler or the steer handler and gates it exactly as the matching
+shortcut is gated, then
 calls the same `onSubmit` or `onModifierSubmit` the shortcuts and the send
 button call, passing `sendAt` and the plugin submission. Only hosts that set
 `sendsOnEnter` (the thread, embedded thread chat and New thread composers)
