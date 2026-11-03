@@ -1,5 +1,12 @@
 import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
+import { useExperimentBootstrap } from "../experiments/context";
+import {
+  TOUCH_QUERY,
+  type ExperimentBootstrap,
+  type ExperimentDevices,
+  type ExperimentKey,
+} from "../experiments/flags";
 import type { ArrivalSource } from "./arrival-source";
 import type { CtaPlacement } from "./site";
 
@@ -62,9 +69,12 @@ type LandingEvent =
 
 let client: PostHog | null = null;
 let loading = false;
+let serverDistinctId: string | null = null;
 const pendingEvents: LandingEvent[] = [];
+const pendingExposures: ExperimentKey[] = [];
+const exposedKeys = new Set<ExperimentKey>();
 
-export function initAnalytics(): void {
+export function initAnalytics(experiments?: ExperimentBootstrap): void {
   if (loading || typeof window === "undefined") {
     return;
   }
@@ -73,24 +83,66 @@ export function initAnalytics(): void {
     return;
   }
   loading = true;
+  serverDistinctId = experiments?.distinctID ?? null;
+  const internalUser =
+    new URLSearchParams(window.location.search).get("bb_internal") === "1";
   void import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
       api_host: import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
       autocapture: false,
       capture_pageview: true,
       capture_pageleave: true,
+      ...(experiments?.distinctID
+        ? {
+            bootstrap: {
+              distinctID: experiments.distinctID,
+              isIdentifiedID: false,
+              featureFlags: experiments.preview
+                ? {}
+                : { ...experiments.featureFlags },
+            },
+          }
+        : {}),
     });
+    if (internalUser) {
+      posthog.register({ internal_user: true });
+    }
     client = posthog;
     for (const event of pendingEvents.splice(0)) {
       client.capture(event.name, event.properties);
+    }
+    for (const flag of pendingExposures.splice(0)) {
+      client.getFeatureFlag(flag);
     }
   });
 }
 
 export function useInitAnalytics(): void {
+  const experiments = useExperimentBootstrap();
   useEffect(() => {
-    initAnalytics();
-  }, []);
+    initAnalytics(experiments);
+  }, [experiments]);
+}
+
+export function exposeExperiment(
+  key: ExperimentKey,
+  devices: ExperimentDevices,
+): void {
+  if (exposedKeys.has(key) || typeof window === "undefined") {
+    return;
+  }
+  if (devices !== "all") {
+    const touch = window.matchMedia(TOUCH_QUERY).matches;
+    if (touch !== (devices === "touch")) {
+      return;
+    }
+  }
+  exposedKeys.add(key);
+  if (client) {
+    client.getFeatureFlag(key);
+  } else {
+    pendingExposures.push(key);
+  }
 }
 
 export type VisitIds = {
@@ -99,14 +151,11 @@ export type VisitIds = {
 };
 
 export function readVisitIds(): VisitIds | null {
-  if (!client) {
-    return null;
-  }
-  const distinctId = client.get_distinct_id();
+  const distinctId = client ? client.get_distinct_id() : serverDistinctId;
   if (!distinctId) {
     return null;
   }
-  return { distinctId, sessionId: client.get_session_id() || null };
+  return { distinctId, sessionId: client?.get_session_id() || null };
 }
 
 export function trackLandingEvent(event: LandingEvent): void {

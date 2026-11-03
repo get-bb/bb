@@ -31,6 +31,10 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
 import { useSectionViews } from "../landing/section-views";
 import adobeLogo from "../assets/company-logos/adobe.svg";
@@ -1201,6 +1205,8 @@ function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
   const companyProofRef = useRef<HTMLElement>(null);
+  const qaCheck = useExperiment("homepage-qa-check");
+  useExperimentExposure("homepage-qa-check", "all");
   useScrollReveal();
   useSectionViews();
   useConstructMock();
@@ -1218,7 +1224,10 @@ function LandingPage() {
   }, []);
 
   return (
-    <div className="wrap">
+    <div
+      className="wrap"
+      data-qa-check={qaCheck === "test" ? qaCheck : undefined}
+    >
       <SiteNav />
 
       <header className="hero">
