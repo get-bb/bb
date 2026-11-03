@@ -50,6 +50,7 @@ function setup(respond: (init: RequestInit) => Promise<Response>) {
     now: () => NOW,
     randomBytes: (length) => new Uint8Array(length).fill(0xab),
     timeoutMs: 20,
+    siteWideKeys: [],
   };
   return { calls, logs, config };
 }
@@ -397,19 +398,37 @@ describe("site-wide experiments", () => {
     "renders %s from the cookie without calling /flags",
     async (_name, value, featureFlags) => {
       const { calls, config } = siteSetup(async () => flagsResponse(assigned));
-      for (const path of ["/guides/remote", "/"]) {
-        const resolution = await resolveExperiments(
-          htmlRequest(path, stored(value)),
-          config,
-        );
-        expect(resolution).toEqual({
-          bootstrap: { distinctID: EXISTING_ID, featureFlags, preview: false },
-          setCookies: [],
-        });
-      }
+      const resolution = await resolveExperiments(
+        htmlRequest("/guides/remote", stored(value)),
+        config,
+      );
+      expect(resolution).toEqual({
+        bootstrap: { distinctID: EXISTING_ID, featureFlags, preview: false },
+        setCookies: [],
+      });
       expect(calls).toHaveLength(0);
     },
   );
+
+  it("asks the homepage's /flags call only for unstored experiments", async () => {
+    const { calls, config } = siteSetup(async () =>
+      flagsResponse({ flags: {} }),
+    );
+    const resolution = await resolveExperiments(
+      pageRequest("/", stored("homepage-qa-check=test")),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toMatchObject({
+      "homepage-qa-check": "test",
+    });
+    expect(
+      calls.flatMap(
+        (call) =>
+          (call.body as { flag_keys_to_evaluate: string[] })
+            .flag_keys_to_evaluate,
+      ),
+    ).not.toContain("homepage-qa-check");
+  });
 
   it("renders control and stores nothing when /flags times out", async () => {
     const { config, logs } = siteSetup(
