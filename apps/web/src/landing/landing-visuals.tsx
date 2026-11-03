@@ -38,7 +38,7 @@ import RoboticIcon from "@hugeicons/core-free-icons/RoboticIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, Ref, RefObject } from "react";
 
 import {
   useExperiment,
@@ -66,6 +66,25 @@ import {
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 
+function useFirstSeen(): [(el: HTMLDivElement | null) => void, boolean] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (!el || seen) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setSeen(true);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, seen]);
+  return [setEl, seen];
+}
+
+function DownloadAreaExposure() {
+  useExperimentExposure("homepage-download-area", "desktop");
+  return null;
+}
+
 export function InstallOptions({
   placement,
   touchAction = "share",
@@ -74,17 +93,33 @@ export function InstallOptions({
   touchAction?: "share" | "email";
 }) {
   const simple = useExperiment("homepage-download-area") === "test";
-  useExperimentExposure("homepage-download-area", "desktop");
-  return simple ? (
-    <SimpleInstallOptions placement={placement} touchAction={touchAction} />
-  ) : (
-    <CurrentInstallOptions placement={placement} touchAction={touchAction} />
+  const [ref, seen] = useFirstSeen();
+  return (
+    <>
+      {simple ? (
+        <SimpleInstallOptions
+          ref={ref}
+          placement={placement}
+          touchAction={touchAction}
+        />
+      ) : (
+        <CurrentInstallOptions
+          ref={ref}
+          placement={placement}
+          touchAction={touchAction}
+        />
+      )}
+      {seen ? <DownloadAreaExposure /> : null}
+    </>
   );
 }
+
 function CurrentInstallOptions({
+  ref,
   placement,
   touchAction,
 }: {
+  ref?: Ref<HTMLDivElement>;
   placement: CtaPlacement;
   touchAction: "share" | "email";
 }) {
@@ -93,7 +128,7 @@ function CurrentInstallOptions({
   const otherPlatform: DesktopPlatform =
     platform === "macos" ? "linux" : "macos";
   return (
-    <div className="install-options">
+    <div ref={ref} className="install-options">
       <div className="install-actions">
         <span className="install-choice">
           <DesktopDownloadButton
@@ -163,18 +198,18 @@ function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
   );
 }
 
-// homepage-download-area test arm: one download button over a single line
-// that links to the repo and to /download. The command moves to /download.
 export function SimpleInstallOptions({
+  ref,
   placement,
   touchAction = "share",
 }: {
+  ref?: Ref<HTMLDivElement>;
   placement: CtaPlacement;
   touchAction?: "share" | "email";
 }) {
   const platform = useDesktopPlatform();
   return (
-    <div className="install-options">
+    <div ref={ref} className="install-options">
       <div className="install-actions">
         <span className="install-choice">
           <DesktopDownloadButton
