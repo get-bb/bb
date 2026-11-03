@@ -178,7 +178,13 @@ describe("StartAnywhere", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     expect(html.match(/class="bw-sp"/g)).toHaveLength(1);
     expect(html).toContain('class="bar-toggle active"');
+    expect(html.match(/class="composer"/g)).toHaveLength(1);
     for (const text of [
+      "Ask for a follow-up",
+      ">Codex<",
+      "All changes",
+      "No changes",
+      "No diff to display.",
       "Uncommitted changes",
       "src/checkout/pay.ts",
       "src/checkout/pay.test.ts",

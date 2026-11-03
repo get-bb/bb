@@ -1596,7 +1596,7 @@ const DiffFilterIcon = ({ className }: IconProps) => (
 
 type DiffLine = { n: number; kind: "ctx" | "add" | "del"; text: string };
 
-const START_PANEL_AT = 4.5;
+const START_PANEL_AT = 4.4;
 
 const START_DIFF: readonly DiffLine[] = [
   { n: 9, kind: "ctx", text: 'const PAY_URL = "/api/pay";' },
@@ -1645,10 +1645,30 @@ function DiffFileHeader({
   );
 }
 
+function DiffToolbar({
+  selection,
+  summary,
+}: {
+  selection: string;
+  summary: ReactNode;
+}) {
+  return (
+    <div className="bw-sp-toolbar">
+      <span className="bw-sp-select">
+        {selection}
+        <ChevronDown className="bw-sp-select-chev" />
+      </span>
+      <span className="bw-sp-summary">{summary}</span>
+      <SearchGlyph className="bw-sp-ic bw-sp-tool" />
+      <DiffFilterIcon className="bw-sp-ic bw-sp-tool" />
+    </div>
+  );
+}
+
 function StartDiffPanel() {
   return (
     <div className="bw-sp-slot" aria-hidden>
-      <div className="bw-sp" style={at(START_PANEL_AT)}>
+      <div className="bw-sp">
         <div className="bw-sp-chrome">
           <span className="bw-sp-tab">
             <InfoTabIcon className="bw-sp-ic" />
@@ -1659,41 +1679,46 @@ function StartDiffPanel() {
           <PlusGlyph className="bw-sp-ic bw-sp-new" />
           <FullScreenIcon className="bw-sp-ic bw-sp-full" />
         </div>
-        <div className="bw-sp-toolbar">
-          <span className="bw-sp-select">
-            Uncommitted changes
-            <ChevronDown className="bw-sp-select-chev" />
-          </span>
-          <span className="bw-sp-summary">
-            2 files, <DiffTally added={24} removed={1} />
-          </span>
-          <SearchGlyph className="bw-sp-ic bw-sp-tool" />
-          <DiffFilterIcon className="bw-sp-ic bw-sp-tool" />
-        </div>
-        <div className="bw-sp-files">
-          <div className="bw-sp-card">
-            <DiffFileHeader
-              path="src/checkout/pay.ts"
-              added={6}
-              removed={1}
-              open
-            />
-            <div className="bw-sp-diff">
-              {START_DIFF.map((line, index) => (
-                <div key={index} className={`bw-sp-line is-${line.kind}`}>
-                  <span className="bw-sp-num">{line.n}</span>
-                  <span className="bw-sp-code">{line.text}</span>
-                </div>
-              ))}
-            </div>
+        <div className="bw-sp-views">
+          <div className="bw-sp-view">
+            <DiffToolbar selection="All changes" summary="No changes" />
+            <div className="bw-sp-empty">No diff to display.</div>
           </div>
-          <div className="bw-sp-card">
-            <DiffFileHeader
-              path="src/checkout/pay.test.ts"
-              added={18}
-              removed={0}
-              open={false}
+          <div className="bw-sp-view is-changes" style={at(START_PANEL_AT)}>
+            <DiffToolbar
+              selection="Uncommitted changes"
+              summary={
+                <>
+                  2 files, <DiffTally added={24} removed={1} />
+                </>
+              }
             />
+            <div className="bw-sp-files">
+              <div className="bw-sp-card">
+                <DiffFileHeader
+                  path="src/checkout/pay.ts"
+                  added={6}
+                  removed={1}
+                  open
+                />
+                <div className="bw-sp-diff">
+                  {START_DIFF.map((line, index) => (
+                    <div key={index} className={`bw-sp-line is-${line.kind}`}>
+                      <span className="bw-sp-num">{line.n}</span>
+                      <span className="bw-sp-code">{line.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bw-sp-card">
+                <DiffFileHeader
+                  path="src/checkout/pay.test.ts"
+                  added={18}
+                  removed={0}
+                  open={false}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1745,7 +1770,7 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. On the desktop, the Diff panel slides open beside the thread and shows the change: a 10 second timeout with one retry in src/checkout/pay.ts, plus a new test file."
+      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. On the desktop, the Diff panel beside the thread starts with no changes, then shows the change: a 10 second timeout with one retry in src/checkout/pay.ts, plus a new test file."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
@@ -1815,6 +1840,11 @@ export function StartAnywhere() {
                   </Reveal>
                 ))}
               </div>
+              <ComposerBox
+                placeholder="Ask for a follow-up"
+                model="Codex"
+                modelIcon={OpenAiIcon}
+              />
             </div>
             <StartDiffPanel />
           </div>
