@@ -14,20 +14,20 @@ import type {
   TelemetryService,
 } from "./telemetry.js";
 
-export const SETUP_GUIDE_FLAG_KEY = "setup-guide-redesign";
-export const FEATURED_PLUGINS_FLAG_KEY = "onboarding-featured-plugins";
+const SETUP_GUIDE_FLAG_KEY = "setup-guide-redesign";
+const FEATURED_PLUGINS_FLAG_KEY = "onboarding-featured-plugins";
 export const SETUP_GUIDE_FLAG_TIMEOUT_MS = 3_000;
 export const SETUP_GUIDE_ASSIGNMENT_FILE_NAME = "setup-guide-assignment.json";
 const POSTHOG_FLAGS_URL = "https://us.i.posthog.com/flags?v=2";
 
-export type SetupGuideAssignmentSource = "override" | "flag" | "default";
+type SetupGuideAssignmentSource = "override" | "flag" | "default";
 
-export interface FlagAssignment {
+interface FlagAssignment {
   variant: SetupGuideVariant;
   source: SetupGuideAssignmentSource;
 }
 
-export interface FeaturedPluginsAssignment extends FlagAssignment {
+interface FeaturedPluginsAssignment extends FlagAssignment {
   featuredPluginEntryIds: string[] | null;
 }
 
@@ -80,14 +80,6 @@ const persistedAssignmentsSchema = z
   })
   .strict();
 
-const singleFlagPersistedAssignmentSchema = z
-  .object({
-    variant: setupGuideVariantSchema,
-    featuredPluginEntryIds: z.array(z.string().min(1)).nullable(),
-    source: persistedSourceSchema,
-  })
-  .strict();
-
 type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
 
 const flagsResponseSchema = z.object({
@@ -105,7 +97,7 @@ const featuredPluginsPayloadSchema = z.object({
   plugins: z.array(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/)).min(1),
 });
 
-export function isSetupGuideTelemetryEvent(
+function isSetupGuideTelemetryEvent(
   event: RecordTelemetryEventRequest,
 ): boolean {
   if (event.name === "recommendation") {
@@ -140,10 +132,7 @@ function flagVariant(
   return { variant: variant.data, payload: flag.data.metadata?.payload };
 }
 
-export function assignmentsFromFlagsResponse(body: unknown): {
-  guide: FlagAssignment;
-  plugins: FeaturedPluginsAssignment;
-} {
+function assignmentsFromFlagsResponse(body: unknown): SetupGuideAssignments {
   const response = flagsResponseSchema.safeParse(body);
   if (!response.success) {
     return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
@@ -170,18 +159,8 @@ export function assignmentsFromFlagsResponse(body: unknown): {
 }
 
 function persistedFromJson(json: unknown): PersistedAssignments | null {
-  const current = persistedAssignmentsSchema.safeParse(json);
-  if (current.success) return current.data;
-  const singleFlag = singleFlagPersistedAssignmentSchema.safeParse(json);
-  if (!singleFlag.success) return null;
-  return {
-    guide: { variant: singleFlag.data.variant, source: singleFlag.data.source },
-    plugins: {
-      variant: "control",
-      source: "default",
-      featuredPluginEntryIds: singleFlag.data.featuredPluginEntryIds,
-    },
-  };
+  const parsed = persistedAssignmentsSchema.safeParse(json);
+  return parsed.success ? parsed.data : null;
 }
 
 async function readPersistedAssignments(
@@ -277,7 +256,7 @@ export async function createSetupGuideExperiment(
 
   async function fetchFlagAssignments(
     identity: FeatureFlagIdentity,
-  ): Promise<{ guide: FlagAssignment; plugins: FeaturedPluginsAssignment }> {
+  ): Promise<SetupGuideAssignments> {
     try {
       const response = await args.fetch(POSTHOG_FLAGS_URL, {
         body: JSON.stringify({
