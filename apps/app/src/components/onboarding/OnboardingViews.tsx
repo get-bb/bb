@@ -375,20 +375,7 @@ function AgentActionButton({
       ) : (
         <AgentActionIcon agent={agent} quiet />
       )}
-      <span className="grid justify-items-start text-left">
-        {[label, busyLabel].map((text) => (
-          <span
-            key={text}
-            aria-hidden={text !== (busy ? busyLabel : label)}
-            className={cn(
-              "col-start-1 row-start-1",
-              text !== (busy ? busyLabel : label) && "invisible",
-            )}
-          >
-            {text}
-          </span>
-        ))}
-      </span>
+      {busy ? busyLabel : label}
     </Button>
   );
 }

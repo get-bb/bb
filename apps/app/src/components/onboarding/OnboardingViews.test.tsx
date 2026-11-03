@@ -427,12 +427,11 @@ describe("AgentStep progress in the redesign", () => {
     ).toBeNull();
   });
 
-  it("shows Installing… in a disabled button that keeps the Install width", () => {
+  it("shows Installing… in the same disabled button", () => {
     const { rerender } = renderQuiet([
       agent("codex", { status: "install", canInstall: true }),
     ]);
-    const idle = screen.getByRole("button", { name: "Install" });
-    expect(idle.textContent).toContain("Installing…");
+    screen.getByRole("button", { name: "Install" });
 
     rerender(
       <TooltipProvider>
@@ -451,7 +450,7 @@ describe("AgentStep progress in the redesign", () => {
     const busy = screen.getByRole("button", { name: "Installing…" });
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     expect(busy.querySelector('[data-icon="Spinner"]')).not.toBeNull();
-    expect(busy.querySelector(".invisible")?.textContent).toBe("Install");
+    expect(busy.textContent).toBe("Installing…");
   });
 
   it("shows Starting… in the button until the sign-in instruction is ready", () => {
