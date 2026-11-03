@@ -1,0 +1,105 @@
+---
+title: Get notified when a thread needs you
+description: bb notifies you on desktop, in the browser and on your phone when a thread finishes, fails or needs you. Set channels in Settings and mute single threads.
+type: how-to
+sources:
+  - plugins/push-notifications/**
+  - apps/mobile/src/notifications/**
+  - apps/mobile/src/screens/settings/NotificationsSettingsScreen.tsx
+  - apps/app/src/hooks/useThreadReadTracking.ts
+  - packages/client-core/src/thread/thread-activity.ts
+  - apps/desktop/src/desktop-attention.ts
+since: 0.46.0
+owner: brsbl
+verified: 2026-10-30
+---
+
+| Event | Notification |
+| --- | --- |
+| The agent asks a question or needs an approval | The question, or what it wants, such as "Approve command: …" or "Review the plan before the agent continues" |
+| The thread fails | "The thread hit an error" |
+| The agent finishes its turn | "Finished and waiting for you" |
+
+The title is the thread's name; click to open the thread. bb skips threads you've read, including the one you're looking at, and archived threads. Notifications come from the bundled **Push notifications** plugin, on by default.
+
+## Turn on notifications on this device
+
+<Tabs items={["Desktop", "Web", "Phone"]}>
+<Tab value="Desktop">
+
+1. Open **Settings** and choose **Push notifications** under **Plugins**.
+2. Under **This desktop app**, click **Allow notifications**, then **Send test notification**.
+
+They show while the app runs. The dock or taskbar icon counts threads that need input.
+
+</Tab>
+<Tab value="Web">
+
+1. Open **Settings** and choose **Push notifications** under **Plugins**.
+2. Under **This browser**, click **Allow notifications**, accept the prompt, then **Send test notification**.
+
+They show only while bb is open in a tab, over HTTPS or `localhost`. Each browser asks separately.
+
+</Tab>
+<Tab value="Phone">
+
+The bb app for iOS or Android gets them even when closed. Pair it with your server first (see Use bb on your phone in Mobile and remote access).
+
+1. When asked "Get notified when a thread needs you?", tap **Turn on notifications**.
+2. To change it later: **Settings** → **This device** → **Notifications**, then **Push notifications** per server.
+
+The server must be reachable over HTTPS or bb connect. Each server's status says why when it can't register.
+
+</Tab>
+</Tabs>
+
+<Screenshot
+  src="/docs-images/get-notified/push-settings"
+  alt="The Push notifications settings page shows the channel switches, Default notifications, Child thread notifications and the Allow notifications button."
+  width={760}
+  height={600}
+/>
+
+```sh
+bb push-notifications test desktop
+bb push-notifications status
+```
+
+## Choose what you're notified about
+
+On the **Push notifications** settings page:
+
+| Setting | Does |
+| --- | --- |
+| **Mobile**, **Web**, **Desktop notifications** | Turn each channel on or off for the whole server |
+| **Default notifications** | **All activity**, **Needs input only** (no finished turns) or **Muted** |
+| **Child thread notifications** | Level for child threads; default **Needs input only** |
+
+For one thread, open its sidebar menu → **Notifications** and pick **Same as default**, **All activity**, **Needs input only** or **Muted**. A child can't notify more than its parent allows.
+
+```sh
+bb push-notifications thread <thread-id> --level muted
+bb plugin config push-notifications set defaultLevel input-only
+```
+
+## See what needs you in the sidebar
+
+| Icon | Means |
+| --- | --- |
+| Question mark | Needs your input |
+| Red cross | Failed |
+| Dot | Unread reply |
+
+**Mark read** and **Mark unread** are in the thread's menu.
+
+## Check it worked
+
+- **Send test notification** shows "bb notifications are working".
+- `bb push-notifications status` lists the channels and devices that will be notified.
+
+## Related troubleshooting
+
+- "Notifications are blocked": allow bb in your browser or system settings, then return.
+- None for a thread you had open: bb marked it read.
+- None on your phone: the server's status should read "On · registered with this server", and **Mobile notifications** be on.
+- "Push notifications plugin is disabled on this server": turn it on in **Settings → Installed plugins**.
