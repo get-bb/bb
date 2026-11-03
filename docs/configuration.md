@@ -610,9 +610,12 @@ selection), `reasoningCli` (launch-time reasoning flags), `nativeReasoning`
 `/compact` otherwise), `providerUsage`, and `dialect` (`cursor`, `opencode`,
 `omp`, or `grok`).
 
-Changes apply immediately, with no restart. A custom agent's command is local
-code execution and only works with a co-located daemon. The `customAcpAgents`
-key in `config.json` is no longer read. Known agents, OpenCode launch settings,
+Changes apply immediately, with no restart. `customAgents` is one server-wide
+setting, but each entry's `command` runs on the machine that runs the thread.
+Use a bare command that is on `PATH` on every machine, or install it at the same
+absolute path on each one. A machine that does not have the command fails to
+start that agent with `ENOENT`. The `customAcpAgents` key in `config.json` is no
+longer read. Known agents, OpenCode launch settings,
 and OpenCode Go usage are covered by the `acp-provider` skill.
 
 Agents from the official ACP registry can be added in the same settings
