@@ -141,13 +141,11 @@ export function DisclosureToggle({
     >
       {leading}
       <span className="underline underline-offset-2">{children}</span>
-      {expanded ? (
-        <Icon
-          name="ChevronDown"
-          aria-hidden
-          className="size-3.5 text-subtle-foreground"
-        />
-      ) : null}
+      <Icon
+        name={expanded ? "ChevronDown" : "ChevronRight"}
+        aria-hidden
+        className="size-3.5 text-subtle-foreground"
+      />
     </button>
   );
 }
