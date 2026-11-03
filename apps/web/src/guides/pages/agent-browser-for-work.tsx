@@ -169,6 +169,10 @@ export const guide: Guide = {
     },
     ...BROWSER_FAQ,
   ],
+  docs: {
+    href: "/docs/let-agents-use-a-browser#sign-the-bb-browser-in-to-your-sites",
+    label: "Sign the bb browser in to your sites",
+  },
   closer: {
     title: "Get the answer, with sources",
     body: "Free and open source. Use the agents you already have.",

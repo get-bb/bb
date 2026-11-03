@@ -72,15 +72,15 @@ function PrivacyRoute() {
           <p>
             Unless you turn it off, the bb app sends us anonymous usage events
             through PostHog about how you use bb, including starting the app,
-            setting it up, and using threads and plugins. We use these events
-            to see how bb is used and to decide what to improve. Each
-            event carries a random install ID, the app version, and basic system
-            details such as your operating system, processor type, and Node.js
-            version. PostHog also records the IP address each event comes from
-            and the approximate location it maps to. Events never include your
-            prompts, code, file names, project names, or account details. To
-            turn this off, go to Settings → General → Share anonymous usage
-            data, or set <code>BB_TELEMETRY=false</code>.
+            setting it up, and using threads and plugins. We use these events to
+            see how bb is used and to decide what to improve. Each event carries
+            a random install ID, the app version, and basic system details such
+            as your operating system, processor type, and Node.js version.
+            PostHog also records the IP address each event comes from and the
+            approximate location it maps to. Events never include your prompts,
+            code, file names, project names, or account details. To turn this
+            off, go to Settings → General → Share anonymous usage data, or set{" "}
+            <code>BB_TELEMETRY=false</code>.
           </p>
 
           <p>The iOS and Android apps store the following on your device:</p>
@@ -200,11 +200,12 @@ function PrivacyRoute() {
           <h2>3. This website</h2>
 
           <p>
-            The marketing pages use PostHog to measure how people find bb.
-            Automatic event capture is off. The pages send page views, the
-            referrer and any campaign parameters in the URL, and a small set of
-            named events, such as a click on a download link or a copy of the
-            install command.
+            The marketing pages and the docs use PostHog to measure how people
+            find bb. Automatic event capture is off. The pages send page views,
+            the referrer and any campaign parameters in the URL, and a small set
+            of named events, such as a click on a download link, a copy of the
+            install command, or a docs search. A docs search event records only
+            whether it found no results, a few or many, never what you typed.
           </p>
 
           <p>

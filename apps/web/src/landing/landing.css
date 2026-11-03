@@ -3257,7 +3257,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 560px) {
   .nav-links .nav-wide {
     display: none;
   }

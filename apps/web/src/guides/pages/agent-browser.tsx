@@ -162,6 +162,10 @@ export const guide: Guide = {
     },
     ...BROWSER_FAQ,
   ],
+  docs: {
+    href: "/docs/let-agents-use-a-browser#turn-on-browser-automation",
+    label: "Let agents use a browser or your computer",
+  },
   closer: {
     title: "Let your agent check its own work",
     body: "Free and open source. Use the agents you already have.",

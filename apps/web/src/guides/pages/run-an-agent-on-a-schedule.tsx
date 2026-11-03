@@ -343,6 +343,10 @@ export const guide: Guide = {
       ),
     },
   ],
+  docs: {
+    href: "/docs/schedule-an-automation#create-an-automation",
+    label: "Schedule an automation",
+  },
   closer: {
     title: "Have the report ready by morning",
     body: "Free and open source. Use the agents and machines you already have.",
