@@ -48,8 +48,15 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
+export const DOWNLOAD_PAGE_PATH = "/download";
 
-export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
+export type CtaPlacement =
+  | "nav"
+  | "hero"
+  | "local"
+  | "closer"
+  | "footer"
+  | "download_page";
 
 export const UTM_PARAM_NAMES = [
   "utm_source",
