@@ -3198,7 +3198,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-start-stage {
-  --bw-sp-width: 392px;
+  --bw-sp-width: 300px;
 }
 
 .bw-start .main {
