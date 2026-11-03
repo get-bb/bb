@@ -1645,10 +1645,12 @@ function AppInstallToggles({
   label,
   openPlatform,
   onOpenPlatformChange,
+  trailing,
 }: {
   label: ReactNode;
   openPlatform: MobilePlatform | null;
   onOpenPlatformChange: (platform: MobilePlatform | null) => void;
+  trailing?: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-start gap-1">
@@ -1671,8 +1673,31 @@ function AppInstallToggles({
             </Fragment>
           );
         })}
+        {trailing === undefined ? null : (
+          <>
+            <span aria-hidden="true">·</span>
+            {trailing}
+          </>
+        )}
       </p>
     </div>
+  );
+}
+
+function HaveTheAppLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span className="underline underline-offset-2">I have the app</span>
+      <Icon
+        name="ArrowRight"
+        aria-hidden
+        className="size-3.5 text-subtle-foreground"
+      />
+    </button>
   );
 }
 
@@ -1871,19 +1896,11 @@ function PhonePairingSteps({
             }
             openPlatform={openPlatform}
             onOpenPlatformChange={setOpenPlatform}
+            trailing={<HaveTheAppLink onClick={() => onStepChange("pair")} />}
           />
           {openPlatform === null ? null : (
             <AppInstallQr platform={openPlatform} />
           )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="text-foreground"
-            onClick={() => onStepChange("pair")}
-          >
-            I have the app
-          </Button>
         </>
       ) : (
         <>
