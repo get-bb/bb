@@ -190,6 +190,7 @@ export interface CreatePushSenderArgs {
   bb: BbPluginApi;
   subscriptions: PushSubscriptionStore;
   getExpoPushUrl(): Promise<string>;
+  isDismissalEnabled(): Promise<boolean>;
   getNotificationLevel(thread: {
     id: string;
     parentThreadId: string | null;
@@ -440,7 +441,8 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     const rows = config.mobileEnabled ? await subscriptions.list() : [];
     if (
       notification.thread !== null &&
-      (channels.length > 0 || rows.length > 0)
+      (channels.length > 0 || rows.length > 0) &&
+      (await args.isDismissalEnabled())
     ) {
       await bb.storage.kv.set(
         `${DELIVERED_THREAD_KEY_PREFIX}${notification.thread.id}`,
@@ -490,6 +492,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     const key = `${DELIVERED_THREAD_KEY_PREFIX}${threadId}`;
     if ((await bb.storage.kv.get<unknown>(key)) === undefined) return;
     await bb.storage.kv.delete(key);
+    if (!(await args.isDismissalEnabled())) return;
     bb.realtime.publish(CLIENT_NOTIFICATION_DISMISS_CHANNEL, {
       threadId,
     } satisfies ClientNotificationDismissal);

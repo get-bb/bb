@@ -524,10 +524,10 @@ iOS keeps its existing APNs registration behavior.
   when no hint matches. The shell accepts a bridge `badge` message
   (`useShellBridge` → `updateAppBadgeCount`), and `AppBadgeSync` writes that
   count on background; the web app does not send it yet.
-- Read elsewhere: once a thread the server notified about is read on any
-  client, the server sends each device a silent push (`_contentAvailable` on
-  iOS, a data-only message on Android; data
-  `{"kind":"dismiss","threadId":"…"}`).
+- Read elsewhere (`dismissReadNotifications` experiment): once a thread the
+  server notified about is read on any client, the server sends each device a
+  silent push (`_contentAvailable` on iOS, a data-only message on Android;
+  data `{"kind":"dismiss","threadId":"…"}`).
   `src/notifications/dismiss-read-threads-task.ts`, loaded from `index.ts`
   before expo-router, runs as an `expo-task-manager` background notification
   task and removes the delivered notifications whose `threadId` matches. The

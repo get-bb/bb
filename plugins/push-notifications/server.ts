@@ -206,6 +206,14 @@ export function createPushNotificationsPlugin(
       subscriptions,
       getDeliverySettings: () => settings.get(),
       getExpoPushUrl: async () => (await settings.get()).expoPushUrl,
+      isDismissalEnabled: async () => {
+        try {
+          const { experiments } = await bb.sdk.system.config();
+          return experiments.dismissReadNotifications;
+        } catch {
+          return false;
+        }
+      },
       getNotificationLevel: (thread) => preferences.effectiveLevel(thread),
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options.coalesceMs === undefined
