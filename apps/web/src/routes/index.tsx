@@ -38,6 +38,7 @@ import {
 } from "../experiments/flags";
 import {
   useExperiment,
+  useExperimentExposer,
   useExperimentExposure,
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
@@ -75,7 +76,12 @@ import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
-import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
+import {
+  DiscordLink,
+  GitHubLink,
+  MarketplaceLink,
+  SubscribeSection,
+} from "../landing/cta";
 import { HeroWindow } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
@@ -86,7 +92,10 @@ import {
   InstallOptions,
   ProviderChips,
   CustomizeBuild,
+  DelegationTree,
+  PluginMorph,
   SpawnSidebar,
+  StartAnywhere,
   useCycle,
   useScrollReveal,
 } from "../landing/landing-visuals";
@@ -1219,6 +1228,156 @@ function AgentChat() {
   );
 }
 
+const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
+  control: ["customizable", "kick-off", "gang", "fork-it", "closer"],
+  test: ["make-it-yours", "hand-off", "start-anywhere", "closer"],
+};
+
+function TodayBelowFold() {
+  return (
+    <>
+      <Band
+        title="Fully customizable."
+        flip
+        section="customizable"
+        visual={<CustomizeBuild />}
+      >
+        <p>
+          Almost anything in bb can be changed in a single prompt. Ask for your
+          Linear issues and they appear: a panel in your sidebar, a{" "}
+          <code>bb linear</code> command, and a skill that teaches every agent
+          to use it.
+        </p>
+        <p>
+          Many of bb&rsquo;s own features are built with the same tools you
+          have. The GitHub integration, agent memory, scheduled jobs, and even
+          remote access are all plugins.
+        </p>
+        <p>Nothing is stopping you from building your ideal workbench.</p>
+      </Band>
+
+      <Band
+        title="Anything can kick off work."
+        section="kick-off"
+        visual={<AgentChat />}
+      >
+        <p>
+          The same CLI your agents use is open to any program you write: a shell
+          script, a cron job, or your own Hermes Agent or OpenClaw bot in
+          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
+          waiting in your sidebar when you are.
+        </p>
+        <p>
+          It runs on your machine, and is waiting for you when you&rsquo;re
+          back.
+        </p>
+      </Band>
+
+      <Band
+        title="The gang's all here"
+        flip
+        section="gang"
+        visual={<SpawnSidebar />}
+      >
+        <p>
+          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
+          live in bb. Give a task to whichever fits, and have one agent spawn
+          and manage another, each in its own thread.
+        </p>
+        <p>
+          Each runs on your own subscription: the provider plan you already pay
+          for, billed by them, not bb.
+        </p>
+        <div className="providers">
+          <ProviderChips />
+        </div>
+      </Band>
+
+      <section className="statement" data-reveal data-section="fork-it">
+        <h2 className="sec-title">Fork it. Make it your own.</h2>
+        <p>
+          bb is MIT-licensed end to end. Fork the repo, customize the agents,
+          tools, and UI, and deploy your own build across your whole
+          organization. It still runs local-first on your machines, on the
+          provider subscriptions you already pay for.
+        </p>
+        <div className="cta-row">
+          <GitHubLink placement="local" className="btn btn-ghost">
+            View the source →
+          </GitHubLink>
+        </div>
+      </section>
+
+      <section className="closer" data-reveal data-section="closer">
+        <h2 className="sec-title">Put your agents to work.</h2>
+        <p>Free, open source, and local-first. Install in under a minute.</p>
+        <InstallOptions placement="closer" />
+        <div className="cta-row cta-row-secondary">
+          <GitHubLink placement="closer" className="btn btn-ghost">
+            View on GitHub
+          </GitHubLink>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function RefreshedBelowFold() {
+  return (
+    <>
+      <Band
+        title="Make bb yours. No need to fork."
+        stacked
+        section="make-it-yours"
+        visual={<PluginMorph />}
+      >
+        <p>
+          bb adapts to how you work, not the other way around. Prompt an agent
+          to change almost anything in bb, or choose from 500+ plugins built by
+          the community.
+        </p>
+        <MarketplaceLink placement="customize" className="band-link">
+          Browse plugins &rarr;
+        </MarketplaceLink>
+      </Band>
+
+      <Band
+        title="Stop babysitting agents."
+        stacked
+        section="hand-off"
+        visual={<DelegationTree />}
+      >
+        <p>
+          Have Claude Code plan, Cursor implement, Codex review, and Grok
+          orchestrate them all. Step in anytime, and only hear about what needs
+          you.
+        </p>
+      </Band>
+
+      <Band
+        title="Start from anywhere. Pick up anywhere."
+        stacked
+        section="start-anywhere"
+        visual={<StartAnywhere />}
+      >
+        <p>
+          Start bb from your desk, CI, the bb mobile app, even other AI apps
+          like ChatGPT or Claude. Threads run on machines you own, from your
+          laptop to a remote server or VM.
+        </p>
+      </Band>
+
+      <section className="closer" data-reveal data-section="closer">
+        <h2 className="sec-title">
+          One programmable workspace for all your agents.
+        </h2>
+        <p>Free and self-hostable.</p>
+        <InstallOptions placement="closer" />
+      </section>
+    </>
+  );
+}
+
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
@@ -1232,8 +1391,15 @@ function LandingPage() {
   const [heroWindowInView, setHeroWindowInView] = useState(false);
   const [heroWindowSeen, setHeroWindowSeen] = useState(false);
   useExperimentExposure("homepage-hero-window", "desktop", heroWindowSeen);
+  const belowFold = useExperiment("homepage-below-fold");
+  const exposeBelowFold = useExperimentExposer(
+    "homepage-below-fold",
+    "desktop",
+  );
   useScrollReveal();
-  useSectionViews();
+  useSectionViews((section) => {
+    if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
+  });
   useConstructMock();
   useFitMock();
 
@@ -1339,88 +1505,7 @@ function LandingPage() {
         </div>
       </section>
 
-      <Band
-        title="Fully customizable."
-        flip
-        section="customizable"
-        visual={<CustomizeBuild />}
-      >
-        <p>
-          Almost anything in bb can be changed in a single prompt. Ask for your
-          Linear issues and they appear: a panel in your sidebar, a{" "}
-          <code>bb linear</code> command, and a skill that teaches every agent
-          to use it.
-        </p>
-        <p>
-          Many of bb&rsquo;s own features are built with the same tools you
-          have. The GitHub integration, agent memory, scheduled jobs, and even
-          remote access are all plugins.
-        </p>
-        <p>Nothing is stopping you from building your ideal workbench.</p>
-      </Band>
-
-      <Band
-        title="Anything can kick off work."
-        section="kick-off"
-        visual={<AgentChat />}
-      >
-        <p>
-          The same CLI your agents use is open to any program you write: a shell
-          script, a cron job, or your own Hermes Agent or OpenClaw bot in
-          Telegram, Signal, or Slack. Each can spawn a thread that&rsquo;s
-          waiting in your sidebar when you are.
-        </p>
-        <p>
-          It runs on your machine, and is waiting for you when you&rsquo;re
-          back.
-        </p>
-      </Band>
-
-      <Band
-        title="The gang's all here"
-        flip
-        section="gang"
-        visual={<SpawnSidebar />}
-      >
-        <p>
-          Claude Code, Codex, Cursor, Pi, OpenCode, Grok, omp, and Hermes all
-          live in bb. Give a task to whichever fits, and have one agent spawn
-          and manage another, each in its own thread.
-        </p>
-        <p>
-          Each runs on your own subscription: the provider plan you already pay
-          for, billed by them, not bb.
-        </p>
-        <div className="providers">
-          <ProviderChips />
-        </div>
-      </Band>
-
-      <section className="statement" data-reveal data-section="fork-it">
-        <h2 className="sec-title">Fork it. Make it your own.</h2>
-        <p>
-          bb is MIT-licensed end to end. Fork the repo, customize the agents,
-          tools, and UI, and deploy your own build across your whole
-          organization. It still runs local-first on your machines, on the
-          provider subscriptions you already pay for.
-        </p>
-        <div className="cta-row">
-          <GitHubLink placement="local" className="btn btn-ghost">
-            View the source →
-          </GitHubLink>
-        </div>
-      </section>
-
-      <section className="closer" data-reveal data-section="closer">
-        <h2 className="sec-title">Put your agents to work.</h2>
-        <p>Free, open source, and local-first. Install in under a minute.</p>
-        <InstallOptions placement="closer" />
-        <div className="cta-row cta-row-secondary">
-          <GitHubLink placement="closer" className="btn btn-ghost">
-            View on GitHub
-          </GitHubLink>
-        </div>
-      </section>
+      {belowFold === "test" ? <RefreshedBelowFold /> : <TodayBelowFold />}
 
       <SubscribeSection
         reveal

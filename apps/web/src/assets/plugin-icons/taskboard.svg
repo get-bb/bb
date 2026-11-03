@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Dart-style target mark shared by Taskboard's sidebar and panel actions. -->
+  <circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="5"/>
+  <circle cx="12" cy="12" r="1.5" fill="#7c3aed" stroke="none"/>
+  <path d="m16.25 7.75 3-3"/>
+  <path d="M19.25 4.75h-2.5"/>
+  <path d="M19.25 4.75v2.5"/>
+</svg>
