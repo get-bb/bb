@@ -448,6 +448,7 @@ export async function startTestServer(
       await tunnelIngress.closeAll();
       await closeWebSockets();
       await closeServer;
+      await pluginService.stop();
       await harness.cleanup();
     },
   };

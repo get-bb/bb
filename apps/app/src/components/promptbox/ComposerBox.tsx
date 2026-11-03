@@ -271,6 +271,11 @@ function composerSubmission(
   };
 }
 
+interface RetiredComposerRendererMembers {
+  view: ComposerView;
+  key: string;
+}
+
 const ComposerRendererContext =
   createContext<ExperimentalComposerRendererApi | null>(null);
 
@@ -393,7 +398,7 @@ function useComposerRendererHostApi({
   history,
   ...input
 }: ComposerBoxProps): {
-  api: ExperimentalComposerRendererApi;
+  api: ExperimentalComposerRendererApi & RetiredComposerRendererMembers;
   boxHost: PluginComposerHost;
   rootHost: ComposerRootHost;
   contributions: ExperimentalComposerContributions;
@@ -540,7 +545,7 @@ function useComposerRendererHostApi({
 
   const mentionTriggers =
     typeahead.mention.triggers ?? DEFAULT_MENTION_TRIGGERS;
-  const api: ExperimentalComposerRendererApi = {
+  const api: ExperimentalComposerRendererApi & RetiredComposerRendererMembers = {
     input: {
       ...input,
       ...(maxHeight === undefined ? {} : { maxHeight }),

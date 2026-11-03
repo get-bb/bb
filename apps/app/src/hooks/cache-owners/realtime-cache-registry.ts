@@ -483,9 +483,6 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
   "thread-storage-changed": {
     dirty: [dirtyThreadStorageQueriesForEnvironment],
   },
-  "diff-viewed-changed": {
-    dirty: [],
-  },
 } satisfies EnvironmentChangeRegistry;
 
 export const REALTIME_PROJECT_CHANGE_REGISTRY = {
