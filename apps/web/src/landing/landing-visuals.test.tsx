@@ -173,6 +173,24 @@ describe("StartAnywhere", () => {
     expect(html.match(/class="bw-phone"/g)).toHaveLength(1);
     expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto|bw-chat/);
   });
+
+  it("opens the desktop Diff panel on the change the thread made", () => {
+    const html = renderToStaticMarkup(<StartAnywhere />);
+    expect(html.match(/class="bw-sp"/g)).toHaveLength(1);
+    expect(html).toContain('class="bar-toggle active"');
+    for (const text of [
+      "Uncommitted changes",
+      "src/checkout/pay.ts",
+      "src/checkout/pay.test.ts",
+      "AbortSignal.timeout(TIMEOUT_MS)",
+      "Viewed",
+    ]) {
+      expect(html).toContain(text);
+    }
+    const label = html.match(/aria-label="([^"]*)"/)![1]!;
+    expect(label).toContain("Diff panel");
+    expect(label).not.toContain("ChatGPT");
+  });
 });
 
 describe("PluginMap", () => {

@@ -34,6 +34,10 @@ import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
 import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
+import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01Icon";
+import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+import ExpandIcon from "@hugeicons/core-free-icons/ExpandIcon";
+import FilterIcon from "@hugeicons/core-free-icons/FilterIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useCallback,
@@ -1577,6 +1581,126 @@ const START_STEPS: readonly StartStep[] = [
   },
 ];
 
+const DiffTabIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={PlusMinusSquare01Icon} className={className} />
+);
+const InfoTabIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={InformationCircleIcon} className={className} />
+);
+const FullScreenIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={ExpandIcon} className={className} />
+);
+const DiffFilterIcon = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={FilterIcon} className={className} />
+);
+
+type DiffLine = { n: number; kind: "ctx" | "add" | "del"; text: string };
+
+const START_PANEL_AT = 4.5;
+
+const START_DIFF: readonly DiffLine[] = [
+  { n: 9, kind: "ctx", text: 'const PAY_URL = "/api/pay";' },
+  { n: 10, kind: "add", text: "const TIMEOUT_MS = 10_000;" },
+  { n: 11, kind: "ctx", text: "" },
+  { n: 12, kind: "ctx", text: "export function pay(order: Order) {" },
+  { n: 13, kind: "del", text: "  return post(PAY_URL, order);" },
+  { n: 13, kind: "add", text: "  return retry(1, () =>" },
+  { n: 14, kind: "add", text: "    post(PAY_URL, order, {" },
+  { n: 15, kind: "add", text: "      signal: AbortSignal.timeout(TIMEOUT_MS)," },
+  { n: 16, kind: "add", text: "    })," },
+  { n: 17, kind: "add", text: "  );" },
+  { n: 18, kind: "ctx", text: "}" },
+];
+
+function DiffTally({ added, removed }: { added: number; removed: number }) {
+  return (
+    <span className="bw-sp-tally">
+      <span className="bw-sp-plus">+{added}</span>
+      {removed > 0 ? <span className="bw-sp-minus">−{removed}</span> : null}
+    </span>
+  );
+}
+
+function DiffFileHeader({
+  path,
+  added,
+  removed,
+  open,
+}: {
+  path: string;
+  added: number;
+  removed: number;
+  open: boolean;
+}) {
+  return (
+    <div className="bw-sp-file-head">
+      <ChevronRight className={open ? "bw-sp-chev is-open" : "bw-sp-chev"} />
+      <span className="bw-sp-path">{path}</span>
+      <DiffTally added={added} removed={removed} />
+      <span className="bw-sp-viewed">
+        <i />
+        Viewed
+      </span>
+    </div>
+  );
+}
+
+function StartDiffPanel() {
+  return (
+    <div className="bw-sp-slot" aria-hidden>
+      <div className="bw-sp" style={at(START_PANEL_AT)}>
+        <div className="bw-sp-chrome">
+          <span className="bw-sp-tab">
+            <InfoTabIcon className="bw-sp-ic" />
+          </span>
+          <span className="bw-sp-tab is-on">
+            <DiffTabIcon className="bw-sp-ic" />
+          </span>
+          <PlusGlyph className="bw-sp-ic bw-sp-new" />
+          <FullScreenIcon className="bw-sp-ic bw-sp-full" />
+        </div>
+        <div className="bw-sp-toolbar">
+          <span className="bw-sp-select">
+            Uncommitted changes
+            <ChevronDown className="bw-sp-select-chev" />
+          </span>
+          <span className="bw-sp-summary">
+            2 files, <DiffTally added={24} removed={1} />
+          </span>
+          <SearchGlyph className="bw-sp-ic bw-sp-tool" />
+          <DiffFilterIcon className="bw-sp-ic bw-sp-tool" />
+        </div>
+        <div className="bw-sp-files">
+          <div className="bw-sp-card">
+            <DiffFileHeader
+              path="src/checkout/pay.ts"
+              added={6}
+              removed={1}
+              open
+            />
+            <div className="bw-sp-diff">
+              {START_DIFF.map((line, index) => (
+                <div key={index} className={`bw-sp-line is-${line.kind}`}>
+                  <span className="bw-sp-num">{line.n}</span>
+                  <span className="bw-sp-code">{line.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bw-sp-card">
+            <DiffFileHeader
+              path="src/checkout/pay.test.ts"
+              added={18}
+              removed={0}
+              open={false}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PhoneStatusBar() {
   return (
     <div className="bw-phone-status">
@@ -1621,14 +1745,14 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="The bb desktop app with a thread, Fix the checkout bug, started from ChatGPT and running on linux-box, the server, next to a thread from CI and one from a schedule. An iPhone shows the same thread in the bb mobile app, still working: it explored the code, edited two files and is running the tests."
+      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. On the desktop, the Diff panel slides open beside the thread and shows the change: a 10 second timeout with one retry in src/checkout/pay.ts, plus a new test file."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
         key={cycle}
       >
         <div className="mock bw-window">
-          <WindowBar title="Fix the checkout bug" />
+          <WindowBar title="Fix the checkout bug" panelOpen />
           <div className="mock-body bw-body">
             <Sidebar>
               <div className="side-label bw-group">
@@ -1692,6 +1816,7 @@ export function StartAnywhere() {
                 ))}
               </div>
             </div>
+            <StartDiffPanel />
           </div>
         </div>
         <div className="bw-phone" aria-hidden>
