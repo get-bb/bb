@@ -2889,8 +2889,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   );
   --bw-drop: clamp(0, (0.968 - var(--bw-slice-ratio, 1)) * 1000, 1);
   --bw-stage-pad: calc(
-    (1 - var(--bw-drop)) * 24px +
-      var(--bw-drop) * (656px * var(--bw-overlay-scale) - 150px)
+    (1 - var(--bw-drop)) * 24px + var(--bw-drop) *
+      (656px * var(--bw-overlay-scale) - 150px)
   );
   position: relative;
   padding-bottom: var(--bw-stage-pad);
@@ -2902,8 +2902,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-start .main {
   padding-right: calc(
-    var(--bw-start-window) - var(--bw-fit-slice) + 16px +
-      (1 - var(--bw-drop)) * (20px + 312px * var(--bw-overlay-scale))
+    var(--bw-start-window) - var(--bw-fit-slice) + 16px + (1 - var(--bw-drop)) *
+      (20px + 312px * var(--bw-overlay-scale))
   );
 }
 
