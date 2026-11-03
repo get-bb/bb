@@ -85,6 +85,7 @@ import {
 import { HeroWindow } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
+import { Testimonials } from "../landing/testimonials";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
@@ -1308,6 +1309,8 @@ function TodayBelowFold() {
         </div>
       </section>
 
+      <Testimonials />
+
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
@@ -1366,6 +1369,8 @@ function RefreshedBelowFold() {
           laptop to a remote server or VM.
         </p>
       </Band>
+
+      <Testimonials />
 
       <section className="closer" data-reveal data-section="closer">
         <h2 className="sec-title">
