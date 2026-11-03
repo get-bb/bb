@@ -22,6 +22,16 @@
       "migrations_dir": "../../packages/connect-db/migrations",
     },
   ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "1645c9edadb74b8cb593218030fac7f2",
+      "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
+    },
+  ],
+  "kv_namespaces": [
+    { "binding": "CONNECT_DB_FLAGS", "id": "2ccd420634434541be2321c40bfe1cea" },
+  ],
   "ratelimits": [
     {
       "name": "AI_RATE_LIMITER",

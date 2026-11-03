@@ -43,7 +43,9 @@ Rolling back is the same command with the previous mode.
 `bigint` milliseconds. `migrations-pg/` is generated with
 `pnpm --filter @bb/connect-db db:generate:pg`. `0001_label_claim_triggers` is
 the Postgres version of SQLite migration 0005, plus a `unixepoch()` function for
-Drizzle's SQLite defaults. Every schema change needs both migrations.
+Drizzle's SQLite defaults. Every schema change needs both migrations. `deploy-connect` and `deploy-web`
+run `pnpm --filter @bb/connect-db-pg run db:migrate` with the
+`CONNECT_DB_PG_MIGRATOR_URL` secret before deploying.
 
 ## Sync script
 
