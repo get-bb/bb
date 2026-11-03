@@ -497,9 +497,11 @@ function ChooseServerStep({
                 }
               >
                 {busy
-                  ? "Approving…"
+                  ? replacing
+                    ? "Replacing…"
+                    : "Approving…"
                   : selectedServer !== undefined && replacing
-                    ? `Approve and replace ${hostOf(selectedServer.serverUrl)}`
+                    ? `Replace ${hostOf(selectedServer.serverUrl)}`
                     : "Approve"}
               </Button>
               <DenyButton code={code} />
