@@ -25,6 +25,7 @@ import {
   appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
   createClientTurnRequestId,
+  type TurnRequestRetryMarker,
 } from "./thread-events.js";
 import {
   hasLiveThreadStartInFlight,
@@ -63,6 +64,7 @@ interface RequestThreadProvisionArgs {
   input: PromptInput[];
   originPluginId: string | null;
   providerInput?: PromptInput[];
+  retryOf?: TurnRequestRetryMarker;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   thread: Thread;
   titleProvided: boolean;
@@ -76,6 +78,7 @@ interface RequestThreadTargetReprovisionArgs {
   inputGroups?: PromptInput[][];
   initiator: ThreadTurnInitiator;
   originPluginId: string | null;
+  retryOf?: TurnRequestRetryMarker;
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
@@ -301,6 +304,7 @@ export function requestThreadProvision(
       threadId: args.thread.id,
       environmentId: args.thread.environmentId,
       type: "client/turn/requested",
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       input: args.input,
       execution: args.execution,
       initiator,
@@ -445,6 +449,7 @@ function appendReprovisionTurnRequest(
             threadId: args.thread.id,
             environmentId: args.environment.id,
             type: "client/turn/requested",
+            ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
             input: args.input,
             ...(args.inputGroups !== undefined
               ? { inputGroups: args.inputGroups }

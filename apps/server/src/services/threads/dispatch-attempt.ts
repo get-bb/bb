@@ -617,6 +617,7 @@ async function runDispatchAttempt(
                 }),
               },
         respectManualStopPause,
+        retryOf: args.retryOf,
         startContext: args.startContext ?? retryStartContext,
         thread,
       });
@@ -803,6 +804,7 @@ interface AdmitPendingThreadArgs {
   originPluginId: string | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
   respectManualStopPause: boolean;
+  retryOf: TurnRequestRetryMarker | undefined;
   /** Creation's own record; null on a re-attempt, which reads it back. */
   startContext: PendingThreadStartContext | null;
   thread: Thread;
@@ -895,6 +897,7 @@ async function admitPendingThread(
           ...(startContext.providerInput === undefined
             ? {}
             : { providerInput: startContext.providerInput }),
+          ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
           startedOnBehalfOf: startContext.startedOnBehalfOf,
           titleProvided: startContext.titleProvided,
         });
