@@ -507,6 +507,7 @@ describe("createAgentRuntime process lifecycle", () => {
           const msg = JSON.parse(line);
           if (msg.method !== "initialize") return;
           spawn(process.execPath, ["-e", ${JSON.stringify(holder)}], {
+            cwd: require("node:os").tmpdir(),
             detached: process.platform === "win32",
             stdio: ["ignore", "ignore", "inherit"],
           }).unref();
