@@ -722,7 +722,7 @@ describe("latest timeline selection memo", () => {
     expect(rebuilt).toBeGreaterThan(SEEDS * 15);
   }, 120_000);
 
-  it("reuses the selection for root deltas and rebuilds for lifecycle rows", () => {
+  it("reuses the selection for rows of fetched turns and rebuilds for unknown parents", () => {
     withTestThread((testThread) => {
       const args = latestArgs("default");
       append(testThread, [
@@ -757,7 +757,7 @@ describe("latest timeline selection memo", () => {
         }),
       ]);
       const lifecycle = expectWarmEqualsCold(testThread, args, "lifecycle");
-      expect(selectionWasReused(lifecycle.profile)).toBe(false);
+      expect(selectionWasReused(lifecycle.profile)).toBe(true);
 
       append(testThread, [
         deltaRow(
@@ -778,6 +778,19 @@ describe("latest timeline selection memo", () => {
       ]);
       const parented = expectWarmEqualsCold(testThread, args, "parented");
       expect(selectionWasReused(parented.profile)).toBe(false);
+
+      append(testThread, [agentToolCall("item/started", "turn-1", "agent-2")]);
+      const delegating = expectWarmEqualsCold(testThread, args, "delegating");
+      expect(selectionWasReused(delegating.profile)).toBe(false);
+
+      append(testThread, [childCommand("turn-1", "child-1", "agent-2")]);
+      const child = expectWarmEqualsCold(testThread, args, "child");
+      expect(selectionWasReused(child.profile)).toBe(true);
+      append(testThread, [
+        agentToolCall("item/completed", "turn-1", "agent-2"),
+      ]);
+      const completed = expectWarmEqualsCold(testThread, args, "completed");
+      expect(selectionWasReused(completed.profile)).toBe(true);
     });
   });
 
@@ -916,7 +929,7 @@ describe("latest timeline selection memo", () => {
     });
   });
 
-  it("rebuilds and reorders rows when a parented excluded row extends a delegating span past a user request", () => {
+  it("reorders rows when a parented excluded row extends a delegating span past a user request", () => {
     withTestThread((testThread) => {
       const state = initialState();
       const args = latestArgs("default");
@@ -959,7 +972,7 @@ describe("latest timeline selection memo", () => {
       const after = expectWarmEqualsCold(testThread, args, "after");
       expect(boundary(maxSeq)).toBe(steerSeq);
       expect(rowStarts(after)).toEqual([1, 4, 5, 7, 8, 9, 10]);
-      expect(selectionWasReused(after.profile)).toBe(false);
+      expect(selectionWasReused(after.profile)).toBe(true);
     });
   });
 
