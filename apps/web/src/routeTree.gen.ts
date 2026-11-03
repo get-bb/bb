@@ -34,6 +34,7 @@ import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as DocsChar123Char125DotmdRouteImport } from "./routes/docs.{$}[.]md";
 import { Route as DocsSearchDotjsonRouteImport } from "./routes/docs.search[.]json";
+import { Route as DocsMcpRouteImport } from "./routes/docs.mcp";
 import { Route as DocsSplatRouteImport } from "./routes/docs.$";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
@@ -182,6 +183,11 @@ const DocsChar123Char125DotmdRoute = DocsChar123Char125DotmdRouteImport.update({
 const DocsSearchDotjsonRoute = DocsSearchDotjsonRouteImport.update({
   id: "/docs/search.json",
   path: "/docs/search.json",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DocsMcpRoute = DocsMcpRouteImport.update({
+  id: "/docs/mcp",
+  path: "/docs/mcp",
   getParentRoute: () => rootRouteImport,
 } as any);
 const DocsSplatRoute = DocsSplatRouteImport.update({
@@ -335,6 +341,7 @@ export interface FileRoutesByFullPath {
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/mcp": typeof DocsMcpRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -386,6 +393,7 @@ export interface FileRoutesByTo {
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/mcp": typeof DocsMcpRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -438,6 +446,7 @@ export interface FileRoutesById {
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
+  "/docs/mcp": typeof DocsMcpRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
   "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
@@ -491,6 +500,7 @@ export interface FileRouteTypes {
     | "/blog/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/mcp"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
     | "/blog/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/mcp"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -593,6 +604,7 @@ export interface FileRouteTypes {
     | "/blog_/$slug"
     | "/compare/$slug"
     | "/docs/$"
+    | "/docs/mcp"
     | "/docs/search.json"
     | "/docs/{$}.md"
     | "/download/linux"
@@ -645,6 +657,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
   DocsSplatRoute: typeof DocsSplatRoute;
+  DocsMcpRoute: typeof DocsMcpRoute;
   DocsSearchDotjsonRoute: typeof DocsSearchDotjsonRoute;
   DocsChar123Char125DotmdRoute: typeof DocsChar123Char125DotmdRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
@@ -846,6 +859,13 @@ declare module "@tanstack/react-router" {
       path: "/docs/search.json";
       fullPath: "/docs/search.json";
       preLoaderRoute: typeof DocsSearchDotjsonRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs/mcp": {
+      id: "/docs/mcp";
+      path: "/docs/mcp";
+      fullPath: "/docs/mcp";
+      preLoaderRoute: typeof DocsMcpRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/docs/$": {
@@ -1060,6 +1080,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
   DocsSplatRoute: DocsSplatRoute,
+  DocsMcpRoute: DocsMcpRoute,
   DocsSearchDotjsonRoute: DocsSearchDotjsonRoute,
   DocsChar123Char125DotmdRoute: DocsChar123Char125DotmdRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
