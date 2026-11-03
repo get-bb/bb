@@ -34,10 +34,12 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   memo,
   startTransition,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import linearLogo from "../assets/company-logos/linear.svg";
@@ -887,9 +889,6 @@ function TurnHeader({
   furlAt?: number | null;
   style?: CSSProperties;
 }) {
-  // "Working" crossfades into "Worked for" in place while the label slot
-  // glides between the two measured widths, so the chevron slides instead of
-  // blinking.
   const stackRef = useRef<HTMLSpanElement>(null);
   const swaps = doneAt != null && doneAt !== 0;
   useLayoutEffect(() => {
@@ -979,17 +978,19 @@ function ThreadPill({ icon: Icon, label }: { icon: IconComp; label: string }) {
 const TABLET_QUERY = "(min-width: 721px) and (max-width: 860px)";
 
 function useMedia(query: string) {
-  const [match, setMatch] = useState(
-    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const m = window.matchMedia(query);
+      m.addEventListener("change", onChange);
+      return () => m.removeEventListener("change", onChange);
+    },
+    [query],
   );
-  useEffect(() => {
-    const m = window.matchMedia(query);
-    const on = () => setMatch(m.matches);
-    on();
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, [query]);
-  return match;
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
 }
 
 const EASE_OUT = "cubic-bezier(0.22, 0.61, 0.36, 1)";
@@ -1118,9 +1119,6 @@ function dissolve(
             a.right - b.right,
             (a.left + a.right - b.left - b.right) / 2,
           );
-  // Never start the new content outside the column it sits in (where it
-  // would be clipped and look like it vanished for a few frames): fall back
-  // to keeping its left edge where the old content's was.
   if (b.left + ax < bp.left + t.x - 1) ax = a.left - b.left;
   const ay = nearest(a.top - b.top, a.bottom - b.bottom);
   const cx = a.left - (b.left + ax);
@@ -1173,11 +1171,6 @@ function dissolve(
     glide(el, move, dur);
     glide(wrap, move, dur);
   }
-  // Old and new content overlap while they trade places, so the column never
-  // shows an empty frame between them. In the drawer the new content fades
-  // in on an opaque background above the old copy, which stays fully opaque
-  // until the new content is, and only then fades out where it still shows;
-  // the two are never both part-transparent.
   let lift: (() => void) | undefined;
   if (seq) {
     const was = {
@@ -1316,9 +1309,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
       b.height >= 2 &&
       el.matches(".rhb-col-panel")
     ) {
-      // The side panel arrives as one opaque piece, sliding in from the
-      // window's right edge the way it later slides out, so nothing under it
-      // shows through and its header, tabs and rows never move on their own.
       const dx = first.root.right - b.left;
       moved.set(el, { x: dx, y: 0 });
       entering.add(el);
@@ -1429,8 +1419,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
       Math.abs(s.pad - parseFloat(getComputedStyle(el).paddingLeft)) > 1;
     const inBand = !!el.parentElement?.matches(".rhb-band");
     if (el.matches(".rhb-dock-wrap") && Math.abs(s.r.width - b.width) > 1) {
-      // The composer resizes and slides with the layout instead of
-      // dissolving between two widths.
       const top = el.closest(TOP);
       const t = (top && moved.get(top)) || { x: 0, y: 0 };
       const ml = parseFloat(getComputedStyle(el).marginLeft);
@@ -1476,9 +1464,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
   const leftBody = root.querySelector<HTMLElement>(".rhb-left-body");
   const now = boxOf(leftBody);
   if (leftBody && first.left && now && first.left.width - now.width > 40) {
-    // When the rail stays (the sidebar folds down to it), only the sidebar
-    // beside it is copied, so the rail icons are never doubled, and the copy
-    // fades underneath the thread column as that slides over it.
     const side = leftBody.querySelector<HTMLElement>(":scope > .rhb-side");
     const sideWas = side ? first.rects.get(side)?.r : undefined;
     const keep = now.width >= 2 && !!sideWas && sideWas.width >= 2;
@@ -1515,8 +1500,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
         dur,
       );
     else if (first.left.width >= 2 && side)
-      // The rail was already showing: it stays put and only the sidebar
-      // beside it fades in.
       glide(side, [{ opacity: 0 }, { opacity: 1 }], 450);
     else
       glide(
@@ -1607,8 +1590,6 @@ function slideRows(root: HTMLElement, first: RowSnap) {
       st.style.position = "relative";
       Object.assign(was.status.style, { position: "absolute", inset: "0" });
       st.appendChild(was.status);
-      // The new status fades in above the old one, which stays opaque until
-      // the new one is, then fades out where it still shows.
       was.status.animate([{ opacity: 1 }, { opacity: 0 }], {
         duration: 100,
         delay: ROW_SWAP,
@@ -1769,7 +1750,6 @@ type FeedProps = {
   reduced: boolean;
   out?: boolean;
   pre?: boolean;
-  // Called once this incoming layer has fully faded in.
   onIn?: () => void;
 };
 
@@ -1788,8 +1768,6 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     const apply = (el: HTMLElement, off: number) => {
       el.style.translate = Math.abs(off) < 0.3 ? "" : `0 ${off}px`;
     };
-    // Critically damped spring (settles in ~0.33s): a push starts from rest
-    // and eases out, and a second push mid-glide keeps the current velocity.
     const settle = (o: Off, dt: number) => {
       const e = Math.exp(-o.w * dt);
       const c = o.v + o.w * o.off;
@@ -1820,11 +1798,6 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       }
     };
 
-    // Each new timeline item opens its own room: it starts with a negative
-    // bottom margin equal to the space it takes and eases that back to its
-    // own margin, so whatever sits after it (or, once the feed overflows,
-    // everything above it) glides instead of snapping. It is caught here,
-    // after layout and before paint, so no frame shows the full jump.
     const seen = new WeakSet<Element>();
     let primed = false;
     let growing = 0;
@@ -2258,8 +2231,6 @@ const ISSUES: { n: number; title: string; csv?: boolean }[] = [
 ];
 
 function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
-  // The finished draft fades out over the placeholder when the scene moves on
-  // instead of being swapped out in one frame.
   return (
     <>
       {demo ? null : (
@@ -2324,7 +2295,6 @@ type ShellProps = {
   reduced: boolean;
   ghost?: boolean;
   pre?: boolean;
-  // Held on its first frame, animations paused, under the restart crossfade.
   frozen?: boolean;
   nextFeed?: number | null;
 };
@@ -2428,9 +2398,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     const from = prevIdx.current;
     prevIdx.current = idx;
     if (reduced) return;
-    // The outgoing feed and title stay fully opaque underneath until the
-    // incoming feed has faded in over them (FeedLayer's onIn), so the two are
-    // never both part-transparent.
     setOutIdx(from);
   }, [idx, reduced]);
 
@@ -2444,10 +2411,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     titleW.current = { idx, w };
     if (reduced || was.idx === idx || !was.w || Math.abs(was.w - w) <= 1)
       return;
-    // The title slot eases from the old title's width to the new one's, and
-    // the icon after it follows. The new title (on the band colour) spans
-    // the whole slot while it fades in over the old one, so the old title,
-    // tail included, crossfades out underneath and is never cut off.
     const titles = Array.from(el.children) as HTMLElement[];
     el.style.overflow = "hidden";
     titles.forEach((t) => (t.style.textOverflow = "clip"));
@@ -2861,12 +2824,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   );
 }
 
-// The finished frame settles (about 0.7 s of layout moves) and then holds
-// still for about 4 s before the loop crossfades back to the first scene.
 const FINAL_HOLD = 4.7;
-// Length of the restart crossfade (rhb-wrap-out in hero-window.css). The new
-// loop's first scene waits, frozen at its first frame, until the outgoing
-// frame has fully faded, so only one layer is ever partly transparent.
 const RESTART_FADE = 0.7;
 
 type Clock = {
@@ -2932,7 +2890,6 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     const idx = pos.idx;
     const scene = SCENES[idx];
     const t = timing(scene, tablet);
-    // After a restart the first scene's clock starts once the crossfade ends.
     const lead = idx === 0 && ghostRef.current != null ? RESTART_FADE : 0;
     const at = (sec: number, fn: () => void) => clock.at(sec + lead, fn);
     const ids = [at(t.changeAt, () => setPos({ idx, n: 1 }))];
