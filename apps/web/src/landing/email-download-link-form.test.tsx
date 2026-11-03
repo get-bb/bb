@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { trackLandingEvent } from "./analytics";
 import { EmailDownloadLinkForm } from "./email-download-link-form";
 import { InstallOptions } from "./landing-visuals";
+import { CLI_COMMAND } from "./site";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
@@ -228,6 +229,21 @@ describe("phone email arm placement", () => {
     expect(html).not.toContain("install-send");
     expect(html).toContain(
       'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=hero"',
+    );
+  });
+
+  it("hides the command box and its line from phones in the test arm but keeps the note", () => {
+    const html = renderToStaticMarkup(
+      <InstallOptions placement="hero" touchAction="email" />,
+    );
+    const commandChoice = html.slice(
+      html.indexOf('<span class="install-choice desktop-only">'),
+    );
+    expect(commandChoice).toContain(CLI_COMMAND);
+    expect(commandChoice).toContain("Intel Macs");
+    expect(html.match(/class="install-choice"/g)).toHaveLength(1);
+    expect(html).toContain(
+      '<span class="install-note touch-only">bb runs on macOS, Windows, and Linux</span>',
     );
   });
 });

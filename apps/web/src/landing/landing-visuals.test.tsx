@@ -14,6 +14,7 @@ import {
   StartAnywhere,
   useCycle,
 } from "./landing-visuals";
+import { CLI_COMMAND } from "./site";
 import { useActiveWhileVisible } from "./visibility";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
@@ -391,8 +392,17 @@ describe("install options", () => {
     expect(html).toContain(
       'class="btn btn-primary btn-install install-send touch-only"',
     );
+  });
+
+  it("shows phones in control today's box: share, note, command and its line", () => {
+    const html = renderToStaticMarkup(<InstallOptions placement="hero" />);
     expect(html).toContain(
-      '<span class="desktop-only"><a class="install-note-link" href="/download/windows?placement=hero">Windows (Alpha)</a>, </span>Intel Macs',
+      '<span class="install-note touch-only">bb runs on macOS, Windows, and Linux</span>',
+    );
+    expect(html).toContain('<span class="install-choice"><button');
+    expect(html).toContain(CLI_COMMAND);
+    expect(html).toContain(
+      '<span class="install-note"><a class="install-note-link" href="/download/windows?placement=hero">Windows (Alpha)</a>, Intel Macs &amp; remote machines</span>',
     );
   });
 });
