@@ -160,17 +160,15 @@ export function SimpleInstallOptions({
             className="btn btn-primary btn-install install-download"
           />
           <SendToComputerButton placement={placement} />
-          <span className="install-note install-note-desktop">
-            {platform === "macos" ? null : <>Alpha{" · "}</>}
+          <span className="install-note">
+            {platform === "macos" ? null : (
+              <span className="install-note-desktop">Alpha{" · "}</span>
+            )}
             <OpenSourceLink placement={placement} />
             {" · "}
             <a className="install-note-link" href={DOWNLOAD_PAGE_PATH}>
               Other platforms
             </a>
-          </span>
-          <span className="install-note install-note-touch">
-            <OpenSourceLink placement={placement} />
-            {" · "}bb runs on macOS, Windows, and Linux
           </span>
         </span>
       </div>
