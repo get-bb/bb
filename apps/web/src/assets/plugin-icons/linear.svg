@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- The half-filled "In Progress" disc — the same state glyph the panel
+       draws on every issue row, so the plugin's icon speaks the UI's own
+       language. Shape-only on purpose: bb masks panel icons to a single
+       color, so the silhouette must carry the mark by itself. -->
+  <g stroke="#5E6AD2" stroke-width="2.2" fill="none">
+    <circle cx="12" cy="12" r="8.6"/>
+    <path d="M12 7.2 A 4.8 4.8 0 0 1 12 16.8 Z" fill="#5E6AD2" stroke="none"/>
+  </g>
+</svg>

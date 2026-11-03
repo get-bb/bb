@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#000">
+  <!-- The plugin's own three-dot mark, scaled from its 16 viewBox to 24 to sit
+       with BB's icon set. Filled rather than stroked because the trio is the
+       plugin's brand mark. BB renders plugin icons as CSS masks, which key off
+       alpha coverage: there is deliberately no background plate (it would mask
+       to a solid square and erase the dots), and the fill is an opaque literal
+       rather than currentColor, which has no inherited context inside a mask
+       source and would not be guaranteed to resolve. -->
+  <circle cx="12" cy="6.9" r="4.35"/>
+  <circle cx="6.6" cy="16.35" r="4.35"/>
+  <circle cx="17.4" cy="16.35" r="4.35"/>
+</svg>

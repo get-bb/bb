@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A meter track, a part-filled bar, and a tick marking the user's soft
+       limit: the one thing this plugin adds over BB's own context ring.
+       Outline style to match BB's stroked icon set (1.5 at a 24 viewBox).
+       BB renders plugin icons as CSS masks, which key off alpha coverage, so
+       the stroke is an opaque literal rather than currentColor, which has no
+       inherited context inside a mask source. -->
+  <rect x="2.75" y="8.75" width="18.5" height="6.5" rx="3.25"/>
+  <path d="M6.25 12h5" stroke-width="3"/>
+  <path d="M16.25 5.75v12.5"/>
+</svg>
