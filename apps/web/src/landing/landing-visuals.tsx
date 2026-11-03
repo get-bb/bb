@@ -28,20 +28,34 @@ import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
-import Download04Icon from "@hugeicons/core-free-icons/Download04Icon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
-import PlusMinus01Icon from "@hugeicons/core-free-icons/PlusMinus01Icon";
-import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
+import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import {
+  CATALOG_PLUGIN_COUNT,
+  CATALOG_PLUGINS,
+  CATALOG_VIEWS,
+  type CatalogPlugin,
+  type CatalogQuery,
+} from "./plugin-catalog-snapshot";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -945,13 +959,23 @@ function WindowBar({
   );
 }
 
-function NavRail({ children }: { children?: ReactNode }) {
+type RailDestination = "home" | "plugins";
+
+function NavRail({
+  active = "home",
+  children,
+}: {
+  active?: RailDestination;
+  children?: ReactNode;
+}) {
+  const button = (destination: RailDestination) =>
+    destination === active ? "bw-rail-btn is-on" : "bw-rail-btn";
   return (
     <nav className="bw-rail" aria-hidden>
-      <span className="bw-rail-btn is-on">
+      <span className={button("home")}>
         <HomeIcon className="bw-rail-ic" />
       </span>
-      <span className="bw-rail-btn">
+      <span className={button("plugins")}>
         <PluginIcon className="bw-rail-ic" />
       </span>
       <span className="bw-rail-btn">
@@ -973,16 +997,16 @@ function NavRail({ children }: { children?: ReactNode }) {
 
 function Sidebar({
   rail,
-  foot,
+  nav,
   children,
 }: {
   rail?: ReactNode;
-  foot?: ReactNode;
+  nav?: RailDestination;
   children: ReactNode;
 }) {
   return (
     <>
-      <NavRail>{rail}</NavRail>
+      <NavRail active={nav}>{rail}</NavRail>
       <aside className="side">
         <div className="side-act">
           <NewThreadIcon className="sa-ic" />
@@ -992,7 +1016,6 @@ function Sidebar({
         <div className="side-foot bw-side-foot" aria-hidden>
           <PhoneIcon className="bw-foot-ic" />
           <BugIcon className="bw-foot-ic" />
-          {foot}
         </div>
       </aside>
     </>
@@ -1072,459 +1095,378 @@ function ComposerBox({
   );
 }
 
-/* Four real BB Community plugins, in install order. Names and descriptions
-   are the marketplace's own (getbb.app/marketplace); each piece below is what
-   that plugin draws in bb, per its listing, README and screenshots. */
-const PLUGIN_INSTALLS = [
-  {
-    id: "usage-tracker",
-    name: "Usage Tracker",
-    description: "See subscription limits without leaving BB.",
-    icon: UsageTrackerGlyph,
-  },
-  {
-    id: "bb-recap",
-    name: "Recap",
-    description:
-      "Generates concise, display-only summaries for BB threads on demand or after they become idle.",
-    icon: RecapGlyph,
-  },
-  {
-    id: "genui",
-    name: "Generative UI",
-    description:
-      "Turns agent replies into charts, diagrams, maps, plans and forms you can use, right in the chat.",
-    icon: GenUiGlyph,
-  },
-  {
-    id: "burn",
-    name: "Burn",
-    description:
-      "See what every agent thread costs in dollars while it runs, per prompt and across all your threads.",
-    icon: BurnGlyph,
-  },
-] as const;
+/* Make bb yours: bb's Plugins page, as the app draws it (BrowsePluginsTab with
+   its PluginCollectionToolbar and PluginCatalogCard grid), browsing a snapshot
+   of the BB Community catalog sorted by installs. The page scrolls slowly
+   down the grid and back, then searches "linear" and "themes", typed one
+   character at a time; the grid filters when the search commits, as bb's
+   does 200 ms after the last keystroke, and the cards glide to their new
+   places (FLIP) while the ones that no longer match fade out. */
 
-/* One plugin every INSTALL_STEP seconds: the Install press, Installing… for
-   INSTALL_BUSY seconds, Installed, then its piece eases into the window. */
-const INSTALL_START = 0.8;
-const INSTALL_STEP = 3.2;
-const INSTALL_PRESS = 0.2;
-const INSTALL_BUSY = 1.4;
-const PIECE_DELAY = 0.15;
-const PIECE_SETTLE = 0.65;
-const FINAL_HOLD = 2;
-
-function installAt(index: number) {
-  return INSTALL_START + index * INSTALL_STEP;
-}
-
-function pieceAt(id: (typeof PLUGIN_INSTALLS)[number]["id"]) {
-  const index = PLUGIN_INSTALLS.findIndex((plugin) => plugin.id === id);
-  return installAt(index) + INSTALL_PRESS + INSTALL_BUSY + PIECE_DELAY;
-}
-
-const PLUGIN_LOOP_MS = Math.round(
-  (pieceAt("burn") + PIECE_SETTLE + FINAL_HOLD) * 1000,
-);
-
-function UsageTrackerGlyph({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <rect x="3" y="4" width="4" height="10" rx="2" fill="#7c3aed" />
-      <rect x="10" y="4" width="4" height="16" rx="2" fill="#7c3aed" />
-      <rect x="17" y="4" width="4" height="6" rx="2" fill="#7c3aed" />
-    </svg>
-  );
-}
-
-function RecapGlyph({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M6.25 4.75h11.5A2.25 2.25 0 0 1 20 7v7.25a2.25 2.25 0 0 1-2.25 2.25h-6.5L7 19.75V16.5H6.25A2.25 2.25 0 0 1 4 14.25V7a2.25 2.25 0 0 1 2.25-2.25Z" />
-      <path d="M8.25 9h7.5M8.25 12h5.25" />
-    </svg>
-  );
-}
-
-function GenUiGlyph({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      <path d="M8 13v-2" />
-      <path d="M12 13V7" />
-      <path d="M16 13v-4" />
-    </svg>
-  );
-}
-
-function BurnGlyph({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
-  );
-}
-
-function SparkGlyph({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <path
-        d="M12 4c.5 4.4 3.6 7.5 8 8-4.4.5-7.5 3.6-8 8-.5-4.4-3.6-7.5-8-8 4.4-.5 7.5-3.6 8-8Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+/* The Plugins page's lede (PLUGINS_BROWSE_DESCRIPTION in the app). */
+const PLUGINS_BROWSE_DESCRIPTION =
+  "Discover plugins for bb. Install one, or describe your own and build it from a prompt.";
 
 const DownloadGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Download04Icon} className={className} />
+  <HugeiconsIcon icon={Download01Icon} className={className} />
 );
 const SearchGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Search01Icon} className={className} />
 );
-const InfoGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={InformationCircleIcon} className={className} />
+const FilterGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SlidersHorizontalIcon} className={className} />
 );
-const DiffGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={PlusMinus01Icon} className={className} />
+const SortGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={SortingNineOneIcon} className={className} />
 );
-const ArrowUpGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowUp02Icon} className={className} />
+const PlusGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={PlusSignIcon} className={className} />
+);
+const ClearGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Cancel01Icon} className={className} />
 );
 
-/* bb's catalog install control (PluginCatalogInstallControl, with its label):
-   Install, then Installing… while the install job runs, then Installed. */
-function InstallButton({ at: start }: { at: number }) {
-  const busyAt = start + INSTALL_PRESS;
-  const doneAt = busyAt + INSTALL_BUSY;
-  return (
-    <span className="bw-inst" aria-hidden>
-      <span
-        className="bw-inst-phase bw-inst-idle"
-        style={phaseStyle(start, busyAt)}
-      >
-        <DownloadGlyph className="bw-inst-ic" />
-        Install
-      </span>
-      <span
-        className="bw-inst-phase bw-inst-busy"
-        style={phaseStyle(busyAt, doneAt)}
-      >
-        <Spinner className="bw-inst-ic bw-inst-spin" />
-        Installing…
-      </span>
-      <span className="bw-inst-phase bw-inst-done" style={at(doneAt)}>
-        <CheckGlyph className="bw-inst-ic" />
-        Installed
-      </span>
-    </span>
-  );
+type CatalogFrame = {
+  scrolled: boolean;
+  scrollMs: number;
+  text: string;
+  focused: boolean;
+  selected: boolean;
+  query: CatalogQuery;
+};
+
+const CATALOG_REST: CatalogFrame = {
+  scrolled: false,
+  scrollMs: 0,
+  text: "",
+  focused: false,
+  selected: false,
+  query: "",
+};
+
+const TYPE_MS = 115;
+const SEARCH_COMMIT_MS = 200;
+const FLIP_MS = 650;
+
+type CatalogStep = { wait: number; frame: Partial<CatalogFrame> };
+
+function typed(word: string, firstWait: number): CatalogStep[] {
+  return [...word].map((_, index) => ({
+    wait: index === 0 ? firstWait : TYPE_MS,
+    frame: { text: word.slice(0, index + 1), selected: false },
+  }));
 }
 
-function PluginCatalogCard() {
+/* Each step waits, then applies its frame. The last step returns to
+   CATALOG_REST, so the loop starts over without a cut. */
+const CATALOG_STEPS: readonly CatalogStep[] = [
+  { wait: 1600, frame: { scrolled: true, scrollMs: 3400 } },
+  { wait: 3400 + 900, frame: { scrolled: false, scrollMs: 1100 } },
+  { wait: 1100 + 150, frame: { focused: true } },
+  ...typed("linear", 350),
+  { wait: SEARCH_COMMIT_MS, frame: { query: "linear" } },
+  { wait: FLIP_MS + 1900, frame: { selected: true } },
+  ...typed("themes", 450),
+  { wait: SEARCH_COMMIT_MS, frame: { query: "themes" } },
+  { wait: FLIP_MS + 2000, frame: { selected: true } },
+  { wait: 350, frame: CATALOG_REST },
+];
+
+function useCatalogTimeline(ref: RefObject<Element | null>) {
+  const [frame, setFrame] = useState(CATALOG_REST);
+  const [inView, setInView] = useState(false);
+  const next = useRef(0);
+  useEffect(() => {
+    const target = ref.current;
+    if (!target || typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1];
+      if (latest) setInView(latest.isIntersecting);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ref]);
+  useEffect(() => {
+    if (!inView) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let timer = 0;
+    const schedule = () => {
+      const step = CATALOG_STEPS[next.current]!;
+      timer = window.setTimeout(() => {
+        setFrame((current) => ({ ...current, ...step.frame }));
+        next.current = (next.current + 1) % CATALOG_STEPS.length;
+        schedule();
+      }, step.wait);
+    };
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, [inView]);
+  return { frame, paused: !inView };
+}
+
+type CardBox = { x: number; y: number; w: number };
+
+/* FLIP for the catalog grid: every card stays mounted and the grid shows
+   the current view's cards in order. After each change, cards that stay
+   glide from where they were, cards that leave fade out where they were,
+   and cards that arrive fade in once the others have moved. */
+function useCatalogFlip(
+  grid: RefObject<HTMLDivElement | null>,
+  viewKey: string,
+) {
+  const boxes = useRef(new Map<string, CardBox>());
+  const measure = useCallback(() => {
+    const node = grid.current;
+    if (!node) return new Map<string, CardBox>();
+    const measured = new Map<string, CardBox>();
+    for (const card of node.querySelectorAll<HTMLElement>("[data-plugin]")) {
+      if (card.dataset.shown !== "true") continue;
+      measured.set(card.dataset.plugin!, {
+        x: card.offsetLeft,
+        y: card.offsetTop,
+        w: card.offsetWidth,
+      });
+    }
+    return measured;
+  }, [grid]);
+  useEffect(() => {
+    const node = grid.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      boxes.current = measure();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [grid, measure]);
+  useLayoutEffect(() => {
+    const node = grid.current;
+    if (!node) return;
+    const before = boxes.current;
+    boxes.current = measure();
+    if (
+      before.size === 0 ||
+      typeof node.animate !== "function" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    const cards = [...node.querySelectorAll<HTMLElement>("[data-plugin]")];
+    const moves = cards.some((card) => {
+      const was = before.get(card.dataset.plugin!);
+      const now = boxes.current.get(card.dataset.plugin!);
+      return was && now && (was.x !== now.x || was.y !== now.y);
+    });
+    for (const card of cards) {
+      const id = card.dataset.plugin!;
+      const was = before.get(id);
+      const now = boxes.current.get(id);
+      if (now && was) {
+        const dx = was.x - now.x;
+        const dy = was.y - now.y;
+        if (dx === 0 && dy === 0) continue;
+        /* Gliding cards pass over the ones fading in. */
+        card.style.zIndex = "1";
+        const glide = card.animate(
+          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+          { duration: FLIP_MS, easing: "cubic-bezier(0.4, 0, 0.2, 1)" },
+        );
+        glide.onfinish = () => card.style.removeProperty("z-index");
+      } else if (now) {
+        /* Arrivals start as the leavers finish fading, or once the gliding
+           cards are under way. */
+        card.animate(
+          [
+            { opacity: 0, transform: "scale(0.97)" },
+            { opacity: 1, transform: "none" },
+          ],
+          {
+            duration: 300,
+            delay: moves ? 300 : 140,
+            easing: "ease-out",
+            fill: "backwards",
+          },
+        );
+      } else if (was) {
+        card.dataset.leaving = "";
+        card.style.left = `${was.x}px`;
+        card.style.top = `${was.y}px`;
+        card.style.width = `${was.w}px`;
+        const fade = card.animate(
+          [
+            { opacity: 1, transform: "none" },
+            { opacity: 0, transform: "scale(0.97)" },
+          ],
+          { duration: 220, easing: "ease-in", fill: "forwards" },
+        );
+        fade.onfinish = () => {
+          delete card.dataset.leaving;
+          card.style.removeProperty("left");
+          card.style.removeProperty("top");
+          card.style.removeProperty("width");
+          fade.cancel();
+        };
+      }
+    }
+  }, [grid, measure, viewKey]);
+}
+
+const INSTALLS_FORMAT = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function authorInitials(name: string) {
+  return name
+    .split(/\s+/u)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase() ?? "")
+    .join("");
+}
+
+/* PluginCatalogCard: the icon chip and name, two lines of description, then
+   the author and the install control with the install count. */
+function CatalogCard({
+  plugin,
+  order,
+}: {
+  plugin: CatalogPlugin;
+  order: number;
+}) {
+  const shown = order >= 0;
   return (
-    <div className="bw-catalog" aria-hidden>
-      <div className="bw-cat-head">
-        <span className="bw-cat-title">Plugins</span>
-        <span className="bw-cat-search">
-          <SearchGlyph className="bw-cat-search-ic" />
-          Search plugins...
+    <div
+      className="bw-pc"
+      data-plugin={plugin.id}
+      data-shown={shown}
+      style={shown ? { order } : undefined}
+    >
+      <span className="bw-pc-head">
+        <span className="bw-pc-chip">
+          {"glyph" in plugin.icon ? (
+            <HugeiconsIcon icon={plugin.icon.glyph} className="bw-pc-glyph" />
+          ) : (
+            <span
+              className="bw-pc-glyph bw-pc-mask"
+              style={{
+                maskImage: `url(${JSON.stringify(plugin.icon.url)})`,
+                WebkitMaskImage: `url(${JSON.stringify(plugin.icon.url)})`,
+              }}
+            />
+          )}
         </span>
-      </div>
-      <div className="bw-cat-list">
-        {PLUGIN_INSTALLS.map((plugin, index) => (
-          <div key={plugin.id} className="bw-cat-row">
-            <span className="bw-cat-chip">
-              <plugin.icon className="bw-cat-chip-ic" />
-            </span>
-            <span className="bw-cat-name">{plugin.name}</span>
-            <InstallButton at={installAt(index)} />
-            <span className="bw-cat-desc">{plugin.description}</span>
-          </div>
-        ))}
-      </div>
+        <span className="bw-pc-name">{plugin.name}</span>
+      </span>
+      <span className="bw-pc-desc">{plugin.description}</span>
+      <span className="bw-pc-foot">
+        <span className="bw-pc-author">
+          <span className="bw-pc-avatar">{authorInitials(plugin.author)}</span>
+          <span className="bw-pc-author-name">{plugin.author}</span>
+        </span>
+        <span className="bw-pc-install">
+          <DownloadGlyph className="bw-pc-install-ic" />
+          {INSTALLS_FORMAT.format(plugin.installs)}
+        </span>
+      </span>
     </div>
   );
 }
 
-const USAGE_READINGS = [
-  { provider: "claude", icon: ClaudeIcon, percent: 62 },
-] as const;
-
-/* Usage Tracker's compact strip beside the sidebar's footer icons: a mark, a
-   progress rail and the weekly reading for each provider shown. */
-function UsageStrip() {
+/* PluginCollectionToolbar: the search field, then the Category and Sort
+   menus, with Sort on Installs. */
+function CatalogToolbar({ frame }: { frame: CatalogFrame }) {
+  const searchClass = ["bw-pc-search"];
+  if (frame.focused) searchClass.push("is-focused");
   return (
-    <span className="bw-usage" style={at(pieceAt("usage-tracker"))}>
-      <span className="bw-usage-inner">
-        {USAGE_READINGS.map((reading) => (
-          <span key={reading.provider} className="bw-usage-prov">
-            <reading.icon
-              className={`bw-usage-mark bw-usage-mark-${reading.provider}`}
-            />
-            <span className="bw-usage-rail">
-              <i style={{ width: `${reading.percent}%` }} />
-            </span>
-            <span className="bw-usage-pct">{reading.percent}%</span>
+    <div className="bw-pc-toolbar">
+      <span className={searchClass.join(" ")}>
+        <SearchGlyph className="bw-pc-search-ic" />
+        {frame.text === "" ? (
+          <span className="bw-pc-placeholder">
+            {frame.focused ? <i className="bw-pc-caret" /> : null}
+            Search plugins...
           </span>
-        ))}
+        ) : (
+          <span className="bw-pc-text">
+            <span className={frame.selected ? "is-selected" : undefined}>
+              {frame.text}
+            </span>
+            {frame.selected ? null : <i className="bw-pc-caret" />}
+          </span>
+        )}
+        {frame.text === "" ? null : <ClearGlyph className="bw-pc-clear" />}
       </span>
-    </span>
-  );
-}
-
-/* Recap's compact banner in the composer. */
-function RecapBanner() {
-  return (
-    <Reveal at={pieceAt("bb-recap")} className="bw-recap-reveal">
-      <div className="bw-recap">
-        <span className="bw-recap-ic">
-          <SparkGlyph className="bw-recap-spark" />
-        </span>
-        <span className="bw-recap-text">
-          <span className="bw-recap-head">
-            <b>Recap</b>
-            Automatic · 5:11 PM
-          </span>
-          <span className="bw-recap-sum">
-            Loaded six weeks of signups, explained the Pro dip and charted them
-            by plan: up 38%, mostly Team.
-          </span>
-        </span>
-        <span className="bw-recap-expand">
-          Expand
-          <ArrowUpGlyph className="bw-recap-arrow" />
-        </span>
-        <span className="bw-recap-btn">Refresh</span>
-      </div>
-    </Reveal>
-  );
-}
-
-const SIGNUP_WEEKS = [
-  { team: 34, pro: 40 },
-  { team: 40, pro: 42 },
-  { team: 38, pro: 46 },
-  { team: 52, pro: 47 },
-  { team: 61, pro: 50 },
-  { team: 72, pro: 52 },
-];
-
-/* Generative UI's Chart component in the agent's reply, with the source line
-   its charts carry. */
-function SignupsChart() {
-  return (
-    <Reveal at={pieceAt("genui")}>
-      <div className="bw-chart">
-        <div className="bw-chart-head">
-          <span>Weekly signups by plan</span>
-          <span className="bw-legend">
-            <i className="bw-key bw-key-team" />
-            Team
-            <i className="bw-key bw-key-pro" />
-            Pro
-          </span>
-        </div>
-        <div className="bw-bars">
-          {SIGNUP_WEEKS.map((week, index) => (
-            <span
-              key={index}
-              className="bw-bar-col"
-              style={{ "--bw-bar-i": index } as CSSProperties}
-            >
-              <span
-                className="bw-bar bw-bar-team"
-                style={{ height: `${week.team * 0.8}%` }}
-              />
-              <span
-                className="bw-bar bw-bar-pro"
-                style={{ height: `${week.pro * 0.4}%` }}
-              />
-            </span>
-          ))}
-        </div>
-        <div className="bw-chart-source">Source: analytics.signups</div>
-      </div>
-    </Reveal>
-  );
-}
-
-const BURN_STATS = [
-  { label: "This thread", value: "$1.84", note: "No budget" },
-  { label: "Per call", value: "$0.11", note: "17 calls · 41s" },
-  { label: "Cache", value: "94%", note: "hit rate" },
-  { label: "Speed", value: "1.1k tok/s", note: "output, timed calls" },
-] as const;
-
-const BURN_TURNS = [
-  {
-    n: 4,
-    time: "17:09",
-    prompt: "Chart weekly signups by plan for the last six weeks.",
-    cost: "$0.52",
-    share: 62,
-  },
-  {
-    n: 3,
-    time: "17:06",
-    prompt: "Split the funnel by acquisition channel",
-    cost: "$0.84",
-    share: 100,
-  },
-  {
-    n: 2,
-    time: "17:03",
-    prompt: "Why did Pro dip in week three?",
-    cost: "$0.31",
-    share: 37,
-  },
-  {
-    n: 1,
-    time: "16:58",
-    prompt: "Load the signups table from analytics",
-    cost: "$0.17",
-    share: 20,
-  },
-] as const;
-
-/* Burn's tab in the thread's side panel: cost cards and the cost of each
-   prompt. */
-function BurnPanel() {
-  return (
-    <div className="bw-burn" style={at(pieceAt("burn"))}>
-      <div className="bw-burn-inner">
-        <div className="bw-burn-tabs">
-          <span className="bw-burn-tab">
-            <InfoGlyph className="bw-burn-tab-ic" />
-          </span>
-          <span className="bw-burn-tab">
-            <DiffGlyph className="bw-burn-tab-ic" />
-          </span>
-          <span className="bw-burn-tab is-on">
-            <BurnGlyph className="bw-burn-tab-ic" />
-            Burn
-          </span>
-        </div>
-        <div className="bw-burn-stats">
-          {BURN_STATS.map((stat) => (
-            <span key={stat.label} className="bw-burn-stat">
-              <span className="bw-burn-label">{stat.label}</span>
-              <span className="bw-burn-value">{stat.value}</span>
-              <span className="bw-burn-note">{stat.note}</span>
-            </span>
-          ))}
-        </div>
-        <div className="bw-burn-head">
-          <span>Turns</span>
-          <span className="bw-burn-seg">
-            <span className="is-on">Newest</span>
-            <span>Costliest</span>
-          </span>
-        </div>
-        <div className="bw-burn-turns">
-          {BURN_TURNS.map((turn) => (
-            <span key={turn.n} className="bw-burn-turn">
-              <span className="bw-burn-n">{turn.n}</span>
-              <span className="bw-burn-prompt">{turn.prompt}</span>
-              <span className="bw-burn-cost">{turn.cost}</span>
-              <span className="bw-burn-rail">
-                <i style={{ width: `${turn.share}%` }} />
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
+      <span className="bw-pc-control">
+        <FilterGlyph className="bw-pc-control-ic" />
+        <span className="bw-pc-control-label">Category</span>
+        <ChevronDown className="bw-pc-control-ic bw-pc-control-chev" />
+      </span>
+      <span className="bw-pc-control is-on">
+        <SortGlyph className="bw-pc-control-ic" />
+        <span className="bw-pc-control-label">Installs</span>
+      </span>
     </div>
   );
 }
 
 export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   useFitWindow(ref);
-  const { cycle, leaving, paused } = useCycle(PLUGIN_LOOP_MS, 700, ref);
-  const stageStyle = {
-    "--bw-panel-at": `${pieceAt("burn")}s`,
+  const { frame, paused } = useCatalogTimeline(ref);
+  const view: readonly string[] = CATALOG_VIEWS[frame.query];
+  useCatalogFlip(grid, frame.query);
+  const pageStyle = {
+    "--bw-pc-scroll-ms": `${frame.scrollMs}ms`,
   } as CSSProperties;
   return (
     <div
       ref={ref}
-      className="bw bw-plugins"
+      className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
       role="img"
-      aria-label="A bb window next to its Plugins list. Four community plugins install one at a time, and each one's piece appears in bb: Usage Tracker adds Claude usage to the sidebar footer, Recap adds a summary of the thread above the composer, Generative UI draws a chart of weekly signups in the agent's reply, and Burn opens a panel with the thread's cost per prompt."
+      aria-label={`bb's Plugins page, open from the nav rail: a grid of BB Community plugins sorted by installs, from ${CATALOG_PLUGIN_COUNT} plugins, starting with BB Sidebar, Usage Tracker, File Manager and Generative UI. The page scrolls through the grid, then a search for "linear" narrows it to Taskboard, Linear, Link Hovercards and Subscriptions, and a search for "themes" to Beautiful Chat, Aura, bb Monokai, Fonts, Ayu and Tokyo Night.`}
     >
-      <div
-        className={stageClass("bw-plugins-stage", leaving, paused)}
-        key={cycle}
-        style={stageStyle}
-      >
-        <div className="mock bw-window">
-          <WindowBar title="Signups by plan" panelOpen />
-          <div className="mock-body bw-body">
-            <Sidebar foot={<UsageStrip />}>
-              <div className="side-label">Threads</div>
-              <ThreadRow title="Signups by plan" status="done" active />
-              <ThreadRow title="Fix the checkout bug" status="done" />
-              <ThreadRow title="Bump the SDK" status="done" />
-              <ThreadRow title="Refactor auth" status="waiting" />
-            </Sidebar>
-            <div className="main">
-              <div className="feed bw-feed bw-feed-live">
-                <div className="msg-user">Why did Pro dip in week three?</div>
-                <div className="msg-say">
-                  A pricing-page test ran that week. Pro trials fell 12% while
-                  it was live, then recovered.
-                </div>
-                <div className="msg-user">
-                  Chart weekly signups by plan for the last six weeks.
-                </div>
-                <div className="msg-step">
-                  <ChevronRight className="step-chev" />
-                  Queried <code>analytics.signups</code>
-                </div>
-                <div className="msg-say">
-                  Signups are up 38% in six weeks, and Team drove most of it.
-                </div>
-                <SignupsChart />
+      <div className="mock bw-window">
+        <WindowBar title="Plugins" />
+        <div className="mock-body bw-body">
+          <Sidebar nav="plugins">
+            <div className="side-label">Threads</div>
+            <ThreadRow title="Signups by plan" status="done" />
+            <ThreadRow title="Fix the checkout bug" status="done" />
+            <ThreadRow title="Bump the SDK" status="done" />
+            <ThreadRow title="Refactor auth" status="waiting" />
+          </Sidebar>
+          <div className="main bw-pc-main" aria-hidden>
+            <div
+              className={`bw-pc-page${frame.scrolled ? " is-scrolled" : ""}`}
+              style={pageStyle}
+            >
+              <div className="bw-pc-header">
+                <span className="bw-pc-title">Browse plugins</span>
+                <span className="bw-pc-total">
+                  {CATALOG_PLUGIN_COUNT} plugins
+                </span>
+                <span className="bw-pc-create">
+                  <PlusGlyph className="bw-pc-control-ic" />
+                  Create
+                </span>
               </div>
-              <ComposerBox
-                placeholder="Ask for a follow-up"
-                model="Opus 5.5"
-                modelIcon={ClaudeIcon}
-                banner={<RecapBanner />}
-              />
+              <p className="bw-pc-lede">{PLUGINS_BROWSE_DESCRIPTION}</p>
+              <CatalogToolbar frame={frame} />
+              <div ref={grid} className="bw-pc-grid">
+                {CATALOG_PLUGINS.map((plugin) => (
+                  <CatalogCard
+                    key={plugin.id}
+                    plugin={plugin}
+                    order={view.indexOf(plugin.id)}
+                  />
+                ))}
+              </div>
             </div>
-            <BurnPanel />
           </div>
         </div>
-        <PluginCatalogCard />
       </div>
     </div>
   );

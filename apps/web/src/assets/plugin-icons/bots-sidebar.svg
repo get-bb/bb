@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <mask id="eyes">
+    <circle cx="50" cy="50" r="46" fill="white"/>
+    <rect x="29" y="31" width="13" height="28" rx="6.5" transform="rotate(-14 35.5 45)" fill="black"/>
+    <rect x="58" y="29" width="12" height="25" rx="6" transform="rotate(8 64 41.5)" fill="black"/>
+  </mask>
+  <circle cx="50" cy="50" r="46" fill="black" mask="url(#eyes)"/>
+</svg>
