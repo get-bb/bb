@@ -82,8 +82,9 @@ silently switch.
 
 Provider-native memory can be controlled on the Settings → Plugins → Codex
 provider and Settings → Plugins → Claude Code provider pages, or with
-bb plugin config <plugin-id> set memoryEnabled false. Codex memory controls
-both recall (`memories.use_memories`) and future generation
+`bb plugin config provider-codex set memoryEnabled false` and
+`bb plugin config provider-claude-code set memoryEnabled false`. Codex memory
+controls both recall (`memories.use_memories`) and future generation
 (`memories.generate_memories`). Claude Code memory controls native auto-memory
 reads and writes (`autoMemoryEnabled`). Both preferences default on and apply
 when a provider thread is started, resumed, or forked; they do not interrupt
