@@ -49,3 +49,46 @@ describe("homepage-download-area install block", () => {
     expect(renderArm("test")).not.toContain("bb runs on macOS");
   });
 });
+
+describe("homepage-download-area with the homepage-phone-email test", () => {
+  function heroHtml(touchAction: "share" | "email") {
+    return renderToStaticMarkup(
+      <ExperimentsProvider
+        value={{
+          distinctID: null,
+          featureFlags: {
+            "homepage-download-area": "test",
+            "homepage-phone-email": touchAction === "email" ? "test" : "control",
+          },
+          preview: false,
+        }}
+      >
+        <InstallOptions placement="hero" touchAction={touchAction} />
+      </ExperimentsProvider>,
+    );
+  }
+
+  it("gives a phone in both test arms the email form", () => {
+    const html = heroHtml("email");
+    expect(html).toContain("Other platforms");
+    expect(html).toContain('class="install-email touch-only"');
+    expect(html).not.toContain("install-send");
+  });
+
+  it("keeps the share button for a phone in phone-email control", () => {
+    const html = heroHtml("share");
+    expect(html).toContain("install-send touch-only");
+    expect(html).not.toContain("install-email");
+  });
+
+  it("leaves the desktop markup unchanged", () => {
+    const desktopOnly = (html: string) =>
+      html.match(/<[^>]*desktop-only[^>]*>.*?<\/(a|span)>/g);
+    const email = desktopOnly(heroHtml("email"));
+    expect(email).not.toBeNull();
+    expect(email).toEqual(desktopOnly(heroHtml("share")));
+    expect(email!.join("")).toContain(
+      'class="btn btn-primary btn-install install-download desktop-only" href="/download/macos?placement=hero"',
+    );
+  });
+});
