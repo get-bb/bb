@@ -14,7 +14,7 @@ export function SetupOptionRow({
 }: {
   icon: IconName;
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
   actionStaysInline?: boolean;
   panel?: ReactNode;
@@ -35,9 +35,9 @@ export function SetupOptionRow({
           {title}
         </span>
         {description === undefined ? null : (
-          <span className="col-start-2 row-start-2 mt-1 text-xs text-muted-foreground">
+          <div className="col-start-2 row-start-2 mt-1 text-xs text-muted-foreground">
             {description}
-          </span>
+          </div>
         )}
         {action === undefined || action === null ? null : (
           <span

@@ -1942,37 +1942,41 @@ function ConnectOnSetupRow({
           />
         ) : null
       }
+      description={
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground">
+          <span className="flex items-center gap-1.5">
+            <Icon
+              name="CircleCheck"
+              aria-hidden
+              className="size-3.5 text-success"
+            />
+            bb connect is on
+          </span>
+          {url === null ? null : (
+            <>
+              <span aria-hidden="true" className="text-subtle-foreground">
+                ·
+              </span>
+              <span className="flex min-w-0 items-center gap-1">
+                <code className="min-w-0 truncate font-mono text-xs">
+                  {url}
+                </code>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="-my-1 size-6 shrink-0"
+                  aria-label="Copy URL"
+                  onClick={() => void copyTextWithSdkToast(url)}
+                >
+                  <Icon name="Copy" aria-hidden className="size-3.5" />
+                </Button>
+              </span>
+            </>
+          )}
+        </p>
+      }
     >
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground">
-        <span className="flex items-center gap-1.5">
-          <Icon
-            name="CircleCheck"
-            aria-hidden
-            className="size-3.5 text-success"
-          />
-          bb connect is on
-        </span>
-        {url === null ? null : (
-          <>
-            <span aria-hidden="true" className="text-subtle-foreground">
-              ·
-            </span>
-            <span className="flex min-w-0 items-center gap-1">
-              <code className="min-w-0 truncate font-mono text-xs">{url}</code>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0"
-                aria-label="Copy URL"
-                onClick={() => void copyTextWithSdkToast(url)}
-              >
-                <Icon name="Copy" aria-hidden className="size-3.5" />
-              </Button>
-            </span>
-          </>
-        )}
-      </p>
       {!onPhone && pairing.kind === "paired" ? (
         <p className="flex items-center gap-1.5 text-foreground">
           <Icon
