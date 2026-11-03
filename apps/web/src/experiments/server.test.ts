@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { EXPERIMENT_KEYS, NO_EXPERIMENTS } from "./flags";
 import {
   EXPERIMENT_CACHE_CONTROL,
+  SITE_WIDE_COOKIE_NAME,
   evaluateFlags,
   readPostHogCookie,
+  readSiteWideCookie,
   resolveExperiments,
   uuidv7,
   withExperimentHeaders,
@@ -48,6 +50,7 @@ function setup(respond: (init: RequestInit) => Promise<Response>) {
     now: () => NOW,
     randomBytes: (length) => new Uint8Array(length).fill(0xab),
     timeoutMs: 20,
+    siteWideKeys: [],
   };
   return { calls, logs, config };
 }
@@ -56,6 +59,16 @@ function pageRequest(path = "/", cookie?: string, method = "GET"): Request {
   return new Request(`https://getbb.app${path}`, {
     method,
     headers: cookie ? { cookie } : {},
+  });
+}
+
+function htmlRequest(path: string, cookie?: string, method = "GET"): Request {
+  return new Request(`https://getbb.app${path}`, {
+    method,
+    headers: {
+      accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+      ...(cookie ? { cookie } : {}),
+    },
   });
 }
 
@@ -98,9 +111,9 @@ describe("PostHog visitor cookie", () => {
         $user_state: "anonymous",
       }),
     );
-    expect(resolution?.setCookie).toBe(
+    expect(resolution?.setCookies).toEqual([
       `${COOKIE_NAME}=${value}; expires=Sat, 30 Oct 2027 12:00:00 GMT; SameSite=Lax; path=/; domain=.getbb.app; secure`,
-    );
+    ]);
   });
 
   it("keeps an existing ID and writes no cookie", async () => {
@@ -110,7 +123,7 @@ describe("PostHog visitor cookie", () => {
       config,
     );
     expect(resolution?.bootstrap.distinctID).toBe(EXISTING_ID);
-    expect(resolution?.setCookie).toBeNull();
+    expect(resolution?.setCookies).toEqual([]);
     expect(calls[0]?.body).toMatchObject({ distinct_id: EXISTING_ID });
   });
 
@@ -122,7 +135,7 @@ describe("PostHog visitor cookie", () => {
     );
     expect(resolution).toEqual({
       bootstrap: NO_EXPERIMENTS,
-      setCookie: null,
+      setCookies: [],
     });
     expect(calls).toHaveLength(0);
   });
@@ -133,8 +146,8 @@ describe("PostHog visitor cookie", () => {
       new Request("http://localhost:3000/"),
       config,
     );
-    expect(resolution?.setCookie).not.toContain("domain=");
-    expect(resolution?.setCookie).not.toContain("secure");
+    expect(resolution?.setCookies[0]).not.toContain("domain=");
+    expect(resolution?.setCookies[0]).not.toContain("secure");
   });
 
   it("evaluates the /download page", async () => {
@@ -148,7 +161,7 @@ describe("PostHog visitor cookie", () => {
   });
 
   it.each([
-    ["another page", pageRequest("/blog")],
+    ["another page", htmlRequest("/blog")],
     ["a HEAD request", pageRequest("/", undefined, "HEAD")],
   ])("skips %s", async (_name, request) => {
     const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
@@ -296,7 +309,7 @@ describe("/flags evaluation", () => {
       now: () => NOW,
       timeoutMs: 10,
     });
-    expect(flags).toEqual({});
+    expect(flags).toEqual({ outcome: "timeout", flags: {} });
     expect(logs[0]?.outcome).toBe("timeout");
   });
 });
@@ -331,8 +344,168 @@ describe("forced preview", () => {
         featureFlags: { "homepage-qa-check": "test" },
         preview: true,
       },
-      setCookie: null,
+      setCookies: [],
     });
+  });
+});
+
+describe("site-wide experiments", () => {
+  const assigned = {
+    flags: { "homepage-qa-check": { enabled: true, variant: "test" } },
+  };
+  const visitor = cookieFor({ distinct_id: EXISTING_ID });
+  const stored = (value: string) =>
+    `${visitor}; ${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}`;
+  const siteCookie = (value: string) =>
+    `${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}; expires=Sat, 31 Oct 2026 12:00:00 GMT; SameSite=Lax; path=/; domain=.getbb.app; secure`;
+
+  function siteSetup(respond: (init: RequestInit) => Promise<Response>) {
+    const context = setup(respond);
+    const config: ExperimentServerConfig = {
+      ...context.config,
+      siteWideKeys: ["homepage-qa-check"],
+    };
+    return { ...context, config };
+  }
+
+  it("assigns a first visit to any page and stores it for a day", async () => {
+    const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+    const resolution = await resolveExperiments(htmlRequest("/blog"), config);
+    expect(calls[0]?.body).toMatchObject({
+      flag_keys_to_evaluate: ["homepage-qa-check"],
+    });
+    expect(resolution?.bootstrap.distinctID).toMatch(UUID_V7);
+    expect(resolution?.bootstrap.featureFlags).toEqual({
+      "homepage-qa-check": "test",
+    });
+    expect(resolution?.setCookies.map((c) => c.split("=")[0])).toEqual([
+      COOKIE_NAME,
+      SITE_WIDE_COOKIE_NAME,
+    ]);
+    expect(resolution?.setCookies[1]).toBe(
+      siteCookie("homepage-qa-check=test"),
+    );
+  });
+
+  it("stores a visitor outside the experiment without assigning them", async () => {
+    const { config } = siteSetup(async () => flagsResponse({ flags: {} }));
+    const resolution = await resolveExperiments(
+      htmlRequest("/changelog", visitor),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toEqual({});
+    expect(resolution?.setCookies).toEqual([siteCookie("homepage-qa-check=")]);
+  });
+
+  it.each([
+    [
+      "an assigned visitor",
+      "homepage-qa-check=test",
+      { "homepage-qa-check": "test" },
+    ],
+    ["a visitor outside the experiment", "homepage-qa-check=", {}],
+  ])(
+    "renders %s from the cookie without calling /flags",
+    async (_name, value, featureFlags) => {
+      const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+      const resolution = await resolveExperiments(
+        htmlRequest("/guides/remote", stored(value)),
+        config,
+      );
+      expect(resolution).toEqual({
+        bootstrap: { distinctID: EXISTING_ID, featureFlags, preview: false },
+        setCookies: [],
+      });
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it("asks the homepage's /flags call only for unstored experiments", async () => {
+    const { calls, config } = siteSetup(async () =>
+      flagsResponse({ flags: {} }),
+    );
+    const resolution = await resolveExperiments(
+      pageRequest("/", stored("homepage-qa-check=test")),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toMatchObject({
+      "homepage-qa-check": "test",
+    });
+    expect(
+      calls.flatMap(
+        (call) =>
+          (call.body as { flag_keys_to_evaluate: string[] })
+            .flag_keys_to_evaluate,
+      ),
+    ).not.toContain("homepage-qa-check");
+  });
+
+  it("renders control and stores nothing when /flags times out", async () => {
+    const { config, logs } = siteSetup(
+      (init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+    const resolution = await resolveExperiments(
+      htmlRequest("/blog", visitor),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toEqual({});
+    expect(resolution?.setCookies).toEqual([]);
+    expect(logs[0]?.outcome).toBe("timeout");
+  });
+
+  it("previews forced variants on any page without storing them", async () => {
+    const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+    const resolution = await resolveExperiments(
+      htmlRequest("/blog?ph_flag=homepage-qa-check:test", visitor),
+      config,
+    );
+    expect(resolution).toEqual({
+      bootstrap: {
+        distinctID: EXISTING_ID,
+        featureFlags: { "homepage-qa-check": "test" },
+        preview: true,
+      },
+      setCookies: [],
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    ["an API route", htmlRequest("/api/account/me")],
+    ["the dashboard", htmlRequest("/dashboard/hosts")],
+    ["a download redirect", htmlRequest("/download/macos")],
+    ["a file", htmlRequest("/sitemap.xml")],
+    ["a marketplace API path", htmlRequest("/marketplace/v1/index")],
+    ["a non-HTML fetch", pageRequest("/blog")],
+    ["a HEAD request", htmlRequest("/blog", undefined, "HEAD")],
+  ])("leaves %s alone", async (_name, request) => {
+    const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+    expect(await resolveExperiments(request, config)).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("follows only listed experiments with well-formed variants", () => {
+    const header = (value: string) =>
+      `${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}`;
+    expect(
+      readSiteWideCookie(
+        header("homepage-qa-check=%3Cb%3E&constructor=test&unknown=test"),
+        ["homepage-qa-check"],
+      ),
+    ).toEqual({});
+    expect(readSiteWideCookie(header("homepage-qa-check=test"), [])).toEqual(
+      {},
+    );
+    expect(
+      readSiteWideCookie(`${SITE_WIDE_COOKIE_NAME}=%E0%A4%A`, [
+        "homepage-qa-check",
+      ]),
+    ).toEqual({});
   });
 });
 
@@ -343,27 +516,46 @@ describe("experiment response headers", () => {
       headers: { "content-type": "text/html", "cache-control": "max-age=60" },
     });
 
-  it("marks every page with a distinctID private and sets a minted cookie", async () => {
+  it("marks every page with a distinctID private and sets its cookies", async () => {
     const response = withExperimentHeaders(page(), {
       bootstrap: { distinctID: EXISTING_ID, featureFlags: {}, preview: false },
-      setCookie: `${COOKIE_NAME}=x`,
+      setCookies: [`${COOKIE_NAME}=x`, `${SITE_WIDE_COOKIE_NAME}=y`],
     });
     expect(response.headers.get("cache-control")).toBe(
       EXPERIMENT_CACHE_CONTROL,
     );
-    expect(response.headers.get("set-cookie")).toBe(`${COOKIE_NAME}=x`);
+    expect(response.headers.getSetCookie()).toEqual([
+      `${COOKIE_NAME}=x`,
+      `${SITE_WIDE_COOKIE_NAME}=y`,
+    ]);
+    expect(response.headers.get("vary")).toBe("Cookie");
     expect(await response.text()).toBe("<html></html>");
   });
 
-  it("leaves pages without a distinctID untouched", () => {
+  it("marks a page rendered from the site-wide cookie private", () => {
     const response = withExperimentHeaders(page(), {
       bootstrap: {
         distinctID: null,
         featureFlags: { "homepage-qa-check": "test" },
-        preview: true,
+        preview: false,
       },
-      setCookie: null,
+      setCookies: [],
     });
+    expect(response.headers.get("cache-control")).toBe(
+      EXPERIMENT_CACHE_CONTROL,
+    );
+  });
+
+  it("keeps a control page's caching but varies it on cookies", () => {
+    const response = withExperimentHeaders(page(), null);
     expect(response.headers.get("cache-control")).toBe("max-age=60");
+    expect(response.headers.get("vary")).toBe("Cookie");
+  });
+
+  it("leaves non-HTML responses untouched", () => {
+    const json = new Response("{}", {
+      headers: { "content-type": "application/json" },
+    });
+    expect(withExperimentHeaders(json, null)).toBe(json);
   });
 });

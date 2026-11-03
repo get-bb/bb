@@ -18,6 +18,8 @@ export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set([
   "/download",
 ]);
 
+export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [];
+
 export const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
 
 export type ExperimentDevices = "all" | "desktop" | "touch";
@@ -34,7 +36,11 @@ export const NO_EXPERIMENTS: ExperimentBootstrap = {
   preview: false,
 };
 
-const FORCED_VARIANT_PATTERN = /^[a-z0-9_-]{1,64}$/i;
+const VARIANT_PATTERN = /^[a-z0-9_-]{1,64}$/i;
+
+export function isVariantName(value: string): boolean {
+  return VARIANT_PATTERN.test(value);
+}
 
 export function isExperimentKey(value: string): value is ExperimentKey {
   return Object.hasOwn(EXPERIMENT_VARIANTS, value);
@@ -63,11 +69,7 @@ export function parseForcedFlags(
     const separator = value.indexOf(":");
     const key = value.slice(0, separator);
     const variant = value.slice(separator + 1);
-    if (
-      separator > 0 &&
-      isExperimentKey(key) &&
-      FORCED_VARIANT_PATTERN.test(variant)
-    ) {
+    if (separator > 0 && isExperimentKey(key) && isVariantName(variant)) {
       forced[key] = variant;
     }
   }
