@@ -12,6 +12,7 @@ describe("app update presentation", () => {
     ).toBe("abcdef1");
     expect(
       formatAppUpdateTarget({
+        behindSince: "2026-11-02T12:00:00.000Z",
         channel: "main",
         commit: "abcdef1234567",
         commitCount: 1,

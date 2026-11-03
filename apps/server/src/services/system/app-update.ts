@@ -263,6 +263,7 @@ export function createAppUpdateService(
       }
       return {
         available: {
+          behindSince: null,
           channel: isNightlyAppVersion(version.latestVersion)
             ? "nightly"
             : "latest",
@@ -288,6 +289,7 @@ export function createAppUpdateService(
         check.incoming === null
           ? null
           : {
+              behindSince: check.incoming.behindSince,
               channel: "main",
               commit: check.incoming.commit,
               commitCount: check.incoming.commitCount,

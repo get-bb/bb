@@ -89,6 +89,7 @@ function sourceCheck(
     blocked: null,
     current: { commit: COMMIT_A, kind: "source", version: "1.0.0" },
     incoming: {
+      behindSince: "2026-11-02T12:00:00.000Z",
       commit: COMMIT_B,
       commitCount: 2,
       subjects: ["Fix bug", "Add feature"],
@@ -184,6 +185,7 @@ describe("app update service", () => {
 
     expect(status.support).toEqual({ kind: "supported", mode: "npm" });
     expect(status.available).toEqual({
+      behindSince: null,
       channel: "latest",
       commit: null,
       commitCount: null,
@@ -315,6 +317,7 @@ describe("app update service", () => {
 
     expect(status.current).toEqual({ commit: COMMIT_A, version: "1.0.0" });
     expect(status.available).toMatchObject({
+      behindSince: "2026-11-02T12:00:00.000Z",
       channel: "main",
       commit: COMMIT_B,
       commitCount: 2,
@@ -462,6 +465,7 @@ describe("app update service", () => {
       sourceCheck(),
       sourceCheck({
         incoming: {
+          behindSince: "2026-11-02T12:00:00.000Z",
           commit: "c".repeat(40),
           commitCount: 3,
           subjects: [],
