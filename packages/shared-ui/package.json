@@ -244,6 +244,11 @@
       "types": "./src/components/ui/hooks/use-compact-viewport.tsx",
       "default": "./src/components/ui/hooks/use-compact-viewport.tsx"
     },
+    "./hooks/use-countdown": {
+      "source": "./src/components/ui/hooks/use-countdown.ts",
+      "types": "./src/components/ui/hooks/use-countdown.ts",
+      "default": "./src/components/ui/hooks/use-countdown.ts"
+    },
     "./hooks/use-media-query": {
       "source": "./src/components/ui/hooks/use-media-query.ts",
       "types": "./src/components/ui/hooks/use-media-query.ts",
