@@ -77,7 +77,6 @@ import {
   Band,
   InstallOptions,
   ProviderChips,
-  SimpleInstallOptions,
   CustomizeBuild,
   SpawnSidebar,
   useCycle,
@@ -1207,11 +1206,6 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
-  const InstallBlock =
-    useExperiment("homepage-download-area") === "test"
-      ? SimpleInstallOptions
-      : InstallOptions;
-  useExperimentExposure("homepage-download-area", "desktop");
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1246,7 +1240,7 @@ function LandingPage() {
           for your own software factory.
         </p>
 
-        <InstallBlock placement="hero" />
+        <InstallOptions placement="hero" />
 
         <div className="providers">
           <span className="label">Works with</span>
@@ -1351,7 +1345,7 @@ function LandingPage() {
       <section className="closer" data-reveal>
         <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
-        <InstallBlock placement="closer" />
+        <InstallOptions placement="closer" />
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
