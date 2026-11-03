@@ -118,7 +118,8 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
   group(
     "guide",
     () => import("./commands/guide.js"),
-    (m) => (program) => m.registerGuideCommand(program),
+    (m) => (program, deps) =>
+      m.registerGuideCommand(program, deps.getUrl, deps.getContext),
   ),
   group(
     "diagnostics",
