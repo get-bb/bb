@@ -9,16 +9,10 @@ import { trackLandingEvent } from "./analytics";
 import { MarketplaceLink } from "./cta";
 import {
   DelegationTree,
-  PluginMap,
   PluginMorph,
   StartAnywhere,
   useCycle,
 } from "./landing-visuals";
-import {
-  CATALOG_PLUGIN_COUNT,
-  CATALOG_PLUGINS,
-  CATALOG_VIEWS,
-} from "./plugin-catalog-snapshot";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
@@ -189,78 +183,6 @@ describe("StartAnywhere", () => {
   });
 });
 
-describe("PluginMap", () => {
-  it("shows bb's Plugins page with the most-installed catalog plugins", () => {
-    const html = renderToStaticMarkup(<PluginMap />);
-    for (const text of [
-      ">Plugins<",
-      "Browse plugins",
-      `${CATALOG_PLUGIN_COUNT} plugins`,
-      "Search plugins...",
-      "Category",
-      "Installs",
-      "BB Sidebar",
-      "Usage Tracker",
-      "Generative UI",
-      "Yusuf Akbulut",
-      ">756<",
-    ]) {
-      expect(html).toContain(text);
-    }
-    expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
-    expect(html.match(/class="bw-rail-btn is-on"/g)).toHaveLength(1);
-    expect(html.match(/class="bw-pc"/g)).toHaveLength(CATALOG_PLUGINS.length);
-    expect(html.match(/data-shown="true"/g)).toHaveLength(
-      CATALOG_VIEWS[""].length,
-    );
-    expect(html).not.toMatch(/bw-catalog|bw-cat-|bw-inst|bw-burn|bw-recap/);
-  });
-
-  it("types each search, then filters the grid, only while on screen", () => {
-    vi.useFakeTimers();
-    vi.stubGlobal("IntersectionObserver", FakeObserver);
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
-    FakeObserver.instances = [];
-    const { host, unmount } = render(<PluginMap />);
-    const shown = () => host.querySelectorAll('[data-shown="true"]').length;
-    const search = () => host.querySelector(".bw-pc-search")!.textContent;
-
-    act(() => vi.advanceTimersByTime(20_000));
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
-
-    FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(8_100));
-    expect(search()).toContain("linear");
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
-    act(() => vi.advanceTimersByTime(200));
-    expect(shown()).toBe(CATALOG_VIEWS.linear.length);
-
-    act(() => vi.advanceTimersByTime(3_600));
-    expect(search()).toContain("themes");
-    expect(shown()).toBe(CATALOG_VIEWS.linear.length);
-    act(() => vi.advanceTimersByTime(200));
-    expect(shown()).toBe(CATALOG_VIEWS.themes.length);
-
-    act(() => vi.advanceTimersByTime(3_000));
-    expect(search()).toContain("Search plugins...");
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
-    unmount();
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    document.body.replaceChildren();
-  });
-
-  it("lists every plugin each view shows, sorted by installs", () => {
-    const byId = new Map(CATALOG_PLUGINS.map((plugin) => [plugin.id, plugin]));
-    expect(CATALOG_PLUGIN_COUNT).toBeGreaterThan(400);
-    for (const ids of Object.values(CATALOG_VIEWS)) {
-      const installs = ids.map((id) => byId.get(id)?.installs ?? -1);
-      expect(installs).not.toContain(-1);
-      expect(installs).toEqual([...installs].sort((a, b) => b - a));
-    }
-  });
-});
-
 describe("PluginMorph", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -399,7 +321,6 @@ describe("DelegationTree", () => {
 
 describe("below-the-fold bb windows", () => {
   it.each([
-    ["PluginMap", PluginMap],
     ["PluginMorph", PluginMorph],
     ["DelegationTree", DelegationTree],
     ["StartAnywhere", StartAnywhere],

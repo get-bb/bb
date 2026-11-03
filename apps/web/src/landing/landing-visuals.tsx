@@ -29,35 +29,22 @@ import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
-import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
 import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
-import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
-import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
-import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
+import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import RoboticIcon from "@hugeicons/core-free-icons/RoboticIcon";
+import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
+import FilesEditorIcon from "../assets/plugin-icons/files-editor.svg";
+import TaskboardIcon from "../assets/plugin-icons/taskboard.svg";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import {
-  CATALOG_PLUGIN_COUNT,
-  CATALOG_PLUGINS,
-  CATALOG_VIEWS,
-  type CatalogPlugin,
-  type CatalogQuery,
-} from "./plugin-catalog-snapshot";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -659,9 +646,6 @@ const PhoneIcon = ({ className }: IconProps) => (
 const LaptopGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={LaptopIcon} className={className} />
 );
-const CheckGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Tick02Icon} className={className} />
-);
 const ChevronLeft = ({ className }: IconProps) => (
   <HugeiconsIcon icon={ArrowLeft01Icon} className={className} />
 );
@@ -991,382 +975,12 @@ function ComposerBox({
   );
 }
 
-/* Make bb yours: bb's Plugins page, as the app draws it (BrowsePluginsTab with
-   its PluginCollectionToolbar and PluginCatalogCard grid), browsing a snapshot
-   of the BB Community catalog sorted by installs. The page scrolls slowly
-   down the grid and back, then searches "linear" and "themes", typed one
-   character at a time; the grid filters when the search commits, as bb's
-   does 200 ms after the last keystroke, and the cards glide to their new
-   places (FLIP) while the ones that no longer match fade out. */
-
-/* The Plugins page's lede (PLUGINS_BROWSE_DESCRIPTION in the app). */
-const PLUGINS_BROWSE_DESCRIPTION =
-  "Discover plugins for bb. Install one, or describe your own and build it from a prompt.";
-
-const DownloadGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Download01Icon} className={className} />
-);
-const SearchGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Search01Icon} className={className} />
-);
-const FilterGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SlidersHorizontalIcon} className={className} />
-);
-const SortGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SortingNineOneIcon} className={className} />
-);
 const PlusGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={PlusSignIcon} className={className} />
 );
 const ClearGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Cancel01Icon} className={className} />
 );
-
-type CatalogFrame = {
-  scrolled: boolean;
-  scrollMs: number;
-  text: string;
-  focused: boolean;
-  selected: boolean;
-  query: CatalogQuery;
-};
-
-const CATALOG_REST: CatalogFrame = {
-  scrolled: false,
-  scrollMs: 0,
-  text: "",
-  focused: false,
-  selected: false,
-  query: "",
-};
-
-const TYPE_MS = 115;
-const SEARCH_COMMIT_MS = 200;
-const FLIP_MS = 650;
-
-type CatalogStep = { wait: number; frame: Partial<CatalogFrame> };
-
-function typed(word: string, firstWait: number): CatalogStep[] {
-  return [...word].map((_, index) => ({
-    wait: index === 0 ? firstWait : TYPE_MS,
-    frame: { text: word.slice(0, index + 1), selected: false },
-  }));
-}
-
-/* Each step waits, then applies its frame. The last step returns to
-   CATALOG_REST, so the loop starts over without a cut. */
-const CATALOG_STEPS: readonly CatalogStep[] = [
-  { wait: 1600, frame: { scrolled: true, scrollMs: 3400 } },
-  { wait: 3400 + 900, frame: { scrolled: false, scrollMs: 1100 } },
-  { wait: 1100 + 150, frame: { focused: true } },
-  ...typed("linear", 350),
-  { wait: SEARCH_COMMIT_MS, frame: { query: "linear" } },
-  { wait: FLIP_MS + 1900, frame: { selected: true } },
-  ...typed("themes", 450),
-  { wait: SEARCH_COMMIT_MS, frame: { query: "themes" } },
-  { wait: FLIP_MS + 2000, frame: { selected: true } },
-  { wait: 350, frame: CATALOG_REST },
-];
-
-function useCatalogTimeline(ref: RefObject<Element | null>) {
-  const [frame, setFrame] = useState(CATALOG_REST);
-  const [inView, setInView] = useState(false);
-  const next = useRef(0);
-  useEffect(() => {
-    const target = ref.current;
-    if (!target || typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      const latest = entries[entries.length - 1];
-      if (latest) setInView(latest.isIntersecting);
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [ref]);
-  useEffect(() => {
-    if (!inView) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let timer = 0;
-    const schedule = () => {
-      const step = CATALOG_STEPS[next.current]!;
-      timer = window.setTimeout(() => {
-        setFrame((current) => ({ ...current, ...step.frame }));
-        next.current = (next.current + 1) % CATALOG_STEPS.length;
-        schedule();
-      }, step.wait);
-    };
-    schedule();
-    return () => window.clearTimeout(timer);
-  }, [inView]);
-  return { frame, paused: !inView };
-}
-
-type CardBox = { x: number; y: number; w: number };
-
-/* FLIP for the catalog grid: every card stays mounted and the grid shows
-   the current view's cards in order. After each change, cards that stay
-   glide from where they were, cards that leave fade out where they were,
-   and cards that arrive fade in once the others have moved. */
-function useCatalogFlip(
-  grid: RefObject<HTMLDivElement | null>,
-  viewKey: string,
-) {
-  const boxes = useRef(new Map<string, CardBox>());
-  const measure = useCallback(() => {
-    const node = grid.current;
-    if (!node) return new Map<string, CardBox>();
-    const measured = new Map<string, CardBox>();
-    for (const card of node.querySelectorAll<HTMLElement>("[data-plugin]")) {
-      if (card.dataset.shown !== "true") continue;
-      measured.set(card.dataset.plugin!, {
-        x: card.offsetLeft,
-        y: card.offsetTop,
-        w: card.offsetWidth,
-      });
-    }
-    return measured;
-  }, [grid]);
-  useEffect(() => {
-    const node = grid.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      boxes.current = measure();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [grid, measure]);
-  useLayoutEffect(() => {
-    const node = grid.current;
-    if (!node) return;
-    const before = boxes.current;
-    boxes.current = measure();
-    if (
-      before.size === 0 ||
-      typeof node.animate !== "function" ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      return;
-    }
-    const cards = [...node.querySelectorAll<HTMLElement>("[data-plugin]")];
-    const moves = cards.some((card) => {
-      const was = before.get(card.dataset.plugin!);
-      const now = boxes.current.get(card.dataset.plugin!);
-      return was && now && (was.x !== now.x || was.y !== now.y);
-    });
-    for (const card of cards) {
-      const id = card.dataset.plugin!;
-      const was = before.get(id);
-      const now = boxes.current.get(id);
-      if (now && was) {
-        const dx = was.x - now.x;
-        const dy = was.y - now.y;
-        if (dx === 0 && dy === 0) continue;
-        /* Gliding cards pass over the ones fading in. */
-        card.style.zIndex = "1";
-        const glide = card.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
-          { duration: FLIP_MS, easing: "cubic-bezier(0.4, 0, 0.2, 1)" },
-        );
-        glide.onfinish = () => card.style.removeProperty("z-index");
-      } else if (now) {
-        /* Arrivals start as the leavers finish fading, or once the gliding
-           cards are under way. */
-        card.animate(
-          [
-            { opacity: 0, transform: "scale(0.97)" },
-            { opacity: 1, transform: "none" },
-          ],
-          {
-            duration: 300,
-            delay: moves ? 300 : 140,
-            easing: "ease-out",
-            fill: "backwards",
-          },
-        );
-      } else if (was) {
-        card.dataset.leaving = "";
-        card.style.left = `${was.x}px`;
-        card.style.top = `${was.y}px`;
-        card.style.width = `${was.w}px`;
-        const fade = card.animate(
-          [
-            { opacity: 1, transform: "none" },
-            { opacity: 0, transform: "scale(0.97)" },
-          ],
-          { duration: 220, easing: "ease-in", fill: "forwards" },
-        );
-        fade.onfinish = () => {
-          delete card.dataset.leaving;
-          card.style.removeProperty("left");
-          card.style.removeProperty("top");
-          card.style.removeProperty("width");
-          fade.cancel();
-        };
-      }
-    }
-  }, [grid, measure, viewKey]);
-}
-
-const INSTALLS_FORMAT = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function authorInitials(name: string) {
-  return name
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((part) => part[0]?.toLocaleUpperCase() ?? "")
-    .join("");
-}
-
-/* PluginCatalogCard: the icon chip and name, two lines of description, then
-   the author and the install control with the install count. */
-function CatalogCard({
-  plugin,
-  order,
-}: {
-  plugin: CatalogPlugin;
-  order: number;
-}) {
-  const shown = order >= 0;
-  return (
-    <div
-      className="bw-pc"
-      data-plugin={plugin.id}
-      data-shown={shown}
-      style={shown ? { order } : undefined}
-    >
-      <span className="bw-pc-head">
-        <span className="bw-pc-chip">
-          {"glyph" in plugin.icon ? (
-            <HugeiconsIcon icon={plugin.icon.glyph} className="bw-pc-glyph" />
-          ) : (
-            <span
-              className="bw-pc-glyph bw-pc-mask"
-              style={{
-                maskImage: `url(${JSON.stringify(plugin.icon.url)})`,
-                WebkitMaskImage: `url(${JSON.stringify(plugin.icon.url)})`,
-              }}
-            />
-          )}
-        </span>
-        <span className="bw-pc-name">{plugin.name}</span>
-      </span>
-      <span className="bw-pc-desc">{plugin.description}</span>
-      <span className="bw-pc-foot">
-        <span className="bw-pc-author">
-          <span className="bw-pc-avatar">{authorInitials(plugin.author)}</span>
-          <span className="bw-pc-author-name">{plugin.author}</span>
-        </span>
-        <span className="bw-pc-install">
-          <DownloadGlyph className="bw-pc-install-ic" />
-          {INSTALLS_FORMAT.format(plugin.installs)}
-        </span>
-      </span>
-    </div>
-  );
-}
-
-/* PluginCollectionToolbar: the search field, then the Category and Sort
-   menus, with Sort on Installs. */
-function CatalogToolbar({ frame }: { frame: CatalogFrame }) {
-  const searchClass = ["bw-pc-search"];
-  if (frame.focused) searchClass.push("is-focused");
-  return (
-    <div className="bw-pc-toolbar">
-      <span className={searchClass.join(" ")}>
-        <SearchGlyph className="bw-pc-search-ic" />
-        {frame.text === "" ? (
-          <span className="bw-pc-placeholder">
-            {frame.focused ? <i className="bw-pc-caret" /> : null}
-            Search plugins...
-          </span>
-        ) : (
-          <span className="bw-pc-text">
-            <span className={frame.selected ? "is-selected" : undefined}>
-              {frame.text}
-            </span>
-            {frame.selected ? null : <i className="bw-pc-caret" />}
-          </span>
-        )}
-        {frame.text === "" ? null : <ClearGlyph className="bw-pc-clear" />}
-      </span>
-      <span className="bw-pc-control">
-        <FilterGlyph className="bw-pc-control-ic" />
-        <span className="bw-pc-control-label">Category</span>
-        <ChevronDown className="bw-pc-control-ic bw-pc-control-chev" />
-      </span>
-      <span className="bw-pc-control is-on">
-        <SortGlyph className="bw-pc-control-ic" />
-        <span className="bw-pc-control-label">Installs</span>
-      </span>
-    </div>
-  );
-}
-
-export function PluginMap() {
-  const ref = useRef<HTMLDivElement>(null);
-  const grid = useRef<HTMLDivElement>(null);
-  useFitWindow(ref);
-  const { frame, paused } = useCatalogTimeline(ref);
-  const view: readonly string[] = CATALOG_VIEWS[frame.query];
-  useCatalogFlip(grid, frame.query);
-  const pageStyle = {
-    "--bw-pc-scroll-ms": `${frame.scrollMs}ms`,
-  } as CSSProperties;
-  return (
-    <div
-      ref={ref}
-      className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
-      role="img"
-      aria-label={`bb's Plugins page, open from the nav rail: a grid of BB Community plugins sorted by installs, from ${CATALOG_PLUGIN_COUNT} plugins, starting with BB Sidebar, Usage Tracker, File Manager and Generative UI. The page scrolls through the grid, then a search for "linear" narrows it to Taskboard, Linear, Link Hovercards and Subscriptions, and a search for "themes" to Beautiful Chat, Aura, bb Monokai, Fonts, Ayu and Tokyo Night.`}
-    >
-      <div className="mock bw-window">
-        <WindowBar title="Plugins" />
-        <div className="mock-body bw-body">
-          <Sidebar nav="plugins">
-            <div className="side-label">Threads</div>
-            <ThreadRow title="Signups by plan" status="done" />
-            <ThreadRow title="Fix the checkout bug" status="done" />
-            <ThreadRow title="Bump the SDK" status="done" />
-            <ThreadRow title="Refactor auth" status="waiting" />
-          </Sidebar>
-          <div className="main bw-pc-main" aria-hidden>
-            <div
-              className={`bw-pc-page${frame.scrolled ? " is-scrolled" : ""}`}
-              style={pageStyle}
-            >
-              <div className="bw-pc-header">
-                <span className="bw-pc-title">Browse plugins</span>
-                <span className="bw-pc-total">
-                  {CATALOG_PLUGIN_COUNT} plugins
-                </span>
-                <span className="bw-pc-create">
-                  <PlusGlyph className="bw-pc-control-ic" />
-                  Create
-                </span>
-              </div>
-              <p className="bw-pc-lede">{PLUGINS_BROWSE_DESCRIPTION}</p>
-              <CatalogToolbar frame={frame} />
-              <div ref={grid} className="bw-pc-grid">
-                {CATALOG_PLUGINS.map((plugin) => (
-                  <CatalogCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    order={view.indexOf(plugin.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 type MorphScene = "stock" | "files" | "graph" | "taskboard" | "shelves";
 
@@ -1486,15 +1100,27 @@ function morphLayer<T extends string>(
   return `${base} mx-layer`;
 }
 
-function PluginMark({ id, className }: { id: string; className: string }) {
-  const plugin = CATALOG_PLUGINS.find((entry) => entry.id === id)!;
-  if ("glyph" in plugin.icon) {
-    return <HugeiconsIcon icon={plugin.icon.glyph} className={className} />;
+const PLUGIN_MARKS = {
+  "agent-graph": { glyph: WorkflowCircle03Icon },
+  "files-editor": { url: FilesEditorIcon },
+  taskboard: { url: TaskboardIcon },
+} as const;
+
+function PluginMark({
+  id,
+  className,
+}: {
+  id: keyof typeof PLUGIN_MARKS;
+  className: string;
+}) {
+  const icon: { glyph: IconSvgElement } | { url: string } = PLUGIN_MARKS[id];
+  if ("glyph" in icon) {
+    return <HugeiconsIcon icon={icon.glyph} className={className} />;
   }
-  const mask = `url(${JSON.stringify(plugin.icon.url)})`;
+  const mask = `url(${JSON.stringify(icon.url)})`;
   return (
     <span
-      className={`${className} bw-pc-mask`}
+      className={`${className} mx-plugin-mask`}
       style={{ maskImage: mask, WebkitMaskImage: mask }}
     />
   );
