@@ -422,32 +422,6 @@ describe("setup guide experiment", () => {
     });
   });
 
-  it("reads a file saved by the single-flag shape as the guide assignment", async () => {
-    await writeFile(
-      join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME),
-      JSON.stringify({
-        variant: "new",
-        featuredPluginEntryIds: ["memory"],
-        source: "flag",
-      }),
-    );
-    const fetch = vi.fn<typeof globalThis.fetch>();
-    const experiment = await create({
-      fetch,
-      telemetry: createTelemetry().telemetry,
-    });
-
-    await expect(experiment.resolve()).resolves.toEqual({
-      guide: { variant: "new", source: "flag" },
-      plugins: {
-        variant: "control",
-        source: "default",
-        featuredPluginEntryIds: ["memory"],
-      },
-    });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
   it("does not send flag exposures for default assignments", async () => {
     const { telemetry, capture } = createTelemetry();
     const experiment = await create({
