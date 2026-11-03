@@ -2,45 +2,25 @@ import { mobileAppDownloads } from "@bb/domain/mobile-app";
 import AndroidIcon from "@hugeicons/core-free-icons/AndroidIcon";
 import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import {
-  DesktopDownloadButton,
-  DesktopDownloadIcon,
-  DownloadLink,
-} from "./cta";
+import { DesktopDownloadIcon, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import { SendToComputerButton } from "./send-to-computer-button";
+import { DesktopInstallChoice } from "./install-choice";
 import { SiteFooter, SiteNav } from "./site-chrome";
-import { CLI_COMMAND } from "./site";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 import type { DesktopPlatform } from "./site";
 
 export const DOWNLOAD_PAGE_TITLE = "Download bb";
 const PLACEMENT = "download_page";
 
-const GIT_FOR_WINDOWS_URL = "https://git-scm.com/download/win";
-
-const BUTTON_NOTES: Record<DesktopPlatform, ReactNode> = {
-  macos: null,
-  windows: (
-    <>
-      x64 · alpha · Needs{" "}
-      <a className="install-note-link" href={GIT_FOR_WINDOWS_URL}>
-        Git for Windows
-      </a>
-    </>
-  ),
-  linux: "x64 AppImage · alpha",
-};
-
 type DownloadKind = DesktopPlatform | "terminal" | "ios" | "android";
 
 const ROWS: Record<DownloadKind, { name: string; tag: string }> = {
-  macos: { name: "macOS", tag: "Apple Silicon" },
-  windows: { name: "Windows", tag: "Alpha" },
-  linux: { name: "Linux", tag: "Alpha · AppImage" },
+  macos: { name: "macOS", tag: DESKTOP_DOWNLOADS.macos.note },
+  windows: { name: "Windows", tag: DESKTOP_DOWNLOADS.windows.note },
+  linux: { name: "Linux", tag: DESKTOP_DOWNLOADS.linux.note },
   terminal: { name: "Terminal", tag: "Intel Macs, servers" },
   ios: { name: "iPhone", tag: "Beta · TestFlight" },
   android: { name: "Android", tag: "Alpha · APK" },
@@ -117,7 +97,7 @@ function DownloadRows({
 
 export function DownloadPage() {
   const platform = useDesktopPlatform();
-  const note = BUTTON_NOTES[platform];
+  const { note, requirement } = DESKTOP_DOWNLOADS[platform];
   return (
     <div className="wrap">
       <SiteNav />
@@ -129,20 +109,23 @@ export function DownloadPage() {
           For macOS, Windows, Linux, iPhone, and Android. Free and open source.
         </p>
         <div className="dl-hero-actions">
-          <span className="install-choice">
-            <DesktopDownloadButton
-              placement={PLACEMENT}
-              platform={platform}
-              className="btn btn-primary btn-install install-download"
-            />
-            <SendToComputerButton placement={PLACEMENT} />
-            {note ? (
-              <span className="install-note install-note-desktop">{note}</span>
-            ) : null}
-            <span className="install-note install-note-touch">
-              bb runs on macOS, Windows, and Linux
-            </span>
-          </span>
+          <DesktopInstallChoice
+            placement={PLACEMENT}
+            platform={platform}
+            note={
+              <>
+                {note}
+                {requirement ? (
+                  <>
+                    {" · Needs "}
+                    <a className="install-note-link" href={requirement.href}>
+                      {requirement.label}
+                    </a>
+                  </>
+                ) : null}
+              </>
+            }
+          />
         </div>
       </header>
       <div className="dl-body">

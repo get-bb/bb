@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { carryUtmToDownloadLinks } from "./download-utm";
 import { DownloadPage } from "./download-page";
-import { CLI_COMMAND } from "./site";
+import { InstallOptions } from "./landing-visuals";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 
 const posthog = vi.hoisted(() => ({
   init: vi.fn(),
@@ -39,6 +40,17 @@ describe("/download page", () => {
     expect(body).toContain(CLI_COMMAND);
     expect(body).toContain("testflight.apple.com");
     expect(body).toContain("bb-android.apk");
+  });
+
+  it("shows the same platform notes as the homepage install block", () => {
+    const page = renderToStaticMarkup(<DownloadPage />);
+    const home = renderToStaticMarkup(<InstallOptions placement="hero" />);
+    const note = `<span class="install-note install-note-desktop">${DESKTOP_DOWNLOADS.macos.note}`;
+    expect(page).toContain(note);
+    expect(home).toContain(note);
+    expect(page).toContain(
+      `<span class="dl-row-tag">${DESKTOP_DOWNLOADS.windows.note}</span>`,
+    );
   });
 
   it("hides the computer rows on phones and keeps the phone options", () => {

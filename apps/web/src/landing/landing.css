@@ -34,6 +34,11 @@
   --subtle: oklch(0.5 0 0);
   --label-muted: color-mix(in oklch, var(--subtle) 90%, var(--bg));
   --text-label-small: 12px;
+  --text-body-sm: 13.5px;
+  --text-body: 14.5px;
+  --text-lead: 16px;
+  --icon-sm: 14px;
+  --gap-md: 12px;
   /* Display type sits a step darker than the body ink (and a step lighter in
      dark) so headings lead without a weight change; --ink-strong is the same
      idea for emphasized body copy inside the app mocks. */
@@ -442,15 +447,17 @@ body {
   line-height: 1.5;
 }
 
-.nav-download {
+.nav-download,
+.dl-row-action .btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
 }
 
-.nav-download .btn-ic {
-  width: 14px;
-  height: 14px;
+.nav-download .btn-ic,
+.dl-row-action .btn .btn-ic {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .btn-ic {
@@ -3459,15 +3466,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-/* ── /download ──────────────────────────────────────────────────── */
-
 .dl-hero {
   padding: 48px 0 40px;
 }
 
-/* The vector bb mark, drawn whole so no edge is cropped. The SVG's viewBox
-   keeps a small margin around the glyph, so its anti-aliased edges never
-   touch the box. Dark mode inverts it to match the light dark-mode icon. */
 .dl-mark {
   display: inline-block;
   width: 0.967em;
@@ -3487,11 +3489,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .dl-hero-actions .install-choice {
-  gap: 12px;
+  gap: var(--gap-md);
 }
 
 .dl-hero-actions .btn-install {
-  font-size: 16px;
+  font-size: var(--text-lead);
 }
 
 .dl-body {
@@ -3502,7 +3504,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .dl-h2 {
   margin: 36px 0 8px;
   padding: 0 4px;
-  font-size: 15px;
+  font-size: var(--text-body);
   font-weight: 400;
   letter-spacing: 0;
   color: var(--ink);
@@ -3520,7 +3522,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: var(--gap-md);
   padding: 14px 4px;
 }
 
@@ -3529,14 +3531,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .dl-row-name {
-  font-size: 14.5px;
+  font-size: var(--text-body);
   font-weight: 600;
   color: var(--heading);
 }
 
 .dl-row-tag {
   overflow: hidden;
-  font-size: 13.5px;
+  font-size: var(--text-body-sm);
   color: var(--subtle);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3544,18 +3546,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .dl-row-action {
   justify-self: end;
-  min-width: 0;
-}
-
-.dl-row-action .btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.dl-row-action .btn .btn-ic {
-  width: 15px;
-  height: 15px;
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -3579,7 +3569,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .dl-hero .sub {
     margin-top: 16px;
-    font-size: 16px;
+    font-size: var(--text-lead);
   }
 
   .dl-hero-actions .install-choice {
