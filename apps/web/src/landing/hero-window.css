@@ -117,7 +117,6 @@
   height: 15px;
 }
 
-
 .rhb .rhb-left {
   position: relative;
   z-index: 1;
@@ -598,12 +597,6 @@
 .rhb .rhb-has-panel .rhb-rail-new {
   height: 28px;
   opacity: 1;
-}
-
-/* Only the icon that just arrived gets the highlight, and it eases on and
-   off instead of snapping. */
-.rhb .rhb-has-panel .rhb-rail-linear {
-  animation: rhb-flash 1.8s ease 0.3s both;
 }
 
 .rhb .rhb-strip {
@@ -1316,17 +1309,6 @@
   }
 }
 
-@keyframes rhb-flash {
-  from,
-  to {
-    background-color: transparent;
-  }
-  25%,
-  50% {
-    background-color: var(--rhb-active);
-  }
-}
-
 @keyframes rhb-send-live {
   from,
   to {
@@ -1886,22 +1868,6 @@
   animation: none;
 }
 
-.rhb .rhb-scene-spawn .rhb-kids {
-  overflow: hidden;
-  animation: rhb-kid-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes rhb-kid-grow {
-  from {
-    max-height: 0;
-    opacity: 0;
-  }
-  to {
-    max-height: 26px;
-    opacity: 1;
-  }
-}
-
 .rhb .rhb-band-left > * {
   flex-shrink: 0;
 }
@@ -2061,8 +2027,21 @@
 .rhb .rhb-turn-w,
 .rhb .rhb-swap-a,
 .rhb .rhb-fix-idle.is-timed {
+  /* The outgoing half stays fully opaque while the incoming half fades in
+     over it on an opaque background, then drops out unseen beneath it, so the
+     two are never both part-transparent. */
   opacity: 0;
-  animation: rhb-swap-out 0.25s ease both;
+  animation: rhb-swap-under 0.25s linear both;
+}
+
+@keyframes rhb-swap-under {
+  0%,
+  99.9% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .rhb .rhb-turn-w.is-live {
@@ -2071,6 +2050,7 @@
 }
 
 .rhb .rhb-turn-d {
+  background: var(--bg);
   animation: rhb-fade-in 0.25s ease backwards;
 }
 
@@ -2173,8 +2153,9 @@
 }
 
 .rhb .rhb-fix-run {
+  background: var(--bg);
   color: var(--dim);
-  animation: rhb-fade-in 0.3s ease backwards;
+  animation: rhb-fade-in 0.25s ease backwards;
 }
 
 .rhb .rhb-fix-run .rhb-work-spin {
@@ -2216,11 +2197,6 @@
     opacity: 0;
     transform: none;
   }
-}
-
-.rhb .rhb-kids-late {
-  overflow: hidden;
-  animation: rhb-kid-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .rhb .rhb-kids + .rhb-kids {
@@ -2380,7 +2356,16 @@
 }
 
 .rhb .rhb-swap-b {
+  background: var(--bg);
   animation: rhb-fade-in 0.25s ease backwards;
+}
+
+.rhb .rhb-status-swap > .rhb-swap-b {
+  background: var(--rhb-sidebar);
+}
+
+.rhb .rhb-row.is-active .rhb-status-swap > .rhb-swap-b {
+  box-shadow: inset 0 0 0 99px var(--rhb-active);
 }
 
 .rhb .rhb-work-swap {
@@ -2485,15 +2470,6 @@
   animation: rhb-bar 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
-.rhb .rhb-scene-spawn .rhb-kids,
-.rhb .rhb-kids-late {
-  overflow: visible;
-  animation-name: rhb-reveal, rhb-rise-in;
-  animation-duration: 0s, 0.25s;
-  animation-timing-function: linear, cubic-bezier(0.22, 0.61, 0.36, 1);
-  animation-fill-mode: backwards, backwards;
-}
-
 @keyframes rhb-panel-in {
   from {
     opacity: 0;
@@ -2571,9 +2547,9 @@
 }
 
 .rhb .rhb-feed-layer.is-out {
-  z-index: 1;
+  z-index: 0;
   pointer-events: none;
-  animation: rhb-ghost-out 0.3s ease forwards;
+  animation: none;
 }
 
 .rhb .rhb-title-swap {
@@ -2592,12 +2568,6 @@
   opacity: 1;
 }
 
-.rhb .rhb-thread {
-  animation:
-    rhb-reveal 0s linear backwards,
-    rhb-rise-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
-}
-
 .rhb .rhb-lists {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
@@ -2606,10 +2576,6 @@
 .rhb .plugin-task {
   opacity: 1;
   animation: none;
-}
-
-.rhb .rhb-has-panel .plugin-task {
-  animation: rhb-rise-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 
 .rhb .rhb-has-strip .rhb-rail > .rhb-rail-new {
@@ -2630,12 +2596,21 @@
   flex-shrink: 0;
 }
 
-.rhb .rhb-feed-layer.is-out {
-  animation-duration: 0.3s;
+/* The incoming feed fades in over the outgoing one, which stays fully
+   opaque underneath until the incoming feed is opaque (then it is removed).
+   The incoming layer carries the card colour so the two blend as images
+   instead of both thinning out over the empty card. */
+.rhb .rhb-feed-layer:not(.is-out) {
+  z-index: 1;
+  border-radius: 7px 7px 0 0;
+  background: var(--bg);
+  animation: rhb-feed-in 0.3s ease backwards;
 }
 
-.rhb .rhb-feed-layer:not(.is-out) {
-  animation: rhb-fade-in 0.3s ease backwards;
+@keyframes rhb-feed-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .rhb .rhb-title-stack {
@@ -2646,10 +2621,6 @@
 
 .rhb .rhb-title-stack > .rhb-title {
   grid-area: 1 / 1;
-}
-
-.rhb .rhb-title-stack > .rhb-title.is-out {
-  animation: rhb-ghost-out 0.7s ease forwards;
 }
 
 .rhb .rhb-title-swap {
@@ -2671,8 +2642,13 @@
   }
 }
 
-.rhb .rhb-has-panel .plugin-panel-bar {
-  animation: rhb-fade-in 0.25s ease 0.3s backwards;
+/* The panel toggle fades out in place when the panel opens (and back when
+   it closes) instead of being removed in one frame. */
+.rhb .rhb-panel-toggle {
+  transition: opacity 0.2s ease;
+}
+.rhb .rhb-has-panel .rhb-panel-toggle {
+  opacity: 0;
 }
 .rhb .rhb-feed .rhb-work.customize-msg {
   animation-duration: 0s, 0.2s;
@@ -2687,8 +2663,8 @@
   animation: rhb-reveal 0s linear 1s backwards, rhb-hide 0.2s ease 2.75s forwards, rhb-gone 0s linear 2.95s forwards;
 }
 /* The query and the finished mention overlap briefly instead of blinking. */
-.rhb .rhb-issue-demo.is-leaving { position: absolute; inset: 0; animation: rhb-hide 0.3s ease forwards; }
-.rhb .rhb-placeholder.is-back { animation: rhb-fade-in 0.3s ease 0.15s backwards; }
+.rhb .rhb-issue-demo.is-leaving { position: absolute; inset: 0; animation: rhb-hide 0.15s ease 0.15s forwards; }
+.rhb .rhb-placeholder.is-back { z-index: 1; background: var(--bg); animation: rhb-fade-in 0.15s ease backwards; }
 .rhb .rhb-issue-q1 { animation: rhb-gone 0s linear 1.05s forwards; }
 .rhb .rhb-issue-q2 { animation: rhb-reveal 0s linear 1.05s backwards; }
 .rhb .rhb-caret {
@@ -2757,7 +2733,6 @@
 
 .rhb .rhb-has-collapsed:not(.rhb-has-sentry) .rhb-col-main .rhb-band { padding-left: 174px; }
 
-
 .rhb .rhb-col-main { position: relative; z-index: 2; }
 .rhb .rhb-band-left { min-width: 150px; background: var(--rhb-frame); }
 @media (max-width: 720px), (min-width: 861px) {
@@ -2797,10 +2772,11 @@
 
 .rhb .rhb-feed-layer.is-pre { visibility: hidden; pointer-events: none; }
 .rhb .rhb-feed-layer.is-pre, .rhb .rhb-feed-layer.is-pre * { animation-play-state: paused !important; }
-.rhb .rhb-feed-layer.is-out { animation-name: rhb-ghost-out; }
 .rhb .rhb-scene-nav.rhb-has-strip .rhb-strip { animation: rhb-strip-in 0.75s cubic-bezier(0.22, 0.61, 0.36, 1) 1s backwards; }
 .rhb .rhb-scene-nav.rhb-has-strip .rhb-rail { overflow: visible; }
-.rhb .rhb-scene-nav.rhb-has-strip .rhb-rail > :not(.rhb-rail-new) { animation: rhb-rail-out 0.35s ease backwards; }
+/* Every rail icon, the plugin ones included, fades out together as the
+   strip takes over. */
+.rhb .rhb-scene-nav.rhb-has-strip .rhb-rail > * { animation: rhb-rail-out 0.35s ease backwards; }
 @keyframes rhb-strip-in {
   from { height: 0; margin-bottom: 0; opacity: 0; border-bottom-color: transparent; }
   55% { height: 34px; margin-bottom: 6px; opacity: 0; }
@@ -2817,8 +2793,24 @@
   width: 170px;
   z-index: 20;
 }
+/* A new sidebar entry opens its own height while it fades in, so the rows
+   below are pushed down by layout, frame by frame, and nothing else animates
+   its opacity. */
 .rhb .rhb-thread {
-  animation: rhb-reveal 0s linear backwards, rhb-fade-in 0.18s ease 0.27s backwards;
+  overflow: hidden;
+  animation: rhb-row-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.rhb .rhb-kids-late {
+  overflow: hidden;
+  animation: rhb-kid-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+@keyframes rhb-row-in {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 28px; opacity: 1; }
+}
+@keyframes rhb-kid-in {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 26px; opacity: 1; }
 }
 .rhb .rhb-has-grouped .rhb-list-grouped {
   transition: opacity 0.35s ease 0.2s, transform 0.65s ease;
@@ -2832,9 +2824,14 @@
   top: 0;
   left: 0;
   overflow: visible;
-  animation: rhb-ghost-out 0.2s ease forwards;
+  animation: none;
 }
-.rhb .rhb-title-stack > .rhb-title-swap { animation: rhb-fade-in 0.25s ease 0.15s backwards; }
+.rhb .rhb-title-stack > .rhb-title-swap { animation: rhb-fade-in 0.25s ease backwards; }
+.rhb .rhb-title-stack > .rhb-title.is-out + .rhb-title-swap {
+  position: relative;
+  z-index: 1;
+  background: var(--rhb-frame);
+}
 .rhb .rhb-stage-out + .rhb-stage { animation: none; }
 .rhb .rhb-stage.rhb-stage-out { animation: rhb-wrap-out 0.7s linear forwards; }
 @keyframes rhb-wrap-out {
@@ -2866,6 +2863,11 @@
   .rhb .rhb-scene-sentry .rhb-col-page { transition: flex-grow 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
   .rhb .rhb-scene-sentry .rhb-col-page .rhb-band { transition: padding 0.65s cubic-bezier(0.22, 0.61, 0.36, 1); }
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-card-main { border-left-color: var(--border); }
+}
+
+.rhb .rhb-stage.rhb-stage-held,
+.rhb .rhb-stage.rhb-stage-held * {
+  animation-play-state: paused !important;
 }
 
 .rhb.is-paused .rhb-win * {
