@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { DocsH2, DocsH3, headingText } from "./docs-headings";
@@ -11,6 +11,28 @@ export function TableWrap(props: ComponentProps<"table">) {
     <div className="docs-table">
       <table {...props} />
     </div>
+  );
+}
+
+type HastNode = NonNullable<ExtraProps["node"]>["children"][number];
+
+function meaningful(nodes: readonly HastNode[]): HastNode[] {
+  return nodes.filter(
+    (node) => !(node.type === "text" && node.value.trim() === ""),
+  );
+}
+
+function isCodeOnlyList(node: ExtraProps["node"]): boolean {
+  const items = meaningful(node?.children ?? []);
+  return (
+    items.length > 0 &&
+    items.every((item) => {
+      if (item.type !== "element" || item.tagName !== "li") return false;
+      const [only, ...rest] = meaningful(item.children);
+      return (
+        rest.length === 0 && only?.type === "element" && only.tagName === "code"
+      );
+    })
   );
 }
 
@@ -44,6 +66,12 @@ export function ReferenceBody({
           </DocsH3>
         ),
         table: ({ node: _node, ...props }) => <TableWrap {...props} />,
+        ul: ({ node, ...props }) => (
+          <ul
+            {...props}
+            className={isCodeOnlyList(node) ? "docs-code-list" : undefined}
+          />
+        ),
       }}
     >
       {markdown}

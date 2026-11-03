@@ -1,7 +1,22 @@
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import Book02Icon from "@hugeicons/core-free-icons/Book02Icon";
+import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+import BulbIcon from "@hugeicons/core-free-icons/BulbIcon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
+import FolderGit2Icon from "@hugeicons/core-free-icons/FolderGit2Icon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import Menu01Icon from "@hugeicons/core-free-icons/Menu01Icon";
-import { HugeiconsIcon } from "@hugeicons/react";
+import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
+import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
+import Rocket01Icon from "@hugeicons/core-free-icons/Rocket01Icon";
+import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import UserMultiple02Icon from "@hugeicons/core-free-icons/UserMultiple02Icon";
+import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Suspense, useEffect, useRef } from "react";
 import { AnchorProvider, TOCItem, type TOCItemType } from "fumadocs-core/toc";
 
@@ -20,31 +35,60 @@ import {
 import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
 import { DocsSearch } from "./docs-search";
 import { ReferenceBody, TableWrap } from "./reference-body";
+import type { DocsNavIcon } from "./nav";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
 import { Screenshot, Shot } from "./shot";
 
 const SITE = "https://getbb.app";
+
+const NAV_ICONS: Record<DocsNavIcon, IconSvgElement> = {
+  "get-started": Rocket01Icon,
+  concepts: BulbIcon,
+  threads: BubbleChatAddIcon,
+  "child-threads": UserMultiple02Icon,
+  automations: RepeatIcon,
+  agents: BotIcon,
+  skills: ZapIcon,
+  projects: FolderGit2Icon,
+  machines: LaptopIcon,
+  mobile: SmartPhone01Icon,
+  plugins: Plug02Icon,
+  customization: SlidersHorizontalIcon,
+  reference: Book02Icon,
+  troubleshooting: HelpCircleIcon,
+  community: BubbleChatIcon,
+};
+
+function NavLabel({ icon, label }: { icon: DocsNavIcon; label: string }) {
+  return (
+    <div className="docs-nav-label">
+      <HugeiconsIcon icon={NAV_ICONS[icon]} className="docs-ic" aria-hidden />
+      {label}
+    </div>
+  );
+}
 
 function DocsNav({ view }: { view: DocsPageView }) {
   return (
     <nav aria-label="Docs" className="docs-nav">
       {view.nav.map((section: DocsNavSection) => (
         <div className="docs-nav-group" key={section.label}>
-          <div className="docs-nav-label">{section.label}</div>
+          <NavLabel icon={section.icon} label={section.label} />
           {section.links.map((link) => (
             <a
               key={link.url}
               href={link.url}
+              title={link.navLabel === link.title ? undefined : link.title}
               className={link.active ? "active" : undefined}
               aria-current={link.active ? "page" : undefined}
             >
-              {link.title}
+              {link.navLabel}
             </a>
           ))}
         </div>
       ))}
       <div className="docs-nav-group">
-        <div className="docs-nav-label">{view.community.label}</div>
+        <NavLabel icon={view.community.icon} label={view.community.label} />
         {view.community.links.map((link) => (
           <a
             key={link.href}
@@ -245,8 +289,10 @@ export function DocsPage({ view }: { view: DocsPageView }) {
     <CopyToast>
       <DocsPageUrl.Provider value={view.url}>
         <AnchorProvider toc={tocItems(view.toc)} single>
-          <div className="wrap docs-wrap">
-            <SiteNav />
+          <div className="docs-wrap">
+            <div className="wrap docs-chrome">
+              <SiteNav />
+            </div>
             <div className="docs-bar">
               <a className="docs-bar-title" href="/docs">
                 Docs
@@ -270,7 +316,12 @@ export function DocsPage({ view }: { view: DocsPageView }) {
                   <CopyPageMenu view={view} />
                 </div>
                 <p className="docs-lede">{view.description}</p>
-                <article className="docs-body">
+                <article
+                  className="docs-body"
+                  data-layout={
+                    view.kind === "reference" ? view.layout : undefined
+                  }
+                >
                   {view.kind === "mdx" ? (
                     <Suspense fallback={null}>
                       <MdxBody contentPath={view.contentPath} />
@@ -282,7 +333,9 @@ export function DocsPage({ view }: { view: DocsPageView }) {
               </main>
               <DocsToc entries={view.toc} editUrl={view.editUrl} />
             </div>
-            <SiteFooter />
+            <div className="wrap docs-chrome">
+              <SiteFooter />
+            </div>
           </div>
         </AnchorProvider>
       </DocsPageUrl.Provider>
