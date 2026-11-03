@@ -343,6 +343,7 @@ export function createThread(
               })
             : null,
           status: input.status ?? "starting",
+          statusChangedAt: now,
           startupContext: input.startupContext ?? null,
           parentThreadId:
             originKind === null ? (input.parentThreadId ?? null) : null,
@@ -2342,6 +2343,7 @@ export function applyThreadLifecycleEventInTransaction(
   const now = Date.now();
   const set: Partial<typeof threads.$inferInsert> = {
     status: evaluation.to,
+    statusChangedAt: now,
     updatedAt: now,
   };
   if (evaluation.to === "idle" && thread.environmentId !== null) {
