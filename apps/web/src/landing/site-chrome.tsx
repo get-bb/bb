@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   compareLinks,
@@ -197,8 +201,10 @@ export function SiteNav({
   path?: string;
 }) {
   const platform = useDesktopPlatform();
+  const sticky = useExperiment("homepage-sticky-header") === "test";
+  useExperimentExposure("homepage-sticky-header", "desktop");
   return (
-    <nav className="nav">
+    <nav className={sticky ? "nav nav-sticky" : "nav"}>
       {}
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />

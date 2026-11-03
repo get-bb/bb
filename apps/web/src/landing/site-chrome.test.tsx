@@ -1,8 +1,23 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { ExperimentsProvider } from "../experiments/context";
 import { guideMenu } from "./content-links";
 import { SiteFooter, SiteNav } from "./site-chrome";
+
+function navFor(key: string, variant: string): string {
+  return renderToStaticMarkup(
+    <ExperimentsProvider
+      value={{
+        distinctID: null,
+        featureFlags: { [key]: variant },
+        preview: false,
+      }}
+    >
+      <SiteNav current="blog" />
+    </ExperimentsProvider>,
+  );
+}
 
 describe("site navigation", () => {
   it("shows the compact link set with an icon-only GitHub button", () => {
@@ -33,6 +48,18 @@ describe("site navigation", () => {
     expect(html).not.toContain("Theme");
   });
 
+  it("pins the header on any page for visitors in the test", () => {
+    expect(renderToStaticMarkup(<SiteNav current="blog" />)).toMatch(
+      /^<nav class="nav">/,
+    );
+    expect(navFor("homepage-sticky-header", "control")).toMatch(
+      /^<nav class="nav">/,
+    );
+    expect(navFor("homepage-sticky-header", "test")).toMatch(
+      /^<nav class="nav nav-sticky">/,
+    );
+  });
+
   it("marks Building plugins current inside the Plugins menu", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugin-guide" />);
     expect(html).toContain('<summary class="nav-current">Plugins');
@@ -58,7 +85,13 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Guides", "Compare", "Community", "Legal"]) {
+    for (const title of [
+      "Product",
+      "Guides",
+      "Compare",
+      "Community",
+      "Legal",
+    ]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(
