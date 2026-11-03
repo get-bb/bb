@@ -41,10 +41,10 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           <DesktopDownloadButton
             placement={placement}
             platform={platform}
-            className="btn btn-primary btn-install install-download"
+            className="btn btn-primary btn-install desktop-only"
           />
           <SendToComputerButton placement={placement} />
-          <span className="install-note install-note-desktop">
+          <span className="install-note desktop-only">
             {download.note}
             {" · "}
             <DownloadLink
@@ -55,7 +55,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
               Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
             </DownloadLink>
           </span>
-          <span className="install-note install-note-touch">
+          <span className="install-note touch-only">
             bb runs on macOS, Windows, and Linux
           </span>
         </span>
@@ -73,7 +73,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           />
           <span className="install-note">
             {platform !== "windows" && (
-              <>
+              <span className="desktop-only">
                 <DownloadLink
                   placement={placement}
                   platform="windows"
@@ -82,7 +82,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
                   {DESKTOP_DOWNLOADS.windows.label}
                 </DownloadLink>
                 ,{" "}
-              </>
+              </span>
             )}
             Intel Macs &amp; remote machines
           </span>

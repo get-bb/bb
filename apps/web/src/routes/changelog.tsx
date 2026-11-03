@@ -20,6 +20,7 @@ import {
   SubscribeSection,
 } from "../landing/cta";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
+import { SendToComputerButton } from "../landing/send-to-computer-button";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import changelogCss from "../landing/changelog.css?url";
 
@@ -174,6 +175,9 @@ function ChangelogPage() {
             <HugeiconsIcon icon={Mail01Icon} className="ri" />
             Get release notes by email
           </a>
+        </div>
+        <div className="page-send touch-only">
+          <SendToComputerButton placement="changelog" />
         </div>
       </header>
 
