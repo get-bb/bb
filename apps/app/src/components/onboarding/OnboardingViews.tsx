@@ -281,6 +281,7 @@ export interface OnboardingAgent {
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
   setup?: "signIn" | "connect";
+  busy?: boolean;
   subline?: ReactNode;
   expanded?: ReactNode;
 }
@@ -324,6 +325,74 @@ function agentSubline(
   }
 }
 
+function quietAgentSubline(
+  state: AgentSetupState,
+  setup: "signIn" | "connect",
+): string | null {
+  switch (state.status) {
+    case "checking":
+      return "Checking…";
+    case "ready":
+      return (
+        state.detail ?? (setup === "connect" ? "Model connected" : "Signed in")
+      );
+    case "signIn":
+      if (state.reason !== "failed") return null;
+      return setup === "connect"
+        ? "Connecting didn't finish · try again"
+        : "Sign-in didn't finish · try again";
+    case "update":
+      return state.detail ?? "Update needed";
+    case "installFailed":
+      return state.message;
+    case "unknown":
+      return state.message ?? "Couldn't check this agent";
+    case "signingIn":
+      return setup === "connect" ? "Finish connecting below" : null;
+    case "install":
+    case "installing":
+      return null;
+  }
+}
+
+function AgentActionButton({
+  agent,
+  label,
+  busyLabel,
+  busy,
+  onClick,
+}: {
+  agent: OnboardingAgent;
+  label: string;
+  busyLabel: string;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button size="sm" variant="outline" disabled={busy} onClick={onClick}>
+      {busy ? (
+        <Icon name="Spinner" aria-hidden className="size-4 animate-spin" />
+      ) : (
+        <AgentActionIcon agent={agent} quiet />
+      )}
+      <span className="grid">
+        {[label, busyLabel].map((text) => (
+          <span
+            key={text}
+            aria-hidden={text !== (busy ? busyLabel : label)}
+            className={cn(
+              "col-start-1 row-start-1",
+              text !== (busy ? busyLabel : label) && "invisible",
+            )}
+          >
+            {text}
+          </span>
+        ))}
+      </span>
+    </Button>
+  );
+}
+
 interface AgentRowHandlers {
   onSignIn: (id: string) => void;
   onInstall: (id: string) => void;
@@ -359,10 +428,19 @@ function AgentRow({
 }: AgentRowHandlers & { agent: OnboardingAgent; quiet: boolean }) {
   const { state } = agent;
   const loudFailure = state.status === "installFailed" && !quiet;
+  const setup = agent.setup ?? "signIn";
+  const quietSubline =
+    agent.subline !== undefined && agent.subline !== null
+      ? null
+      : quietAgentSubline(state, setup);
+  const hasQuietSubtitle =
+    (agent.subline !== undefined && agent.subline !== null) ||
+    quietSubline !== null;
   const inProgress =
     state.status === "checking" ||
-    state.status === "installing" ||
-    state.status === "signingIn";
+    (state.status === "signingIn" && hasQuietSubtitle);
+  const busy = agent.busy === true;
+  const signInLabel = setup === "connect" ? "Connect" : "Sign in";
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
       <div
@@ -383,31 +461,37 @@ function AgentRow({
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium">{agent.name}</span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            {quiet && inProgress ? (
-              <Icon
-                name="Spinner"
-                aria-hidden
-                className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-              />
-            ) : null}
-            {quiet && agent.subline !== undefined && agent.subline !== null ? (
-              <span className="min-w-0 text-xs text-muted-foreground">
-                {agent.subline}
-              </span>
-            ) : (
-              <ExpandableText
-                expandLabel="Show details"
-                className={cn(
-                  "min-w-0 text-xs text-muted-foreground",
-                  quiet && state.status === "ready" && "text-subtle-foreground",
-                  loudFailure && "text-destructive-text",
-                )}
-              >
-                {agentSubline(state, agent.setup ?? "signIn")}
-              </ExpandableText>
-            )}
-          </span>
+          {quiet && !hasQuietSubtitle ? null : (
+            <span className="flex min-w-0 items-center gap-1.5">
+              {quiet && inProgress ? (
+                <Icon
+                  name="Spinner"
+                  aria-hidden
+                  className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+                />
+              ) : null}
+              {quiet &&
+              agent.subline !== undefined &&
+              agent.subline !== null ? (
+                <span className="min-w-0 text-xs text-muted-foreground">
+                  {agent.subline}
+                </span>
+              ) : (
+                <ExpandableText
+                  expandLabel="Show details"
+                  className={cn(
+                    "min-w-0 text-xs text-muted-foreground",
+                    quiet &&
+                      state.status === "ready" &&
+                      "text-subtle-foreground",
+                    loudFailure && "text-destructive-text",
+                  )}
+                >
+                  {quiet ? quietSubline : agentSubline(state, setup)}
+                </ExpandableText>
+              )}
+            </span>
+          )}
         </div>
         <div className="col-start-2 flex shrink-0 items-center justify-end gap-2">
           {!quiet &&
@@ -431,14 +515,24 @@ function AgentRow({
               </span>
             )
           ) : null}
-          {state.status === "signIn" && state.canSignIn ? (
+          {quiet &&
+          ((state.status === "signIn" && state.canSignIn) ||
+            (state.status === "signingIn" && busy)) ? (
+            <AgentActionButton
+              agent={agent}
+              label={signInLabel}
+              busyLabel="Starting…"
+              busy={busy}
+              onClick={() => onSignIn(agent.id)}
+            />
+          ) : null}
+          {!quiet && state.status === "signIn" && state.canSignIn ? (
             <Button
               size="sm"
-              variant={quiet ? "outline" : "default"}
+              variant="default"
               onClick={() => onSignIn(agent.id)}
             >
-              {quiet ? <AgentActionIcon agent={agent} quiet /> : null}
-              {agent.setup === "connect" ? "Connect" : "Sign in"}
+              {signInLabel}
             </Button>
           ) : null}
           {loudFailure ? (
@@ -450,7 +544,28 @@ function AgentRow({
               View log
             </Button>
           ) : null}
-          {(state.status === "install" ||
+          {quiet &&
+          (state.status === "installing" ||
+            ((state.status === "install" ||
+              state.status === "update" ||
+              state.status === "installFailed") &&
+              state.canInstall)) ? (
+            <AgentActionButton
+              agent={agent}
+              label={
+                state.status === "installFailed"
+                  ? "Retry"
+                  : state.status === "update"
+                    ? "Update"
+                    : "Install"
+              }
+              busyLabel="Installing…"
+              busy={state.status === "installing"}
+              onClick={() => onInstall(agent.id)}
+            />
+          ) : null}
+          {!quiet &&
+          (state.status === "install" ||
             state.status === "update" ||
             state.status === "installFailed") &&
           state.canInstall ? (
@@ -459,7 +574,7 @@ function AgentRow({
               variant="outline"
               onClick={() => onInstall(agent.id)}
             >
-              <AgentActionIcon agent={agent} quiet={quiet} />
+              <AgentActionIcon agent={agent} quiet={false} />
               {state.status === "installFailed"
                 ? "Retry"
                 : state.status === "update"
@@ -467,7 +582,7 @@ function AgentRow({
                   : "Install"}
             </Button>
           ) : null}
-          {state.status === "signingIn" ? (
+          {state.status === "signingIn" && !busy ? (
             quiet ? (
               <Tooltip>
                 <TooltipTrigger asChild>

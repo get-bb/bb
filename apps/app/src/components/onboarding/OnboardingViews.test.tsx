@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
@@ -339,14 +345,80 @@ describe("AgentSignInPanel", () => {
   });
 });
 
-describe("AgentStep progress", () => {
-  it("puts a spinner beside in-progress subtitles in the redesign only", () => {
-    const { container, rerender } = render(
+function renderQuiet(agents: OnboardingAgent[]) {
+  const handlers = {
+    onSignIn: vi.fn(),
+    onInstall: vi.fn(),
+    onViewInstallLog: vi.fn(),
+    onCancelSignIn: vi.fn(),
+    onRecheck: vi.fn(),
+  };
+  const view = render(
+    <TooltipProvider>
+      <AgentStep quiet machineName="bee" agents={agents} {...handlers} />
+    </TooltipProvider>,
+  );
+  return { ...view, handlers };
+}
+
+function rowOf(id: string): HTMLElement {
+  const row = document.querySelector(`[data-agent-id="${id}"]`);
+  if (!(row instanceof HTMLElement)) throw new Error(`no row for ${id}`);
+  return row;
+}
+
+function hasSubtitle(id: string): boolean {
+  const column = within(rowOf(id)).getByText(id).parentElement;
+  return (column?.childElementCount ?? 0) > 1;
+}
+
+describe("AgentStep progress in the redesign", () => {
+  it("drops subtitles the button already says and keeps informative ones", () => {
+    renderQuiet([
+      agent("claude-code", {
+        status: "signIn",
+        reason: "signedOut",
+        canSignIn: true,
+      }),
+      {
+        ...agent("pi", {
+          status: "signIn",
+          reason: "signedOut",
+          canSignIn: true,
+        }),
+        setup: "connect",
+      },
+      agent("codex", { status: "install", canInstall: true }),
+      agent("cursor", { status: "ready", detail: "me@example.com · Pro" }),
+      agent("amp", { status: "update", detail: null, canInstall: true }),
+    ]);
+
+    expect(hasSubtitle("claude-code")).toBe(false);
+    expect(hasSubtitle("pi")).toBe(false);
+    expect(hasSubtitle("codex")).toBe(false);
+    expect(hasSubtitle("cursor")).toBe(true);
+    expect(hasSubtitle("amp")).toBe(true);
+    screen.getByRole("button", { name: "Connect" });
+    expect(screen.getByText("me@example.com · Pro")).toBeTruthy();
+    expect(screen.getByText("Update needed")).toBeTruthy();
+    expect(
+      screen.queryByText(/not signed in|Not installed|no model/u),
+    ).toBeNull();
+  });
+
+  it("shows Installing… in a disabled button that keeps the Install width", () => {
+    const { rerender } = renderQuiet([
+      agent("codex", { status: "install", canInstall: true }),
+    ]);
+    const idle = screen.getByRole("button", { name: "Install" });
+    expect(idle.textContent).toContain("Installing…");
+
+    rerender(
       <TooltipProvider>
         <AgentStep
           quiet
           machineName="bee"
-          agents={[agent("pi", { status: "signingIn" })]}
+          agents={[agent("codex", { status: "installing" })]}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onViewInstallLog={vi.fn()}
@@ -355,28 +427,79 @@ describe("AgentStep progress", () => {
         />
       </TooltipProvider>,
     );
-    const subtitle = screen.getByText("Finish signing in below");
+    const busy = screen.getByRole("button", { name: "Installing…" });
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect(busy.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+    expect(busy.querySelector(".invisible")?.textContent).toBe("Install");
+  });
+
+  it("shows Starting… in the button until the sign-in instruction is ready", () => {
+    const { rerender, handlers } = renderQuiet([
+      {
+        ...agent("claude-code", {
+          status: "signIn",
+          reason: "signedOut",
+          canSignIn: true,
+        }),
+        busy: true,
+      },
+    ]);
+    const starting = screen.getByRole("button", { name: "Starting…" });
+    expect((starting as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(starting);
+    expect(handlers.onSignIn).not.toHaveBeenCalled();
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            { ...agent("claude-code", { status: "signingIn" }), busy: true },
+          ]}
+          {...handlers}
+        />
+      </TooltipProvider>,
+    );
+    screen.getByRole("button", { name: "Starting…" });
+    expect(
+      screen.queryByRole("button", { name: /Cancel signing in/u }),
+    ).toBeNull();
+    expect(hasSubtitle("claude-code")).toBe(false);
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            {
+              ...agent("claude-code", { status: "signingIn" }),
+              subline: "Finish signing in on claude.ai.",
+            },
+          ]}
+          {...handlers}
+        />
+      </TooltipProvider>,
+    );
+    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
+    expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
+    const subtitle = screen.getByText("Finish signing in on claude.ai.");
     expect(
       subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
     ).not.toBeNull();
+  });
 
-    rerender(
-      <AgentStep
-        machineName="bee"
-        agents={[agent("pi", { status: "installing" })]}
-        onSignIn={vi.fn()}
-        onInstall={vi.fn()}
-        onViewInstallLog={vi.fn()}
-        onCancelSignIn={vi.fn()}
-        onRecheck={vi.fn()}
-      />,
-    );
-    expect(
-      screen
-        .getByText("Installing…")
-        .closest("span.flex")
-        ?.querySelector('[data-icon="Spinner"]') ?? null,
-    ).toBeNull();
-    expect(container.querySelectorAll('[data-icon="Spinner"]')).toHaveLength(1);
+  it("keeps the control guide's subtitles", () => {
+    renderAgents([
+      agent("claude-code", {
+        status: "signIn",
+        reason: "signedOut",
+        canSignIn: true,
+      }),
+      agent("pi", { status: "installing" }),
+    ]);
+    expect(screen.getByText("Installed · not signed in")).toBeTruthy();
+    expect(screen.getByText("Installing…")).toBeTruthy();
   });
 });

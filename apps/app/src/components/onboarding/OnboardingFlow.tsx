@@ -384,6 +384,9 @@ function AgentStepContainer({
   );
 
   const signInRequestRef = useRef(0);
+  const [startingProviderId, setStartingProviderId] = useState<string | null>(
+    null,
+  );
   useEffect(
     () => () => {
       signInRequestRef.current += 1;
@@ -440,6 +443,7 @@ function AgentStepContainer({
     setSignInFailedProviderId(null);
     signInRequestRef.current += 1;
     const request = signInRequestRef.current;
+    setStartingProviderId(providerId);
     recordTelemetryEvent({
       name: "onboarding_sign_in",
       properties: { entry, outcome: "started" },
@@ -456,6 +460,7 @@ function AgentStepContainer({
         target: { kind: "host_path", hostId, cwd: null },
       });
     } catch {
+      if (signInRequestRef.current === request) setStartingProviderId(null);
       recordTelemetryEvent({
         name: "onboarding_sign_in",
         properties: { entry, outcome: "failed" },
@@ -483,6 +488,7 @@ function AgentStepContainer({
     };
     signInRef.current = next;
     setSignInView(null);
+    setStartingProviderId(null);
     setSignIn(next);
   };
 
@@ -517,16 +523,22 @@ function AgentStepContainer({
             ? terminalConnectFlow(health.providerId)
             : null;
           const view = signingIn ? signInView : null;
+          const instructionReady =
+            view !== null && hasSignInInstruction(view, connectFlow !== null);
           return {
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
             setup: connectFlow !== null ? "connect" : "signIn",
+            busy:
+              redesign &&
+              (startingProviderId === health.providerId ||
+                (signingIn && connectFlow === null && !instructionReady)),
             subline:
               redesign &&
               signIn !== null &&
               view !== null &&
-              hasSignInInstruction(view, connectFlow !== null) ? (
+              instructionReady ? (
                 <AgentSignInInstruction
                   connect={connectFlow !== null}
                   agentName={health.displayName}
@@ -546,8 +558,6 @@ function AgentStepContainer({
                     )
                   }
                 />
-              ) : redesign && signingIn && connectFlow === null ? (
-                "Starting sign-in…"
               ) : undefined,
             state: resolveAgentSetupState({
               health,
