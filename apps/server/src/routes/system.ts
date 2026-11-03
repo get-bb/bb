@@ -748,11 +748,13 @@ export function registerSystemRoutes(
 
   post(routes.scheduleAppUpdate, async (context) => {
     assertAppUpdateAllowed(context);
+    assertUpdateWhenIdleEnabled(deps.db);
     return context.json(await deps.appUpdate.schedule());
   });
 
   post(routes.cancelScheduledAppUpdate, async (context) => {
     assertAppUpdateAllowed(context);
+    assertUpdateWhenIdleEnabled(deps.db);
     return context.json(await deps.appUpdate.cancelScheduled());
   });
 
@@ -786,6 +788,19 @@ function assertCliCommandChangeAllowed(
       403,
       "forbidden",
       "Machine credentials cannot change the bb command on the bb server's computer",
+    );
+  }
+}
+
+const UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_MESSAGE =
+  'Updating when threads finish is off. Turn on the "Update when threads finish" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
+
+function assertUpdateWhenIdleEnabled(db: ServerAppDeps["db"]): void {
+  if (!getExperiments(db).updateWhenIdle) {
+    throw new ApiError(
+      403,
+      "update_when_idle_experiment_disabled",
+      UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_MESSAGE,
     );
   }
 }

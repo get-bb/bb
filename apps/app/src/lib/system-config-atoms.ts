@@ -43,6 +43,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     threadRowMetadata: false,
     timelinePush: false,
     unreadDividerAtAnswer: false,
+    updateWhenIdle: false,
     websocketCompression: false,
   },
   appearance: defaultAppTheme,

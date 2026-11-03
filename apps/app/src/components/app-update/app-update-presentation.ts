@@ -104,6 +104,10 @@ export function runningThreadCountFromError(error: unknown): number | null {
   return parsed.success ? parsed.data.details.runningThreadCount : null;
 }
 
+export function runningThreadsCaption(count: number): string {
+  return `${String(count)} thread${count === 1 ? "" : "s"} running`;
+}
+
 export function scheduledAppUpdateCaption(count: number): string {
   return count === 0
     ? "Updating once threads stay finished"

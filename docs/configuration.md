@@ -886,7 +886,8 @@ Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
 `pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`threadRowMetadata`, `unreadDividerAtAnswer`, and `websocketCompression`) turn
+`threadRowMetadata`, `unreadDividerAtAnswer`, `updateWhenIdle`, and
+`websocketCompression`) turn
 on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
@@ -1000,6 +1001,16 @@ either way.
   message that started a new turn keeps the divider above it, a turn that is
   still running or has no answer keeps the old placement, and the divider never
   lands on your own message. It applies the next time you open a thread.
+- `updateWhenIdle` (on for early adopters) lets bb update itself once no
+  thread is running instead of interrupting them. While threads run, Settings →
+  Updates offers Update when threads finish next to Update now (which still
+  asks before interrupting), and the waiting row shows the running count with
+  Cancel and Update now. `bb updates app apply --when-idle` and
+  `bb updates app cancel` do the same from the CLI. bb starts the update after
+  running threads stay at zero for five seconds and waits again if a thread
+  starts before it restarts. While it is off, the schedule routes return 403
+  `update_when_idle_experiment_disabled`, the CLI commands print how to turn it
+  on, and turning it off drops a waiting update. See `bb guide machines`.
 - `websocketCompression` (on for early adopters) lets the realtime client
   WebSocket (`/ws`) negotiate `permessage-deflate`, so messages of 1 KB or more,
   such as timeline pushes, are compressed (about 4x for timeline JSON). It

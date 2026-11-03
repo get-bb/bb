@@ -12,7 +12,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Host } from "@bb/domain";
+import { defaultExperiments, type Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -34,6 +34,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { appToast } from "@/components/ui/app-toast";
 import { makePluginListItem } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { buildUpdateInventoryPlugins } from "@/hooks/useUpdateInventory";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
@@ -392,6 +393,15 @@ beforeEach(() => {
   });
 });
 
+function useUpdateWhenIdleExperiment(enabled: boolean): void {
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({
+      primaryHostId: "host_primary",
+      experiments: { ...defaultExperiments, updateWhenIdle: enabled },
+    }),
+  );
+}
+
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
@@ -399,6 +409,9 @@ afterEach(() => {
   resetAppUpdateCheckStoreForTests();
   resetProviderCliInstallStoreForTests();
   vi.clearAllMocks();
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({ primaryHostId: "host_primary" }),
+  );
   vi.unstubAllGlobals();
 });
 
@@ -2346,8 +2359,39 @@ The published lede.
     });
   });
 
-  it("offers to update once running threads finish instead of interrupting them", async () => {
+  it.each([
+    {
+      experiment: true,
+      running: 2,
+      buttons: ["Update now", "Update when threads finish"],
+    },
+    { experiment: false, running: 2, buttons: ["Update"] },
+    { experiment: true, running: 0, buttons: ["Update"] },
+  ])(
+    "shows $buttons with updateWhenIdle $experiment and $running running threads",
+    async ({ experiment, running, buttons }) => {
+      useWebApp();
+      useUpdateWhenIdleExperiment(experiment);
+      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+        makeAppUpdateStatus({ runningThreadCount: running }),
+      );
+
+      renderSection();
+
+      await waitFor(() => {
+        expect(
+          screen
+            .getAllByRole("button")
+            .map((button) => button.textContent)
+            .filter((label) => label !== null && /^Update/.test(label)),
+        ).toEqual(buttons);
+      });
+    },
+  );
+
+  it("schedules from the row while threads run, then cancels", async () => {
     useWebApp();
+    useUpdateWhenIdleExperiment(true);
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(
       makeAppUpdateStatus({ runningThreadCount: 2 }),
     );
@@ -2362,15 +2406,10 @@ The published lede.
     ).mockResolvedValue(makeAppUpdateStatus({ runningThreadCount: 2 }));
 
     renderSection();
+    expect(await screen.findByText("2 threads running")).toBeDefined();
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Update available · Download the update and restart bb",
-      }),
-    );
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: "Update when threads finish",
+        name: "Update available · Download the update and restart bb once every thread finishes",
       }),
     );
 
@@ -2378,7 +2417,7 @@ The published lede.
       await screen.findByText("Updates when 2 running threads finish"),
     ).toBeDefined();
     expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -2387,10 +2426,40 @@ The published lede.
     );
     expect(
       await screen.findByRole("button", {
-        name: "Update available · Download the update and restart bb",
+        name: "Update available · Download the update and restart bb once every thread finishes",
       }),
     ).toBeDefined();
     expect(sdk.system.experimental_cancelScheduledAppUpdate).toHaveBeenCalled();
+  });
+
+  it("keeps the interrupt confirmation behind Update now while threads run", async () => {
+    useWebApp();
+    useUpdateWhenIdleExperiment(true);
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 1 }),
+    );
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 1 }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Interrupt running threads, then download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
+    expect(sdk.system.experimental_scheduleAppUpdate).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update and restart" }),
+    );
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: true,
+      });
+    });
   });
 
   it("updates now from a scheduled update after confirming the interruption", async () => {

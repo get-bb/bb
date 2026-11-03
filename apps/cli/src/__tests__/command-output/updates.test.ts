@@ -279,6 +279,20 @@ describe("bb updates command output", () => {
   });
 });
 
+const UPDATE_WHEN_IDLE_OFF =
+  'Updating when threads finish is off. Turn on the "Update when threads finish" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
+
+function systemConfig(experiments: { updateWhenIdle: boolean }) {
+  return vi.fn(async () => ({ experiments }));
+}
+
+function errorResponse(status: number, body: object): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function appUpdateStatus(
   overrides: Partial<SystemAppUpdateStatus> = {},
 ): SystemAppUpdateStatus {
@@ -425,6 +439,7 @@ describe("bb updates app command output", () => {
     stubServerApi({
       "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
       "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: false }),
     });
     readlineMocks.question.mockResolvedValue("y");
 
@@ -492,6 +507,7 @@ describe("bb updates app command output", () => {
         appUpdateStatus({ runningThreadCount: 1 }),
       ),
       "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: true }),
     });
 
     await expect(
@@ -502,6 +518,56 @@ describe("bb updates app command output", () => {
       "Error: 1 thread is running. Updating restarts bb and interrupts it. Re-run with --when-idle to update once they finish, or --yes to interrupt them.",
     );
   });
+
+  it("bb updates app apply does not suggest --when-idle while its experiment is off", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 1 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: false }),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(apply).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Refusing destructive action without an interactive terminal. Re-run with --yes to confirm.",
+    );
+  });
+
+  it.each([
+    [["apply", "--when-idle"], "v1.system.app-update.schedule.$post"],
+    [["cancel"], "v1.system.app-update.schedule.cancel.$post"],
+  ])(
+    "bb updates app %j names the experiment while it is off",
+    async (args, route) => {
+      stubServerApi({
+        "v1.system.app-update.$get": vi.fn(async () =>
+          appUpdateStatus({ runningThreadCount: 1 }),
+        ),
+        [route]: vi.fn(async () =>
+          errorResponse(403, {
+            code: "update_when_idle_experiment_disabled",
+            message: UPDATE_WHEN_IDLE_OFF,
+          }),
+        ),
+      });
+
+      await expect(
+        runCommand(["updates", "app", ...args], register),
+      ).rejects.toThrow("process.exit:1");
+      expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+        `Error: ${UPDATE_WHEN_IDLE_OFF}`,
+      );
+    },
+  );
 
   it("bb updates app apply --when-idle schedules the update and returns while threads run", async () => {
     const apply = vi.fn(async () => appUpdateStatus());

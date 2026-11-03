@@ -13,6 +13,7 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
   listRunningThreads,
   setAppSettings,
 } from "@bb/db";
@@ -304,6 +305,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const appUpdate = createScheduledAppUpdateService({
     countRunningThreads,
     inner: appUpdateService,
+    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),

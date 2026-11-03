@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
   ensurePersonalProject,
+  getExperiments,
   listRunningThreads,
   type DbConnection,
 } from "@bb/db";
@@ -281,6 +282,7 @@ async function startIntegrationServer(
       mode: null,
       notifyChanged: notifyAppUpdateChanged,
     }),
+    isEnabled: () => getExperiments(db).updateWhenIdle,
     logger: testLogger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),

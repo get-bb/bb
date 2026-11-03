@@ -511,6 +511,7 @@ const PREPARING_STATUS = {
 
 function createScheduledService(args: { runningThreads: number }) {
   const running = { count: args.runningThreads };
+  const experiment = { enabled: true };
   const listeners = new Set<(message: ServerChangedMessage) => void>();
   const launcher = new FakeLauncher();
   const inner = createAppUpdateService({
@@ -529,6 +530,7 @@ function createScheduledService(args: { runningThreads: number }) {
   const service = createScheduledAppUpdateService({
     countRunningThreads: () => running.count,
     inner,
+    isEnabled: () => experiment.enabled,
     logger: testLogger,
     notifyChanged,
     now: () => new Date("2026-10-23T00:00:00.000Z"),
@@ -549,9 +551,26 @@ function createScheduledService(args: { runningThreads: number }) {
       });
     }
   };
+  const setExperimentEnabled = (enabled: boolean): void => {
+    experiment.enabled = enabled;
+    for (const listener of listeners) {
+      listener({
+        changes: ["config-changed"],
+        entity: "system",
+        type: "changed",
+      });
+    }
+  };
   const applyRequests = () =>
     launcher.requests.filter((request) => request.type === "apply");
-  return { applyRequests, launcher, notifyChanged, service, setRunningThreads };
+  return {
+    applyRequests,
+    launcher,
+    notifyChanged,
+    service,
+    setExperimentEnabled,
+    setRunningThreads,
+  };
 }
 
 describe("app update scheduled for when threads finish", () => {
@@ -627,6 +646,21 @@ describe("app update scheduled for when threads finish", () => {
     expect(
       (await service.getStatus({ forceRefresh: false })).runningThreadCount,
     ).toBe(1);
+  });
+
+  it("drops a waiting update when the experiment is turned off", async () => {
+    const { applyRequests, service, setExperimentEnabled, setRunningThreads } =
+      createScheduledService({ runningThreads: 1 });
+    await service.schedule();
+
+    setExperimentEnabled(false);
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(applyRequests()).toEqual([]);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).toBeNull();
   });
 
   it("starts at once when no thread is running", async () => {

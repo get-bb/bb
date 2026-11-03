@@ -452,6 +452,27 @@ export function RowVariations() {
         </StoryRow>
 
         <StoryRow
+          label="In-app update while threads run"
+          hint="With the updateWhenIdle experiment on, the primary action waits for running threads; Update now asks before interrupting them."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={NPM_VERSION}
+                appUpdate={{ ...IN_APP_UPDATE, runningThreadCount: 2 }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onScheduleAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
           label="In-app update waiting for threads"
           hint="The update was scheduled for when threads finish; the server starts it once none are running."
         >

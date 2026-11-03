@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setExperiments } from "@bb/db";
 import type { SystemAppUpdateStatus } from "@bb/server-contract";
 import type { AppUpdateServiceStatus } from "../../src/services/system/app-update.js";
 import { readJson } from "../helpers/json.js";
@@ -48,8 +49,23 @@ describe("/api/v1/system/app-update", () => {
       expect(response.status).toBe(400);
     }));
 
+  it("refuses to schedule or cancel while the updateWhenIdle experiment is off", () =>
+    withTestHarness({ isDevelopment: false }, async (harness) => {
+      for (const path of ["schedule", "schedule/cancel"]) {
+        const response = await harness.app.request(`${API}/${path}`, {
+          method: "POST",
+        });
+
+        expect(response.status).toBe(403);
+        expect(await readJson(response)).toMatchObject({
+          code: "update_when_idle_experiment_disabled",
+        });
+      }
+    }));
+
   it("refuses to schedule an update the launcher cannot perform", () =>
     withTestHarness({ isDevelopment: false }, async (harness) => {
+      setExperiments(harness.db, { updateWhenIdle: true });
       const response = await harness.app.request(`${API}/schedule`, {
         method: "POST",
       });

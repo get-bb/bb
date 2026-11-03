@@ -141,7 +141,10 @@ CLI counterpart of Settings → Updates.
   bb updates app cancel                   Cancel an update scheduled with --when-idle
   bb updates app dismiss                  Mark the last update result as seen
 
-`bb updates app apply --when-idle` updates at once when no thread is running.
+`--when-idle` and `cancel` need the `updateWhenIdle` experiment (on for early
+adopters; `bb settings experiment updateWhenIdle true`); while it is off they
+fail with a message naming it. `bb updates app apply --when-idle` updates at
+once when no thread is running.
 Otherwise the server schedules the update and the command returns, so an agent
 can run it from its own thread; the server starts the update after every thread
 has stayed finished for a few seconds, and waits again if one starts during the

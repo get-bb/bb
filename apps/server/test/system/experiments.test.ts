@@ -78,6 +78,7 @@ describe("experiments settings", () => {
         threadRowMetadata: false,
         timelinePush: true,
         unreadDividerAtAnswer: false,
+        updateWhenIdle: false,
         websocketCompression: false,
       });
       expect(

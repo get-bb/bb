@@ -32,6 +32,7 @@ function errorMessage(error: unknown): string {
 export function createScheduledAppUpdateService(args: {
   countRunningThreads: () => number;
   inner: AppUpdateService;
+  isEnabled: () => boolean;
   logger: ServerLogger;
   notifyChanged: () => void;
   now?: () => Date;
@@ -46,6 +47,7 @@ export function createScheduledAppUpdateService(args: {
   let starting: Schedule | null = null;
   let startInFlight = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let notifiedRunningThreadCount: number | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -121,6 +123,10 @@ export function createScheduledAppUpdateService(args: {
     void serialize(async () => {
       const schedule = waiting;
       if (schedule === null || args.countRunningThreads() > 0) return;
+      if (!args.isEnabled()) {
+        dropWhenDisabled();
+        return;
+      }
       try {
         await start(schedule);
         if (starting === schedule) {
@@ -147,19 +153,39 @@ export function createScheduledAppUpdateService(args: {
     settleTimer ??= setTimeout(startWhenSettled, settleMs);
   }
 
+  function dropWhenDisabled(): void {
+    if (!forget()) return;
+    args.logger.info(
+      "Dropped the scheduled bb update because the updateWhenIdle experiment is off",
+    );
+    args.notifyChanged();
+  }
+
   const unsubscribe = args.onChangedMessage((message) => {
-    if (waiting === null || message.entity !== "thread") return;
+    if (message.entity === "system") {
+      if (message.changes.includes("config-changed") && !args.isEnabled()) {
+        dropWhenDisabled();
+      }
+      return;
+    }
     if (
-      message.changes.some(
+      message.entity !== "thread" ||
+      !message.changes.some(
         (change) =>
           change === "status-changed" ||
           change === "thread-deleted" ||
           change === "archived-changed",
-      )
+      ) ||
+      !args.isEnabled()
     ) {
-      args.notifyChanged();
-      checkIdle();
+      return;
     }
+    const runningThreadCount = args.countRunningThreads();
+    if (runningThreadCount !== notifiedRunningThreadCount) {
+      notifiedRunningThreadCount = runningThreadCount;
+      args.notifyChanged();
+    }
+    checkIdle();
   });
 
   return {

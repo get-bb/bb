@@ -61,15 +61,13 @@ import {
   pendingAppUpdateResult,
   runningThreadCountFromError,
   runningThreadsWarning,
+  runningThreadsCaption,
   scheduledAppUpdateCaption,
 } from "@/components/app-update/app-update-presentation";
-import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
 import {
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@bb/shared-ui/dialog";
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
 import { SettingsSection } from "@/components/ui/settings-section";
@@ -353,6 +351,7 @@ function RowStateControl({
   loading = false,
   live = false,
   onClick,
+  variant = "outline",
 }: {
   state: UpdateState;
   actionIcon?: IconName;
@@ -363,6 +362,7 @@ function RowStateControl({
   loading?: boolean;
   live?: boolean;
   onClick?: () => void;
+  variant?: "default" | "outline";
 }) {
   const presentation = UPDATE_STATE_PRESENTATION[state];
   const icon = actionIcon ?? (presentation.icon as IconName | null);
@@ -375,7 +375,7 @@ function RowStateControl({
       <span className="flex min-w-0 items-center gap-1.5">
         <Button
           type="button"
-          variant="outline"
+          variant={variant}
           size="sm"
           aria-label={[srLabel, actionLabel].filter(Boolean).join(" · ")}
           aria-busy={loading}
@@ -464,10 +464,12 @@ interface BbAppUpdateRowsProps {
   appUpdate?: SystemAppUpdateStatus | undefined;
   applyPending?: boolean;
   cancelScheduledPending?: boolean;
+  schedulePending?: boolean;
   desktopInfo: BbDesktopInfo | null;
   isDesktop: boolean;
   onApplyAppUpdate?: (() => void) | null;
   onCancelScheduledAppUpdate?: (() => void) | null;
+  onScheduleAppUpdate?: (() => void) | null;
   onRetryAppCheck?: (() => void) | null;
   onRelaunchDesktop: (() => void) | null;
   onRetryDesktop: (() => void) | null;
@@ -514,10 +516,12 @@ export function BbAppUpdateRows({
   appUpdate,
   applyPending = false,
   cancelScheduledPending = false,
+  schedulePending = false,
   desktopInfo,
   isDesktop,
   onApplyAppUpdate = null,
   onCancelScheduledAppUpdate = null,
+  onScheduleAppUpdate = null,
   onRetryAppCheck = null,
   onRelaunchDesktop,
   onRetryDesktop,
@@ -667,12 +671,14 @@ export function BbAppUpdateRows({
         status={appUpdate}
         applyPending={applyPending}
         cancelScheduledPending={cancelScheduledPending}
+        schedulePending={schedulePending}
         settledStatus={settledStatus}
         unavailableCheckControl={unavailableCheckControl}
         row={row}
         trailing={notesLink}
         onApply={onApplyAppUpdate}
         onCancelScheduled={onCancelScheduledAppUpdate}
+        onSchedule={onScheduleAppUpdate}
         onShowResult={onShowAppUpdateResult}
       />
     );
@@ -779,12 +785,14 @@ function InAppUpdateRow({
   installKind,
   applyPending,
   cancelScheduledPending,
+  schedulePending,
   settledStatus,
   unavailableCheckControl,
   row,
   trailing,
   onApply,
   onCancelScheduled,
+  onSchedule,
   onShowResult,
 }: {
   name: string;
@@ -792,12 +800,14 @@ function InAppUpdateRow({
   installKind: SystemVersionResponse["installKind"];
   applyPending: boolean;
   cancelScheduledPending: boolean;
+  schedulePending: boolean;
   settledStatus: ReactNode;
   unavailableCheckControl: ReactNode;
   row: BbAppRowRenderer;
   trailing: ReactNode;
   onApply: (() => void) | null;
   onCancelScheduled: (() => void) | null;
+  onSchedule: (() => void) | null;
   onShowResult: ((result: SystemAppUpdateResult) => void) | null;
 }) {
   const available = status.available;
@@ -901,6 +911,35 @@ function InAppUpdateRow({
         : null,
       undefined,
       status.blocked.message,
+    );
+  }
+  if (
+    updateButton !== null &&
+    onSchedule !== null &&
+    status.runningThreadCount > 0
+  ) {
+    return row(
+      name,
+      <>
+        <RowStateControl
+          state="update-available"
+          buttonLabel="Update now"
+          actionLabel="Interrupt running threads, then download the update and restart bb"
+          loading={applyPending}
+          onClick={onApply ?? undefined}
+        />
+        <RowStateControl
+          state="update-available"
+          buttonLabel="Update when threads finish"
+          actionLabel="Download the update and restart bb once every thread finishes"
+          variant="default"
+          loading={schedulePending}
+          onClick={onSchedule}
+        />
+      </>,
+      <RowStateCaption state="update-available">
+        {runningThreadsCaption(status.runningThreadCount)}
+      </RowStateCaption>,
     );
   }
   if (updateButton !== null) {
@@ -2033,9 +2072,8 @@ export function UpdatesSettingsSection() {
       );
     }
   }
-  const appUpdateDecisionPending =
-    applyAppUpdate.isPending || scheduleAppUpdate.isPending;
-  const appUpdateScheduled = (appUpdate?.scheduled ?? null) !== null;
+  const updateWhenIdleEnabled =
+    useSystemConfig().data?.experiments.updateWhenIdle === true;
 
   function startAppUpdate(): void {
     const runningThreadCount = appUpdate?.runningThreadCount ?? 0;
@@ -2205,13 +2243,17 @@ export function UpdatesSettingsSection() {
       appUpdate={
         useServerUpdate || desktopInfo === null ? appUpdate : undefined
       }
-      applyPending={appUpdateDecisionPending}
+      applyPending={applyAppUpdate.isPending}
       cancelScheduledPending={cancelScheduledAppUpdate.isPending}
+      schedulePending={scheduleAppUpdate.isPending}
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}
       isChecking={isChecking}
       onApplyAppUpdate={startAppUpdate}
       onCancelScheduledAppUpdate={() => cancelScheduledAppUpdate.mutate()}
+      onScheduleAppUpdate={
+        updateWhenIdleEnabled ? () => scheduleAppUpdate.mutate() : null
+      }
       onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
       onRelaunchDesktop={useServerUpdate ? null : relaunchDesktop}
@@ -2298,51 +2340,19 @@ export function UpdatesSettingsSection() {
           if (!open) setConfirmingAppUpdateThreads(null);
         }}
       >
-        <DialogHeader>
-          <DialogTitle>Update bb now?</DialogTitle>
-          <DialogDescription>
-            {runningThreadsWarning(confirmingAppUpdateThreads ?? 0)}
-            {appUpdateScheduled
-              ? null
-              : " You can also update once every thread has finished."}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={appUpdateDecisionPending}
-            onClick={() => setConfirmingAppUpdateThreads(null)}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={appUpdateDecisionPending}
-            onClick={() => {
-              applyAppUpdate.mutate(
-                { confirmInterruptingThreads: true },
-                { onSettled: () => setConfirmingAppUpdateThreads(null) },
-              );
-            }}
-          >
-            Update and restart
-          </Button>
-          {appUpdateScheduled ? null : (
-            <Button
-              type="button"
-              disabled={appUpdateDecisionPending}
-              onClick={() => {
-                scheduleAppUpdate.mutate(undefined, {
-                  onSettled: () => setConfirmingAppUpdateThreads(null),
-                });
-              }}
-            >
-              Update when threads finish
-            </Button>
-          )}
-        </DialogFooter>
+        <ConfirmDeleteDialogContent
+          title="Update bb now?"
+          description={runningThreadsWarning(confirmingAppUpdateThreads ?? 0)}
+          confirmLabel="Update and restart"
+          pending={applyAppUpdate.isPending}
+          onCancel={() => setConfirmingAppUpdateThreads(null)}
+          onConfirm={() => {
+            applyAppUpdate.mutate(
+              { confirmInterruptingThreads: true },
+              { onSettled: () => setConfirmingAppUpdateThreads(null) },
+            );
+          }}
+        />
       </ConfirmDeleteDialog>
     </div>
   );
