@@ -36,7 +36,7 @@ An experimental bundled plugin. Modal bills your account.
 | A [Modal](https://modal.com) API token | From `modal token new` |
 | A Git remote | The sandbox clones it |
 | A route to your server | See [Set up remote access](/docs/set-up-remote-access). |
-| Agent credentials | In **Settings → Environment variables** |
+| Agent credentials | In [**Settings → Environment variables**](/docs/settings#environment-variables) |
 
 ### Install and connect it
 
@@ -88,7 +88,7 @@ bb modal account inspect --json
   height={310}
 />
 
-bb creates the sandbox, clones the project, runs `.bb-env-setup.sh` and starts the agent.
+bb creates the sandbox, clones the project, runs [`.bb-env-setup.sh`](/docs/choose-where-a-thread-runs#prepare-new-worktrees) and starts the agent.
 
 </Tab>
 <Tab value="CLI">
@@ -116,7 +116,7 @@ Pick presets with `--machine-inputs '{"preset":"Large","image":"Node 22"}'`.
 2. Run it inside the VM or container.
 3. Pick the machine in the **Environment** picker, or pass `--machine "<machine name>"` to `bb thread spawn`.
 
-It needs no open ports. Its **Permission limit** can let agents act freely there but not on your laptop. See [Add a machine](/docs/add-a-machine).
+It needs no open ports. Its [**Permission limit**](/docs/choose-a-permission-mode#limit-a-machine) can let agents act freely there but not on your laptop. See [Add a machine](/docs/add-a-machine).
 
 ## Check it worked
 
@@ -129,4 +129,4 @@ It needs no open ports. Its **Permission limit** can let agents act freely there
 | --- | --- |
 | Modal Sandbox shows that setup is required | Enter both token fields. |
 | Cloning fails | The sandbox needs access to the Git remote. Retry, or `bb machine remove <machine> --yes`. |
-| "Machines cannot reach this bb yet" | Choose **Set up machine access**. |
+| "Machines cannot reach this bb yet" | Choose [**Set up machine access**](/docs/set-up-remote-access). |

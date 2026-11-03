@@ -23,7 +23,7 @@ verified: 2026-10-30
 | A skill in `~/.agents/skills` is missing for Claude Code | Claude Code doesn't read `~/.agents/skills` | Use `~/.claude/skills` or `~/.bb/skills` |
 | A skill in a nested folder is missing | Most agents only look one folder deep | Move its folder directly under the skills folder |
 | A symlinked skill in your project is missing | The link points outside the project | Keep the target inside the repository, or use a user folder |
-| Project skills are missing, user skills show | The project has no checkout on the selected machine | Pick a machine that has the project, or add the project there |
+| Project skills are missing, user skills show | The project has no checkout on the selected machine | Pick a machine that has the project, or [add the project there](/docs/set-up-a-project#add-the-project-on-another-machine) |
 | A skill in `~/.bb/skills` is missing | Invalid `name` or `description`, or a duplicate name | [Fix the front-matter](#the-skill-is-in-the-wrong-shape) |
 | The menu shows the folder name, not the skill's `name` | bb names agent skills after their folder | Rename the folder |
 | Typing `/` does nothing | Nothing matches, or `/` isn't at the start of a word | Type `/` at the start of the message or after a space |
@@ -32,7 +32,7 @@ verified: 2026-10-30
 
 ## Where bb looks for skills
 
-A skill is a folder with a `SKILL.md` in it. `~` is the home folder on the thread's machine; project folders are in the project's checkout.
+A [skill](/docs/add-and-share-skills) is a folder with a `SKILL.md` in it. `~` is the home folder on the thread's machine; project folders are in the project's checkout.
 
 | Agent | Your skills | Project skills |
 | --- | --- | --- |

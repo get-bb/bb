@@ -13,7 +13,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-An orchestrator is an ordinary bb thread with standing instructions; no special mode. Use one for a stream of work, such as a backlog of issues or PRs to review.
+An orchestrator is an ordinary bb thread; no special mode. Use one for a stream of work, such as a backlog of issues or PRs to review.
 
 ## Set up the orchestrator
 
@@ -37,7 +37,7 @@ An orchestrator is an ordinary bb thread with standing instructions; no special 
   height={150}
 />
 
-To give every orchestrator the same rules, put them in the project's `.bb/AGENTS.md` or a skill.
+To give every orchestrator the same rules, put them in the project's [`.bb/AGENTS.md`](/docs/agent-context#what-bb-adds) or a [skill](/docs/add-and-share-skills).
 
 ## Patterns that work
 
@@ -46,9 +46,9 @@ To give every orchestrator the same rules, put them in the project's `.bb/AGENTS
 | **Builder and reviewer** | A reviewer child in the builder's environment sees the same files: pass `--environment <environment-id>` (from `bb thread show <thread-id> --json`) to `bb thread spawn` |
 | **Cross-model review** | Name a different agent and model for the reviewer |
 | **One child per PR or issue** | Each child gets its own worktree, so parallel children don't touch each other's files |
-| **Quiet workers** | Start chatty workers with `--parent-notifications stuck` |
+| **Quiet workers** | Start chatty workers with [`--parent-notifications stuck`](/docs/follow-child-threads-from-the-parent#choose-what-reaches-the-parent) |
 
-For the same steps over many files, use a workflow instead: `bb plugin enable workflows`, then ask the orchestrator to run one. See [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows).
+For the same steps over many files, use a [workflow](/docs/run-a-workflow) instead: `bb plugin enable workflows`, then ask the orchestrator to run one. See [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows).
 
 ## Keep cost under control
 
@@ -66,6 +66,6 @@ Every child is a full agent session billed to that agent's account, so an orches
 
 ## Related troubleshooting
 
-- **The orchestrator does the work itself:** restate "never write code yourself" and turn on **Disable provider subagents** for its agent.
-- **Children wait to start:** the concurrency limit is holding them. Raise it or let running threads finish.
+- **The orchestrator does the work itself:** restate "never write code yourself" and turn on [**Disable provider subagents**](/docs/start-child-threads#make-it-the-default-for-a-project) for its agent.
+- **Children wait to start:** the [concurrency limit](/docs/bb-is-slow-or-uses-a-lot-of-memory#too-many-threads-run-at-once) is holding them. Raise it or let running threads finish.
 - **It loses track over a long session:** have it keep open tasks in a file, and start a fresh orchestrator from that file.

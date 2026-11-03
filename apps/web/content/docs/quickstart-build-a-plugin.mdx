@@ -18,7 +18,7 @@ A plugin runs inside the bb server as your user, with access to your files and a
 
 ## Before you start
 
-- bb is running and the `bb` command works. If it doesn't, turn it on in **Settings → General → Command line**.
+- bb is running and the `bb` command works. If it doesn't, [turn it on](/docs/install#put-the-bb-command-on-your-path) in **Settings → General → Command line**.
 - An internet connection. The scaffold installs packages from npm with bb's own npm, so you don't need Node.js.
 
 **Or let an agent do it:** click **Plugins** in the sidebar, then **New plugin**. Finish the prompt "Create a new bb plugin that" and send it.
@@ -94,7 +94,7 @@ Server code, commands and skills reload the same way. A running thread keeps the
 | Where | What |
 | --- | --- |
 | [Plugin Guide](https://getbb.app/plugin-guide) | Each place a plugin can add to bb, with a live example |
-| [Plugin SDK reference](/docs/plugin-sdk) | One page per surface with its SDK symbols |
+| [Plugin SDK](/docs/plugin-sdk) | One page per surface with its SDK symbols |
 | `node_modules/@get-bb/plugin-sdk/bundled-types/` | Type declarations, with comments on every symbol |
 
 After you update bb, run `bb plugin types` and then `npm install` in the plugin folder to match the SDK to your bb.
@@ -102,5 +102,5 @@ After you update bb, run `bb plugin types` and then `npm install` in the plugin 
 ## Next steps
 
 - [Publish to the marketplace](/docs/publish-to-the-marketplace)
-- [Plugin SDK reference](/docs/plugin-sdk)
+- [Plugin SDK](/docs/plugin-sdk)
 - [Plugin Guide](https://getbb.app/plugin-guide)

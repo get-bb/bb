@@ -24,7 +24,7 @@ Most settings live in the app instead: see [Settings](/docs/settings).
 | Where is it? | `~/.bb`, in your home folder on macOS, Linux and Windows |
 | How do I use another folder? | Start bb with `--data-dir <path>` or `BB_DATA_DIR=<path>`, for example to run a second, separate bb |
 | Which one is in use? | `bb status` shows the data directory of the bb you're talking to |
-| What about an added machine? | A computer you add as a machine to another server keeps its state in `~/.bb-machines/<server-host>` |
+| What about an added machine? | A computer you [add as a machine](/docs/add-a-machine) to another server keeps its state in `~/.bb-machines/<server-host>` |
 
 | Path in the data directory | What it holds | How to change it |
 | --- | --- | --- |
@@ -33,8 +33,8 @@ Most settings live in the app instead: see [Settings](/docs/settings).
 | `env.json` | Environment variables for bb and your agents, such as API keys | `npx bb-app env` |
 | `client.json` | SSH names for opening another computer's files in your local editor | `npx bb-app client ssh-target` |
 | `AGENTS.md` | Instructions added to every thread in every project | Edit the file. Applies when a thread's agent session starts |
-| `skills/<name>/SKILL.md` | Your own skills, available in every project | The Skills page, `bb skill`, or edit the files |
-| `theme/<name>/theme.css` | Custom color themes | `bb theme`; `bb theme dir` prints the folder |
+| `skills/<name>/SKILL.md` | Your own [skills](/docs/add-and-share-skills), available in every project | The Skills page, `bb skill`, or edit the files |
+| `theme/<name>/theme.css` | [Custom color themes](/docs/change-the-theme-and-layout#make-your-own-theme) | `bb theme`; `bb theme dir` prints the folder |
 | `plugins/<plugin-id>/` | Each plugin's data, secret settings and logs | `bb plugin logs <plugin-id>` reads the logs |
 | `thread-storage/<thread-id>/` | Files a thread keeps outside its project | Removed when you delete the thread |
 | `logs/` | Server and CLI logs | Attach them when you report a problem |
@@ -108,9 +108,9 @@ Commit these to a project's repository so every worktree and every agent gets th
 
 | File | What it does |
 | --- | --- |
-| `.bb/AGENTS.md` | Instructions added to every thread that runs in this repository, after `~/.bb/AGENTS.md`. Works for every agent. A repo-root `AGENTS.md` or `CLAUDE.md` is read by the agent itself, separately |
+| `.bb/AGENTS.md` | [Instructions](/docs/agent-context#what-bb-adds) added to every thread that runs in this repository, after `~/.bb/AGENTS.md`. Works for every agent. A repo-root `AGENTS.md` or `CLAUDE.md` is read by the agent itself, separately |
 | `.bb/skills/<name>/SKILL.md` | Skills for this project. A project skill replaces a user or plugin skill with the same name |
-| `.bb-env-setup.sh` | Runs in each new worktree bb creates, for setup such as installing dependencies. Must be committed; times out after 15 minutes |
+| `.bb-env-setup.sh` | [Runs in each new worktree](/docs/choose-where-a-thread-runs#prepare-new-worktrees) bb creates, for setup such as installing dependencies. Must be committed; times out after 15 minutes |
 | `.bb-env-teardown.sh` | Runs before bb removes a worktree, to clean up what setup created outside it |
 | `.worktreeinclude` | Untracked files to copy from the project into each new worktree, such as `.env`, one pattern per line in `.gitignore` syntax |
 | `.bb/plugins.json` | Lists the plugins in a repository that holds several, so `bb plugin install … --plugin <name>` can pick one |
@@ -140,7 +140,7 @@ Set these in the environment you start bb from, or with `npx bb-app env set`.
 | `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` | The most events one page of a thread's timeline spans | `1500` |
 
 :::warning[0.0.0.0 exposes bb to your network]
-bb has no login of its own. Anyone who can reach the port can run commands and read files on your machine. Bind to `0.0.0.0` only behind a network you trust, or use bb Connect or Tailscale.
+bb has no login of its own. Anyone who can reach the port can run commands and read files on your machine. Bind to `0.0.0.0` only behind a network you trust, or use [bb connect](/docs/set-up-remote-access#bb-connect) or [Tailscale](/docs/set-up-remote-access#tailscale-serve).
 :::
 
 ### Proxies and certificates

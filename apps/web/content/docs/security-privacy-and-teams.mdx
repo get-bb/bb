@@ -15,13 +15,11 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-Whoever can reach your bb server, or install a plugin in it, can do what you can do on that computer.
-
 ## What bb can reach
 
 | Who | Can reach | Limited by |
 | --- | --- | --- |
-| **Agents** | Files and commands on the thread's machine | The thread's permission mode and the machine's permission limit |
+| **Agents** | Files and commands on the thread's machine | The thread's [permission mode](/docs/choose-a-permission-mode) and the machine's [permission limit](/docs/choose-a-permission-mode#limit-a-machine) |
 | **Plugins** | Everything the bb server can, including other plugins' secrets | Nothing: plugins are full-trust code, so install only ones you trust |
 | **Host daemon** on each machine | Runs agents and commands there | Takes work only from the server it was added to |
 
@@ -36,7 +34,7 @@ A machine's **Permission limit** (**Settings → Machines**) caps every thread o
 ## Who can reach bb
 
 - **On your machine:** the server listens on `127.0.0.1` (port 38886) by default. Its local API has no password: any program on that machine can drive bb, but web pages on other sites can't.
-- **From your other devices:** use bb connect or a private network such as Tailscale. bb connect lets in only the bb account that owns the server. Phones pair with a one-time code that lasts 10 minutes; revoke devices from your getbb.app dashboard.
+- **From your other devices:** use [bb connect](/docs/set-up-remote-access#bb-connect) or a private network such as [Tailscale](/docs/set-up-remote-access#tailscale-serve). bb connect lets in only the bb account that owns the server. [Phones pair](/docs/use-bb-on-your-phone) with a one-time code that lasts 10 minutes; revoke devices from your getbb.app dashboard.
 - **Other machines** get their own credential and can't change machine settings such as the permission limit.
 
 :::warning

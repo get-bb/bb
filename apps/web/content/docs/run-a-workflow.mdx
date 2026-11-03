@@ -9,7 +9,7 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-A workflow is a short script an agent writes for you. It starts a worker thread per piece, passes results between stages, and sends the combined result back. For when to use child threads instead, see Child threads, subagents and workflows.
+A workflow is a short script an agent writes for you. It passes results between stages. For when to use child threads instead, see [Child threads, subagents and workflows](/docs/child-threads-subagents-and-workflows).
 
 ## Turn on Workflows
 
@@ -55,7 +55,7 @@ When the run ends, its result goes to your thread.
 
 ## How workers run
 
-- Each worker is a thread in your thread's environment, with your thread's permission mode, agent and model unless the workflow names others.
+- Each worker is a thread in your thread's environment, with your thread's [permission mode](/docs/choose-a-permission-mode), agent and model unless the workflow names others.
 - Workers are hidden from the sidebar and don't notify you. Open one from the **Workflow run** panel.
 - Finished workers are archived. Archiving your thread cancels its running workflows.
 - To resume a stopped run, ask the agent. Workers that succeeded aren't run again.
@@ -93,7 +93,7 @@ Every worker uses your agent account like any thread. Start with a few workers.
 
 | Symptom | Fix |
 | --- | --- |
-| The agent says workflows aren't available | Turn on **Workflows**, then send again |
+| The agent says workflows aren't available | [Turn on **Workflows**](#turn-on-workflows), then send again |
 | `bb workflows` commands fail outside bb | They run only inside a project thread |
 | A saved workflow isn't found | It must be at `.bb/workflows/<name>.js` in the thread's project |
 | A worker seems stuck | Open it from the **Workflow run** panel; it may be waiting for an answer |

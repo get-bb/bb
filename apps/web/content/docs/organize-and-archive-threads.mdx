@@ -27,7 +27,7 @@ Every thread action is in the thread's menu: right-click its sidebar row, or hov
 | Put it away | **Archive** | `bb thread archive <thread-id>` |
 | Remove it for good | **Delete** | `bb thread delete <thread-id>` |
 
-You can also drag a thread into **Pinned**. **Regenerate title** asks bb for a new name.
+You can also drag a thread into **Pinned**. [**Regenerate title**](/docs/name-threads-and-branches#rename-or-regenerate-a-title) asks bb for a new name.
 
 ## Group the sidebar
 
@@ -69,7 +69,7 @@ bb thread update <thread-id> --section <section-id>
 
 ## Archive a thread
 
-Choose **Archive**, or click the archive button on the row. Child threads are archived too.
+Choose **Archive**, or click the archive button on the row. [Child threads](/docs/child-threads-subagents-and-workflows) are archived too.
 
 Archiving stops the agent and closes its terminals. A working agent gets 30 seconds first, so **Undo** on "Thread archived" lets it carry on. To confirm before archiving threads with children, turn on **Thread archive confirmation** in **Settings → General**.
 
@@ -98,6 +98,6 @@ Delete removes the thread, its child threads, their terminals and the thread's s
 
 ## Related troubleshooting
 
-- "No thread list plugin is enabled": choose **Thread list** under **Settings → Appearance → Sidebar thread list**.
+- "No thread list plugin is enabled": choose **Thread list** under [**Settings → Appearance → Sidebar thread list**](/docs/change-the-theme-and-layout#choose-labelled-rows-or-the-icon-rail).
 - **Move to section** is missing: set **Organize** to **Custom**. Child and archived threads can't be moved.
 - An archived thread is missing from search: turn on archived threads in the search filter.

@@ -31,7 +31,7 @@ Right-click the thread in the sidebar and choose:
 - **Rename** to type your own title.
 - **Regenerate title** to write a new one from the first and latest messages, for a thread that drifted.
 
-To rename from the keyboard, give **Rename thread** a key in **Settings → Keyboard**.
+To rename from the keyboard, give **Rename thread** a [key](/docs/change-keyboard-shortcuts) in **Settings → Keyboard**.
 
 </Tab>
 <Tab value="CLI">
@@ -74,7 +74,7 @@ To stop sending anything to bb cloud, run `bb ai off`.
 
 ## Change the branch prefix
 
-A worktree thread's branch is the prefix, the title in lowercase with hyphens, and the thread ID: `bb/fix-login-redirect-thr_ab12cd34ef`. Without a title it uses the start of your prompt.
+A [worktree](/docs/choose-where-a-thread-runs) thread's branch is the prefix, the title in lowercase with hyphens, and the thread ID: `bb/fix-login-redirect-thr_ab12cd34ef`. Without a title it uses the start of your prompt.
 
 <Tabs items={["Desktop", "CLI"]}>
 <Tab value="Desktop">
@@ -105,5 +105,5 @@ Only new branches use it. Renaming a thread doesn't rename its branch.
 | Symptom | Fix |
 | --- | --- |
 | Threads keep the start of the prompt | `bb settings ai-services` says why a service isn't ready. Sign in, or pick another |
-| Codex titles stopped | Sign in to Codex on the computer running the bb server |
+| Codex titles stopped | [Sign in to Codex](/docs/codex#set-up-codex) on the computer running the bb server |
 | The prefix field turns red | Use a valid start of a git branch name, 64 characters at most |

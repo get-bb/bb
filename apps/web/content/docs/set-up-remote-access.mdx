@@ -16,8 +16,6 @@ owner: brsbl
 verified: 2026-10-30
 ---
 
-The server listens on `127.0.0.1`, port 38886, until you pick one of these routes.
-
 ## Choose a route
 
 | Route | Who can open bb | Works from | You need |
@@ -90,7 +88,7 @@ or set `BB_SERVER_BIND_HOST=0.0.0.0`.
 
 ## Tell machines which route to use
 
-Added machines and paired phones use the **Connection method** in **Settings → Machines → Machine access**:
+[Added machines](/docs/add-a-machine) and [paired phones](/docs/use-bb-on-your-phone) use the **Connection method** in **Settings → Machines → Machine access**:
 
 | Method | Use |
 | --- | --- |
@@ -112,5 +110,5 @@ bb settings general machineServerUrl https://<machine>.<tailnet>.ts.net
 | Symptom | Fix |
 | --- | --- |
 | The page says the host must be localhost, an IP address, or the hostname in `BB_APP_URL` | Set `BB_APP_URL` to the address you open. |
-| bb connect says this bb is signed out | Sign in again, or run `bb account login`. |
-| A device hits a machine limit | Revoke an unused device in the getbb.app dashboard. |
+| bb connect says this bb is signed out | [Sign in again](/docs/bb-connect-drops-or-wont-connect), or run `bb account login`. |
+| A device hits a machine limit | [Revoke an unused device](/docs/bb-connect-drops-or-wont-connect#device-limit-reached) in the getbb.app dashboard. |

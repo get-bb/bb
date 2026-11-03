@@ -16,40 +16,40 @@ verified: 2026-10-30
 
 | Term | What it means in bb | Also called |
 | --- | --- | --- |
-| Agent | A coding agent program that does the work in a thread: Claude Code, Codex, Pi, or an ACP agent such as Cursor or opencode. bb starts it and shows its work; your agent's own settings, sign-in and skills still apply | Provider (the name in **Settings → Providers**), harness, agent CLI |
+| [Agent](/docs/connect-your-agents) | A coding agent program that does the work in a thread: Claude Code, Codex, Pi, or an ACP agent such as Cursor or opencode. bb starts it and shows its work; your agent's own settings, sign-in and skills still apply | Provider (the name in **Settings → Providers**), harness, agent CLI |
 | Provider | bb's name for an agent in Settings and the CLI: **Settings → Providers**, `bb provider list` | Agent |
 | Harness | Not a bb term. People use it for the agent program, such as Claude Code or Codex, which bb runs as a provider. bb itself is sometimes called a meta-harness: it runs several harnesses side by side | Agent, provider |
-| ACP agent | An agent bb talks to through the Agent Client Protocol, an open standard. Cursor, opencode and your own agents run this way through the ACP providers plugin | Custom agent |
-| Model | The language model an agent uses for a thread, chosen in the model picker. Each agent offers its own models | |
+| [ACP agent](/docs/add-acp-agents) | An agent bb talks to through the Agent Client Protocol, an open standard. Cursor, opencode and your own agents run this way through the ACP providers plugin | Custom agent |
+| [Model](/docs/choose-a-model-reasoning-and-context-size) | The language model an agent uses for a thread, chosen in the model picker. Each agent offers its own models | |
 | Thread | One conversation with one agent, and the unit of work in bb. Each thread has a project, an environment, an agent and a model | Chat, session, conversation |
 | Turn | One run of the agent, from your message until it stops | Run |
 | Composer | The box at the bottom of a thread where you write messages | Prompt box, input |
-| Steer | Sending a message while the agent works, so it reads it right away | Interrupt |
+| [Steer](/docs/send-steer-and-queue-messages) | Sending a message while the agent works, so it reads it right away | Interrupt |
 | Queue | Sending a message that waits until the agent stops | Follow-up |
-| Child thread | A thread that belongs to another thread, usually because an agent started it with `bb thread spawn --parent-self`. It's a full thread you can open, read and steer. By default its parent hears when each of its turns finishes, fails or is interrupted, and when it's blocked | Sub-thread, subthread, spawned thread, worker |
+| [Child thread](/docs/start-child-threads) | A thread that belongs to another thread, usually because an agent started it with `bb thread spawn --parent-self`. It's a full thread you can open, read and steer. By default its parent hears when each of its turns finishes, fails or is interrupted, and when it's blocked | Sub-thread, subthread, spawned thread, worker |
 | Parent thread | The thread that started a child thread | Manager, orchestrator |
-| Manager thread | Not a separate kind of thread: a long-running thread you tell to split work into child threads and check on them | Orchestrator thread, manager |
-| Subagent | A helper the agent starts inside its own thread with its own tools, such as Claude Code's Agent tool or Codex's subagents. bb doesn't show it as a thread. Compare child thread | Native subagent, background agent, Task tool |
-| Fork | A new thread that starts with a copy of another thread's conversation. **Fork into new thread** | Branch, clone |
-| Handoff | A new thread, often with another agent or model, whose first message points at an existing thread so the agent can pick up from it. **Handoff to new thread** in the model picker | Hand off |
-| Side chat | A hidden fork of a thread, shown in a panel, for a quick question without changing the main thread | |
-| Workflow | A scripted run of several agents from the Workflows plugin. Its workers run as their own threads, not as child threads | |
-| Automation | Agent or script work on a schedule, from the Automations plugin | Scheduled task, cron |
-| Permission mode | How much an agent may do without asking: Accept Edits, Approve for me, Full Access, or Plan Mode. Set per thread | Approval mode, sandbox mode |
+| [Manager thread](/docs/run-an-orchestrator-thread) | Not a separate kind of thread: a long-running thread you tell to split work into child threads and check on them | Orchestrator thread, manager |
+| [Subagent](/docs/child-threads-subagents-and-workflows#subagents) | A helper the agent starts inside its own thread with its own tools, such as Claude Code's Agent tool or Codex's subagents. bb doesn't show it as a thread. Compare child thread | Native subagent, background agent, Task tool |
+| [Fork](/docs/fork-hand-off-or-switch-models#fork-a-thread) | A new thread that starts with a copy of another thread's conversation. **Fork into new thread** | Branch, clone |
+| [Handoff](/docs/fork-hand-off-or-switch-models#hand-off-to-another-agent) | A new thread, often with another agent or model, whose first message points at an existing thread so the agent can pick up from it. **Handoff to new thread** in the model picker | Hand off |
+| [Side chat](/docs/fork-hand-off-or-switch-models#ask-a-side-question) | A hidden fork of a thread, shown in a panel, for a quick question without changing the main thread | |
+| [Workflow](/docs/run-a-workflow) | A scripted run of several agents from the Workflows plugin. Its workers run as their own threads, not as child threads | |
+| [Automation](/docs/schedule-an-automation) | Agent or script work on a schedule, from the Automations plugin | Scheduled task, cron |
+| [Permission mode](/docs/choose-a-permission-mode) | How much an agent may do without asking: Accept Edits, Approve for me, Full Access, or Plan Mode. Set per thread | Approval mode, sandbox mode |
 | Thread storage | A folder each thread gets for files that don't belong in the project. Agents find it in `BB_THREAD_STORAGE` | |
 
 ## Where work runs
 
 | Term | What it means in bb | Also called |
 | --- | --- | --- |
-| Project | A repository you work in, added once and shared by its threads. Threads with no project run in a personal workspace | Repo, workspace |
-| Environment | Where a thread runs, picked when you start it: a worktree, the project checkout, a personal workspace, or a sandbox. Several threads can share one environment | Workspace |
+| [Project](/docs/set-up-a-project) | A repository you work in, added once and shared by its threads. Threads with no project run in a personal workspace | Repo, workspace |
+| [Environment](/docs/choose-where-a-thread-runs) | Where a thread runs, picked when you start it: a worktree, the project checkout, a personal workspace, or a sandbox. Several threads can share one environment | Workspace |
 | Worktree | A fresh Git worktree bb creates for a thread, on its own branch (named with the `bb/` prefix by default), so threads don't change each other's files | Git worktree, isolated environment |
 | Project checkout | The project's own folder on your machine, on the branch you choose. Threads here change your working files directly | Main checkout, local checkout |
 | Personal workspace | A folder for a thread with no project | Scratch space |
-| Sandbox | An environment on a machine a plugin creates on demand, such as Modal Sandbox | Container, VM, cloud machine |
-| Machine | A computer that runs agents, terminals and file access for bb. Your bb server's own computer is one; you can add more in **Settings → Machines** | Host, worker, remote |
-| Server | The bb process that holds your threads, projects and settings in one database and serves the app. One server can use many machines | Main bb, bb instance |
+| [Sandbox](/docs/run-threads-in-sandboxes) | An environment on a machine a plugin creates on demand, such as Modal Sandbox | Container, VM, cloud machine |
+| [Machine](/docs/add-a-machine) | A computer that runs agents, terminals and file access for bb. Your bb server's own computer is one; you can add more in **Settings → Machines** | Host, worker, remote |
+| [Server](/docs/machines-servers-and-the-host-daemon) | The bb process that holds your threads, projects and settings in one database and serves the app. One server can use many machines | Main bb, bb instance |
 | Host daemon | The bb process on each machine that runs agents and terminals for the server | Daemon, bb-host-daemon |
 | Data directory | The folder where a bb server or machine keeps its data, `~/.bb` by default | Data dir, `BB_DATA_DIR` |
 
@@ -57,25 +57,25 @@ verified: 2026-10-30
 
 | Term | What it means in bb | Also called |
 | --- | --- | --- |
-| bb connect | Remote access through your getbb.app account: your server becomes reachable at `https://<handle>.getbb.app`, and phones and machines can pair through it | bb Connect, connect, the relay |
+| [bb connect](/docs/set-up-remote-access#bb-connect) | Remote access through your getbb.app account: your server becomes reachable at `https://<handle>.getbb.app`, and phones and machines can pair through it | bb Connect, connect, the relay |
 | bb account | Your getbb.app sign-in, used by bb connect and bb cloud | getbb.app account |
 | bb cloud | Services included with a bb account, such as thread titles, commit messages and voice transcription from the bb cloud AI plugin | |
 | AI services | The services bb uses for thread titles, commit messages and voice input, chosen in **Settings → AI services** | Inference |
 | Desktop app | The bb app for macOS, Linux and Windows. It runs its own server, or connects to another one | Electron app |
-| Mobile app | The bb app for iOS and Android, a client for your server | Phone app |
-| bb CLI | The `bb` command, which controls everything bb does from a terminal or an agent | `bb` command |
+| [Mobile app](/docs/use-bb-on-your-phone) | The bb app for iOS and Android, a client for your server | Phone app |
+| [bb CLI](/docs/cli) | The `bb` command, which controls everything bb does from a terminal or an agent | `bb` command |
 | SDK | The TypeScript library for controlling bb from code | |
 
 ## Extending bb
 
 | Term | What it means in bb | Also called |
 | --- | --- | --- |
-| Plugin | A package that adds features to bb, such as agents, environments, panels or commands. Plugins run with bb's full trust | Extension |
-| Marketplace | A catalog of plugins you can install. BB Community is the built-in one | Plugin store |
+| [Plugin](/docs/find-and-install-plugins) | A package that adds features to bb, such as agents, environments, panels or commands. Plugins run with bb's full trust | Extension |
+| [Marketplace](/docs/publish-to-the-marketplace) | A catalog of plugins you can install. BB Community is the built-in one | Plugin store |
 | Plugin surface | A place in bb a plugin can add to, such as a sidebar badge, a thread tab or a composer button. Each has a page under [Plugin SDK](/docs/plugin-sdk) | Slot, extension point |
-| Skill | A folder with a `SKILL.md` file of instructions an agent can load, shown in the composer's `/` menu. Skills come from you, your projects, plugins and your agents' own skill folders | Slash command, prompt |
-| MCP | The Model Context Protocol, for giving agents tools. Agents use their own MCP servers; bb's MCP server plugin lets other apps control bb | MCP server |
-| Experiment | An early feature you turn on in **Settings → Experiments** | Feature flag, beta |
+| [Skill](/docs/add-and-share-skills) | A folder with a `SKILL.md` file of instructions an agent can load, shown in the composer's `/` menu. Skills come from you, your projects, plugins and your agents' own skill folders | Slash command, prompt |
+| [MCP](/docs/connect-mcp-servers) | The Model Context Protocol, for giving agents tools. Agents use their own MCP servers; bb's MCP server plugin lets other apps control bb | MCP server |
+| [Experiment](/docs/settings#experiments) | An early feature you turn on in **Settings → Experiments** | Feature flag, beta |
 | Early adopter | A setting in **Settings → Experiments** that turns on experiments marked Early adopter | |
 
 ## Where this list comes from
