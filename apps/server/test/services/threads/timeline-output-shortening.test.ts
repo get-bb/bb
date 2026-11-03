@@ -55,6 +55,7 @@ function commandRow(output: string): TimelineRow {
     workKind: "command",
     callId: "c1",
     command: "echo",
+    description: null,
     cwd: null,
     source: null,
     output,

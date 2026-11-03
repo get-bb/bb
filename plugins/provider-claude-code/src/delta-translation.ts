@@ -66,6 +66,7 @@ import {
 import {
   extractAssistantText,
   extractClaudeCommandExecutionOutput,
+  extractClaudeCommandExitCode,
   extractClaudeContextWindowUsage,
   extractClaudeRequestContextTokens,
   extractClaudeResultTokenUsage,
@@ -103,7 +104,7 @@ function terminalToolShape(
 function terminalCloseFields(
   shape: DeltaItemShape,
   outputText: string | undefined,
-  isError: boolean,
+  exitCode: number,
 ): Pick<
   Extract<ThreadDelta, { kind: "item.close" }>,
   "exitCode" | "aggregatedOutput" | "resultText"
@@ -111,7 +112,7 @@ function terminalCloseFields(
   switch (shape.type) {
     case "command":
       return {
-        exitCode: isError ? 1 : 0,
+        exitCode,
         ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
       };
     case "fileRead":
@@ -1045,7 +1046,11 @@ export function createClaudeDeltaTranslator(
         kind: "item.close",
         key: { providerItemId: result.toolUseId, ...parentRefField },
         status,
-        ...terminalCloseFields(base.shape, outputText, result.isError),
+        ...terminalCloseFields(
+          base.shape,
+          outputText,
+          extractClaudeCommandExitCode(result),
+        ),
         item: terminalToolShape(base.shape, outputText),
         presentation: base.presentation,
       });
