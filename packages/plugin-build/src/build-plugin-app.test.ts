@@ -532,7 +532,7 @@ describe("plugin app runtime shim", () => {
 
     expect(app.migrationWarnings).toEqual([
       expect.stringContaining(
-        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Read through the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
+        'environments.diffFiles is retired from the bb SDK typings and keeps working only for existing plugins. Use the Git plugin instead: bb.sdk.plugins.callRpc({ pluginId: "bb--git", method: "files"',
       ),
     ]);
     expect(server.migrationWarnings).toEqual([

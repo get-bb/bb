@@ -468,7 +468,7 @@ async function rename(bb: BbPluginApi, id: string, title: string) {
 
 Register `rename` as the RPC handler and call the same function from the CLI
 command and agent tool. When core already reports the change, invalidate from
-that event instead, as the Git plugin does for Viewed marks on
+that event instead, as the Git plugin does for git status on
 `environment:changed`; invalidating in both places refreshes twice.
 
 Contract `invalidates(input, output)` is retired. It fired only when the write

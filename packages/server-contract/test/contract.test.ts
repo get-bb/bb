@@ -794,18 +794,6 @@ describe("git branch name contract", () => {
       }).success,
     ).toBe(false);
     expect(updateEnvironmentRequestSchema.safeParse({}).success).toBe(false);
-    expect(
-      contract.environmentDiffQuerySchema.safeParse({
-        target: "all",
-        mergeBaseBranch: "origin/main",
-      }).success,
-    ).toBe(true);
-    expect(
-      contract.environmentDiffQuerySchema.safeParse({
-        target: "all",
-        mergeBaseBranch: "origin/main lock",
-      }).success,
-    ).toBe(false);
   });
 });
 

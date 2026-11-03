@@ -118,11 +118,6 @@ import {
   type EnvironmentActionRequest,
   type EnvironmentActionResponse,
   type EnvironmentArchiveThreadsResponse,
-  type EnvironmentDiffQuery,
-  type EnvironmentDiffViewedClearRequest,
-  type EnvironmentDiffViewedQueryRequest,
-  type EnvironmentDiffViewedMarkRequest,
-  type EnvironmentDiffViewedResponse,
   type EnvironmentPathsQuery,
   type HostDirectoryListing,
   type HostDirectoryQuery,
@@ -317,10 +312,6 @@ import {
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
-  environmentDiffQuerySchema,
-  environmentDiffViewedClearRequestSchema,
-  environmentDiffViewedQueryRequestSchema,
-  environmentDiffViewedMarkRequestSchema,
   environmentPathsQuerySchema,
   hostDirectoryQuerySchema,
   hostListQuerySchema,
@@ -1174,38 +1165,6 @@ export const publicApiRoutes = {
         updateEnvironmentRequestSchema,
       ),
       response: jsonResponse<Environment>(),
-    }),
-    diffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "get",
-      request: queryRequest<PathId, EnvironmentDiffQuery>(
-        environmentDiffQuerySchema,
-      ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
-    }),
-    queryDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "post",
-      request: jsonRequest<PathId, EnvironmentDiffViewedQueryRequest>(
-        environmentDiffViewedQueryRequestSchema,
-      ),
-      response: jsonResponse<EnvironmentDiffViewedResponse>(),
-    }),
-    markDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "put",
-      request: jsonRequest<PathId, EnvironmentDiffViewedMarkRequest>(
-        environmentDiffViewedMarkRequestSchema,
-      ),
-      response: jsonResponse<{ ok: true }>(),
-    }),
-    clearDiffViewed: defineRoute({
-      path: "/environments/:id/diff/viewed",
-      method: "delete",
-      request: jsonRequest<PathId, EnvironmentDiffViewedClearRequest>(
-        environmentDiffViewedClearRequestSchema,
-      ),
-      response: jsonResponse<{ ok: true }>(),
     }),
     paths: defineRoute({
       path: "/environments/:id/paths",

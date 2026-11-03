@@ -2989,14 +2989,6 @@ export interface ExperimentalComposerInput {
   voice?: ExperimentalComposerVoice;
 }
 
-/** A composer's scope, layout, draft summary and run state. */
-export interface ExperimentalComposerView {
-  scope: PluginComposerScope;
-  layout: "expanded" | "compact" | "zen";
-  draft: { text: string; isEmpty: boolean; attachmentCount: number };
-  run: { isRunning: boolean; isSubmitting: boolean };
-}
-
 /** A contribution another plugin registered with `app.composer.customize`. */
 export interface ExperimentalComposerContribution {
   /** Stable across renders; use it as the React key. */
@@ -3161,10 +3153,6 @@ export interface ExperimentalComposerClipboard {
  */
 export interface ExperimentalComposerRendererApi {
   readonly input: ExperimentalComposerInput;
-  /** The composer this box draws: scope, layout, draft and run state. */
-  readonly view: ExperimentalComposerView;
-  /** Stable identity of this composer's draft (`useComposer().key`). */
-  readonly key: string;
   /** A plugin locked editing through `useComposer().setInputLock(true)`. */
   readonly inputLocked: boolean;
   /** The shortcut of bb's "Focus composer" command, or null when unbound. */

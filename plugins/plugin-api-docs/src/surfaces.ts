@@ -640,7 +640,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_useComposerRenderer",
           "ExperimentalComposerRendererApi",
           "ExperimentalComposerInput",
-          "ExperimentalComposerView",
           "experimental_ComposerRoot",
           "ExperimentalComposerRootProps",
           "ExperimentalComposerEditor",
@@ -1533,7 +1532,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
           "Start plugin updates in the background and follow their progress or rollback",
-          "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
@@ -1557,9 +1555,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",
-          "PluginBbSdk.environments.experimental_diffViewed",
-          "PluginBbSdk.environments.experimental_markDiffViewed",
-          "PluginBbSdk.environments.experimental_clearDiffViewed",
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
           "PluginBbSdk.plugins.experimental_pruneCache",

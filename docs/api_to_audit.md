@@ -118,8 +118,10 @@ highlight rule into `decorationSources`.
 `experimental_useComposerRenderer()` carries `input` (the surface, submission,
 typeahead, attachments, history, voice, sizing and collapse state, and bb's
 execution controls, handoff banner and compact-before-send chip, named so the
-composer chooses where they go), the composer `view`, and host services
-(`threadLinks`, `clipboard`, `attachmentSrc`, app key dispatch, toasts).
+composer chooses where they go) and host services (`threadLinks`,
+`clipboard`, `attachmentSrc`, app key dispatch, toasts). The composer's
+scope and draft key come from `useComposer().scope` and `.key`, which inside
+the box are bound to the box's host.
 `input.submission.enter` and `.modifier` are the box's two actions, worked
 out by the host from the surface and the user's "Enter steers" setting: each
 says what it does now (`send`, `queue` or `steer`), whether it needs a
@@ -3364,43 +3366,6 @@ machine re-enrollment, and cleanup retry behavior across unavailable
 providers, concurrent attempts, and environments shared by archived and live
 threads.
 
-## Workspace diff Viewed state (`bb.sdk.environments.experimental_diffViewed`, `experimental_markDiffViewed`, `experimental_clearDiffViewed`)
-
-`GET /environments/:id/diff/viewed` (diff target in the query) lists
-`{ files: { path, revision }[] }` for one environment and diff target.
-`PUT` with `{ target, path, revision }` marks a file Viewed at a revision, and
-`DELETE` with `{ target, path? }` clears one file or the whole target; both
-return `{ ok: true }` and emit the `diff-viewed-changed` environment change.
-`POST` accepts the diff query fields and `paths` (up to 500) for a bounded
-lookup; an empty list returns no records. The SDK selects this path when
-`experimental_diffViewed` receives `paths`. Core uses the loaded diff paths,
-independent of display filters, so marking Viewed cannot hide its own query.
-Records live in `diff_viewed_files`, keyed by environment, target
-(`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`)
-and path. Revisions come from the `revision` field that the Git plugin's
-`files` RPC returns for every file: `<oldMode>:<oldBlob>:<newMode>:<newBlob>`
-from `git diff --raw`, with the worktree side hashed by `git hash-object`. A
-file counts as Viewed only while the stored revision equals the current one.
-The plugin's `files` and `patches` reads also take `ignoreWhitespace` (git
-`-w`).
-
-Callers: the workspace diff panel's Viewed checkbox
-(`DiffFilesPanel` through `useSetDiffFileViewed` and
-`useEnvironmentDiffViewed`) and the bundled Git plugin
-(`plugins/git/server/viewed.ts`), which serves
-`bb git viewed list|mark|unmark|clear` through its `viewed`, `markViewed` and
-`clearViewed` RPCs.
-
-**Audit before stabilizing.**
-
-1. **Revision cost.** Every file list hashes each changed worktree file; check
-   latency on large diffs and very large files, and whether git's index stat
-   cache can supply unchanged blobs.
-2. **Retention.** Records for destroyed environments stay until the row is
-   deleted; decide whether destroy should clear them.
-3. **Shape.** Decide whether the file list should carry `viewed` itself so
-   callers do not join two reads.
-
 ## Host process primitives (`@get-bb/plugin-sdk/host`)
 
 `experimental_spawnPortableOutputProcess` spawns an output-only child process,
@@ -4112,8 +4077,9 @@ plugin whose CLI commands, agent tools or background work change the same
 data also had to call `bb.rpc.experimental_invalidate` there, and an app-made
 write then refreshed twice. The replacement is that one call, made in the
 server code that changes the data. The first-party callers already did: the
-Git plugin's `markViewed`, `clearViewed` and `setMergeBase` refresh through
-core's `diff-viewed-changed` and `metadata-changed` environment events, the
+Git plugin's `markViewed` and `clearViewed` invalidate its `viewed` tag when
+they write, `setMergeBase` refreshes through core's `metadata-changed`
+environment event, the
 GitHub PR Status plugin's `refresh`, `markReady`, `markDraft` and `merge`
 through its pull request store's `publish` when the row changes, and the push
 notification plugin's `threadNotifications.set` through `publishSubtree`, and
@@ -4137,13 +4103,17 @@ kalindudc/bb-marketplace's loom (`src/rpc-tags.ts`), shuttle and vantage
 field from `ContractTagDeclarations` consumers in the plugin SDK only after
 those plugins have migrated.
 
+## Retired composer renderer `view` and `key` runtime members
+
+`ExperimentalComposerRendererApi.view`, `.key` and the `ExperimentalComposerView` type are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs: inside a composer box `useComposer().scope` and `.key` are bound to the box's host and carry the same values, and the bundled composer reads them there. `ComposerBox` still puts `view` and `key` on the renderer object (`RetiredComposerRendererMembers`), and `composer-contract.test.tsx` checks that they match `useComposer()` on every surface. Callers are forks of bb's composer written against the old SDK (smsunarto/bb-plugins' t3-composer reads `renderer.key` and `renderer.view.scope`). Remove the runtime members after those forks migrate.
+
 ## Retired `experimental_useSidebarThreadPullRequest` runtime member
 
 `experimental_useSidebarThreadPullRequest(threadId)` and its `PluginSidebarPullRequest` and `PluginSidebarThreadPullRequestState` types are gone from `@get-bb/plugin-sdk/app`, the Plugin Guide and the authoring docs. Published bundles resolve `@get-bb/plugin-sdk/app` exports by name on `globalThis.__bbPluginRuntime.pluginSdkApp`, so the app installs `retiredPluginSdkAppMembers` (`apps/app/src/lib/plugin-sdk-app-impl.tsx`) next to the implementation. The member keeps its old shape, reads the GitHub PR Status plugin's `pullRequests` row for the thread's environment through `useRetiredSidebarEnvironmentPullRequest` (`apps/app/src/lib/retired-sidebar-pull-request.ts`), main's hook kept for it: a cached row refetches on mount and on page show, and the plugin's server decides whether that needs GitHub. It returns `{ isLoading: false, pullRequest: null }` when the plugin is disabled or the read fails. The GitHub PR Status plugin's own segment and Info row use the plugin's copy of that hook. Both copies use `useRefetchOnShowAndFocus` (`plugins/github-pr-status/ui/refetch-on-show.ts`), which refetches a row once when its first view mounts. The name leaves only the typings. `bb-plugin-build` keeps it in the `@get-bb/plugin-sdk/app` runtime shim's export list (`RETIRED_PLUGIN_SDK_APP_EXPORTS` in `packages/plugin-build/src/build-plugin-app.ts`), so plugins that still import it build and run, because git-sourced marketplace plugins are built by bb at install and update and path and builtin plugins rebuild when the SDK version changes. An import of it is a build warning carrying the replacement call: `bb plugin build` and `bb plugin dev` print it, and the server writes it to the plugin's log and the server log when it builds the plugin. Callers are marketplace plugins written against the old SDK (t3sidebar, dockside, gtd-sidebar, thread-inbox, radar-sidebar, bb-sidebar, sidebar-plus, cursor-sidebar, switchboard, vantage, jb-flow, tinted-threads among them). Their migration path is `experimental_ThreadRowMetadata` in the row, which draws the GitHub PR Status badge as bb's sidebar does; the build warning names it. Remove the runtime member and the shim entry only after those plugins have migrated.
 
-## Retired environment git reads (`bb.sdk.environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile`, `diffBranches`)
+## Retired environment git reads (`bb.sdk.environments.status`, `diff`, `diffFiles`, `diffPatch`, `diffFile`, `diffBranches`, `experimental_diffViewed`, `experimental_markDiffViewed`, `experimental_clearDiffViewed`)
 
-These six `PluginBbSdk.environments` methods are gone from the public typings, the Plugin Guide and the authoring docs; the Git plugin's RPC contract (`bb--git`: `status`, `diff`, `files`, `patches`, `fileSide`, `branches`) replaces them, and core's HTTP read routes are deleted. Published and git-sourced plugins keep working: `packages/sdk/src/areas/retired-environment-reads.ts` adds runtime adapters with the old shapes that call `POST /api/v1/plugins/bb--git/rpc/<method>`, so they fail with the RPC error when the Git plugin is disabled. `bb-plugin-build` scans app and server bundles for calls to them (`packages/plugin-build/src/retired-sdk-members.ts`) and prints a warning with the replacement RPC call; `bb plugin build`, `bb plugin dev` and server-side builds at install and update log it, and never fail. Callers are marketplace plugins written against the old SDK (vantage, diff-tree, firstmate, diff-viewed among them). Remove the adapters after those plugins migrate.
+These nine `PluginBbSdk.environments` methods are gone from the public typings, the Plugin Guide and the authoring docs; the Git plugin's RPC contract (`bb--git`: `status`, `diff`, `files`, `patches`, `fileSide`, `branches`, `viewed`, `markViewed`, `clearViewed`) replaces them, and core's HTTP routes are deleted. Viewed marks live in the Git plugin's own database (`plugins/git/server/viewed.ts`), keyed by environment, target (`uncommitted`, `commit:<sha>`, `branch_committed:<branch>`, `all:<branch>`) and path. Migration `0151_hand_diff_viewed_files_to_git_plugin` copies core's `diff_viewed_files` rows into the plugin's KV entry `viewedMarksFromCore` and drops the table; the plugin moves them into its database on its next load and deletes the entry. Marks of environments that no longer exist are deleted when the plugin loads, replacing the old foreign-key cascade. Published and git-sourced plugins keep working: `packages/sdk/src/areas/retired-environment-reads.ts` adds runtime adapters with the old shapes that call `POST /api/v1/plugins/bb--git/rpc/<method>`, so they fail with the RPC error when the Git plugin is disabled. `bb-plugin-build` scans app and server bundles for calls to them (`packages/plugin-build/src/retired-sdk-members.ts`) and prints a warning with the replacement RPC call; `bb plugin build`, `bb plugin dev` and server-side builds at install and update log it, and never fail. Callers are marketplace plugins written against the old SDK (vantage, diff-tree, firstmate, diff-viewed among them; danielbachhuber/bb-plugins' diff-viewed also calls the three Viewed methods). Remove the adapters, and `viewedMarksFromCore` handling in the Git plugin, after those plugins migrate.
 
 `PLUGIN_CLI_OUTPUT_MAX_BYTES` is 32 MiB (was 1 MiB) so `bb git diff` and
 `bb git file` print what `bb environment diff` and `diff-file` printed: a diff
