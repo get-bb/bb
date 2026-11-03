@@ -337,6 +337,7 @@ export async function runGit(
       }
       throw error;
     });
+    if (run.exitCode !== 0) console.error("GIT_DIAGNOSTIC", JSON.stringify({ args, cwd: options.cwd, attempt, ...run, spawnError: run.spawnError?.message }));
     if (run.stopped) {
       return { stdout: run.stdout, stderr: run.stderr, exitCode: 0 };
     }
