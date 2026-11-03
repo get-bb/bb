@@ -51,7 +51,7 @@ import type { ReactNode, RefObject } from "react";
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon } from "./icons";
 
-type IconProps = { className?: string };
+export type IconProps = { className?: string };
 export type MockIcon = (props: IconProps) => ReactNode;
 
 function glyph(icon: IconSvgElement): MockIcon {
@@ -92,7 +92,7 @@ export const PullRequestIcon = glyph(GitPullRequestIcon);
 export const Spinner = glyph(Loading03Icon);
 export const Maximize2 = glyph(ArrowExpand01Icon);
 export const MicIcon = glyph(Mic02Icon);
-const SendIcon = glyph(ArrowMoveDownLeftIcon);
+export const SendIcon = glyph(ArrowMoveDownLeftIcon);
 export const LaptopGlyph = glyph(LaptopIcon);
 export const FileDiffIcon = glyph(PlusMinusSquare01Icon);
 export const FileCodeGlyph = glyph(FileCodeIcon);
@@ -109,7 +109,7 @@ export const CommandIcon = glyph(ComputerTerminal01Icon);
 
 export type ThreadState = "running" | "done" | "waiting";
 
-function StatusGlyph({ status }: { status: ThreadState | "unread" }) {
+export function StatusGlyph({ status }: { status: ThreadState | "unread" }) {
   if (status === "running") return <Spinner className="trun" />;
   if (status === "done") return <CircleCheckIcon className="tdone" />;
   if (status === "waiting") return <QuestionIcon className="twait" />;
@@ -247,7 +247,7 @@ export const NAV_ITEMS = [
   { icon: AutomationsIcon, label: "Automations" },
 ] as const satisfies readonly { icon: MockIcon; label: string }[];
 
-type NavLabel = (typeof NAV_ITEMS)[number]["label"];
+export type NavLabel = (typeof NAV_ITEMS)[number]["label"];
 
 export function NavRail({
   active = "Home",
