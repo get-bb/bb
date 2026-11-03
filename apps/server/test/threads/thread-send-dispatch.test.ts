@@ -1,5 +1,6 @@
 import {
   archiveThread,
+  getActiveStoredTurnId,
   getAppSettings,
   updateHost,
   getQueuedThreadMessage,
@@ -1942,7 +1943,7 @@ describe("competing turn refusals", () => {
     });
   });
 
-  it("still fails the run for other refusals while a root turn is stored", async () => {
+  it("fails the run and stops the open root turn for other refusals", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedProviderThreadFixture({
         harness,
@@ -1963,6 +1964,17 @@ describe("competing turn refusals", () => {
       });
 
       expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+      expect(getActiveStoredTurnId(harness.db, fixture.thread.id)).toBeNull();
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === fixture.thread.id,
+      );
+      if (stop.command.type !== "thread.stop") {
+        throw new Error("Expected a thread.stop command");
+      }
+      expect(stop.command.intent).toBe("interrupt");
     });
   });
 });

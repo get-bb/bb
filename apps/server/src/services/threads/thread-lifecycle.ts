@@ -602,10 +602,10 @@ function markThreadStoppingWithEventInTransaction(
   return true;
 }
 
-function applyActiveTurnInterruptionInTransaction(
-  deps: ThreadLifecycleTransactionDeps,
-  args: ApplyActiveTurnInterruptionArgs,
-): boolean {
+function appendInterruptedTurnCompletedEventInTransaction(
+  deps: Pick<ThreadLifecycleTransactionDeps, "db">,
+  args: Omit<ApplyActiveTurnInterruptionArgs, "reason">,
+): void {
   appendThreadEventInTransaction(deps.db, {
     threadId: args.threadId,
     environmentId: args.environmentId,
@@ -620,6 +620,13 @@ function applyActiveTurnInterruptionInTransaction(
         : {}),
     },
   });
+}
+
+function applyActiveTurnInterruptionInTransaction(
+  deps: ThreadLifecycleTransactionDeps,
+  args: ApplyActiveTurnInterruptionArgs,
+): boolean {
+  appendInterruptedTurnCompletedEventInTransaction(deps, args);
   const appendedThreadInterruptedEvent =
     appendThreadInterruptedEventIfMissingInTransaction(deps, args);
   applyLoggedThreadLifecycleEventInTransaction(deps, {
@@ -804,6 +811,50 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+function closeTurnThatOutlivedItsRunInTransaction(
+  deps: ThreadCommandResultSettlementDeps,
+  args: { environmentId: string | null; threadId: string },
+): CommandResultPostCommitAction | null {
+  const environmentId = args.environmentId;
+  const openTurnId = getActiveTurnId(deps, args.threadId);
+  if (environmentId === null || openTurnId === null) {
+    return null;
+  }
+  appendInterruptedTurnCompletedEventInTransaction(deps, {
+    activeTurnId: openTurnId,
+    environmentId,
+    providerThreadId: getLastProviderThreadId(deps, args.threadId),
+    threadId: args.threadId,
+  });
+  deps.hub.notifyThread(args.threadId, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, {
+      threadId: args.threadId,
+    }),
+    eventTypes: ["turn/completed"],
+  });
+  return {
+    run: (postCommitDeps) => {
+      const environment = getEnvironment(postCommitDeps.db, environmentId);
+      if (
+        environment === null ||
+        !inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")
+      ) {
+        return;
+      }
+      postCommitDeps.logger.warn(
+        { threadId: args.threadId, turnId: openTurnId },
+        "Stopping a turn that outlived its failed run",
+      );
+      dispatchThreadStopCommand(postCommitDeps, {
+        environmentId,
+        hostId: environment.hostId,
+        interruptionReason: "manual-stop",
+        threadId: args.threadId,
+      });
+    },
+  };
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -857,6 +908,18 @@ function settleThreadCommandFailure(
   });
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+    const isStartRefusal =
+      args.command.type === "thread.start" ||
+      args.command.target.mode === "start";
+    const stopOpenTurn = isStartRefusal
+      ? closeTurnThatOutlivedItsRunInTransaction(args.deps, {
+          environmentId: thread.environmentId,
+          threadId: thread.id,
+        })
+      : null;
+    if (stopOpenTurn !== null) {
+      postCommitActions.push(stopOpenTurn);
+    }
   }
   if (isParentNotifiableChildThread(thread, "failed")) {
     const parentThreadId = thread.parentThreadId;
