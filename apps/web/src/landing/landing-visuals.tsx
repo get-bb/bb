@@ -13,9 +13,9 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DesktopDownloadButton, DownloadLink } from "./cta";
+import { DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import { SendToComputerButton } from "./send-to-computer-button";
+import { DesktopInstallChoice } from "./install-choice";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -37,28 +37,23 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   return (
     <div className="install-options">
       <div className="install-actions">
-        <span className="install-choice">
-          <DesktopDownloadButton
-            placement={placement}
-            platform={platform}
-            className="btn btn-primary btn-install install-download"
-          />
-          <SendToComputerButton placement={placement} />
-          <span className="install-note install-note-desktop">
-            {download.note}
-            {" · "}
-            <DownloadLink
-              placement={placement}
-              platform={otherPlatform}
-              className="install-note-link"
-            >
-              Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
-            </DownloadLink>
-          </span>
-          <span className="install-note install-note-touch">
-            bb runs on macOS, Windows, and Linux
-          </span>
-        </span>
+        <DesktopInstallChoice
+          placement={placement}
+          platform={platform}
+          note={
+            <>
+              {download.note}
+              {" · "}
+              <DownloadLink
+                placement={placement}
+                platform={otherPlatform}
+                className="install-note-link"
+              >
+                Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
+              </DownloadLink>
+            </>
+          }
+        />
         <span className="install-choice">
           <CommandButton
             command={CLI_COMMAND}
