@@ -1,7 +1,3 @@
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
-import { HugeiconsIcon } from "@hugeicons/react";
 import {
   lazy,
   Suspense,
@@ -11,24 +7,12 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import type { Ref } from "react";
 
+import { WindowControls, useFitMock } from "./app-mock-parts";
+
 const HeroWindowStage = lazy(() => import("./hero-window-stage"));
-
-function subscribeVisibility(onChange: () => void) {
-  document.addEventListener("visibilitychange", onChange);
-  return () => document.removeEventListener("visibilitychange", onChange);
-}
-
-function usePageHidden() {
-  return useSyncExternalStore(
-    subscribeVisibility,
-    () => document.visibilityState === "hidden",
-    () => false,
-  );
-}
 
 function OnMount({ onMount }: { onMount: () => void }) {
   useEffect(onMount, [onMount]);
@@ -37,17 +21,17 @@ function OnMount({ onMount }: { onMount: () => void }) {
 
 export function HeroWindow({
   ref,
-  inView,
+  active,
   onFilled,
 }: {
   ref: Ref<HTMLElement>;
-  inView: boolean;
+  active: boolean;
   onFilled: () => void;
 }) {
-  const hidden = usePageHidden();
   const [live, setLive] = useState(false);
-  const paused = !inView || hidden || !live;
+  const paused = !active || !live;
   const winRef = useRef<HTMLDivElement>(null);
+  useFitMock(winRef);
   useLayoutEffect(() => {
     if (winRef.current?.querySelector(".rhb-stage")) onFilled();
   }, [onFilled]);
@@ -76,16 +60,7 @@ export function HeroWindow({
         aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, a Codex child thread started to write tests for a CSV export and the two threads messaging each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
       >
         <div className="rhb-band rhb-band-left" aria-hidden>
-          <span className="mock-dots">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="rhb-band-ctrls">
-            <HugeiconsIcon icon={ArrowLeft01Icon} className="rhb-ic" />
-            <HugeiconsIcon icon={ArrowRight01Icon} className="rhb-ic" />
-            <HugeiconsIcon icon={SidebarLeftIcon} className="rhb-ic" />
-          </span>
+          <WindowControls />
         </div>
         {stage}
       </div>

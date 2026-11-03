@@ -1,8 +1,3 @@
-/* Homepage hero window experiment (homepage-hero-window). Loaded only on the
-   test arm. Every rule is under .rhb so nothing reaches the rest of the page.
-   Below 721px the window keeps the hero's desktop width and zoomed bleed
-   (landing.css), so phone-width rules use the wide-window layout. */
-
 .rhb {
   --rhb-rail-w: 48px;
   --rhb-side-w: 216px;
@@ -13,7 +8,6 @@
 .rhb .rhb-win {
   --rhb-frame: color-mix(in oklab, var(--ink) 7%, var(--bg));
   --rhb-sidebar: color-mix(in oklab, var(--ink) 2.5%, var(--bg));
-  --rhb-active: color-mix(in oklab, var(--ink) 10%, transparent);
   --rhb-seam: color-mix(in oklab, var(--ink) 9.5%, var(--bg));
   position: relative;
   height: var(--rhb-win-h);
@@ -61,14 +55,6 @@
   padding-left: 16px;
 }
 
-.rhb .rhb-band-ctrls {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  padding-right: 4px;
-}
-
 .rhb .rhb-band-end {
   display: inline-flex;
   align-items: center;
@@ -90,31 +76,13 @@
 
 .rhb .rhb-title.is-focus {
   padding-inline: 8px;
-  background: var(--rhb-active);
+  background: var(--mock-active);
 }
 
-.rhb .rhb-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.rhb .editor-btn {
   height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  padding: 0 6px;
   background: var(--bg);
-  font-size: 12.5px;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.rhb .rhb-btn-editor {
-  padding-inline: 6px;
-}
-
-.rhb .rhb-editor-ic {
-  display: block;
-  width: 15px;
-  height: 15px;
 }
 
 .rhb .rhb-left {
@@ -132,38 +100,11 @@
   min-height: 0;
 }
 
-.rhb .rhb-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+.rhb .rail {
   width: var(--rhb-rail-w);
-  flex-shrink: 0;
-  padding: 2px 0 2px;
+  padding: 2px 0;
   overflow: hidden;
   transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.rhb .rhb-rail-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: 6px;
-}
-
-.rhb .rhb-rail-btn.is-on {
-  background: var(--rhb-active);
-}
-
-.rhb .rhb-rail-btn.is-on .rhb-ic {
-  color: var(--ink);
-}
-
-.rhb .rhb-rail-gear {
-  margin-top: auto;
 }
 
 .rhb .rhb-side {
@@ -191,7 +132,7 @@
 }
 
 .rhb .rhb-row.is-active {
-  background: var(--rhb-active);
+  background: var(--mock-active);
 }
 
 .rhb .rhb-row-title {
@@ -256,7 +197,7 @@
   text-overflow: ellipsis;
 }
 
-.rhb .rhb-unread {
+.rhb .tunread {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -369,18 +310,15 @@
   padding: 0 16px 8px;
 }
 
-.rhb .rhb-box {
+.rhb .composer-box {
   padding: 11px 13px 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
   background: var(--bg);
-  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 8%, transparent);
+  box-shadow: var(--shadow-lift);
 }
 
-.rhb .rhb-input {
-  position: relative;
+.rhb .composer-top {
   min-height: 42px;
-  font-size: 13.5px;
+  font-size: var(--text-body-sm);
   line-height: 1.5;
 }
 
@@ -422,19 +360,14 @@
   color: var(--subtle);
 }
 
-.rhb .rhb-box-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.rhb .composer-row {
+  justify-content: flex-start;
+  gap: var(--gap-md);
   margin-top: 6px;
 }
 
-.rhb .rhb-model {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.rhb .model {
   min-width: 0;
-  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -442,66 +375,25 @@
   color: var(--subtle);
 }
 
-.rhb .rhb-model-ic {
-  width: 14px;
-  height: 14px;
+.rhb .model-ic {
   flex-shrink: 0;
-  color: var(--dim);
 }
 
-.rhb .rhb-box-end {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
+.rhb .composer-actions {
   margin-left: auto;
 }
 
-.rhb .rhb-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 30px;
+.rhb .send-btn {
   flex-shrink: 0;
-  border-radius: 6px;
   background: color-mix(in oklab, var(--ink) 35%, var(--bg));
-  color: var(--bg);
 }
 
-.rhb .rhb-send-ic {
-  width: 15px;
-  height: 15px;
-}
-
-.rhb .rhb-context {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.rhb .context-row {
+  flex-wrap: nowrap;
   height: 26px;
-  padding: 0 6px;
-  font-size: 12px;
-  color: var(--dim);
+  margin-top: 0;
+  font-size: var(--text-label-small);
   white-space: nowrap;
-}
-
-.rhb .rhb-ctx {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.rhb .rhb-ctx-ic {
-  width: 14px;
-  height: 14px;
-  color: var(--subtle);
-}
-
-.rhb .rhb-perm {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  color: var(--dim);
 }
 
 .rhb .customize-type-text {
@@ -556,7 +448,7 @@
 }
 
 .rhb .rhb-tab.is-on {
-  background: var(--rhb-active);
+  background: var(--mock-active);
   color: var(--ink);
 }
 
@@ -638,11 +530,11 @@
   border-bottom-color: var(--border-soft);
 }
 
-.rhb .rhb-has-strip .rhb-rail {
+.rhb .rhb-has-strip .rail {
   width: 8px;
 }
 
-.rhb .rhb-has-strip .rhb-rail > * {
+.rhb .rhb-has-strip .rail > * {
   opacity: 0;
 }
 
@@ -714,9 +606,6 @@
 }
 
 .rhb .rhb-win {
-  --rhb-success: oklch(0.53 0.14 155);
-  --rhb-attention: var(--attention, oklch(0.74 0.15 80));
-  --rhb-danger: oklch(0.45 0.19 25.86);
   --rhb-tint: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
@@ -725,19 +614,15 @@
 }
 
 .rhb .tdone {
-  color: var(--rhb-success);
+  color: var(--ok);
 }
 
 .rhb .twait {
-  color: var(--rhb-attention);
+  color: var(--attention);
 }
 
-.rhb .rhb-unread {
+.rhb .tunread {
   background: var(--accent);
-}
-
-.rhb .rhb-perm {
-  color: var(--spark);
 }
 
 .rhb .plugin-panel-badge,
@@ -888,11 +773,11 @@
 }
 
 .rhb .rhb-stat:first-child .rhb-stat-value {
-  color: var(--rhb-danger);
+  color: var(--del);
 }
 
 .rhb .rhb-stat:last-child .rhb-stat-value {
-  color: var(--rhb-success);
+  color: var(--ok);
 }
 
 .rhb .rhb-sentry-chart {
@@ -919,7 +804,7 @@
 }
 
 .rhb .rhb-hour.is-spike {
-  background: color-mix(in oklab, var(--rhb-danger) 55%, var(--bg));
+  background: color-mix(in oklab, var(--del) 55%, var(--bg));
 }
 
 .rhb .rhb-issues {
@@ -944,8 +829,8 @@
 }
 
 .rhb .rhb-issue.is-top {
-  box-shadow: inset 3px 0 var(--rhb-danger);
-  background: color-mix(in oklab, var(--rhb-danger) 5%, transparent);
+  box-shadow: inset 3px 0 var(--del);
+  background: color-mix(in oklab, var(--del) 5%, transparent);
 }
 
 .rhb .rhb-issue-title {
@@ -970,11 +855,11 @@
   color: var(--dim);
 }
 
-.rhb .rhb-has-sentry .rhb-col-main .rhb-btn {
+.rhb .rhb-has-sentry .rhb-col-main .editor-btn {
   display: none;
 }
 
-.rhb .rhb-rail-sentry .rhb-ic {
+.rhb .rhb-rail-sentry .rail-ic {
   color: #6c5fc7;
 }
 
@@ -1021,12 +906,12 @@
 
 .rhb .rhb-title.is-focus {
   padding-inline: 8px;
-  background: var(--rhb-active);
+  background: var(--mock-active);
 }
 
 .rhb .rhb-blocked {
-  border-color: color-mix(in oklab, var(--rhb-danger) 40%, var(--border));
-  box-shadow: inset 3px 0 var(--rhb-danger);
+  border-color: color-mix(in oklab, var(--del) 40%, var(--border));
+  box-shadow: inset 3px 0 var(--del);
 }
 
 .rhb .rhb-bar-meta {
@@ -1091,7 +976,7 @@
 }
 
 .rhb .rhb-note-ic.is-done {
-  color: var(--rhb-success);
+  color: var(--ok);
 }
 
 .rhb .rhb-note-ic.is-sent,
@@ -1211,7 +1096,7 @@
   color: var(--accent);
 }
 
-.rhb .rhb-model {
+.rhb .model {
   overflow: hidden;
 }
 
@@ -1249,11 +1134,11 @@
   opacity: 0;
 }
 
-.rhb .rhb-leaving.rhb-has-strip .rhb-rail {
+.rhb .rhb-leaving.rhb-has-strip .rail {
   width: var(--rhb-rail-w);
 }
 
-.rhb .rhb-leaving.rhb-has-strip .rhb-rail > * {
+.rhb .rhb-leaving.rhb-has-strip .rail > * {
   opacity: 1;
 }
 
@@ -1368,11 +1253,11 @@
   --rhb-tint: var(--surface-recessed);
 }
 
-.rhb .rhb-unread {
+.rhb .tunread {
   background: color-mix(in oklab, var(--subtle) 70%, transparent);
 }
 
-.rhb .rhb-perm,
+.rhb .ctx-perm,
 .rhb .plugin-task-prio.is-high {
   color: var(--dim);
 }
@@ -1391,7 +1276,7 @@
 .rhb .rhb-note-ic.is-sent,
 .rhb .rhb-note-ic.is-msg,
 .rhb .rhb-page-ic,
-.rhb .rhb-rail-sentry .rhb-ic {
+.rhb .rhb-rail-sentry .rail-ic {
   color: var(--subtle);
 }
 
@@ -1420,7 +1305,7 @@
 }
 
 .rhb .rhb-hour.is-spike {
-  background: color-mix(in oklab, var(--rhb-danger) 32%, var(--bg));
+  background: color-mix(in oklab, var(--del) 32%, var(--bg));
 }
 
 .rhb .rhb-stat:first-child .rhb-stat-value {
@@ -1429,7 +1314,7 @@
 
 .rhb .rhb-issue.is-top {
   background: none;
-  box-shadow: inset 2px 0 color-mix(in oklab, var(--rhb-danger) 70%, transparent);
+  box-shadow: inset 2px 0 color-mix(in oklab, var(--del) 70%, transparent);
 }
 
 .rhb .rhb-chart-bar {
@@ -1533,7 +1418,7 @@
 }
 
 .rhb .rhb-area.is-after {
-  fill: color-mix(in oklab, var(--rhb-danger) 4%, transparent);
+  fill: color-mix(in oklab, var(--del) 4%, transparent);
 }
 
 .rhb .rhb-line {
@@ -1544,7 +1429,7 @@
 }
 
 .rhb .rhb-line.is-after {
-  stroke: color-mix(in oklab, var(--rhb-danger) 55%, var(--bg));
+  stroke: color-mix(in oklab, var(--del) 55%, var(--bg));
 }
 
 .rhb .rhb-release {
@@ -1597,7 +1482,7 @@
 }
 
 .rhb .rhb-issue.is-top .rhb-spark path {
-  stroke: color-mix(in oklab, var(--rhb-danger) 55%, var(--bg));
+  stroke: color-mix(in oklab, var(--del) 55%, var(--bg));
 }
 
 .rhb .rhb-say code {
@@ -1721,12 +1606,6 @@
   }
 }
 
-.rhb .rhb-band-ctrls {
-  gap: 6px;
-  margin-left: 14px;
-  padding-right: 0;
-}
-
 .rhb .rhb-turn {
   display: flex;
   align-items: center;
@@ -1819,8 +1698,6 @@
   margin-top: 0;
 }
 
-/* "Working" shimmers while live; when the turn finishes it crossfades into
-   the static "Worked for" label. */
 .rhb .rhb-shimmer-text {
   background: linear-gradient(
       90deg,
@@ -1878,7 +1755,7 @@
   overflow: visible;
 }
 
-.rhb .rhb-uses-split .rhb-rail {
+.rhb .rhb-uses-split .rail {
   flex-shrink: 0;
 }
 
@@ -1912,10 +1789,6 @@
 .rhb .rhb-chart-rows {
   gap: 5px;
   margin-top: 9px;
-}
-
-.rhb .rhb-ctx-branch {
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1992,9 +1865,6 @@
   white-space: nowrap;
 }
 
-/* Status words change in place: the old word fades out while the new one
-   fades in over it (inline delays set when), and the turn label's slot glides
-   between the two measured widths. */
 .rhb .rhb-turn-stack.is-swap {
   overflow: hidden;
   width: var(--rhb-wa);
@@ -2013,9 +1883,6 @@
 .rhb .rhb-turn-w,
 .rhb .rhb-swap-a,
 .rhb .rhb-fix-idle.is-timed {
-  /* The outgoing half stays fully opaque while the incoming half fades in
-     over it on an opaque background, then drops out unseen beneath it, so the
-     two are never both part-transparent. */
   opacity: 0;
   animation: rhb-swap-under 0.25s linear both;
 }
@@ -2225,7 +2092,6 @@
 
   .rhb .rhb-has-panel:not(.rhb-leaving) .rhb-col-main .rhb-band,
   .rhb .rhb-has-panel-collapsed .rhb-col-main .rhb-band {
-    /* Clear the 170px traffic-light band that overlays the rail. */
     padding-left: calc(174px - var(--rhb-rail-w));
   }
 
@@ -2252,7 +2118,7 @@
   text-overflow: ellipsis;
 }
 
-.rhb .rhb-input .rhb-placeholder {
+.rhb .composer-top .rhb-placeholder {
   position: absolute;
   inset: 0 0 auto;
 }
@@ -2350,7 +2216,7 @@
 }
 
 .rhb .rhb-row.is-active .rhb-status-swap > .rhb-swap-b {
-  box-shadow: inset 0 0 0 99px var(--rhb-active);
+  box-shadow: inset 0 0 0 99px var(--mock-active);
 }
 
 .rhb .rhb-work-swap {
@@ -2399,7 +2265,7 @@
 
 .rhb .rhb-left,
 .rhb .rhb-body,
-.rhb .rhb-rail,
+.rhb .rail,
 .rhb .rhb-col-page,
 .rhb .rhb-col-split,
 .rhb .rhb-col-panel,
@@ -2562,7 +2428,7 @@
   animation: none;
 }
 
-.rhb .rhb-has-strip .rhb-rail > .rhb-rail-new {
+.rhb .rhb-has-strip .rail > .rhb-rail-new {
   opacity: 0;
 }
 
@@ -2580,10 +2446,6 @@
   flex-shrink: 0;
 }
 
-/* The incoming feed fades in over the outgoing one, which stays fully
-   opaque underneath until the incoming feed is opaque (then it is removed).
-   The incoming layer carries the card colour so the two blend as images
-   instead of both thinning out over the empty card. */
 .rhb .rhb-feed-layer:not(.is-out) {
   z-index: 1;
   border-radius: 7px 7px 0 0;
@@ -2626,8 +2488,6 @@
   }
 }
 
-/* The panel toggle fades out in place when the panel opens (and back when
-   it closes) instead of being removed in one frame. */
 .rhb .rhb-panel-toggle {
   transition: opacity 0.2s ease;
 }
@@ -2637,16 +2497,13 @@
 .rhb .rhb-feed .rhb-work.customize-msg {
   animation-duration: 0s, 0.2s;
 }
-.rhb .rhb-input { position: relative; overflow: visible; }
+.rhb .composer-top { overflow: visible; }
 .rhb .rhb-issue-demo { position: relative; min-height: 20px; color: var(--ink); }
-/* # mention demo. Times count from the demo mounting; children of a revealed
-   parent count from that parent's reveal. */
 .rhb .rhb-issue-q {
   position: absolute; top: 0; left: 0;
   display: inline-flex; align-items: center;
   animation: rhb-reveal 0s linear 1s backwards, rhb-hide 0.2s ease 2.75s forwards, rhb-gone 0s linear 2.95s forwards;
 }
-/* The query and the finished mention overlap briefly instead of blinking. */
 .rhb .rhb-issue-demo.is-leaving { position: absolute; inset: 0; animation: rhb-hide 0.15s ease 0.15s forwards; }
 .rhb .rhb-placeholder.is-back { z-index: 1; background: var(--bg); animation: rhb-fade-in 0.15s ease backwards; }
 .rhb .rhb-issue-q1 { animation: rhb-gone 0s linear 1.05s forwards; }
@@ -2657,8 +2514,6 @@
 }
 @keyframes rhb-caret { 50% { opacity: 0; } }
 
-/* bb's mention typeahead: canvas popover, 6px radius, small muted group
-   header, 28px rows at 12px with a 14px muted icon, active row on state-active. */
 .rhb .rhb-issue-picker {
   --rhb-state-active: color-mix(in oklab, var(--ink) 11.8%, transparent);
   position: absolute; z-index: 20; bottom: calc(100% + 20px); left: -15px; right: -14px;
@@ -2681,7 +2536,6 @@
 .rhb .rhb-issue-title { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .rhb .rhb-issue-meta { flex-shrink: 0; margin-left: auto; padding-left: 8px; color: var(--subtle); }
 .rhb .rhb-issue-option.is-first { background: var(--rhb-state-active); animation: rhb-issue-unselect 0.2s ease 0.8s forwards; }
-/* Filtered-out rows fold away so the picker eases down rather than jumping. */
 .rhb .rhb-issue-option.is-drop { overflow: hidden; max-height: 28px; animation: rhb-issue-drop 0.25s ease 0.8s forwards; }
 .rhb .rhb-issue-option.is-pick { animation: rhb-issue-select 0.2s ease 0.8s forwards; }
 @keyframes rhb-issue-drop { 40% { opacity: 0; } to { max-height: 0; margin-top: -1px; padding-block: 0; opacity: 0; } }
@@ -2694,7 +2548,6 @@
 }
 .rhb .rhb-issue-rest { flex-shrink: 0; animation: rhb-reveal 0s linear 0.5s backwards; }
 
-/* bb's composer mention pill (PROMPT_MENTION_PILL_CLASS + --pill-* paint). */
 .rhb .rhb-issue-chip {
   --pill-surface: linear-gradient(to bottom,
     color-mix(in oklch, var(--ink) 4.4%, var(--bg)),
@@ -2757,10 +2610,8 @@
 .rhb .rhb-feed-layer.is-pre { visibility: hidden; pointer-events: none; }
 .rhb .rhb-feed-layer.is-pre, .rhb .rhb-feed-layer.is-pre * { animation-play-state: paused !important; }
 .rhb .rhb-scene-nav.rhb-has-strip .rhb-strip { animation: rhb-strip-in 0.75s cubic-bezier(0.22, 0.61, 0.36, 1) 1s backwards; }
-.rhb .rhb-scene-nav.rhb-has-strip .rhb-rail { overflow: visible; }
-/* Every rail icon, the plugin ones included, fades out together as the
-   strip takes over. */
-.rhb .rhb-scene-nav.rhb-has-strip .rhb-rail > * { animation: rhb-rail-out 0.35s ease backwards; }
+.rhb .rhb-scene-nav.rhb-has-strip .rail { overflow: visible; }
+.rhb .rhb-scene-nav.rhb-has-strip .rail > * { animation: rhb-rail-out 0.35s ease backwards; }
 @keyframes rhb-strip-in {
   from { height: 0; margin-bottom: 0; opacity: 0; border-bottom-color: transparent; }
   55% { height: 34px; margin-bottom: 6px; opacity: 0; }
@@ -2777,9 +2628,6 @@
   width: 170px;
   z-index: 20;
 }
-/* A new sidebar entry opens its own height while it fades in, so the rows
-   below are pushed down by layout, frame by frame, and nothing else animates
-   its opacity. */
 .rhb .rhb-thread {
   overflow: hidden;
   animation: rhb-row-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
@@ -2824,18 +2672,14 @@
   100% { opacity: 0; }
 }
 .rhb .rhb-issue-ph { position: absolute; inset: 0 0 auto; animation: rhb-gone 0s linear 1s forwards; }
-.rhb .rhb-col-main .rhb-band-end .rhb-btn { animation: rhb-fade-in 0.3s ease; }
-.rhb .rhb-has-sentry .rhb-col-main .rhb-btn { display: inline-flex; opacity: 0; visibility: hidden; animation: rhb-btn-out 0.3s ease; }
+.rhb .rhb-col-main .rhb-band-end .editor-btn { animation: rhb-fade-in 0.3s ease; }
+.rhb .rhb-has-sentry .rhb-col-main .editor-btn { display: inline-flex; opacity: 0; visibility: hidden; animation: rhb-btn-out 0.3s ease; }
 
 @keyframes rhb-btn-out {
   from { opacity: 1; visibility: visible; }
   to { opacity: 0; visibility: visible; }
 }
 
-/* Sentry: the sidebar collapse and the page opening are one move. Wide
-   windows run it on the FLIP glide (flipLayout's drawer), so CSS width
-   transitions stay off; tablets run it as one CSS layout transition with the
-   same durations (1050ms open, 850ms close) and easing. The pane divider uses --border. */
 @media (max-width: 720px), (min-width: 861px) {
   .rhb .rhb-scene-sentry .rhb-left,
   .rhb .rhb-scene-sentry .rhb-body,
@@ -2860,10 +2704,6 @@
   animation-play-state: paused !important;
 }
 
-/* Tool calls mute after they land, the way the app draws a closed step's
-   rows (text-subtle-foreground throughout, diff counts included). The row's
-   own animations stay untouched: the fade runs on --rhb-m, which every part
-   of the row mixes toward the subtle colour. */
 @property --rhb-m {
   syntax: "<number>";
   inherits: true;
@@ -2871,9 +2711,6 @@
 }
 
 .rhb {
-  /* Muted rows sit well below the live one: the subtle text colour pulled
-     halfway to the background, lighter than the app's subtle grey so the
-     hierarchy reads at the hero's small size. */
   --rhb-muted: color-mix(in oklab, var(--subtle) 50%, var(--bg));
 }
 
@@ -2923,8 +2760,6 @@
   }
 }
 
-/* Tool calls sit flush under "Working", as the app's timeline lists them:
-   same 8px inset as the header, no extra indent or seam line. */
 .rhb .rhb-turn-body {
   padding-left: 0;
 }
@@ -2933,9 +2768,6 @@
   content: none;
 }
 
-/* The thread's text starts at the composer box's left edge, as in the app:
-   the turn header, its tool calls and the agent's reply drop their extra
-   8px inset on the left. */
 .rhb .rhb-turn,
 .rhb .rhb-feed .rhb-work,
 .rhb .rhb-say {
