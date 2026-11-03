@@ -1691,7 +1691,7 @@ function HaveTheAppLink({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       className="inline-flex items-center rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span className="underline underline-offset-2">I have the app</span>
+      I have the app
     </button>
   );
 }
