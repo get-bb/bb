@@ -27,6 +27,7 @@ import { createWorktreeHostEntry } from "./host.js";
 
 const execFileAsync = promisify(execFile);
 let repositoryTemplate: string;
+let clonedRepositoryTemplate: string;
 
 beforeAll(async () => {
   repositoryTemplate = await mkdtemp(join(tmpdir(), "bb-worktree-template-"));
@@ -34,9 +35,21 @@ beforeAll(async () => {
   await writeFile(join(repositoryTemplate, "README.md"), "hello\n");
   await git(repositoryTemplate, "add", ".");
   await git(repositoryTemplate, "commit", "-m", "initial");
+  clonedRepositoryTemplate = await mkdtemp(
+    join(tmpdir(), "bb-worktree-clone-template-"),
+  );
+  const sourcePath = join(clonedRepositoryTemplate, "repo");
+  const clone = join(clonedRepositoryTemplate, "clone");
+  await cp(repositoryTemplate, sourcePath, { recursive: true });
+  await git(sourcePath, "branch", "release");
+  await git(clonedRepositoryTemplate, "clone", sourcePath, clone);
+  await git(clone, "remote", "set-url", "origin", "../repo");
 });
 
 afterAll(async () => {
+  if (clonedRepositoryTemplate) {
+    await rm(clonedRepositoryTemplate, { recursive: true, force: true });
+  }
   if (repositoryTemplate) {
     await rm(repositoryTemplate, { recursive: true, force: true });
   }
@@ -83,6 +96,27 @@ async function createSourceRepository(
   return { root, sourcePath, dataDir };
 }
 
+async function createClonedRepository(
+  onTestFinished: TestContext["onTestFinished"],
+): Promise<{
+  root: string;
+  sourcePath: string;
+  clone: string;
+  dataDir: string;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "bb-worktree-plugin-clone-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  await cp(clonedRepositoryTemplate, root, { recursive: true });
+  const dataDir = join(root, "plugin-data");
+  await mkdir(dataDir, { recursive: true });
+  return {
+    root,
+    sourcePath: join(root, "repo"),
+    clone: join(root, "clone"),
+    dataDir,
+  };
+}
+
 async function createDetachedSingleBranchRepository(
   onTestFinished: TestContext["onTestFinished"],
 ): Promise<{
@@ -95,12 +129,8 @@ async function createDetachedSingleBranchRepository(
   const originPath = join(root, "origin");
   const sourcePath = join(root, "repo");
   const dataDir = join(root, "plugin-data");
-  await mkdir(originPath, { recursive: true });
+  await cp(repositoryTemplate, originPath, { recursive: true });
   await mkdir(dataDir, { recursive: true });
-  await git(originPath, "init", "--initial-branch=main");
-  await writeFile(join(originPath, "README.md"), "hello\n");
-  await git(originPath, "add", ".");
-  await git(originPath, "commit", "-m", "initial");
   await git(originPath, "tag", "v1.0");
   await git(
     root,
@@ -144,11 +174,8 @@ describe.concurrent("worktree host entry", () => {
   it.for(["main", "release", "origin/main", "refs/heads/main"])(
     "resolves and fetches a stale named base %s",
     async (base, { onTestFinished }) => {
-      const { root, sourcePath, dataDir } =
-        await createSourceRepository(onTestFinished);
-      const clone = join(root, "clone");
-      await git(sourcePath, "branch", "release");
-      await git(root, "clone", sourcePath, clone);
+      const { sourcePath, clone, dataDir } =
+        await createClonedRepository(onTestFinished);
       const oldHead = (await git(clone, "rev-parse", "HEAD")).trim();
       await git(clone, "branch", "release", "origin/release");
       await writeFile(join(sourcePath, "README.md"), "remote advance\n");
@@ -185,11 +212,8 @@ describe.concurrent("worktree host entry", () => {
   ])(
     "preserves local commits for %s with base %s",
     async ([relation, base], { onTestFinished }) => {
-      const { root, sourcePath, dataDir } =
-        await createSourceRepository(onTestFinished);
-      const clone = join(root, "clone");
-      await git(sourcePath, "branch", "release");
-      await git(root, "clone", sourcePath, clone);
+      const { sourcePath, clone, dataDir } =
+        await createClonedRepository(onTestFinished);
       await writeFile(join(clone, "local.txt"), "local work\n");
       await git(clone, "add", ".");
       await git(clone, "commit", "-m", "local work");
@@ -237,11 +261,8 @@ describe.concurrent("worktree host entry", () => {
   ])(
     "uses the last fetched remote when the fetch fails for %s with base %s",
     async ([relation, base], { onTestFinished }) => {
-      const { root, sourcePath, dataDir } =
-        await createSourceRepository(onTestFinished);
-      const clone = join(root, "clone");
-      await git(sourcePath, "branch", "release");
-      await git(root, "clone", sourcePath, clone);
+      const { root, sourcePath, clone, dataDir } =
+        await createClonedRepository(onTestFinished);
       const localHead = (await git(clone, "rev-parse", "HEAD")).trim();
       if (relation === "behind" || relation === "remote-only") {
         await writeFile(join(sourcePath, "README.md"), "remote advance\n");
