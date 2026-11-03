@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "../../../../..");
@@ -13,6 +13,10 @@ const scannedFiles = [
   join(sharedUiDir, "setup-option-row.tsx"),
   join(sharedUiDir, "sign-in-panel.tsx"),
 ];
+
+function repoPath(file: string): string {
+  return relative(repoRoot, file).split(sep).join("/");
+}
 
 const RAW_VALUE_PATTERNS: readonly { name: string; pattern: RegExp }[] = [
   { name: "arbitrary text size", pattern: /text-\[/ },
@@ -34,7 +38,7 @@ function rawValueViolations(source: string): string[] {
 
 describe("onboarding design tokens", () => {
   it("scans the onboarding sources and shared setup guide components", () => {
-    expect(scannedFiles.map((file) => relative(repoRoot, file))).toEqual(
+    expect(scannedFiles.map(repoPath)).toEqual(
       expect.arrayContaining([
         "apps/app/src/components/onboarding/OnboardingViews.tsx",
         "apps/app/src/components/onboarding/OnboardingFlow.tsx",
@@ -44,7 +48,7 @@ describe("onboarding design tokens", () => {
     );
   });
 
-  it.each(scannedFiles.map((file) => [relative(repoRoot, file), file]))(
+  it.each(scannedFiles.map((file) => [repoPath(file), file]))(
     "%s uses tokens instead of raw values",
     (_name, file) => {
       expect(rawValueViolations(readFileSync(file, "utf8"))).toEqual([]);
