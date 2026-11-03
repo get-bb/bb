@@ -4,6 +4,7 @@ import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftI
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
 import GitBranchIcon_ from "@hugeicons/core-free-icons/GitBranchIcon";
+import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
@@ -11,9 +12,13 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DesktopDownloadButton, DownloadLink } from "./cta";
+import { DesktopDownloadButton, DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
@@ -27,9 +32,19 @@ import {
   PiIcon,
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
+  const simple = useExperiment("homepage-download-area") === "test";
+  useExperimentExposure("homepage-download-area", "desktop");
+  return simple ? (
+    <SimpleInstallOptions placement={placement} />
+  ) : (
+    <CurrentInstallOptions placement={placement} />
+  );
+}
+
+function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
@@ -85,6 +100,51 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
               </>
             )}
             Intel Macs &amp; remote machines
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
+  return (
+    <GitHubLink placement={placement} className="install-note-link oss-link">
+      <HugeiconsIcon icon={GithubIcon} className="oss-ic" aria-hidden />
+      Open source
+    </GitHubLink>
+  );
+}
+
+// homepage-download-area test arm: one download button over a single line
+// that links to the repo and to /download. The command moves to /download.
+export function SimpleInstallOptions({
+  placement,
+}: {
+  placement: CtaPlacement;
+}) {
+  const platform = useDesktopPlatform();
+  return (
+    <div className="install-options">
+      <div className="install-actions">
+        <span className="install-choice">
+          <DesktopDownloadButton
+            placement={placement}
+            platform={platform}
+            className="btn btn-primary btn-install install-download"
+          />
+          <SendToComputerButton placement={placement} />
+          <span className="install-note install-note-desktop">
+            {platform === "macos" ? null : <>Alpha{" · "}</>}
+            <OpenSourceLink placement={placement} />
+            {" · "}
+            <a className="install-note-link" href={DOWNLOAD_PAGE_PATH}>
+              Other platforms
+            </a>
+          </span>
+          <span className="install-note install-note-touch">
+            <OpenSourceLink placement={placement} />
+            {" · "}bb runs on macOS, Windows, and Linux
           </span>
         </span>
       </div>
