@@ -94,7 +94,6 @@ import {
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
-  resolveSignInCommand,
   shortRemoteName,
   skippedStepIds,
   terminalConnectFlow,
