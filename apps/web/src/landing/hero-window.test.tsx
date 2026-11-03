@@ -27,7 +27,7 @@ async function serverHtml(): Promise<string> {
   const HeroWindow = await loadHeroWindow();
   const { prerender } = await import("react-dom/static");
   const { prelude } = await prerender(
-    <HeroWindow ref={null} active={false} onFilled={() => {}} />,
+    <HeroWindow ref={null} active={false} />,
     { progressiveChunkSize: Number.POSITIVE_INFINITY },
   );
   return new Response(prelude).text();
@@ -63,7 +63,7 @@ describe("hero window first frame", () => {
     document.body.replaceChildren();
   });
 
-  it("keeps the server frame and reports content while the chunk loads", async () => {
+  it("keeps the server frame while the chunk loads", async () => {
     const html = await serverHtml();
     const errors: unknown[] = [];
     vi.spyOn(console, "error").mockImplementation((...args) => {
@@ -75,18 +75,14 @@ describe("hero window first frame", () => {
     const container = document.createElement("div");
     container.innerHTML = html;
     document.body.appendChild(container);
-    const onFilled = vi.fn();
     let root!: ReturnType<typeof hydrateRoot>;
     await act(async () => {
-      root = hydrateRoot(
-        container,
-        <HeroWindow ref={null} active={false} onFilled={onFilled} />,
-        { onRecoverableError: (error) => errors.push(error) },
-      );
+      root = hydrateRoot(container, <HeroWindow ref={null} active={false} />, {
+        onRecoverableError: (error) => errors.push(error),
+      });
     });
-    expect(onFilled).toHaveBeenCalled();
     await act(async () => {
-      root.render(<HeroWindow ref={null} active onFilled={onFilled} />);
+      root.render(<HeroWindow ref={null} active />);
     });
     const win = container.querySelector(".rhb-win");
     expect(win?.querySelector(".rhb-stage")).not.toBeNull();
@@ -108,26 +104,65 @@ describe("hero window first frame", () => {
     await act(async () => root.unmount());
   });
 
-  it("reports content only once the stage mounts on a client render", async () => {
-    delayChunk();
-    const HeroWindow = await loadHeroWindow();
-    const { createRoot } = await import("react-dom/client");
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const onFilled = vi.fn();
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(<HeroWindow ref={null} active onFilled={onFilled} />);
-    });
-    expect(container.querySelector(".rhb-stage")).toBeNull();
-    expect(onFilled).not.toHaveBeenCalled();
-    await act(async () => {
-      chunk.release();
-      await import("./hero-window-stage");
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(onFilled).toHaveBeenCalled();
-    expect(container.querySelector(".rhb-stage")).not.toBeNull();
-    await act(async () => root.unmount());
-  });
+  it.each(["control", "test"])(
+    "exposes the %s arm when the hero is first seen, before the stage loads",
+    async (arm) => {
+      delayChunk();
+      vi.resetModules();
+      vi.doMock("./hero-window-stage", async (importOriginal) => {
+        await chunk.ready;
+        return importOriginal();
+      });
+      const exposeExperiment = vi.fn();
+      vi.doMock("./analytics", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("./analytics")>()),
+        exposeExperiment,
+      }));
+      const observed: IntersectionObserverCallback[] = [];
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          constructor(callback: IntersectionObserverCallback) {
+            observed.push(callback);
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      const { HeroWindowSlot } = await import("./hero-window");
+      const { ExperimentsProvider } = await import("../experiments/context");
+      const { createRoot } = await import("react-dom/client");
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          <ExperimentsProvider
+            value={{
+              distinctID: "id",
+              featureFlags: { "homepage-hero-window": arm },
+              preview: false,
+            }}
+          >
+            <HeroWindowSlot control={(ref) => <section ref={ref} />} />
+          </ExperimentsProvider>,
+        );
+      });
+      expect(exposeExperiment).not.toHaveBeenCalled();
+      await act(async () => {
+        for (const callback of observed) {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+        }
+      });
+      expect(container.querySelector(".rhb-stage")).toBeNull();
+      expect(exposeExperiment).toHaveBeenCalledExactlyOnceWith(
+        "homepage-hero-window",
+        "desktop",
+      );
+      await act(async () => root.unmount());
+    },
+  );
 });

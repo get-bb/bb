@@ -19,7 +19,6 @@ import {
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
 import { useSectionViews } from "../landing/section-views";
-import { useActiveWhileVisible } from "../landing/visibility";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
@@ -79,7 +78,7 @@ import {
   useFitMock,
 } from "../landing/app-mock-parts";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
-import { HeroWindow } from "../landing/hero-window";
+import { HeroWindowSlot } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
@@ -1071,19 +1070,6 @@ function LandingPage() {
   useExperimentExposure("homepage-qa-check", "all");
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
-  const heroWindow = useExperiment("homepage-hero-window");
-  const {
-    ref: heroWindowRef,
-    seen: heroWindowSeen,
-    active: heroWindowActive,
-  } = useActiveWhileVisible<HTMLElement>("0px 0px -20% 0px");
-  const [heroWindowFilled, setHeroWindowFilled] = useState(false);
-  const markHeroWindowFilled = useCallback(() => setHeroWindowFilled(true), []);
-  useExperimentExposure(
-    "homepage-hero-window",
-    "desktop",
-    heroWindowSeen && (heroWindow !== "test" || heroWindowFilled),
-  );
   useScrollReveal();
   useSectionViews();
   useConstructMock();
@@ -1129,15 +1115,7 @@ function LandingPage() {
         )}
       </header>
 
-      {heroWindow === "test" ? (
-        <HeroWindow
-          ref={heroWindowRef}
-          active={heroWindowActive}
-          onFilled={markHeroWindowFilled}
-        />
-      ) : (
-        <HeroAppMock ref={heroWindowRef} />
-      )}
+      <HeroWindowSlot control={(ref) => <HeroAppMock ref={ref} />} />
 
       <section
         ref={companyProofRef}
