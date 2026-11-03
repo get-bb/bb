@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   claimQueuedThreadMessageGroup,
+  environments,
   getLatestThreadSequence,
   getThread,
   listEvents,
@@ -26,6 +28,7 @@ import { runQueuedMessageDispatch } from "../../src/services/threads/queued-mess
 import { sendQueuedMessageNow } from "../../src/services/threads/queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
+import { readThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
@@ -993,6 +996,78 @@ describe("retrying a failed turn", () => {
       await expect(retry(requestId)).rejects.toMatchObject({
         body: { code: "retry_already_queued" },
       });
+    });
+  });
+
+  it("re-sends a never-started turn once however many times it is retried", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedFailableThread(harness, "host-repeat");
+      for (let attempt = 2; attempt <= 6; attempt += 1) {
+        failThread(harness, thread.id);
+        await retryFailedTurn(harness.deps, {
+          thread: requireThread(harness, thread.id),
+          request: { turnRequestId: null, sendAt: null, reason: "Retry" },
+        });
+        expect(lastTurnRequest(harness, thread.id)).toMatchObject({
+          retryAttempt: attempt,
+          input: [{ text: "Do the thing", visibility: "agent-only" }],
+        });
+      }
+    });
+  });
+
+  it("counts and re-sends a retry once when it has to reprovision the workspace", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, { id: "host-reprovision" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: WORKSPACE_PATH,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: WORKSPACE_PATH,
+        environmentProviderId: "personal-workspace",
+        environmentProviderPluginId: "bb-plugin-environment-personal-workspace",
+        isGitRepo: false,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "active",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        inputText: "Do the thing",
+        providerThreadId: "provider-reprovision",
+        threadId: thread.id,
+      });
+      failThread(harness, thread.id);
+      await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: null, sendAt: null, reason: "Retry" },
+      });
+      harness.db
+        .update(environments)
+        .set({ status: "error" })
+        .where(eq(environments.id, environment.id))
+        .run();
+      failThread(harness, thread.id);
+
+      await retryFailedTurn(harness.deps, {
+        thread: requireThread(harness, thread.id),
+        request: { turnRequestId: null, sendAt: null, reason: "Retry" },
+      });
+
+      const resent = [{ text: "Do the thing", visibility: "agent-only" }];
+      expect(requireThread(harness, thread.id).status).toBe("starting");
+      expect(lastTurnRequest(harness, thread.id)).toMatchObject({
+        retryAttempt: 3,
+        input: resent,
+      });
+      expect(
+        readThreadProvisionContext(harness.db, thread.id)?.request.input,
+      ).toMatchObject(resent);
     });
   });
 });

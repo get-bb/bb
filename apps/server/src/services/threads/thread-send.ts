@@ -544,10 +544,10 @@ async function sendThreadMessageWithoutContextClear(
     input,
     ...(inputGroups !== undefined ? { inputGroups } : {}),
   }));
-  const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
-    deps.db,
-    thread.id,
-  );
+  const deferredFirstTurnContext =
+    args.retryOf === undefined
+      ? resolveDeferredFirstTurnContext(deps.db, thread.id)
+      : null;
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
@@ -639,6 +639,7 @@ async function sendThreadMessageWithoutContextClear(
       input,
       inputGroups,
       originPluginId: args.originPluginId,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       senderThreadId,
       ...(args.systemNotice !== undefined
         ? {
