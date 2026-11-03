@@ -1397,9 +1397,9 @@ export function RedesignedDevicesStep({
           description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings > Machines.`}
           action={
             <Button
+              type="button"
               size="sm"
-              variant="ghost"
-              className="-mr-3 text-muted-foreground hover:text-foreground @max-xl/onboarding:mr-0 @max-xl/onboarding:-ml-3"
+              variant="outline"
               onClick={onAddMachine}
             >
               Add a machine

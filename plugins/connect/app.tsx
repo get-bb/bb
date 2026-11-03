@@ -1613,19 +1613,16 @@ const MOBILE_APP_INSTALL_OPTIONS: readonly {
   platform: MobilePlatform;
   label: string;
   url: string;
-  help: string;
 }[] = [
   {
     platform: "ios",
     label: "iPhone",
     url: mobileAppDownloads.ios,
-    help: "Scan with your iPhone camera. Install TestFlight if asked, then install the bb app.",
   },
   {
     platform: "android",
     label: "Android",
     url: mobileAppDownloads.android,
-    help: "Scan with your Android camera to download the bb app. Allow installs from your browser if asked.",
   },
 ];
 
@@ -1649,13 +1646,13 @@ function AppInstallToggles({
   openPlatform,
   onOpenPlatformChange,
 }: {
-  label: string;
+  label: ReactNode;
   openPlatform: MobilePlatform | null;
   onOpenPlatformChange: (platform: MobilePlatform | null) => void;
 }) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <span>{label}</span>
+      {label}
       <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
         {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
           const expanded = openPlatform === option.platform;
@@ -1679,13 +1676,7 @@ function AppInstallToggles({
   );
 }
 
-function AppInstallPanel({
-  platform,
-  onShowPairingCode,
-}: {
-  platform: MobilePlatform;
-  onShowPairingCode?: () => void;
-}) {
+function AppInstallQr({ platform }: { platform: MobilePlatform }) {
   const install = MOBILE_APP_INSTALL_OPTIONS.find(
     (option) => option.platform === platform,
   );
@@ -1698,24 +1689,17 @@ function AppInstallPanel({
         className="size-16 shrink-0 p-1"
       />
       <div className="flex flex-col items-start gap-2">
-        <p>{install.help}</p>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <QuietTextAction
-            icon="Copy"
-            onClick={() =>
-              void copyTextWithSdkToast(install.url, {
-                successMessage: "Install link copied",
-              })
-            }
-          >
-            Copy install link
-          </QuietTextAction>
-          {onShowPairingCode === undefined ? null : (
-            <QuietTextAction onClick={onShowPairingCode}>
-              Show pairing code
-            </QuietTextAction>
-          )}
-        </div>
+        <p>Scan with your phone's camera.</p>
+        <QuietTextAction
+          icon="Copy"
+          onClick={() =>
+            void copyTextWithSdkToast(install.url, {
+              successMessage: "Install link copied",
+            })
+          }
+        >
+          Copy install link
+        </QuietTextAction>
       </div>
     </div>
   );
@@ -1817,25 +1801,40 @@ function usePhonePairing(active: boolean): PhonePairing {
   return pairing;
 }
 
-function PhonePairingSlot({
+function PairingStep({
+  step,
+  title,
+  children,
+}: {
+  step: number;
+  title: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <span
+          aria-hidden="true"
+          className="flex size-4 shrink-0 items-center justify-center rounded-full bg-state-hover text-2xs font-medium tabular-nums text-foreground"
+        >
+          {step}
+        </span>
+        <div className="min-w-0 flex-1">{title}</div>
+      </div>
+      {children === undefined || children === null ? null : (
+        <div className="pl-6">{children}</div>
+      )}
+    </li>
+  );
+}
+
+function PairingCode({
   pairing,
   dashboardHost,
-  openPlatform,
-  onOpenPlatformChange,
 }: {
   pairing: PhonePairing;
   dashboardHost: string;
-  openPlatform: MobilePlatform | null;
-  onOpenPlatformChange: (platform: MobilePlatform | null) => void;
 }) {
-  if (openPlatform !== null) {
-    return (
-      <AppInstallPanel
-        platform={openPlatform}
-        onShowPairingCode={() => onOpenPlatformChange(null)}
-      />
-    );
-  }
   if (pairing.kind === "error") {
     return (
       <SetupGuideError>
@@ -1843,7 +1842,18 @@ function PhonePairingSlot({
       </SetupGuideError>
     );
   }
-  if (pairing.kind !== "code") return null;
+  if (pairing.kind !== "code") {
+    return (
+      <p role="status" className="flex items-center gap-2">
+        <Icon
+          name="Spinner"
+          aria-hidden
+          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+        />
+        Getting a pairing code…
+      </p>
+    );
+  }
   return (
     <div className="flex items-stretch gap-3">
       <QrCodeImage
@@ -1862,18 +1872,67 @@ function PhonePairingSlot({
   );
 }
 
-function ConnectOnSetupContent({
+function PhonePairingSteps({
+  pairing,
+  dashboardHost,
+}: {
+  pairing: PhonePairing;
+  dashboardHost: string;
+}) {
+  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
+  return (
+    <ol className="flex flex-col gap-4 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
+      <PairingStep
+        step={1}
+        title={
+          <AppInstallToggles
+            label={<span className="text-foreground">Install the bb app:</span>}
+            openPlatform={openPlatform}
+            onOpenPlatformChange={setOpenPlatform}
+          />
+        }
+      >
+        {openPlatform === null ? null : (
+          <AppInstallQr platform={openPlatform} />
+        )}
+      </PairingStep>
+      <PairingStep
+        step={2}
+        title={
+          <p className="text-foreground">
+            Open the app and scan this code to pair.
+          </p>
+        }
+      >
+        <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
+      </PairingStep>
+    </ol>
+  );
+}
+
+function ConnectOnSetupRow({
   status,
   onPhone,
 }: {
   status: ConnectStatus;
   onPhone: boolean;
 }) {
-  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
   const pairing = usePhonePairing(!onPhone);
   const url = status.url;
+  const showsSteps = !onPhone && pairing.kind !== "paired";
   return (
-    <>
+    <SetupOptionRow
+      icon="ComputerCloud"
+      title="bb connect"
+      footer={
+        showsSteps ? (
+          <PhonePairingSteps
+            pairing={pairing}
+            dashboardHost={hostOf(status.dashboardUrl)}
+          />
+        ) : null
+      }
+    >
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground">
         <span className="flex items-center gap-1.5">
           <Icon
@@ -1904,7 +1963,7 @@ function ConnectOnSetupContent({
           </>
         )}
       </p>
-      {onPhone ? null : pairing.kind === "paired" ? (
+      {!onPhone && pairing.kind === "paired" ? (
         <p className="flex items-center gap-1.5 text-foreground">
           <Icon
             name="CircleCheck"
@@ -1913,42 +1972,8 @@ function ConnectOnSetupContent({
           />
           Phone paired
         </p>
-      ) : (
-        <>
-          <p>
-            Get bb on your phone: install the app, then scan this code in it to
-            pair.
-          </p>
-          <AppInstallToggles
-            label="Install the mobile app:"
-            openPlatform={openPlatform}
-            onOpenPlatformChange={setOpenPlatform}
-          />
-          <PhonePairingSlot
-            pairing={pairing}
-            dashboardHost={hostOf(status.dashboardUrl)}
-            openPlatform={openPlatform}
-            onOpenPlatformChange={setOpenPlatform}
-          />
-        </>
-      )}
-    </>
-  );
-}
-
-function ConnectOffInstallLinks() {
-  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
-  return (
-    <>
-      <AppInstallToggles
-        label="Then install the mobile app:"
-        openPlatform={openPlatform}
-        onOpenPlatformChange={setOpenPlatform}
-      />
-      {openPlatform === null ? null : (
-        <AppInstallPanel platform={openPlatform} />
-      )}
-    </>
+      ) : null}
+    </SetupOptionRow>
   );
 }
 
@@ -2028,11 +2053,7 @@ function ConnectSetupGuideSection({
     status.enabled &&
     status.state === "connected"
   ) {
-    return (
-      <SetupOptionRow icon="ComputerCloud" title="bb connect">
-        <ConnectOnSetupContent status={status} onPhone={onPhone} />
-      </SetupOptionRow>
-    );
+    return <ConnectOnSetupRow status={status} onPhone={onPhone} />;
   }
 
   const connectingState =
@@ -2066,7 +2087,6 @@ function ConnectSetupGuideSection({
   };
 
   const showsContent =
-    !onPhone ||
     connecting ||
     login !== null ||
     error !== null ||
@@ -2121,7 +2141,6 @@ function ConnectSetupGuideSection({
               Couldn't load bb connect: {loadError}
             </SetupGuideError>
           ) : null}
-          {onPhone ? null : <ConnectOffInstallLinks />}
         </>
       ) : null}
     </SetupOptionRow>
