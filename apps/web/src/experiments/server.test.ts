@@ -172,6 +172,7 @@ describe("PostHog visitor cookie", () => {
     ["a crawler", "Mozilla/5.0 (compatible; Googlebot/2.1)"],
     ["an uptime check", "UptimeRobot/2.0"],
     ["a script", "curl/8.5.0"],
+    ["Node's fetch", "node"],
     ["no user agent", ""],
   ])("renders control for %s without calling /flags", async (_name, ua) => {
     const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
