@@ -426,12 +426,6 @@ diagnostics, `bb settings general telemetryEnabled false`, or SDK
 takes effect immediately. `BB_TELEMETRY=false` always disables telemetry, even
 when the saved preference is enabled.
 
-`BB_SETUP_GUIDE_VARIANT=control` or `new` (startup-only) forces which
-first-run setup guide this server shows, ignoring telemetry and the
-`setup-guide-redesign` experiment. The featured plugins still follow the
-`onboarding-featured-plugins` experiment. SDK `system.experimental_setupGuide()`
-returns the variant and featured plugins in use.
-
 Mobile app downloads
 
 Settings → Mobile links the iOS TestFlight

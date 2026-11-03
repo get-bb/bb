@@ -80,8 +80,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `mobileAppDownloads` `mobileAppReleases` `appUpdate` `applyAppUpdate`
   `acknowledgeAppUpdate` `experimental_cliCommand`
   `experimental_installCliCommand` `experimental_removeCliCommand`
-  `experimental_recordTelemetryEvent` `experimental_setupGuide`; sub-area
-  `uiPreferences` (`list` `set` `reset`)
+  `experimental_recordTelemetryEvent`; sub-area `uiPreferences` (`list` `set` `reset`)
 - `experimental_desktopBrowsers`: `listInstances` `listTabs` `createTab`
   `acquireControl` `openConnection` `releaseControl` `revealTab` `closeTab`
   `captureTab` `listImportSources` `importCookies` `subscribe`

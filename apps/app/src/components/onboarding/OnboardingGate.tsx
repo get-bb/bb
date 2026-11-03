@@ -1,11 +1,7 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
-import {
-  useSetupGuideAssignment,
-  useSystemConfig,
-} from "@/hooks/queries/system-queries";
-import type { SetupGuide } from "./onboarding-model";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 const OnboardingFlow = lazy(() =>
   import("./OnboardingFlow").then((module) => ({
@@ -14,11 +10,6 @@ const OnboardingFlow = lazy(() =>
 );
 
 const ONBOARDING_SEEN_STORAGE_KEY = "bb.onboarding.seen";
-
-const CONTROL_SETUP_GUIDE: SetupGuide = {
-  variant: "control",
-  featuredPluginEntryIds: null,
-};
 
 function readOnboardingSeen(): boolean {
   try {
@@ -44,9 +35,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   const settings = configQuery.data?.generalSettings;
   const completedAt = settings?.onboardingCompletedAt;
-  const setupGuideQuery = useSetupGuideAssignment({
-    enabled: completedAt === null,
-  });
   useEffect(() => {
     if (typeof completedAt === "string") rememberOnboardingSeen();
   }, [completedAt]);
@@ -67,8 +55,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   const firstRun = settings.onboardingCompletedAt === null && !firstRunClosed;
   if (!firstRun) return children;
-  if (setupGuideQuery.isPending) return null;
-  const setupGuide = setupGuideQuery.data ?? CONTROL_SETUP_GUIDE;
 
   return (
     <TooltipProvider delayDuration={300} disableHoverableContent>
@@ -76,7 +62,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         <Suspense fallback={null}>
           <OnboardingFlow
             initialStep="agent"
-            setupGuide={setupGuide}
             entry={seenBefore ? "replay" : "first_run"}
             onClose={() => {
               setFirstRunClosed(true);

@@ -7,12 +7,10 @@ import { OnboardingGate } from "./OnboardingGate";
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   useSystemConfig: vi.fn(),
-  useSetupGuideAssignment: vi.fn(),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: mocks.useSystemConfig,
-  useSetupGuideAssignment: mocks.useSetupGuideAssignment,
 }));
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
   useUpdateGeneralSettings: () => ({ mutate: mocks.mutate }),
@@ -20,15 +18,13 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
 vi.mock("./OnboardingFlow", () => ({
   OnboardingFlow: ({
     initialStep,
-    setupGuide,
     onClose,
   }: {
     initialStep: string;
-    setupGuide: { variant: string };
     onClose: () => void;
   }) => (
     <button type="button" onClick={onClose}>
-      Setup guide at {initialStep} ({setupGuide.variant})
+      Setup guide at {initialStep}
     </button>
   ),
 }));
@@ -53,10 +49,6 @@ function renderGate() {
 
 beforeEach(() => {
   window.localStorage.clear();
-  mocks.useSetupGuideAssignment.mockReturnValue({
-    isPending: false,
-    data: { variant: "control", featuredPluginEntryIds: null },
-  });
 });
 
 afterEach(() => {
@@ -70,7 +62,7 @@ describe("OnboardingGate", () => {
 
     renderGate();
 
-    expect(await screen.findByText(/Setup guide at agent/u)).toBeTruthy();
+    expect(await screen.findByText("Setup guide at agent")).toBeTruthy();
     expect(screen.queryByText("App shell")).toBeNull();
   });
 
@@ -87,7 +79,7 @@ describe("OnboardingGate", () => {
     configWith({ onboardingCompletedAt: null, streamerMode: true });
     renderGate();
 
-    fireEvent.click(await screen.findByText(/Setup guide at agent/u));
+    fireEvent.click(await screen.findByText("Setup guide at agent"));
 
     expect(screen.getByText("App shell")).toBeTruthy();
     expect(mocks.mutate).toHaveBeenCalledTimes(1);
@@ -103,7 +95,7 @@ describe("OnboardingGate", () => {
   it("shows the guide again when the completion time is cleared after a close in the same session", async () => {
     configWith({ onboardingCompletedAt: null });
     const { view } = renderGate();
-    fireEvent.click(await screen.findByText(/Setup guide at agent/u));
+    fireEvent.click(await screen.findByText("Setup guide at agent"));
 
     configWith({ onboardingCompletedAt: COMPLETED_AT });
     view.rerender(
@@ -120,7 +112,7 @@ describe("OnboardingGate", () => {
       </OnboardingGate>,
     );
 
-    expect(await screen.findByText(/Setup guide at agent/u)).toBeTruthy();
+    expect(await screen.findByText("Setup guide at agent")).toBeTruthy();
   });
 
   it("holds a first-time browser blank until settings load, but boots a returning browser straight into the app", () => {
@@ -148,54 +140,6 @@ describe("OnboardingGate", () => {
     renderGate();
 
     expect(screen.getByText("App shell")).toBeTruthy();
-  });
-
-  it("shows the variant the server assigned and waits for the assignment first", async () => {
-    configWith({ onboardingCompletedAt: null });
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: true,
-      data: undefined,
-    });
-    const { view } = renderGate();
-    expect(screen.queryByText(/Setup guide/u)).toBeNull();
-    expect(screen.queryByText("App shell")).toBeNull();
-
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      data: { variant: "new", featuredPluginEntryIds: ["memory"] },
-    });
-    view.rerender(
-      <OnboardingGate>
-        <div>App shell</div>
-      </OnboardingGate>,
-    );
-
-    expect(await screen.findByText("Setup guide at agent (new)")).toBeTruthy();
-  });
-
-  it("shows today's guide when the assignment request fails", async () => {
-    configWith({ onboardingCompletedAt: null });
-    mocks.useSetupGuideAssignment.mockReturnValue({
-      isPending: false,
-      isError: true,
-      data: undefined,
-    });
-
-    renderGate();
-
-    expect(
-      await screen.findByText("Setup guide at agent (control)"),
-    ).toBeTruthy();
-  });
-
-  it("only asks for an assignment while setup is unfinished", () => {
-    configWith({ onboardingCompletedAt: COMPLETED_AT });
-
-    renderGate();
-
-    expect(mocks.useSetupGuideAssignment).toHaveBeenLastCalledWith({
-      enabled: false,
-    });
   });
 
   it("falls back to the app when settings cannot be loaded", () => {

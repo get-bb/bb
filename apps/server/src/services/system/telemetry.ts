@@ -5,10 +5,7 @@ import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import type { AppSurface, RequestAppSurface } from "@bb/config/app-surface";
-import type {
-  RecordTelemetryEventRequest,
-  SetupGuideVariant,
-} from "@bb/server-contract";
+import type { RecordTelemetryEventRequest } from "@bb/server-contract";
 import type { ServerLogger } from "../../types.js";
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";
@@ -96,47 +93,12 @@ export type TelemetryEvent =
         action: "used";
       };
     }
-  | {
-      name: "onboarding_exposed";
-      properties: {
-        entry: "first_run" | "replay";
-        setup_guide_variant: SetupGuideVariant;
-        setup_guide_source: "override" | "flag" | "default";
-        featured_plugins_variant: SetupGuideVariant;
-        featured_plugins_source: "override" | "flag" | "default";
-        $set: {
-          setup_guide_variant: SetupGuideVariant;
-          featured_plugins_variant: SetupGuideVariant;
-        };
-      };
-    }
-  | {
-      name: "$feature_flag_called";
-      properties: {
-        $feature_flag: string;
-        $feature_flag_response: string;
-      };
-    }
-  | RecordTelemetryEventRequest
-  | {
-      name: RecordTelemetryEventRequest["name"];
-      properties: Readonly<Record<string, unknown>> & {
-        setup_guide_variant: SetupGuideVariant;
-        featured_plugins_variant: SetupGuideVariant;
-      };
-    };
-
-export interface FeatureFlagIdentity {
-  apiKey: string;
-  distinctId: string;
-}
+  | RecordTelemetryEventRequest;
 
 export interface TelemetryService {
   capture(event: TelemetryEvent): void;
   setEnabled(enabled: boolean): void;
   isEnabled(): boolean;
-  featureFlagIdentity(): FeatureFlagIdentity | null;
-  setSharedProperty(name: string, value: string): void;
 }
 
 interface CreateTelemetryServiceArgs {
@@ -154,8 +116,6 @@ const noopTelemetryService: TelemetryService = {
   isEnabled: () => false,
   capture: () => {},
   setEnabled: () => {},
-  featureFlagIdentity: () => null,
-  setSharedProperty: () => {},
 };
 
 export function createNoopTelemetryService(): TelemetryService {
@@ -237,15 +197,10 @@ export async function createTelemetryService(
     os_release: osRelease,
     platform: process.platform,
   };
-  const sharedProperties = new Map<string, string>();
   return {
     isEnabled: () => telemetryEnabled,
     setEnabled(enabled: boolean): void {
       telemetryEnabled = enabled;
-    },
-    featureFlagIdentity: () => ({ apiKey: args.apiKey, distinctId }),
-    setSharedProperty(name: string, value: string): void {
-      sharedProperties.set(name, value);
     },
     capture(event: TelemetryEvent): void {
       if (!telemetryEnabled) return;
@@ -258,7 +213,6 @@ export async function createTelemetryService(
         event: event.name,
         properties: {
           ...commonProperties,
-          ...Object.fromEntries(sharedProperties),
           ...eventProperties,
           app_surface: appSurface,
           ...(request?.accessRoute

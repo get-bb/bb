@@ -1,30 +1,14 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
   experimental_copyToClipboard,
   UrlLink as UrlLink,
-  useBbNavigate,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
   useSdk,
-  type InternalDoNotUseSetupGuideSectionProps,
 } from "@get-bb/plugin-sdk/app";
-import { mobileAppDownloads } from "@bb/domain";
-import {
-  useAccountLogin,
-  type AccountLogin,
-  type AccountLoginTransport,
-} from "bb-plugin-bb-account/ui/account-login";
 import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
@@ -38,6 +22,7 @@ import {
   accountStatusSchema,
   loginPollOutputSchema,
   loginViewSchema,
+  type LoginView,
 } from "./src/account-client.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
@@ -51,16 +36,6 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
-import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
-import { SetupOptionRow } from "@bb/shared-ui/setup-option-row";
-import {
-  CodeDisplay,
-  DisclosureToggle,
-  InlineTextLink,
-  QuietTextAction,
-  SignInPanel,
-} from "@bb/shared-ui/sign-in-panel";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 
 function errorText(error: unknown): string {
@@ -84,6 +59,15 @@ interface PairErrorCopy {
   lead: string;
   linkLabel: string;
   tail: string;
+}
+
+const LOGIN_POLL_MS = 2_000;
+const LOGIN_POLL_MAX_MS = 30_000;
+
+function loginPollDelay(failures: number): number {
+  return failures === 0
+    ? LOGIN_POLL_MS
+    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
 }
 
 const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
@@ -1111,50 +1095,93 @@ function TurnOffDialog({
   );
 }
 
-function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
+function useAccountLogin(onSignedIn: () => void) {
   const sdk = useSdk();
-  const transport = useMemo<AccountLoginTransport>(
-    () => ({
-      start: () =>
-        sdk.plugins.callRpc({
+  const [login, setLogin] = useState<LoginView | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const start = useCallback(() => {
+    setStarting(true);
+    setError(null);
+    sdk.plugins
+      .callRpc({
+        pluginId: ACCOUNT_PLUGIN_ID,
+        method: "login.start",
+        input: { baseUrl: null },
+        outputSchema: loginViewSchema,
+      })
+      .then(
+        (view) => {
+          setStarting(false);
+          setLogin(view);
+        },
+        (rpcError: unknown) => {
+          setStarting(false);
+          setError(signInStartErrorText(rpcError));
+        },
+      );
+  }, [sdk]);
+
+  const pendingId = login?.state === "pending" ? login.id : null;
+  useEffect(() => {
+    if (pendingId === null) return;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = () => {
+      sdk.plugins
+        .callRpc({
           pluginId: ACCOUNT_PLUGIN_ID,
-          method: "login.start",
-          input: { baseUrl: null },
-          outputSchema: loginViewSchema,
-        }),
-      poll: (loginId) =>
-        sdk.plugins
-          .callRpc({
-            pluginId: ACCOUNT_PLUGIN_ID,
-            method: "login.poll",
-            input: { loginId },
-            outputSchema: loginPollOutputSchema,
-          })
-          .then((result) => result.login),
-      cancel: (loginId) =>
-        sdk.plugins
-          .callRpc({
-            pluginId: ACCOUNT_PLUGIN_ID,
-            method: "login.cancel",
-            input: { loginId },
-            outputSchema: loginPollOutputSchema.pick({ login: true }),
-          })
-          .then(() => {}),
-    }),
-    [sdk],
-  );
-  return useAccountLogin({
-    transport,
-    describeStartError: signInStartErrorText,
-    onSignedIn,
-    observedLogin: null,
-  });
+          method: "login.poll",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema,
+        })
+        .then(
+          (result) => {
+            failures = 0;
+            if (cancelled) return;
+            if (result.login !== null) setLogin(result.login);
+            if (result.login?.state === "signed-in") onSignedIn();
+          },
+          () => {
+            failures += 1;
+          },
+        )
+        .finally(() => {
+          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
+        });
+    };
+    timer = setTimeout(poll, LOGIN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [onSignedIn, pendingId, sdk]);
+
+  const cancel = useCallback(() => {
+    if (pendingId !== null) {
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.cancel",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema.pick({ login: true }),
+        })
+        .then(
+          () => {},
+          () => {},
+        );
+    }
+    setLogin(null);
+    setError(null);
+  }, [pendingId, sdk]);
+
+  return { login, starting, error, start, cancel };
 }
 
 function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
-  const navigate = useBbNavigate();
-  const { login, starting, error, start, cancel } =
-    useConnectAccountLogin(onSignedIn);
+  const { login, starting, error, start, cancel } = useAccountLogin(onSignedIn);
 
   if (login === null) {
     return (
@@ -1199,29 +1226,41 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   return (
-    <div className="w-full max-w-md">
-      <SignInPanel
-        status="Remote access turns on automatically after you sign in."
-        instruction={
-          <>
-            Finish signing in on{" "}
-            <InlineTextLink
-              href={login.verificationUrl}
-              onOpen={navigate.openUrl}
-            >
-              {hostOf(login.verificationUrl)}
-            </InlineTextLink>
-            .
-          </>
-        }
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "Sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
-        toggles={<QuietTextAction onClick={cancel}>Cancel</QuietTextAction>}
-      />
+    <div className="space-y-2.5 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+      <p className="text-xs text-muted-foreground">
+        Confirm this code on {hostOf(login.verificationUrl)}:
+      </p>
+      <p
+        aria-label="Sign-in code"
+        className="font-mono text-base font-semibold tracking-widest"
+      >
+        {login.userCode}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" asChild>
+          <UrlLink
+            href={login.verificationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open getbb.app
+            <Icon name="ExternalLink" className="size-3.5" />
+          </UrlLink>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={cancel}
+        >
+          Cancel
+        </Button>
+      </div>
+      <p className="flex items-center gap-2 text-xs text-subtle-foreground">
+        <Icon name="Spinner" className="size-3.5 animate-spin" />
+        Waiting for you to approve it. You can approve from any device.
+      </p>
     </div>
   );
 }
@@ -1607,581 +1646,6 @@ function ConnectSettingsSection() {
   );
 }
 
-type MobilePlatform = "ios" | "android";
-
-const MOBILE_APP_INSTALL_OPTIONS: readonly {
-  platform: MobilePlatform;
-  label: string;
-  url: string;
-}[] = [
-  {
-    platform: "ios",
-    label: "iPhone",
-    url: mobileAppDownloads.ios,
-  },
-  {
-    platform: "android",
-    label: "Android",
-    url: mobileAppDownloads.android,
-  },
-];
-
-const SETUP_GUIDE_DESCRIPTION =
-  "A private web address for your bb server, like me.getbb.app, to use bb from any browser or your phone. Your projects and files stay on your machines.";
-
-const PAIRING_CODE_RENEW_BEFORE_MS = 15_000;
-const PAIRING_CODE_RETRY_MS = 15_000;
-const PAIRING_LOOKUP_MS = 3_000;
-
-function SetupGuideError({ children }: { children: ReactNode }) {
-  return (
-    <p role="alert" className="text-xs text-destructive-text">
-      {children}
-    </p>
-  );
-}
-
-function AppInstallToggles({
-  label,
-  openPlatform,
-  onOpenPlatformChange,
-  trailing,
-}: {
-  label: ReactNode;
-  openPlatform: MobilePlatform | null;
-  onOpenPlatformChange: (platform: MobilePlatform | null) => void;
-  trailing?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {label}
-      <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
-        {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
-          const expanded = openPlatform === option.platform;
-          return (
-            <Fragment key={option.platform}>
-              {index > 0 ? <span aria-hidden="true">·</span> : null}
-              <DisclosureToggle
-                expanded={expanded}
-                caretWhenCollapsed={false}
-                leading={<MobilePlatformIcon platform={option.platform} />}
-                onToggle={() =>
-                  onOpenPlatformChange(expanded ? null : option.platform)
-                }
-              >
-                {option.label}
-              </DisclosureToggle>
-            </Fragment>
-          );
-        })}
-        {trailing === undefined ? null : (
-          <>
-            <span aria-hidden="true">·</span>
-            {trailing}
-          </>
-        )}
-      </p>
-    </div>
-  );
-}
-
-function HaveTheAppLink({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span className="underline underline-offset-2">I have the app</span>
-    </button>
-  );
-}
-
-function AppInstallQr({ platform }: { platform: MobilePlatform }) {
-  const install = MOBILE_APP_INSTALL_OPTIONS.find(
-    (option) => option.platform === platform,
-  );
-  if (install === undefined) return null;
-  return (
-    <div className="flex items-center gap-3">
-      <QrCodeImage
-        value={install.url}
-        alt={`QR code to install bb on ${install.label}`}
-        className="size-16 shrink-0 p-1"
-      />
-      <div className="flex flex-col items-start gap-2">
-        <p>Scan with your phone's camera.</p>
-        <QuietTextAction
-          icon="Copy"
-          onClick={() =>
-            void copyTextWithSdkToast(install.url, {
-              successMessage: "Install link copied",
-            })
-          }
-        >
-          Copy install link
-        </QuietTextAction>
-      </div>
-    </div>
-  );
-}
-
-function machineCodeErrorText(
-  code: MachineCodeErrorCode,
-  dashboardHost: string,
-): string {
-  switch (code) {
-    case "machine_limit":
-      return `Your ${dashboardHost} account has reached its device limit. Revoke a device you no longer use in the dashboard to pair this phone.`;
-    case "not_paired":
-      return "This bb is signed out of your bb account, so it can't pair a phone.";
-    case "network":
-      return "Couldn't reach getbb.app for a pairing code. bb keeps trying.";
-  }
-}
-
-type PhonePairing =
-  | { kind: "loading" }
-  | { kind: "code"; payload: MobilePairingPayload }
-  | { kind: "error"; code: MachineCodeErrorCode }
-  | { kind: "paired" };
-
-function usePhonePairing(active: boolean): PhonePairing {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const [pairing, setPairing] = useState<PhonePairing>({ kind: "loading" });
-  const [mintRequest, setMintRequest] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    rpc.call("createMachineCode").then(
-      (result) => {
-        if (!cancelled) {
-          setPairing({ kind: "code", payload: mobilePairingPayload(result) });
-        }
-      },
-      (rpcError: unknown) => {
-        if (!cancelled) {
-          setPairing({ kind: "error", code: toMachineCodeErrorCode(rpcError) });
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [active, mintRequest, rpc]);
-
-  const payload = pairing.kind === "code" ? pairing.payload : null;
-  useEffect(() => {
-    if (!active || payload === null) return;
-    const timer = setTimeout(
-      () => setMintRequest((request) => request + 1),
-      Math.max(
-        PAIRING_CODE_RETRY_MS,
-        payload.expiresAt - Date.now() - PAIRING_CODE_RENEW_BEFORE_MS,
-      ),
-    );
-    return () => clearTimeout(timer);
-  }, [active, payload]);
-
-  const errorCode = pairing.kind === "error" ? pairing.code : null;
-  useEffect(() => {
-    if (!active || errorCode !== "network") return;
-    const timer = setTimeout(
-      () => setMintRequest((request) => request + 1),
-      PAIRING_CODE_RETRY_MS,
-    );
-    return () => clearTimeout(timer);
-  }, [active, errorCode, mintRequest]);
-
-  const code = payload?.code ?? null;
-  useEffect(() => {
-    if (!active || code === null) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const lookup = () => {
-      rpc
-        .call("lookupMachineCode", { code })
-        .then(
-          (result) => {
-            if (!cancelled && result.consumed) setPairing({ kind: "paired" });
-          },
-          () => {},
-        )
-        .finally(() => {
-          if (!cancelled) timer = setTimeout(lookup, PAIRING_LOOKUP_MS);
-        });
-    };
-    timer = setTimeout(lookup, PAIRING_LOOKUP_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [active, code, rpc]);
-
-  return pairing;
-}
-
-function PairingCode({
-  pairing,
-  dashboardHost,
-}: {
-  pairing: PhonePairing;
-  dashboardHost: string;
-}) {
-  if (pairing.kind === "error") {
-    return (
-      <SetupGuideError>
-        {machineCodeErrorText(pairing.code, dashboardHost)}
-      </SetupGuideError>
-    );
-  }
-  if (pairing.kind !== "code") {
-    return (
-      <p role="status" className="flex items-center gap-2">
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        Getting a pairing code…
-      </p>
-    );
-  }
-  return (
-    <div className="flex items-stretch gap-3">
-      <QrCodeImage
-        value={encodeMobilePairingPayload(pairing.payload)}
-        alt="QR code to pair the bb mobile app"
-        className="size-16 shrink-0 p-1"
-      />
-      <CodeDisplay
-        className="flex-1"
-        code={pairing.payload.code}
-        label="Mobile pairing code"
-        copyLabel="Copy pairing code"
-        onCopy={(value) => void copyTextWithSdkToast(value)}
-      />
-    </div>
-  );
-}
-
-type PhoneStep = "install" | "pair";
-
-function PhonePairingSteps({
-  step,
-  onStepChange,
-  pairing,
-  dashboardHost,
-}: {
-  step: PhoneStep;
-  onStepChange: (step: PhoneStep) => void;
-  pairing: PhonePairing;
-  dashboardHost: string;
-}) {
-  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
-  return (
-    <div className="flex flex-col items-start gap-3 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
-      {step === "install" ? (
-        <>
-          <AppInstallToggles
-            label={
-              <span className="text-foreground">
-                Install the bb app on your phone:
-              </span>
-            }
-            openPlatform={openPlatform}
-            onOpenPlatformChange={setOpenPlatform}
-            trailing={<HaveTheAppLink onClick={() => onStepChange("pair")} />}
-          />
-          {openPlatform === null ? null : (
-            <AppInstallQr platform={openPlatform} />
-          )}
-        </>
-      ) : (
-        <>
-          <p className="text-foreground">Open the bb app and scan this code:</p>
-          <div className="w-full">
-            <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
-          </div>
-          <QuietTextAction onClick={() => onStepChange("install")}>
-            Don't have the app yet?
-          </QuietTextAction>
-        </>
-      )}
-    </div>
-  );
-}
-
-function ConnectOnSetupRow({
-  status,
-  onPhone,
-}: {
-  status: ConnectStatus;
-  onPhone: boolean;
-}) {
-  const [step, setStep] = useState<PhoneStep>("install");
-  const pairing = usePhonePairing(!onPhone && step === "pair");
-  const url = status.url;
-  const showsSteps = !onPhone && pairing.kind !== "paired";
-  return (
-    <SetupOptionRow
-      icon="ComputerCloud"
-      title="bb connect"
-      footer={
-        showsSteps ? (
-          <PhonePairingSteps
-            step={step}
-            onStepChange={setStep}
-            pairing={pairing}
-            dashboardHost={hostOf(status.dashboardUrl)}
-          />
-        ) : null
-      }
-      description={
-        <div className="flex items-start">
-          <span className="-ml-8 mr-3 flex h-4 w-5 shrink-0 items-center justify-center">
-            <Icon
-              name="CircleCheck"
-              aria-hidden
-              className="size-3.5 text-success"
-            />
-          </span>
-          <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-foreground @max-xl/onboarding:flex-col @max-xl/onboarding:items-start">
-            <span>bb connect is on</span>
-            {url === null ? null : (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="text-subtle-foreground @max-xl/onboarding:hidden"
-                >
-                  ·
-                </span>
-                <span className="flex min-w-0 max-w-full items-center gap-1">
-                  <code className="min-w-0 truncate font-mono text-xs">
-                    {url}
-                  </code>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="-my-1 size-6 shrink-0"
-                    aria-label="Copy URL"
-                    onClick={() => void copyTextWithSdkToast(url)}
-                  >
-                    <Icon name="Copy" aria-hidden className="size-3.5" />
-                  </Button>
-                </span>
-              </>
-            )}
-          </p>
-        </div>
-      }
-    >
-      {!onPhone && pairing.kind === "paired" ? (
-        <p className="flex items-center gap-1.5 text-foreground">
-          <Icon
-            name="CircleCheck"
-            aria-hidden
-            className="size-3.5 text-success"
-          />
-          Phone paired
-        </p>
-      ) : null}
-    </SetupOptionRow>
-  );
-}
-
-function setupGuideLoginPanel(
-  login: AccountLogin["login"],
-  openUrl: (url: string) => boolean,
-  last: boolean,
-): ReactNode {
-  if (login?.state !== "pending") return null;
-  return (
-    <div className="flex flex-col gap-3">
-      <p
-        role="status"
-        className="flex items-center gap-1.5 pl-8 text-xs text-muted-foreground"
-      >
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        <span>
-          Finish signing in on{" "}
-          <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
-            {hostOf(login.verificationUrl)}
-          </InlineTextLink>
-          .
-        </span>
-      </p>
-      <SignInPanel
-        flush
-        flushBottom={last}
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "bb connect sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
-      />
-    </div>
-  );
-}
-
-function setupGuideLoginContent(login: AccountLogin["login"]): ReactNode {
-  if (login === null) return null;
-  if (login.state === "pending") return null;
-  if (login.state === "signed-in") {
-    return (
-      <p role="status" className="flex items-center gap-2">
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        Signed in. Turning on bb connect…
-      </p>
-    );
-  }
-  return (
-    <SetupGuideError>
-      {login.message ?? "Sign-in didn't finish."}
-    </SetupGuideError>
-  );
-}
-
-function ConnectSetupGuideSection({
-  onPhone,
-  onSetupStarted,
-}: InternalDoNotUseSetupGuideSectionProps) {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const navigate = useBbNavigate();
-  const { status, loadError, refetch } = useConnectStatus();
-  const { login, starting, error, start } = useConnectAccountLogin(refetch);
-  const [turningOn, setTurningOn] = useState(false);
-  const [turnOnError, setTurnOnError] = useState<string | null>(null);
-  const signedInLoginId = login?.state === "signed-in" ? login.id : null;
-  const remoteAccessOff = status !== null && status.paired && !status.enabled;
-  const turnedOnForLoginRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (signedInLoginId === null || !remoteAccessOff) return;
-    if (turnedOnForLoginRef.current === signedInLoginId) return;
-    turnedOnForLoginRef.current = signedInLoginId;
-    rpc
-      .call("setRemoteAccess", { enabled: true })
-      .then(refetch, (rpcError: unknown) =>
-        setTurnOnError(errorText(rpcError)),
-      );
-  }, [refetch, remoteAccessOff, rpc, signedInLoginId]);
-
-  if (
-    status !== null &&
-    status.paired &&
-    status.enabled &&
-    status.state === "connected"
-  ) {
-    return <ConnectOnSetupRow status={status} onPhone={onPhone} />;
-  }
-
-  const connectingState =
-    status !== null && status.paired && status.enabled ? status.state : null;
-  const connecting = connectingState !== null;
-  const signingIn =
-    login !== null &&
-    (login.state === "pending" ||
-      (login.state === "signed-in" && turnOnError === null));
-  const setUp = () => {
-    onSetupStarted();
-    setTurnOnError(null);
-    if (status === null) {
-      refetch();
-      return;
-    }
-    if (!status.paired) {
-      start();
-      return;
-    }
-    setTurningOn(true);
-    rpc.call("setRemoteAccess", { enabled: true }).then(
-      () => {
-        setTurningOn(false);
-        refetch();
-      },
-      (rpcError: unknown) => {
-        setTurningOn(false);
-        setTurnOnError(errorText(rpcError));
-      },
-    );
-  };
-
-  const showsContent =
-    connecting ||
-    (login !== null && login.state !== "pending") ||
-    error !== null ||
-    turnOnError !== null ||
-    loadError !== null;
-
-  return (
-    <SetupOptionRow
-      icon="ComputerCloud"
-      title="bb connect"
-      description={SETUP_GUIDE_DESCRIPTION}
-      panel={
-        connecting
-          ? null
-          : setupGuideLoginPanel(login, navigate.openUrl, !showsContent)
-      }
-      action={
-        connecting || signingIn ? undefined : (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={starting || turningOn}
-            onClick={setUp}
-          >
-            {starting || turningOn ? (
-              <Icon name="Spinner" className="size-4 animate-spin" />
-            ) : null}
-            Set up
-          </Button>
-        )
-      }
-    >
-      {showsContent ? (
-        <>
-          {connecting ? (
-            <p role="status" className="flex items-center gap-2">
-              <Icon
-                name="Spinner"
-                aria-hidden
-                className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-              />
-              {connectingState === "reconnecting"
-                ? "bb connect is reconnecting…"
-                : "bb connect is starting…"}
-            </p>
-          ) : turnOnError !== null ? null : (
-            setupGuideLoginContent(login)
-          )}
-          {error !== null ? <SetupGuideError>{error}</SetupGuideError> : null}
-          {turnOnError !== null ? (
-            <SetupGuideError>{turnOnError}</SetupGuideError>
-          ) : null}
-          {loadError !== null ? (
-            <SetupGuideError>
-              Couldn't load bb connect: {loadError}
-            </SetupGuideError>
-          ) : null}
-        </>
-      ) : null}
-    </SetupOptionRow>
-  );
-}
-
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "remote-access",
@@ -2193,9 +1657,5 @@ export default definePluginApp((app) => {
     id: "mobile-pairing",
     experimental_page: "mobile",
     component: MobilePairingSection,
-  });
-  app.slots.internal_DO_NOT_USE_setupGuideSection({
-    id: "remote-access",
-    component: ConnectSetupGuideSection,
   });
 });

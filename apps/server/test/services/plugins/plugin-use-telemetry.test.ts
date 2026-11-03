@@ -40,8 +40,6 @@ function arrange(enabled = true) {
     capture,
     isEnabled: () => enabled,
     setEnabled: () => {},
-    featureFlagIdentity: () => null,
-    setSharedProperty: () => {},
   };
   return { deps: { db, telemetry }, capture };
 }
