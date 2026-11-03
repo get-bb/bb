@@ -349,6 +349,21 @@ describe("interactive request scenarios", () => {
       });
 
       expect(ctx.interactiveRequests).toHaveLength(0);
+      const attempts = ctx.events.flatMap((event) =>
+        event.threadId === threadId &&
+        event.type === "item/completed" &&
+        event.item.type === "commandExecution" &&
+        event.item.command.includes(token)
+          ? [event.item]
+          : [],
+      );
+      expect(attempts.length).toBeGreaterThan(0);
+      for (const attempt of attempts) {
+        expect(
+          attempt.status === "failed" || attempt.approvalStatus === "denied",
+          `${attempt.status}/${attempt.approvalStatus}: ${attempt.command}`,
+        ).toBe(true);
+      }
       expect(existsSync(filePath)).toBe(false);
     } finally {
       await ctx.runtime.shutdown();
@@ -472,10 +487,10 @@ describe("interactive request scenarios", () => {
     }
   }, 75_000);
 
-  it.concurrent("allows Codex automatic review to approve workspace writes without user interaction", async () => {
+  it.concurrent("allows Codex automatic review to approve an outside-workspace write without user interaction", async () => {
     const ctx = createTestRuntime("codex");
-    const fileName = createTempFileName("codex-auto-write");
-    const filePath = join(ctx.tmpDir, fileName);
+    const outsideDir = mkdtempSync(join(process.cwd(), ".bb-codex-auto-"));
+    const filePath = join(outsideDir, createTempFileName("codex-auto-write"));
     const token = createToken("CODEX_AUTO_APPROVED");
 
     try {
@@ -492,7 +507,7 @@ describe("interactive request scenarios", () => {
         providerId: "codex",
         options,
         instructions:
-          "When the user asks you to run an exact shell command, run that shell command exactly once. Then report DONE.",
+          "When the user asks you to run an exact shell command, run that shell command exactly once. If it needs to write outside the sandbox, request escalated permissions for it. Then report DONE.",
       });
 
       await ctx.runtime.runTurn({
@@ -502,8 +517,8 @@ describe("interactive request scenarios", () => {
         input: [
           promptTextInput({
             text:
-              `Run this exact shell command: printf '${token}' > ${fileName}. ` +
-              "After the command finishes, reply with exactly DONE.",
+              `Run this exact shell command: printf '${token}' > '${filePath}'. ` +
+              "It writes outside the sandbox, so request escalated permissions for it. If it is denied or blocked, report the exact error. Otherwise reply DONE.",
           }),
         ],
       });
@@ -519,6 +534,7 @@ describe("interactive request scenarios", () => {
       expect(readFileSync(filePath, "utf8")).toBe(token);
     } finally {
       await ctx.runtime.shutdown();
+      rmSync(outsideDir, { recursive: true, force: true });
       cleanup(ctx);
     }
   }, 75_000);
@@ -1052,10 +1068,10 @@ describe("interactive request scenarios", () => {
     }
   }, 75_000);
 
-  it.concurrent("allows Claude automatic review to approve workspace writes without user interaction", async () => {
+  it.concurrent("allows Claude automatic review to approve an outside-workspace Bash write without user interaction", async () => {
     const ctx = createTestRuntime("claude-code");
-    const fileName = createTempFileName("claude-auto-write");
-    const filePath = join(ctx.tmpDir, fileName);
+    const outsideDir = mkdtempSync(join(process.cwd(), ".bb-claude-auto-"));
+    const filePath = join(outsideDir, createTempFileName("claude-auto-write"));
     const token = createToken("CLAUDE_AUTO_APPROVED");
 
     try {
@@ -1082,7 +1098,7 @@ describe("interactive request scenarios", () => {
         input: [
           promptTextInput({
             text:
-              `Use Bash to run exactly: printf '${token}' > ${fileName}. ` +
+              `Use Bash to run exactly: printf '${token}' > '${filePath}'. ` +
               "If it is denied, say DENIED.",
           }),
         ],
@@ -1099,6 +1115,7 @@ describe("interactive request scenarios", () => {
       expect(readFileSync(filePath, "utf8")).toBe(token);
     } finally {
       await ctx.runtime.shutdown();
+      rmSync(outsideDir, { recursive: true, force: true });
       cleanup(ctx);
     }
   }, 75_000);
