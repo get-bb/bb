@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { useExperimentBootstrap } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
 import { DOWNLOAD_PAGE_TITLE, DownloadPage } from "../landing/download-page";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
@@ -18,6 +17,6 @@ export const Route = createFileRoute("/download/")({
 });
 
 function DownloadRoute() {
-  useInitAnalytics(useExperimentBootstrap());
+  useInitAnalytics();
   return <DownloadPage />;
 }

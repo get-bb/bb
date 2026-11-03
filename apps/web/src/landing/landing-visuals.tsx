@@ -48,6 +48,10 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink, GitHubLink } from "./cta";
@@ -77,6 +81,16 @@ import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
+  const simple = useExperiment("homepage-download-area") === "test";
+  useExperimentExposure("homepage-download-area", "desktop");
+  return simple ? (
+    <SimpleInstallOptions placement={placement} />
+  ) : (
+    <CurrentInstallOptions placement={placement} />
+  );
+}
+
+function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =

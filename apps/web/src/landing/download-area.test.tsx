@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { ExperimentsProvider } from "../experiments/context";
 import { DownloadPage } from "./download-page";
 import { InstallOptions, SimpleInstallOptions } from "./landing-visuals";
 import { CLI_COMMAND, GITHUB_URL } from "./site";
@@ -28,6 +29,27 @@ describe("homepage-download-area install block", () => {
     expect(desktopNote).toContain(`href="${GITHUB_URL}"`);
     expect(touchNote).toContain(`href="${GITHUB_URL}"`);
     expect(touchNote).toContain("bb runs on macOS, Windows, and Linux");
+  });
+});
+
+describe("homepage-download-area outside the homepage", () => {
+  it.each([
+    ["control", false],
+    ["test", true],
+  ])("renders the %s install block wherever it is used", (variant, simple) => {
+    const html = renderToStaticMarkup(
+      <ExperimentsProvider
+        value={{
+          distinctID: null,
+          featureFlags: { "homepage-download-area": variant },
+          preview: false,
+        }}
+      >
+        <InstallOptions placement="closer" />
+      </ExperimentsProvider>,
+    );
+    expect(html.includes("Other platforms")).toBe(simple);
+    expect(html.includes(CLI_COMMAND)).toBe(!simple);
   });
 });
 

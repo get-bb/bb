@@ -93,7 +93,6 @@ import {
   Band,
   InstallOptions,
   ProviderChips,
-  SimpleInstallOptions,
   CustomizeBuild,
   DelegationTree,
   PluginMorph,
@@ -1237,11 +1236,7 @@ const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
 };
 
 function CloserInstall() {
-  return useExperiment("homepage-download-area") === "test" ? (
-    <SimpleInstallOptions placement="closer" />
-  ) : (
-    <InstallOptions placement="closer" />
-  );
+  return <InstallOptions placement="closer" />;
 }
 
 function TodayBelowFold() {
@@ -1404,11 +1399,6 @@ function LandingPage() {
     "homepage-below-fold",
     "desktop",
   );
-  const InstallBlock =
-    useExperiment("homepage-download-area") === "test"
-      ? SimpleInstallOptions
-      : InstallOptions;
-  useExperimentExposure("homepage-download-area", "desktop");
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
   useExperimentExposure("homepage-aa", "all");
@@ -1477,7 +1467,7 @@ function LandingPage() {
           </p>
         )}
 
-        <InstallBlock placement="hero" />
+        <InstallOptions placement="hero" />
 
         <AgentRow />
       </header>
