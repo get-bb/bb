@@ -3107,6 +3107,26 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: fw-fade-out 0.6s ease forwards;
 }
 
+/* Stop babysitting: by the end of the loop the first message has scrolled
+   above the feed. Collapsing the updates would pull it back down into view
+   just before the restart, so the feed fades out in place instead, and the
+   first message of the next loop glides up as it fades in. */
+.bw-lead .leaving .bw-feed > .bw-reveal,
+.bw-lead .leaving .bw-feed > .msg-user {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+.bw-lead .bw-feed > .msg-user {
+  animation: bw-msg-in 0.7s var(--fw-ease) both;
+}
+
+@keyframes bw-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
 @keyframes bw-toast {
   from {
     opacity: 0;
