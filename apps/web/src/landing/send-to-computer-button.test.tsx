@@ -23,22 +23,22 @@ describe("send download link URL", () => {
     history.replaceState(null, "", "/");
   });
 
-  it("points at the homepage with the page's ad parameters and the share marker", () => {
+  it("points at the download page with the page's ad parameters and the share marker", () => {
     expect(
       sendLinkUrl(
         "https://getbb.app/guides/run-agents-in-parallel?ref=x&utm_source=google&utm_medium=cpc&utm_campaign=c1&utm_term=t&utm_content=v&gclid=abc&gbraid=gb&wbraid=wb#step-2",
       ),
     ).toBe(
-      "https://getbb.app/?utm_source=google&utm_medium=cpc&utm_campaign=c1&utm_term=t&utm_content=v&gclid=abc&gbraid=gb&wbraid=wb&via=share",
+      "https://getbb.app/download?utm_source=google&utm_medium=cpc&utm_campaign=c1&utm_term=t&utm_content=v&gclid=abc&gbraid=gb&wbraid=wb&via=share",
     );
   });
 
   it("adds only the fixed marker when the page has no ad parameters", () => {
     expect(sendLinkUrl("https://getbb.app/changelog")).toBe(
-      "https://getbb.app/?via=share",
+      "https://getbb.app/download?via=share",
     );
     expect(sendLinkUrl("https://getbb.app/?via=elsewhere")).toBe(
-      "https://getbb.app/?via=share",
+      "https://getbb.app/download?via=share",
     );
   });
 
@@ -48,13 +48,13 @@ describe("send download link URL", () => {
     const stop = carryUtmToDownloadLinks(() => null);
     stop();
     expect(sendLinkUrl(window.location.href)).toBe(
-      `${window.location.origin}/?utm_source=google&via=share`,
+      `${window.location.origin}/download?utm_source=google&via=share`,
     );
   });
 });
 
 describe("send download link outcome", () => {
-  const url = "https://getbb.app/?via=share";
+  const url = "https://getbb.app/download?via=share";
 
   it("reports shared once the share sheet resolves", async () => {
     const share = vi.fn(async () => {});
@@ -120,7 +120,7 @@ describe("send download link button", () => {
     expect(html).toContain("Send download link");
   });
 
-  it("shares the homepage link and records the click and the result", async () => {
+  it("shares the download page link and records the click and the result", async () => {
     const share = vi.fn(async () => {});
     vi.stubGlobal("navigator", { share });
     history.replaceState(null, "", "/changelog?utm_source=google&gclid=abc");
@@ -136,7 +136,7 @@ describe("send download link button", () => {
     expect(share).toHaveBeenCalledWith(
       expect.objectContaining({
         text: SHARE_TEXT,
-        url: `${window.location.origin}/?utm_source=google&gclid=abc&via=share`,
+        url: `${window.location.origin}/download?utm_source=google&gclid=abc&via=share`,
       }),
     );
     expect(vi.mocked(trackLandingEvent).mock.calls).toEqual([

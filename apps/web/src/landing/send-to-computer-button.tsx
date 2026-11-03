@@ -6,7 +6,12 @@ import { copyPlainText } from "../lib/copy-plain-text";
 import type { SendToComputerOutcome } from "./analytics";
 import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
-import { CAMPAIGN_PARAM_NAMES, SEND_LINK_VIA_PARAM, SITE_TITLE } from "./site";
+import {
+  CAMPAIGN_PARAM_NAMES,
+  DOWNLOAD_PAGE_PATH,
+  SEND_LINK_VIA_PARAM,
+  SITE_TITLE,
+} from "./site";
 
 export const SEND_LINK_MARKER = {
   name: SEND_LINK_VIA_PARAM,
@@ -15,7 +20,7 @@ export const SEND_LINK_MARKER = {
 
 export function sendLinkUrl(pageHref: string): string {
   const page = new URL(pageHref);
-  const link = new URL("/", page.origin);
+  const link = new URL(DOWNLOAD_PAGE_PATH, page.origin);
   const campaignParams: ReadonlyArray<string> = CAMPAIGN_PARAM_NAMES;
   for (const [name, value] of page.searchParams) {
     if (campaignParams.includes(name)) {
