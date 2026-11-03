@@ -547,6 +547,7 @@ export function commandRow({
     status,
     callId: callId ?? id,
     command,
+    description: null,
     cwd,
     source,
     output,

@@ -80,6 +80,17 @@ describe("client telemetry events", () => {
           },
         },
         {
+          name: "recommendation",
+          properties: {
+            resource_type: "plugin",
+            resource_id: "bb--prompt-library",
+            recommendation_id: "V1StGXR8_Z5jdHi6B-myT",
+            action: "deselected",
+            surface: "onboarding",
+            entry: "first_run",
+          },
+        },
+        {
           name: "onboarding_operation",
           properties: {
             entry: "replay",

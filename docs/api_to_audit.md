@@ -1305,6 +1305,50 @@ can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
 current version only). Decide whether the Cloudflare machine tunnel should
 move onto the same frpc runner once next replaces it.
 
+## `app.slots.internal_DO_NOT_USE_setupGuideSection` (`@get-bb/plugin-sdk/app`)
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_setupGuideSection({ id, component })` registers one row
+for the first-run setup guide's "Where you use bb" group. Core renders the
+group heading and the `<ul>`; the component renders the `<li>` (the connect
+plugin uses `SetupOptionRow` from `@bb/shared-ui/setup-option-row`). The
+component receives `InternalDoNotUseSetupGuideSectionProps`:
+`{ onPhone, onSetupStarted }`. `onPhone` is true when the guide is open on a
+phone, so the row hides install links and phone pairing. The row calls
+`onSetupStarted()` when the user starts setting it up, so the guide can record
+the step. Core's `PluginSetupGuideSections` renders a plugin's rows through
+the ordinary plugin slot boundary, and renders the caller's `fallback` when the
+plugin registers none (disabled or not installed) or its row crashes.
+
+Callers: the bundled `connect` plugin only. Core caller: the onboarding
+Devices step, which renders `PluginSetupGuideSections` for `connect`.
+
+**Audit before stabilizing.** Decide whether other plugins should contribute
+setup guide rows, which groups they may target, and whether the guide should
+own the row chrome instead of the plugin rendering `SetupOptionRow`.
+
+## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` (`@get-bb/plugin-sdk/app`)
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_onSetupStarted` is set only when the setup guide renders a
+plugin's settings section inline (the current guide's Devices step expands the
+bb connect settings under Set up). The section calls it when the user actually
+starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
+code is submitted, or Turn on is pressed, so the current guide records
+`remote_access` `started` at the same moment as the redesigned guide's
+`onSetupStarted`. Core's `PluginSettingsSections` passes it through its
+`onSetupStarted` prop; Settings never sets it.
+
+Callers: the bundled `connect` plugin only. Core caller: the onboarding
+Devices step (current guide), which renders `PluginSettingsSections` for
+`connect`.
+
+**Audit before stabilizing.** Decide whether the setup guide should render
+setup guide rows in both variants instead, which would make this prop
+unnecessary.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto
@@ -3913,17 +3957,36 @@ through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit`
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method. The setup guide's
-Plugins step reports `recommendation` `shown` and `selected` with a per-visit
-`recommendation_id`; `selected` also stores that id in server-owned settings
+Plugins step reports `recommendation` `shown`, `selected` and `deselected`
+(a featured plugin switched back off) with a per-visit `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts and, for the Projects step,
 whether the scan ran out of time, how many folders it could not open, and a
 failure reason (`no_host`, `host_unavailable`, `timed_out`, or `other`).
+`onboarding_exposed` (`entry`) marks the guide being shown; the server saves
+both assignments, adds `setup_guide_variant`, `setup_guide_source`,
+`featured_plugins_variant` and `featured_plugins_source`, sets both variants
+as person properties (`$set`), and sends `$feature_flag_called` for each
+variant that came from a PostHog flag. Every setup-guide event gets
+`setup_guide_variant` and `featured_plugins_variant` from the server.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
+
+## `PluginBbSdk.system.experimental_setupGuide`
+
+Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new",
+featuredPluginEntryIds: string[] | null }`, the first-run setup guide this
+install sees. Flag resolution, saved assignments, and the
+`BB_SETUP_GUIDE_VARIANT` override are described under Setup guide in
+[configuration.md](configuration.md#general-settings). Core caller:
+`apps/app/src/components/onboarding/OnboardingGate.tsx`.
+
+Stabilize or remove when the setup-guide experiment concludes; decide then
+whether a general server-evaluated experiment surface is wanted, and if so
+replace this single-purpose method with it.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 

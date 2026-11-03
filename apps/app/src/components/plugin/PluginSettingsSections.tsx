@@ -4,14 +4,25 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
+export function PluginSettingsSections({
+  pluginId,
+  onSetupStarted,
+}: {
+  pluginId: string;
+  onSetupStarted?: () => void;
+}) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
     (section) =>
       section.pluginId === pluginId && section.experimental_page === undefined,
   );
   if (sections.length === 0) return null;
-  return <PluginSettingsSectionList sections={sections} />;
+  return (
+    <PluginSettingsSectionList
+      sections={sections}
+      onSetupStarted={onSetupStarted}
+    />
+  );
 }
 
 export function PluginMobileSettingsSections({
@@ -30,8 +41,10 @@ export function PluginMobileSettingsSections({
 
 function PluginSettingsSectionList({
   sections,
+  onSetupStarted,
 }: {
   sections: readonly PluginSettingsSectionSlot[];
+  onSetupStarted?: (() => void) | undefined;
 }) {
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
@@ -54,7 +67,11 @@ function PluginSettingsSectionList({
               slotKind="settingsSection"
               slotId={section.id}
             >
-              <section.component />
+              <section.component
+                {...(onSetupStarted === undefined
+                  ? {}
+                  : { internal_DO_NOT_USE_onSetupStarted: onSetupStarted })}
+              />
             </PluginSlotMount>
           </div>
         );

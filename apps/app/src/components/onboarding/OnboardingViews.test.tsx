@@ -1,7 +1,24 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentStep, type OnboardingAgent } from "./OnboardingViews";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import {
+  RedesignedDevicesStep,
+  AgentInstallErrorDetails,
+  AgentSignInInstruction,
+  AgentSignInPanel,
+  AgentStep,
+  OnboardingLayout,
+  ProjectsStep,
+  type OnboardingAgent,
+  type OnboardingRepo,
+} from "./OnboardingViews";
 import type { AgentSetupState } from "./onboarding-model";
 
 function agent(id: string, state: AgentSetupState): OnboardingAgent {
@@ -53,5 +70,516 @@ describe("AgentStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "View log" }));
 
     expect(handlers.onViewInstallLog).toHaveBeenCalledExactlyOnceWith("codex");
+  });
+});
+
+describe("AgentStep in the redesigned guide", () => {
+  it("keeps a failed install quiet and keeps a way out of signing in", () => {
+    const onCancelSignIn = vi.fn();
+    render(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            agent("codex", {
+              status: "installFailed",
+              message: "Couldn't install. Check your connection and retry.",
+              canInstall: true,
+            }),
+            agent("claude-code", { status: "signingIn" }),
+          ]}
+          onSignIn={vi.fn()}
+          onInstall={vi.fn()}
+          onViewInstallLog={vi.fn()}
+          onCancelSignIn={onCancelSignIn}
+          onRecheck={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: /Retry/u })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "View log" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel signing in to claude-code" }),
+    );
+    expect(onCancelSignIn).toHaveBeenCalledExactlyOnceWith("claude-code");
+    expect(
+      screen.getByText(
+        "Don't see your agent? bb picks up other ACP agents once you have them installed.",
+      ),
+    ).toBeTruthy();
+  });
+});
+
+describe("OnboardingLayout stepper", () => {
+  function renderAt(skipped: ReadonlySet<"agent" | "projects">) {
+    const onSelectStep = vi.fn();
+    render(
+      <OnboardingLayout
+        step="plugins"
+        composition="centered"
+        showSkipAll={false}
+        skippedSteps={skipped}
+        title="Make bb yours"
+        description=""
+        primaryLabel="Continue"
+        onPrimary={vi.fn()}
+        onSelectStep={onSelectStep}
+        onSkipAll={vi.fn()}
+      >
+        <div />
+      </OnboardingLayout>,
+    );
+    return onSelectStep;
+  }
+
+  it("marks a step passed without finishing as skipped and still lets people go back to it", () => {
+    const onSelectStep = renderAt(new Set(["projects"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Projects (skipped)" }));
+
+    expect(onSelectStep).toHaveBeenCalledExactlyOnceWith("projects");
+    expect(screen.getByRole("button", { name: "Agent" })).toBeTruthy();
+    expect(screen.queryByText("Skip setup")).toBeNull();
+  });
+});
+
+describe("ProjectsStep selection", () => {
+  function repo(id: string, added = false): OnboardingRepo {
+    return {
+      id,
+      name: id,
+      path: `/projects/${id}`,
+      lastActive: "1h ago",
+      remote: null,
+      added,
+    };
+  }
+
+  function renderProjects(args: {
+    selection?: "line" | "header";
+    repos: OnboardingRepo[];
+    selectedIds: string[];
+  }) {
+    const handlers = {
+      onToggle: vi.fn(),
+      onSelectAll: vi.fn(),
+      onSelectNone: vi.fn(),
+      onAddFolder: vi.fn(),
+      onRetry: vi.fn(),
+    };
+    render(
+      <ProjectsStep
+        {...(args.selection === undefined ? {} : { selection: args.selection })}
+        status={{ kind: "results", truncated: false }}
+        repos={args.repos}
+        selectedIds={new Set(args.selectedIds)}
+        {...handlers}
+      />,
+    );
+    return handlers;
+  }
+
+  it("keeps today's count line by default", () => {
+    renderProjects({ repos: [repo("a"), repo("b")], selectedIds: ["a"] });
+
+    expect(screen.getByText("1 of 2 selected")).toBeTruthy();
+    expect(
+      screen.queryByRole("checkbox", { name: "Select all projects" }),
+    ).toBeNull();
+  });
+
+  it("selects every project from a partly selected header", () => {
+    const handlers = renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b"), repo("c", true)],
+      selectedIds: ["a"],
+    });
+
+    expect(screen.queryByText(/selected/u)).toBeNull();
+    const header = screen.getByRole("checkbox", {
+      name: "Select all projects",
+    });
+    expect(header.getAttribute("data-state")).toBe("indeterminate");
+    fireEvent.click(header);
+
+    expect(handlers.onSelectAll).toHaveBeenCalledOnce();
+    expect(handlers.onSelectNone).not.toHaveBeenCalled();
+  });
+
+  it("clears the selection when every selectable project is checked", () => {
+    const handlers = renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b"), repo("c", true)],
+      selectedIds: ["a", "b"],
+    });
+
+    const header = screen.getByRole("checkbox", {
+      name: "Clear project selection",
+    });
+    expect(header.getAttribute("data-state")).toBe("checked");
+    fireEvent.click(header);
+
+    expect(handlers.onSelectNone).toHaveBeenCalledOnce();
+  });
+
+  it("disables the header when every project is already added", () => {
+    renderProjects({
+      selection: "header",
+      repos: [repo("a", true)],
+      selectedIds: [],
+    });
+
+    const header = screen.getByRole("checkbox", {
+      name: "Select all projects",
+    });
+    expect(header.getAttribute("data-state")).toBe("unchecked");
+    expect(header.hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("AgentSignInInstruction", () => {
+  function renderInstruction(
+    url: string | null,
+    overrides: { userCode?: string; paste?: boolean } = {},
+  ) {
+    render(
+      <p data-testid="instruction">
+        <AgentSignInInstruction
+          agentName="Cursor"
+          view={{
+            guide:
+              url === null
+                ? null
+                : {
+                    url,
+                    userCode: overrides.userCode ?? null,
+                    acceptsPastedCode: overrides.paste ?? false,
+                  },
+            terminalVisible: false,
+            started: url !== null,
+          }}
+          alternate={null}
+          onOpenUrl={vi.fn()}
+          onUseAlternate={vi.fn()}
+        />
+      </p>,
+    );
+    return screen.getByTestId("instruction");
+  }
+
+  it("names the website to finish signing in on", () => {
+    const line = renderInstruction("https://www.cursor.com/login");
+
+    expect(screen.getByRole("link", { name: "cursor.com" })).toBeTruthy();
+    expect(line.textContent).toBe("Finish signing in on cursor.com.");
+  });
+
+  it("names the website for paste sign-ins", () => {
+    expect(
+      renderInstruction("https://claude.ai/oauth/authorize", { paste: true })
+        .textContent,
+    ).toBe("Sign in on claude.ai, then paste the code it shows you.");
+  });
+
+  it("falls back to the browser when the URL has no website", () => {
+    expect(renderInstruction("file:///tmp/sign-in").textContent).toBe(
+      "Finish signing in in your browser.",
+    );
+  });
+});
+
+describe("AgentSignInPanel", () => {
+  it("stays hidden while sign-in is still starting", () => {
+    const { container } = render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Cursor"
+        view={{ guide: null, terminalVisible: false, started: false }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).toBe("");
+  });
+
+  it("keeps the terminal toggle once the terminal was hidden after showing", () => {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Cursor"
+        view={{ guide: null, terminalVisible: false, started: true }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Show terminal")).toBeTruthy();
+  });
+
+  it("holds only the controls, not the instruction or a waiting line", () => {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Claude Code"
+        view={{
+          guide: {
+            url: "https://claude.ai/oauth/authorize",
+            userCode: null,
+            acceptsPastedCode: true,
+          },
+          terminalVisible: false,
+          started: true,
+        }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("textbox", { name: "Claude Code authorization code" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/paste the code it shows you/u)).toBeNull();
+    expect(screen.queryByText(/continues automatically/u)).toBeNull();
+  });
+});
+
+function renderQuiet(agents: OnboardingAgent[]) {
+  const handlers = {
+    onSignIn: vi.fn(),
+    onInstall: vi.fn(),
+    onViewInstallLog: vi.fn(),
+    onCancelSignIn: vi.fn(),
+    onRecheck: vi.fn(),
+  };
+  const view = render(
+    <TooltipProvider>
+      <AgentStep quiet machineName="bee" agents={agents} {...handlers} />
+    </TooltipProvider>,
+  );
+  return { ...view, handlers };
+}
+
+function rowOf(id: string): HTMLElement {
+  const row = document.querySelector(`[data-agent-id="${id}"]`);
+  if (!(row instanceof HTMLElement)) throw new Error(`no row for ${id}`);
+  return row;
+}
+
+function hasSubtitle(id: string): boolean {
+  const column = within(rowOf(id)).getByText(id).parentElement;
+  return (column?.childElementCount ?? 0) > 1;
+}
+
+describe("AgentStep progress in the redesign", () => {
+  it("drops subtitles the button already says and keeps informative ones", () => {
+    renderQuiet([
+      agent("claude-code", {
+        status: "signIn",
+        reason: "signedOut",
+        canSignIn: true,
+      }),
+      {
+        ...agent("pi", {
+          status: "signIn",
+          reason: "signedOut",
+          canSignIn: true,
+        }),
+        setup: "connect",
+      },
+      agent("codex", { status: "install", canInstall: true }),
+      agent("cursor", { status: "ready", detail: "me@example.com · Pro" }),
+      agent("amp", { status: "update", detail: null, canInstall: true }),
+    ]);
+
+    expect(hasSubtitle("claude-code")).toBe(false);
+    expect(hasSubtitle("pi")).toBe(false);
+    expect(hasSubtitle("codex")).toBe(false);
+    expect(hasSubtitle("cursor")).toBe(true);
+    expect(hasSubtitle("amp")).toBe(true);
+    screen.getByRole("button", { name: "Connect" });
+    expect(screen.getByText("me@example.com · Pro")).toBeTruthy();
+    expect(screen.getByText("Update needed")).toBeTruthy();
+    expect(
+      screen.queryByText(/not signed in|Not installed|no model/u),
+    ).toBeNull();
+  });
+
+  it("shows Installing… in the same disabled button", () => {
+    const { rerender } = renderQuiet([
+      agent("codex", { status: "install", canInstall: true }),
+    ]);
+    screen.getByRole("button", { name: "Install" });
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[agent("codex", { status: "installing" })]}
+          onSignIn={vi.fn()}
+          onInstall={vi.fn()}
+          onViewInstallLog={vi.fn()}
+          onCancelSignIn={vi.fn()}
+          onRecheck={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const busy = screen.getByRole("button", { name: "Installing…" });
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
+    expect(busy.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+    expect(busy.textContent).toBe("Installing…");
+  });
+
+  it("shows Starting… in the button until the sign-in instruction is ready", () => {
+    const { rerender, handlers } = renderQuiet([
+      {
+        ...agent("claude-code", {
+          status: "signIn",
+          reason: "signedOut",
+          canSignIn: true,
+        }),
+        busy: true,
+      },
+    ]);
+    const starting = screen.getByRole("button", { name: "Starting…" });
+    expect((starting as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(starting);
+    expect(handlers.onSignIn).not.toHaveBeenCalled();
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            { ...agent("claude-code", { status: "signingIn" }), busy: true },
+          ]}
+          {...handlers}
+        />
+      </TooltipProvider>,
+    );
+    screen.getByRole("button", { name: "Starting…" });
+    expect(
+      screen.queryByRole("button", { name: /Cancel signing in/u }),
+    ).toBeNull();
+    expect(hasSubtitle("claude-code")).toBe(false);
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            {
+              ...agent("claude-code", { status: "signingIn" }),
+              subline: "Finish signing in on claude.ai.",
+            },
+          ]}
+          {...handlers}
+        />
+      </TooltipProvider>,
+    );
+    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
+    expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
+    const subtitle = screen.getByText("Finish signing in on claude.ai.");
+    expect(
+      subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps the control guide's subtitles", () => {
+    renderAgents([
+      agent("claude-code", {
+        status: "signIn",
+        reason: "signedOut",
+        canSignIn: true,
+      }),
+      agent("pi", { status: "installing" }),
+    ]);
+    expect(screen.getByText("Installed · not signed in")).toBeTruthy();
+    expect(screen.getByText("Installing…")).toBeTruthy();
+  });
+});
+
+describe("Agent step header and install details in the redesign", () => {
+  it("shows the machine line without Check again", () => {
+    renderQuiet([agent("codex", { status: "install", canInstall: true })]);
+    expect(screen.getByText("On bee")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Check again/u })).toBeNull();
+  });
+
+  it("opens the install output from the details strip", () => {
+    render(<AgentInstallErrorDetails log="npm ERR! code ECONNRESET" />);
+    expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Show details/u }));
+    expect(screen.getByText("npm ERR! code ECONNRESET")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Hide details/u }));
+    expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
+  });
+});
+
+describe("Agent rows active at once in the redesign", () => {
+  it("shows a queued install as Waiting… behind the running one", () => {
+    renderQuiet([
+      agent("pi", { status: "installing" }),
+      { ...agent("codex", { status: "installing" }), installQueued: true },
+    ]);
+
+    within(rowOf("pi")).getByRole("button", { name: "Installing…" });
+    const waiting = within(rowOf("codex")).getByRole("button", {
+      name: "Waiting…",
+    });
+    expect((waiting as HTMLButtonElement).disabled).toBe(true);
+    expect(waiting.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+  });
+});
+
+describe("RedesignedDevicesStep", () => {
+  it("hides the machine section until bb connect is on", () => {
+    const props = {
+      hostName: "bee",
+      connectSection: <li>bb connect</li>,
+      addMachinePanel: null,
+      onAddMachine: vi.fn(),
+      onCloseAddMachine: vi.fn(),
+    };
+    const { rerender } = render(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines={false} />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByText("Where agents run")).toBeNull();
+    expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.getByText("Where you use bb").className).toContain("sr-only");
+
+    rerender(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines />
+      </TooltipProvider>,
+    );
+    screen.getByText("Where agents run");
+    expect(screen.getByText("Where you use bb").className).not.toContain(
+      "sr-only",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
+    expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
 });

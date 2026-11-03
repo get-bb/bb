@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  AgentInstallErrorDetails,
   AgentSignInGuide,
+  AgentSignInInstruction,
+  AgentSignInPanel,
   AgentStep,
   DevicesStep,
   OnboardingLayout,
@@ -14,7 +18,11 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
+import {
+  STEP_COPY,
+  type AgentSetupState,
+  type OnboardingStepId,
+} from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
@@ -267,7 +275,7 @@ function Captioned({
 }) {
   return (
     <figure className="flex flex-col gap-2">
-      <figcaption className="flex max-w-[960px] flex-col gap-0.5">
+      <figcaption className="flex max-w-240 flex-col gap-0.5">
         <span className="text-sm font-medium text-foreground">{label}</span>
         <span className="text-xs text-muted-foreground">{hint}</span>
       </figcaption>
@@ -317,12 +325,10 @@ function AgentFrame({
     <OnboardingLayout
       step="agent"
       compact={chrome.compact}
-      title="Connect a coding agent"
-      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
+      {...STEP_COPY.control.agent}
       footerNote={
         blocked ? "Threads can't start until one agent is ready." : null
       }
-      primaryLabel="Continue"
       primaryDisabled={loading || !ready}
       secondaryLabel={blocked ? "Skip for now" : undefined}
       onPrimary={chrome.onPrimary ?? noop}
@@ -366,11 +372,11 @@ function ProjectsFrame({
     <OnboardingLayout
       step="projects"
       compact={chrome.compact}
-      title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      title={STEP_COPY.control.projects.title}
+      description={STEP_COPY.control.projects.description}
       primaryLabel={
         scanning || selectedIds.size === 0
-          ? "Continue"
+          ? STEP_COPY.control.projects.primaryLabel
           : `Import ${selectedIds.size} projects`
       }
       primaryDisabled={scanning}
@@ -412,9 +418,7 @@ function PluginsFrame({
     <OnboardingLayout
       step="plugins"
       compact={chrome.compact}
-      title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
-      primaryLabel="Continue"
+      {...STEP_COPY.control.plugins}
       secondaryLabel="Skip"
       onPrimary={chrome.onPrimary ?? noop}
       onSecondary={chrome.onSecondary ?? noop}
@@ -460,9 +464,7 @@ function DevicesFrame({
     <OnboardingLayout
       step="devices"
       compact={chrome.compact}
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      {...STEP_COPY.control.devices}
       onPrimary={chrome.onPrimary ?? noop}
       onBack={chrome.onBack ?? noop}
       onSelectStep={chrome.onSelectStep ?? noop}
@@ -489,7 +491,7 @@ function DevicesFrame({
 
 function HomeFrame() {
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
+    <div className="mx-auto flex w-full max-w-190 flex-1 flex-col px-6 pt-14">
       <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
         The usual bb home composer goes here.
       </p>
@@ -977,5 +979,191 @@ export function HomeAfterSkipping() {
         </StoryWindow>
       </Captioned>
     </Gallery>
+  );
+}
+
+function redesignSignInView(agentId: "claude-code" | "codex") {
+  const codex = agentId === "codex";
+  return {
+    guide: {
+      url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
+      userCode: codex ? "JWMS-GLRCB" : null,
+      acceptsPastedCode: !codex,
+    },
+    terminalVisible: false,
+    started: true,
+  };
+}
+
+function RedesignSignInPanel({
+  agentId,
+}: {
+  agentId: "claude-code" | "codex";
+}) {
+  const [code, setCode] = useState("");
+  const codex = agentId === "codex";
+  return (
+    <AgentSignInPanel
+      connect={false}
+      agentName={codex ? "Codex" : "Claude Code"}
+      view={redesignSignInView(agentId)}
+      code={code}
+      codeSubmitted={false}
+      terminal={
+        <FakeTerminal
+          command={codex ? "codex login --device-auth" : "claude auth login"}
+        />
+      }
+      onCodeChange={setCode}
+      onSubmitCode={noop}
+      onCopy={noop}
+      onToggleTerminal={noop}
+    />
+  );
+}
+
+function RedesignAgentFrame({
+  signingIn,
+  installError = false,
+}: {
+  signingIn: "claude-code" | "codex" | null;
+  installError?: boolean;
+}) {
+  const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
+    const state: AgentSetupState =
+      agent.id === signingIn
+        ? { status: "signingIn" }
+        : installError && agent.id === "claude-code"
+          ? {
+              status: "installFailed",
+              message: "Couldn't install. Check your connection and retry.",
+              canInstall: true,
+            }
+          : agent.id === "pi"
+            ? INSTALL
+            : SIGNED_OUT;
+    return {
+      id: agent.id,
+      name: agent.name,
+      provider: { id: agent.id, logoUrl: agent.logoUrl },
+      state,
+      subline:
+        agent.id === signingIn &&
+        (agent.id === "claude-code" || agent.id === "codex") ? (
+          <AgentSignInInstruction
+            agentName={agent.name}
+            view={redesignSignInView(agent.id)}
+            alternate={agent.id === "codex" ? "browser" : null}
+            onOpenUrl={noop}
+            onUseAlternate={noop}
+          />
+        ) : undefined,
+      expanded:
+        agent.id === signingIn &&
+        (agent.id === "claude-code" || agent.id === "codex") ? (
+          <RedesignSignInPanel agentId={agent.id} />
+        ) : state.status === "installFailed" ? (
+          <AgentInstallErrorDetails
+            log={
+              "npm ERR! code ECONNRESET\nnpm ERR! network request to https://registry.npmjs.org failed"
+            }
+          />
+        ) : undefined,
+    };
+  });
+  return (
+    <TooltipProvider>
+      <OnboardingLayout
+        step="agent"
+        composition="centered"
+        showSkipAll={false}
+        {...STEP_COPY.new.agent}
+        onPrimary={noop}
+        onSelectStep={noop}
+        onSkipAll={noop}
+      >
+        <AgentStep
+          quiet
+          machineName={MACHINE_NAME}
+          agents={agents}
+          onSignIn={noop}
+          onInstall={noop}
+          onViewInstallLog={noop}
+          onCancelSignIn={noop}
+          onRecheck={noop}
+        />
+      </OnboardingLayout>
+    </TooltipProvider>
+  );
+}
+
+export function RedesignAgentClaudeSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn="claude-code" />
+    </div>
+  );
+}
+
+export function RedesignAgentCodexSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn="codex" />
+    </div>
+  );
+}
+
+export function RedesignAgentInstallError() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn={null} installError />
+    </div>
+  );
+}
+
+export function RedesignProjects() {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    new Set(DEFAULT_REPO_IDS),
+  );
+  const selectable = REPOS.filter((repo) => !repo.added).map((repo) => repo.id);
+  return (
+    <div className="flex h-screen flex-col">
+      <OnboardingLayout
+        step="projects"
+        composition="centered"
+        showSkipAll={false}
+        skippedSteps={new Set()}
+        title={STEP_COPY.new.projects.title}
+        description={STEP_COPY.new.projects.description}
+        primaryLabel={
+          selected.size === 0
+            ? STEP_COPY.new.projects.primaryLabel
+            : `Import ${selected.size} projects`
+        }
+        onPrimary={noop}
+        onBack={noop}
+        onSelectStep={noop}
+        onSkipAll={noop}
+      >
+        <ProjectsStep
+          selection="header"
+          status={{ kind: "results", truncated: false }}
+          repos={REPOS}
+          selectedIds={selected}
+          onToggle={(id) =>
+            setSelected((current) => {
+              const next = new Set(current);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+          onSelectAll={() => setSelected(new Set(selectable))}
+          onSelectNone={() => setSelected(new Set())}
+          onAddFolder={noop}
+          onRetry={noop}
+        />
+      </OnboardingLayout>
+    </div>
   );
 }

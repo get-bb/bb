@@ -38,6 +38,7 @@ describe("the Claude Code provider settings", () => {
     "disable1MContext",
     "artifactsEnabled",
     "fullAccessApprovalsEnabled",
+    "commandDescriptionsEnabled",
   ])("keeps %s off by default and derives an explicit opt-in", (key) => {
     const { declaration, host } = loadClaudeCodePlugin();
 

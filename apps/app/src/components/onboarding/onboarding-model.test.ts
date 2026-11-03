@@ -7,14 +7,19 @@ import type {
 import { BbHttpError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
+  agentContinueDisabled,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  featuredPluginEntryIds,
+  skippedStepIds,
   hasReadyAgent,
   operationFailureReason,
   parseSignInOutput,
+  projectsPrimaryAction,
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
+  signInSiteName,
 } from "./onboarding-model";
 
 function health(
@@ -530,5 +535,129 @@ describe("operationFailureReason", () => {
     expect(operationFailureReason(new TypeError("Failed to fetch"))).toBe(
       "other",
     );
+  });
+});
+
+describe("featuredPluginEntryIds", () => {
+  it("uses the experiment's plugin list when it has one", () => {
+    expect(
+      featuredPluginEntryIds({
+        variant: "new",
+        featuredPluginEntryIds: ["memory", "inline-vis"],
+      }),
+    ).toEqual(["memory", "inline-vis"]);
+  });
+
+  it("falls back to today's six plugins without a list", () => {
+    expect(
+      featuredPluginEntryIds({ variant: "new", featuredPluginEntryIds: null }),
+    ).toEqual([
+      "browser-automation",
+      "workflows",
+      "monaco-editor",
+      "prompt-library",
+      "agent-annotations",
+      "ask-user-question",
+    ]);
+  });
+});
+
+describe("skippedStepIds", () => {
+  it("marks only the steps whose last forward move was a skip", () => {
+    expect(
+      [
+        ...skippedStepIds(
+          new Map([
+            ["agent", "skipped"],
+            ["projects", "completed"],
+            ["plugins", "skipped"],
+          ] as const),
+        ),
+      ].sort(),
+    ).toEqual(["agent", "plugins"]);
+  });
+});
+
+describe("projectsPrimaryAction", () => {
+  const atOpen = new Set(["prj_existing"]);
+
+  it("imports the selection", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 2,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("import");
+  });
+
+  it("completes the step when a folder was added during the guide", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing", "prj_added_folder"],
+      }),
+    ).toBe("completed");
+  });
+
+  it("skips the step when nothing was selected or added, counting earlier projects as not added", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: null,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+  });
+});
+
+describe("agentContinueDisabled", () => {
+  it("holds Continue in the redesign only while agent states load", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: true,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: true,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps today's guide blocked until an agent is ready", () => {
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: false,
+        statesLoading: false,
+      }),
+    ).toBe(true);
+    expect(
+      agentContinueDisabled({
+        redesign: false,
+        agentReady: true,
+        statesLoading: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("signInSiteName", () => {
+  it("returns null when the URL has no usable host", () => {
+    expect(signInSiteName("not a url")).toBeNull();
+    expect(signInSiteName("file:///tmp/sign-in")).toBeNull();
   });
 });

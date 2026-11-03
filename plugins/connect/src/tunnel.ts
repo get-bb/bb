@@ -19,7 +19,8 @@ import {
 } from "@bb/tunnel-client";
 import type { PluginLogger } from "@get-bb/plugin-sdk";
 import { deriveConnectBaseUrl } from "@bb/connect-client";
-import type { Account, SharedCredential } from "./account-client.js";
+import type { SharedCredential } from "bb-plugin-bb-account/src/client.js";
+import type { Account } from "bb-plugin-bb-account/src/schemas.js";
 import {
   ShareRegistry,
   shareLoopbackHost,

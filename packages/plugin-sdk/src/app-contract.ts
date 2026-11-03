@@ -67,9 +67,16 @@ export interface PluginHomepageSectionProps {
 /**
  * Props passed to a `settingsSection` component.
  *
- * Deliberately empty in V1; versioned additive like the other slot props.
+ * Versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {}
+export interface PluginSettingsSectionProps {
+  /**
+   * Internal to bb's bundled connect plugin; not part of the plugin API.
+   * Set only when the setup guide renders the section; call it when the user
+   * starts setting it up.
+   */
+  internal_DO_NOT_USE_onSetupStarted?: () => void;
+}
 
 /**
  * Props passed to an `experimental_appOverlay` component.
@@ -78,6 +85,17 @@ export interface PluginSettingsSectionProps {}
  * hooks; versioned additive like the other slot props.
  */
 export interface ExperimentalAppOverlayProps {}
+
+/**
+ * Props passed to an `internal_DO_NOT_USE_setupGuideSection` component.
+ * Internal to bb's bundled connect plugin; not part of the plugin API.
+ */
+export interface InternalDoNotUseSetupGuideSectionProps {
+  /** True when the setup guide is open on a phone. */
+  onPhone: boolean;
+  /** Call when the user starts setting up this section. */
+  onSetupStarted: () => void;
+}
 
 export type ExperimentalPageTitle = (
   | { title: string; breadcrumbs?: never }
@@ -857,6 +875,16 @@ export interface ExperimentalAppOverlayRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   component: ComponentType<ExperimentalAppOverlayProps>;
+}
+
+/**
+ * Render one row in the first-run setup guide's "Where you use bb" group.
+ * Internal to bb's bundled connect plugin; not part of the plugin API.
+ */
+export interface InternalDoNotUseSetupGuideSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<InternalDoNotUseSetupGuideSectionProps>;
 }
 
 /**
@@ -3747,6 +3775,14 @@ export interface PluginAppSlots {
    */
   experimental_appOverlay(
     registration: ExperimentalAppOverlayRegistration,
+  ): void;
+  /**
+   * Render a setup guide row (see
+   * {@link InternalDoNotUseSetupGuideSectionRegistration}). Internal: see
+   * docs/api_to_audit.md.
+   */
+  internal_DO_NOT_USE_setupGuideSection(
+    registration: InternalDoNotUseSetupGuideSectionRegistration,
   ): void;
   navPanel(registration: PluginNavPanelRegistration): void;
   /** Register a context-scoped tab. Experimental: see docs/api_to_audit.md. */

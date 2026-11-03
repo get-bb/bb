@@ -137,7 +137,7 @@ const FRONTEND_TYPE_EXPORT_NAMES = [
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean),
-];
+].filter((name) => !name.startsWith("InternalDoNotUse"));
 
 const FRONTEND_TEST_EXPORT_NAMES = [
   "packages/plugin-sdk/src/testing/app.tsx",
@@ -261,9 +261,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "originPluginId",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -313,7 +311,10 @@ type SlotPropsByName = {
 
 type SlotPropKeys<T> = T extends unknown ? keyof T : never;
 
-type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
+type MissingSlot = Exclude<
+  keyof PluginAppSlots,
+  keyof SlotPropsByName | `internal_DO_NOT_USE_${string}`
+>;
 const _assertAllSlotsListed: MissingSlot extends never ? true : never = true;
 void _assertAllSlotsListed;
 
@@ -475,7 +476,8 @@ const FRONTEND_SLOT_PROP_FIELDS = {
 type MissingSlotPropField = {
   [S in keyof SlotPropsByName]: Exclude<
     SlotPropKeys<SlotPropsByName[S]>,
-    (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | `internal_DO_NOT_USE_${string}`
   >;
 }[keyof SlotPropsByName];
 const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
