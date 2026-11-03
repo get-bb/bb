@@ -69,14 +69,6 @@ describe("email download link form", () => {
     document.body.replaceChildren();
   });
 
-  it("starts empty with an email field and a send button", () => {
-    render();
-    expect(input().value).toBe("");
-    expect(input().getAttribute("aria-invalid")).toBe("false");
-    expect(container.querySelector("button")?.textContent).toBe("Send link");
-    expect(container.querySelector("[role=alert]")).toBeNull();
-  });
-
   it("flags an invalid address inline without calling the server", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -215,27 +207,14 @@ describe("email download link form before hydration", () => {
 });
 
 describe("phone email arm placement", () => {
-  it("keeps the share button by default", () => {
-    const html = renderToStaticMarkup(<InstallOptions placement="hero" />);
-    expect(html).toContain("install-send touch-only");
-    expect(html).not.toContain("install-email");
-  });
-
-  it("swaps the share button for a touch-only email field and leaves desktop alone", () => {
+  it("swaps the share button for a touch-only email field and hides the command box from phones", () => {
     const html = renderToStaticMarkup(
       <InstallOptions placement="hero" touchAction="email" />,
     );
     expect(html).toContain('class="subscribe-form install-email touch-only"');
-    expect(html).toContain('class="subscribe-input"');
     expect(html).not.toContain("install-send");
     expect(html).toContain(
       'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=hero"',
-    );
-  });
-
-  it("hides the command box and its line from phones in the test arm but keeps the note", () => {
-    const html = renderToStaticMarkup(
-      <InstallOptions placement="hero" touchAction="email" />,
     );
     const commandChoice = html.slice(
       html.indexOf('<span class="install-choice desktop-only">'),

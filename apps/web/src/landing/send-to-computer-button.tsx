@@ -13,11 +13,6 @@ import {
   SITE_TITLE,
 } from "./site";
 
-export const SEND_LINK_MARKER = {
-  name: SEND_LINK_VIA_PARAM,
-  value: "share",
-} as const;
-
 export function sendLinkUrl(pageHref: string): string {
   const page = new URL(pageHref);
   const link = new URL(DOWNLOAD_PAGE_PATH, page.origin);
@@ -27,7 +22,7 @@ export function sendLinkUrl(pageHref: string): string {
       link.searchParams.append(name, value);
     }
   }
-  link.searchParams.set(SEND_LINK_MARKER.name, SEND_LINK_MARKER.value);
+  link.searchParams.set(SEND_LINK_VIA_PARAM, "share");
   return link.href;
 }
 

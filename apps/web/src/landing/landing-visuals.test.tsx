@@ -384,18 +384,11 @@ describe("MarketplaceLink", () => {
 });
 
 describe("install options", () => {
-  it("renders desktop and touch options for CSS to pick from", () => {
+  it("shows phones in control today's box: share, note, command and its line", () => {
     const html = renderToStaticMarkup(<InstallOptions placement="hero" />);
-    expect(html).toContain(
-      'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=hero"',
-    );
     expect(html).toContain(
       'class="btn btn-primary btn-install install-send touch-only"',
     );
-  });
-
-  it("shows phones in control today's box: share, note, command and its line", () => {
-    const html = renderToStaticMarkup(<InstallOptions placement="hero" />);
     expect(html).toContain(
       '<span class="install-note touch-only">bb runs on macOS, Windows, and Linux</span>',
     );

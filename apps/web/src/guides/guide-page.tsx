@@ -95,7 +95,7 @@ function CopyForAgent({
   );
 }
 
-export function GuideHero({ guide }: { guide: Guide }) {
+function GuideHero({ guide }: { guide: Guide }) {
   const platform = useDesktopPlatform();
   return (
     <header className="hero cmp-hero gd-hero">

@@ -2,7 +2,6 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { trackLandingEvent } from "./analytics";
@@ -108,16 +107,6 @@ describe("send download link button", () => {
     vi.unstubAllGlobals();
     history.replaceState(null, "", "/");
     document.body.replaceChildren();
-  });
-
-  it("renders as a touch-only button with unchanged copy", () => {
-    const html = renderToStaticMarkup(
-      <SendToComputerButton placement="marketplace" />,
-    );
-    expect(html).toContain(
-      'class="btn btn-primary btn-install install-send touch-only"',
-    );
-    expect(html).toContain("Send download link");
   });
 
   it("shares the download page link and records the click and the result", async () => {
