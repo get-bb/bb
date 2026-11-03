@@ -482,7 +482,10 @@ function ServerRow({
         <span className="block truncate font-mono text-sm font-medium leading-tight">
           {server.serverUrl.replace(/^https?:\/\//u, "")}
         </span>
-        <span className="mt-px block text-xs text-muted-foreground">
+        <span
+          className="mt-px block text-xs text-muted-foreground"
+          suppressHydrationWarning
+        >
           {server.online ? (
             "Online"
           ) : server.connected ? (
@@ -827,7 +830,10 @@ function AccountDashboard({ state }: { state: ServerState }) {
                       {machineName}
                     </span>
                   )}
-                  <span className="mt-px block truncate text-xs text-muted-foreground">
+                  <span
+                    className="mt-px block truncate text-xs text-muted-foreground"
+                    suppressHydrationWarning
+                  >
                     {machine.online ? (
                       "Online"
                     ) : machine.lastSeenAt !== null ? (
