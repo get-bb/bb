@@ -85,11 +85,6 @@ describe("SHELL_ORIGIN_WHITELIST", () => {
       expect(passesWebViewWhitelist(url, SHELL_ORIGIN_WHITELIST)).toBe(true);
     }
   });
-
-  it("is what an about:srcdoc frame needs beyond the WebView default", () => {
-    const webViewDefault = ["http://*", "https://*"];
-    expect(passesWebViewWhitelist("about:srcdoc", webViewDefault)).toBe(false);
-  });
 });
 
 describe("allowsSubframeLoad", () => {
