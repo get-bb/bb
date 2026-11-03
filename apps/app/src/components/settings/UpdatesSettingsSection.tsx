@@ -199,8 +199,8 @@ function UpdatesRow({
   actions: ReactNode;
 }) {
   return (
-    <div className="@container/update-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5 text-sm">
-      <span className="flex min-w-0 items-start gap-3">
+    <div className="@container/update-row flex min-w-0 flex-wrap items-start gap-3 px-4 py-3.5 text-sm">
+      <span className="flex min-w-48 flex-1 basis-0 items-start gap-3">
         <span className="flex h-5 w-6 shrink-0 items-center justify-center">
           {leading}
         </span>
