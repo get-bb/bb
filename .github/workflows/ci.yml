@@ -3,76 +3,51 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-env:
-  PRIMARY_NODE_VERSION: '22.x'
-  PNPM_VERSION: '9.15.0'
 jobs:
-  minimal-completion:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [blacksmith-4vcpu-ubuntu-2404, blacksmith-6vcpu-macos-15]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    steps:
-      - name: Minimal runner completion control
-        shell: bash
-        run: date -u '+%Y-%m-%dT%H:%M:%SZ'
-  node-compat-smoke:
-    name: Node Compatibility Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
-    if: ${{ github.event_name != 'pull_request' }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+  fixture-comparison:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: blacksmith-4vcpu-ubuntu-2404
-            node-version: "24.x"
-          - os: blacksmith-6vcpu-macos-15
-            node-version: "24.x"
-
+          - package: bb-plugin-bb--git
+            directory: plugins/git
+            file: plugins/git/host/workspace-status-cache.test.ts
+            branch: bb/ci-nov3-git-cost
+            commit: e0abd4f84d2a10e851098ce3f30932ec042ea327
+          - package: bb-plugin-environment-git-worktree
+            directory: plugins/environment-git-worktree
+            file: plugins/environment-git-worktree/host.test.ts
+            branch: bb/ci-nov3-worktree-cost
+            commit: a79ab713400ae5677944863c1a86690b225d5cb4
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 25
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup workspace tools
-        uses: ./.github/actions/setup-workspace-tools
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: ${{ matrix.node-version }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
-
-      - name: Restore React Compiler cache
-        timeout-minutes: 1
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 2
         continue-on-error: true
-        uses: ./.github/actions/cache-react-compiler
-
-      - name: Restore workspace caches
-        id: cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-workspace
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache-prefix: compat-smoke
-          turbo-cache-max-size-mb: ${{ runner.os == 'macOS' && '256' || '1024' }}
-
-      - name: Restore pnpm cache
-        if: runner.os == 'macOS'
-        id: pnpm-cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-pnpm
-
       - name: Install dependencies
-        timeout-minutes: 5
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Fetch committed candidate
+        run: git fetch origin ${{ matrix.branch }}
+      - name: Build prerequisites and run baseline through Turbo
+        shell: bash
+        run: pnpm exec turbo run test --filter=${{ matrix.package }} --concurrency=1
+      - name: Compare complete uncached test packages in alternating order
         env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
-
-      - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
-
-      - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb ${{ runner.os == 'macOS' && '256' || '1024' }} --keep-run-summaries .turbo/runs
+          CANDIDATE: ${{ matrix.commit }}
+          TEST_FILE: ${{ matrix.file }}
+          PACKAGE_NAME: ${{ matrix.package }}
+          PACKAGE_DIR: ${{ matrix.directory }}
+        run: node .github/diagnostics/compare-git-fixtures.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: fixture-timings-${{ matrix.package }}
+          path: fixture-timings
