@@ -443,6 +443,48 @@ const FIRST_ROW = 0.6;
 const REST = 1.1;
 const REST_AFTER_CLOSE = 1.4;
 
+const MUTE_AFTER = 0.35;
+const MUTE_FOR = 0.35;
+const SWAP_FOR = 0.3;
+const FURL_GAP = 0.2;
+const FURL_FOR = 0.3;
+const FURL_BEAT = 0.6;
+const ARRIVE_FOR = 0.3;
+
+type TurnRow = { step: Step; at: number; muteAt: number | null };
+type TurnPlan = { rows: TurnRow[]; furlAt: number | null; readyAt: number };
+
+function planTurn(
+  rows: { step: Step; at: number }[],
+  done: number | null,
+  arrivals: number[] = [],
+): TurnPlan {
+  const planned = rows.map(({ step, at }) => {
+    const muteAt = step.spin
+      ? done == null
+        ? null
+        : done + (step.doneAs ? SWAP_FOR : 0)
+      : done == null
+        ? at + MUTE_AFTER
+        : Math.min(at + MUTE_AFTER, Math.max(at, done));
+    return { step, at, muteAt };
+  });
+  const greyAt =
+    Math.max(...planned.map((r) => r.muteAt ?? Infinity)) + MUTE_FOR;
+  let furlAt =
+    done == null || !Number.isFinite(greyAt)
+      ? null
+      : Math.max(greyAt, done + SWAP_FOR) + FURL_GAP;
+  for (const at of [...arrivals].sort((a, b) => a - b))
+    if (furlAt != null && at > furlAt - ARRIVE_FOR && at < furlAt + FURL_FOR)
+      furlAt = at + ARRIVE_FOR + 0.05;
+  return {
+    rows: planned,
+    furlAt,
+    readyAt: furlAt == null ? greyAt : furlAt + FURL_FOR,
+  };
+}
+
 function timing(scene: Scene, tablet = false) {
   const posts = scene.post ?? [];
   const userAt = scene.prompt ? USER_AT : 0;
@@ -485,12 +527,30 @@ function timing(scene: Scene, tablet = false) {
     end = (notes.at(-1) ?? at) + scene.hold;
     then = { at, notes };
   }
+  const turn = planTurn(
+    [
+      ...scene.steps.map((step, i) => ({ step, at: stepAt[i] })),
+      ...posts.flatMap((p, i) =>
+        "step" in p ? [{ step: p.step, at: postAt[i] }] : [],
+      ),
+    ],
+    doneAt,
+    [
+      changeAt,
+      ...postAt,
+      ...(then ? [then.at, ...then.notes] : []),
+      ...(scene.flags.includes("chart")
+        ? [(postAt.at(-1) ?? changeAt) + ROW_GAP]
+        : []),
+    ],
+  );
   let f: null | {
     user: number;
     steps: number[];
     reply: number;
     cards: number[];
     clicks: number[];
+    turn: TurnPlan;
   } = null;
   if (scene.follow) {
     const F = scene.follow;
@@ -502,9 +562,30 @@ function timing(scene: Scene, tablet = false) {
     const lastCard = cards.at(-1) ?? reply;
     const clicks = F.clicks.map((_, i) => lastCard + 1.0 + i * 1.0);
     end = (clicks.at(-1) ?? lastCard) + scene.hold;
-    f = { user, steps, reply, cards, clicks };
+    const fTurn = planTurn(
+      F.steps.map((step, i) => ({ step, at: steps[i] })),
+      reply,
+      cards,
+    );
+    f = { user, steps, reply, cards, clicks, turn: fTurn };
   }
-  return { collapseAt, userAt, stepAt, changeAt, postAt, doneAt, end, f, then };
+  const ready = Math.max(turn.readyAt, f?.turn.readyAt ?? 0);
+  const leavesAtEnd = CLOSES.has(scene.id) || scene === SCENES.at(-1);
+  const leaves = end + (leavesAtEnd ? 0 : REST);
+  if (Number.isFinite(ready) && leaves < ready + FURL_BEAT)
+    end += ready + FURL_BEAT - leaves;
+  return {
+    collapseAt,
+    userAt,
+    stepAt,
+    changeAt,
+    postAt,
+    doneAt,
+    end,
+    f,
+    then,
+    turn,
+  };
 }
 
 const THREADS: { title: string; status: Status }[] = [
@@ -759,22 +840,17 @@ function Swap({
   );
 }
 
-const MUTE_AFTER = 0.9;
-
 function WorkRow({
   step,
   style,
   doneAt,
+  muteAt,
 }: {
   step: Step;
   style?: CSSProperties;
   doneAt?: number | null;
+  muteAt: number | null;
 }) {
-  // Like the app's closed steps, each tool call is muted to the subtle text
-  // colour shortly after it lands; a running one only once it finishes.
-  const at = parseFloat(String(style?.animationDelay ?? "0")) || 0;
-  const muteAt =
-    step.doneAs && doneAt ? doneAt + 0.3 : step.spin ? null : at + MUTE_AFTER;
   return (
     <div
       className={`rhb-work rhb-work-${step.kind} customize-msg${
@@ -803,10 +879,12 @@ function WorkRow({
 function TurnHeader({
   worked,
   doneAt,
+  furlAt = null,
   style,
 }: {
   worked: string;
   doneAt: number | null;
+  furlAt?: number | null;
   style?: CSSProperties;
 }) {
   // "Working" crossfades into "Worked for" in place while the label slot
@@ -831,7 +909,18 @@ function TurnHeader({
     return () => ro.disconnect();
   }, [swaps]);
   return (
-    <div className="rhb-turn customize-msg" style={style}>
+    <div
+      className={
+        furlAt == null
+          ? "rhb-turn customize-msg"
+          : "rhb-turn customize-msg is-furling"
+      }
+      style={
+        furlAt == null
+          ? style
+          : ({ ...style, "--rhb-furl-at": `${furlAt}s` } as CSSProperties)
+      }
+    >
       <span
         ref={stackRef}
         className={swaps ? "rhb-turn-stack is-swap" : "rhb-turn-stack"}
@@ -949,7 +1038,7 @@ function freeze(src: HTMLElement): HTMLElement {
   clone.style.boxSizing = rootStyle.boxSizing;
 
   const sel =
-    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-stack, .rhb-turn-w, .rhb-turn-d, .rhb-typing, .rhb-kids";
+    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-stack, .rhb-turn-w, .rhb-turn-d, .rhb-typing, .rhb-kids, .rhb-turn-fold, .rhb-turn > .rhb-chev, .rhb-work.is-muting";
   const from = src.querySelectorAll<HTMLElement>(sel);
   const to = clone.querySelectorAll<HTMLElement>(sel);
   from.forEach((el, i) => {
@@ -959,6 +1048,19 @@ function freeze(src: HTMLElement): HTMLElement {
     if (cs.display === "none") c.style.display = "none";
     c.style.opacity = cs.opacity;
     if (el.matches(".rhb-turn-stack")) c.style.width = cs.width;
+    if (el.matches(".rhb-turn-fold"))
+      Object.assign(c.style, {
+        gridTemplateRows: cs.gridTemplateRows,
+        marginBottom: cs.marginBottom,
+        clipPath: cs.clipPath,
+      });
+    if (el.matches(".rhb-chev")) c.style.rotate = cs.rotate;
+    const part = el.matches(".rhb-work") ? el.firstElementChild : null;
+    if (part)
+      c.style.setProperty(
+        "--rhb-m",
+        getComputedStyle(part).getPropertyValue("--rhb-m"),
+      );
   });
   return clone;
 }
@@ -1723,6 +1825,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     const seen = new WeakSet<Element>();
     let primed = false;
     let growing = 0;
+    let furling = 0;
     const visible = (el: Element | null) =>
       !!el && (el as HTMLElement).offsetParent !== null;
     const roomOf = (el: HTMLElement) => {
@@ -1765,7 +1868,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       primed = true;
       let run = 0;
       for (const el of fresh) {
-        if (fresh.includes(el.parentElement as HTMLElement)) continue;
+        if (fresh.some((p) => p !== el && p.contains(el))) continue;
         run += roomOf(el);
         let next = el.nextElementSibling;
         while (next && !visible(next)) next = next.nextElementSibling;
@@ -1775,7 +1878,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       }
       let moved = false;
       const ft = feed.offsetTop;
-      const fd = growing ? 0 : self.top - ft;
+      const fd = growing || furling ? 0 : self.top - ft;
       self.top = ft;
       if (Math.abs(fd) >= 0.5) {
         self.off += fd;
@@ -1795,7 +1898,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
           offs.set(child, { top, off: 0, v: 0 });
           continue;
         }
-        const d = o.top - top;
+        const d = furling ? 0 : o.top - top;
         o.top = top;
         if (Math.abs(d) >= 0.5) {
           o.off += d;
@@ -1805,10 +1908,21 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       }
       if (moved && !raf) raf = requestAnimationFrame(tick);
     });
+    const onFurl = (e: AnimationEvent) => {
+      if (e.animationName !== "rhb-furl") return;
+      furling = Math.max(0, furling + (e.type === "animationstart" ? 1 : -1));
+    };
+    const furlEvents = [
+      "animationstart",
+      "animationend",
+      "animationcancel",
+    ] as const;
+    furlEvents.forEach((type) => feed.addEventListener(type, onFurl));
     ro.observe(feed);
     if (feed.parentElement) ro.observe(feed.parentElement);
     return () => {
       ro.disconnect();
+      furlEvents.forEach((type) => feed.removeEventListener(type, onFurl));
       cancelAnimationFrame(raf);
     };
   }, [reduced, out, pre]);
@@ -1825,6 +1939,72 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
         <FeedBody scene={scene} reduced={reduced} tablet={tablet} />
       </div>
     </div>
+  );
+}
+
+function Turn({
+  worked,
+  plan,
+  head,
+  doneAt,
+  reduced,
+}: {
+  worked: string;
+  plan: TurnPlan;
+  head: number;
+  doneAt: number | null;
+  reduced: boolean;
+}) {
+  const sec = (s: number) => (reduced ? "0s" : `${s}s`);
+  const furlAt = plan.furlAt;
+  return (
+    <>
+      <TurnHeader
+        worked={worked}
+        doneAt={
+          reduced
+            ? doneAt == null
+              ? null
+              : 0
+            : doneAt == null
+              ? null
+              : Math.max(0.01, doneAt - head)
+        }
+        furlAt={furlAt == null ? null : reduced ? 0 : furlAt - head}
+        style={{ animationDelay: sec(head) }}
+      />
+      <div
+        className={
+          furlAt == null
+            ? "rhb-turn-fold rhb-reveal"
+            : "rhb-turn-fold rhb-reveal is-furling"
+        }
+        style={{
+          animationDelay:
+            furlAt == null ? sec(head) : `${sec(head)}, ${sec(furlAt)}`,
+        }}
+      >
+        <div className="rhb-turn-body">
+          {plan.rows.map((row, i) => (
+            <WorkRow
+              step={row.step}
+              key={i}
+              style={{ animationDelay: sec(row.at - head) }}
+              doneAt={
+                reduced
+                  ? 0.001
+                  : doneAt == null
+                    ? null
+                    : Math.max(0.01, doneAt - row.at)
+              }
+              muteAt={
+                row.muteAt == null ? null : reduced ? 0 : row.muteAt - row.at
+              }
+            />
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1863,42 +2043,13 @@ const FeedBody = memo(function FeedBody({
         </div>
       ) : null}
       {scene.steps.length > 0 ? (
-        <>
-          <TurnHeader
-            worked={then ? then.worked : scene.worked}
-            doneAt={
-              reduced
-                ? scene.running
-                  ? null
-                  : 0
-                : t.doneAt == null
-                  ? null
-                  : Math.max(0.01, t.doneAt - head)
-            }
-            style={delay(head)}
-          />
-          <div className="rhb-turn-body rhb-reveal" style={delay(head)}>
-            {scene.steps.map((s, i) => (
-              <WorkRow step={s} key={i} style={delay(t.stepAt[i] - head)} />
-            ))}
-            {(scene.post ?? []).map((p, i) =>
-              "step" in p ? (
-                <WorkRow
-                  step={p.step}
-                  key={`p${i}`}
-                  style={delay(t.postAt[i] - head)}
-                  doneAt={
-                    reduced
-                      ? 0.001
-                      : t.doneAt == null
-                        ? null
-                        : Math.max(0.01, t.doneAt - t.postAt[i])
-                  }
-                />
-              ) : null,
-            )}
-          </div>
-        </>
+        <Turn
+          worked={then ? then.worked : scene.worked}
+          plan={t.turn}
+          head={head}
+          doneAt={t.doneAt}
+          reduced={reduced}
+        />
       ) : null}
       {(scene.post ?? []).map((p, i) =>
         "reply" in p ? (
@@ -1988,23 +2139,13 @@ const FeedBody = memo(function FeedBody({
           <div className="rhb-user customize-msg" style={delay(f.at.user)}>
             {f.prompt}
           </div>
-          <TurnHeader
+          <Turn
             worked={f.worked}
-            doneAt={f.at.reply - f.at.steps[0]}
-            style={delay(f.at.steps[0])}
+            plan={f.at.turn}
+            head={f.at.steps[0]}
+            doneAt={f.at.reply}
+            reduced={reduced}
           />
-          <div
-            className="rhb-turn-body rhb-reveal"
-            style={delay(f.at.steps[0])}
-          >
-            {f.steps.map((step, i) => (
-              <WorkRow
-                step={step}
-                key={i}
-                style={delay(f.at.steps[i] - f.at.steps[0])}
-              />
-            ))}
-          </div>
           <div className="rhb-say customize-msg" style={delay(f.at.reply)}>
             {f.reply}
           </div>
