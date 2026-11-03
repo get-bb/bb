@@ -2698,14 +2698,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 44px;
 }
 
-.band-stacked .band-copy,
-.band-stacked.band-flip .band-copy {
+.band-stacked .band-copy {
   order: 0;
   max-width: 640px;
 }
 
-.band-stacked .band-visual,
-.band-stacked.band-flip .band-visual {
+.band-stacked .band-visual {
   display: block;
   order: 1;
   margin: 0 calc(-1 * var(--wrap-gutter));
