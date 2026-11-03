@@ -35,6 +35,7 @@ export function sitemapXml(
 ): string {
   const pages: SitemapPage[] = [
     { path: "/" },
+    { path: "/download" },
     { path: "/blog" },
     { path: "/changelog" },
     { path: "/plugin-guide" },
