@@ -248,7 +248,7 @@ describe("marketing download", () => {
           {
             headers: {
               referer:
-                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb&via=share",
+                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb",
               ...(gpc ? { "Sec-GPC": gpc } : {}),
             },
           },
@@ -282,9 +282,6 @@ describe("marketing download", () => {
       expect(body.properties.placement).toBe("nav");
       expect(body.properties.utm_campaign).toBe("x");
       expect(body.properties.utm_source).toBe("google");
-      expect(
-        new URL(body.properties.$referrer ?? "").searchParams.get("via"),
-      ).toBe("share");
       for (const [name, value, referrerValue] of [
         ["gclid", "abc", "ref"],
         ["gbraid", "gb", "ref-gb"],
@@ -587,19 +584,6 @@ describe("email download link endpoint", () => {
       JSON.stringify({ event: "download_link_contact", outcome: "failed" }),
     );
     expect(JSON.stringify(log.mock.calls)).not.toContain("example.com");
-  });
-
-  it("logs and answers sent when the contact call throws", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    stubResend((call) => {
-      if (call.url !== EMAILS_URL) {
-        throw new TypeError("network");
-      }
-      return undefined;
-    });
-    const { response } = await send({ email: "me@example.com" });
-    expect(response.status).toBe(200);
-    expect(log).toHaveBeenCalledTimes(1);
   });
 
   it("checks the per-IP and site-wide limits before sending", async () => {

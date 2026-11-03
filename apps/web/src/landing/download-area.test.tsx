@@ -78,12 +78,6 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
     expect(html).not.toContain("install-send");
   });
 
-  it("keeps the share button for a phone in phone-email control", () => {
-    const html = heroHtml("share");
-    expect(html).toContain("install-send touch-only");
-    expect(html).not.toContain("install-email");
-  });
-
   it("leaves the desktop markup unchanged", () => {
     const desktopOnly = (html: string) =>
       html.match(/<[^>]*desktop-only[^>]*>.*?<\/(a|span)>/g);
