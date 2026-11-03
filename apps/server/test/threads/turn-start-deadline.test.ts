@@ -3,11 +3,15 @@ import { turnScope } from "@bb/domain";
 import { retryTurnRequestSchema } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
-import { TURN_START_DEADLINE_MS } from "../../src/services/threads/thread-lifecycle.js";
+import {
+  TURN_START_DEADLINE_MS,
+  TURN_START_DEADLINE_RECONNECT_GRACE_MS,
+} from "../../src/services/threads/thread-lifecycle.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
 import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import {
   listQueuedThreadCommands,
+  registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -259,6 +263,38 @@ describe("turn start deadline", () => {
           (event) => event.type === "system/thread/interrupted",
         ),
       ).toEqual([]);
+    });
+  });
+
+  it("waits a minute after the host reconnects before stopping a run", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await withTestHarness(async (harness) => {
+      const fixture = seedIdleThread(harness, 7);
+      const requestedAt = Date.now();
+      await sendTurnThatNeverStarts(harness, fixture, "reconnects");
+      harness.hub.unregisterDaemon(fixture.sessionId);
+
+      const reconnectedAt = requestedAt + TURN_START_DEADLINE_MS * 2;
+      vi.setSystemTime(reconnectedAt);
+      registerTestHostRpcCapture(harness, {
+        hostId: fixture.environment.hostId,
+        sessionId: fixture.sessionId,
+      });
+
+      await sweepAt(
+        harness,
+        reconnectedAt + TURN_START_DEADLINE_RECONNECT_GRACE_MS - 1_000,
+      );
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("active");
+      expect(deadlineErrorCount(harness, fixture.thread.id)).toBe(0);
+
+      await sweepAt(
+        harness,
+        reconnectedAt + TURN_START_DEADLINE_RECONNECT_GRACE_MS + 1_000,
+      );
+      await settleDeadlineStop(harness, fixture.thread.id);
+      expect(getThread(harness.db, fixture.thread.id)?.status).toBe("error");
+      expect(deadlineErrorCount(harness, fixture.thread.id)).toBe(1);
     });
   });
 });

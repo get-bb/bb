@@ -1349,6 +1349,7 @@ function requestThreadStop(
 }
 
 export const TURN_START_DEADLINE_MS = 10 * 60_000;
+export const TURN_START_DEADLINE_RECONNECT_GRACE_MS = 60_000;
 
 export function stopRunsWhoseTurnNeverStarted(
   deps: CommandResultSideEffectsDeps,
@@ -1378,7 +1379,15 @@ export function stopRunsWhoseTurnNeverStarted(
     )
     .all();
   for (const thread of activeThreads) {
-    if (!deps.hub.hasDaemonForHost(thread.hostId)) continue;
+    const daemonConnectedAt = deps.hub.getDaemonConnectedAtForHost(
+      thread.hostId,
+    );
+    if (
+      daemonConnectedAt === null ||
+      now - daemonConnectedAt < TURN_START_DEADLINE_RECONNECT_GRACE_MS
+    ) {
+      continue;
+    }
     if (getActiveTurnId(deps, thread.threadId) !== null) continue;
     deps.logger.warn(
       { threadId: thread.threadId },
