@@ -3907,41 +3907,37 @@ describe("acp bridge", () => {
   });
 
   it.each([
-    [-32603, { statusCode: 503 }, "internal", 503],
-    [-32603, { status: 429 }, "rate-limit", 429],
-    [-32603, { httpStatusCode: 529 }, "overloaded", 529],
-    [-32603, null, "internal", null],
-    [-32001, { error: { type: "overloaded_error" } }, "overloaded", null],
-    [-32001, { type: "rate_limit_error" }, "rate-limit", null],
-    [-32000, null, "unknown", null],
-    [-32602, null, "unknown", null],
-    [-32001, { status: "503" }, "unknown", null],
-    [-32603, { status: 401 }, "unknown", 401],
-  ])(
-    "classifies ACP prompt error %j / %j",
-    async (code, data, category, httpStatusCode) => {
-      const { providerThreadId } = await startThread({
-        envVars: {
-          FAKE_ACP_PROMPT_ERROR: JSON.stringify({
-            code,
-            message: "Request failed",
-            data,
-          }),
+    [-32603, null, "internal"],
+    [-32603, { status: 401 }, "internal"],
+    [-32001, { status: 429, error: { type: "overloaded_error" } }, "unknown"],
+    [-32000, null, "unknown"],
+    [-32602, null, "unknown"],
+  ])("classifies ACP prompt error %j / %j", async (code, data, category) => {
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_PROMPT_ERROR: JSON.stringify({
+          code,
+          message: "Request failed",
+          data,
+        }),
+      },
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+      }),
+    );
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
+    expect(threadEventsOfType("provider/error")).toEqual([
+      expect.objectContaining({
+        errorInfo: {
+          category,
+          providerCode: String(code),
+          httpStatusCode: null,
         },
-      });
-      await waitForResponse(
-        sendTurnRequest("turn/start", providerThreadId, {
-          input: [{ type: "text", text: "hello", mentions: [] }],
-        }),
-      );
-      expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
-      expect(threadEventsOfType("provider/error")).toEqual([
-        expect.objectContaining({
-          errorInfo: { category, providerCode: String(code), httpStatusCode },
-        }),
-      ]);
-    },
-  );
+      }),
+    ]);
+  });
 
   it("fails the compaction turn legibly when the agent rejects the request", async () => {
     const { providerThreadId } = await startThread({

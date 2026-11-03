@@ -413,9 +413,7 @@ function emitForSession(
 function emitTurnError(session: AcpThreadSession, error: unknown): void {
   emitForSession(session, "error", {
     message: error instanceof Error ? error.message : String(error),
-    ...(error instanceof AcpAgentResponseError
-      ? { code: error.code, data: error.data }
-      : {}),
+    ...(error instanceof AcpAgentResponseError ? { code: error.code } : {}),
   });
 }
 

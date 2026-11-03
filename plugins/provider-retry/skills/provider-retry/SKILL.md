@@ -22,9 +22,11 @@ accepted, for one of three failures:
 
 Pi finishes its native automatic retries before a turn fails. Its intermediate
 errors marked `willRetry` leave the turn open and do not queue a bb retry.
-ACP errors are classified from available HTTP status or JSON-RPC code/data;
-unclassified errors are not retried. A rate-limit category alone does not
-supply a reset time.
+ACP classifies only the standard JSON-RPC internal-error code (-32603).
+BB retries it under its existing unavailable-provider policy; the protocol
+does not guarantee that the error is temporary. Other ACP codes are not
+retried. ACP error data and messages are not used to infer HTTP status,
+overloads, or rate limits.
 
 For Account Pooler routes, retry timing comes from the pool's earliest usable
 account for the failed request's model, including parent pools, so a generic
