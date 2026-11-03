@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { trackLandingEvent } from "./analytics";
 
-export const SECTION_VIEW_RATIO = 0.4;
+const SECTION_VIEW_RATIO = 0.4;
 export const SECTION_VIEW_DWELL_MS = 1000;
 
 const THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
