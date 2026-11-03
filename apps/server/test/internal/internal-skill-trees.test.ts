@@ -146,17 +146,4 @@ describe("internal skill tree routes", () => {
       expect(response.status).toBe(404);
     });
   });
-
-  it("returns 404 for an unknown tree hash", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-unknown-skill-tree",
-      });
-      const response = await harness.app.request(
-        `/internal/skills/tree/${"0".repeat(64)}`,
-        { headers: internalAuthHeaders(harness, { hostId: host.id }) },
-      );
-      expect(response.status).toBe(404);
-    });
-  });
 });

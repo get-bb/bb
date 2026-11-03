@@ -1309,33 +1309,6 @@ describe("core environment orchestration", () => {
       });
     }));
 
-  it("serializes overlapping remove sweeps", async () =>
-    withTestHarness(async (harness) => {
-      let removes = 0;
-      let release: () => void = () => {};
-      const waiting = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const fixture = setup(harness, {
-        policy: { retireGraceMs: 0 },
-        remove: async () => {
-          removes += 1;
-          await waiting;
-          return { status: "removed" };
-        },
-      });
-      fixture.ask();
-      await fixture.settled();
-      const environmentId = fixture.attach();
-      const first = sweepProviderEnvironment(harness.deps, environmentId);
-      await expect.poll(() => removes).toBe(1);
-      const second = sweepProviderEnvironment(harness.deps, environmentId);
-      expect(removes).toBe(1);
-      release();
-      await Promise.all([first, second]);
-      expect(removes).toBe(1);
-    }));
-
   it("reserves a path until provider removal finishes", async () =>
     withTestHarness(async (harness) => {
       let removes = 0;

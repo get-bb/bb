@@ -7,7 +7,6 @@ const PACKAGE_ROOT = resolve(import.meta.dirname, "..");
 const FRESH_SCHEMA_EXCEPTIONS = new Set([
   "src/services/hosts/host-environment.test.ts",
   "test/legacy-automations-export.test.ts",
-  "test/services/plugins/plugin-native-server-loading.test.ts",
 ]);
 
 function listTestSources(): string[] {

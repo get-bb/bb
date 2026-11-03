@@ -510,56 +510,6 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("transitions active threads back to idle for a started/completed event batch", async () => {
-    await withTestHarness(async (harness) => {
-      const { session } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: session.hostId,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: session.hostId,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        status: "active",
-      });
-
-      const response = await postEventBatch({
-        harness,
-        sessionId: session.id,
-        events: [
-          {
-            threadId: thread.id,
-            event: {
-              type: "turn/started",
-              threadId: thread.id,
-              providerThreadId: "provider-thread",
-              scope: turnScope("turn-1"),
-            },
-          },
-          {
-            threadId: thread.id,
-            event: {
-              type: "turn/completed",
-              threadId: thread.id,
-              providerThreadId: "provider-thread",
-              scope: turnScope("turn-1"),
-              status: "completed",
-            },
-          },
-        ],
-      });
-
-      expect(response.status).toBe(200);
-      expect(
-        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
-          ?.status,
-      ).toBe("idle");
-    });
-  });
-
   it("keeps active root turns queueable when a delegated child turn completes", async () => {
     await withTestHarness(async (harness) => {
       const { session } = seedHostSession(harness.deps);
@@ -1056,6 +1006,10 @@ describe("internal event and tool-call routes", () => {
         events: eventBatch,
       });
       expect(firstResponse.status).toBe(200);
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+          ?.status,
+      ).toBe("idle");
       const duplicateResponse = await postEventBatch({
         harness,
         sessionId: session.id,

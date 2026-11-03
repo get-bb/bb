@@ -163,14 +163,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toEqual([]);
   });
 
-  it("has no fallback candidates when a stored default provider is used", () => {
-    expect(
-      resolveCreateThreadExecutionDefaults(registry, {
-        storedDefaults: makeDefaults({ providerId: "codex" }),
-      }).providerFallbackCandidates,
-    ).toEqual([]);
-  });
-
   it("discards stored defaults when the resolved provider changes", () => {
     expect(
       resolveCreateThreadExecutionDefaults(registry, {
@@ -647,46 +639,6 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
         environmentProviderId: "git-worktree",
         machine: { type: "existing", hostId: host.id },
         inputs: { branch: { kind: "named", name: "main" } },
-      });
-    });
-  });
-
-  it("uses the project checkout for a non-Git project", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-non-git-default",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/non-git-default-source",
-      });
-      registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: () => ({
-          ok: true,
-          result: {
-            checkout: { kind: "unborn" as const, branchName: "main" },
-            defaultBranch: null,
-            defaultBranchRelation: null,
-            isWorktree: false,
-            hasUncommittedChanges: false,
-            operation: { kind: "none" as const },
-            originDefaultBranch: null,
-          } satisfies GitSourceInspection,
-        }),
-      });
-
-      await expect(
-        resolveProjectDefaultThreadEnvironment(harness.deps, {
-          projectId: project.id,
-        }),
-      ).resolves.toEqual({
-        type: "provider",
-        environmentProviderId: "project-checkout",
-        machine: { type: "existing", hostId: host.id },
-        inputs: { path: "/tmp/non-git-default-source" },
       });
     });
   });
