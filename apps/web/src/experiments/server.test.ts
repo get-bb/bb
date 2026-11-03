@@ -429,7 +429,7 @@ describe("site-wide experiments", () => {
       ASSIGNMENT_COOKIE_NAME,
     ]);
     expect(resolution?.setCookies[1]).toBe(
-      siteCookie("homepage-qa-check=test"),
+      siteCookie(`homepage-qa-check=test%7E${NOW}`),
     );
   });
 
@@ -456,14 +456,47 @@ describe("site-wide experiments", () => {
       "homepage-qa-check": "test",
     });
     expect(resolution?.setCookies).toEqual([
-      siteCookie("homepage-qa-check=test"),
+      siteCookie(`homepage-qa-check=test%7E${NOW}`),
     ]);
+  });
+
+  it("asks again a day after assigning, so stopping a flag applies", async () => {
+    const { calls, config } = siteSetup(async () =>
+      flagsResponse({ flags: {} }),
+    );
+    const resolution = await resolveExperiments(
+      htmlRequest(
+        "/changelog",
+        stored(`homepage-qa-check=test~${NOW - 24 * 60 * 60 * 1000}`),
+      ),
+      config,
+    );
+    expect(calls).toHaveLength(1);
+    expect(resolution?.bootstrap.featureFlags).toEqual({});
+  });
+
+  it("keeps an assignment's original time when the cookie is rewritten", async () => {
+    const { config } = siteSetup(async () => flagsResponse({ flags: {} }));
+    const assignedAt = NOW - 23 * 60 * 60 * 1000;
+    const resolution = await resolveExperiments(
+      pageRequest(
+        "/",
+        stored(`homepage-qa-check=test~${assignedAt}`),
+      ),
+      config,
+    );
+    expect(resolution?.bootstrap.featureFlags).toMatchObject({
+      "homepage-qa-check": "test",
+    });
+    expect(resolution?.setCookies[0]).toContain(
+      encodeURIComponent(`homepage-qa-check=test%7E${assignedAt}`),
+    );
   });
 
   it("skips the homepage's /flags call once every experiment is stored", async () => {
     const { calls, config } = siteSetup(async () => flagsResponse(assigned));
     const all = EXPERIMENT_KEYS.map((key) =>
-      key === "homepage-qa-check" ? `${key}=test` : `${key}=~${NOW}`,
+      key === "homepage-qa-check" ? `${key}=test~${NOW}` : `${key}=~${NOW}`,
     ).join("&");
     const resolution = await resolveExperiments(
       pageRequest("/", stored(all)),
@@ -478,7 +511,7 @@ describe("site-wide experiments", () => {
   it.each([
     [
       "an assigned visitor",
-      "homepage-qa-check=test",
+      `homepage-qa-check=test~${NOW - 1000}`,
       { "homepage-qa-check": "test" },
     ],
     ["a visitor outside the experiment", unassigned(NOW - 1000), {}],
@@ -503,7 +536,7 @@ describe("site-wide experiments", () => {
       flagsResponse({ flags: {} }),
     );
     const resolution = await resolveExperiments(
-      pageRequest("/", stored("homepage-qa-check=test")),
+      pageRequest("/", stored(`homepage-qa-check=test~${NOW}`)),
       config,
     );
     expect(resolution?.bootstrap.featureFlags).toMatchObject({
@@ -579,7 +612,11 @@ describe("site-wide experiments", () => {
       ),
     ).toEqual({});
     expect(
-      readAssignmentCookie(header("homepage-qa-check=holdout-12"), keys, NOW),
+      readAssignmentCookie(
+        header(`homepage-qa-check=holdout-12~${NOW}`),
+        keys,
+        NOW,
+      ),
     ).toEqual({});
     expect(
       readAssignmentCookie(header("homepage-qa-check=test"), [], NOW),

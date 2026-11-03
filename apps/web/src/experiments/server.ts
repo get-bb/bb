@@ -9,13 +9,13 @@ import {
   type ExperimentKey,
 } from "./flags";
 
-const FLAGS_TIMEOUT_MS = 250;
+const FLAGS_TIMEOUT_MS = 400;
 export const EXPERIMENT_CACHE_CONTROL = "private, no-cache";
 export const ASSIGNMENT_COOKIE_NAME = "__Host-bb_experiments";
 const COOKIE_DAYS = 365;
 const ASSIGNMENT_COOKIE_MS = 24 * 60 * 60 * 1000;
 const UNASSIGNED_TTL_MS = 60 * 60 * 1000;
-const UNASSIGNED_PREFIX = "~";
+const STAMP = "~";
 const AUTOMATED_USER_AGENT =
   /bot|crawl|spider|slurp|preview|monitor|uptime|pingdom|statuscake|headless|lighthouse|curl|wget|python|httpclient|go-http|axios|node-fetch|okhttp|java\//i;
 const NON_PAGE_ROOTS = [
@@ -330,16 +330,19 @@ export function readAssignmentCookie(
   const stored: Record<string, { variant: string | null; value: string }> =
     {};
   for (const [key, value] of params) {
-    if (!isExperimentKey(key) || !keys.includes(key)) {
+    const stamp = value.indexOf(STAMP);
+    if (!isExperimentKey(key) || !keys.includes(key) || stamp < 0) {
       continue;
     }
-    if (value.startsWith(UNASSIGNED_PREFIX)) {
-      const checkedAt = Number(value.slice(UNASSIGNED_PREFIX.length));
-      if (checkedAt <= now && now - checkedAt < UNASSIGNED_TTL_MS) {
-        stored[key] = { variant: null, value };
-      }
-    } else if (isKnownVariant(key, value)) {
-      stored[key] = { variant: value, value };
+    const variant = value.slice(0, stamp);
+    const storedAt = Number(value.slice(stamp + STAMP.length));
+    const ttl = variant === "" ? UNASSIGNED_TTL_MS : ASSIGNMENT_COOKIE_MS;
+    if (
+      storedAt <= now &&
+      now - storedAt < ttl &&
+      (variant === "" || isKnownVariant(key, variant))
+    ) {
+      stored[key] = { variant: variant === "" ? null : variant, value };
     }
   }
   return stored;
@@ -442,8 +445,7 @@ export async function resolveExperiments(
       values[key] = entry.value;
     }
     for (const key of missing) {
-      values[key] =
-        evaluation.flags[key] ?? `${UNASSIGNED_PREFIX}${checkedAt}`;
+      values[key] = `${evaluation.flags[key] ?? ""}${STAMP}${checkedAt}`;
     }
     setCookies.push(assignmentCookie(values, checkedAt));
   }
