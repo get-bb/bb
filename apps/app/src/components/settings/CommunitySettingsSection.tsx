@@ -6,8 +6,8 @@ import {
   SettingsWithControl,
 } from "@/components/ui/settings-section.js";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import { bbHelpLinks, docsLinks } from "@bb/domain/docs-links";
 
-const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
 const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
 
 interface CommunityLinkRowProps {
@@ -54,13 +54,20 @@ export function CommunitySettingsSection() {
   return (
     <SettingsSection
       title="Community"
-      description="Chat with other bb users and follow development on GitHub."
+      description="Read the docs, chat with other bb users, and follow development on GitHub."
     >
       <div className="space-y-5">
         <CommunityLinkRow
+          label="Docs"
+          description="Guides, troubleshooting, and reference for bb."
+          href={docsLinks.home}
+          icon="FileText"
+          openLabel="Open docs"
+        />
+        <CommunityLinkRow
           label="Discord"
           description="Join the server for support, feedback, and announcements."
-          href={DISCORD_INVITE_URL}
+          href={bbHelpLinks.discord}
           icon="DiscordLogo"
           iconClassName="text-brand-discord"
           openLabel="Join Discord"

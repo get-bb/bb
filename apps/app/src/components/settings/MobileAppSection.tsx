@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { MobilePlatformIcon } from "./MobilePlatformIcon";
 import { MachineAccessSettings } from "./MachineAccessSettings";
@@ -23,7 +25,10 @@ export function MobileAppSection() {
       <div>
         <h2 className="text-base font-semibold">Mobile apps</h2>
         <p className="mt-1 text-sm text-subtle-foreground">
-          Use bb from your phone
+          Use bb from your phone.{" "}
+          <AppDocsLink href={docsLinks.mobile}>
+            Learn more about the mobile apps
+          </AppDocsLink>
         </p>
       </div>
       <MachineAccessSettings title="Accessing bb from your phone">

@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
@@ -407,7 +409,10 @@ export function MachinesSettingsSection() {
             <p>
               All your machines connect to one central bb server, where your
               threads and settings are stored. Choose a machine that can stay
-              awake and online to run the server.
+              awake and online to run the server.{" "}
+              <AppDocsLink href={docsLinks.addMachine}>
+                Learn more about adding machines
+              </AppDocsLink>
             </p>
             {serverMoveEnabled ? (
               <p>

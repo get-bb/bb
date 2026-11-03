@@ -1,3 +1,5 @@
+import { docsLinks } from "@bb/domain/docs-links";
+import { AppDocsLink } from "@/components/ui/app-docs-link";
 import { useState } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
 import {
@@ -317,7 +319,15 @@ export function ProvidersSettingsSection({
     <>
       <SettingsSection
         title="Providers"
-        description="Choose which agents you use in BB. Drag to reorder them in provider pickers."
+        description={
+          <>
+            Choose which agents you use in BB. Drag to reorder them in provider
+            pickers.{" "}
+            <AppDocsLink href={docsLinks.agentSignIn}>
+              Set up an agent
+            </AppDocsLink>
+          </>
+        }
       >
         {providersQuery.isPending ? (
           <p className="text-sm text-muted-foreground">Loading providers…</p>
@@ -392,7 +402,16 @@ export function ProvidersSettingsSection({
           </SettingsWithControl>
           <SettingsWithControl
             label="Release idle agent sessions"
-            description="Stop agents that have been idle this long to free memory. Threads keep their history and pick up on your next message. Checked every 5 minutes."
+            description={
+              <>
+                Stop agents that have been idle this long to free memory.
+                Threads keep their history and pick up on your next message.
+                Checked every 5 minutes.{" "}
+                <AppDocsLink href={docsLinks.memoryUse}>
+                  Learn more about memory use
+                </AppDocsLink>
+              </>
+            }
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

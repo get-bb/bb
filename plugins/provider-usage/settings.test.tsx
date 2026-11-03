@@ -84,6 +84,7 @@ function renderContent(
       error={false}
       onSelect={() => {}}
       onRefresh={() => {}}
+      onOpenUrl={() => false}
       {...props}
     />,
   );
