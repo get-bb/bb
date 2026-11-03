@@ -3197,38 +3197,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding-bottom: var(--bw-stage-pad);
 }
 
-/* Wrap the desktop timeline before the phone, so the phone never cuts a
-   line of it in half. */
-.bw-start .bw-feed {
-  padding-right: calc(
-    (1 - var(--bw-drop)) *
-      max(
-        var(--bw-sp-width) + 22px,
-        min(
-          386px,
-          968px - var(--bw-fit-slice) + 312px * var(--bw-overlay-scale)
-        )
-      )
-  );
-}
-
 .bw-start-stage {
   --bw-sp-width: 392px;
 }
 
-.bw-start .bar-toggle.active {
-  animation: bw-sp-toggle 0.3s ease 4.5s backwards;
-}
-
-.bw-start .leaving .bar-toggle.active {
-  animation: bw-sp-toggle 0.3s ease reverse forwards;
-}
-
-@keyframes bw-sp-toggle {
-  from {
-    background: transparent;
-    color: var(--subtle);
-  }
+.bw-start .main {
+  min-width: 0;
+  margin-right: calc((1 - var(--bw-drop)) * var(--bw-sp-width));
 }
 
 .bw-sp-slot {
@@ -3248,23 +3223,56 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 100%;
   border-left: 1px solid var(--border-soft);
   background: var(--surface);
-  animation: bw-sp-in 0.7s var(--fw-ease) var(--fw-at, 0s) both;
 }
 
-.leaving .bw-sp {
-  animation: bw-sp-out 0.6s var(--fw-ease) forwards;
+.bw-sp-views {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
-@keyframes bw-sp-in {
+.bw-sp-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.bw-sp-view.is-changes {
+  animation: bw-sp-fill 0.6s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-sp-view.is-changes {
+  animation: bw-sp-clear 0.6s var(--fw-ease) forwards;
+}
+
+@keyframes bw-sp-fill {
   from {
-    transform: translateX(100%);
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
   }
 }
 
-@keyframes bw-sp-out {
-  to {
-    transform: translateX(100%);
+@keyframes bw-sp-clear {
+  from {
+    clip-path: inset(0);
   }
+  to {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+.bw-sp-empty {
+  margin: 0 16px;
+  padding: 24px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--dim);
+  text-align: center;
 }
 
 .bw-sp-chrome {
