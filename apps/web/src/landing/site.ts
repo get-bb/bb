@@ -64,6 +64,14 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
   },
 };
 export const SUBSCRIBE_PATH = "/api/subscribe";
+export const EMAIL_DOWNLOAD_LINK_PATH = "/api/email-download-link";
+
+export const SEND_LINK_VIA_PARAM = "via";
+export type SendLinkVia = "share" | "email";
+
+export function parseSendLinkVia(value: string | null): SendLinkVia | null {
+  return value === "share" || value === "email" ? value : null;
+}
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 export const DOWNLOAD_PAGE_PATH = "/download";
@@ -75,6 +83,8 @@ export type CtaPlacement =
   | "customize"
   | "closer"
   | "footer"
+  | "marketplace"
+  | "changelog"
   | "download_page";
 
 export const UTM_PARAM_NAMES = [

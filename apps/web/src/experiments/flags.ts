@@ -5,6 +5,7 @@ export const EXPERIMENT_VARIANTS = {
   "homepage-subhead-text": ["test"],
   "homepage-hero-window": ["test"],
   "homepage-below-fold": ["test"],
+  "homepage-phone-email": ["test"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ExperimentKey = keyof typeof EXPERIMENT_VARIANTS;

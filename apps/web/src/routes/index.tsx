@@ -1255,6 +1255,8 @@ function LandingPage() {
     "homepage-below-fold",
     "desktop",
   );
+  const phoneEmail = useExperiment("homepage-phone-email");
+  useExperimentExposure("homepage-phone-email", "touch");
   useScrollReveal();
   useSectionViews((section) => {
     if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
@@ -1290,7 +1292,10 @@ function LandingPage() {
           {SUBHEAD_COPY[subhead]}
         </p>
 
-        <InstallOptions placement="hero" />
+        <InstallOptions
+          placement="hero"
+          touchAction={phoneEmail === "test" ? "email" : "share"}
+        />
 
         {subhead === "test" ? (
           <AgentRow />

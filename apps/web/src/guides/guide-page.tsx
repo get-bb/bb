@@ -12,6 +12,7 @@ import { DesktopDownloadButton } from "../landing/cta";
 import { useDesktopPlatform } from "../landing/desktop-platform";
 import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
+import { SendToComputerButton } from "../landing/send-to-computer-button";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
 import { canonicalPath } from "../landing/content-links";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
@@ -94,7 +95,7 @@ function CopyForAgent({
   );
 }
 
-function GuideHero({ guide }: { guide: Guide }) {
+export function GuideHero({ guide }: { guide: Guide }) {
   const platform = useDesktopPlatform();
   return (
     <header className="hero cmp-hero gd-hero">
@@ -112,8 +113,9 @@ function GuideHero({ guide }: { guide: Guide }) {
         <DesktopDownloadButton
           placement="hero"
           platform={platform}
-          className="btn btn-ghost"
+          className="btn btn-ghost desktop-only"
         />
+        <SendToComputerButton placement="hero" className="btn btn-ghost" />
       </div>
       {guide.requirement ? (
         <p className="gd-requirement">
