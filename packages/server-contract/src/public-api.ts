@@ -131,6 +131,7 @@ import {
   type HostReconnectResponse,
   type HostListQuery,
   type HostDeleteQuery,
+  type HostProviderCliStatusQuery,
   type EnvironmentCleanupQuery,
   type HostActionResponse,
   type HostCloneDefaultPathQuery,
@@ -325,6 +326,7 @@ import {
   hostDirectoryQuerySchema,
   hostListQuerySchema,
   hostDeleteQuerySchema,
+  hostProviderCliStatusQuerySchema,
   environmentCleanupQuerySchema,
   hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
@@ -1003,7 +1005,9 @@ export const publicApiRoutes = {
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",
       method: "get",
-      request: noRequest<PathId>(),
+      request: optionalQueryRequest<PathId, HostProviderCliStatusQuery>(
+        hostProviderCliStatusQuerySchema,
+      ),
       response: jsonResponse<HostProviderCliStatusResponse>(),
     }),
     providerCliInstall: defineRoute({

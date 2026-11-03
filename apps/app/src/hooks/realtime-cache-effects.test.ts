@@ -10,6 +10,7 @@ import {
   environmentFilePreviewQueryKey,
   hostPathExistenceQueryKey,
   hostsQueryKey,
+  hostProviderCliStatusQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
@@ -691,6 +692,25 @@ describe("createRealtimeCacheEffects", () => {
       );
       expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
       expect(invalidated()).toEqual([]);
+      effects.dispose();
+    });
+
+    it("refetches only the pushed host's provider CLI status", () => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const hostAKey = hostProviderCliStatusQueryKey("host-a");
+      const hostBKey = hostProviderCliStatusQueryKey("host-b");
+      queryClient.setQueryData(hostAKey, {});
+      queryClient.setQueryData(hostBKey, {});
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "host",
+        id: "host-a",
+        changes: ["provider-cli-status-changed"],
+      });
+
+      expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
       effects.dispose();
     });
   });

@@ -70,6 +70,8 @@ import {
   threadStorageLocationQueryKey,
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
+  allHostProviderCliStatusQueryKeyPrefix,
+  hostProviderCliStatusQueryKey,
 } from "../queries/query-keys";
 import { systemEnvironmentProvidersQueryKey } from "../queries/environment-provider-queries";
 import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
@@ -532,6 +534,9 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
   },
   "provider-commands-changed": {
     dirty: [dirtyProjectCommandCatalogQueries],
+  },
+  "provider-cli-status-changed": {
+    dirty: [dirtyHostProviderCliStatusQueries],
   },
 } satisfies HostChangeRegistry;
 
@@ -1175,6 +1180,16 @@ function dirtyHostSystemExecutionOptionQueries({
 }: HostRealtimeDirtyContext): QueryKey[] | void {
   if (hostId === undefined) return [allSystemExecutionOptionsQueryKeyPrefix()];
   void invalidateSystemExecutionOptions({ hostId, queryClient });
+}
+
+function dirtyHostProviderCliStatusQueries({
+  hostId,
+}: HostRealtimeDirtyContext): QueryKey[] {
+  return [
+    hostId === undefined
+      ? allHostProviderCliStatusQueryKeyPrefix()
+      : hostProviderCliStatusQueryKey(hostId),
+  ];
 }
 
 function dirtyPluginContributionQueries(): QueryKey[] {
