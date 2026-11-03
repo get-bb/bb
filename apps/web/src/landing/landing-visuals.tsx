@@ -76,7 +76,7 @@ export function InstallOptions({
   const simple = useExperiment("homepage-download-area") === "test";
   useExperimentExposure("homepage-download-area", "desktop");
   return simple ? (
-    <SimpleInstallOptions placement={placement} />
+    <SimpleInstallOptions placement={placement} touchAction={touchAction} />
   ) : (
     <CurrentInstallOptions placement={placement} touchAction={touchAction} />
   );
@@ -167,8 +167,10 @@ function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
 // that links to the repo and to /download. The command moves to /download.
 export function SimpleInstallOptions({
   placement,
+  touchAction = "share",
 }: {
   placement: CtaPlacement;
+  touchAction?: "share" | "email";
 }) {
   const platform = useDesktopPlatform();
   return (
@@ -180,7 +182,11 @@ export function SimpleInstallOptions({
             platform={platform}
             className="btn btn-primary btn-install install-download desktop-only"
           />
-          <SendToComputerButton placement={placement} />
+          {touchAction === "email" ? (
+            <EmailDownloadLinkForm placement={placement} />
+          ) : (
+            <SendToComputerButton placement={placement} />
+          )}
           <span className="install-note install-note-desktop desktop-only">
             {platform === "macos" ? null : <>Alpha{" · "}</>}
             <OpenSourceLink placement={placement} />
