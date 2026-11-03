@@ -139,21 +139,33 @@ export function formatFileChangePath({
   })}`;
 }
 
+function isWholeFileChange(change: FileChangeLike): boolean {
+  const action = getFileChangeAction(change);
+  return action === "created" || action === "deleted";
+}
+
+export function isPlainFileContentDiff(change: FileChangeLike): boolean {
+  return (
+    !!change.diff &&
+    isWholeFileChange(change) &&
+    !isPatchMetadataLine(splitDiffLines(change.diff)[0] ?? "")
+  );
+}
+
 export function getFileChangeDiffLines(change: FileChangeLike): string[] {
   if (!change.diff) {
     return [];
   }
   const lines = splitDiffLines(change.diff);
-  const bodyLines = lines.filter((line) => !isPatchMetadataLine(line));
-  const action = getFileChangeAction(change);
-  const isPlainContent =
-    (action === "created" || action === "deleted") &&
-    (bodyLines.length === lines.length || !bodyLines.some(isChangedLine));
-  if (!isPlainContent) {
-    return bodyLines;
+  const prefix = getFileChangeAction(change) === "created" ? "+" : "-";
+  if (isPlainFileContentDiff(change)) {
+    return lines.map((line) => `${prefix}${line}`);
   }
-  const prefix = action === "created" ? "+" : "-";
-  return bodyLines.map((line) => `${prefix}${line}`);
+  const bodyLines = lines.filter((line) => !isPatchMetadataLine(line));
+  if (isWholeFileChange(change) && !bodyLines.some(isChangedLine)) {
+    return bodyLines.map((line) => `${prefix}${line}`);
+  }
+  return bodyLines;
 }
 
 export function getFileChangeDiffStats(

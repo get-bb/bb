@@ -2,6 +2,7 @@ import type { TimelineFileChange } from "@bb/server-contract";
 import {
   getFileChangeAction,
   getFileChangeDiffLines,
+  isPlainFileContentDiff,
   type FileChangeAction,
 } from "@bb/thread-view";
 
@@ -56,7 +57,7 @@ export function getRenderablePatchText(
   change: TimelineFileChange,
 ): RenderablePatchText | null {
   const patch = change.diff;
-  if (patch && patch.trim().length > 0) {
+  if (patch && patch.trim().length > 0 && !isPlainFileContentDiff(change)) {
     const trimmedPatch = patch.trimEnd();
     if (
       trimmedPatch.startsWith("diff --git") ||

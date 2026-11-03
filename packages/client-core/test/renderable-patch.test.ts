@@ -71,6 +71,26 @@ describe("renderable-patch", () => {
     ]);
   });
 
+  it("keeps patch-like lines inside plain created-file content", () => {
+    const change: TimelineFileChange = {
+      path: "docs/guide.md",
+      kind: "add",
+      movePath: null,
+      diff: "# Guide\n- bullet\n--- not a header\n+++ nor this\n@@ marker @@\nindex of terms\n",
+      diffStats: { added: 0, removed: 0 },
+    };
+
+    expect(renderedHunk(change)).toEqual([
+      "@@ -1,0 +1,6 @@",
+      "+# Guide",
+      "+- bullet",
+      "+--- not a header",
+      "++++ nor this",
+      "+@@ marker @@",
+      "+index of terms",
+    ]);
+  });
+
   it("keeps the additions of a created-file patch that carries headers", () => {
     const change: TimelineFileChange = {
       path: "docs/plan.md",
