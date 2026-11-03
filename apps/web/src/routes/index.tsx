@@ -1,29 +1,5 @@
-import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
-import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
-import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
-import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
-import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
-import FolderGitTwoIcon from "@hugeicons/core-free-icons/FolderGit2Icon";
-import HiFolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
-import HiGitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-import HiGitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
-import HiLaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
-import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
-import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
-import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
-import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
 import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
 import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
-import PlusMinusSquare01Icon from "@hugeicons/core-free-icons/PlusMinusSquare01Icon";
-import SentIcon from "@hugeicons/core-free-icons/SentIcon";
-import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
-import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
-import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
-import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,6 +19,7 @@ import {
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
 import { useSectionViews } from "../landing/section-views";
+import { useActiveWhileVisible } from "../landing/visibility";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
@@ -74,8 +51,33 @@ import tencentLogo from "../assets/company-logos/tencent.png";
 import vercelLogo from "../assets/company-logos/vercel.svg";
 import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
-import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
+import {
+  CheckIcon,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClockIcon,
+  ComposerBox,
+  ContextRow,
+  EditorButton,
+  Ellipsis,
+  FileDiffIcon,
+  FolderGitIcon,
+  GearIcon,
+  GitBranchIcon,
+  GitMergeIcon,
+  LaptopGlyph,
+  Maximize2,
+  MockBar,
+  NewThreadIcon,
+  PanelRightIcon,
+  PaperPlane,
+  Paperclip,
+  Spinner,
+  ThreadStatus,
+  useFitMock,
+} from "../landing/app-mock-parts";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
 import { HeroWindow } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
@@ -319,110 +321,6 @@ function useConstructMock() {
     };
   }, []);
 }
-
-function useFitMock() {
-  useEffect(() => {
-    const mock = document.querySelector<HTMLElement>(".mock");
-    const wrap = mock?.parentElement;
-    if (!mock || !wrap) {
-      return;
-    }
-    const fit = () => {
-      const wrapStyle = getComputedStyle(wrap);
-      const visibleWidth = Number.parseFloat(
-        getComputedStyle(mock).getPropertyValue("--mock-visible-width"),
-      );
-      if (!visibleWidth) {
-        mock.style.removeProperty("--mock-scale");
-        return;
-      }
-      const slice =
-        wrap.clientWidth -
-        Number.parseFloat(wrapStyle.paddingLeft) -
-        Number.parseFloat(wrapStyle.paddingRight);
-      mock.style.setProperty("--mock-scale", String(slice / visibleWidth));
-    };
-    fit();
-    const observer = new ResizeObserver(fit);
-    observer.observe(wrap);
-    return () => observer.disconnect();
-  }, []);
-}
-
-type IconProps = { className?: string };
-
-const PanelIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SidebarLeftIcon} className={className} />
-);
-const PanelRightIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SidebarRightIcon} className={className} />
-);
-const ChevronLeft = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowLeft01Icon} className={className} />
-);
-const ChevronRight = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowRight01Icon} className={className} />
-);
-const ChevronDown = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowDown01Icon} className={className} />
-);
-const Ellipsis = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={MoreHorizontalIcon} className={className} />
-);
-const NewThreadIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={BubbleChatAddIcon} className={className} />
-);
-const ClockIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Clock01Icon} className={className} />
-);
-const GearIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Settings01Icon} className={className} />
-);
-const CheckIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Tick02Icon} className={className} />
-);
-const CircleCheckIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={CheckmarkCircle02Icon} className={className} />
-);
-const MessageQuestionGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={MessageQuestionIcon} className={className} />
-);
-const PaperPlane = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={SentIcon} className={className} />
-);
-const Paperclip = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={AttachmentIcon} className={className} />
-);
-const FolderIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={HiFolderIcon} className={className} />
-);
-const FolderGitIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={FolderGitTwoIcon} className={className} />
-);
-const GitBranchIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={HiGitBranchIcon} className={className} />
-);
-const GitMergeIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={HiGitMergeIcon} className={className} />
-);
-const Spinner = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Loading03Icon} className={className} />
-);
-const Maximize2 = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowExpand01Icon} className={className} />
-);
-const MicIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Mic02Icon} className={className} />
-);
-const SendIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={ArrowMoveDownLeftIcon} className={className} />
-);
-const LaptopGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={HiLaptopIcon} className={className} />
-);
-const FileDiffIcon = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={PlusMinusSquare01Icon} className={className} />
-);
 
 type Status = "running" | "done" | "waiting";
 type Step =
@@ -691,16 +589,6 @@ const CHIEF: MockThread = {
   ],
 };
 
-function ThreadStatus({ status }: { status: Status }) {
-  return (
-    <span className="tstatus" aria-hidden>
-      {status === "running" ? <Spinner className="trun" /> : null}
-      {status === "done" ? <CircleCheckIcon className="tdone" /> : null}
-      {status === "waiting" ? <MessageQuestionGlyph className="twait" /> : null}
-    </span>
-  );
-}
-
 const STREAM_INTERVAL_MS = 1600;
 const STREAM_WINDOW = 16;
 
@@ -860,65 +748,29 @@ function Composer({ thread }: { thread?: MockThread }) {
           <ChevronDown className="pr-ic pr-chev" />
         </div>
       ) : null}
-      <div className="composer-box">
-        <div className="composer-top">
-          <textarea
-            className="composer-input"
-            rows={1}
-            placeholder={
-              isNew
-                ? "Ask anything. @ to mention files or folders"
-                : "Ask for a follow-up. @ to mention files, folders, sections, or threads"
-            }
-            aria-label={isNew ? "Start a new thread" : "Message this thread"}
-          />
-          <Maximize2 className="cb-expand" />
-        </div>
-        <div className="composer-row">
-          <span className="model">
-            <ClaudeIcon className="model-ic" />
-            Opus 4.8 1M
-            <ChevronDown className="chev-sm" />
-          </span>
-          <span className="composer-actions" aria-hidden>
-            <Paperclip className="composer-clip" />
-            <MicIcon className="composer-clip" />
-            <span className="send-btn">
-              <SendIcon className="send-ic" />
-            </span>
-          </span>
-        </div>
-      </div>
-      <div className="context-row">
-        <span className="ctx">
-          <FolderIcon className="ctx-ic" />
-          <span>{isNew ? "paper-ultra-slop" : "bb"}</span>
-          <ChevronDown className="ctx-chev" />
-        </span>
-        <span className="ctx">
-          {isNew ? (
-            <LaptopGlyph className="ctx-ic" />
-          ) : (
-            <FolderGitIcon className="ctx-ic" />
-          )}
-          <span>{isNew ? "Work locally" : "Worktree"}</span>
-          <ChevronDown className="ctx-chev" />
-        </span>
-        <span className="ctx">
-          <GitBranchIcon className="ctx-ic" />
-          <span className="ctx-branch">
-            {isNew ? "Current (main)" : thread.branch}
-          </span>
-          <ChevronDown className="ctx-chev" />
-        </span>
-        <span className="ctx-perm">
-          Full Access
-          <ChevronDown className="ctx-chev" />
-        </span>
-        {thread && thread.status === "running" ? (
-          <Spinner className="ctx-spin" />
-        ) : null}
-      </div>
+      <ComposerBox model="Opus 4.8 1M">
+        <textarea
+          className="composer-input"
+          rows={1}
+          placeholder={
+            isNew
+              ? "Ask anything. @ to mention files or folders"
+              : "Ask for a follow-up. @ to mention files, folders, sections, or threads"
+          }
+          aria-label={isNew ? "Start a new thread" : "Message this thread"}
+        />
+        <Maximize2 className="cb-expand" />
+      </ComposerBox>
+      <ContextRow
+        project={isNew ? "paper-ultra-slop" : "bb"}
+        place={
+          isNew
+            ? { icon: LaptopGlyph, label: "Work locally" }
+            : { icon: FolderGitIcon, label: "Worktree" }
+        }
+        branch={isNew ? "Current (main)" : thread.branch}
+        running={thread?.status === "running"}
+      />
     </div>
   );
 }
@@ -992,56 +844,40 @@ function HeroAppMock({ ref }: { ref: Ref<HTMLElement> }) {
       return { ...prev, [parentId]: [...kids, child] };
     });
   }, []);
+  const mockRef = useRef<HTMLDivElement>(null);
+  useFitMock(mockRef);
 
   return (
     <section ref={ref} className="mockup-wrap">
       <div
+        ref={mockRef}
         className="mock"
         data-construct
         aria-label="Interactive preview of the bb app"
       >
-        <div className="mock-bar">
-          <div className="bar-left">
-            <span className="mock-dots" aria-hidden>
-              <i />
-              <i />
-              <i />
-            </span>
-            <span className="bar-menu" aria-hidden>
-              <PanelIcon className="ri bar-ic" />
-            </span>
-            <span className="bar-nav" aria-hidden>
-              <ChevronLeft className="ri" />
-              <ChevronRight className="ri" />
-            </span>
-          </div>
-          <div className="bar-main">
-            {view === "thread" ? (
-              <>
-                <span className="bar-title">{thread.title}</span>
-                <Ellipsis className="ri bar-kebab" />
-                <span className="bar-actions">
-                  <span className="editor-btn" aria-hidden>
-                    <img src={vscodeIcon} alt="" className="editor-ic" />
-                    <ChevronDown className="chev-xs" />
-                  </span>
-                  <span className="commit-btn" aria-hidden>
-                    Commit
-                  </span>
-                  <button
-                    type="button"
-                    className={diffOpen ? "bar-toggle active" : "bar-toggle"}
-                    aria-label={diffOpen ? "Hide changes" : "Show changes"}
-                    aria-pressed={diffOpen}
-                    onClick={() => setDiffOpen((open) => !open)}
-                  >
-                    <PanelRightIcon className="ri" />
-                  </button>
+        <MockBar>
+          {view === "thread" ? (
+            <>
+              <span className="bar-title">{thread.title}</span>
+              <Ellipsis className="ri bar-kebab" />
+              <span className="bar-actions">
+                <EditorButton />
+                <span className="commit-btn" aria-hidden>
+                  Commit
                 </span>
-              </>
-            ) : null}
-          </div>
-        </div>
+                <button
+                  type="button"
+                  className={diffOpen ? "bar-toggle active" : "bar-toggle"}
+                  aria-label={diffOpen ? "Hide changes" : "Show changes"}
+                  aria-pressed={diffOpen}
+                  onClick={() => setDiffOpen((open) => !open)}
+                >
+                  <PanelRightIcon className="ri" />
+                </button>
+              </span>
+            </>
+          ) : null}
+        </MockBar>
         <div className="mock-body">
           <aside className="side">
             <button
@@ -1236,9 +1072,11 @@ function LandingPage() {
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
   const heroWindow = useExperiment("homepage-hero-window");
-  const heroWindowRef = useRef<HTMLElement>(null);
-  const [heroWindowInView, setHeroWindowInView] = useState(false);
-  const [heroWindowSeen, setHeroWindowSeen] = useState(false);
+  const {
+    ref: heroWindowRef,
+    seen: heroWindowSeen,
+    active: heroWindowActive,
+  } = useActiveWhileVisible<HTMLElement>("0px 0px -20% 0px");
   const [heroWindowFilled, setHeroWindowFilled] = useState(false);
   const markHeroWindowFilled = useCallback(() => setHeroWindowFilled(true), []);
   useExperimentExposure(
@@ -1249,7 +1087,6 @@ function LandingPage() {
   useScrollReveal();
   useSectionViews();
   useConstructMock();
-  useFitMock();
 
   useEffect(() => {
     const companyProof = companyProofRef.current;
@@ -1259,22 +1096,6 @@ function LandingPage() {
       setCompanyProofInView(entry?.isIntersecting ?? false);
     });
     observer.observe(companyProof);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const heroWindowEl = heroWindowRef.current;
-    if (!heroWindowEl) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry?.isIntersecting ?? false;
-        setHeroWindowInView(visible);
-        if (visible) setHeroWindowSeen(true);
-      },
-      { rootMargin: "0px 0px -20% 0px" },
-    );
-    observer.observe(heroWindowEl);
     return () => observer.disconnect();
   }, []);
 
@@ -1311,7 +1132,7 @@ function LandingPage() {
       {heroWindow === "test" ? (
         <HeroWindow
           ref={heroWindowRef}
-          inView={heroWindowInView}
+          active={heroWindowActive}
           onFilled={markHeroWindowFilled}
         />
       ) : (
