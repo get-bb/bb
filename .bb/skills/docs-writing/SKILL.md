@@ -101,6 +101,8 @@ Every page:
 - Stands alone for someone arriving from search or an agent.
 - Answers in the first two lines. The `description` is shown under the title.
 - Shows the UI path and the CLI command together wherever both exist.
+- Uses only `bb` commands and flags that exist. CI checks every command
+  written in docs pages, guides, skills and `bb guide` chapters.
 - Links only to "Next steps" at the bottom. No buttons, dates or prev/next.
 
 ## Fill in the front-matter
@@ -214,6 +216,7 @@ and replaces each placeholder with a `<Screenshot>`.
 
 ```sh
 pnpm exec turbo run test typecheck build --filter=@bb/web
+pnpm exec turbo run test --filter=@bb/cli
 node apps/web/scripts/docs-freshness.mjs
 ```
 
