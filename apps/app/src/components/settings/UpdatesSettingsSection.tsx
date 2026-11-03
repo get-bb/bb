@@ -200,11 +200,8 @@ function UpdatesRow({
   actions: ReactNode;
 }) {
   return (
-    <div className="@container/update-row flex min-w-0 flex-wrap items-start gap-3 px-4 py-3.5 text-sm has-[[data-row-actions]>*+*]:[&>[data-row-text]]:min-w-[min(22rem,100%)]">
-      <span
-        data-row-text
-        className="flex min-w-48 flex-1 basis-0 items-start gap-3"
-      >
+    <div className="@container/update-row flex min-w-0 flex-wrap items-start gap-3 px-4 py-3.5 text-sm">
+      <span className="flex min-w-48 flex-1 basis-0 items-start gap-3">
         <span className="flex h-5 w-6 shrink-0 items-center justify-center">
           {leading}
         </span>
@@ -454,10 +451,7 @@ function RowStateControl({
 
 function RowActions({ children }: { children: ReactNode }) {
   return (
-    <span
-      data-row-actions
-      className="ml-auto flex h-5 shrink-0 items-center justify-end gap-1"
-    >
+    <span className="ml-auto flex h-5 shrink-0 items-center justify-end gap-1">
       {children}
     </span>
   );
@@ -777,6 +771,41 @@ export function BbAppUpdateRows({
   return row(name, settledStatus);
 }
 
+function UpdateSplitButton({
+  label,
+  tooltip,
+  pending,
+  onSelect,
+  updateNowPending,
+  onUpdateNow,
+}: {
+  label: string;
+  tooltip: string;
+  pending: boolean;
+  onSelect: () => void;
+  updateNowPending: boolean;
+  onUpdateNow: (() => void) | null;
+}) {
+  return (
+    <SplitButton
+      className="h-6 px-2 text-xs"
+      disabled={pending}
+      primaryAction={{ label, onSelect }}
+      primaryTooltip={tooltip}
+      triggerLabel="More ways to update bb"
+      mobileTitle="Update bb"
+      secondaryActions={[
+        {
+          id: "update-now",
+          label: "Update now",
+          disabled: updateNowPending || onUpdateNow === null,
+          onSelect: () => onUpdateNow?.(),
+        },
+      ]}
+    />
+  );
+}
+
 type BbAppRowRenderer = (
   name: ReactNode,
   indicator: ReactNode,
@@ -849,26 +878,16 @@ function InAppUpdateRow({
   if (status.scheduled !== null) {
     return row(
       name,
-      <>
-        {onCancelScheduled === null ? null : (
-          <RowStateControl
-            state="update-available"
-            buttonLabel="Cancel"
-            actionLabel="Cancel the scheduled update"
-            loading={cancelScheduledPending}
-            onClick={onCancelScheduled}
-          />
-        )}
-        {onApply === null ? null : (
-          <RowStateControl
-            state="update-available"
-            buttonLabel="Update now"
-            actionLabel="Update now instead of waiting for threads"
-            loading={applyPending}
-            onClick={onApply}
-          />
-        )}
-      </>,
+      onCancelScheduled === null ? null : (
+        <UpdateSplitButton
+          label="Cancel"
+          tooltip="Keep the current version"
+          pending={cancelScheduledPending}
+          onSelect={onCancelScheduled}
+          updateNowPending={applyPending}
+          onUpdateNow={onApply}
+        />
+      ),
       <RowStateCaption state="update-available">
         {scheduledAppUpdateCaption(status.runningThreadCount)}
       </RowStateCaption>,
@@ -925,21 +944,13 @@ function InAppUpdateRow({
   ) {
     return row(
       name,
-      <SplitButton
-        className="h-6 px-2 text-xs"
-        disabled={schedulePending}
-        primaryAction={{ label: "Update when idle", onSelect: onSchedule }}
-        primaryTooltip="Restart into the update once every thread finishes"
-        triggerLabel="More ways to update bb"
-        mobileTitle="Update bb"
-        secondaryActions={[
-          {
-            id: "update-now",
-            label: "Update now",
-            disabled: applyPending || onApply === null,
-            onSelect: () => onApply?.(),
-          },
-        ]}
+      <UpdateSplitButton
+        label="Update when idle"
+        tooltip="Restart into the update once every thread finishes"
+        pending={schedulePending}
+        onSelect={onSchedule}
+        updateNowPending={applyPending}
+        onUpdateNow={onApply}
       />,
       <RowStateCaption state="update-available">
         {runningThreadsCaption(status.runningThreadCount)}

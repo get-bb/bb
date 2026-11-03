@@ -2421,7 +2421,7 @@ The published lede.
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Update available · Cancel the scheduled update",
+        name: "Cancel",
       }),
     );
     expect(
@@ -2474,11 +2474,11 @@ The published lede.
     );
 
     renderSection();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Update available · Update now instead of waiting for threads",
-      }),
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "More ways to update bb" }),
+      { button: 0, ctrlKey: false },
     );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update now" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
