@@ -54,18 +54,6 @@ describe("client telemetry events", () => {
           },
         },
         {
-          name: "new_thread_composer_shown",
-          properties: { blocker: "sign_in", resource_id: "claude-code" },
-        },
-        {
-          name: "new_thread_composer_shown",
-          properties: { blocker: "pending" },
-        },
-        {
-          name: "new_thread_draft_started",
-          properties: { blocker: "none", resource_id: "acp-hermes-agent" },
-        },
-        {
           name: "onboarding_sign_in",
           properties: {
             entry: "first_run",
@@ -314,27 +302,6 @@ describe("client telemetry events", () => {
       });
     });
   });
-
-  it.each(["new_thread_composer_shown", "new_thread_draft_started"] as const)(
-    "reports a custom agent selected in the composer as other in %s",
-    async (name) => {
-      await withTestHarness(async (harness) => {
-        const capture = vi.fn<TelemetryService["capture"]>();
-        harness.deps.telemetry = { ...harness.deps.telemetry, capture };
-
-        const response = await post(harness, {
-          name,
-          properties: { blocker: "none", resource_id: "acp-my-private-agent" },
-        });
-
-        expect(response.status).toBe(200);
-        expect(capture).toHaveBeenCalledExactlyOnceWith({
-          name,
-          properties: { blocker: "none", resource_id: "other" },
-        });
-      });
-    },
-  );
 
   it("reports a custom agent's sign-in as other", async () => {
     await withTestHarness(async (harness) => {
@@ -603,23 +570,6 @@ describe("client telemetry events", () => {
             agent_statuses: { "claude-code": "person@example.com" },
           },
         },
-        {
-          name: "new_thread_composer_shown",
-          properties: { blocker: "Sign in to Codex to continue." },
-        },
-        {
-          name: "new_thread_composer_shown",
-          properties: { blocker: "none", resource_id: "/Users/me/agent" },
-        },
-        {
-          name: "new_thread_draft_started",
-          properties: { blocker: "none", prompt: "fix the login bug" },
-        },
-        {
-          name: "new_thread_draft_started",
-          properties: { blocker: "none", draft_length: 17 },
-        },
-        { name: "new_thread_draft_started", properties: {} },
         {
           name: "onboarding_agent_state",
           properties: {

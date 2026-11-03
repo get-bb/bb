@@ -9,10 +9,6 @@ import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { operationFailureReason } from "@/components/onboarding/onboarding-model";
 import {
-  useNewThreadFirstUseTelemetry,
-  type NewThreadComposerBlocker,
-} from "@/components/promptbox/useNewThreadFirstUseTelemetry";
-import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
@@ -308,11 +304,6 @@ type LiveDraftNewThreadPromptBoxProps = Omit<
   history: Omit<NewThreadPromptBoxProps["history"], "currentDraft">;
   promptDraft: PromptDraftController;
   blockerReason: NewThreadBlockerReason | null;
-  firstUse: {
-    enabled: boolean;
-    blocker: NewThreadComposerBlocker;
-    providerId: string;
-  };
 };
 
 function LiveDraftNewThreadPromptBox({
@@ -320,12 +311,10 @@ function LiveDraftNewThreadPromptBox({
   history,
   promptDraft,
   blockerReason,
-  firstUse,
   ...promptBoxProps
 }: LiveDraftNewThreadPromptBoxProps) {
   const draft = usePromptDraftSnapshot(promptDraft);
   const hasDraft = !isPromptDraftEmpty(draft);
-  useNewThreadFirstUseTelemetry({ ...firstUse, hasDraft });
   const reportedBlockers = useRef(new Set<NewThreadBlockerReason>());
   useEffect(() => {
     if (!hasDraft || blockerReason === null) return;
@@ -1695,10 +1684,6 @@ export function NewThreadComposer({
   });
   const submissionReadinessReason = submissionBlocker?.message ?? null;
   const submissionBlockerReason = submissionBlocker?.reason ?? null;
-  const submissionTelemetryBlocker: NewThreadComposerBlocker =
-    submissionBlocker === null
-      ? "none"
-      : (submissionBlocker.reason ?? "pending");
   const submitDisabledReason =
     submissionReadinessReason ??
     (promptInputEmpty ? "Enter a prompt or attach a file." : null);
@@ -2024,13 +2009,6 @@ export function NewThreadComposer({
           blockerReason={
             options.blocker ? options.blocker.reason : submissionBlockerReason
           }
-          firstUse={{
-            enabled: selectionScope === "new-thread",
-            blocker: options.blocker
-              ? (options.blocker.reason ?? "pending")
-              : submissionTelemetryBlocker,
-            providerId: selectedProviderId,
-          }}
           promptDraft={promptDraft}
           id={options.id}
           focusRequest={promptBoxFocusRequest}
@@ -2263,8 +2241,6 @@ export function NewThreadComposer({
       supportsServiceTier,
       submitDisabledReason,
       submissionBlockerReason,
-      submissionTelemetryBlocker,
-      selectionScope,
       machineServerAccessReason,
       setupRequiredProvider,
       environmentSetupRequiredReason,

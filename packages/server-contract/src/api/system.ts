@@ -243,27 +243,6 @@ const agentStatusesTelemetrySchema = z
   .record(z.string().min(1).max(256), providerHealthSchema.shape.status)
   .refine((statuses) => Object.keys(statuses).length <= 64);
 
-const newThreadBlockerReasonTelemetrySchema = z.enum([
-  "agent_missing",
-  "agent_update",
-  "sign_in",
-  "model_unavailable",
-  "provider_selection",
-  "model_selection",
-  "project_setup",
-]);
-
-const newThreadFirstUseTelemetryPropertiesSchema = z
-  .object({
-    blocker: z.enum([
-      ...newThreadBlockerReasonTelemetrySchema.options,
-      "none",
-      "pending",
-    ]),
-    resource_id: telemetryResourceIdSchema.optional(),
-  })
-  .strict();
-
 const releaseVersionTelemetrySchema = z
   .string()
   .max(32)
@@ -352,20 +331,18 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .object({
       name: z.literal("new_thread_blocker"),
       properties: z
-        .object({ reason: newThreadBlockerReasonTelemetrySchema })
+        .object({
+          reason: z.enum([
+            "agent_missing",
+            "agent_update",
+            "sign_in",
+            "model_unavailable",
+            "provider_selection",
+            "model_selection",
+            "project_setup",
+          ]),
+        })
         .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      name: z.literal("new_thread_composer_shown"),
-      properties: newThreadFirstUseTelemetryPropertiesSchema,
-    })
-    .strict(),
-  z
-    .object({
-      name: z.literal("new_thread_draft_started"),
-      properties: newThreadFirstUseTelemetryPropertiesSchema,
     })
     .strict(),
   z

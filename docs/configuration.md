@@ -424,17 +424,6 @@ status: `ready`, `not_installed`, `unauthenticated`, `expired`,
 `unsupported_version`, or `unknown`. Custom agents are left out, and
 `agent_statuses` is absent when the agent states fail to load. It is sent
 again only when one of these values changes.
-The new-thread page's composer sends `new_thread_composer_shown` once per app
-session when it first shows, and `new_thread_draft_started` once per app
-session when its draft first goes from empty to non-empty (a draft restored
-when the page opens doesn't count). Both carry `blocker`, what would stop a
-send at that moment: `none`, `pending` (still loading; the composer is
-reported as `pending` if it hasn't settled after 10 seconds), or a
-`new_thread_blocker` reason (`agent_missing`, `agent_update`, `sign_in`,
-`model_unavailable`, `provider_selection`, `model_selection`, or
-`project_setup`), and `resource_id`, the selected agent's public id (`other`
-for custom agents; absent when none is selected). Neither carries prompt text
-or length.
 `onboarding_sign_in` carries the agent's public id in `resource_id`
 (custom agents report `other`, as agent installs do). A `failed` sign-in adds
 `failure_reason`: `command_failed` (the sign-in command exited non-zero),

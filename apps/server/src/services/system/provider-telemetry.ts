@@ -39,8 +39,6 @@ export function withReportedProviderId(
 ): RecordTelemetryEventRequest {
   switch (event.name) {
     case "onboarding_sign_in":
-    case "new_thread_composer_shown":
-    case "new_thread_draft_started":
       return withReportedResourceId(event);
     case "onboarding_agent_state": {
       const statuses = event.properties.agent_statuses;
