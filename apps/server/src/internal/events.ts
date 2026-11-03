@@ -6,6 +6,7 @@ import {
   deriveStoredEventItemFields,
   getThread,
   getLatestThreadSequence,
+  hasStopSinceTurnRequest,
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
@@ -15,6 +16,7 @@ import type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
   AppendDaemonEventsResult,
+  HasStopSinceTurnRequestArgs,
 } from "@bb/db";
 import {
   hostDaemonEventBatchRequestSchema,
@@ -61,6 +63,7 @@ import {
   runtimeErrorLogFields,
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import { stopTurnThatOutlivedItsRun } from "../services/threads/thread-lifecycle.js";
 import { dropSettledThreadSessionOptionSelections } from "../services/threads/thread-session-options.js";
 import { rememberSessionModelCatalog } from "../services/providers/session-model-catalog.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
@@ -219,7 +222,7 @@ interface HasThreadCommandFailureSystemErrorForTurnArgs {
   turnId: string;
 }
 
-interface HasThreadStopBeforeTurnStartedArgs {
+interface StoredTurnArgs {
   threadId: string;
   turnId: string;
 }
@@ -428,11 +431,25 @@ async function applyEventEffects(
           scope: event.scope,
         });
         if (
-          hasThreadStopBeforeTurnStarted(deps, {
+          turnStartedAfterStop(deps, {
+            stopReasons: "any",
             threadId: entry.threadId,
             turnId,
           })
         ) {
+          if (
+            isRootTurnStartedEvent(event) &&
+            turnStartedAfterStop(deps, {
+              stopReasons: ["manual-stop"],
+              threadId: entry.threadId,
+              turnId,
+            })
+          ) {
+            stopTurnThatOutlivedItsRun(deps, {
+              threadId: entry.threadId,
+              turnId,
+            });
+          }
           continue;
         }
         if (!isRootTurnStartedEvent(event)) {
@@ -496,7 +513,8 @@ async function applyEventEffects(
         });
         if (
           event.status !== "interrupted" &&
-          hasThreadStopBeforeTurnStarted(deps, {
+          turnStartedAfterStop(deps, {
+            stopReasons: "any",
             threadId: entry.threadId,
             turnId,
           })
@@ -733,61 +751,21 @@ function hasThreadCommandFailureSystemErrorForTurn(
   );
 }
 
-function hasThreadStopBeforeTurnStarted(
+function turnStartedAfterStop(
   deps: Pick<AppDeps, "db">,
-  args: HasThreadStopBeforeTurnStartedArgs,
+  args: StoredTurnArgs & {
+    stopReasons: HasStopSinceTurnRequestArgs["stopReasons"];
+  },
 ): boolean {
-  const turnStarted = deps.db
-    .select({ sequence: storedEvents.sequence })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.turnId, args.turnId),
-        eq(storedEvents.type, "turn/started"),
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!turnStarted) {
-    return false;
-  }
-
-  const latestTurnRequest = deps.db
-    .select({ sequence: storedEvents.sequence })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.type, "client/turn/requested"),
-        lt(storedEvents.sequence, turnStarted.sequence),
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
-  const lowerSequence = latestTurnRequest?.sequence ?? 0;
-
-  return (
-    deps.db
-      .select({ id: storedEvents.id })
-      .from(storedEvents)
-      .where(
-        and(
-          eq(storedEvents.threadId, args.threadId),
-          eq(storedEvents.type, "system/thread/interrupted"),
-          gt(storedEvents.sequence, lowerSequence),
-          lt(storedEvents.sequence, turnStarted.sequence),
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  return hasStopSinceTurnRequest(deps.db, {
+    ...args,
+    stoppedBefore: "turn-start",
+  });
 }
 
 function wasTurnManuallyStopped(
   deps: Pick<AppDeps, "db">,
-  args: HasThreadStopBeforeTurnStartedArgs,
+  args: StoredTurnArgs,
 ): boolean {
   const turnStarted = deps.db
     .select({ sequence: storedEvents.sequence })
@@ -822,7 +800,7 @@ function wasTurnManuallyStopped(
 
 function getTurnInterruption(
   deps: Pick<AppDeps, "db">,
-  args: HasThreadStopBeforeTurnStartedArgs,
+  args: StoredTurnArgs,
 ): ChildThreadOutcome["interruption"] {
   const turnStarted = deps.db
     .select({ sequence: storedEvents.sequence })

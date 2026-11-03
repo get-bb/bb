@@ -491,4 +491,51 @@ describe("thread.stop race semantics", () => {
     ]);
     expect(runtime.hasThread("t-double")).toBe(false);
   });
+  it("misses a turn whose submit is still resuming the thread, reports it live, and interrupts it on a second stop", async () => {
+    const harness = await createRaceHarness();
+    const submitPromise = dispatchCommand(
+      turnSubmitCommand(harness, {
+        threadId: "t-late",
+        inputText: "delay:60000",
+      }),
+      harness.dispatchOptions,
+    );
+    await flushMicrotasks();
+
+    await expect(
+      dispatchCommand(threadStopCommand("t-late"), harness.dispatchOptions),
+    ).resolves.toEqual({ providerCheckpointId: null });
+    expect(recordedThreadStops(harness)).toEqual([]);
+
+    await submitPromise;
+    const runtime = harness.requireRuntime();
+    await vi.waitFor(() => {
+      expect(runtime.getActiveTurnId("t-late")).not.toBeNull();
+    });
+    const lateTurnId = runtime.getActiveTurnId("t-late");
+    expect(harness.manager.listActiveThreads()).toEqual([
+      { activeTurnId: lateTurnId, threadId: "t-late" },
+    ]);
+
+    await dispatchCommand(
+      threadStopCommand("t-late"),
+      harness.dispatchOptions,
+    );
+    expect(recordedThreadStops(harness)).toEqual([
+      expect.objectContaining({
+        threadId: "t-late",
+        intent: "interrupt",
+        activeTurnId: "turn-1",
+      }),
+    ]);
+    expect(harness.events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        threadId: "t-late",
+        scope: { kind: "turn", turnId: lateTurnId },
+        status: "interrupted",
+      }),
+    );
+    expect(harness.manager.listActiveThreads()).toEqual([]);
+  });
 });

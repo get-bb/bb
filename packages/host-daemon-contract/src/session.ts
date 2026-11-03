@@ -36,6 +36,7 @@ import { hostPlatformSchema } from "./local.js";
 const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
 
 export const hostDaemonActiveThreadSchema = z.object({
+  activeTurnId: z.string().min(1).nullable(),
   threadId: z.string().min(1),
 });
 export type HostDaemonActiveThread = z.infer<

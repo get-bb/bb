@@ -127,7 +127,7 @@ export async function handleHostSessionOpened(
   }
 
   await reconcileDaemonReportedThreads(deps, {
-    activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
+    activeThreads: args.activeThreads,
     hostId: args.hostId,
     sameDaemonInstance,
     undeliveredEventThreadIds: args.undeliveredEventThreadIds,

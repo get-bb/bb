@@ -26,7 +26,7 @@ import {
   getLatestThreadInterruptedReason,
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
-  listThreadIdsStoppedSinceLastTurnStart,
+  hasStopSinceTurnRequest,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
   liveThread,
@@ -37,7 +37,10 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
-import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
+import {
+  COMPETING_TURN_ERROR_CODE,
+  type HostDaemonActiveThread,
+} from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
@@ -322,7 +325,7 @@ interface InterruptActiveThreadsResult {
 }
 
 interface ReconcileDaemonReportedThreadsArgs {
-  activeThreadIds: readonly string[];
+  activeThreads: readonly HostDaemonActiveThread[];
   hostId: string;
   sameDaemonInstance: boolean;
   undeliveredEventThreadIds: readonly string[];
@@ -1466,6 +1469,42 @@ function dispatchThreadStopCommand(
     });
 }
 
+function stopTurnOfStoppedRun(
+  deps: CommandResultSideEffectsDeps,
+  args: { environmentId: string; hostId: string; threadId: string },
+): void {
+  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
+    return;
+  }
+  dispatchThreadStopCommand(deps, {
+    ...args,
+    interruptionReason: "manual-stop",
+  });
+}
+
+export function stopTurnThatOutlivedItsRun(
+  deps: CommandResultSideEffectsDeps,
+  args: { threadId: string; turnId: string },
+): void {
+  const thread = getThread(deps.db, args.threadId);
+  if (thread === null || thread.environmentId === null) {
+    return;
+  }
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  if (environment === null) {
+    return;
+  }
+  deps.logger.warn(
+    { threadId: args.threadId, turnId: args.turnId },
+    "Stopping a turn that started after its run was stopped",
+  );
+  stopTurnOfStoppedRun(deps, {
+    environmentId: environment.id,
+    hostId: environment.hostId,
+    threadId: args.threadId,
+  });
+}
+
 function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
@@ -2127,7 +2166,18 @@ export async function reconcileDaemonReportedThreads(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: ReconcileDaemonReportedThreadsArgs,
 ): Promise<void> {
-  const activeThreadIdSet = new Set(args.activeThreadIds);
+  const activeThreadIds = args.activeThreads.map((thread) => thread.threadId);
+  const activeThreadIdSet = new Set(activeThreadIds);
+  const reportedTurnIdByThreadId = new Map(
+    args.activeThreads.map((thread) => [thread.threadId, thread.activeTurnId]),
+  );
+  const isRunningStoppedTurn = (threadId: string) =>
+    hasStopSinceTurnRequest(deps.db, {
+      stoppedBefore: "now",
+      stopReasons: ["manual-stop"],
+      threadId,
+      turnId: reportedTurnIdByThreadId.get(threadId) ?? null,
+    });
 
   const pendingThreads = deps.db
     .select({
@@ -2155,8 +2205,8 @@ export async function reconcileDaemonReportedThreads(
             isNotNull(threads.archivedAt),
             or(
               inArray(threads.status, ["active", "starting"]),
-              args.activeThreadIds.length > 0
-                ? inArray(threads.id, [...args.activeThreadIds])
+              activeThreadIds.length > 0
+                ? inArray(threads.id, activeThreadIds)
                 : undefined,
             ),
           ),
@@ -2188,9 +2238,9 @@ export async function reconcileDaemonReportedThreads(
     });
   }
 
-  if (args.activeThreadIds.length > 0) {
+  if (activeThreadIds.length > 0) {
     const erroredThreads = deps.db
-      .select({ id: threads.id })
+      .select({ environmentId: environments.id, id: threads.id })
       .from(threads)
       .innerJoin(environments, eq(threads.environmentId, environments.id))
       .where(
@@ -2198,12 +2248,20 @@ export async function reconcileDaemonReportedThreads(
           eq(environments.hostId, args.hostId),
           eq(threads.status, "error"),
           liveThread,
-          inArray(threads.id, [...args.activeThreadIds]),
+          inArray(threads.id, activeThreadIds),
         ),
       )
       .all();
 
     for (const thread of erroredThreads) {
+      if (isRunningStoppedTurn(thread.id)) {
+        stopTurnOfStoppedRun(deps, {
+          environmentId: thread.environmentId,
+          hostId: args.hostId,
+          threadId: thread.id,
+        });
+        continue;
+      }
       applyLoggedThreadLifecycleEvent(deps, {
         event: { type: "run.started" },
         threadId: thread.id,
@@ -2212,7 +2270,7 @@ export async function reconcileDaemonReportedThreads(
   }
 
   const threadIdsStillReporting = [
-    ...args.activeThreadIds,
+    ...activeThreadIds,
     ...args.undeliveredEventThreadIds,
   ];
   const activeButMissing = deps.db
@@ -2240,7 +2298,7 @@ export async function reconcileDaemonReportedThreads(
     cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
   });
 
-  if (args.activeThreadIds.length === 0) {
+  if (activeThreadIds.length === 0) {
     return;
   }
 
@@ -2253,7 +2311,7 @@ export async function reconcileDaemonReportedThreads(
         eq(environments.hostId, args.hostId),
         inArray(threads.status, ["starting", "idle"]),
         liveThread,
-        inArray(threads.id, [...args.activeThreadIds]),
+        inArray(threads.id, activeThreadIds),
       ),
     )
     .all();
@@ -2264,25 +2322,16 @@ export async function reconcileDaemonReportedThreads(
     }),
   );
 
-  const stoppedWhileAwayThreadIds = new Set(
-    listThreadIdsStoppedSinceLastTurnStart(deps.db, {
-      threadIds: inactiveButActive.map((thread) => thread.id),
-    }),
-  );
-
   for (const thread of inactiveButActive) {
     if (blockedRevivalThreadIds.has(thread.id)) {
       continue;
     }
-    if (stoppedWhileAwayThreadIds.has(thread.id)) {
-      if (inFlightThreadRpcGuard.claim(thread.id, "thread.stop")) {
-        dispatchThreadStopCommand(deps, {
-          environmentId: thread.environmentId,
-          hostId: args.hostId,
-          interruptionReason: "manual-stop",
-          threadId: thread.id,
-        });
-      }
+    if (isRunningStoppedTurn(thread.id)) {
+      stopTurnOfStoppedRun(deps, {
+        environmentId: thread.environmentId,
+        hostId: args.hostId,
+        threadId: thread.id,
+      });
       continue;
     }
     applyLoggedThreadLifecycleEvent(deps, {

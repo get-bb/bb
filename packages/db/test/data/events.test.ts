@@ -27,6 +27,7 @@ import {
   getActiveStoredTurnId,
   getFirstParentedTimelineBoundarySequence,
   getHighWaterMarks,
+  hasStopSinceTurnRequest,
   getLastStoredProviderThreadId,
   classifyStoredProviderThreadClaim,
   getStoredProviderSession,
@@ -57,7 +58,10 @@ import {
   listThreadTurnInterruptionEventStates,
   listLatestOpenBackgroundTaskStateRowsForThread,
 } from "../../src/data/events.js";
-import type { ListStoredEventRowsArgs } from "../../src/data/events.js";
+import type {
+  HasStopSinceTurnRequestArgs,
+  ListStoredEventRowsArgs,
+} from "../../src/data/events.js";
 import {
   advanceThreadPruning,
   type ThreadPruningPolicy,
@@ -5676,5 +5680,190 @@ describe("stored provider thread identity ownership", () => {
       new Map(),
     );
     db.$client.close();
+  });
+});
+
+type StopHistoryEntry =
+  | { kind: "request" | "rejected"; requestId: string }
+  | { kind: "stop"; reason: "manual-stop" | "host-daemon-restarted" }
+  | { kind: "turn-started"; turnId: string };
+
+function insertStopHistory(
+  db: DbConnection,
+  threadId: string,
+  history: readonly StopHistoryEntry[],
+): void {
+  insertEvents(
+    db,
+    noopNotifier,
+    history.map((entry, index): InsertEventInput => {
+      const sequence = index + 1;
+      switch (entry.kind) {
+        case "request":
+          return {
+            ...threadEventFields,
+            threadId,
+            sequence,
+            type: "client/turn/requested",
+            data: JSON.stringify({ requestId: entry.requestId }),
+          };
+        case "rejected":
+          return {
+            ...threadEventFields,
+            threadId,
+            sequence,
+            type: "client/turn/rejected",
+            data: JSON.stringify({ requestId: entry.requestId }),
+          };
+        case "stop":
+          return {
+            ...threadEventFields,
+            threadId,
+            sequence,
+            type: "system/thread/interrupted",
+            data: JSON.stringify({ reason: entry.reason }),
+          };
+        case "turn-started":
+          return {
+            ...createTurnEventFields({ turnId: entry.turnId }),
+            threadId,
+            sequence,
+            providerThreadId: "provider-thread",
+            type: "turn/started",
+            data: JSON.stringify({ providerThreadId: "provider-thread" }),
+          };
+      }
+    }),
+  );
+}
+
+const request = (requestId: string): StopHistoryEntry => ({
+  kind: "request",
+  requestId,
+});
+const rejected = (requestId: string): StopHistoryEntry => ({
+  kind: "rejected",
+  requestId,
+});
+const manualStop: StopHistoryEntry = { kind: "stop", reason: "manual-stop" };
+const restartStop: StopHistoryEntry = {
+  kind: "stop",
+  reason: "host-daemon-restarted",
+};
+const turnStarted = (turnId: string): StopHistoryEntry => ({
+  kind: "turn-started",
+  turnId,
+});
+
+describe("hasStopSinceTurnRequest", () => {
+  it.each<{
+    expected: boolean;
+    history: StopHistoryEntry[];
+    name: string;
+    query: Omit<HasStopSinceTurnRequestArgs, "threadId">;
+  }>([
+    {
+      name: "a turn that started after a stop with no newer request",
+      history: [request("r1"), manualStop, turnStarted("t")],
+      query: { turnId: "t", stoppedBefore: "turn-start", stopReasons: "any" },
+      expected: true,
+    },
+    {
+      name: "a turn that answers a request sent after the stop",
+      history: [request("r1"), manualStop, request("r2"), turnStarted("t")],
+      query: { turnId: "t", stoppedBefore: "now", stopReasons: "any" },
+      expected: false,
+    },
+    {
+      name: "a turn after a stop whose only newer request was rejected",
+      history: [
+        request("r1"),
+        manualStop,
+        request("r2"),
+        rejected("r2"),
+        turnStarted("t"),
+      ],
+      query: { turnId: "t", stoppedBefore: "turn-start", stopReasons: "any" },
+      expected: true,
+    },
+    {
+      name: "a stop after the turn started, before the turn started window",
+      history: [request("r1"), turnStarted("t"), manualStop],
+      query: { turnId: "t", stoppedBefore: "turn-start", stopReasons: "any" },
+      expected: false,
+    },
+    {
+      name: "a stop after the turn started, up to now",
+      history: [request("r1"), turnStarted("t"), manualStop],
+      query: {
+        turnId: "t",
+        stoppedBefore: "now",
+        stopReasons: ["manual-stop"],
+      },
+      expected: true,
+    },
+    {
+      name: "a restart interruption counted as any stop",
+      history: [request("r1"), restartStop, turnStarted("t")],
+      query: { turnId: "t", stoppedBefore: "turn-start", stopReasons: "any" },
+      expected: true,
+    },
+    {
+      name: "a restart interruption filtered out of manual stops",
+      history: [request("r1"), restartStop, turnStarted("t")],
+      query: {
+        turnId: "t",
+        stoppedBefore: "turn-start",
+        stopReasons: ["manual-stop"],
+      },
+      expected: false,
+    },
+    {
+      name: "a pending start after a stop with no newer request",
+      history: [request("r1"), manualStop],
+      query: {
+        turnId: null,
+        stoppedBefore: "now",
+        stopReasons: ["manual-stop"],
+      },
+      expected: true,
+    },
+    {
+      name: "a pending start for a request sent after the stop",
+      history: [request("r1"), manualStop, request("r2")],
+      query: {
+        turnId: null,
+        stoppedBefore: "now",
+        stopReasons: ["manual-stop"],
+      },
+      expected: false,
+    },
+    {
+      name: "an unstored turn after a stop with no newer request",
+      history: [request("r1"), manualStop],
+      query: {
+        turnId: "t-unstored",
+        stoppedBefore: "now",
+        stopReasons: ["manual-stop"],
+      },
+      expected: true,
+    },
+    {
+      name: "an unstored turn checked against its start",
+      history: [request("r1"), manualStop],
+      query: {
+        turnId: "t-unstored",
+        stoppedBefore: "turn-start",
+        stopReasons: "any",
+      },
+      expected: false,
+    },
+  ])("$name", ({ expected, history, query }) => {
+    const { db, thread } = setup();
+    insertStopHistory(db, thread.id, history);
+
+    expect(
+      hasStopSinceTurnRequest(db, { ...query, threadId: thread.id }),
+    ).toBe(expected);
   });
 });

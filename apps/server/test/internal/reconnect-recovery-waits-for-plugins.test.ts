@@ -80,7 +80,10 @@ function openSession(
         dataDir: "/tmp/host-daemon-reopened",
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
-        activeThreads: args.activeThreadIds.map((threadId) => ({ threadId })),
+        activeThreads: args.activeThreadIds.map((threadId) => ({
+          activeTurnId: null,
+          threadId,
+        })),
         openThreadWork: [],
       }),
     }),

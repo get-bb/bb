@@ -422,8 +422,11 @@ export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {
   threadIds: readonly string[];
 }
 
-export interface ListThreadIdsStoppedSinceLastTurnStartArgs {
-  threadIds: readonly string[];
+export interface HasStopSinceTurnRequestArgs {
+  stoppedBefore: "turn-start" | "now";
+  stopReasons: "any" | readonly SystemThreadInterruptedReason[];
+  threadId: string;
+  turnId: string | null;
 }
 
 export interface ListThreadTurnInterruptionEventStatesArgs {
@@ -4419,32 +4422,76 @@ export function listThreadTurnInterruptionEventStates(
   });
 }
 
-export function listThreadIdsStoppedSinceLastTurnStart(
-  db: DbConnection,
-  args: ListThreadIdsStoppedSinceLastTurnStartArgs,
-): string[] {
-  if (args.threadIds.length === 0) {
-    return [];
+export function hasStopSinceTurnRequest(
+  db: DbQueryConnection,
+  args: HasStopSinceTurnRequestArgs,
+): boolean {
+  const turnStarted =
+    args.turnId === null
+      ? undefined
+      : db
+          .select({ sequence: events.sequence })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, args.threadId),
+              eq(events.turnId, args.turnId),
+              eq(events.type, "turn/started"),
+            ),
+          )
+          .orderBy(events.sequence)
+          .limit(1)
+          .get();
+  if (args.stoppedBefore === "turn-start" && turnStarted === undefined) {
+    return false;
   }
 
-  return db
-    .select({ threadId: events.threadId })
+  const turnRequest = db
+    .select({ sequence: events.sequence })
     .from(events)
     .where(
       and(
-        inArray(events.threadId, [...args.threadIds]),
-        eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events AS latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.type IN ('turn/started', 'system/thread/interrupted')
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        turnStarted === undefined
+          ? undefined
+          : lt(events.sequence, turnStarted.sequence),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM events AS rejected
+          WHERE rejected.thread_id = ${events.threadId}
+            AND rejected.type = 'client/turn/rejected'
+            AND json_extract(rejected.data, '$.requestId') =
+              json_extract(${events.data}, '$.requestId')
         )`,
       ),
     )
-    .all()
-    .map((row) => row.threadId);
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gt(events.sequence, turnRequest?.sequence ?? 0),
+          args.stoppedBefore === "turn-start" && turnStarted !== undefined
+            ? lt(events.sequence, turnStarted.sequence)
+            : undefined,
+          args.stopReasons === "any"
+            ? undefined
+            : inArray(sql`json_extract(${events.data}, '$.reason')`, [
+                ...args.stopReasons,
+              ]),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export function listThreadIdsWithLatestHostDaemonRestartInterruption(

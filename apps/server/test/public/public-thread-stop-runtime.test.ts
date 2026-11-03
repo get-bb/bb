@@ -835,6 +835,81 @@ describe("thread runtime stop", () => {
     });
   });
 
+  it("stops a turn the daemon starts after its run was stopped", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle", visibility: "hidden" },
+      });
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Start a turn" }],
+            mode: "auto",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, start, {
+        providerThreadId: "provider-late-start",
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+
+      const stopResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/stop`,
+        { method: "POST" },
+      );
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      expect((await stopResponsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+
+      const lateStart = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: session.id,
+          eventGroups: groupHostDaemonEvents([
+            {
+              threadId: thread.id,
+              event: {
+                type: "turn/started",
+                threadId: thread.id,
+                providerThreadId: "provider-late-start",
+                scope: turnScope("turn-late"),
+              },
+            },
+          ]),
+        }),
+      });
+      expect(lateStart.status).toBe(200);
+
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+      await vi.waitFor(() =>
+        expect(
+          listQueuedThreadCommands(harness, "thread.stop", thread.id),
+        ).toEqual([expect.objectContaining({ intent: "interrupt" })]),
+      );
+    });
+  });
+
   it("keeps a startup-parked message paused after a manual stop until explicitly sent", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
