@@ -19,7 +19,10 @@ import {
 } from "./build-plugin-app.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { buildPluginServer } from "./build-plugin-server.js";
-import { dropHostProvidedTailwind } from "./scope-plugin-utilities.js";
+import {
+  dropAnonymousPluginRootScope,
+  dropHostProvidedTailwind,
+} from "./scope-plugin-utilities.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 function testToolchain() {
@@ -330,6 +333,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.css"),
       ".bb71-authored-decoration { text-decoration: underline; }\n" +
+        "[data-bb-plugin-root] .bb71-authored-portal { opacity: 0.75; }\n" +
         "@keyframes bb71-authored-pulse { to { opacity: 0.5; } }\n",
     );
 
@@ -372,6 +376,63 @@ describe("plugin app runtime shim", () => {
       css.lastIndexOf("@layer utilities{"),
     );
     expect(css).toContain("@keyframes bb71-authored-pulse");
+
+    const ownedCss = dropAnonymousPluginRootScope(css);
+    expect(ownedCss).not.toContain(
+      "[data-bb-plugin-root]:not([data-bb-plugin])",
+    );
+    expect(ownedCss).toContain(
+      String.raw`:where([data-bb-plugin=css-fixture]) .flex-col`,
+    );
+    expect(ownedCss).toContain(
+      "[data-bb-plugin-root] .bb71-authored-portal{opacity:.75}",
+    );
+  });
+
+  it("warns when the built app renders plugin roots without a plugin id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-roots-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-roots",
+        version: "0.0.0",
+        bb: {
+          name: "Roots fixture",
+          description: "Verifies plugin root warnings.",
+          branding: { icon: "Paintbrush" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    const build = async (source: string) => {
+      await writeFile(join(dir, "app.ts"), source);
+      return (await buildPluginApp(dir, "0.9.0-test", await testToolchain()))
+        .migrationWarnings;
+    };
+    const current =
+      "declare const __BB_PLUGIN_ID__: string | undefined;\n" +
+      "export function usePortalScopeProps() {\n" +
+      '  const pluginId = typeof __BB_PLUGIN_ID__ === "string" ? __BB_PLUGIN_ID__ : undefined;\n' +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "", ...(pluginId !== undefined ? { "data-bb-plugin": pluginId } : {}) };\n' +
+      "}\n";
+    const preStamp =
+      "export function usePortalScopeProps() {\n" +
+      '  return { "data-bb-portaled-overlay": "", "data-bb-plugin-root": "" };\n' +
+      "}\n";
+    expect(await build("export const value = 1;\n")).toEqual([]);
+    expect(await build(current)).toEqual([]);
+    const warnings = await build(preStamp);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(
+      "sets data-bb-plugin-root without data-bb-plugin 1 time(s)",
+    );
+    expect(warnings[0]).toContain('data-bb-plugin="roots"');
   });
 
   it("builds retired tab registrations alongside retired hooks and returns migration warnings", async () => {

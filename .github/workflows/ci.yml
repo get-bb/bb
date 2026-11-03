@@ -149,7 +149,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -201,7 +201,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -286,7 +286,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -361,7 +361,7 @@ jobs:
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
-        timeout-minutes: 1
+        timeout-minutes: 2
         continue-on-error: true
         uses: ./.github/actions/windows-dependency-cache
 
@@ -422,6 +422,7 @@ jobs:
               filters+=(--filter '@bb/server...' --filter '@bb/cli...' --filter 'bb-plugin-provider-*...')
             fi
             while IFS= read -r package; do
+              [[ -z "$package" ]] && continue
               filters+=(--filter "$package...")
             done <<< "$packages"
           elif [[ "$MOBILE_TESTS" != "true" ]]; then

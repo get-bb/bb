@@ -99,6 +99,7 @@ export interface RunningTestServer {
   db: DbConnection;
   hub: NotificationHub;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
+  pendingInteractions: PendingInteractionLifecycle;
   providerRegistry: ProviderRegistryService;
 }
 
@@ -357,6 +358,7 @@ async function startIntegrationServer(
     db,
     hub,
     machineAuth,
+    pendingInteractions,
     providerRegistry,
     async close(): Promise<void> {
       await pluginService.stop();

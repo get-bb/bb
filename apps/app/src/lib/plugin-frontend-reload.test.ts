@@ -46,6 +46,10 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { appQueryClient } from "./app-query-client";
+import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -158,8 +162,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     importRetryDelaysMs: [] as readonly number[],
     applyCss: vi.fn(),
@@ -1498,6 +1502,7 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
@@ -1516,6 +1521,27 @@ describe("applyPluginCss", () => {
       ),
     ];
   }
+
+  it.each([
+    [false, `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`],
+    [
+      true,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+    ],
+  ])(
+    "requests the narrow stylesheet only when narrowPluginCss is %s",
+    (narrowPluginCss, href) => {
+      appQueryClient.setQueryData(
+        systemConfigQueryKey(),
+        makeSystemConfig({
+          experiments: { ...defaultExperiments, narrowPluginCss },
+        }),
+      );
+      retainPluginCss("hello");
+      applyPluginCss("hello", "/assets/app.css?h=aaa");
+      expect(links("hello")[0]?.getAttribute("href")).toBe(href);
+    },
+  );
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");

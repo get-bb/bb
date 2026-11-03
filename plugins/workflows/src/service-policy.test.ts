@@ -51,6 +51,7 @@ function model() {
     model: "gpt-test",
     displayName: "GPT Test",
     description: "test",
+    reasoningDiscovery: "known" as const,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "test" },
     ],
@@ -271,6 +272,143 @@ describe("workflow service policy integration", () => {
     await Promise.all(harnesses.map((harness) => harness.dispose()));
     harnesses.length = 0;
   });
+
+  it.each([
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "high",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "unknown",
+      efforts: [],
+      parent: "medium",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "low",
+      requested: null,
+      resolved: "low",
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "xhigh",
+      requested: null,
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: "medium",
+      resolved: "medium",
+    },
+    {
+      discovery: "known",
+      efforts: [],
+      parent: "medium",
+      requested: "high",
+      resolved: null,
+    },
+    {
+      discovery: "unknown",
+      efforts: [],
+      parent: "medium",
+      requested: "medium",
+      resolved: null,
+    },
+    {
+      discovery: "known",
+      efforts: ["low", "medium"],
+      parent: "medium",
+      requested: "xhigh",
+      resolved: null,
+    },
+  ] as const)(
+    "resolves reasoning: $discovery/$efforts parent=$parent requested=$requested",
+    async ({ discovery, efforts, parent, requested, resolved }) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      test.harness.sdk.stub("providers.models", async () => ({
+        providers: [],
+        models: [
+          {
+            ...model(),
+            reasoningDiscovery: discovery,
+            supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
+              reasoningEffort,
+              description: "test",
+            })),
+          },
+        ],
+        selectedOnlyModels: [],
+        modelLoadError: null,
+      }));
+      test.harness.sdk.stub("threads.defaultExecutionOptions", async () => ({
+        model: "gpt-test",
+        reasoningLevel: parent,
+        permissionMode: "full",
+        serviceTier: "default",
+        source: "default",
+      }));
+      const run = await test.start(
+        source(
+          requested === null
+            ? 'return await agent("review");'
+            : `return await agent("review", { provider: "codex", model: "gpt-test", reasoningLevel: "${requested}" });`,
+        ),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        if (resolved === null) {
+          await eventually(() =>
+            expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+          );
+          expect(getRunRequired(test.db, run.id).error).toContain(
+            "not supported",
+          );
+          expect(test.childCount()).toBe(0);
+          expect(getCall(test.db, run.id, 0)).toBeNull();
+          return;
+        }
+        await eventually(() => {
+          expect(getRunRequired(test.db, run.id).error).toBeNull();
+          expect(test.childCount()).toBe(1);
+        });
+        expect(test.harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject(
+          {
+            providerId: "codex",
+            model: "gpt-test",
+            reasoningLevel: resolved,
+          },
+        );
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          resolvedReasoningLevel: resolved,
+        });
+        test.service.onThreadIdle("child-1", "completed");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
 
   it("applies live settings to future run snapshots without mutating existing runs", async () => {
     const initial = {

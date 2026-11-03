@@ -434,6 +434,45 @@ describe("plugin update service and routes", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  it.each(["main", "semver:^1.0.0"])(
+    "keeps healthy plugin results when the git remote for %s is unavailable",
+    async (selector) => {
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@${selector}`, { kind: "root" });
+      const offline = join(workDir, "offline");
+      await rename(tagged, offline);
+
+      const response = await app.request("/plugins/updates/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      expect({
+        status: response.status,
+        ...(await response.json()),
+      }).toMatchObject({
+        status: 200,
+        results: [
+          {
+            id: "tagged",
+            outcome: "unavailable",
+            detail: expect.stringContaining("git ls-remote failed"),
+          },
+          { id: "updater", outcome: "current" },
+        ],
+      });
+      expect(service.listUpdateResults()).toMatchObject([
+        { id: "tagged", outcome: "unavailable" },
+        { id: "updater", outcome: "current" },
+      ]);
+
+      await rename(offline, tagged);
+      await expect(service.checkForUpdates("tagged")).resolves.toMatchObject([
+        { id: "tagged", outcome: "current" },
+      ]);
+    },
+  );
+
   it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
     const updateState = {
       lastCheckAt: null,

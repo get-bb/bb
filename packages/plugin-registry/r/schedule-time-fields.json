@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "schedule-time-fields",
+  "type": "registry:ui",
+  "title": "schedule-time-fields",
+  "description": "BB ui \"schedule-time-fields\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/input",
+    "@bb/label",
+    "@bb/schedule-time",
+    "@bb/select"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/schedule-time-fields.tsx",
+      "content": "import { useId } from \"react\";\n\nimport {\n  CUSTOM_SCHEDULE_OPTION_ID,\n  MAX_SCHEDULE_AHEAD_MS,\n  formatDateInputValue,\n  formatScheduleTime,\n  formatScheduleTimeZone,\n  isScheduleOptionId,\n  listSchedulePresets,\n  resolveScheduleOption,\n  type CustomScheduleFields,\n  type ScheduleOptionId,\n} from \"../../lib/schedule-time\";\nimport { Input } from \"./input.js\";\nimport { Label } from \"./label.js\";\nimport {\n  Select,\n  SelectContent,\n  SelectItem,\n  SelectTrigger,\n  SelectValue,\n} from \"./select.js\";\n\ninterface ScheduleTimeFieldsProps {\n  optionId: ScheduleOptionId;\n  custom: CustomScheduleFields;\n  now: number;\n  disabled: boolean;\n  error: string | null;\n  onOptionChange: (optionId: ScheduleOptionId) => void;\n  onCustomChange: (custom: CustomScheduleFields) => void;\n}\n\nexport function ScheduleTimeFields({\n  optionId,\n  custom,\n  now,\n  disabled,\n  error,\n  onOptionChange,\n  onCustomChange,\n}: ScheduleTimeFieldsProps) {\n  const whenId = useId();\n  const customDateId = useId();\n  const customTimeId = useId();\n  const presets = listSchedulePresets(now);\n  const preview = resolveScheduleOption(optionId, custom, now);\n  const visibleError = error ?? (preview.ok ? null : preview.message);\n\n  return (\n    <>\n      <div className=\"flex flex-col gap-2\">\n        <Label htmlFor={whenId}>When</Label>\n        <Select\n          disabled={disabled}\n          onValueChange={(value) => {\n            if (isScheduleOptionId(value)) onOptionChange(value);\n          }}\n          value={optionId}\n        >\n          <SelectTrigger aria-label=\"When to send\" id={whenId}>\n            <SelectValue />\n          </SelectTrigger>\n          <SelectContent>\n            {presets.map((preset) => (\n              <SelectItem key={preset.id} value={preset.id}>\n                {preset.label}\n              </SelectItem>\n            ))}\n            <SelectItem value={CUSTOM_SCHEDULE_OPTION_ID}>\n              Custom date and time\n            </SelectItem>\n          </SelectContent>\n        </Select>\n      </div>\n\n      {optionId === CUSTOM_SCHEDULE_OPTION_ID ? (\n        <div className=\"grid grid-cols-1 gap-3 sm:grid-cols-2\">\n          <div className=\"flex flex-col gap-2\">\n            <Label htmlFor={customDateId}>Date</Label>\n            <Input\n              disabled={disabled}\n              id={customDateId}\n              max={formatDateInputValue(now + MAX_SCHEDULE_AHEAD_MS)}\n              min={formatDateInputValue(now)}\n              onChange={(event) =>\n                onCustomChange({ ...custom, date: event.target.value })\n              }\n              type=\"date\"\n              value={custom.date}\n            />\n          </div>\n          <div className=\"flex flex-col gap-2\">\n            <Label htmlFor={customTimeId}>Time</Label>\n            <Input\n              disabled={disabled}\n              id={customTimeId}\n              onChange={(event) =>\n                onCustomChange({ ...custom, time: event.target.value })\n              }\n              type=\"time\"\n              value={custom.time}\n            />\n          </div>\n        </div>\n      ) : null}\n\n      {preview.ok ? (\n        <div aria-live=\"polite\" className=\"rounded-md bg-muted/50 px-3 py-2\">\n          <p className=\"font-medium\">\n            Sends {formatScheduleTime(preview.at, now)}\n          </p>\n          <p className=\"mt-0.5 text-xs text-muted-foreground\">\n            {formatScheduleTimeZone(preview.at)}\n          </p>\n        </div>\n      ) : null}\n\n      {visibleError === null ? null : (\n        <p className=\"text-destructive\" role=\"alert\">\n          {visibleError}\n        </p>\n      )}\n    </>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/schedule-time-fields.tsx"
+    }
+  ]
+}

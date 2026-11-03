@@ -110,6 +110,7 @@ export const systemExecutionOptionsQuerySchema = z
     providerId: z.string().min(1),
     projectId: z.string().min(1),
     selectedModel: z.string().min(1),
+    preferCached: z.enum(["true", "false"]),
   })
   .partial()
   .superRefine(rejectMultipleWorkspaceSelectors)

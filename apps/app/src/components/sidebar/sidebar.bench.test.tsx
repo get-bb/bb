@@ -206,7 +206,6 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   useThreadActions: () => ({
     renameThreadAsync: vi.fn(async () => undefined),
-    requestRename: vi.fn(),
     requestDelete: vi.fn(),
     archiveThreadAndChildren: vi.fn(),
     unarchiveThread: vi.fn(),

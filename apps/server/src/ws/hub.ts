@@ -1,4 +1,7 @@
-import { emitPluginThreadEvents } from "../services/plugins/plugin-thread-events.js";
+import {
+  emitPluginThreadEvents,
+  emitPluginThreadRead,
+} from "../services/plugins/plugin-thread-events.js";
 import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
@@ -267,6 +270,7 @@ export class NotificationHub implements DbNotifier {
   private readonly daemonSessions = new Map<
     string,
     {
+      connectedAt: number;
       heardSinceLivenessCheck: boolean;
       hostId: string;
       localApiPort: number | null;
@@ -751,6 +755,7 @@ export class NotificationHub implements DbNotifier {
       this.unregisterDaemon(existingSessionId);
     }
     this.daemonSessions.set(sessionId, {
+      connectedAt: Date.now(),
       heardSinceLivenessCheck: true,
       hostId,
       localApiPort:
@@ -813,6 +818,14 @@ export class NotificationHub implements DbNotifier {
   hasDaemonForHost(hostId: string): boolean {
     const sessionId = this.daemonSessionIdsByHost.get(hostId);
     return sessionId !== undefined && this.daemonSessions.has(sessionId);
+  }
+
+  getDaemonConnectedAtForHost(hostId: string): number | null {
+    const sessionId = this.daemonSessionIdsByHost.get(hostId);
+    if (sessionId === undefined) {
+      return null;
+    }
+    return this.daemonSessions.get(sessionId)?.connectedAt ?? null;
   }
 
   getDaemonSessionIdForHost(hostId: string): string | null {
@@ -1043,6 +1056,7 @@ export class NotificationHub implements DbNotifier {
     metadata?: ThreadChangeMetadata,
   ): void {
     if (changes.includes("events-appended")) emitPluginThreadEvents(threadId);
+    if (changes.includes("read-state-changed")) emitPluginThreadRead(threadId);
     const message: ThreadChangedMessage = {
       type: "changed",
       entity: "thread",

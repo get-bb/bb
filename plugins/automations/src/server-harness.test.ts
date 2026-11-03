@@ -31,6 +31,69 @@ const THREAD_ID = "thr_target";
 const SECTION_ID = "sec_reviews";
 const FAILED_REQUEST_ID = "creq_failedturn";
 
+it.each([
+  [
+    "//server/share/scripts",
+    "check.sh",
+    "\\\\server\\share\\scripts\\check.sh",
+  ],
+  ["C:", "check.sh", "C:\\check.sh"],
+])("loads script files from remote cwd %s", async (cwd, file, expected) => {
+  const host = await bootAutomationsPlugin();
+  try {
+    host.harness.sdk.stub("files.read", async () => ({
+      content: "echo hello",
+      contentEncoding: "utf8",
+    }));
+    const result = await host.harness.runCli(
+      [
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Remote script",
+        "--in",
+        "30m",
+        "--script-file",
+        file,
+      ],
+      { cwd },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`${sep}check.sh`);
+    expect(host.harness.sdk.callsTo("files.read")).toEqual([
+      [expect.objectContaining({ path: expected })],
+    ]);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
+it("rejects a script file path that names no file", async () => {
+  const host = await bootAutomationsPlugin();
+  try {
+    const result = await host.harness.runCli(
+      [
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Root script",
+        "--in",
+        "30m",
+        "--script-file",
+        "/",
+      ],
+      { cwd: "/workspace" },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--script-file must name a file");
+    expect(host.harness.sdk.callsTo("files.read")).toEqual([]);
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
 const rpcMethods = [
   "automations_overview",
   "automations_list",
@@ -126,6 +189,7 @@ async function bootAutomationsPlugin(
       threads: {
         async get({ threadId }) {
           return {
+            ...makeThreadResponse({ id: threadId }),
             id: threadId,
             archivedAt: null,
             deletedAt: null,
@@ -762,6 +826,130 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it.each(["agent", "script"] as const)(
+    "allows a user thread to create %s work after its heartbeat settles, preserving history",
+    async (mode) => {
+      const { harness } = await bootAutomationsPlugin();
+      try {
+        const heartbeat = await createAgentAutomation(harness, {
+          targetThreadId: THREAD_ID,
+        });
+        await harness.callRpc("automations_run", {
+          projectId: PROJECT_ID,
+          automationId: heartbeat.id,
+        });
+        await vi.waitFor(() => {
+          expect(harness.sdk.callsTo("threads.send")).toHaveLength(1);
+        });
+        const request = {
+          projectId: PROJECT_ID,
+          createdByThreadId: THREAD_ID,
+        };
+        await expect(
+          harness.callRpc("automations_create", {
+            ...request,
+            name: "Recursive work",
+            trigger: oneShotTrigger(),
+            execution:
+              mode === "agent"
+                ? agentExecution()
+                : { mode: "script", script: "echo ok", interpreter: "bash" },
+            origin: "agent",
+          }),
+        ).rejects.toThrow();
+        await harness.emitThreadEvent("thread.idle", {
+          thread: makeThreadResponse({ id: THREAD_ID }),
+          lastAssistantText: "Build delivered and heartbeat stopped",
+        });
+        await harness.callRpc("automations_pause", {
+          projectId: PROJECT_ID,
+          automationId: heartbeat.id,
+        });
+        const created = await harness.callRpc("automations_create", {
+          ...request,
+          name: "New closeout",
+          trigger: oneShotTrigger(),
+          execution:
+            mode === "agent"
+              ? agentExecution()
+              : { mode: "script", script: "echo ok", interpreter: "bash" },
+          origin: "agent",
+        });
+        expect(created).toMatchObject({
+          name: "New closeout",
+          createdByThreadId: THREAD_ID,
+        });
+        expect(
+          await harness.callRpc("automations_get", {
+            projectId: PROJECT_ID,
+            automationId: heartbeat.id,
+          }),
+        ).toMatchObject({ enabled: false });
+        expect(
+          await harness.callRpc("automations_runs", {
+            projectId: PROJECT_ID,
+            automationId: heartbeat.id,
+          }),
+        ).toMatchObject({
+          runs: [expect.objectContaining({ status: "succeeded" })],
+        });
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("rejects threads spawned by automations", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      harness.sdk.stub("threads.get", async ({ threadId }) =>
+        makeThreadResponse({ id: threadId, originPluginId: "automations" }),
+      );
+      const request = {
+        projectId: PROJECT_ID,
+        createdByThreadId: "thr_spawned",
+      };
+      await expect(
+        harness.callRpc("automations_create", {
+          ...request,
+          name: "Recursive scheduler",
+          trigger: oneShotTrigger(),
+          execution: agentExecution(),
+          origin: "agent",
+        }),
+      ).rejects.toThrow("Automation-spawned threads cannot create automations");
+      expect(
+        await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+      ).toEqual([]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("rejects creation when the creator thread cannot be read", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      harness.sdk.stub("threads.get", async () => {
+        throw new Error("Creator lookup unavailable");
+      });
+      await expect(
+        harness.callRpc("automations_create", {
+          projectId: PROJECT_ID,
+          createdByThreadId: THREAD_ID,
+          name: "Unknown creator",
+          trigger: oneShotTrigger(),
+          execution: agentExecution(),
+          origin: "agent",
+        }),
+      ).rejects.toThrow("Creator lookup unavailable");
+      expect(
+        await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+      ).toEqual([]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it.each([
     {
       supported: ["accept-edits", "auto", "full"] as const,
@@ -867,7 +1055,7 @@ describe("automations server plugin harness", () => {
         permissionMode: "auto",
         environment: {
           type: "host",
-          hostId: "host_test",
+          hostId: "host_fake",
           workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
         },
       },
@@ -892,7 +1080,7 @@ describe("automations server plugin harness", () => {
       targetThreadId: THREAD_ID,
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
       },
     });
@@ -920,7 +1108,7 @@ describe("automations server plugin harness", () => {
       permissionMode: "auto",
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: {
           type: "managed-worktree",
           baseBranch: { kind: "named", name: "release" },
@@ -935,6 +1123,78 @@ describe("automations server plugin harness", () => {
     ).toHaveLength(1);
 
     await harness.dispose();
+  });
+
+  it.each([
+    {
+      flags: ["--environment", "C:\\repo"],
+      workspace: { type: "unmanaged", path: "C:\\repo" },
+    },
+    {
+      flags: ["--new-environment", "worktree"],
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    },
+  ])(
+    "runs $flags on the calling thread's machine",
+    async ({ flags, workspace }) => {
+      const { harness } = await bootAutomationsPlugin();
+      try {
+        harness.sdk.stub("threads.get", async ({ threadId }) => ({
+          ...makeThreadResponse({ id: threadId }),
+          environment: { hostId: "host_caller" },
+        }));
+        const result = await harness.runCli(
+          [
+            "create",
+            "--project",
+            PROJECT_ID,
+            "--name",
+            "Caller machine",
+            "--in",
+            "30m",
+            "--prompt",
+            "Check the build",
+            "--provider",
+            "codex",
+            "--model",
+            "gpt-5",
+            ...flags,
+            "--json",
+          ],
+          { threadId: THREAD_ID },
+        );
+        expect(result.exitCode).toBe(0);
+        expect(
+          automationDetailResponseSchema.parse(JSON.parse(result.stdout ?? ""))
+            .execution,
+        ).toMatchObject({
+          environment: { type: "host", hostId: "host_caller", workspace },
+        });
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("rejects a date-only --at as ambiguous", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      const result = await harness.runCli([
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Date only",
+        "--at",
+        `${new Date().getFullYear() + 1}-01-01`,
+        "--script",
+        "echo ok",
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("--at needs a time of day");
+    } finally {
+      await harness.dispose();
+    }
   });
 
   it("accepts a long prompt and keeps the automation readable afterwards", async () => {

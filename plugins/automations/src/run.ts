@@ -6,7 +6,6 @@ import {
   getAutomation,
   listRunningAutomationRuns,
   listRunningAutomationRunsByThread,
-  markAutomationThread,
   setAutomationEnabled,
   setAutomationRunThread,
   type AutomationRow,
@@ -147,12 +146,6 @@ export async function executeAgentRun(
       }),
     );
     setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
-    markAutomationThread(db, {
-      automationId: args.automation.id,
-      runId: args.run.id,
-      threadId: thread.id,
-      now: Date.now(),
-    });
   } catch (error) {
     settleDispatchFailure(bb, db, args, error);
   } finally {
@@ -223,12 +216,6 @@ async function reuseTargetThreadForRun(
   setAutomationRunThread(db, {
     runId: args.run.id,
     threadId: args.targetThreadId,
-  });
-  markAutomationThread(db, {
-    automationId: args.automation.id,
-    runId: args.run.id,
-    threadId: args.targetThreadId,
-    now: Date.now(),
   });
   await bb.sdk.threads.send({
     threadId: args.targetThreadId,

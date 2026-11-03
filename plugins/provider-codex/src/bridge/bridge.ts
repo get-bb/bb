@@ -289,6 +289,12 @@ const CODEX_APP_SERVER_COMMAND_ENV = "BB_CODEX_BRIDGE_APP_SERVER_COMMAND";
 const CODEX_APP_SERVER_ARGS_ENV = "BB_CODEX_BRIDGE_APP_SERVER_ARGS";
 const CODEX_POOL_BASE_URL_ENV = "CODEX_OPENAI_BASE_URL";
 const CODEX_POOL_AUTH_TOKEN_ENV = "CODEX_POOL_AUTH_TOKEN";
+const CODEX_HOME_ENV = "CODEX_HOME";
+const APP_SERVER_LAUNCH_ENV_NAMES = [
+  CODEX_POOL_BASE_URL_ENV,
+  CODEX_POOL_AUTH_TOKEN_ENV,
+  CODEX_HOME_ENV,
+] as const;
 
 const CODEX_INITIALIZE_PARAMS = {
   clientInfo: { name: "bb", version: "1.0.0", title: null },
@@ -394,17 +400,12 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
 function appServerLaunchEnv(
   envVars: Readonly<Record<string, string>> | undefined,
 ): NodeJS.ProcessEnv {
-  const poolBaseUrl = envVars?.[CODEX_POOL_BASE_URL_ENV];
-  const poolAuthToken = envVars?.[CODEX_POOL_AUTH_TOKEN_ENV];
-  return {
-    ...process.env,
-    ...(poolBaseUrl === undefined
-      ? {}
-      : { [CODEX_POOL_BASE_URL_ENV]: poolBaseUrl }),
-    ...(poolAuthToken === undefined
-      ? {}
-      : { [CODEX_POOL_AUTH_TOKEN_ENV]: poolAuthToken }),
-  };
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of APP_SERVER_LAUNCH_ENV_NAMES) {
+    const value = envVars?.[name];
+    if (value !== undefined) env[name] = value;
+  }
+  return env;
 }
 
 function buildAppServerEnv(
@@ -592,6 +593,7 @@ function constructionSignature(
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
+    codexHome: sessionOptions.envVars?.[CODEX_HOME_ENV] ?? null,
     poolRoute:
       poolBaseUrl === undefined || poolToken === undefined
         ? null

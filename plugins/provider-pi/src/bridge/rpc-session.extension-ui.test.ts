@@ -11,6 +11,8 @@ it("auto-cancels extension dialogs in a helper session without a UI handler", as
   const log = join(dir, "responses.jsonl");
   const script = `
     const fs = require("node:fs");
+    const channel = require("node:net").connect(process.env.BB_PI_BRIDGE_CHANNEL);
+    channel.write(process.env.BB_PI_BRIDGE_CHANNEL_TOKEN + "\\n");
     const input = require("node:readline").createInterface({ input: process.stdin });
     const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
     input.on("line", (line) => {
@@ -22,7 +24,7 @@ it("auto-cancels extension dialogs in a helper session without a UI handler", as
       }
       if (message.type === "extension_ui_response") {
         fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(message) + "\\n");
-        fs.writeSync(3, JSON.stringify({ kind: "ready" }) + "\\n");
+        channel.write(JSON.stringify({ kind: "ready" }) + "\\n");
       }
     });
     input.on("close", () => process.exit(0));

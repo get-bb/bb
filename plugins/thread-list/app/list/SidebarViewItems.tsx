@@ -25,6 +25,7 @@ import {
   sidebarGroupByReadStatusAtom,
   sidebarShowProviderIconsAtom,
   sidebarShowRowMetadataAtom,
+  sidebarShowEmptyProjectsAtom,
   THREAD_ROW_METADATA_EXPERIMENT,
 } from "../preferences/atoms.js";
 
@@ -155,6 +156,9 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
   const rowMetadataEnabled = experimental_useExperiment(
     THREAD_ROW_METADATA_EXPERIMENT,
   );
+  const [showEmptyProjects, setShowEmptyProjects] = useAtom(
+    sidebarShowEmptyProjectsAtom,
+  );
   const selectedSort = sort === "none" ? "updated" : sort;
   if (page === "filter") {
     return (
@@ -185,6 +189,21 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
             </DropdownMenuItem>
           );
         })}
+        {organization === "project" && (
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={showEmptyProjects}
+            onSelect={(event) => {
+              event.preventDefault();
+              setShowEmptyProjects(!showEmptyProjects);
+            }}
+          >
+            Empty projects
+            <span className="ml-auto inline-flex size-4 items-center justify-center">
+              {showEmptyProjects && <Icon name="Check" className="size-4" />}
+            </span>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuGroup>
     );
   }

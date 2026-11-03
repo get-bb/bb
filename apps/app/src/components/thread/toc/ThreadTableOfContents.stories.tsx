@@ -122,7 +122,6 @@ export function Default() {
           timelineRows={timelineRows}
           threadId="thr_toc_story"
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />
       </BottomAnchoredScrollBody>
     </div>

@@ -105,7 +105,7 @@ import {
 } from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
-  getLastThreadOutput,
+  getLatestTurnFinalOutput,
 } from "../threads/thread-data.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import {
@@ -1417,7 +1417,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitThreadIdle(thread) {
         emitThreadEvent("thread.idle", () => ({
           thread: buildThreadDto(thread),
-          lastAssistantText: getLastThreadOutput(deps.db, thread.id),
+          lastAssistantText: getLatestTurnFinalOutput(deps.db, thread.id),
         }));
       },
       emitThreadFailed(thread) {
@@ -1446,6 +1446,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),
         }));
+      },
+      emitThreadRead(threadId) {
+        emitThreadEvent("experimental_thread.read", () => {
+          const thread = getThread(deps.db, threadId);
+          if (
+            thread === null ||
+            (thread.lastReadAt ?? 0) < thread.latestAttentionAt
+          ) {
+            return null;
+          }
+          return { thread: buildThreadDto(thread) };
+        });
       },
       emitInteractionPending(thread, interaction) {
         emitThreadEvent("interaction.pending", () => ({

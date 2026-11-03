@@ -6,7 +6,10 @@ import {
   createPromptHistoryEntry,
   createThread,
   listPromptHistoryPage,
+  listStoredProjectPromptHistoryRows,
+  listStoredThreadPromptHistoryRows,
   markThreadDeleted,
+  PROMPT_HISTORY_ENTRY_MAX_BYTES,
   upsertHost,
 } from "../../src/data/index.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -142,5 +145,69 @@ describe("prompt history page query", () => {
         (entry) => entry.id,
       ),
     ).toEqual([row.id]);
+  });
+});
+
+describe("prompt history recall bounds", () => {
+  it("omits prompts whose stored UTF-8 bytes exceed the entry limit from every history query", () => {
+    const fixture = setup();
+    const kept = insert(fixture.db, {
+      projectId: fixture.firstProject.id,
+      threadId: fixture.firstThread.id,
+      scope: "project",
+      requestSequence: 1,
+      createdAt: 10,
+      input: [text("kept")],
+    });
+    const keptInThread = insert(fixture.db, {
+      projectId: fixture.firstProject.id,
+      threadId: fixture.firstThread.id,
+      scope: "thread",
+      requestSequence: 2,
+      createdAt: 20,
+      input: [text("kept in thread")],
+    });
+    const multiByteText = "\u20ac".repeat(
+      Math.ceil(PROMPT_HISTORY_ENTRY_MAX_BYTES / 2),
+    );
+    insert(fixture.db, {
+      projectId: fixture.firstProject.id,
+      threadId: fixture.firstThread.id,
+      scope: "project",
+      requestSequence: 3,
+      createdAt: 30,
+      input: [text(multiByteText)],
+    });
+    insert(fixture.db, {
+      projectId: fixture.firstProject.id,
+      threadId: fixture.firstThread.id,
+      scope: "thread",
+      requestSequence: 4,
+      createdAt: 40,
+      input: [
+        {
+          type: "image",
+          url: `data:image/png;base64,${"A".repeat(PROMPT_HISTORY_ENTRY_MAX_BYTES)}`,
+        },
+      ],
+    });
+
+    expect(
+      listStoredProjectPromptHistoryRows(fixture.db, {
+        projectId: fixture.firstProject.id,
+        limit: 10,
+      }).map((row) => row.id),
+    ).toEqual([kept.id]);
+    expect(
+      listStoredThreadPromptHistoryRows(fixture.db, {
+        threadId: fixture.firstThread.id,
+        limit: 10,
+      }).map((row) => row.id),
+    ).toEqual([keptInThread.id]);
+    expect(
+      listPromptHistoryPage(fixture.db, { before: null, limit: 10 }).map(
+        (row) => row.id,
+      ),
+    ).toEqual([keptInThread.id, kept.id]);
   });
 });

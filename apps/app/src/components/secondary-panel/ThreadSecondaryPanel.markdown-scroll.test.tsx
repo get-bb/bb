@@ -15,6 +15,7 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 import { WorkspaceFilePreviewTabContent } from "./ThreadSecondaryPanelTabContent";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 const loading = vi.hoisted(() => ({ current: false }));
 
@@ -91,12 +92,6 @@ function Harness({
           isPanelOpen
           lineRange={null}
           source={document.source}
-          markdownLinkRouting={{
-            onOpenLink: () => {
-              setActiveId(browserTab.id);
-              return true;
-            },
-          }}
         />
       ),
     }));
@@ -110,7 +105,14 @@ function Harness({
     renderContent: () => null,
   });
   return (
-    <>
+    <AppNavigationHostProvider
+      capabilities={{
+        openUrl: () => {
+          setActiveId(browserTab.id);
+          return true;
+        },
+      }}
+    >
       <button
         onClick={() => {
           setClosed(true);
@@ -148,7 +150,7 @@ function Harness({
           }
         />
       </PanelGroup>
-    </>
+    </AppNavigationHostProvider>
   );
 }
 

@@ -51,7 +51,11 @@ type ProviderModelCatalogFailureCode = Exclude<
 
 export type ProviderModelCatalogAccess =
   | { kind: "picker"; selectedModel?: string }
-  | { kind: "validation"; requiredModel: string | null };
+  | {
+      kind: "validation";
+      requiredModel: string | null;
+      selectedModel?: string;
+    };
 
 type ProviderModelCatalogReadResult =
   | {
@@ -235,7 +239,9 @@ function keepDiscoveredReasoning(
   );
   return models.map((model) => {
     const source =
-      model.reasoningDiscovery === "unknown" ? known.get(model.model) : undefined;
+      model.reasoningDiscovery === "unknown"
+        ? known.get(model.model)
+        : undefined;
     return source === undefined
       ? model
       : {
@@ -799,11 +805,7 @@ export function createProviderModelCatalogStore(options: {
           if (decision.backgroundRefresh) {
             void joinOrStartRefresh(deps, entry, launch);
           }
-          if (
-            decision.result.kind === "catalog" &&
-            args.access.kind === "picker" &&
-            args.access.selectedModel
-          ) {
+          if (decision.result.kind === "catalog" && args.access.selectedModel) {
             await refineSelectedModel(
               deps,
               entry,

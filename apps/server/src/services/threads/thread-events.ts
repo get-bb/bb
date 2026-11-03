@@ -11,6 +11,7 @@ import {
   getThread,
   listStoredTurnStartedKeys,
   noopNotifier,
+  supersedeQueuedRetriesInTransaction,
   updateThread,
   type StoredTurnRequestEventRow,
 } from "@bb/db";
@@ -553,12 +554,20 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
     db,
     buildClientTurnRequestedEventArgs(args),
   );
+  const supersededRetries = supersedeQueuedRetriesInTransaction(db, {
+    threadId: args.threadId,
+    retryOfTurnRequestId: args.retryOf?.requestId ?? null,
+  });
+  const notificationChanges = buildAppendThreadEventNotificationChanges(
+    result.readStateUpdate,
+  );
   return {
     requestId: args.requestId,
     sequence: result.sequence,
-    notificationChanges: buildAppendThreadEventNotificationChanges(
-      result.readStateUpdate,
-    ),
+    notificationChanges:
+      supersededRetries > 0
+        ? [...notificationChanges, "queue-changed"]
+        : notificationChanges,
     notificationMetadata: buildAppendThreadEventNotificationMetadata({
       sequence: result.sequence,
       readStateUpdate: result.readStateUpdate,

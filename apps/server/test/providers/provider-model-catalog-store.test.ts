@@ -113,8 +113,8 @@ function setupCatalogHost(
       return resolveSystemExecutionOptions(
         harness.deps,
         environmentId === undefined
-          ? { hostId: host.id, providerId, selectedModel }
-          : { environmentId, providerId, selectedModel },
+          ? { hostId: host.id, providerId, selectedModel, preferCached: "true" }
+          : { environmentId, providerId, selectedModel, preferCached: "true" },
       );
     },
   };
@@ -762,6 +762,73 @@ describe("provider model catalog store", () => {
         detail: "model list auth_required",
       });
       expect(surfaced.models).toEqual([]);
+    });
+  });
+
+  it("waits for discovery on execution-options reads after a cached timeout unless the caller prefers cached answers", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, {
+        id: "host-catalog-fresh-default",
+      });
+      host.setAnswer(() => errorAnswer("command_timeout"));
+      const request = async (preferCached: boolean) => {
+        const query = new URLSearchParams({
+          hostId: host.hostId,
+          providerId: "claude-code",
+          ...(preferCached ? { preferCached: "true" } : {}),
+        });
+        const response = await harness.app.request(
+          `/api/v1/system/execution-options?${query}`,
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()) as Awaited<ReturnType<typeof host.read>>;
+      };
+
+      expect((await request(false)).modelLoadError?.code).toBe("timeout");
+      expect(host.listRequests("claude-code")).toHaveLength(1);
+
+      host.setAnswer((command) =>
+        catalogAnswer(modelList(`${command.providerId}-model`)),
+      );
+      host.clock.now += SECOND;
+      expect((await request(true)).modelLoadError?.code).toBe("timeout");
+      expect(host.listRequests("claude-code")).toHaveLength(1);
+
+      const recovered = await request(false);
+      expect(recovered.modelLoadError).toBeNull();
+      expect(modelIds(recovered)).toEqual(["claude-code-model"]);
+      expect(host.listRequests("claude-code")).toHaveLength(2);
+    });
+  });
+
+  it("discovers the selected model's reasoning on execution-options reads that wait for discovery", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, {
+        id: "host-catalog-fresh-selected",
+      });
+      host.setAnswer((command) =>
+        catalogAnswer(
+          modelList("a").map((model) => ({
+            ...model,
+            reasoningDiscovery: command.selectedModel ? "known" : "unknown",
+            supportedReasoningEfforts: command.selectedModel
+              ? model.supportedReasoningEfforts
+              : [],
+          })),
+        ),
+      );
+
+      const result = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.hostId,
+        providerId: "codex",
+        selectedModel: "a",
+      });
+
+      expect(result.models[0]?.reasoningDiscovery).toBe("known");
+      expect(result.models[0]?.supportedReasoningEfforts).not.toEqual([]);
+      expect(
+        host.listRequests().map((command) => command.selectedModel),
+      ).toEqual([undefined, "a"]);
     });
   });
 

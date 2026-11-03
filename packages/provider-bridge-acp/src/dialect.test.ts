@@ -198,9 +198,10 @@ describe("omp command results", () => {
 });
 
 describe("OpenCode command results", () => {
-  const normalize = (rawOutput: unknown) =>
-    OPENCODE_ACP_DIALECT.normalizeCommandEvent?.(toolCall({ rawOutput }))
-      .rawOutput;
+  const normalize = (rawOutput: unknown) => {
+    const event = toolCall({ rawOutput });
+    return OPENCODE_ACP_DIALECT.normalizeCommandEvent?.(event, event).rawOutput;
+  };
 
   it("normalizes the recorded output and metadata envelope", () => {
     expect(

@@ -181,6 +181,34 @@ describe("shared pull request refresh", () => {
     expect(restored.load).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps serving a restored PR when its machine is unreachable after a restart", async () => {
+    vi.useFakeTimers();
+    const first = setup([available(pullRequest())]);
+    await first.store.read("a", { viewer: true });
+    first.store.dispose();
+    await vi.advanceTimersByTimeAsync(60_000);
+    const restored = setup(
+      [
+        { outcome: "unavailable", message: "Host isn't available" },
+        available(pullRequest({ title: "Updated" })),
+      ],
+      first.owner,
+    );
+    restored.store.watch("a", new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(restored.load).toHaveBeenCalledTimes(1);
+    expect(restored.publish).not.toHaveBeenCalled();
+    await expect(restored.store.read("a", { viewer: true })).resolves.toEqual(
+      available(pullRequest()),
+    );
+    await flush();
+    expect(restored.load).toHaveBeenCalledTimes(2);
+    expect(restored.publish).toHaveBeenCalledExactlyOnceWith(["a"]);
+    await expect(restored.store.read("a", { viewer: true })).resolves.toEqual(
+      available(pullRequest({ title: "Updated" })),
+    );
+  });
+
   it("makes non-viewer reads after a restart wait for stale data", async () => {
     vi.useFakeTimers();
     const first = setup([available(pending)]);

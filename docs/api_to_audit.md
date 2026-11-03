@@ -14,6 +14,37 @@ question.
 [provider-bridge-protocol.md](provider-bridge-protocol.md). An entry without
 a "Docs:" line has no owning doc, so it keeps the essential contract itself.
 
+## Host paths (`@get-bb/plugin-sdk`)
+
+`experimental_normalizeHostPath(path)`,
+`experimental_resolveHostPath({ rootPath, path })`, and
+`experimental_isHostPathWithin({ rootPath, candidatePath })` use the shared
+`packages/domain/src/host-path.ts` parser. Normalization returns null for
+non-absolute paths; resolution accepts absolute paths or joins relative paths
+against an absolute root, rejecting empty/NUL paths, rootless backslashes and
+drive-relative forms such as `C:foo`. Bare `C:` means the drive root. Windows
+paths accept either separator and containment is case-insensitive; POSIX
+backslashes within relative names stay literal. Resolution permits `..` escapes;
+containment is a separate lexical check, not a symlink or filesystem check.
+`experimental_joinHostPath({ rootPath, relativePath })` appends relative segments;
+`experimental_getHostPathDirname(path)` / `experimental_getHostPathBasename(path)`
+extract components; `experimental_getRelativeHostPath({ rootPath, candidatePath })`
+returns slash-separated descendants (null outside the root); and
+`experimental_getHostPathComparisonKey(path)` normalizes keys with Windows case
+folding. These re-export the same domain functions used by core workspace paths,
+file-link resolution, and database host-path SQL. None accesses the filesystem.
+Workflows and Inline Vis apply containment; Secrets permits outside destinations.
+Docs and Monaco use joins and components for host-backed files; Tasks, Automations,
+and Browser Automation resolve CLI file paths. Storage Retention uses comparison
+keys and relative paths to protect live workspaces across Windows spellings.
+
+Core callers of the same parser include project-path normalization,
+`normalizeAbsoluteFilePath` / `isAbsoluteFilePathWithinRoot` in shared-ui,
+`isBbManagedWorkspacePath` on the server, and database host-path SQL functions.
+Docs: Plugin Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`).
+Before stabilization, audit drive/UNC ambiguity, separator and case rules,
+relative escapes, and whether more callers need resolution rather than joining.
+
 ## Application link approvals (`@get-bb/plugin-sdk/app`)
 
 `experimental_getApplicationLinkApprovals()` lists approved URL schemes on the
@@ -314,8 +345,10 @@ held back, and explicit send-now still claims it. Calling again renews the
 lease; an unrenewed hold lapses after `leaseMs` and the periodic sweep
 dispatches the row. It answers 409 once a dispatch claimed the row and 404
 for a missing row. Holding never changes `updatedAt`, so a pre-hold
-`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` clears
-the hold. `experimental_releaseEditHold` (`DELETE`, same path) cancels
+`expectedUpdatedAt` stays valid; a successful `queuedMessages.update` that
+changes `input` clears the hold, while one that changes only `sendAt` or the
+execution options keeps it, so a plugin moving a row cannot release someone's
+edit. `experimental_releaseEditHold` (`DELETE`, same path) cancels
 without saving and is a no-op for an unheld row; releasing or saving
 re-attempts dispatch immediately. The app's inline editor holds on open,
 renews every quarter lease, and releases on close. Any client may renew or
@@ -2823,11 +2856,13 @@ A thread pane shows its thread context one of two ways, its
 or `card`, the thread context card at the pane's upper-right.
 `experimental_useThreadContextKind()` returns the kind of the pane the calling
 component renders in, `banner` outside a thread pane. A pane is `card` while
-the `threadContextCard` experiment is on, for a thread opened as a page,
-except on phones (a compact viewport with a coarse pointer, the rule
-`MessageActionBar` uses). Threads shown inside a panel or as a transcript are
-`banner`: `ThreadScreen` wraps those presentations in
-`WithoutThreadContextCard`.
+the `threadContextCard` experiment is on, for a thread opened as a page whose
+pane is wide enough to fit the card beside the transcript (the `gutter` or
+`shift` layout `ThreadContextCard` measures), except on phones (a compact
+viewport with a coarse pointer, the rule `MessageActionBar` uses). A narrower
+pane is `banner` and its header button opens the card as a popover. Threads
+shown inside a panel or as a transcript are `banner`: `ThreadScreen` wraps
+those presentations in `WithoutThreadContextCard`.
 
 The card's counterparts of the Info tab's row and section slots. A row
 registration is `{ id, group, order?, component }` and draws in the card's top
@@ -3552,6 +3587,23 @@ Docs: `backend-sdk.md`.
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
 
+## Thread read notifications
+
+`experimental_thread.read` delivers `{ thread }` after a thread's read state
+changes and it is now read (`lastReadAt >= latestAttentionAt`): a client
+opened it or marked it read, or the user sent it a turn. Marking a thread
+unread does not fire it. Core's own read path is the trigger: every
+`lastReadAt` write raises the `read-state-changed` thread change, and the hub
+emits the event from there, so the payload is the same read state the
+sidebar's unread dot uses. Push-notifications uses it, behind the
+`dismissReadNotifications` experiment, to remove the thread's delivered
+notifications from phones and from open web and desktop clients.
+
+Docs: `backend-sdk.md`, `backend-events.md`.
+
+Stabilization requires deciding whether a general `thread.updated` event
+should replace it, and a second consumer.
+
 ## Host deletion notifications
 
 `experimental_host.deleted` delivers the removed host's public DTO once,
@@ -3692,19 +3744,50 @@ The SDK test fake exposes the props as `data-*` attributes.
 **Core callers.** `ThreadStatusGlyph`
 (`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK export
 and the glyph in the thread search palette, the related threads info section,
-and mobile recents. The thread-list plugin draws its rows and collapsed-group
-rollups with it.
+the thread context card's sub-threads, and mobile recents. The thread-list
+plugin draws its rows and collapsed-group rollups with it. Its labels and the
+rule for when `rowStatus` replaces the indicator come from
+`packages/plugin-sdk/src/internal/thread-status.ts`, the module behind
+`experimental_resolveThreadStatus`.
 
 Docs: `frontend-registration.md`.
 
 **Audit before stabilizing.**
 
-1. **Indicator resolution.** The caller resolves the indicator, so the
-   thread-list plugin keeps its own copy of the indicator precedence and labels
-   that `@bb/client-core` holds for bb's surfaces. Decide whether the SDK should
-   export the resolver and labels instead.
-2. **Archived rows.** No plugin passes `archived` yet; confirm the archived
+1. **Archived rows.** No plugin passes `archived` yet; confirm the archived
    glyph belongs on this component rather than in the archived list.
+
+## `experimental_resolveThreadStatus` (`@get-bb/plugin-sdk/app`)
+
+A pure function from `PluginThreadStatusInput` (the row's thread or null for a
+group row, the threads it hides while collapsed, whether any of them holds a
+draft, and another plugin's row status) to `PluginThreadStatus`: the
+indicator, the row status when it shows in place of the indicator, the
+accessible label, and whether anything is working. Hidden threads add their
+attention and work; their queued messages do not count. The host installs the
+function from `packages/plugin-sdk/src/internal/thread-status.ts`, so a plugin
+built against an older SDK still resolves with the running host's precedence.
+
+**Core callers.** It is the only status resolver.
+`toPluginSidebarThread` (`apps/app/src/lib/plugin-sidebar-threads.ts`) fills
+`PluginSidebarThread.indicator` with it. `useThreadListEntryStatus`
+(`apps/app/src/hooks/useThreadListEntryStatus.ts`) resolves mobile recents
+(including a collapsed parent's descendants), the thread search palette, the
+related threads info section, and the thread context card through it, reading
+the same draft and row status the sidebar reads. The thread-list plugin
+resolves its thread rows and its collapsed parent, section, project,
+environment, and hidden-group rollups through it. `apps/app/src/lib/thread-status.test.ts`
+runs one case table through both the core and the plugin inputs.
+
+**Audit before stabilizing.**
+
+1. **Rollup scope.** A collapsed parent row folds in hidden threads' attention
+   and work but only its own row status; a collapsed group uses the first
+   hidden thread's row status. Decide whether the input should take hidden
+   threads' row statuses too (see #5810).
+2. **Unread grouping.** The thread-list plugin's read-status grouping keeps
+   its own "unread and done" predicate. Decide whether that predicate belongs
+   in the SDK next to this function.
 
 ## `HostsArea.experimental_reconcile`
 

@@ -1358,7 +1358,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: { projectId: "project-1" },
         changes: [change],
       });
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(1_000);
     }
 
     expect(activeListQueryFn).toHaveBeenCalledTimes(3);
@@ -1538,7 +1538,7 @@ describe("createRealtimeCacheEffects", () => {
             metadata: { projectId },
             changes: ["read-state-changed"],
           });
-          await vi.advanceTimersByTimeAsync(50);
+          await vi.advanceTimersByTimeAsync(1_000);
 
           expect(threadListObserver.getCurrentResult().data).toEqual([
             { id: "thr_1", lastReadAt: nextLastReadAt },

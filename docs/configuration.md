@@ -883,8 +883,9 @@ Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
 `pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
-off. An experiment you set yourself keeps your value either way.
+`threadRowMetadata`, `unreadDividerAtAnswer`, and `websocketCompression`) turn
+on, and the rest stay off. An experiment you set yourself keeps your value
+either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
@@ -900,6 +901,24 @@ off. An experiment you set yourself keeps your value either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `dismissReadNotifications` makes the push-notifications plugin remove a
+  thread's notifications once the thread is read on any client (opened, marked
+  read, or sent a message). Registered phones and tablets get a silent push
+  (`{"kind":"dismiss","threadId":…}`; `_contentAvailable` on iOS, data-only on
+  Android) that the mobile app's background task uses to remove that thread's
+  delivered notifications, and open web and desktop clients close the system
+  notification they are showing for it. Phones need a mobile app version with
+  the background task; an older Android app in the foreground would list the
+  silent push as a blank notification, so it is off for early adopters too.
+  The plugin reads it on each delivery and read, so a toggle applies live.
+- `narrowPluginCss` makes the app request each plugin's
+  stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
+  match only inside that plugin's own roots, not inside any root without a
+  plugin id, which makes style recalculation cheaper with many plugins. A
+  bundle whose `app.js` sets `data-bb-plugin-root` without `data-bb-plugin`
+  keeps the slower stylesheet either way. The app reads the experiment when it
+  loads a plugin's stylesheet, so a toggle applies after a reload. See
+  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel
@@ -947,11 +966,12 @@ off. An experiment you set yourself keeps your value either way.
   their context row, and a new thread's composer is unchanged.
   A header button opens the card or pins it: a pinned card sits beside the
   transcript in a wide pane and moves the transcript aside in a medium one,
-  and a narrow pane or window opens it over the transcript. Phones keep the
-  context row above the composer and show no card. Plugins read how a pane
+  and a narrow pane or window keeps the context row above the composer and
+  opens the card over the transcript. Phones keep the context row above the
+  composer and show no card. Plugins read how a pane
   shows thread context with `experimental_useThreadContextKind()`.
-- `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
-  Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
+- `threadRowMetadata` (on for early adopters) adds Metadata to the built-in
+  thread list's Organize → Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
   GitHub PR Status's pull request number on a line under each thread title.
   While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
   read it with `experimental_useExperiment("threadRowMetadata")`.
@@ -1098,11 +1118,11 @@ account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`
 enables it. Account tokens and per-machine hub tokens are 0600 files under
 `<dataDir>/plugins/account-pool/secrets/accounts/`.
 
-| Setting                    | Default                                 | Effect                                                                                     |
-| -------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction at which an account stops receiving matching traffic |
-| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                    |
-| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                     |
+| Setting                    | Default                                 | Effect                                                                                                                                             |
+| -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction from which other accounts are preferred; the account still serves matching traffic until upstream refuses it |
+| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                                                                            |
+| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                                                                             |
 
 Inspect and change them with `bb pool config` and
 `bb pool config set <key> <value>`. Values stored through `bb.settings` by
@@ -1117,6 +1137,13 @@ unlimited by default; each host defaults to Auto (one thread per available
 processor), a blank host field restores Auto, and `0` pauses new work for that
 scope. Configure it on its autosaving plugin page or with
 `bb concurrency-limit status|global|host`; see the `concurrency-limit` skill.
+
+### GitHub Star
+
+The builtin GitHub Star plugin (`bb--github-star`) asks once for a star on
+GitHub after more than five prompts, when the window has been idle for 30
+seconds. The server records that it asked, so no other window or device asks
+again. Disable the plugin to never be asked.
 
 ### Keep Awake
 
@@ -1259,6 +1286,7 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
 | `showRowMetadata`     | `false`                           | Shows plugins' metadata on a line under each thread title; needs the `threadRowMetadata` experiment                                         |
+| `showEmptyProjects`   | `true`                            | `false` hides project groups with no visible threads when organized by project                                                              |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
 
 `rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,

@@ -74,6 +74,10 @@
     "category": "utilities",
     "screenshots": []
   },
+  "github-star": {
+    "category": "utilities",
+    "screenshots": []
+  },
   "plugin-api-docs": {
     "category": "plugin-development",
     "screenshots": [

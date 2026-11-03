@@ -293,6 +293,13 @@ export interface PluginThreadEventPayloads {
     thread: ThreadResponse;
     previousParentThreadId: string | null;
   };
+  /**
+   * Fired after a thread's read state changes and the thread is now read
+   * (`lastReadAt >= latestAttentionAt`): a client opened it or marked it
+   * read, or the user sent it a turn. Marking a thread unread does not fire
+   * it. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.read": { thread: ThreadResponse };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
   /**
@@ -631,9 +638,12 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  *
  * It runs identically whether the attempt is inline (someone just sent) or
  * from a drain (a queued row became eligible again), and whether the message
- * is a thread's first, a follow-up, a steer, or a retry of a failed turn. A
- * handler must therefore be idempotent for one logical dispatch: passes re-run
- * on every drain, on restart, and on retry.
+ * is a thread's first, a follow-up, a steer, a retry of a failed turn, or one
+ * of core's own notices to a thread (a child finished, needs attention, or
+ * changed owner), which arrives with `initiator: "system"`. Compaction and an
+ * edited message's re-send operate on the existing conversation and do not
+ * pass through it. A handler must therefore be idempotent for one logical
+ * dispatch: passes re-run on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
   /**

@@ -127,14 +127,21 @@ describe("PushNotificationsHost", () => {
 
   it("keeps foreground pushes silent while retaining them in the notification list", async () => {
     const handler = mocks.setNotificationHandler.mock.calls[0]?.[0];
+    const arriving = (data: Record<string, unknown>) =>
+      handler.handleNotification({ request: { content: { data } } });
 
     expect(handler).toBeDefined();
-    await expect(handler.handleNotification()).resolves.toEqual({
+    await expect(
+      arriving({ kind: "turn-finished", threadId: "thr_1" }),
+    ).resolves.toEqual({
       shouldShowBanner: false,
       shouldShowList: true,
       shouldPlaySound: false,
       shouldSetBadge: false,
     });
+    await expect(
+      arriving({ kind: "dismiss", threadId: "thr_1" }),
+    ).resolves.toMatchObject({ shouldShowList: false });
   });
 
   it("opens a project thread from a push response with its project route", async () => {

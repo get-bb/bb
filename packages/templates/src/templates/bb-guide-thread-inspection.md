@@ -18,14 +18,17 @@ Listing:
     --parent-thread <id>                   Filter by parent thread
     --thread <id>                          Only this thread; unknown or deleted IDs are left out (repeatable, up to 200)
     --archived                             Show only archived threads
+    --include-archived                     Include archived threads
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
 
-  The table prints ID, Title, Project, and Status. Title uses the thread
-  title, then the fallback title from the first prompt, then "-". Long
-  titles are cut at 60 characters. Project shows the project name; the
-  personal project shows "-". Use --json for the full thread records.
+  Like `bb thread count`, the list leaves out archived threads unless you
+  pass --archived, --include-archived, or --thread IDs. The table prints ID,
+  Title, Project, and Status. Title uses the thread title, then the fallback
+  title from the first prompt, then "-". Long titles are cut at 60
+  characters. Project shows the project name; the personal project shows
+  "-". Use --json for the full thread records.
 
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages
@@ -108,6 +111,10 @@ Inspecting:
     --event <type>                         Wait for this event type
     --timeout <duration>                   Seconds, or a duration with a unit: 90s, 20m, 4h (default: 1200s / 20 min)
     --poll-interval <duration>             Milliseconds, or a duration with a unit
+
+  Exit codes: 2 on timeout, 3 on invalid arguments, 4 when waiting for idle on
+  a thread in error with nothing queued to recover it. A failed thread whose
+  retry is queued to send by itself is still waited on.
 
 Opening threads and files in the app:
 

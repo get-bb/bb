@@ -35,6 +35,7 @@ import {
 } from "./runtime-shims.mjs";
 import { retiredSdkMemberWarnings } from "./retired-sdk-members.js";
 import {
+  findUnnamedPluginRoots,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -579,6 +580,14 @@ export async function buildPluginApp(
           ? warning.text
           : `${warning.location.file}:${warning.location.line}: ${warning.text}`,
       );
+    const builtJs = await readFile(stagedJsPath, "utf8");
+    const unnamedRoots = findUnnamedPluginRoots(builtJs);
+    const [first] = unnamedRoots;
+    if (first !== undefined) {
+      migrationWarnings.push(
+        `app.js sets data-bb-plugin-root without data-bb-plugin ${unnamedRoots.length} time(s), so bb serves this plugin's utilities with the slower legacy scope. Refresh lib/portal-scope with "npx shadcn add @bb/portal-scope", or set data-bb-plugin="${pluginId}" next to data-bb-plugin-root. First match: ${builtJs.slice(Math.max(0, first - 40), first + 60)}`,
+      );
+    }
 
     let authoredCss = "";
     try {

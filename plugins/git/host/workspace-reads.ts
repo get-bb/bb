@@ -37,6 +37,7 @@ import type {
   GitReadFreshness,
   RawDiffFileStat,
   ThreadGitDiffResponse,
+  WorkspaceChangeTotals,
   WorkspaceCommitSummary,
   WorkspaceDiffTarget,
   WorkspaceFileStatus,
@@ -277,6 +278,19 @@ function statusFailure(result: GitCommandResult, workspacePath: string): Error {
         "git_command_failed",
         `git status failed${detail ? `: ${detail}` : ""}`,
       );
+}
+
+function sumNumstatLines(entries: readonly NumstatEntry[]): {
+  insertions: number;
+  deletions: number;
+} {
+  let insertions = 0;
+  let deletions = 0;
+  for (const entry of entries) {
+    if (entry.insertions !== null) insertions += entry.insertions;
+    if (entry.deletions !== null) deletions += entry.deletions;
+  }
+  return { insertions, deletions };
 }
 
 function splitRawNumstatZ(stdout: string): { raw: string; numstat: string } {
@@ -1043,6 +1057,17 @@ export class WorkspaceReads {
       throw statusFailure(snapshot.result, this.path);
     }
     const [diffOutput, defaultBranch, mergeBaseData] = await otherReads;
+    const committedBaseRef = mergeBaseData?.hasCommittedUnmergedChanges
+      ? mergeBaseData.baseRef
+      : null;
+    const sinceBaseNumstatRead =
+      committedBaseRef !== null && snapshot.parsed.entries.length > 0
+        ? this.runGit(["diff", "--numstat", "-z", committedBaseRef, "--"], {
+            cwd: this.path,
+            timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+          }).then((result) => parseNumstatEntriesZ(result.stdout))
+        : null;
+    sinceBaseNumstatRead?.catch(() => undefined);
     const { entries, headOid, headBranch } = snapshot.parsed;
     const checkout: GitCheckoutRef =
       headBranch === null
@@ -1077,15 +1102,10 @@ export class WorkspaceReads {
         (entry) => [entry.path, entry] as const,
       ),
     );
-    let workingTreeInsertions = 0;
-    let workingTreeDeletions = 0;
-    for (const entry of [
+    const workingTreeLines = sumNumstatLines([
       ...trackedNumstatEntries,
       ...untrackedNumstatEnrichment.entries,
-    ]) {
-      if (entry.insertions !== null) workingTreeInsertions += entry.insertions;
-      if (entry.deletions !== null) workingTreeDeletions += entry.deletions;
-    }
+    ]);
     const listedEntries =
       maxFiles === undefined ? entries : entries.slice(0, maxFiles);
     const files: WorkspaceFileStatus[] = listedEntries.map((entry) => {
@@ -1114,15 +1134,38 @@ export class WorkspaceReads {
       hasTrackedChanges,
       hasUntracked,
     });
+    const workingTreeLineStatsComplete =
+      !hasUntracked || untrackedNumstatEnrichment.complete;
+    const workingTreeTotals: WorkspaceChangeTotals = {
+      ...workingTreeLines,
+      lineStatsComplete: workingTreeLineStatsComplete,
+      fileCount: entries.length,
+    };
+    const sinceBaseNumstatEntries = await sinceBaseNumstatRead;
+    const allChanges: WorkspaceChangeTotals =
+      sinceBaseNumstatEntries !== null
+        ? {
+            ...sumNumstatLines([
+              ...sinceBaseNumstatEntries,
+              ...untrackedNumstatEnrichment.entries,
+            ]),
+            lineStatsComplete: workingTreeLineStatsComplete,
+            fileCount: sinceBaseNumstatEntries.length + untrackedPaths.length,
+          }
+        : committedBaseRef !== null && mergeBaseData !== null
+          ? {
+              insertions: mergeBaseData.insertions,
+              deletions: mergeBaseData.deletions,
+              lineStatsComplete: mergeBaseData.lineStatsComplete,
+              fileCount: mergeBaseData.fileCount,
+            }
+          : workingTreeTotals;
 
     return {
       workingTree: {
+        ...workingTreeTotals,
         hasUncommittedChanges: hasDirtyEntries,
         state,
-        insertions: workingTreeInsertions,
-        deletions: workingTreeDeletions,
-        lineStatsComplete: !hasUntracked || untrackedNumstatEnrichment.complete,
-        fileCount: entries.length,
         files,
       },
       branch: {
@@ -1138,6 +1181,7 @@ export class WorkspaceReads {
       },
       checkout,
       mergeBase: mergeBaseData,
+      allChanges,
     };
   }
 

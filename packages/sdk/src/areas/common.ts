@@ -18,7 +18,10 @@ export function signalRequestArgs(
 
 export async function readExecutionOptions(
   transport: BbSdkTransport,
-  input: SystemExecutionOptionsQuery & { signal?: AbortSignal },
+  input: Omit<SystemExecutionOptionsQuery, "preferCached"> & {
+    preferCached?: boolean;
+    signal?: AbortSignal;
+  },
 ): Promise<SystemExecutionOptionsResponse> {
   return transport.readJson(
     transport.api.v1.system["execution-options"].$get(
@@ -29,6 +32,12 @@ export async function readExecutionOptions(
           projectId: input.projectId,
           providerId: input.providerId,
           selectedModel: input.selectedModel,
+          preferCached:
+            input.preferCached === undefined
+              ? undefined
+              : input.preferCached
+                ? "true"
+                : "false",
         },
       },
       ...signalRequestArgs(input.signal),

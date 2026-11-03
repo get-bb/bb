@@ -60,6 +60,40 @@ describe("notification delivery", () => {
       expect(shown).toHaveLength(expected);
     },
   );
+
+  it("closes a thread's notification when the server says it was read", async () => {
+    const closed: string[] = [];
+    vi.stubGlobal(
+      "Notification",
+      class {
+        static permission = "granted";
+        readonly tag: string;
+        constructor(_title: string, options: NotificationOptions) {
+          this.tag = options.tag ?? "";
+        }
+        close() {
+          closed.push(this.tag);
+        }
+      },
+    );
+    vi.stubGlobal("isSecureContext", true);
+    const view = renderSlot(
+      app.appOverlays[0]!,
+      {},
+      { settings: { webEnabled: true } },
+    );
+    for (const threadId of ["thr_read", "thr_other"]) {
+      await view.emitRealtime("notification", {
+        id: `event-${threadId}`,
+        title: "Finished",
+        body: "Ready",
+        threadId,
+        channels: ["web"],
+      });
+    }
+    await view.emitRealtime("notification-dismiss", { threadId: "thr_read" });
+    await waitFor(() => expect(closed).toEqual(["bb-thr_read"]));
+  });
 });
 
 describe("device notification settings", () => {

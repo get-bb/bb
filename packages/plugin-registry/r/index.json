@@ -146,6 +146,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "inline-rename-presentation-cases",
+      "type": "registry:ui"
+    },
+    {
       "name": "input",
       "type": "registry:ui"
     },
@@ -242,6 +246,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "rename-session-dialog",
+      "type": "registry:ui"
+    },
+    {
       "name": "resizable",
       "type": "registry:ui"
     },
@@ -283,6 +291,14 @@
     },
     {
       "name": "responsive-overlay",
+      "type": "registry:ui"
+    },
+    {
+      "name": "schedule-time",
+      "type": "registry:lib"
+    },
+    {
+      "name": "schedule-time-fields",
       "type": "registry:ui"
     },
     {

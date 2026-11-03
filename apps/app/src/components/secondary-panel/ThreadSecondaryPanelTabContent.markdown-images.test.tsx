@@ -63,6 +63,12 @@ vi.mock("@/hooks/queries/thread-panel-queries", () => ({
   ) => previewQuery(path),
   useThreadStorageFilePreview: (_threadId: string, path: string) =>
     previewQuery(path),
+  useThreadStorageLocation: () => ({ data: undefined }),
+}));
+
+vi.mock("@/hooks/useLocalFileLinkOpener", () => ({
+  useLocalFileLinkOpener: () => ({ openLink: () => false }),
+  useThreadFileLinkOpener: () => ({ openLink: () => false }),
 }));
 
 vi.mock("@/hooks/queries/host-file-preview-query", () => ({

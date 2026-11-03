@@ -73,6 +73,7 @@ async function createFixture(
     protocolVersion?: number;
     installFailure?: Error;
     now?: () => number;
+    serverHeaders?: Record<string, string>;
     serverUrl?: string;
     useDefaultInstaller?: boolean;
   } = {},
@@ -110,6 +111,7 @@ async function createFixture(
     ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
     logger: testLogger,
     now: args.now,
+    serverHeaders: args.serverHeaders ?? {},
     serverUrl: args.serverUrl ?? "https://server.example.test",
   });
   return {
@@ -306,6 +308,41 @@ describe("protocol self-update", () => {
       { artifactDigest: digest },
       expect.stringContaining("already installed"),
     );
+  });
+
+  it("updates through a proxy that requires the configured server headers", async () => {
+    const proxyKey = "proxy-key-test";
+    const test = await createFixture({
+      serverHeaders: { "x-proxy-key": proxyKey },
+    });
+    const downloadConditions: (string | null)[] = [];
+    test.fetchFn.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        if (headers.get("x-proxy-key") !== proxyKey) {
+          return new Response(null, {
+            status: 401,
+            statusText: "Unauthorized",
+          });
+        }
+        if (String(input).endsWith("/install/version")) return versionResponse();
+        downloadConditions.push(headers.get("if-none-match"));
+        return headers.has("if-none-match")
+          ? new Response(null, { status: 304 })
+          : tarballResponse("tarball");
+      },
+    );
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    await expect(
+      test.updater.handleProtocolMismatch({ force: true }),
+    ).resolves.toBe("updated");
+
+    const digest = createHash("sha256").update(TARBALL_BYTES).digest("hex");
+    expect(downloadConditions).toEqual([null, `"sha256-${digest}"`]);
+    expect(test.installTarball).toHaveBeenCalledOnce();
   });
 
   it("finds npm beside the running Node executable when the service PATH omits it", async () => {

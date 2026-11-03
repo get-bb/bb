@@ -60,6 +60,7 @@ interface CreateProtocolSelfUpdaterOptions {
   dataDir: string;
   enabled: boolean;
   logger: HostDaemonLogger;
+  serverHeaders: Record<string, string>;
   serverUrl: string;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
@@ -274,7 +275,10 @@ export function createProtocolSelfUpdater(
 
       try {
         const versionUrl = new URL("/install/version", options.serverUrl);
-        const versionResponse = await fetchFn(versionUrl, { method: "GET" });
+        const versionResponse = await fetchFn(versionUrl, {
+          method: "GET",
+          headers: options.serverHeaders,
+        });
         if (!versionResponse.ok) {
           throw new Error(
             `Version check failed: ${versionResponse.status} ${versionResponse.statusText}`,
@@ -344,13 +348,12 @@ export function createProtocolSelfUpdater(
           );
           const response = await fetchFn(tarballUrl, {
             method: "GET",
-            ...(installedDigest === null
-              ? {}
-              : {
-                  headers: {
-                    "if-none-match": `"sha256-${installedDigest}"`,
-                  },
-                }),
+            headers: {
+              ...options.serverHeaders,
+              ...(installedDigest === null
+                ? {}
+                : { "if-none-match": `"sha256-${installedDigest}"` }),
+            },
           });
           if (response.status === 304 && installedDigest !== null) {
             options.logger.info(
