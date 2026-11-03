@@ -15,6 +15,7 @@ import {
 } from "../experiments/flags";
 import {
   useExperiment,
+  useExperimentExposer,
   useExperimentExposure,
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
@@ -77,7 +78,12 @@ import {
   ThreadStatus,
   useFitMock,
 } from "../landing/app-mock-parts";
-import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
+import {
+  DiscordLink,
+  GitHubLink,
+  MarketplaceLink,
+  SubscribeSection,
+} from "../landing/cta";
 import { HeroWindowSlot } from "../landing/hero-window";
 import heroWindowCss from "../landing/hero-window.css?url";
 import { siteHeadLinks } from "../landing/page-head";
@@ -89,7 +95,10 @@ import {
   InstallOptions,
   ProviderChips,
   CustomizeBuild,
+  DelegationTree,
+  PluginMorph,
   SpawnSidebar,
+  StartAnywhere,
   useCycle,
   useScrollReveal,
 } from "../landing/landing-visuals";
@@ -1056,102 +1065,14 @@ function AgentChat() {
   );
 }
 
-const SUBHEAD_COPY = {
-  control:
-    "bb can control, customize, and automate itself, laying the groundwork for your own software factory.",
-  test: "Run all your coding agents in one programmable workspace. Change almost anything with a plugin or a prompt.",
-} as const satisfies Record<ExperimentVariant<"homepage-hero">, string>;
+const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
+  control: ["customizable", "kick-off", "gang", "fork-it", "closer"],
+  test: ["make-it-yours", "hand-off", "start-anywhere", "closer"],
+};
 
-function LandingPage() {
-  const [companyProofPaused, setCompanyProofPaused] = useState(false);
-  const [companyProofInView, setCompanyProofInView] = useState(false);
-  const companyProofRef = useRef<HTMLElement>(null);
-  const qaCheck = useExperiment("homepage-qa-check");
-  useExperimentExposure("homepage-qa-check", "all");
-  const subhead = useExperiment("homepage-hero");
-  useExperimentExposure("homepage-hero", "desktop");
-  useScrollReveal();
-  useSectionViews();
-  useConstructMock();
-
-  useEffect(() => {
-    const companyProof = companyProofRef.current;
-    if (!companyProof) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      setCompanyProofInView(entry?.isIntersecting ?? false);
-    });
-    observer.observe(companyProof);
-    return () => observer.disconnect();
-  }, []);
-
+function TodayBelowFold() {
   return (
-    <div
-      className="wrap"
-      data-qa-check={qaCheck === "test" ? qaCheck : undefined}
-    >
-      <SiteNav />
-
-      <header className="hero">
-        <a className="updates-callout" href={LATEST_RELEASE_URL}>
-          <span className="updates-label">New</span>
-          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
-          <ChevronRight className="updates-arrow" />
-        </a>
-        <h1>The IDE that builds itself</h1>
-        <p className={subhead === "test" ? "sub sub-wide" : "sub"}>
-          {SUBHEAD_COPY[subhead]}
-        </p>
-
-        <InstallOptions placement="hero" />
-
-        {subhead === "test" ? (
-          <AgentRow />
-        ) : (
-          <div className="providers">
-            <span className="label">Works with</span>
-            <ProviderChips />
-          </div>
-        )}
-      </header>
-
-      <HeroWindowSlot control={(ref) => <HeroAppMock ref={ref} />} />
-
-      <section
-        ref={companyProofRef}
-        className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
-        aria-labelledby="company-proof-title"
-        data-section="logos"
-      >
-        <div className="company-proof-heading">
-          <h2 id="company-proof-title">Used by builders at</h2>
-          <button
-            type="button"
-            className="company-proof-toggle"
-            aria-label={
-              companyProofPaused
-                ? "Resume company logos"
-                : "Pause company logos"
-            }
-            onClick={() => setCompanyProofPaused((paused) => !paused)}
-          >
-            <HugeiconsIcon
-              icon={companyProofPaused ? PlayIcon : PauseIcon}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        <div className="company-proof-rows">
-          {COMPANY_PROOF_ROWS.map((companies, index) => (
-            <CompanyProofMarquee
-              key={index}
-              companies={companies}
-              reverse={index === 1}
-            />
-          ))}
-        </div>
-      </section>
-
+    <>
       <Band
         title="Fully customizable."
         flip
@@ -1234,6 +1155,170 @@ function LandingPage() {
           </GitHubLink>
         </div>
       </section>
+    </>
+  );
+}
+
+function RefreshedBelowFold() {
+  return (
+    <>
+      <Band
+        title="Make bb yours. No need to fork."
+        stacked
+        section="make-it-yours"
+        visual={<PluginMorph />}
+      >
+        <p>
+          bb adapts to how you work, not the other way around. Prompt an agent
+          to change almost anything in bb, or choose from 500+ plugins built by
+          the community.
+        </p>
+        <MarketplaceLink placement="customize" className="band-link">
+          Browse plugins &rarr;
+        </MarketplaceLink>
+      </Band>
+
+      <Band
+        title="Stop babysitting agents."
+        stacked
+        section="hand-off"
+        visual={<DelegationTree />}
+      >
+        <p>
+          Have Claude Code plan, Cursor implement, Codex review, and Grok
+          orchestrate them all. Step in anytime, and only hear about what needs
+          you.
+        </p>
+      </Band>
+
+      <Band
+        title="Start from anywhere. Pick up anywhere."
+        stacked
+        section="start-anywhere"
+        visual={<StartAnywhere />}
+      >
+        <p>
+          Start bb from your desk, CI, the bb mobile app, even other AI apps
+          like ChatGPT or Claude. Threads run on machines you own, from your
+          laptop to a remote server or VM.
+        </p>
+      </Band>
+
+      <section className="closer" data-reveal data-section="closer">
+        <h2 className="sec-title">
+          One programmable workspace for all your agents.
+        </h2>
+        <p>Free and self-hostable.</p>
+        <InstallOptions placement="closer" />
+      </section>
+    </>
+  );
+}
+
+const SUBHEAD_COPY = {
+  control:
+    "bb can control, customize, and automate itself, laying the groundwork for your own software factory.",
+  test: "Run all your coding agents in one programmable workspace. Change almost anything with a plugin or a prompt.",
+} as const satisfies Record<ExperimentVariant<"homepage-hero">, string>;
+
+function LandingPage() {
+  const [companyProofPaused, setCompanyProofPaused] = useState(false);
+  const [companyProofInView, setCompanyProofInView] = useState(false);
+  const companyProofRef = useRef<HTMLElement>(null);
+  const qaCheck = useExperiment("homepage-qa-check");
+  useExperimentExposure("homepage-qa-check", "all");
+  const subhead = useExperiment("homepage-hero");
+  useExperimentExposure("homepage-hero", "desktop");
+  const belowFold = useExperiment("homepage-below-fold");
+  const exposeBelowFold = useExperimentExposer(
+    "homepage-below-fold",
+    "desktop",
+  );
+  useScrollReveal();
+  useSectionViews((section) => {
+    if (BELOW_FOLD_SECTIONS[belowFold].includes(section)) exposeBelowFold();
+  });
+  useConstructMock();
+
+  useEffect(() => {
+    const companyProof = companyProofRef.current;
+    if (!companyProof) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setCompanyProofInView(entry?.isIntersecting ?? false);
+    });
+    observer.observe(companyProof);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      className="wrap"
+      data-qa-check={qaCheck === "test" ? qaCheck : undefined}
+    >
+      <SiteNav />
+
+      <header className="hero">
+        <a className="updates-callout" href={LATEST_RELEASE_URL}>
+          <span className="updates-label">New</span>
+          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
+          <ChevronRight className="updates-arrow" />
+        </a>
+        <h1>The IDE that builds itself</h1>
+        <p className={subhead === "test" ? "sub sub-wide" : "sub"}>
+          {SUBHEAD_COPY[subhead]}
+        </p>
+
+        <InstallOptions placement="hero" />
+
+        {subhead === "test" ? (
+          <AgentRow />
+        ) : (
+          <div className="providers">
+            <span className="label">Works with</span>
+            <ProviderChips />
+          </div>
+        )}
+      </header>
+
+      <HeroWindowSlot control={(ref) => <HeroAppMock ref={ref} />} />
+
+      <section
+        ref={companyProofRef}
+        className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
+        aria-labelledby="company-proof-title"
+        data-section="logos"
+      >
+        <div className="company-proof-heading">
+          <h2 id="company-proof-title">Used by builders at</h2>
+          <button
+            type="button"
+            className="company-proof-toggle"
+            aria-label={
+              companyProofPaused
+                ? "Resume company logos"
+                : "Pause company logos"
+            }
+            onClick={() => setCompanyProofPaused((paused) => !paused)}
+          >
+            <HugeiconsIcon
+              icon={companyProofPaused ? PlayIcon : PauseIcon}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <div className="company-proof-rows">
+          {COMPANY_PROOF_ROWS.map((companies, index) => (
+            <CompanyProofMarquee
+              key={index}
+              companies={companies}
+              reverse={index === 1}
+            />
+          ))}
+        </div>
+      </section>
+
+      {belowFold === "test" ? <RefreshedBelowFold /> : <TodayBelowFold />}
 
       <SubscribeSection
         reveal
