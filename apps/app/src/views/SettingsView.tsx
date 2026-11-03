@@ -1129,6 +1129,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When an idle thread holds at least 100k tokens and its prompt cache has expired, the composer offers to compact before your next send. Works with supported providers (e.g. Claude Code, Pi).",
   },
+  continueThreadsAfterRestarts: {
+    label: "Continue threads after a restart",
+    description:
+      "When an update, crash or restart cuts off a running thread, bb continues it a few seconds after it comes back instead of leaving it in error. Messages you queued meanwhile send after it.",
+  },
   dismissReadNotifications: {
     label: "Clear notifications once a thread is read",
     description:

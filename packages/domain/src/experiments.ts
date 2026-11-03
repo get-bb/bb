@@ -3,6 +3,7 @@ import { z } from "zod";
 export const experimentKeys = [
   "applicationLinks",
   "compactExpiredCache",
+  "continueThreadsAfterRestarts",
   "dismissReadNotifications",
   "narrowPluginCss",
   "serverMove",
@@ -31,6 +32,7 @@ export type ExperimentUpdates = z.infer<typeof experimentUpdatesSchema>;
 export const defaultExperiments: Experiments = {
   applicationLinks: false,
   compactExpiredCache: false,
+  continueThreadsAfterRestarts: false,
   dismissReadNotifications: false,
   narrowPluginCss: false,
   serverMove: false,
@@ -48,6 +50,7 @@ export const defaultExperiments: Experiments = {
 export const earlyAdopterExperiments: Experiments = {
   applicationLinks: true,
   compactExpiredCache: true,
+  continueThreadsAfterRestarts: false,
   dismissReadNotifications: false,
   narrowPluginCss: false,
   serverMove: false,

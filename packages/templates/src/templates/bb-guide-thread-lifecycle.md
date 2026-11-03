@@ -51,11 +51,21 @@ Lifecycle:
   With --send-at, an accepted turn on a thread that already has a retry
   waiting joins that retry instead of queuing another nudge: the waiting row
   moves to the new time and the response names it.
+  A queued retry goes to the front of the thread's queue, and messages queued
+  behind it wait for it to send or be dropped.
   A newer message sent to the thread overtakes a queued retry: a retry that
   would continue an accepted turn is dropped, and one carrying input the
   provider never accepted stays queued as Not sent (`waitingOn.kind`
   `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
+
+  With the `continueThreadsAfterRestarts` experiment, a turn cut off because a
+  machine's daemon came back as a new process (bb quit, crashed, updated, or
+  the machine restarted) gets a retry with reason "bb restarted", sent a few
+  seconds later. Turns stopped by the user, threads waiting on a question or
+  approval, and archived threads are left in error. After three of these in a
+  row, bb stops retrying the turn. The parent of a child that resumes hears
+  about it when the child finishes, not when it was cut off.
 
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread

@@ -509,6 +509,32 @@ function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
   }
 }
 
+function isLiveQueuedRetry(row: QueuedThreadMessageRow): boolean {
+  if (row.payloadKind !== "retry" || row.state === "failed_exhausted") {
+    return false;
+  }
+  if (row.waitingOn === null) return true;
+  try {
+    const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
+    return parsed.kind !== "superseded";
+  } catch {
+    return true;
+  }
+}
+
+function isQueuedMessageGroupBehindLiveRetry(
+  queuedMessages: readonly QueuedThreadMessageRow[],
+  group: readonly QueuedThreadMessageRow[],
+): boolean {
+  const lead = group[0];
+  if (lead === undefined || lead.payloadKind === "retry") return false;
+  for (const row of queuedMessages) {
+    if (row.id === lead.id) return false;
+    if (isLiveQueuedRetry(row)) return true;
+  }
+  return false;
+}
+
 function stringArraysEqual(
   left: readonly string[],
   right: readonly string[],
@@ -618,6 +644,38 @@ function getLastQueuedThreadMessage(
       .limit(1)
       .get() ?? null
   );
+}
+
+function getFirstQueuedThreadMessage(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.threadId, threadId))
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+function newQueuedThreadMessageSortKey(
+  db: DbQueryConnection,
+  args: { payload: QueuedMessagePayload; threadId: string },
+): string {
+  if (args.payload.kind === "retry") {
+    const firstQueuedMessage = getFirstQueuedThreadMessage(db, args.threadId);
+    return createOrderKeyBetween({
+      previousKey: null,
+      nextKey: firstQueuedMessage?.sortKey ?? null,
+    });
+  }
+  const lastQueuedMessage = getLastQueuedThreadMessage(db, args.threadId);
+  return lastQueuedMessage
+    ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
+    : createOrderKeyBetween({ previousKey: null, nextKey: null });
 }
 
 function getPreviousUnclaimedQueuedThreadMessage(
@@ -817,10 +875,10 @@ export function createQueuedThreadMessageInTransaction(
     projectAttachmentPaths(input.content),
   );
   const id = createQueuedThreadMessageId();
-  const lastQueuedMessage = getLastQueuedThreadMessage(tx, input.threadId);
-  const sortKey = lastQueuedMessage
-    ? createOrderKeyAfter({ previousKey: lastQueuedMessage.sortKey })
-    : createOrderKeyBetween({ previousKey: null, nextKey: null });
+  const sortKey = newQueuedThreadMessageSortKey(tx, {
+    payload: input.payload,
+    threadId: input.threadId,
+  });
   const waitingOn =
     input.waitingOn === null ? null : JSON.stringify(input.waitingOn);
   const state = requireQueuedMessageTransition({
@@ -1516,6 +1574,8 @@ export function claimQueuedThreadMessageGroup(
             policy.retryingFailure,
             Date.now(),
           )) ||
+        (policy.kind === "automatic" &&
+          isQueuedMessageGroupBehindLiveRetry(queuedMessages, group)) ||
         (policy.kind === "automatic" && !policy.isGroupEligible(group))
       ) {
         return null;
@@ -1571,6 +1631,7 @@ export function claimNextQueuedThreadMessageGroup(
           .slice(0, editHeldIndex === -1 ? undefined : editHeldIndex)
           .find(
             (rows) =>
+              !isQueuedMessageGroupBehindLiveRetry(queuedMessages, rows) &&
               isGroupEligible(rows) &&
               isAutomaticQueuedThreadMessageGroupClaimAllowed(
                 rows,

@@ -904,6 +904,21 @@ either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `continueThreadsAfterRestarts` continues threads a restart cut off. When a
+  machine's daemon comes back as a new process (bb quit, crashed, or updated,
+  or the machine restarted), the server marks the turns it was running as
+  interrupted (`host-daemon-restarted`) as before, and then queues a retry of
+  each one with reason "bb restarted", scheduled 5 seconds out (the queue
+  sweep sends it on its next pass after that). The retry is the same row
+  as `bb thread retry`: it sends "Please continue." when the provider had
+  accepted the cut turn's input and the original input otherwise. It goes
+  ahead of messages queued for the thread, which send after it. A message you
+  send before it goes out overtakes it. Turns stopped by the user, threads
+  waiting on a question or approval, and archived threads are not resumed, and
+  a turn is not retried again once its retry chain reaches attempt 4 (three
+  restarts in a row). A child thread that resumes does not notify its parent
+  that it was interrupted; the parent hears when the child finishes.
+  `bb thread wait` keeps waiting on a thread whose resume is queued.
 - `dismissReadNotifications` makes the push-notifications plugin remove a
   thread's notifications once the thread is read on any client (opened, marked
   read, or sent a message). Registered phones and tablets get a silent push

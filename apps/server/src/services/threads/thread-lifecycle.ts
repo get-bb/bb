@@ -308,6 +308,7 @@ interface InterruptActiveThreadArgs {
 interface InterruptActiveThreadsArgs {
   cause?: "host-connection-lost";
   reason: SystemThreadInterruptedReason;
+  resumingThreadIds: ReadonlySet<string>;
   threads: readonly InterruptActiveThreadArgs[];
 }
 
@@ -316,6 +317,7 @@ interface InterruptActiveThreadsForHostArgs {
   cause?: "host-connection-lost";
   hostId: string;
   reason: SystemThreadInterruptedReason;
+  resumingThreadIds: ReadonlySet<string>;
 }
 
 interface InterruptedActiveThreadResult {
@@ -1911,8 +1913,10 @@ function interruptActiveThreads(
         const state = stateByThreadId.get(thread.threadId);
         const activeTurnId = state?.activeTurnId ?? null;
         const providerThreadId = state?.latestProviderThreadId ?? null;
-        const failureMessage =
-          threadCommandFailureMessageForInterruption(effectiveReason);
+        const resuming = args.resumingThreadIds.has(thread.threadId);
+        const failureMessage = resuming
+          ? "Thread interrupted because bb restarted"
+          : threadCommandFailureMessageForInterruption(effectiveReason);
 
         if (activeTurnId !== null) {
           eventArgs.push({
@@ -1939,8 +1943,9 @@ function interruptActiveThreads(
             data: buildSystemErrorEventData({
               code: "thread_command_failed",
               message: failureMessage,
-              detail:
-                threadCommandFailureDetailForInterruption(effectiveReason),
+              detail: resuming
+                ? "bb will continue the thread in a few seconds."
+                : threadCommandFailureDetailForInterruption(effectiveReason),
             }),
           });
         }
@@ -2012,6 +2017,7 @@ function interruptActiveThreads(
     );
     if (
       result.interruptedTurnId !== null &&
+      !args.resumingThreadIds.has(result.threadId) &&
       thread &&
       isParentNotifiableChildThread(thread, "interrupted")
     ) {
@@ -2057,6 +2063,7 @@ export function interruptActiveThreadsForHost(
   return interruptActiveThreads(deps, {
     threads: activeThreads,
     reason: args.reason,
+    resumingThreadIds: args.resumingThreadIds,
     ...(args.cause ? { cause: args.cause } : {}),
   });
 }
@@ -2296,6 +2303,7 @@ export async function reconcileDaemonReportedThreads(
     })),
     reason: "host-daemon-restarted",
     cause: args.sameDaemonInstance ? "host-connection-lost" : undefined,
+    resumingThreadIds: new Set(),
   });
 
   if (args.activeThreadIds.length === 0) {
