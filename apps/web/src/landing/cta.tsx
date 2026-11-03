@@ -183,6 +183,75 @@ export function XLink(props: CtaLinkProps & { "aria-label"?: string }) {
 
 type SubscribeStatus = "idle" | "submitting" | "success" | "error";
 
+export function EmailField({
+  id,
+  hero = false,
+  className,
+  value,
+  onChange,
+  onSubmit,
+  invalid,
+  disabled,
+  placeholder,
+  submitLabel,
+  error,
+}: {
+  id?: string;
+  hero?: boolean;
+  className?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  invalid: boolean;
+  disabled: boolean;
+  placeholder: string;
+  submitLabel: string;
+  error: ReactNode;
+}) {
+  const formClass = ["subscribe-form", hero ? "install-email" : null, className]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <form
+      className={formClass}
+      method={hero ? "post" : undefined}
+      onSubmit={onSubmit}
+      noValidate
+    >
+      <input
+        id={id}
+        className="subscribe-input"
+        type="email"
+        name="email"
+        inputMode="email"
+        autoComplete="email"
+        required
+        placeholder={placeholder}
+        aria-label="Email address"
+        aria-invalid={invalid}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        type="submit"
+        className={
+          hero
+            ? "btn btn-primary btn-install subscribe-btn"
+            : "btn btn-primary subscribe-btn"
+        }
+        disabled={disabled}
+      >
+        {submitLabel}
+      </button>
+      {error ? (
+        <span className="subscribe-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </form>
+  );
+}
+
 export const SUBSCRIBE_EMAIL_ID = "subscribe-email";
 
 export function focusSubscribeEmail() {
@@ -246,39 +315,22 @@ export function EmailSignup({ placement }: { placement: CtaPlacement }) {
   }
 
   return (
-    <form className="subscribe-form" onSubmit={submit} noValidate>
-      <input
-        id={SUBSCRIBE_EMAIL_ID}
-        className="subscribe-input"
-        type="email"
-        name="email"
-        inputMode="email"
-        autoComplete="email"
-        required
-        placeholder="you@example.com"
-        aria-label="Email address"
-        aria-invalid={status === "error"}
-        value={email}
-        onChange={(event) => {
-          setEmail(event.target.value);
-          if (status === "error") {
-            setStatus("idle");
-          }
-        }}
-      />
-      <button
-        type="submit"
-        className="btn btn-primary subscribe-btn"
-        disabled={status === "submitting"}
-      >
-        {status === "submitting" ? "Subscribing…" : "Subscribe"}
-      </button>
-      {status === "error" ? (
-        <span className="subscribe-error" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </form>
+    <EmailField
+      id={SUBSCRIBE_EMAIL_ID}
+      value={email}
+      onChange={(value) => {
+        setEmail(value);
+        if (status === "error") {
+          setStatus("idle");
+        }
+      }}
+      onSubmit={(event) => void submit(event)}
+      invalid={status === "error"}
+      disabled={status === "submitting"}
+      placeholder="you@example.com"
+      submitLabel={status === "submitting" ? "Subscribing…" : "Subscribe"}
+      error={status === "error" ? error : null}
+    />
   );
 }
 

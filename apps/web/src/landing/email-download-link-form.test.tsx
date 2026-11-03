@@ -225,7 +225,8 @@ describe("phone email arm placement", () => {
     const html = renderToStaticMarkup(
       <InstallOptions placement="hero" touchAction="email" />,
     );
-    expect(html).toContain('class="install-email touch-only"');
+    expect(html).toContain('class="subscribe-form install-email touch-only"');
+    expect(html).toContain('class="subscribe-input"');
     expect(html).not.toContain("install-send");
     expect(html).toContain(
       'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=hero"',

@@ -33,7 +33,7 @@ describe("homepage-download-path install block", () => {
     ]);
     expect(html).not.toContain(CLI_COMMAND);
     expect(html).toMatch(
-      /<span class="install-note install-note-desktop"><a [^>]*href="https:\/\/github.com\/get-bb\/bb"/,
+      /<span class="install-note desktop-only"><a [^>]*href="https:\/\/github.com\/get-bb\/bb"/,
     );
     expect(html).toContain(`href="${GITHUB_URL}"`);
     expect(html).toContain('href="/download">Other platforms</a>');
@@ -41,7 +41,7 @@ describe("homepage-download-path install block", () => {
 
   it("gives phones the computers' line without the chip note in the test arm", () => {
     const touch = renderArm("test").split(
-      '<span class="install-note install-note-touch">',
+      '<span class="install-note touch-only">',
     )[1];
     expect(touch).toMatch(
       /^<a [^>]*>.*Open source<\/a> · <a class="install-note-link" href="\/download">Other platforms<\/a><\/span>/,
@@ -71,7 +71,7 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
   it("gives a phone in both test arms the email form", () => {
     const html = heroHtml("email");
     expect(html).toContain("Other platforms");
-    expect(html).toContain('class="install-email touch-only"');
+    expect(html).toContain('class="subscribe-form install-email touch-only"');
     expect(html).not.toContain("install-send");
   });
 
@@ -88,7 +88,7 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
     expect(email).not.toBeNull();
     expect(email).toEqual(desktopOnly(heroHtml("share")));
     expect(email!.join("")).toContain(
-      'class="btn btn-primary btn-install install-download desktop-only" href="/download/macos?placement=hero"',
+      'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=hero"',
     );
   });
 });
