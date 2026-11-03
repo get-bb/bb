@@ -31,6 +31,7 @@ import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
+import { Route as CommunitySurveyRouteImport } from "./routes/community.survey";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from "./routes/[.]well-known.oauth-authorization-server";
@@ -163,6 +164,11 @@ const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
 const CompareSlugRoute = CompareSlugRouteImport.update({
   id: "/compare/$slug",
   path: "/compare/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const CommunitySurveyRoute = CommunitySurveyRouteImport.update({
+  id: "/community/survey",
+  path: "/community/survey",
   getParentRoute: () => rootRouteImport,
 } as any);
 const BlogSlugRoute = BlogSlugRouteImport.update({
@@ -307,6 +313,7 @@ export interface FileRoutesByFullPath {
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
+  "/community/survey": typeof CommunitySurveyRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
@@ -354,6 +361,7 @@ export interface FileRoutesByTo {
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
+  "/community/survey": typeof CommunitySurveyRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
@@ -402,6 +410,7 @@ export interface FileRoutesById {
   "/.well-known/oauth-authorization-server": typeof DotwellKnownOauthAuthorizationServerRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
+  "/community/survey": typeof CommunitySurveyRoute;
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
@@ -451,6 +460,7 @@ export interface FileRouteTypes {
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
+    | "/community/survey"
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
@@ -498,6 +508,7 @@ export interface FileRouteTypes {
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog/$slug"
+    | "/community/survey"
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
@@ -545,6 +556,7 @@ export interface FileRouteTypes {
     | "/.well-known/oauth-authorization-server"
     | "/api/subscribe"
     | "/blog_/$slug"
+    | "/community/survey"
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
@@ -593,6 +605,7 @@ export interface RootRouteChildren {
   DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
+  CommunitySurveyRoute: typeof CommunitySurveyRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
@@ -773,6 +786,13 @@ declare module "@tanstack/react-router" {
       path: "/compare/$slug";
       fullPath: "/compare/$slug";
       preLoaderRoute: typeof CompareSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/community/survey": {
+      id: "/community/survey";
+      path: "/community/survey";
+      fullPath: "/community/survey";
+      preLoaderRoute: typeof CommunitySurveyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/blog_/$slug": {
@@ -976,6 +996,7 @@ const rootRouteChildren: RootRouteChildren = {
     DotwellKnownOauthAuthorizationServerRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
+  CommunitySurveyRoute: CommunitySurveyRoute,
   CompareSlugRoute: CompareSlugRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,

@@ -1,6 +1,6 @@
 # Community forms
 
-`/api/community/survey` accepts a survey of up to eleven required questions, depending on earlier answers, followed by required email, and stores the answers.
+`/community/survey` is a site page with up to eleven required questions, depending on earlier answers, followed by required email. It uses the shared site navigation and footer, runs no analytics, and is `noindex, nofollow`. It doesn't appear in navigation or the sitemap. The page posts answers as JSON to `/api/community/survey`. Its form also declares `method="post"` to that route, so a submit before the page script loads never puts answers in a URL; the route rejects that non-JSON post.
 
 ## Configuration and launch
 
@@ -10,17 +10,19 @@ The shared review preview keeps collection off. Local synthetic QA may override 
 
 ## Survey submission contract
 
-POST `application/json` to `/api/community/survey` with `{ "submission_id": "<uuid>", "answers": { "<field>": ["<value>", ...] } }`. A retried send with the same UUID is saved once. The question fields, in survey order, are `discovery`, `role`, `work`, `company_size`, `love`, `improve`, `team_improve`, `team_adopt`, `community`, `city`, `meetup` and `research_call`; `survey.ts` owns their labels and choices.
+POST `application/json` to `/api/community/survey` with `{ "submission_id": "<uuid>", "answers": { "<field>": ["<value>", ...] } }`. The page creates the UUID once per attempt, so a retried send is saved once. The question fields, in page order, are `discovery`, `role`, `work`, `company_size`, `love`, `improve`, `team_improve`, `team_adopt`, `community`, `city`, `meetup` and `research_call`; `survey.ts` owns their labels and choices. Questions are numbered in the browser, so hidden questions don't use a number.
 
 Every visible question is required. Radio answers accept one listed choice. `community` is a checkbox that accepts one or more listed choices. `meetup` and `research_call` are radios. Text answers must not be blank.
 
-`work` is hidden when `role` is “Student” or “Not currently working”, and so are the three questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` is shown for “2–5 people”, “6–10 people” and “More than 10”. `team_adopt` is shown for “Just me”. `questionVisible` in `survey.ts` owns these rules; a hidden question is never required and its answer is never stored.
+`work` is hidden when `role` is “Student” or “Not currently working”, and so are the three questions that depend on it. `company_size` is shown for any `work` answer except “I don't use bb for work”. `team_improve` is shown for “2–5 people”, “6–10 people” and “More than 10”. `team_adopt` is shown for “Just me”. The page and server share these rules (`questionVisible` in `survey.ts`); a hidden question is never required and its answer is never sent or stored.
 
-Picking “Other” on `discovery`, `role` or `community` requires its `discovery_other`, `role_other` or `community_other` text; otherwise that text is discarded.
+Q1 shuffles every choice except “I don't remember” and “Other”, which stay last in that order. The community question shuffles every choice except “Other”, which stays last. Other questions keep their listed order. Picking “Other” on `discovery`, `role` or `community` shows a “Please specify” text box below the choices; its `discovery_other`, `role_other` or `community_other` text is then required, and otherwise discarded. The meetup label names the city once one is typed.
 
 `email` is required, accepts one valid address, and is stored with the answers in the private survey response. Text fields accept up to 250 characters. Removed questions and contact fields are rejected.
 
-Requests must be JSON, which cross-site forms can't send without a CORS preflight the route never allows. A 16 KiB body limit (checked against `Content-Length` when sent, and counted in bytes while the body streams, which stops reading past the limit) and six submissions per minute per client apply; IPv4 clients are keyed by address and IPv6 clients by their /64 network. Unknown fields are rejected. Success returns `{ "result": { "duplicate": false } }`. Validation returns HTTP 400 with `errors` by field, an unreadable body returns 400, collection-off or storage failure returns 503, and rate limiting returns 429, each with an `error` message.
+The page saves progress, including email, in `localStorage` under `bb-community-survey`, restores it on a later visit, and removes it once the answers are saved.
+
+Requests must be JSON, which cross-site forms can't send without a CORS preflight the route never allows. A 16 KiB body limit (checked against `Content-Length` when sent, and counted in bytes while the body streams, which stops reading past the limit) and six submissions per minute per client apply; IPv4 clients are keyed by address and IPv6 clients by their /64 network. Unknown fields are rejected. Success returns `{ "result": { "duplicate": false } }`. Validation returns HTTP 400 with `errors` by field, an unreadable body returns 400, collection-off or storage failure returns 503, and rate limiting returns 429, each with an `error` message. The page keeps the answers on screen after any failure.
 
 ## Privacy
 
