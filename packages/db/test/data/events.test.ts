@@ -48,6 +48,7 @@ import {
   listStoredClientTurnRequestRowsByKeys,
   listStoredEventRows,
   listStoredTimelineWindowEventRows,
+  listStoredTimelineTurnEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnCompletedKeys,
@@ -4759,6 +4760,98 @@ describe("timeline read-boundary output truncation", () => {
     return JSON.parse(row.data) as Record<string, unknown>;
   }
 
+  it("batches capped turn reads within SQLite's parameter limit", () => {
+    const { db, thread } = setup();
+    const data = JSON.stringify({ message: "last batch" });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/error",
+        ...createTurnEventFields({ turnId: "turn-final" }),
+        data,
+      },
+    ]);
+    const turnIds = Array.from({ length: 32_767 }, (_, index) =>
+      index === 32_766 ? "turn-final" : `turn-missing-${index}`,
+    );
+
+    const rows = listStoredTimelineTurnEventRows(db, {
+      maxInlineOutputChars,
+      sequenceStart: 0,
+      threadId: thread.id,
+      turnIds,
+    });
+    expect(rows.map((row) => row.data)).toEqual([data]);
+  });
+
+  it.each(["fileChange", "agentMessage"] as const)(
+    "preserves oversized %s payloads exactly as stored",
+    (itemKind) => {
+      const { db, thread } = setup();
+      const diff = "🐝\n+large change\n".repeat(100_000);
+      const data = JSON.stringify(
+        {
+          item: {
+            type: itemKind,
+            id: "item-1",
+            status: "completed",
+            ...(itemKind === "fileChange"
+              ? {
+                  changes: [
+                    { path: "large.ts", kind: "update", diff },
+                    { path: "short.ts", kind: "update", diff: "+🐝\n" },
+                    { path: "null.ts", kind: "delete", diff: null },
+                    { path: "empty.ts", kind: "add", diff: "" },
+                    { path: "missing.ts", kind: "add" },
+                  ],
+                }
+              : { text: diff }),
+          },
+        },
+        null,
+        2,
+      );
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 1,
+          type: "item/completed",
+          ...threadEventFields,
+          itemId: "item-1",
+          itemKind,
+          data,
+        },
+      ]);
+
+      const args = { sequenceStart: 0, threadId: thread.id };
+      const [capped] = listStoredTimelineWindowEventRows(db, {
+        ...args,
+        maxInlineOutputChars,
+      });
+      expect(capped!.data === data).toBe(true);
+      const [full] = listStoredTimelineWindowEventRows(db, {
+        ...args,
+        maxInlineOutputChars: null,
+      });
+      expect(full!.data === data).toBe(true);
+      const stored = listStoredEventRows(db, { threadId: thread.id });
+      expect(stored.at(-1)!.data === data).toBe(true);
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(db, {
+          ...args,
+          maxInlineOutputChars,
+          maxDataBytes: 1_000,
+        }),
+      ).toEqual(
+        expect.objectContaining({
+          kind: "single-event-too-large",
+          eventDataBytes: Buffer.byteLength(data),
+        }),
+      );
+    },
+  );
+
   it("measures the exact UTF-8 bytes returned by the capped read", () => {
     const { db, thread } = setup();
     insertEvents(db, noopNotifier, [
@@ -4961,7 +5054,7 @@ describe("timeline read-boundary output truncation", () => {
     },
   );
 
-  it("shortens an oversized text output and leaves the rest of the payload alone", () => {
+  it("shortens oversized text output with missing item-kind metadata", () => {
     const { db, thread } = setup();
     const output = "x".repeat(maxInlineOutputChars + 2_345);
     insertEvents(db, noopNotifier, [
@@ -4971,7 +5064,7 @@ describe("timeline read-boundary output truncation", () => {
         type: "item/completed",
         ...threadEventFields,
         itemId: "cmd-1",
-        itemKind: "commandExecution",
+        itemKind: null,
         parentToolCallId: null,
         data: JSON.stringify({
           providerThreadId: "provider-root",

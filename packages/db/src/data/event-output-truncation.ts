@@ -20,6 +20,12 @@ function truncationMarkerSql(originalLength: SQL, max: number): SQL {
 export function truncatedEventDataColumn(
   maxInlineOutputChars: number,
 ): SQL<string> {
+  const itemKinds = sql.join(
+    RETAINED_EVENT_OUTPUT_TARGETS.map((target) =>
+      sql.raw(`'${target.itemKind}'`),
+    ),
+    sql`, `,
+  );
   const pairs: SQL[] = [];
   for (const path of INLINE_OUTPUT_JSON_PATHS) {
     const value = sql`json_extract(${events.data}, ${path})`;
@@ -31,6 +37,7 @@ export function truncatedEventDataColumn(
   }
 
   return sql<string>`CASE
+    WHEN ${events.itemKind} NOT IN (${itemKinds}) THEN ${events.data}
     WHEN length(${events.data}) <= ${maxInlineOutputChars} THEN ${events.data}
     ELSE json_replace(${events.data}, ${sql.join(pairs, sql`, `)})
   END`;
