@@ -1373,10 +1373,6 @@ export interface GetLatestCompletedThreadContextClearSequenceArgs {
   threadId: string;
 }
 
-export interface GetLatestThreadOutputEventRowArgs {
-  threadId: string;
-}
-
 export interface GetLatestThreadSystemErrorEventRowArgs {
   threadId: string;
 }
@@ -3750,33 +3746,6 @@ export function getLatestTokenUsageRow(
           eq(events.type, "thread/tokenUsage/updated"),
           isNotNestedTurnUsageEvent,
         ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(1)
-      .get() ?? null
-  );
-}
-
-export function getLatestThreadOutputEventRow(
-  db: DbConnection,
-  args: GetLatestThreadOutputEventRowArgs,
-): StoredEventRow | null {
-  return (
-    db
-      .select(storedEventRowFields)
-      .from(events)
-      .where(
-        sql`${events.threadId} = ${args.threadId} AND (
-        (
-          ${events.type} = 'system/manager/user_message'
-          AND COALESCE(json_extract(${events.data}, '$.text'), '') <> ''
-        )
-        OR (
-          ${events.type} = 'item/completed'
-          AND ${events.itemKind} = 'agentMessage'
-          AND COALESCE(json_extract(${events.data}, '$.item.text'), '') <> ''
-        )
-      )`,
       )
       .orderBy(desc(events.sequence))
       .limit(1)

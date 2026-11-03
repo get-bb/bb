@@ -56,7 +56,7 @@ import {
 } from "../../services/threads/thread-timeline-windows.js";
 import {
   findThreadEvent,
-  getLastThreadOutput,
+  getLatestTurnFinalOutput,
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
@@ -353,7 +353,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.output, (context) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json({
-      output: getLastThreadOutput(deps.db, context.req.param("id")),
+      output: getLatestTurnFinalOutput(deps.db, context.req.param("id")),
     });
   });
 
