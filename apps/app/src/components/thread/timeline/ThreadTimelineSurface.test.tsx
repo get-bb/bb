@@ -71,7 +71,6 @@ describe("ThreadTimelineSurface load-older control", () => {
           threadRuntimeDisplayStatus="idle"
           timelineError={false}
           timelineRows={[]}
-          workspaceRootPath={undefined}
         />
       </BottomAnchorContext.Provider>
     );
@@ -102,7 +101,6 @@ describe("ThreadTimelineSurface catch-up indicator", () => {
     threadRuntimeDisplayStatus: "idle" as const,
     timelineError: false,
     timelineRows: [],
-    workspaceRootPath: undefined,
   };
 
   it("never shows loading for a catch-up that finishes within one second", async () => {
@@ -180,7 +178,6 @@ describe("ThreadTimelineSurface working indicator", () => {
     threadId: "running",
     threadRuntimeDisplayStatus: "active" as const,
     timelineError: false,
-    workspaceRootPath: undefined,
   };
   const loadedRows = [
     conversationRow({ id: "request", role: "user", seq: 1, text: "Go" }),

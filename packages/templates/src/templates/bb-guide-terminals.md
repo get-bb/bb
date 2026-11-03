@@ -1,9 +1,9 @@
 ---
 kind: instruction
 title: bb Terminal Guide
-summary: Creating and managing persistent terminals across thread, environment, and machine scopes.
-intent: Help agents route terminal sessions explicitly and manage them by terminal ID.
-editingNotes: Keep scope selectors and ID-only commands aligned with bb terminal --help.
+summary: Managing persistent terminals across thread, environment, and machine scopes, and running one command elsewhere with terminal run.
+intent: Help agents route terminal sessions explicitly, manage them by terminal ID, and run one-shot commands on another machine.
+editingNotes: Keep scope selectors, run and wait exit codes, and ID-only commands aligned with bb terminal --help.
 ---
 Terminal commands
 
@@ -23,8 +23,8 @@ List and create require exactly one explicit scope:
     --host <id-or-name>                   Alias for --machine
     --title <title>                       Display title
     --id <terminal-id>                    Use this ID (term_ plus 10 characters); fails if it exists
-    --cols <n>                            Initial terminal columns
-    --rows <n>                            Initial terminal rows
+    --cols <n>                            Initial terminal columns (default: 200)
+    --rows <n>                            Initial terminal rows (default: 50)
     --attach                              Attach after creating
     --json                                Print machine-readable output
 
@@ -57,6 +57,7 @@ runs:
     --since-seq <n>                       Read output chunks from a sequence
     --tail-bytes <n>                      Bound output to latest N bytes
     --limit-chunks <n>                    Bound output to latest N chunks
+    --plain                               Print plain text, with colors and progress redraws removed
     --json                                Print chunks, nextSeq, truncated, status, exitCode, and closeReason
 
   Output stays readable after the command exits: the machine keeps a finished
@@ -66,16 +67,21 @@ runs:
   output fails with `terminal_output_unavailable` and says why.
 
   bb terminal wait <terminal-id>
-    --contains <text>                     Wait for new output containing text
-    --regex <pattern>                     Wait for new output matching regex
-    --exit                                Wait until the terminal exits
-    --from-start                          Include existing scrollback
-    --timeout <duration>                  Seconds, or a duration with a unit: 90s, 5m (default: 30s)
-    --poll-interval <duration>            Milliseconds, or a duration with a unit (default: 500ms)
+    --exit                                Wait until the terminal exits (the default)
+    --contains <text>                     Return once new output contains text
+    --regex <pattern>                     Return once new output matches regex
+    --since-seq <n>                       Start from this sequence (default: the current end for --contains or --regex, 0 otherwise)
+    --from-start                          Start from sequence 0
+    --timeout <duration>                  Stop waiting after this long; the terminal keeps running. Seconds, or a duration with a unit: 90s, 5m (default: 30s)
+    --poll-interval <duration>            Milliseconds, or a duration with a unit (default: starts at 100ms and backs off to 1s)
+    --max-output-bytes <n>                Return the last N bytes of output (default: 65536)
+    --json                                Print terminalId, status, observation, exitCode, closeReason, output, truncated, and nextSeq
 
-  When the terminal exits before the text appears, wait stops at once with exit
-  code 124, the terminal's exit code, and the last output it printed. `--exit`
-  prints the exit code.
+  Wait prints the terminal's output from where the wait started as plain text,
+  with colors and progress redraws removed, then a status line on stderr. Text
+  and regex matching ignore terminal escapes too, so `--contains "Local:"`
+  matches a bold `Local`. It ends with the same exit codes as `terminal run`
+  below.
 
 For a dev server, prefer:
 
@@ -84,6 +90,47 @@ For a dev server, prefer:
 
 Do not run long-lived servers as one-off foreground commands when the user will
 need to inspect logs, refresh the page, or stop the process later.
+
+Run a command and get its result
+
+Use your own shell for commands in your current workspace. Use `bb terminal
+run` to run a command on another machine or in another environment and get its
+output and exit code in one call. It takes the same scope flags as `create`:
+
+  bb terminal run --machine <id-or-name> --cwd <path> -- <program> [args...]
+  bb terminal run --environment <environment-id> -- <program> [args...]
+    --contains <text>                     Return once the output contains text
+    --regex <pattern>                     Return once the output matches regex
+    --timeout <duration>                  Stop waiting after this long; the command keeps running (default: 30s)
+    --max-output-bytes <n>                Return the last N bytes of output (default: 65536)
+    --id <terminal-id>                    Run under this ID (term_ plus 10 characters); a retry with it fails instead of running twice
+    --title <title>                       Terminal title (default: the command)
+    --cols <n>, --rows <n>                As for create
+    --json                                Same shape as terminal wait --json
+
+Pass the program and its arguments after `--`; the machine quotes them for its
+shell, as `terminal create -- ...` does. Write `sh -c '...'` (or the machine's
+shell) for pipes and `&&`. The command runs in a new terminal, so it appears in
+the bb UI and the other terminal commands work on its ID. It runs in a PTY:
+stdout and stderr arrive interleaved in one output, colors and progress
+redraws are removed from it, and commands that page or prompt (`git log`,
+`npm init`) wait for input. Use `git --no-pager` or the command's
+non-interactive flags.
+
+Run and wait end with the same exit codes:
+
+  the command's exit code                 It exited
+  0                                       --contains or --regex matched; it may still be running
+  1                                       It exited before the text appeared, or its terminal was closed before it finished
+  124                                     Still running after --timeout
+
+Returning never stops the command. Continue with the `bb terminal wait` line
+printed on stderr, stop it with `bb terminal close <terminal-id>`, or read all
+of its output with `bb terminal output <terminal-id>`. After the machine
+discards a finished command's output, wait still reports its exit code, with
+`output` null. When run fails without printing a result, check
+`bb terminal list` in the same scope before running it again, or pass `--id`
+so a retry cannot run it twice.
 
 In the app, Find in terminal (`terminal.find`; Cmd+F on macOS, Ctrl+Shift+F
 elsewhere) searches the focused terminal's scrollback; Enter and Shift+Enter

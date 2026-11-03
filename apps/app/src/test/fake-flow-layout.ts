@@ -120,11 +120,17 @@ export function installFakeFlowLayout({
         sibling !== null && sibling !== current;
         sibling = sibling.nextElementSibling
       ) {
-        top += measureHeight(sibling) + marginBottom(sibling) + gap;
+        top +=
+          (observerSnapshot?.get(sibling) ?? measureHeight(sibling)) +
+          marginBottom(sibling) +
+          gap;
       }
       current = parent;
     }
-    return { top, height: measureHeight(element) };
+    return {
+      top,
+      height: observerSnapshot?.get(element) ?? measureHeight(element),
+    };
   };
 
   const measureScroll = (snapshot?: Map<Element, number>) => {

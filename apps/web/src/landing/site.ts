@@ -56,6 +56,7 @@ export function parseSendLinkVia(value: string | null): SendLinkVia | null {
 }
 export const CLI_COMMAND = "npx bb-app@latest";
 export const WINDOWS_DOWNLOAD_URL = "/download/windows";
+export const DOWNLOAD_PAGE_PATH = "/download";
 
 export type CtaPlacement =
   | "nav"
@@ -64,7 +65,8 @@ export type CtaPlacement =
   | "closer"
   | "footer"
   | "marketplace"
-  | "changelog";
+  | "changelog"
+  | "download_page";
 
 export const UTM_PARAM_NAMES = [
   "utm_source",

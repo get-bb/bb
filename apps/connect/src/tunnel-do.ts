@@ -18,8 +18,9 @@ import {
   type Frame,
   type HeaderPair,
 } from "@bb/tunnel-contract";
+import { requestBodyChunks } from "./request-body-chunks.js";
 import { relayedResponse } from "./response-encoding.js";
-import { responseHeadTimeoutMs } from "./response-head-timeout.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
 import {
   GATE_OWNER_HEADER,
   HOP_HEADERS,
@@ -596,12 +597,6 @@ export class TunnelDO {
     const streamId = this.nextStreamId++;
     const hasBody = request.body !== null;
 
-    const headTimeoutMs = responseHeadTimeoutMs(
-      request.method,
-      url,
-      request.headers,
-    );
-
     const responsePromise = new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         this.failHttpStream(
@@ -609,7 +604,7 @@ export class TunnelDO {
           504,
           "timed out waiting for the tunnel client",
         );
-      }, headTimeoutMs);
+      }, RESP_HEAD_TIMEOUT_MS);
       this.pendingHttp.set(streamId, {
         resolve,
         writer: null,
@@ -651,21 +646,12 @@ export class TunnelDO {
     tunnel: WebSocket,
   ): Promise<void> {
     try {
-      const reader = body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (let offset = 0; offset < value.length; offset += 1024 * 1024) {
-          const sent = this.trySend(
-            tunnel,
-            encodeFrame({
-              type: "body-chunk",
-              streamId,
-              data: value.subarray(offset, offset + 1024 * 1024),
-            }),
-          );
-          if (!sent) return;
-        }
+      for await (const data of requestBodyChunks(body)) {
+        const sent = this.trySend(
+          tunnel,
+          encodeFrame({ type: "body-chunk", streamId, data }),
+        );
+        if (!sent) return;
       }
       this.trySend(tunnel, encodeFrame({ type: "body-end", streamId }));
     } catch {

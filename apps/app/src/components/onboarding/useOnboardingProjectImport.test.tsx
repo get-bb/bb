@@ -7,7 +7,10 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
+
+vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
 const createProject = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/mutations/project-mutations", () => ({
@@ -43,6 +46,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   createProject.mockReset();
+  vi.mocked(recordTelemetryEvent).mockClear();
   createProject.mockImplementation(async ({ name }: { name: string }) => ({
     id: `proj_${name}`,
   }));
@@ -79,6 +83,31 @@ describe("onboarding project imports", () => {
       expect(view.result.current.selection[0]).toBe(selected);
     },
   );
+
+  it("records how many selected projects imported before a failure", async () => {
+    createProject
+      .mockResolvedValueOnce({ id: "proj_atlas-web" })
+      .mockRejectedValueOnce(new Error("exists"));
+    const view = arrange();
+    await act(() => view.result.current.importProjects("host_local", repos));
+    expect(
+      vi
+        .mocked(recordTelemetryEvent)
+        .mock.calls.map(([event]) => event.properties),
+    ).toEqual(
+      [
+        ["started", 0],
+        ["failed", 1],
+      ].map(([outcome, succeeded]) => ({
+        entry: "first_run",
+        step: "projects",
+        operation: "import",
+        outcome,
+        item_count: 3,
+        succeeded_count: succeeded,
+      })),
+    );
+  });
 
   it("does not preselect imports when the setup guide is replayed", async () => {
     const view = arrange("replay");

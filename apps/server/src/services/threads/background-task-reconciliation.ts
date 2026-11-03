@@ -49,9 +49,36 @@ export function settleDanglingBackgroundTasks(
   deps: SettleDanglingBackgroundTasksDeps,
   args: SettleDanglingBackgroundTasksArgs,
 ): void {
-  const rows = listOpenBackgroundTaskItemRowsForHost(deps.db, {
-    hostId: args.hostId,
-  });
+  settleBackgroundTaskRows(
+    deps,
+    listOpenBackgroundTaskItemRowsForHost(deps.db, { hostId: args.hostId }),
+  );
+}
+
+export function settleBackgroundTasksTheDaemonNoLongerRuns(
+  deps: SettleDanglingBackgroundTasksDeps,
+  args: {
+    hostId: string;
+    openItemIdsByThreadId: ReadonlyMap<string, ReadonlySet<string>>;
+    unsettledThreadIds: ReadonlySet<string>;
+  },
+): void {
+  settleBackgroundTaskRows(
+    deps,
+    listOpenBackgroundTaskItemRowsForHost(deps.db, {
+      hostId: args.hostId,
+    }).filter(
+      (row) =>
+        !args.unsettledThreadIds.has(row.threadId) &&
+        !args.openItemIdsByThreadId.get(row.threadId)?.has(row.itemId),
+    ),
+  );
+}
+
+function settleBackgroundTaskRows(
+  deps: SettleDanglingBackgroundTasksDeps,
+  rows: readonly OpenBackgroundTaskItemRow[],
+): void {
   if (rows.length === 0) {
     return;
   }

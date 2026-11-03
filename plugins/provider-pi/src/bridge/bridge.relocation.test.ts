@@ -55,8 +55,28 @@ it.each(["retained", "removed before relocation", "removed after relocation"])(
       ),
       "cli.js",
     );
-    vi.stubEnv(PI_BRIDGE_ARGS_ENV, JSON.stringify([cli]));
+    const lifecycleFile = join(target, "lifecycle.jsonl");
+    const lifecycleExtension = join(target, "lifecycle.mjs");
+    writeFileSync(
+      lifecycleExtension,
+      `import { appendFileSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
+const record = (event) => appendFileSync(${JSON.stringify(lifecycleFile)}, JSON.stringify({ event, pid: process.pid }) + "\\n");
+export default function (pi) {
+  pi.on("session_start", () => record("start"));
+  pi.on("session_shutdown", async () => {
+    await setTimeout(100);
+    record("shutdown");
+  });
+}
+`,
+    );
+    vi.stubEnv(
+      PI_BRIDGE_ARGS_ENV,
+      JSON.stringify([cli, "--extension", lifecycleExtension]),
+    );
     vi.stubEnv("PI_CODING_AGENT_DIR", join(target, "agent"));
+    vi.stubEnv("PI_OFFLINE", "1");
     vi.stubEnv("ANTHROPIC_API_KEY", "unused-local-rpc-test-key");
     const resumed = await harness.request(200, "thread/resume", {
       threadId: "thr_relocation",
@@ -66,6 +86,19 @@ it.each(["retained", "removed before relocation", "removed after relocation"])(
       options: FULL_PERMISSION_OPTIONS,
     });
     expect(resumed.error).toBeUndefined();
+    const lifecycle = z
+      .array(z.object({ event: z.string(), pid: z.number() }))
+      .parse(
+        readFileSync(lifecycleFile, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      );
+    expect(lifecycle).toEqual([
+      { event: "start", pid: expect.any(Number) },
+      { event: "shutdown", pid: lifecycle[0]?.pid },
+      { event: "start", pid: expect.any(Number) },
+    ]);
     const { providerThreadId } = z
       .object({ providerThreadId: z.string() })
       .parse(resumed.result);

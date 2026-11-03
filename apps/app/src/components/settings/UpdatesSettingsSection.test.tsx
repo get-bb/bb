@@ -528,12 +528,13 @@ describe("UpdatesSettingsSection", () => {
       expect(releaseNotesButton("0.0.5")).toBeDefined();
     });
 
-    it("hides the button for a nightly build", () => {
+    it("offers the newest release's notes on a nightly build", () => {
+      const nightly = "0.48.2-nightly.40981326765.1";
       useUpdateInventoryMock.mockReturnValue(
         makeInventory({
           systemVersion: {
-            currentVersion: "0.48.0-nightly.20261020",
-            latestVersion: "0.48.0-nightly.20261020",
+            currentVersion: nightly,
+            latestVersion: nightly,
             currentCommit: null,
             installKind: "npm",
             source: "npm",
@@ -544,8 +545,19 @@ describe("UpdatesSettingsSection", () => {
         }),
       );
       renderSection();
+      fireEvent.click(releaseNotesButton(nightly));
 
-      expect(screen.queryByRole("button", { name: /Changelog/ })).toBeNull();
+      const panel = releaseNotesPanel(nightly)!;
+      expect(
+        within(panel).getByText("bb 0.48.0 · October 28, 2026"),
+      ).toBeDefined();
+      expect(
+        within(panel).getByText("This build includes changes since 0.48.0"),
+      ).toBeDefined();
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "release_notes_opened",
+        properties: { release_version: "0.48.2", view: "inline" },
+      });
     });
 
     it("opens the release's notes under the bb row and closes them again", () => {
@@ -721,6 +733,88 @@ The published lede.
         within(panel).getByText("bb 0.0.5 · January 2, 2026"),
       ).toBeDefined();
       expect(within(panel).getByText("A tiny lede.")).toBeDefined();
+    });
+
+    describe("on a source checkout", () => {
+      const FROM = "a".repeat(40);
+      const TO = "b".repeat(40);
+
+      function useSourceCheckout(
+        current: string,
+        available: SystemAppUpdateStatus["available"],
+      ): void {
+        useUpdateInventoryMock.mockReturnValue(
+          makeInventory({
+            systemVersion: {
+              currentVersion: current,
+              latestVersion: null,
+              currentCommit: FROM,
+              installKind: "source",
+              source: "npm",
+              updateAvailable: false,
+              isDevelopment: false,
+              upgradeCommand: "npx bb-app@latest",
+            },
+          }),
+        );
+        vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+          makeAppUpdateStatus({
+            available,
+            current: { commit: FROM, version: current },
+            support: { kind: "supported", mode: "source" },
+          }),
+        );
+      }
+
+      it("lists the incoming commits instead of the installed release's notes", async () => {
+        useSourceCheckout("0.48.0", {
+          channel: "main",
+          commit: TO,
+          commitCount: 41,
+          subjects: ["Fix the sidebar (#6757)", "Add @someone to allow list"],
+          version: "0.48.0",
+        });
+        renderSection();
+        expect(await screen.findByText("bbbbbbb (+41 commits)")).toBeDefined();
+        fireEvent.click(releaseNotesButton("0.48.0"));
+
+        const panel = releaseNotesPanel("0.48.0")!;
+        expect(
+          within(panel).getByRole("heading", {
+            name: "41 new commits on main",
+          }),
+        ).toBeDefined();
+        expect(within(panel).getByText("aaaaaaa → bbbbbbb")).toBeDefined();
+        expect(
+          within(panel).getByText("Add @someone to allow list"),
+        ).toBeDefined();
+        expect(
+          within(panel)
+            .getByRole("link", { name: "#6757" })
+            .getAttribute("href"),
+        ).toBe("https://github.com/get-bb/bb/pull/6757");
+        expect(within(panel).getByText("and 39 more")).toBeDefined();
+        expect(
+          within(panel).queryByRole("heading", { name: "Reliability" }),
+        ).toBeNull();
+
+        fireEvent.click(
+          within(panel).getByRole("link", { name: /Compare on GitHub/ }),
+        );
+        expect(openUrlInExternalBrowserMock).toHaveBeenCalledExactlyOnceWith(
+          `https://github.com/get-bb/bb/compare/${FROM}...${TO}`,
+        );
+      });
+
+      it("offers no changelog when nothing is incoming", async () => {
+        useSourceCheckout("0.48.0", null);
+        renderSection();
+
+        await waitFor(() => expect(sdk.system.appUpdate).toHaveBeenCalled());
+        expect(
+          screen.queryByRole("button", { name: /^Changelog for bb/ }),
+        ).toBeNull();
+      });
     });
   });
 
@@ -2750,13 +2844,6 @@ The published lede.
       });
     });
 
-    it("offers the latest desktop release when nothing is pending", async () => {
-      useSeparateDesktop({});
-      const bbCard = await renderBbCard();
-
-      expect(notesButton(bbCard, "0.47.0")).toBeDefined();
-    });
-
     it("offers the installed desktop release when no update is available", async () => {
       useSeparateDesktop({
         lastCheckedAt: "2026-10-20T12:00:00.000Z",
@@ -2766,20 +2853,6 @@ The published lede.
       const bbCard = await renderBbCard();
 
       expect(notesButton(bbCard, "0.46.0")).toBeDefined();
-    });
-
-    it("hides the desktop button for a nightly build", async () => {
-      useSeparateDesktop({
-        latestVersion: "0.48.0-nightly.20261021",
-        version: "0.48.0-nightly.20261020",
-      });
-      const bbCard = await renderBbCard();
-
-      expect(
-        within(bbCard)
-          .getAllByRole("button", { name: /Changelog/ })
-          .map((button) => button.getAttribute("aria-label")),
-      ).toEqual(["Changelog for bb 0.0.6"]);
     });
   });
 

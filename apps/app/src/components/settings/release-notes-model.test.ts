@@ -241,4 +241,26 @@ Older minor lede.
     );
     expect(findReleaseEntry("0.49.1", undefined, entries)).toBeNull();
   });
+
+  it("covers a nightly with the newest release below its next patch", () => {
+    const entries = parseChangelog(`## 0.48.0
+
+Newest lede.
+
+## 0.47.0
+
+Older lede.
+`);
+    expect(
+      findReleaseEntry("0.48.2-nightly.40981326765.1", undefined, entries)
+        ?.version,
+    ).toBe("0.48.0");
+    expect(
+      findReleaseEntry("0.49.0-nightly.12.1", undefined, entries)?.version,
+    ).toBe("0.48.0");
+    expect(
+      findReleaseEntry("0.48.0-nightly.3.1", undefined, entries)?.version,
+    ).toBe("0.47.0");
+    expect(findReleaseEntry("0.0.0-dev", undefined, entries)).toBeNull();
+  });
 });

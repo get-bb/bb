@@ -1,7 +1,14 @@
 import path from "node:path";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_joinHostPath as joinHostPath,
+  experimental_getHostPathDirname as getHostPathDirname,
+  experimental_getHostPathBasename as getHostPathBasename,
+  experimental_getRelativeHostPath as getRelativeHostPath,
+  defineRpcContract,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
@@ -72,8 +79,10 @@ export const rpcContract = defineRpcContract({
   },
 });
 
-function hostPathApi(hostPath: string): path.PlatformPath {
-  return /^(?:[A-Za-z]:[\\/]|\\\\)/.test(hostPath) ? path.win32 : path.posix;
+function workspacePath(rootPath: string, relativePath: string): string {
+  const path = joinHostPath({ rootPath, relativePath });
+  if (path === null) throw new Error("Workspace path must be absolute");
+  return path;
 }
 
 function isBundleStale(moduleDir: string, bundleDir: string): boolean {
@@ -155,7 +164,7 @@ export default async function plugin(bb: BbPluginApi) {
         threadId: source.threadId,
       });
       return {
-        path: hostPathApi(storageRootPath).join(storageRootPath, filePath),
+        path: workspacePath(storageRootPath, filePath),
         rootPath: storageRootPath,
         hostId,
       };
@@ -178,7 +187,7 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("This project has no matching source checkout");
       }
       return {
-        path: hostPathApi(checkout.path).join(checkout.path, filePath),
+        path: workspacePath(checkout.path, filePath),
         rootPath: checkout.path,
         hostId: checkout.hostId,
       };
@@ -191,10 +200,12 @@ export default async function plugin(bb: BbPluginApi) {
     });
 
     if (source.kind === "host") {
-      const api = path.win32.isAbsolute(filePath) ? path.win32 : path.posix;
+      const rootPath = getHostPathDirname(filePath);
+      if (rootPath === null)
+        throw new Error("Host file paths must be absolute");
       return {
         path: filePath,
-        rootPath: api.dirname(filePath),
+        rootPath,
         ...(environment.hostId ? { hostId: environment.hostId } : {}),
       };
     }
@@ -203,15 +214,20 @@ export default async function plugin(bb: BbPluginApi) {
       throw new Error("This environment has no workspace path");
     }
     return {
-      path: hostPathApi(environment.path).join(environment.path, filePath),
+      path: workspacePath(environment.path, filePath),
       rootPath: environment.path,
       ...(environment.hostId ? { hostId: environment.hostId } : {}),
     };
   }
 
   function relativeTo(root: string, target: string): string {
-    const api = hostPathApi(root);
-    return api.relative(root, target) || api.basename(target);
+    const relative = getRelativeHostPath({
+      rootPath: root,
+      candidatePath: target,
+    });
+    const name = relative === "" ? getHostPathBasename(target) : relative;
+    if (name === null) throw new Error("File must stay inside its root");
+    return name;
   }
 
   bb.rpc.register(rpcContract, {
@@ -270,6 +286,8 @@ export default async function plugin(bb: BbPluginApi) {
         contentEncoding: "utf8",
         expectedSha256,
       });
+      if (result.outcome === "written")
+        bb.internal_DO_NOT_USE_recordPluginUse();
       return result.outcome === "written"
         ? { outcome: "written" as const, sha256: result.sha256 }
         : { outcome: "conflict" as const, currentSha256: result.currentSha256 };

@@ -22,6 +22,7 @@ import { Route as BrandRouteImport } from "./routes/brand";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as SlugRouteImport } from "./routes/$slug";
 import { Route as IndexRouteImport } from "./routes/index";
+import { Route as DownloadIndexRouteImport } from "./routes/download.index";
 import { Route as OauthTokenRouteImport } from "./routes/oauth.token";
 import { Route as OauthRevokeRouteImport } from "./routes/oauth.revoke";
 import { Route as OauthAuthorizeRouteImport } from "./routes/oauth.authorize";
@@ -118,6 +119,11 @@ const SlugRoute = SlugRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadIndexRoute = DownloadIndexRouteImport.update({
+  id: "/download/",
+  path: "/download/",
   getParentRoute: () => rootRouteImport,
 } as any);
 const OauthTokenRoute = OauthTokenRouteImport.update({
@@ -317,6 +323,7 @@ export interface FileRoutesByFullPath {
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -364,6 +371,7 @@ export interface FileRoutesByTo {
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -412,6 +420,7 @@ export interface FileRoutesById {
   "/oauth/authorize": typeof OauthAuthorizeRoute;
   "/oauth/revoke": typeof OauthRevokeRoute;
   "/oauth/token": typeof OauthTokenRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/api/account/me": typeof ApiAccountMeRoute;
   "/api/auth/$": typeof ApiAuthSplatRoute;
   "/api/connect/machine-code": typeof ApiConnectMachineCodeRoute;
@@ -461,6 +470,7 @@ export interface FileRouteTypes {
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download/"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -508,6 +518,7 @@ export interface FileRouteTypes {
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -555,6 +566,7 @@ export interface FileRouteTypes {
     | "/oauth/authorize"
     | "/oauth/revoke"
     | "/oauth/token"
+    | "/download/"
     | "/api/account/me"
     | "/api/auth/$"
     | "/api/connect/machine-code"
@@ -602,6 +614,7 @@ export interface RootRouteChildren {
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute;
   OauthRevokeRoute: typeof OauthRevokeRoute;
   OauthTokenRoute: typeof OauthTokenRoute;
+  DownloadIndexRoute: typeof DownloadIndexRoute;
   ApiAccountMeRoute: typeof ApiAccountMeRoute;
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute;
@@ -710,6 +723,13 @@ declare module "@tanstack/react-router" {
       path: "/";
       fullPath: "/";
       preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/": {
+      id: "/download/";
+      path: "/download";
+      fullPath: "/download/";
+      preLoaderRoute: typeof DownloadIndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/oauth/token": {
@@ -985,6 +1005,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthRevokeRoute: OauthRevokeRoute,
   OauthTokenRoute: OauthTokenRoute,
+  DownloadIndexRoute: DownloadIndexRoute,
   ApiAccountMeRoute: ApiAccountMeRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,

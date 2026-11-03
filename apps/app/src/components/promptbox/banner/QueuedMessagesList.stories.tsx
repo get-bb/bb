@@ -19,6 +19,7 @@ export default {
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 
 type StageSize = "desktop" | "mobile";
 
@@ -364,6 +365,7 @@ function StaticQueuedMessagesList({
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}
@@ -405,6 +407,7 @@ function ReorderableQueuedMessagesList() {
       onReorder={handleReorder}
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}

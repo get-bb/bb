@@ -8,7 +8,12 @@ import {
 } from "@bb/config/bb-app-managed-config";
 import { isProcessRunning } from "@bb/config/verified-process-stop";
 import type { ConnectCredential } from "@bb/connect-client";
-import { SERVER_MOVED_ERROR_CODE } from "@bb/host-daemon-contract";
+import {
+  fetchServerHealth,
+  isServerMoveReady,
+  SERVER_MOVED_ERROR_CODE,
+  serverHealthUrl,
+} from "@bb/host-daemon-contract";
 import {
   readServerMovedFile,
   SERVER_MOVED_FILE_NAME,
@@ -176,6 +181,7 @@ interface WaitForServerMoveDestinationArgs {
   fetchImpl: ServerProbeFetch;
   intervalMs: number;
   isCancelled(): boolean;
+  moveId: string;
   now?: () => number;
   serverUrl: string;
   sleep?: (delayMs: number) => Promise<void>;
@@ -197,18 +203,6 @@ const serverMovedResponseSchema = z
 const connectionRefusedErrorSchema = z
   .object({
     code: z.literal("ECONNREFUSED"),
-  })
-  .passthrough();
-
-const serverMoveDestinationHealthSchema = z
-  .object({
-    ok: z.literal(true),
-    serverMove: z
-      .object({
-        state: z.string(),
-      })
-      .passthrough()
-      .optional(),
   })
   .passthrough();
 
@@ -540,7 +534,7 @@ export async function probeLocalServerMove(
   const fetchImpl = args.fetchImpl ?? globalThis.fetch;
   let response: Response;
   try {
-    response = await fetchImpl(new URL("/health", args.serverUrl).toString(), {
+    response = await fetchImpl(serverHealthUrl(args.serverUrl), {
       signal: AbortSignal.timeout(args.timeoutMs),
     });
   } catch (error) {
@@ -641,35 +635,19 @@ export async function readServerMovedConnectCredential(
   };
 }
 
-async function isServerMoveDestinationReady(
-  fetchImpl: ServerProbeFetch,
-  healthUrl: string,
-): Promise<boolean> {
-  try {
-    const response = await fetchImpl(healthUrl, {
-      signal: AbortSignal.timeout(DESTINATION_REQUEST_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return false;
-    }
-    const parsed = serverMoveDestinationHealthSchema.safeParse(
-      await response.json(),
-    );
-    return parsed.success && parsed.data.serverMove?.state !== "pending";
-  } catch {
-    return false;
-  }
-}
-
 export async function waitForServerMoveDestination(
   args: WaitForServerMoveDestinationArgs,
 ): Promise<boolean> {
   const now = args.now ?? Date.now;
   const sleep = args.sleep ?? sleepFor;
   const deadline = now() + args.timeoutMs;
-  const healthUrl = new URL("/health", args.serverUrl).toString();
   while (!args.isCancelled()) {
-    if (await isServerMoveDestinationReady(args.fetchImpl, healthUrl)) {
+    const health = await fetchServerHealth({
+      fetchImpl: args.fetchImpl,
+      init: { signal: AbortSignal.timeout(DESTINATION_REQUEST_TIMEOUT_MS) },
+      url: serverHealthUrl(args.serverUrl),
+    });
+    if (isServerMoveReady(health?.serverMove ?? null, args.moveId)) {
       return true;
     }
     if (now() >= deadline) {

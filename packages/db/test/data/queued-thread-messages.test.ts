@@ -11,6 +11,7 @@ import {
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   holdQueuedThreadMessageForEdit,
+  listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   listQueuedThreadMessages,
   releaseQueuedMessageClaim,
@@ -18,6 +19,7 @@ import {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   requeueClaimedQueuedThreadMessages,
+  setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "../../src/data/queued-thread-messages.js";
@@ -137,6 +139,8 @@ describe("queued thread messages", () => {
     const before = getQueuedThreadMessage(db, first.id);
 
     const result = updateQueuedThreadMessage(db, noopNotifier, {
+      execution: null,
+      reschedule: null,
       content: textInput("edited in place"),
       expectedUpdatedAt: before?.updatedAt ?? -1,
       id: first.id,
@@ -177,6 +181,8 @@ describe("queued thread messages", () => {
 
     expect(
       updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        reschedule: null,
         content: textInput("first edit"),
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
@@ -185,6 +191,8 @@ describe("queued thread messages", () => {
     ).toBe("updated");
     expect(
       updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        reschedule: null,
         content: textInput("stale edit"),
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
@@ -215,6 +223,8 @@ describe("queued thread messages", () => {
       });
 
       const result = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        reschedule: null,
         content: altInput,
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
@@ -250,6 +260,8 @@ describe("queued thread messages", () => {
 
     expect(
       updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        reschedule: null,
         content: altInput,
         expectedUpdatedAt: queuedMessage.updatedAt,
         id: queuedMessage.id,
@@ -1947,6 +1959,321 @@ describe("queued thread messages", () => {
     ).toBe("stale_neighbor");
   });
 
+  describe("execution option changes", () => {
+    const opus = {
+      model: "claude-opus",
+      reasoningLevel: "high",
+      permissionMode: "accept-edits" as const,
+      serviceTier: "fast",
+    };
+
+    it("changes a row's execution options without touching its text or edit hold", () => {
+      const { db, thread } = setup();
+      const heldUntil = Date.now() + 60_000;
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput);
+      holdQueuedThreadMessageForEdit(db, {
+        heldUntil,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        content: null,
+        execution: opus,
+        reschedule: null,
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({
+        kind: "updated",
+        releasedEditHold: false,
+        rescheduled: false,
+      });
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        ...opus,
+        content: JSON.stringify(defaultInput),
+        editHeldUntil: heldUntil,
+        state: "waiting",
+      });
+    });
+
+    it("refuses options that would split a grouped row from its group", () => {
+      const { db, thread } = setup();
+      const first = queueTurnEndMessage(db, thread.id, defaultInput);
+      const second = queueTurnEndMessage(db, thread.id, altInput);
+      const loose = queueTurnEndMessage(db, thread.id, textInput("loose"));
+      setQueuedThreadMessageGroupBoundary({
+        db,
+        expectedGroupedPrefixQueuedMessageIds: [first.id, second.id],
+        groupBoundaryQueuedMessageId: second.id,
+        notifier: noopNotifier,
+        threadId: thread.id,
+      });
+      const update = (row: { id: string }) =>
+        updateQueuedThreadMessage(db, noopNotifier, {
+          content: null,
+          execution: opus,
+          reschedule: null,
+          expectedUpdatedAt: getQueuedThreadMessage(db, row.id)?.updatedAt ?? -1,
+          id: row.id,
+          threadId: thread.id,
+        });
+
+      expect(update(first)).toEqual({ kind: "invalid_execution_options" });
+      expect(update(second)).toEqual({ kind: "invalid_execution_options" });
+      expect(getQueuedThreadMessage(db, second.id)?.model).toBe("gpt-5");
+      expect(update(loose)).toMatchObject({ kind: "updated" });
+      expect(getQueuedThreadMessage(db, loose.id)?.model).toBe(opus.model);
+    });
+  });
+
+  describe("send time changes", () => {
+    it("moves a scheduled row without touching its text or its edit hold", () => {
+      const { db, thread } = setup();
+      const now = Date.now();
+      const heldUntil = now + 60_000;
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput, {
+        sendAt: now + 3_600_000,
+        waitingOn: { kind: "time" },
+      });
+      holdQueuedThreadMessageForEdit(db, {
+        heldUntil,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt: now + 60_000 },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({
+        kind: "updated",
+        releasedEditHold: false,
+        rescheduled: true,
+      });
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        content: JSON.stringify(defaultInput),
+        editHeldUntil: heldUntil,
+        sendAt: now + 60_000,
+        state: "scheduled",
+        waitingOn: JSON.stringify({ kind: "time" }),
+      });
+      expect(
+        claimQueuedThreadMessageGroup(db, noopNotifier, queued.id, {
+          kind: "automatic",
+          isGroupEligible: () => true,
+          retryingFailure: false,
+        }),
+      ).toBeNull();
+    });
+
+    it("makes a row moved earlier due at its new time", () => {
+      const { db, thread } = setup();
+      const now = Date.now();
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput, {
+        sendAt: now + 3_600_000,
+        waitingOn: { kind: "time" },
+      });
+      const dueIds = () =>
+        listDueScheduledQueuedThreadMessages(db, now + 120_000).map(
+          (row) => row.id,
+        );
+      expect(dueIds()).toEqual([]);
+
+      updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt: now + 60_000 },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(dueIds()).toEqual([queued.id]);
+    });
+
+    it("puts a row waiting for the turn to end on the clock", () => {
+      const { db, thread } = setup();
+      const sendAt = Date.now() + 60_000;
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput);
+
+      updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        sendAt,
+        state: "scheduled",
+        waitingOn: JSON.stringify({ kind: "time" }),
+      });
+    });
+
+    it("clears the time wait when the send time is removed", () => {
+      const { db, thread } = setup();
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput, {
+        sendAt: Date.now() + 3_600_000,
+        waitingOn: { kind: "time" },
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt: null },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({ kind: "updated", rescheduled: true });
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        sendAt: null,
+        state: "queued",
+        waitingOn: null,
+      });
+    });
+
+    it("leaves an unscheduled row's wait alone when the send time is removed", () => {
+      const { db, thread } = setup();
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput);
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt: null },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({ kind: "updated", rescheduled: false });
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        state: "waiting",
+        waitingOn: JSON.stringify({ kind: "thread-busy" }),
+      });
+    });
+
+    it("changes the text and the send time in one write", () => {
+      const { db, thread } = setup();
+      const sendAt = Date.now() + 60_000;
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput);
+      holdQueuedThreadMessageForEdit(db, {
+        heldUntil: Date.now() + 60_000,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      const result = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: altInput,
+        reschedule: { sendAt },
+        expectedUpdatedAt: queued.updatedAt,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(result).toMatchObject({
+        kind: "updated",
+        releasedEditHold: true,
+        rescheduled: true,
+      });
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        content: JSON.stringify(altInput),
+        editHeldUntil: null,
+        sendAt,
+        state: "scheduled",
+      });
+    });
+
+    it("gives a failed row a fresh attempt at its new send time", () => {
+      const { db, thread } = setup();
+      const sendAt = Date.now() + 60_000;
+      const queued = queueTurnEndMessage(db, thread.id, defaultInput);
+      const failed = setQueuedThreadMessageFailureReason(db, noopNotifier, {
+        failureReason: "Provider unavailable",
+        id: queued.id,
+        now: Date.now(),
+        retryDelaysMs: [],
+        threadId: thread.id,
+      });
+      expect(failed?.state).toBe("failed_exhausted");
+
+      updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt },
+        expectedUpdatedAt: failed?.updatedAt ?? -1,
+        id: queued.id,
+        threadId: thread.id,
+      });
+
+      expect(getQueuedThreadMessage(db, queued.id)).toMatchObject({
+        failureCount: 0,
+        failureReason: null,
+        sendAt,
+        state: "scheduled",
+      });
+    });
+
+    it("refuses to move a claimed or changed row", () => {
+      const { db, thread } = setup();
+      const sendAt = Date.now() + 3_600_000;
+      const claimed = queueTurnEndMessage(db, thread.id, defaultInput, {
+        sendAt,
+        waitingOn: { kind: "time" },
+      });
+      const changed = queueTurnEndMessage(db, thread.id, altInput, {
+        sendAt,
+        waitingOn: { kind: "time" },
+      });
+      claimQueuedThreadMessageGroup(db, noopNotifier, claimed.id, {
+        kind: "explicit-send",
+      });
+      updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        content: null,
+        reschedule: { sendAt: sendAt + 1 },
+        expectedUpdatedAt: changed.updatedAt,
+        id: changed.id,
+        threadId: thread.id,
+      });
+
+      expect(
+        updateQueuedThreadMessage(db, noopNotifier, {
+          execution: null,
+          content: null,
+          reschedule: { sendAt: sendAt - 1 },
+          expectedUpdatedAt: claimed.updatedAt,
+          id: claimed.id,
+          threadId: thread.id,
+        }),
+      ).toEqual({ kind: "claimed" });
+      expect(
+        updateQueuedThreadMessage(db, noopNotifier, {
+          execution: null,
+          content: null,
+          reschedule: { sendAt: sendAt - 1 },
+          expectedUpdatedAt: changed.updatedAt,
+          id: changed.id,
+          threadId: thread.id,
+        }),
+      ).toEqual({ kind: "stale" });
+      expect(getQueuedThreadMessage(db, claimed.id)?.sendAt).toBe(sendAt);
+      expect(getQueuedThreadMessage(db, changed.id)?.sendAt).toBe(sendAt + 1);
+    });
+  });
+
   describe("edit holds", () => {
     it("keeps an edited row and the rows behind it from automatic dispatch until the save", () => {
       const { db, thread } = setup();
@@ -1981,6 +2308,8 @@ describe("queued thread messages", () => {
       );
 
       const saved = updateQueuedThreadMessage(db, noopNotifier, {
+        execution: null,
+        reschedule: null,
         content: textInput("SAVED EDIT"),
         expectedUpdatedAt: edited.updatedAt,
         id: edited.id,

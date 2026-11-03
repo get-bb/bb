@@ -375,6 +375,23 @@ describe("download visit attribution", () => {
     expect(event.properties.first_referrer).toBeUndefined();
   });
 
+  it("keeps the /download page placement", async () => {
+    const event = await captureDownload("placement=download_page");
+
+    expect(event.properties.placement).toBe("download_page");
+  });
+
+  it("keeps the /download page's tags in the referrer", async () => {
+    const event = await captureDownload("placement=download_page", {
+      referer: "https://getbb.app/download?utm_source=x&via=email",
+    });
+
+    expect(event.properties.utm_source).toBe("x");
+    expect(
+      new URL(event.properties.$referrer ?? "").searchParams.get("via"),
+    ).toBe("email");
+  });
+
   it.each([
     ["visitor_id", `${VISITOR_ID}x`],
     ["visitor_id", "user@example.com"],
@@ -523,7 +540,7 @@ describe("email download link endpoint", () => {
       `POST ${EMAILS_URL}`,
       `POST ${CONTACTS_URL}`,
     ]);
-    const link = "https://getbb.app/?utm_source=google&gclid=abc&via=email";
+    const link = "https://getbb.app/download?utm_source=google&gclid=abc&via=email";
     expect(calls[0]?.body).toEqual({
       from: "bb <updates@mail.getbb.app>",
       to: ["me@example.com"],
@@ -671,7 +688,7 @@ describe("email download link endpoint", () => {
   });
 
   it("writes a minimal email with one button, one line, and the plain link", () => {
-    const link = "https://getbb.app/?utm_source=a&via=email";
+    const link = "https://getbb.app/download?utm_source=a&via=email";
     const email = downloadLinkEmail(link, "getbb.app");
     expect(email.subject).toBe("Your bb download link");
     expect(email.text).toBe(
@@ -679,7 +696,7 @@ describe("email download link endpoint", () => {
     );
     expect(email.html.match(/<a /g)).toHaveLength(2);
     expect(email.html).toContain(
-      'href="https://getbb.app/?utm_source=a&amp;via=email"',
+      'href="https://getbb.app/download?utm_source=a&amp;via=email"',
     );
     expect(email.html).toContain(">Download bb</a>");
     expect(email.html).not.toMatch(/unsubscribe|<img/i);
@@ -694,7 +711,7 @@ describe("email download link endpoint", () => {
     await handleDownload(
       "macos",
       new Request("https://getbb.app/download/macos?placement=hero", {
-        headers: { referer: "https://getbb.app/?utm_source=x&via=email" },
+        headers: { referer: "https://getbb.app/download?utm_source=x&via=email" },
       }),
       { LANDING_POSTHOG_KEY: "phc_test" },
       waitUntil,

@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ClaimField,
+  DECISION_PRIMARY_CLASS,
+  DECISION_ROW_CLASS,
   ErrorBox,
   Shell,
   SignInView,
@@ -264,6 +266,7 @@ function DenyButton({ code }: { code: string }) {
   const [busy, setBusy] = useState(false);
   return (
     <Button
+      type="button"
       variant="outline"
       disabled={busy}
       onClick={() => {
@@ -313,10 +316,8 @@ function ClaimHandleStep({
             }
             return claimErrorCopy(result.error, MAX_PER_ACCOUNT);
           }}
+          secondaryAction={<DenyButton code={request.userCode} />}
         />
-        <div className="mt-3 flex justify-end">
-          <DenyButton code={request.userCode} />
-        </div>
       </WebCard>
     </Shell>
   );
@@ -445,6 +446,7 @@ function ChooseServerStep({
                   }),
                 )
               }
+              secondaryAction={<DenyButton code={code} />}
             />
           </div>
         ) : (
@@ -484,26 +486,28 @@ function ChooseServerStep({
               </>
             ) : null}
             {error ? <ErrorBox>{error}</ErrorBox> : null}
-            <Button
-              className="mt-3.5 w-full justify-center"
-              type="submit"
-              disabled={
-                busy ||
-                selectedServer === undefined ||
-                (replacing && typedCode.trim() === "")
-              }
-            >
-              {busy
-                ? "Approving…"
-                : selectedServer !== undefined && replacing
-                  ? `Approve and replace ${hostOf(selectedServer.serverUrl)}`
-                  : "Approve"}
-            </Button>
+            <div className={DECISION_ROW_CLASS}>
+              <Button
+                className={DECISION_PRIMARY_CLASS}
+                type="submit"
+                disabled={
+                  busy ||
+                  selectedServer === undefined ||
+                  (replacing && typedCode.trim() === "")
+                }
+              >
+                {busy
+                  ? replacing
+                    ? "Replacing…"
+                    : "Approving…"
+                  : selectedServer !== undefined && replacing
+                    ? `Replace ${hostOf(selectedServer.serverUrl)}`
+                    : "Approve"}
+              </Button>
+              <DenyButton code={code} />
+            </div>
           </form>
         )}
-        <div className="mt-3 flex justify-end">
-          <DenyButton code={code} />
-        </div>
       </WebCard>
     </Shell>
   );

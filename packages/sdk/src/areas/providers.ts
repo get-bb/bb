@@ -25,6 +25,7 @@ export type ProviderModelsArgs = (
   | { environmentId?: never; hostId?: never; projectId?: string }
 ) & {
   providerId?: string;
+  preferCached?: boolean;
   signal?: AbortSignal;
 };
 

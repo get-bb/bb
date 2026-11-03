@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
+  findUnnamedPluginRoots,
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -155,6 +157,67 @@ describe("scopePluginUtilities", () => {
       "@layer properties{@supports (top:1px){*,::before{--tw-blur:initial}}}" +
       "@layer utilities{.blur-sm{filter:blur(4px)}}";
     expect(() => scopePluginUtilities(css, ROOTS)).not.toThrow();
+  });
+});
+
+describe("dropAnonymousPluginRootScope", () => {
+  it("matches scoping to the plugin's own root and leaves other CSS alone", () => {
+    const utilities =
+      "@layer utilities{.a,.b{color:red}@media (width>=40rem){.p-2{padding:.5rem}}}";
+    const authored =
+      ":where([data-bb-plugin-root]) .x,[data-bb-plugin-root]:not([data-bb-plugin]) .y{opacity:.5}";
+    expect(
+      dropAnonymousPluginRootScope(
+        `${scopePluginUtilities(utilities, ROOTS)}${authored}`,
+      ),
+    ).toBe(
+      `${scopePluginUtilities(utilities, '[data-bb-plugin="demo"]')}${authored}`,
+    );
+  });
+});
+
+describe("findUnnamedPluginRoots", () => {
+  const current =
+    'function p(){return{"data-bb-portaled-overlay":"","data-bb-plugin-root":"",...e!==void 0?{"data-bb-plugin":e}:{}}}';
+  const preStamp =
+    'function p(){return{"data-bb-portaled-overlay":"","data-bb-plugin-root":""}}';
+
+  it.each([
+    ["no plugin roots", "var a=1;", 0],
+    ["the current portal-scope helper", current, 0],
+    ["a pre-stamp portal-scope helper", preStamp, 1],
+    [
+      "an id written before the root",
+      '{"data-bb-plugin":id,"data-bb-plugin-root":""}',
+      0,
+    ],
+    ["an unnamed root next to a named one", `${current}${preStamp}`, 1],
+    [
+      "two roots sharing one id",
+      '{"data-bb-plugin-root":"","data-bb-plugin":id,"data-bb-plugin-root":""}',
+      1,
+    ],
+    [
+      "a root and id written as HTML",
+      '`<div data-bb-plugin-root data-bb-plugin="x">`',
+      0,
+    ],
+    [
+      "a selector excluding unnamed roots",
+      '"[data-bb-plugin-root]:not([data-bb-plugin])"',
+      0,
+    ],
+    ["a bare root selector", 'querySelector("[data-bb-plugin-root]")', 1],
+  ])("counts unnamed roots in %s", (_name, js, expected) => {
+    expect(findUnnamedPluginRoots(js)).toHaveLength(expected);
+  });
+
+  it("does not pair an id that is too far away", () => {
+    expect(
+      findUnnamedPluginRoots(
+        `{"data-bb-plugin-root":""}${" ".repeat(200)}{"data-bb-plugin":id}`,
+      ),
+    ).toHaveLength(1);
   });
 });
 

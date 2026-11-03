@@ -294,6 +294,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("telemetry user send"),
@@ -335,6 +336,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("automation run into an existing thread"),
@@ -374,6 +376,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("telemetry agent send"),
@@ -1154,6 +1157,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("failed steer"),
@@ -1210,6 +1214,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("late failed steer"),
@@ -1274,6 +1279,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("accepted steer"),
@@ -1328,6 +1334,7 @@ describe("idle cold-start activation", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("cold start from idle"),
@@ -1409,6 +1416,7 @@ describe("idle cold-start activation", () => {
       }
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment: targetEnvironment,
         payload: {
           input: textInput("start after switch"),
@@ -1829,6 +1837,7 @@ describe("competing turn refusals", () => {
     fixture: IdleThreadFixture,
   ) {
     await sendThreadMessage(harness.deps, {
+      originPluginId: null,
       environment: fixture.environment,
       payload: {
         input: textInput("send while the daemon runs a turn"),

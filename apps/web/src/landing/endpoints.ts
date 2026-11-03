@@ -4,6 +4,7 @@ import {
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
   CAMPAIGN_PARAM_NAMES,
   CLICK_ID_PARAM_NAMES,
+  DOWNLOAD_PAGE_PATH,
   SEND_LINK_VIA_PARAM,
   VISIT_PARAM_NAMES,
   parseSendLinkVia,
@@ -262,7 +263,7 @@ export function emailDownloadLinkUrl(
   appUrl: string,
   campaign: URLSearchParams,
 ): string {
-  const link = new URL("/", appUrl);
+  const link = new URL(DOWNLOAD_PAGE_PATH, appUrl);
   for (const [name, value] of campaign) {
     link.searchParams.set(name, value);
   }
@@ -628,6 +629,8 @@ function parseDownloadPlacement(
       return "closer";
     case "footer":
       return "footer";
+    case "download_page":
+      return "download_page";
     default:
       return "direct";
   }

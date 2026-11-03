@@ -7,7 +7,13 @@ import {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { normalizeProjectPathInput } from "@bb/domain";
+import {
+  getHostPathBasename,
+  getHostPathDirname,
+  joinHostPath,
+  normalizeHostPath,
+  normalizeProjectPathInput,
+} from "@bb/domain";
 import type { HostDirectoryListing } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -32,33 +38,18 @@ interface Crumb {
 }
 
 export function toBreadcrumb(directory: string): Crumb[] {
-  const isWindows = /^[A-Za-z]:/.test(directory);
-  if (!isWindows) {
-    const crumbs: Crumb[] = [{ label: "/", path: "/" }];
-    let accumulated = "";
-    for (const segment of directory.split("/").filter(Boolean)) {
-      accumulated = `${accumulated}/${segment}`;
-      crumbs.push({ label: segment, path: accumulated });
-    }
-    return crumbs;
-  }
-
-  const segments = directory.replace(/\//g, "\\").split("\\").filter(Boolean);
-  const drive = segments[0] ?? "";
-  const crumbs: Crumb[] = [{ label: drive, path: `${drive}\\` }];
-  let accumulated = drive;
-  for (const segment of segments.slice(1)) {
-    accumulated = `${accumulated}\\${segment}`;
-    crumbs.push({ label: segment, path: accumulated });
+  const crumbs: Crumb[] = [];
+  let path = normalizeHostPath(directory);
+  while (path !== null) {
+    crumbs.unshift({
+      label: getHostPathBasename(path) || path.replace(/\\$/u, ""),
+      path,
+    });
+    const parent = getHostPathDirname(path);
+    if (parent === path) break;
+    path = parent;
   }
   return crumbs;
-}
-
-export function joinHostPath(directory: string, name: string): string {
-  if (/^[A-Za-z]:/.test(directory)) {
-    return `${directory.replace(/[\\/]+$/, "")}\\${name}`;
-  }
-  return `${directory.replace(/\/+$/, "")}/${name}`;
 }
 
 export function getFolderNameValidationMessage(name: string): string | null {
@@ -156,7 +147,8 @@ export function RemotePathBrowser({
 
   const createFolder = useMutation({
     mutationFn: async ({ parent, name }: { parent: string; name: string }) => {
-      const path = joinHostPath(parent, name);
+      const path = joinHostPath({ rootPath: parent, relativePath: name });
+      if (path === null) throw new Error("Invalid parent directory.");
       await sdk.files.mkdir({ hostId, path });
       return path;
     },

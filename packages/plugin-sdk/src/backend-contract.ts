@@ -254,6 +254,14 @@ export interface PluginTurnFailedEvent {
    * A policy caps its own retries by comparing against this.
    */
   attemptNumber: number;
+  /**
+   * The plugin that sent the failed turn's message through
+   * `bb.sdk.threads.send` or `bb.sdk.threads.spawn`, or null when a user, an
+   * agent, or core sent it. A retry is sent by core, so a retry's failure
+   * reports null. A retry policy uses this to ask the sender whether it
+   * wants the turn re-run.
+   */
+  originPluginId: string | null;
 }
 
 /**
@@ -623,9 +631,12 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  *
  * It runs identically whether the attempt is inline (someone just sent) or
  * from a drain (a queued row became eligible again), and whether the message
- * is a thread's first, a follow-up, a steer, or a retry of a failed turn. A
- * handler must therefore be idempotent for one logical dispatch: passes re-run
- * on every drain, on restart, and on retry.
+ * is a thread's first, a follow-up, a steer, a retry of a failed turn, or one
+ * of core's own notices to a thread (a child finished, needs attention, or
+ * changed owner), which arrives with `initiator: "system"`. Compaction and an
+ * edited message's re-send operate on the existing conversation and do not
+ * pass through it. A handler must therefore be idempotent for one logical
+ * dispatch: passes re-run on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
   /**
@@ -2225,6 +2236,8 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
  * against.
  */
 export interface BbPluginApi {
+  /** Internal: counts one meaningful use of a first-party plugin's UI. */
+  internal_DO_NOT_USE_recordPluginUse(): void;
   /** The plugin's own id (namespaces storage, routes, commands). */
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */

@@ -337,10 +337,10 @@ lists what `bb project discover` and
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
-The server sends `app_started`, `telemetry_disabled`, `thread_created`,
+The server sends events such as `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, `turn_finished`, and `plugin_installed`. The app reports setup-guide and
 first-send events through `POST /api/v1/system/telemetry/events`
-(`sdk.system.experimental_recordTelemetryEvent`): `onboarding_started`,
+(`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
 `onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
@@ -351,8 +351,8 @@ notes open under the bb row, `web` for the full notes on getbb.app).
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
-route accepts only these events with fixed enums and booleans, plus a
-`release_version` of digits and dots (such as `0.47.0`): no provider ids,
+route accepts only allow-listed events and values, plus a
+`release_version` of digits and dots (such as `0.47.0`): no custom provider ids,
 account details, prompts, release-note text, project or file names, terminal
 output, error messages, or session ids. Sign-in `exited` means the command exited before
 readiness was observed, not that authentication succeeded; `new_thread_submit`
@@ -364,7 +364,7 @@ runs into an existing thread report `automation`. `bb thread spawn` run inside a
 sends that thread as `senderThreadId`; the new thread reports `agent` when the sender has a
 turn running, and `user` otherwise.
 
-`turn_finished` sends only `outcome` (`succeeded`, `failed`, or `stopped`),
+`turn_finished` sends `outcome` (`succeeded`, `failed`, or `stopped`),
 `error_category` (`none`, `auth`, `billing`, `rate_limit`, `limit_reached`,
 `provider_unavailable`, `start_failed`, `process_exited`, `host_lost`, or `other`),
 `provider` (a shipped built-in provider ID, otherwise `other`), and
@@ -883,8 +883,9 @@ Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
 `pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`unreadDividerAtAnswer`, and `websocketCompression`) turn on, and the rest stay
-off. An experiment you set yourself keeps your value either way.
+`threadRowMetadata`, `unreadDividerAtAnswer`, and `websocketCompression`) turn
+on, and the rest stay off. An experiment you set yourself keeps your value
+either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
@@ -900,6 +901,14 @@ off. An experiment you set yourself keeps your value either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `narrowPluginCss` makes the app request each plugin's
+  stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
+  match only inside that plugin's own roots, not inside any root without a
+  plugin id, which makes style recalculation cheaper with many plugins. A
+  bundle whose `app.js` sets `data-bb-plugin-root` without `data-bb-plugin`
+  keeps the slower stylesheet either way. The app reads the experiment when it
+  loads a plugin's stylesheet, so a toggle applies after a reload. See
+  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel
@@ -947,11 +956,12 @@ off. An experiment you set yourself keeps your value either way.
   their context row, and a new thread's composer is unchanged.
   A header button opens the card or pins it: a pinned card sits beside the
   transcript in a wide pane and moves the transcript aside in a medium one,
-  and a narrow pane or window opens it over the transcript. Phones keep the
-  context row above the composer and show no card. Plugins read how a pane
+  and a narrow pane or window keeps the context row above the composer and
+  opens the card over the transcript. Phones keep the context row above the
+  composer and show no card. Plugins read how a pane
   shows thread context with `experimental_useThreadContextKind()`.
-- `threadRowMetadata` adds Metadata to the built-in thread list's Organize →
-  Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
+- `threadRowMetadata` (on for early adopters) adds Metadata to the built-in
+  thread list's Organize → Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
   GitHub PR Status's pull request number on a line under each thread title.
   While the experiment is off the sidebar ignores `showRowMetadata`. Plugins
   read it with `experimental_useExperiment("threadRowMetadata")`.
@@ -1098,11 +1108,11 @@ account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`
 enables it. Account tokens and per-machine hub tokens are 0600 files under
 `<dataDir>/plugins/account-pool/secrets/accounts/`.
 
-| Setting                    | Default                                 | Effect                                                                                     |
-| -------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction at which an account stops receiving matching traffic |
-| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                    |
-| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                     |
+| Setting                    | Default                                 | Effect                                                                                                                                             |
+| -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `switchThreshold`          | `0.98`                                  | Shared or model-family quota fraction from which other accounts are preferred; the account still serves matching traffic until upstream refuses it |
+| `anthropicUpstreamBaseUrl` | `https://api.anthropic.com`             | Upstream for Claude traffic; only for tests and QA with a fake upstream                                                                            |
+| `codexUpstreamBaseUrl`     | `https://chatgpt.com/backend-api/codex` | Upstream for Codex traffic; only for tests and QA with a fake upstream                                                                             |
 
 Inspect and change them with `bb pool config` and
 `bb pool config set <key> <value>`. Values stored through `bb.settings` by
@@ -1259,6 +1269,7 @@ row's Customize actions, or `bb thread-list prefs get|set|reset <key>`
 | `rowActions`          | `["bb--core/archive"]`            | Up to three thread action keys in display order; see below                                                                                  |
 | `showProviderIcons`   | `false`                           | Shows the provider icon before each thread title                                                                                            |
 | `showRowMetadata`     | `false`                           | Shows plugins' metadata on a line under each thread title; needs the `threadRowMetadata` experiment                                         |
+| `showEmptyProjects`   | `true`                            | `false` hides project groups with no visible threads when organized by project                                                              |
 | `collapsed*`          | `[]`                              | Collapsed sections, projects, threads, environments, custom sections, and machines                                                          |
 
 `rowActions` keys are `bb--core/<id>` (`split`, `newThreadInEnvironment`,

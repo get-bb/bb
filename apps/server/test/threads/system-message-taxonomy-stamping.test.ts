@@ -72,7 +72,7 @@ async function waitForStampedSystemMessage(
   harness: TestHarness,
   parentThreadId: string,
 ): Promise<StampedSystemMessage> {
-  await flushChildThreadNotifications();
+  await flushChildThreadNotifications(harness);
   return vi.waitFor(() => {
     const rows = harness.db
       .select()
@@ -124,6 +124,7 @@ describe("Family B emit-site discriminator stamping", () => {
           childThread: child,
           parentThreadId: fixture.parentThreadId,
           turnStatus,
+          turnId: null,
         });
 
         const stamped = await waitForStampedSystemMessage(

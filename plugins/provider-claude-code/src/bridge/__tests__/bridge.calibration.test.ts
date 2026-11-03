@@ -14,14 +14,12 @@ import {
   type PromptInput,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
+const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: queryMock,
-  forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));

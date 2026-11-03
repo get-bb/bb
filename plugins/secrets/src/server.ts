@@ -1,5 +1,5 @@
-import path from "node:path";
 import {
+  experimental_resolveHostPath as resolveHostPath,
   PluginCliError,
   cliCommand,
   defineCli,
@@ -159,14 +159,6 @@ function parseRequest(input: {
   };
 }
 
-function resolveHostPath(cwd: string, candidate: string): string {
-  if (path.posix.isAbsolute(candidate)) return path.posix.normalize(candidate);
-  if (path.win32.isAbsolute(candidate)) return path.win32.normalize(candidate);
-  return path.posix.isAbsolute(cwd)
-    ? path.posix.resolve(cwd, candidate)
-    : path.win32.resolve(cwd, candidate);
-}
-
 const ROW_LABEL_MAX_LENGTH = 80;
 const ROW_TITLE_MAX_LENGTH = 160;
 
@@ -217,7 +209,12 @@ async function runRequest(
   );
   const host = thread.host;
   if (!host?.id) cliError("The thread needs a live host.", "missing_host");
-  const destinationPath = resolveHostPath(ctx.cwd, parsed.writeEnv);
+  const destinationPath = resolveHostPath({
+    rootPath: ctx.cwd,
+    path: parsed.writeEnv,
+  });
+  if (destinationPath === null)
+    cliError("Invalid host path for --write-env.", "invalid_write_env");
   const fileArgs = { hostId: host.id, path: destinationPath };
   let snapshot = await readSnapshot(bb, fileArgs);
   assertNoDuplicateAssignments(snapshot.content, parsed.names);

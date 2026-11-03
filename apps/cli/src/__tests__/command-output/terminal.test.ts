@@ -115,8 +115,8 @@ describe("bb terminal command output", () => {
 
       expect(create).toHaveBeenCalledWith({
         json: {
-          cols: 80,
-          rows: 24,
+          cols: 200,
+          rows: 50,
           title: undefined,
           start: { mode: "command", command: "echo hi" },
           target,
@@ -171,8 +171,8 @@ describe("bb terminal command output", () => {
 
     expect(create).toHaveBeenCalledWith({
       json: {
-        cols: 80,
-        rows: 24,
+        cols: 200,
+        rows: 50,
         title: undefined,
         start: { mode: "shell" },
         target: { kind: "host_path", hostId: "host-1", cwd: null },
@@ -460,6 +460,24 @@ describe("bb terminal command output", () => {
     ]);
   });
 
+  it("prints output without colors or progress redraws with --plain", async () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    stubServerApi({
+      "v1.terminals.:terminalId.output.$get": vi.fn(async () =>
+        outputResponse({
+          nextSeq: 1,
+          text: "\u001b[1mLocal\u001b[22m: http://localhost:5173/\r\n 10%\r 99%\r100%\r\n",
+        }),
+      ),
+    });
+
+    await runCommand(["terminal", "output", "term-1", "--plain"], register);
+
+    expect(write).toHaveBeenCalledWith("Local: http://localhost:5173/\n100%\n");
+  });
+
   it("accepts the scope flags of create and list on every terminal-id verb", async () => {
     stubServerApi({
       "v1.terminals.:terminalId.$get": vi.fn(async () => makeTerminalSession()),
@@ -479,144 +497,6 @@ describe("bb terminal command output", () => {
 
     const help = await getHelpOutput(["terminal", "output"], register);
     expect(help).not.toContain("--thread");
-  });
-
-  it("matches text that arrives split across two polls", async () => {
-    const output = vi
-      .fn()
-      .mockResolvedValueOnce(outputResponse({ nextSeq: 4, text: "" }))
-      .mockResolvedValueOnce(
-        outputResponse({ nextSeq: 5, text: "Local: http://loc" }),
-      )
-      .mockResolvedValueOnce(
-        outputResponse({ nextSeq: 6, text: "alhost:5173\n" }),
-      );
-    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
-
-    await runCommand(
-      [
-        "terminal",
-        "wait",
-        "term-1",
-        "--contains",
-        "localhost:5173",
-        "--poll-interval",
-        "1ms",
-        "--json",
-      ],
-      register,
-    );
-
-    expect(
-      JSON.parse(collectLogPayloads(vi.mocked(console.log)).at(-1) ?? "{}"),
-    ).toEqual({
-      exitCode: null,
-      matched: "localhost:5173",
-      nextSeq: 6,
-      terminalId: "term-1",
-    });
-    expect(output.mock.calls[1]?.[0]).toMatchObject({ query: { sinceSeq: 4 } });
-  });
-
-  it("finds a marker that is followed by more output than the retained window", async () => {
-    const output = vi.fn().mockResolvedValueOnce(
-      outputResponse({
-        nextSeq: 1,
-        text: `READY\n${"x".repeat(300_000)}`,
-      }),
-    );
-    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
-
-    await runCommand(
-      ["terminal", "wait", "term-1", "--from-start", "--contains", "READY"],
-      register,
-    );
-
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Terminal term-1 matched READY",
-    ]);
-  });
-
-  it("stops waiting when the terminal exits first and shows its last output", async () => {
-    const output = vi
-      .fn()
-      .mockResolvedValueOnce(outputResponse({ nextSeq: 0, text: "" }))
-      .mockResolvedValueOnce(
-        outputResponse({
-          exitCode: 1,
-          nextSeq: 1,
-          status: "exited",
-          text: "Error: port 5173 is already in use\n",
-        }),
-      );
-    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
-
-    await expect(
-      runCommand(
-        [
-          "terminal",
-          "wait",
-          "term-1",
-          "--contains",
-          "Local:",
-          "--timeout",
-          "5m",
-          "--poll-interval",
-          "1ms",
-        ],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:124");
-
-    expect(collectLogLines(vi.mocked(console.error))).toEqual([
-      "Error: Terminal term-1 exited with code 1 before the requested output matched",
-      "Last output:\nError: port 5173 is already in use",
-    ]);
-    expect(output).toHaveBeenCalledTimes(2);
-  });
-
-  it("refuses to wait for new output from a terminal that already exited", async () => {
-    stubServerApi({
-      "v1.terminals.:terminalId.output.$get": vi.fn(async () =>
-        outputResponse({ exitCode: 0, nextSeq: 9, status: "exited", text: "" }),
-      ),
-    });
-
-    await expect(
-      runCommand(["terminal", "wait", "term-1", "--regex", "done"], register),
-    ).rejects.toThrow("process.exit:124");
-
-    expect(collectLogLines(vi.mocked(console.error))).toEqual([
-      "Error: Terminal term-1 exited with code 0 before this wait started, so no new output will arrive.",
-      "Match its existing output with --from-start, or read it with `bb terminal output term-1`.",
-    ]);
-  });
-
-  it("reports the exit code when waiting for exit", async () => {
-    stubServerApi({
-      "v1.terminals.:terminalId.$get": vi.fn(async () =>
-        makeTerminalSession({ status: "exited", exitCode: 3 }),
-      ),
-    });
-
-    await runCommand(["terminal", "wait", "term-1", "--exit"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toEqual([
-      "Terminal term-1 exited with code 3",
-    ]);
-  });
-
-  it("rejects a wait timeout it cannot read instead of truncating it", async () => {
-    await expect(
-      runCommand(
-        ["terminal", "wait", "term-1", "--exit", "--timeout", "4hours"],
-        register,
-      ),
-    ).rejects.toThrow("process.exit:1");
-
-    expect(collectLogLines(vi.mocked(console.error))[0]).toBe(
-      "Error: Invalid --timeout value '4hours'. Expected a number of seconds or a duration with a unit (500ms, 90s, 5m, 2h).",
-    );
   });
 
   it("fills in this thread when terminal list has no scope", async () => {

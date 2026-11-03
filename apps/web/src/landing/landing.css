@@ -3533,3 +3533,122 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     animation: none;
   }
 }
+
+/* ── /download ──────────────────────────────────────────────────── */
+
+.dl-hero {
+  padding: 48px 0 40px;
+}
+
+/* The vector bb mark, drawn whole so no edge is cropped. The SVG's viewBox
+   keeps a small margin around the glyph, so its anti-aliased edges never
+   touch the box. Dark mode inverts it to match the light dark-mode icon. */
+.dl-mark {
+  display: inline-block;
+  width: 0.967em;
+  height: 0.773em;
+  vertical-align: -0.02em;
+  background: url("/brand/bb-logo-shaded.svg") center / contain no-repeat;
+}
+
+.dark .dl-mark {
+  filter: invert(1);
+}
+
+.dl-hero-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.dl-hero-actions .install-choice {
+  gap: 12px;
+}
+
+.dl-hero-actions .btn-install {
+  font-size: 16px;
+}
+
+.dl-body {
+  max-width: 640px;
+  margin: 0 auto 96px;
+}
+
+.dl-h2 {
+  margin: 36px 0 8px;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink);
+  text-align: left;
+}
+
+.dl-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.dl-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+}
+
+.dl-row + .dl-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.dl-row-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.dl-row-tag {
+  overflow: hidden;
+  font-size: 13.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dl-row-action {
+  justify-self: end;
+  min-width: 0;
+}
+
+.dl-row-action .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dl-row-action .btn .btn-ic {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 640px) {
+  .dl-hero {
+    padding-top: 24px;
+  }
+
+  .dl-hero h1 {
+    font-size: clamp(30px, 8.6vw, 36px);
+  }
+
+  .dl-hero .sub {
+    margin-top: 16px;
+    font-size: 16px;
+  }
+
+  .dl-hero-actions .install-choice {
+    width: 100%;
+    max-width: 420px;
+  }
+}

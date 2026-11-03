@@ -45,7 +45,8 @@ export {
 export { formatShellCommandForDisplay } from "./shell-command-display.js";
 export {
   getFileChangeAction,
-  isPatchMetadataLine,
+  getFileChangeDiffLines,
+  isPlainFileContentDiff,
 } from "./file-change-summary.js";
 export type { FileChangeAction } from "./file-change-summary.js";
 export {
