@@ -88,7 +88,7 @@ interface TimedStatementOperationArgs<TValue> {
 }
 
 const DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS = 100;
-export const SQLITE_CACHE_SIZE_KIB = 262_144;
+export const SQLITE_CACHE_SIZE_KIB = 32_768;
 export const SQLITE_MMAP_SIZE_BYTES = 1_073_741_824;
 export const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const MAX_LOGGED_SQL_LENGTH = 1_000;
