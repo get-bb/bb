@@ -2,14 +2,7 @@ import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -21,7 +14,6 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
@@ -31,67 +23,6 @@ import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
-
-type AddMachineSurface = "dialog" | "inline";
-
-const AddMachineSurfaceContext = createContext<AddMachineSurface>("dialog");
-
-function SetupHeading({
-  title,
-  description,
-  descriptionClassName,
-  inlineTitle = true,
-}: {
-  title: string;
-  description: ReactNode;
-  descriptionClassName?: string;
-  inlineTitle?: boolean;
-}) {
-  const surface = useContext(AddMachineSurfaceContext);
-  if (surface === "inline") {
-    return (
-      <div className="flex flex-col gap-1">
-        {inlineTitle ? (
-          <p className="text-sm font-medium text-foreground">{title}</p>
-        ) : null}
-        <p
-          className={cn("text-sm text-muted-foreground", descriptionClassName)}
-        >
-          {description}
-        </p>
-      </div>
-    );
-  }
-  return (
-    <DialogHeader>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogDescription className={descriptionClassName}>
-        {description}
-      </DialogDescription>
-    </DialogHeader>
-  );
-}
-
-function CheckingTitle() {
-  const surface = useContext(AddMachineSurfaceContext);
-  return surface === "inline" ? null : (
-    <DialogTitle className="sr-only">Add a machine</DialogTitle>
-  );
-}
-
-export function AddMachineInline({ onClose }: { onClose: () => void }) {
-  return (
-    <AddMachineSurfaceContext.Provider value="inline">
-      <div className="flex flex-col gap-3">
-        <AddMachineContent
-          onOpenChange={(open) => {
-            if (!open) onClose();
-          }}
-        />
-      </div>
-    </AddMachineSurfaceContext.Provider>
-  );
-}
 
 export function AddMachineDialog({
   open,
@@ -169,7 +100,7 @@ export function MachineAccessGate({
   if (state.status === "checking") {
     return (
       <>
-        <CheckingTitle />
+        <DialogTitle className="sr-only">Add a machine</DialogTitle>
         <p role="status" className="text-sm text-subtle-foreground">
           Checking machine access…
         </p>
@@ -179,12 +110,12 @@ export function MachineAccessGate({
   if (state.status === "failed") {
     return (
       <>
-        <SetupHeading
-          title="Add a machine"
-          inlineTitle={false}
-          descriptionClassName="text-destructive-text"
-          description="Couldn’t check whether machines can reach this server."
-        />
+        <DialogHeader>
+          <DialogTitle>Add a machine</DialogTitle>
+          <DialogDescription className="text-destructive-text">
+            Couldn’t check whether machines can reach this server.
+          </DialogDescription>
+        </DialogHeader>
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={state.onRetry}>
             Try again
@@ -195,10 +126,13 @@ export function MachineAccessGate({
   }
   return (
     <>
-      <SetupHeading
-        title="Set up machine access"
-        description="A new machine has to reach this server over the network. Choose the address it should use."
-      />
+      <DialogHeader>
+        <DialogTitle>Set up machine access</DialogTitle>
+        <DialogDescription>
+          A new machine has to reach this server over the network. Choose the
+          address it should use.
+        </DialogDescription>
+      </DialogHeader>
       {children}
     </>
   );
@@ -211,13 +145,15 @@ export interface EnrollmentCommand {
   unavailable: boolean;
 }
 
-export function ManualMachineSetup({
-  serverMachineName,
-  onOpenChange,
-}: {
-  serverMachineName: string | null;
-  onOpenChange: (open: boolean) => void;
-}) {
+interface ManualMachineEnrollment {
+  command: EnrollmentCommand | null;
+  connectedHost: Host | null;
+  errorMessage: string | null;
+  retry: () => void;
+  regenerate: () => void;
+}
+
+function useManualMachineEnrollment(): ManualMachineEnrollment {
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
   const pendingHostIds = useRef(new Set<string>());
@@ -325,23 +261,199 @@ export function ManualMachineSetup({
     start({ replaceLaunch: false });
   }, [start]);
 
+  return {
+    command,
+    connectedHost,
+    errorMessage: createMachine.isError
+      ? getMutationErrorMessage({
+          error: createMachine.error,
+          fallbackMessage: "Couldn't prepare an enrollment command.",
+        })
+      : null,
+    retry: () => start({ replaceLaunch: false }),
+    regenerate: () => start({ replaceLaunch: true }),
+  };
+}
+
+export function ManualMachineSetup({
+  serverMachineName,
+  onOpenChange,
+}: {
+  serverMachineName: string | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const enrollment = useManualMachineEnrollment();
   return (
     <ManualMachineSetupView
-      command={command}
-      connectedHost={connectedHost}
+      command={enrollment.command}
+      connectedHost={enrollment.connectedHost}
       serverMachineName={serverMachineName}
-      errorMessage={
-        createMachine.isError
-          ? getMutationErrorMessage({
-              error: createMachine.error,
-              fallbackMessage: "Couldn't prepare an enrollment command.",
-            })
-          : null
-      }
-      onRetry={() => createMachine.mutate({ replaceLaunch: false })}
-      onRegenerate={() => createMachine.mutate({ replaceLaunch: true })}
+      errorMessage={enrollment.errorMessage}
+      onRetry={enrollment.retry}
+      onRegenerate={enrollment.regenerate}
       onOpenMachine={() => onOpenChange(false)}
     />
+  );
+}
+
+export function AddMachineInline() {
+  const enrollment = useManualMachineEnrollment();
+  return (
+    <QuickMachineSetupView
+      command={enrollment.command}
+      connectedHost={enrollment.connectedHost}
+      errorMessage={enrollment.errorMessage}
+      onRetry={enrollment.retry}
+      onRegenerate={enrollment.regenerate}
+    />
+  );
+}
+
+export function QuickMachineSetupView({
+  command,
+  connectedHost,
+  errorMessage,
+  onRetry,
+  onRegenerate,
+}: {
+  command: EnrollmentCommand | null;
+  connectedHost: Host | null;
+  errorMessage: string | null;
+  onRetry: () => void;
+  onRegenerate: () => void;
+}) {
+  const [platform, setPlatform] = useState<MachineLaunchPlatform>("posix");
+  if (errorMessage !== null) {
+    return (
+      <div className="flex flex-col items-start gap-2 text-xs">
+        <p role="alert" className="text-destructive-text">
+          {errorMessage}
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3 text-xs text-muted-foreground">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <p className="text-foreground">On the other machine, run:</p>
+          <div
+            role="group"
+            aria-label="Machine operating system"
+            className="flex items-center gap-1"
+          >
+            {MACHINE_LAUNCH_PLATFORMS.map((option, index) => (
+              <span key={option.id} className="flex items-center gap-1">
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                <button
+                  type="button"
+                  aria-pressed={platform === option.id}
+                  className={
+                    platform === option.id
+                      ? "rounded-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      : "rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  }
+                  onClick={() => setPlatform(option.id)}
+                >
+                  {option.shortLabel}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+        {command === null ? null : (
+          <QuickMachineCommand
+            key={command.value}
+            command={
+              platform === "windows" ? command.windowsValue : command.value
+            }
+            expiresAt={command.expiresAt}
+            unavailable={command.unavailable}
+            onRegenerate={onRegenerate}
+          />
+        )}
+      </div>
+      {connectedHost === null ? (
+        <p role="status" className="flex items-center gap-2">
+          <Icon
+            name="Spinner"
+            aria-hidden
+            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
+          />
+          {command === null
+            ? "Preparing a command…"
+            : "Waiting for it to connect…"}
+        </p>
+      ) : (
+        <p role="status" className="flex items-center gap-1.5 text-foreground">
+          <Icon
+            name="CircleCheck"
+            aria-hidden
+            className="size-3.5 shrink-0 text-success"
+          />
+          {connectedHost.name} connected
+        </p>
+      )}
+    </div>
+  );
+}
+
+function QuickMachineCommand({
+  command,
+  expiresAt,
+  unavailable,
+  onRegenerate,
+}: {
+  command: string;
+  expiresAt: number;
+  unavailable: boolean;
+  onRegenerate: () => void;
+}) {
+  const { copied, copy } = useClipboardCopy({ text: command });
+  const remaining = useCountdown(expiresAt);
+  const expired = remaining <= 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-start gap-2 rounded-md border border-border bg-background py-2 pl-3 pr-1.5">
+        <code className="min-w-0 flex-1 whitespace-pre-wrap break-all py-0.5 font-mono text-xs text-foreground">
+          {command}
+        </code>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={copied ? "Copied" : "Copy command"}
+          disabled={expired || unavailable}
+          onClick={() => void copy()}
+        >
+          <Icon
+            name={copied ? "Check" : "Copy"}
+            aria-hidden
+            className="size-3.5"
+          />
+        </Button>
+      </div>
+      {unavailable ? (
+        <p role="status">Command used</p>
+      ) : expired ? (
+        <p role="status" className="flex flex-wrap items-center gap-x-2">
+          Command expired
+          <button
+            type="button"
+            className="rounded-sm text-foreground underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onClick={onRegenerate}
+          >
+            Get a new command
+          </button>
+        </p>
+      ) : (
+        <p className="tabular-nums">Expires in {formatCountdown(remaining)}</p>
+      )}
+    </div>
   );
 }
 
@@ -364,17 +476,17 @@ export function ManualMachineSetupView({
 }) {
   return (
     <>
-      <SetupHeading
-        title="Add a machine"
-        inlineTitle={false}
-        {...(errorMessage === null
-          ? {}
-          : { descriptionClassName: "text-destructive-text" })}
-        description={
-          errorMessage ??
-          "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."
-        }
-      />
+      <DialogHeader>
+        <DialogTitle>Add a machine</DialogTitle>
+        <DialogDescription
+          className={
+            errorMessage === null ? undefined : "text-destructive-text"
+          }
+        >
+          {errorMessage ??
+            "Run this command on the machine you want to add. It installs bb and keeps the machine connected to this server."}
+        </DialogDescription>
+      </DialogHeader>
       {errorMessage === null ? null : (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={onRetry}>
@@ -454,10 +566,24 @@ type MachineLaunchPlatform = "posix" | "windows";
 const MACHINE_LAUNCH_PLATFORMS: readonly {
   id: MachineLaunchPlatform;
   label: string;
+  shortLabel: string;
 }[] = [
-  { id: "posix", label: "macOS or Linux" },
-  { id: "windows", label: "Windows" },
+  { id: "posix", label: "macOS or Linux", shortLabel: "Mac/Linux" },
+  { id: "windows", label: "Windows", shortLabel: "Windows" },
 ];
+
+function useCountdown(expiresAt: number): number {
+  const [remaining, setRemaining] = useState(() => expiresAt - Date.now());
+  useEffect(() => {
+    setRemaining(expiresAt - Date.now());
+    const timer = setInterval(
+      () => setRemaining(expiresAt - Date.now()),
+      1_000,
+    );
+    return () => clearInterval(timer);
+  }, [expiresAt]);
+  return remaining;
+}
 
 export function MachineLaunchCommand({
   command,
@@ -475,14 +601,7 @@ export function MachineLaunchCommand({
   const [platform, setPlatform] = useState<MachineLaunchPlatform>("posix");
   const shownCommand = platform === "windows" ? windowsCommand : command;
   const { copied, copy } = useClipboardCopy({ text: shownCommand });
-  const [remaining, setRemaining] = useState(() => expiresAt - Date.now());
-  useEffect(() => {
-    const timer = setInterval(
-      () => setRemaining(expiresAt - Date.now()),
-      1_000,
-    );
-    return () => clearInterval(timer);
-  }, [expiresAt]);
+  const remaining = useCountdown(expiresAt);
   const expired = remaining <= 0;
   return (
     <div className="overflow-hidden rounded-md border border-border bg-muted/30">

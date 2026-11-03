@@ -1872,6 +1872,8 @@ function PairingCode({
   );
 }
 
+type PhoneStepPanel = MobilePlatform | "pairing";
+
 function PhonePairingSteps({
   pairing,
   dashboardHost,
@@ -1879,7 +1881,8 @@ function PhonePairingSteps({
   pairing: PhonePairing;
   dashboardHost: string;
 }) {
-  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
+  const [open, setOpen] = useState<PhoneStepPanel | null>(null);
+  const openPlatform = open === "pairing" ? null : open;
   return (
     <ol className="flex flex-col gap-4 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
       <PairingStep
@@ -1888,7 +1891,7 @@ function PhonePairingSteps({
           <AppInstallToggles
             label={<span className="text-foreground">Install the bb app:</span>}
             openPlatform={openPlatform}
-            onOpenPlatformChange={setOpenPlatform}
+            onOpenPlatformChange={setOpen}
           />
         }
       >
@@ -1899,12 +1902,26 @@ function PhonePairingSteps({
       <PairingStep
         step={2}
         title={
-          <p className="text-foreground">
-            Open the app and scan this code to pair.
-          </p>
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-foreground">Open the app and pair it:</span>
+            <span className="-ml-1">
+              <DisclosureToggle
+                expanded={open === "pairing"}
+                onToggle={() =>
+                  setOpen((current) =>
+                    current === "pairing" ? null : "pairing",
+                  )
+                }
+              >
+                Show pairing code
+              </DisclosureToggle>
+            </span>
+          </div>
         }
       >
-        <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
+        {open === "pairing" ? (
+          <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
+        ) : null}
       </PairingStep>
     </ol>
   );

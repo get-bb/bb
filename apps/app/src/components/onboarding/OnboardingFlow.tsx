@@ -1104,6 +1104,7 @@ function DevicesStepContainer({
       >
         <RedesignedDevicesStep
           hostName={hostName}
+          showMachines={connect.status === "on"}
           connectSection={
             <PluginSetupGuideSections
               pluginId={CONNECT_PLUGIN_ID}
@@ -1113,8 +1114,8 @@ function DevicesStepContainer({
             />
           }
           addMachinePanel={
-            addMachineOpen ? (
-              <AddMachineInline onClose={closeAddMachine} />
+            addMachineOpen && connect.status === "on" ? (
+              <AddMachineInline />
             ) : null
           }
           onAddMachine={addMachine}

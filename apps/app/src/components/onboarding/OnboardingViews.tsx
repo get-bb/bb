@@ -1497,12 +1497,14 @@ export function ConnectUnavailableRow() {
 export function RedesignedDevicesStep({
   hostName,
   connectSection,
+  showMachines,
   addMachinePanel,
   onAddMachine,
   onCloseAddMachine,
 }: {
   hostName: string | null;
   connectSection: ReactNode;
+  showMachines: boolean;
   addMachinePanel: ReactNode;
   onAddMachine: () => void;
   onCloseAddMachine: () => void;
@@ -1513,49 +1515,51 @@ export function RedesignedDevicesStep({
       <SetupOptionGroup label="Where you use bb">
         {connectSection}
       </SetupOptionGroup>
-      <SetupOptionGroup label="Where agents run">
-        <SetupOptionRow
-          icon="Laptop"
-          title="Add another machine"
-          description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings > Machines.`}
-          actionStaysInline={open}
-          action={
-            open ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-muted-foreground"
-                    aria-label="Close adding a machine"
-                    onClick={onCloseAddMachine}
-                  >
-                    <Icon name="X" aria-hidden />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Close</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={onAddMachine}
-              >
-                Add a machine
-              </Button>
-            )
-          }
-          footer={
-            open ? (
-              <div className="border-t border-border-hairline bg-surface-recessed p-3">
-                {addMachinePanel}
-              </div>
-            ) : null
-          }
-        />
-      </SetupOptionGroup>
+      {showMachines ? (
+        <SetupOptionGroup label="Where agents run">
+          <SetupOptionRow
+            icon="Laptop"
+            title="Add another machine"
+            description={`${hostName === null ? "This computer" : `This computer, ${hostName},`} is your bb server. Add laptops or cloud machines that connect to it and run agents. Manage machines anytime in Settings > Machines.`}
+            actionStaysInline={open}
+            action={
+              open ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-8 text-muted-foreground"
+                      aria-label="Close adding a machine"
+                      onClick={onCloseAddMachine}
+                    >
+                      <Icon name="X" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Close</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onAddMachine}
+                >
+                  Add a machine
+                </Button>
+              )
+            }
+            footer={
+              open ? (
+                <div className="border-t border-border-hairline bg-surface-recessed p-3">
+                  {addMachinePanel}
+                </div>
+              ) : null
+            }
+          />
+        </SetupOptionGroup>
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import {
   AddMachineContent,
   AddMachineInline,
   ManualMachineSetup,
+  QuickMachineSetupView,
 } from "./AddMachineDialog";
 
 vi.mock("@/lib/sdk", () => ({
@@ -298,32 +299,48 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
   rendered.unmount();
 });
 
-it("shows the same enrollment steps inline, outside a dialog", async () => {
-  stubManualLaunch(() => {
-    vi.mocked(sdk.system.config).mockResolvedValue(
-      makeSystemConfig({
-        serverAccess: READY_SERVER_ACCESS,
-        primaryHostId: "host_server",
-      }),
-    );
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      makeHost({ id: "host_server", name: "Mac mini" }),
-    ]);
-  });
+it("shows the enrollment command inline and removes the pending machine on close", async () => {
+  stubManualLaunch();
   const { wrapper } = createQueryClientTestHarness();
   const rendered = render(
     <MemoryRouter>
-      <AddMachineInline onClose={() => {}} />
+      <AddMachineInline />
     </MemoryRouter>,
     { wrapper },
   );
 
   await screen.findByText("bb machine enroll test");
-  screen.getByText(/Run this command on the machine you want to add/u);
+  screen.getByText("On the other machine, run:");
+  screen.getByText("Waiting for it to connect…");
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByText("Add a machine")).toBeNull();
+  expect(screen.queryByText("Connection method")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Windows" }));
+  screen.getByText("irm windows-command | iex");
+  expect(screen.queryByText("bb machine enroll test")).toBeNull();
+
   rendered.unmount();
   await waitFor(() =>
     expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: "host-reserved" }),
   );
+});
+
+it("replaces the waiting line once the machine connects", () => {
+  render(
+    <QuickMachineSetupView
+      command={{
+        value: "bb machine enroll test",
+        windowsValue: "irm windows-command | iex",
+        expiresAt: Date.now() + 60_000,
+        unavailable: false,
+      }}
+      connectedHost={makeHost({ id: "host_new", name: "Studio Mac" })}
+      errorMessage={null}
+      onRetry={() => {}}
+      onRegenerate={() => {}}
+    />,
+  );
+
+  screen.getByText("Studio Mac connected");
+  expect(screen.queryByText("Waiting for it to connect…")).toBeNull();
 });
