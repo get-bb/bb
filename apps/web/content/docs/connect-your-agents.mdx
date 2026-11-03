@@ -1,0 +1,106 @@
+---
+title: Connect your agents
+description: bb runs the agents you already use, such as Claude Code, Codex, Pi and Cursor. Install and sign in to each on the machine that runs your threads.
+type: how-to
+sources:
+  - apps/app/src/components/onboarding/**
+  - apps/app/src/components/settings/ProvidersSettingsSection.tsx
+  - plugins/provider-claude-code/src/bridge/provider-maintenance.ts
+  - plugins/provider-codex/src/bridge/provider-maintenance.ts
+  - plugins/provider-pi/src/bridge/provider-maintenance.ts
+  - plugins/provider-acp/src/known-agents.ts
+  - packages/process-utils/src/host-toolchain.ts
+since: 0.46.1
+owner: brsbl
+verified: 2026-10-30
+---
+
+bb has no agent login of its own. It uses each agent's CLI sign-in and your existing config.
+
+## Agents bb knows
+
+Settings calls agents **Providers**.
+
+| Agent | Command bb runs | Sign in with | bb can install it |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `claude auth login` | Yes |
+| Codex | `codex` | `codex login` | Yes |
+| Pi | `pi` | `pi` | Yes |
+| Cursor | `cursor-agent acp` | `cursor-agent login` | Yes |
+| opencode | `opencode acp` | `opencode auth login` | No |
+| omp | `omp acp` | `omp login` | No |
+| Grok Build | `grok agent stdio` | `grok login` | No |
+| Hermes Agent | `hermes acp` | `hermes login` | No |
+
+The last four appear only where their command is installed. For other agents, see Add Cursor, opencode and other ACP agents.
+
+## Sign in to an agent
+
+<Tabs items={["Desktop", "Terminal"]}>
+<Tab value="Desktop">
+
+1. Open the setup guide. It opens on first run; later, choose **Show setup guide** in **Settings → General**.
+2. On **Connect a coding agent**, find your agent. **Ready** means it's signed in.
+3. If it's **Not installed**, choose **Install**, or install it yourself and choose **Check again**.
+4. Choose **Sign in**, then **Open sign-in page**. Paste the code back if the agent gives you one.
+5. When the agent shows **Ready**, choose **Continue**.
+
+<Screenshot
+  src="/docs-images/connect-your-agents/setup-guide-agents"
+  alt="The Connect a coding agent step lists each agent, marked Ready or with an Install button."
+  width={600}
+  height={420}
+/>
+
+</Tab>
+<Tab value="Terminal">
+
+Run the sign-in command from the table on the thread's machine:
+
+```bash
+claude auth login
+codex login
+```
+
+Over SSH, `codex login --device-auth` uses a one-time code. No restart needed.
+
+</Tab>
+</Tabs>
+
+## How bb finds your agents
+
+| What | Where bb looks |
+| --- | --- |
+| The command | Your login shell's PATH, plus common folders such as `~/.local/bin` and `/opt/homebrew/bin` |
+| Claude Code sign-in | The macOS Keychain, or `~/.claude/.credentials.json` |
+| Codex sign-in | `~/.codex/auth.json`, or `auth.json` in `CODEX_HOME` if you set it |
+| Pi sign-in | Signed in when Pi can list at least one model |
+| Cursor sign-in | The sign-in saved by `cursor-agent login` |
+| Other ACP agents | Ready once their command is installed |
+| Config | The agent's usual files, such as `CLAUDE.md` or `AGENTS.md` |
+
+Each machine has its own agents and sign-ins.
+
+## Choose which agents bb shows
+
+In **Settings → Providers**:
+
+- **⋯ → Disable** hides an agent; **Enable** brings it back.
+- **⋯ → Default** makes it your default agent.
+- Drag agents to reorder the picker.
+
+```bash
+bb provider list
+bb provider enable codex
+bb provider disable acp-cursor
+```
+
+## Check it worked
+
+- The setup guide shows **Ready** next to your agent, or `bb provider list --all` shows it as **Enabled**.
+- In a new thread, pick the agent in the provider picker; the model picker lists its models.
+
+## Related troubleshooting
+
+- An agent won't sign in or can't be found
+- A model is missing from the model picker
