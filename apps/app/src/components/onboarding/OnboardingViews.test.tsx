@@ -257,6 +257,7 @@ describe("AgentSignInInstruction", () => {
                     acceptsPastedCode: overrides.paste ?? false,
                   },
             terminalVisible: false,
+            started: url !== null,
           }}
           alternate={null}
           onOpenUrl={vi.fn()}
@@ -300,7 +301,7 @@ describe("AgentSignInPanel", () => {
       <AgentSignInPanel
         connect={false}
         agentName="Cursor"
-        view={{ guide: null, terminalVisible: false }}
+        view={{ guide: null, terminalVisible: false, started: false }}
         code=""
         codeSubmitted={false}
         terminal={null}
@@ -312,6 +313,25 @@ describe("AgentSignInPanel", () => {
     );
 
     expect(container.textContent).toBe("");
+  });
+
+  it("keeps the terminal toggle once the terminal was hidden after showing", () => {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Cursor"
+        view={{ guide: null, terminalVisible: false, started: true }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Show terminal")).toBeTruthy();
   });
 
   it("holds only the controls, not the instruction or a waiting line", () => {
@@ -326,6 +346,7 @@ describe("AgentSignInPanel", () => {
             acceptsPastedCode: true,
           },
           terminalVisible: false,
+          started: true,
         }}
         code=""
         codeSubmitted={false}

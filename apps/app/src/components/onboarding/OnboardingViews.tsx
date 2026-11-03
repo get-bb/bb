@@ -1339,13 +1339,14 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
 export interface AgentSignInView {
   guide: SignInGuide | null;
   terminalVisible: boolean;
+  started: boolean;
 }
 
 export function hasSignInInstruction(
   view: AgentSignInView,
   connect: boolean,
 ): boolean {
-  return !connect && (view.guide?.url != null || view.terminalVisible);
+  return !connect && view.started;
 }
 
 export function AgentSignInInstruction({
@@ -1370,7 +1371,9 @@ export function AgentSignInInstruction({
   if (url === null) {
     return view.terminalVisible ? (
       <>Sign in to {agentName} in the terminal below.</>
-    ) : null;
+    ) : (
+      <>Sign in to {agentName} in the terminal.</>
+    );
   }
   const siteName = signInSiteName(url);
   if (siteName === null) return <>Finish signing in in your browser.</>;
@@ -1439,7 +1442,7 @@ export function AgentSignInPanel({
   const url = view.guide?.url ?? null;
   const userCode = view.guide?.userCode ?? null;
   const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
-  const starting = url === null && !view.terminalVisible;
+  const starting = !view.started;
   const variant: SignInPanelVariant =
     url !== null && userCode !== null
       ? {

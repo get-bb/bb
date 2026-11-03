@@ -197,9 +197,14 @@ function AgentSignInContainer({
     terminalChoice ??
     (connectFlow !== null ||
       (fallbackDue && (guide === null || guide.url === null)));
+  const started =
+    guide?.url != null ||
+    fallbackDue ||
+    terminalChoice !== null ||
+    connectFlow !== null;
   const view = useMemo(
-    () => ({ guide, terminalVisible }),
-    [guide, terminalVisible],
+    () => ({ guide, terminalVisible, started }),
+    [guide, terminalVisible, started],
   );
   useEffect(() => {
     onViewChange(view);
