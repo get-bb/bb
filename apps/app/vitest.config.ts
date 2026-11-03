@@ -9,6 +9,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { forkablePluginPaths } from "./vite-forkable-plugin-paths.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
+import { pluginZodRuntime } from "./vite-plugin-zod-runtime.js";
 
 class AppTestSequencer extends SharedWorkerSequencer {
   override async sort(
@@ -24,6 +25,7 @@ class AppTestSequencer extends SharedWorkerSequencer {
 
 export default defineWorkspaceTestConfig({
   plugins: [
+    pluginZodRuntime(),
     forkablePluginPaths(path.resolve(__dirname, "./src")),
     sharedUiEnvSeam(),
     react(),
