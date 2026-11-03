@@ -2611,6 +2611,797 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
 }
 
+/* ── Below-the-fold refresh (homepage-below-fold test arm) ──────── */
+
+.band-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.band-link:hover {
+  color: var(--heading);
+  text-decoration: underline;
+}
+
+.band-stacked .band-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 44px;
+}
+
+.band-stacked .band-copy,
+.band-stacked.band-flip .band-copy {
+  order: 0;
+  max-width: 640px;
+}
+
+.band-stacked .band-visual,
+.band-stacked.band-flip .band-visual {
+  display: block;
+  order: 1;
+  margin: 0 -28px;
+  padding-left: 28px;
+  overflow-x: clip;
+}
+
+.fw-paused,
+.fw-paused * {
+  animation-play-state: paused !important;
+}
+
+@keyframes fw-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fw-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Each window keeps its full desktop layout at every width and is only
+   cropped on the right, like the hero mock on phones. useFitWindow sets
+   --bw-scale so a --bw-visible-width slice fills the space up to the
+   viewport edge (never scaling up), and --bw-slice to the window width
+   that slice shows, so overlays stay on screen. */
+.bw {
+  --fw-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --bw-width: 924px;
+  --bw-visible-width: 560px;
+  --bw-fit-slice: var(--bw-slice, min(var(--bw-width), 100vw - 28px));
+  position: relative;
+  width: var(--bw-width);
+  zoom: var(--bw-scale, 1);
+  text-align: left;
+}
+
+.bw-window {
+  width: 100%;
+}
+
+/* One window size for all three sections. */
+.bw .mock-body {
+  height: 540px;
+}
+
+.bw .bar-left {
+  width: 236px;
+}
+
+.bw .side {
+  width: 192px;
+}
+
+.bw-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 44px;
+  flex-shrink: 0;
+  padding: 8px 0 10px;
+  background: color-mix(in oklab, var(--ink) 4%, var(--surface));
+}
+
+.bw-rail-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: var(--dim);
+}
+
+.bw-rail-btn.is-on {
+  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
+  color: var(--ink);
+}
+
+.bw-rail-ic {
+  width: 16px;
+  height: 16px;
+}
+
+.bw-rail-settings {
+  margin-top: auto;
+}
+
+.bw-side-foot {
+  display: flex;
+  gap: 12px;
+}
+
+.bw-foot-ic {
+  width: 15px;
+  height: 15px;
+}
+
+.bw .side-act {
+  cursor: default;
+}
+
+.bw .trow {
+  cursor: default;
+}
+
+.bw .trow:hover {
+  background: none;
+}
+
+.bw .trow.active,
+.bw .trow.active:hover {
+  background: color-mix(in oklab, var(--ink) 7%, var(--bg));
+}
+
+.bw .bar-toggle {
+  cursor: default;
+}
+
+.bw-row-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.bw-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bw-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.bw-placeholder {
+  color: var(--subtle);
+}
+
+/* Thread text starts at the composer box's left edge, 16px in from the
+   thread column, as in the app and the hero. */
+.bw-feed {
+  gap: 0;
+  padding: 18px 16px;
+}
+
+.bw-feed > * + * {
+  margin-top: 14px;
+}
+
+.bw-feed > .bw-reveal {
+  margin-top: 0;
+}
+
+.bw-feed > .bw-reveal > .bw-reveal-inner {
+  padding-top: 14px;
+}
+
+.bw-feed-live {
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 48px);
+  mask-image: linear-gradient(to bottom, transparent, #000 48px);
+}
+
+.bw-reveal {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: bw-reveal 0.6s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.bw-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.leaving .bw-reveal {
+  animation: bw-collapse 0.6s var(--fw-ease) forwards;
+}
+
+@keyframes bw-reveal {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+@keyframes bw-collapse {
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.bw-fade {
+  animation: fw-fade-in 0.5s ease var(--fw-at, 0s) both;
+}
+
+.leaving .bw-fade {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+.bw-phases {
+  display: inline-grid;
+}
+
+.bw-phase {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.bw-phase-first {
+  opacity: 0;
+  animation: bw-hide 0.35s ease var(--fw-out, 0s) both;
+}
+
+.bw-phase-mid {
+  opacity: 0;
+  animation:
+    bw-show 0.35s ease var(--fw-at, 0s) both,
+    bw-hide 0.35s ease var(--fw-out, 0s) forwards;
+}
+
+.bw-phase-last {
+  animation: bw-show 0.35s ease var(--fw-at, 0s) both;
+}
+
+@keyframes bw-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bw-hide {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.bw-row-meta {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.mx-plugin-mask {
+  background: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.bw-kids {
+  margin-top: 0;
+}
+
+.bw-kids .trow-kid {
+  padding-left: 26px;
+}
+
+.bw-update {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 60ch;
+  padding: 9px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-strong);
+}
+
+.bw-update-head {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.bw-update-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  line-height: 1.45;
+}
+
+.bw-update-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--dim);
+}
+
+.bw-update strong,
+.bw .msg-say strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bw-update code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.bw-toast {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  left: calc(var(--bw-fit-slice) - 316px);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 300px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 18px 40px -18px
+    color-mix(in oklab, var(--shade) 45%, transparent);
+  animation: bw-toast 0.7s var(--fw-ease) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-toast {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+/* Stop babysitting: by the end of the loop the first message has scrolled
+   above the feed. Collapsing the updates would pull it back down into view
+   just before the restart, so the feed fades out in place instead, and the
+   first message of the next loop glides up as it fades in. */
+.bw-lead .leaving .bw-feed > .bw-reveal,
+.bw-lead .leaving .bw-feed > .msg-user {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+.bw-lead .bw-feed > .msg-user {
+  animation: bw-msg-in 0.7s var(--fw-ease) both;
+}
+
+@keyframes bw-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes bw-toast {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+.bw-toast-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.bw-toast-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.bw-toast-app {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.bw-toast-body {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.bw-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bw-group-ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.bw-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* Like most desktop + phone product shots, the phone (about 90% of the window
+   height) overlaps the window's bottom-right corner, half inside and half past
+   its right edge, and sits a little below it. The window is narrower than the
+   frame so the phone has room, and the thread keeps clear of the phone.
+   The phone shrinks as the visible slice of the frame narrows
+   (--bw-slice-ratio, from useFitWindow). When the slice is too narrow to show
+   the phone beside the thread (--bw-drop flips from 0 to 1), the phone drops
+   below the timeline instead of covering it. */
+.bw-start-stage {
+  --bw-phone-size: 0.8;
+  --bw-start-window: 780px;
+  --bw-overlay-scale: calc(
+    clamp(0.74, var(--bw-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
+  );
+  --bw-drop: clamp(0, (0.968 - var(--bw-slice-ratio, 1)) * 1000, 1);
+  --bw-stage-pad: calc(
+    (1 - var(--bw-drop)) * 24px + var(--bw-drop) *
+      (656px * var(--bw-overlay-scale) - 150px)
+  );
+  position: relative;
+  padding-bottom: var(--bw-stage-pad);
+}
+
+.bw-start .bw-window {
+  width: var(--bw-start-window);
+}
+
+.bw-start .main {
+  padding-right: calc(
+    var(--bw-start-window) - var(--bw-fit-slice) + 16px + (1 - var(--bw-drop)) *
+      (20px + 312px * var(--bw-overlay-scale))
+  );
+}
+
+/* An iPhone beside the window, sized by --bw-overlay-scale. The screen is laid out at the real
+   393 x 852 point size and scaled down, so the bb mobile UI keeps its true
+   proportions. */
+.bw-phone {
+  --bw-phone-ui-scale: 0.748;
+  position: absolute;
+  z-index: 3;
+  bottom: 0;
+  left: calc(var(--bw-fit-slice) - 20px - 312px);
+  width: 312px;
+  height: 656px;
+  padding: 9px;
+  border-radius: 50px;
+  background: #1b1b1d;
+  box-shadow:
+    inset 0 0 0 1.5px #3a3a3e,
+    0 0 0 1px color-mix(in oklab, var(--shade) 18%, transparent),
+    0 40px 80px -30px color-mix(in oklab, var(--shade) 55%, transparent);
+  transform: scale(var(--bw-overlay-scale));
+  transform-origin: right bottom;
+}
+
+.bw-phone-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 41px;
+  background: var(--bg);
+}
+
+.bw-phone-ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 393px;
+  height: 852px;
+  transform: scale(var(--bw-phone-ui-scale));
+  transform-origin: 0 0;
+  color: var(--ink);
+}
+
+.bw-phone-island {
+  position: absolute;
+  z-index: 5;
+  top: 11px;
+  left: 50%;
+  width: 124px;
+  height: 36px;
+  border-radius: 999px;
+  background: #000;
+  transform: translateX(-50%);
+}
+
+.bw-phone-status {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  height: 54px;
+  padding: 4px 30px 0 52px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--heading);
+}
+
+.bw-phone-sys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bw-phone-sys svg {
+  display: block;
+  height: 12px;
+  fill: currentColor;
+}
+
+.bw-phone-home {
+  position: absolute;
+  z-index: 5;
+  bottom: 8px;
+  left: 50%;
+  width: 139px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--heading);
+  transform: translateX(-50%);
+}
+
+/* bb's thread view as the mobile app shows it: the web app in the native
+   shell, at its phone sizes (header 48px, 15px timeline, 48px composer). */
+.bw-m-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--border-soft) 60%, var(--bg));
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.bw-m-head-ic {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.bw-m-title {
+  min-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bw-m-head-end {
+  margin-left: auto;
+  color: var(--subtle);
+}
+
+.bw-m-feed {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 16px 0;
+  overflow: hidden;
+}
+
+.bw-m-feed > .bw-reveal > .bw-reveal-inner {
+  padding-top: 10px;
+}
+
+.bw-m-user {
+  width: fit-content;
+  max-width: 70%;
+  margin-left: auto;
+  margin-bottom: 6px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-recessed);
+  font-size: 15px;
+  line-height: 1.625;
+  color: var(--ink);
+}
+
+.bw-m-say {
+  padding: 4px 8px;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink);
+}
+
+.bw-m-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--dim);
+  white-space: nowrap;
+  opacity: 0.4;
+}
+
+.bw-m-row.is-live {
+  opacity: 1;
+}
+
+.bw-m-row-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.bw-m-object {
+  overflow: hidden;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--ink) 70%, transparent);
+  text-overflow: ellipsis;
+}
+
+.bw-m-timer {
+  color: var(--subtle);
+}
+
+.bw-m-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: color-mix(in oklab, var(--subtle) 60%, transparent);
+}
+
+.bw-m-working {
+  min-height: 28px;
+  margin-top: 16px;
+  padding: 0 8px;
+  font-size: 15px;
+  line-height: 28px;
+  color: var(--dim);
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    #000 30%,
+    rgb(0 0 0 / 0.35) 50%,
+    #000 70%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    #000 30%,
+    rgb(0 0 0 / 0.35) 50%,
+    #000 70%
+  );
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation:
+    fw-fade-in 0.5s ease var(--fw-at, 0s) both,
+    bw-m-sweep 1s linear infinite;
+}
+
+.leaving .bw-m-working {
+  animation: fw-fade-out 0.6s ease forwards;
+}
+
+@keyframes bw-m-sweep {
+  from {
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0 0;
+    mask-position: 0 0;
+  }
+}
+
+.bw-m-composer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  margin: 12px 16px 34px;
+  padding: 0 4px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 7%, transparent);
+}
+
+.bw-m-placeholder {
+  flex: 1;
+  font-size: 16px;
+  color: var(--subtle);
+}
+
+.bw-m-mic {
+  width: 20px;
+  height: 20px;
+  margin: 0 10px;
+  color: var(--dim);
+}
+
+.bw-m-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--ink) 9%, var(--bg));
+}
+
+.bw-m-stop i {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--ink);
+}
+
+@media (max-width: 587px) {
+  .bw {
+    --bw-fit-slice: var(--bw-slice, var(--bw-visible-width));
+    zoom: var(--bw-scale, 0.62);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bw *,
+  .bw *::before,
+  .bw *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
 
 .mockup-wrap-customize {
@@ -3690,6 +4481,1116 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .mock.constructing .composer,
   .kid-li {
     animation: none;
+  }
+}
+
+@property --mx-canvas {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: white;
+}
+
+@property --mx-ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: black;
+}
+
+@property --mx-side {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: white;
+}
+
+@property --mx-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: blue;
+}
+
+@property --mx-ok {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: green;
+}
+
+@property --mx-warn {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: orange;
+}
+
+@property --mx-purple {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: purple;
+}
+
+@property --mx-red {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: red;
+}
+
+@property --mx-cyan {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: teal;
+}
+
+@property --mx-line {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 14%;
+}
+
+@property --mx-side-w {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 192px;
+}
+
+@property --mx-panel-w {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.bw-morph {
+  --bw-visible-width: 924px;
+  --mx-canvas: var(--bg);
+  --mx-ink: var(--ink);
+  --mx-side: var(--surface);
+  --mx-accent: var(--accent);
+  --mx-ok: var(--ok);
+  --mx-warn: var(--spark);
+  --mx-purple: oklch(0.55 0.17 300);
+  --mx-red: var(--del);
+  --mx-cyan: oklch(0.6 0.1 220);
+  --mx-line: 14%;
+  --mx-side-w: 192px;
+  --mx-panel-w: 0px;
+  --mx-color-ms: 1s;
+  --mx-move: 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+  transition:
+    --mx-canvas var(--mx-color-ms) ease,
+    --mx-ink var(--mx-color-ms) ease,
+    --mx-side var(--mx-color-ms) ease,
+    --mx-accent var(--mx-color-ms) ease,
+    --mx-ok var(--mx-color-ms) ease,
+    --mx-warn var(--mx-color-ms) ease,
+    --mx-purple var(--mx-color-ms) ease,
+    --mx-red var(--mx-color-ms) ease,
+    --mx-cyan var(--mx-color-ms) ease,
+    --mx-line var(--mx-color-ms) ease,
+    --mx-side-w var(--mx-move),
+    --mx-panel-w var(--mx-move);
+}
+
+.dark .bw-morph.mx-stock {
+  --mx-line: 19.4%;
+}
+
+.bw-morph.mx-files {
+  --mx-canvas: #1a1b26;
+  --mx-ink: #c0caf5;
+  --mx-side: color-mix(in oklab, #c0caf5 4.3%, #1a1b26);
+  --mx-accent: #7aa2f7;
+  --mx-ok: #9ece6a;
+  --mx-warn: #e0af68;
+  --mx-purple: #bb9af7;
+  --mx-red: #f7768e;
+  --mx-cyan: #7dcfff;
+  --mx-line: 19.4%;
+}
+
+.bw-morph.mx-graph {
+  --mx-canvas: #151515;
+  --mx-ink: #e3e3dd;
+  --mx-side: #181818;
+  --mx-accent: #88c0d0;
+  --mx-ok: #3fa266;
+  --mx-warn: #f1b467;
+  --mx-purple: #b267e6;
+  --mx-red: #e34671;
+  --mx-cyan: #88c0d0;
+  --mx-line: 17%;
+  --mx-panel-w: 440px;
+}
+
+.bw-morph.mx-taskboard {
+  --mx-canvas: #fcfcfc;
+  --mx-ink: #5c6166;
+  --mx-side: #f8f9fa;
+  --mx-accent: #f29718;
+  --mx-ok: #6cbf43;
+  --mx-warn: #f29718;
+  --mx-purple: #a37acc;
+  --mx-red: #e65050;
+  --mx-cyan: #22a4e6;
+  --mx-line: 14%;
+}
+
+.bw-morph.mx-shelves {
+  --mx-canvas: #242936;
+  --mx-ink: #cccac2;
+  --mx-side: #1f2430;
+  --mx-accent: #ffcc66;
+  --mx-ok: #87d96c;
+  --mx-warn: #ffcc66;
+  --mx-purple: #dfbfff;
+  --mx-red: #ff6666;
+  --mx-cyan: #73d0ff;
+  --mx-line: 19.4%;
+  --mx-side-w: 256px;
+}
+
+.bw-morph.mx-collapsed {
+  --mx-side-w: 0px;
+}
+
+.mx-window {
+  --bg: var(--mx-canvas);
+  --ink: var(--mx-ink);
+  --ink-strong: var(--mx-ink);
+  --dim: color-mix(in oklch, var(--mx-ink) 84%, var(--mx-canvas));
+  --subtle: color-mix(in oklch, var(--mx-ink) 64%, var(--mx-canvas));
+  --border: color-mix(in oklab, var(--mx-ink) var(--mx-line), var(--mx-canvas));
+  --border-soft: color-mix(
+    in oklab,
+    var(--mx-ink) calc(var(--mx-line) * 0.57),
+    var(--mx-canvas)
+  );
+  --surface: color-mix(
+    in oklab,
+    var(--mx-ink) calc(var(--mx-line) * 0.25),
+    var(--mx-canvas)
+  );
+  --surface-recessed: color-mix(
+    in oklab,
+    var(--mx-ink) calc(var(--mx-line) * 0.43),
+    var(--mx-canvas)
+  );
+  --state-hover: color-mix(
+    in oklab,
+    var(--mx-ink) calc(var(--mx-line) * 0.45),
+    var(--mx-canvas)
+  );
+  --label-muted: var(--subtle);
+  --accent: var(--mx-accent);
+  --ok: var(--mx-ok);
+  --attention: var(--mx-warn);
+  color: var(--ink);
+}
+
+.mx-window .bar-left {
+  width: calc(44px + max(var(--mx-side-w), 128px));
+  transition: border-color 0.5s ease;
+}
+
+.mx-collapsed .mx-window .bar-left {
+  border-right-color: transparent;
+}
+
+.mx-window .bar-toggle,
+.mx-window .bw-rail-btn {
+  transition:
+    background 0.5s ease,
+    color 0.5s ease;
+}
+
+.mx-titles {
+  display: inline-grid;
+  min-width: 0;
+}
+
+.mx-title {
+  grid-area: 1 / 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.mx-title.is-on {
+  opacity: 1;
+  transition: opacity 0.35s ease 0.3s;
+}
+
+.mx-rail-plugin {
+  height: 0;
+  margin-top: -6px;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    height var(--mx-move),
+    margin var(--mx-move),
+    opacity 0.4s ease,
+    background 0.5s ease;
+}
+
+.mx-rail-plugin.is-on {
+  height: 28px;
+  margin-top: 0;
+  opacity: 1;
+  transition:
+    height var(--mx-move),
+    margin var(--mx-move),
+    opacity 0.5s ease 0.3s,
+    background 0.5s ease;
+}
+
+.mx-side-slot,
+.mx-center,
+.mx-panel-slot {
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.mx-side-slot {
+  width: var(--mx-side-w);
+  border-right: 1px solid var(--border-soft);
+  background: var(--mx-side);
+}
+
+.mx-center {
+  flex: 1;
+  min-width: 0;
+}
+
+.mx-panel-slot {
+  width: var(--mx-panel-w);
+}
+
+.mx-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  visibility: hidden;
+}
+
+.mx-layer.is-under {
+  z-index: 1;
+  visibility: visible;
+}
+
+.mx-layer.is-on {
+  z-index: 2;
+  visibility: visible;
+}
+
+.mx-layer.is-entering {
+  animation: mx-enter 0.5s ease 0.1s both;
+}
+
+@keyframes mx-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.bw-morph .side.mx-layer {
+  right: auto;
+  border-right: 0;
+  background: var(--mx-side);
+}
+
+.bw-morph .mx-side-threads {
+  width: max(192px, 100%);
+}
+
+.bw-morph .mx-side-shelves {
+  width: max(256px, 100%);
+}
+
+.mx-center > .main {
+  background: var(--bg);
+}
+
+.mx-feed {
+  justify-content: flex-start;
+}
+
+.mx-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--subtle);
+}
+
+.mx-dot.is-ok {
+  background: var(--mx-ok);
+}
+
+.mx-dot.is-run {
+  background: var(--mx-accent);
+}
+
+.mx-dot.is-red {
+  background: var(--mx-red);
+}
+
+.mx-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--mx-accent) 22%, var(--bg));
+  color: var(--ink);
+  font-size: 8.5px;
+  font-weight: 600;
+}
+
+.mx-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-recessed);
+  font-size: 12px;
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.mx-seg > span {
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.mx-seg > .is-on {
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--border-soft);
+}
+
+.mx-state {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--subtle);
+}
+
+.mx-state.is-progress {
+  color: var(--mx-warn);
+}
+
+.mx-state.is-review {
+  color: var(--mx-ok);
+}
+
+.mx-state.is-done {
+  color: var(--mx-accent);
+}
+
+.mx-tb {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mx-tb-bar {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 2px;
+}
+
+.mx-tb-lanes {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+}
+
+.mx-tb-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 206px;
+  flex-shrink: 0;
+}
+
+.mx-tb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mx-tb-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--subtle);
+}
+
+.mx-tb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.mx-tb-key {
+  padding-left: 2px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.mx-tb-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-strong);
+}
+
+.mx-tb-title .mx-state {
+  margin-top: 2px;
+}
+
+.mx-tb-labels {
+  display: flex;
+  gap: 4px;
+}
+
+.mx-tb-label {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-recessed);
+  color: var(--dim);
+}
+
+.mx-tb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--subtle);
+}
+
+.mx-tb-start {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.mx-tb-start-ic {
+  width: 13px;
+  height: 13px;
+}
+
+.mx-fe {
+  display: flex;
+  height: 100%;
+  font-size: 12px;
+}
+
+.mx-fe-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 212px;
+  flex-shrink: 0;
+  padding: 10px 8px 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--mx-side);
+}
+
+.mx-fe-pick {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.mx-fe-pick-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mx-fe-search {
+  color: var(--subtle);
+}
+
+.mx-fe-ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mx-fe-chev,
+.mx-fe-twist,
+.mx-fe-sep {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mx-fe-file.is-ts {
+  color: var(--mx-accent);
+}
+
+.mx-fe-file.is-md {
+  color: var(--mx-ok);
+}
+
+.mx-fe-file.is-json {
+  color: var(--mx-warn);
+}
+
+.mx-fe-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin-top: 4px;
+}
+
+.mx-fe-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-right: 6px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.mx-fe-row > .mx-fe-file {
+  margin-left: 17px;
+}
+
+.mx-fe-row.is-active {
+  background: var(--state-hover);
+}
+
+.mx-fe-foot {
+  margin: 0 -8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 10.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mx-fe-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.mx-fe-tabs {
+  display: flex;
+  height: 36px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--mx-side);
+}
+
+.mx-fe-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid var(--border-soft);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.mx-fe-tab.is-on {
+  margin-bottom: -1px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.mx-fe-x {
+  width: 10px;
+  height: 10px;
+  color: var(--subtle);
+}
+
+.mx-fe-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.mx-fe-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mx-fe-here {
+  color: var(--ink);
+}
+
+.mx-fe-crumbs .mx-seg {
+  font-size: 11px;
+}
+
+.mx-fe-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 36px;
+  color: var(--ink);
+}
+
+.mx-fe-h1 {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.mx-fe-h2 {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.mx-fe-p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mx-fe-p code,
+.mx-fe-pre {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.mx-fe-p code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+}
+
+.mx-fe-pre {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.mx-fe-pre em {
+  font-style: normal;
+  color: var(--mx-red);
+}
+
+.mx-sh-scope,
+.mx-sh-shelf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--subtle);
+}
+
+.mx-sh-scope {
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.mx-sh-shelf {
+  margin: 14px 0 6px;
+  font-size: 11px;
+}
+
+.mx-sh-shelf > i {
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+
+.mx-sh-shelf.is-closed {
+  margin: 10px 0 0;
+}
+
+.mx-sh-chev {
+  width: 12px;
+  height: 12px;
+}
+
+.mx-sh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 7px;
+}
+
+.mx-sh-card.is-active {
+  background: color-mix(in oklab, var(--ink) 7%, var(--mx-side));
+}
+
+.mx-sh-proj {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.mx-sh-age {
+  font-weight: 400;
+}
+
+.mx-sh-title {
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mx-sh-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--subtle);
+}
+
+.mx-sh-branch-ic {
+  width: 11px;
+  height: 11px;
+}
+
+.mx-sh-kids {
+  margin: 2px 0 4px 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.mx-sh-kid {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 4px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.mx-sh-kid-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.mx-sh-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mx-sh-badge.is-run {
+  color: var(--mx-cyan);
+}
+
+.mx-sh-badge.is-ask {
+  color: var(--mx-warn);
+}
+
+.mx-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  border-left: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.mx-ag {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mx-ag-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.mx-ag-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--surface-recessed);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.mx-ag-tab-ic,
+.mx-ag-plus {
+  width: 13px;
+  height: 13px;
+  color: var(--subtle);
+}
+
+.mx-ag-canvas {
+  position: relative;
+  flex: 1;
+  background-color: var(--surface);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--ink) 18%, transparent) 1px,
+    transparent 1.2px
+  );
+  background-size: 14px 14px;
+}
+
+.mx-ag-tools {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.mx-ag-tools .mx-seg {
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border-soft);
+  font-size: 11px;
+}
+
+.mx-ag-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 400px;
+  height: 420px;
+  fill: none;
+  stroke: color-mix(in oklab, var(--ink) 34%, transparent);
+  stroke-width: 1.2;
+}
+
+.mx-ag-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 8px 0 9px;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--mx-node);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px -8px color-mix(in oklab, var(--shade) 40%, transparent);
+}
+
+.mx-ag-node.is-thread {
+  --mx-node: var(--mx-accent);
+}
+
+.mx-ag-node.is-turn {
+  --mx-node: var(--mx-purple);
+}
+
+.mx-ag-node.is-subagent {
+  --mx-node: var(--mx-red);
+}
+
+.mx-ag-node.is-bash {
+  --mx-node: var(--mx-ok);
+}
+
+.mx-ag-node.is-read {
+  --mx-node: var(--mx-cyan);
+}
+
+.mx-ag-chip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--mx-node) 16%, var(--bg));
+  color: var(--mx-node);
+}
+
+.mx-ag-ic {
+  width: 12px;
+  height: 12px;
+}
+
+.mx-ag-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mx-ag-title,
+.mx-ag-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mx-ag-title {
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.mx-ag-detail {
+  font-size: 10px;
+  color: var(--subtle);
+}
+
+.mx-ag-node .mx-dot {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.mx-ag-foot {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+.mx-ag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 11px;
+  color: var(--ink);
+}
+
+@media (max-width: 587px) {
+  .bw.bw-morph {
+    --bw-visible-width: 400px;
+    zoom: var(--bw-scale, 0.88);
+  }
+
+  .bw-morph {
+    --mx-side-w: 0px;
+  }
+
+  .bw-morph.mx-graph {
+    --mx-side-w: 0px;
+    --mx-panel-w: calc(var(--bw-fit-slice) - 44px);
+  }
+
+  .bw-morph .bar-nav {
+    display: none;
+  }
+
+  .mx-window .bar-left {
+    width: auto;
+  }
+
+  .mx-center {
+    flex: none;
+    width: max(
+      0px,
+      calc(var(--bw-fit-slice) - 44px - var(--mx-side-w) - var(--mx-panel-w))
+    );
+  }
+
+  .mx-center > .main {
+    min-width: 320px;
+  }
+
+  .mx-side-slot {
+    border-right-width: 0;
+  }
+
+  .bw-morph.mx-shelves .mx-side-slot {
+    border-right-width: 1px;
+  }
+
+  .mx-panel {
+    width: calc(var(--bw-fit-slice) - 44px);
+  }
+
+  .mx-fe-tree {
+    width: 150px;
+  }
+
+  .mx-fe-meta,
+  .mx-fe-tab:not(.is-on) {
+    display: none;
+  }
+
+  .mx-fe-doc {
+    padding: 18px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bw-morph {
+    transition: none;
   }
 }
 

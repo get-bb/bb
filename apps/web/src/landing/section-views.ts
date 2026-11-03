@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { trackLandingEvent } from "./analytics";
 
@@ -74,15 +74,20 @@ export function observeSectionViews(
   };
 }
 
-export function useSectionViews(): void {
+export function useSectionViews(onView?: (section: string) => void): void {
+  const onViewRef = useRef(onView);
+  useEffect(() => {
+    onViewRef.current = onView;
+  }, [onView]);
   useEffect(
     () =>
-      observeSectionViews(document, (section) =>
+      observeSectionViews(document, (section) => {
         trackLandingEvent({
           name: "landing_section_viewed",
           properties: { section },
-        }),
-      ),
+        });
+        onViewRef.current?.(section);
+      }),
     [],
   );
 }
