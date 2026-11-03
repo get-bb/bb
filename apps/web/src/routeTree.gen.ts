@@ -15,6 +15,8 @@ import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
 import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
+import { Route as LlmsDottxtRouteImport } from "./routes/llms[.]txt";
+import { Route as LlmsFullDottxtRouteImport } from "./routes/llms-full[.]txt";
 import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
@@ -30,6 +32,7 @@ import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
 import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
+import { Route as DocsChar123Char125DotmdRouteImport } from "./routes/docs.{$}[.]md";
 import { Route as DocsSearchDotjsonRouteImport } from "./routes/docs.search[.]json";
 import { Route as DocsSplatRouteImport } from "./routes/docs.$";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
@@ -84,6 +87,16 @@ const PluginGuideRoute = PluginGuideRouteImport.update({
 const MarketplaceRoute = MarketplaceRouteImport.update({
   id: "/marketplace_",
   path: "/marketplace",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
+  id: "/llms.txt",
+  path: "/llms.txt",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const LlmsFullDottxtRoute = LlmsFullDottxtRouteImport.update({
+  id: "/llms-full.txt",
+  path: "/llms-full.txt",
   getParentRoute: () => rootRouteImport,
 } as any);
 const LinkRoute = LinkRouteImport.update({
@@ -159,6 +172,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
 const DownloadLinuxRoute = DownloadLinuxRouteImport.update({
   id: "/download/linux",
   path: "/download/linux",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DocsChar123Char125DotmdRoute = DocsChar123Char125DotmdRouteImport.update({
+  id: "/docs/{$}.md",
+  path: "/docs/{$}.md",
   getParentRoute: () => rootRouteImport,
 } as any);
 const DocsSearchDotjsonRoute = DocsSearchDotjsonRouteImport.update({
@@ -301,6 +319,8 @@ export interface FileRoutesByFullPath {
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
+  "/llms-full.txt": typeof LlmsFullDottxtRoute;
+  "/llms.txt": typeof LlmsDottxtRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
@@ -316,6 +336,7 @@ export interface FileRoutesByFullPath {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
+  "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -349,6 +370,8 @@ export interface FileRoutesByTo {
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
+  "/llms-full.txt": typeof LlmsFullDottxtRoute;
+  "/llms.txt": typeof LlmsDottxtRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
@@ -364,6 +387,7 @@ export interface FileRoutesByTo {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
+  "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -398,6 +422,8 @@ export interface FileRoutesById {
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
+  "/llms-full.txt": typeof LlmsFullDottxtRoute;
+  "/llms.txt": typeof LlmsDottxtRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
   "/plugin-guide": typeof PluginGuideRoute;
   "/privacy": typeof PrivacyRoute;
@@ -413,6 +439,7 @@ export interface FileRoutesById {
   "/compare/$slug": typeof CompareSlugRoute;
   "/docs/$": typeof DocsSplatRoute;
   "/docs/search.json": typeof DocsSearchDotjsonRoute;
+  "/docs/{$}.md": typeof DocsChar123Char125DotmdRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
   "/download/windows": typeof DownloadWindowsRoute;
@@ -448,6 +475,8 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/dashboard"
     | "/link"
+    | "/llms-full.txt"
+    | "/llms.txt"
     | "/marketplace"
     | "/plugin-guide"
     | "/privacy"
@@ -463,6 +492,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/search.json"
+    | "/docs/{$}.md"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -496,6 +526,8 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/dashboard"
     | "/link"
+    | "/llms-full.txt"
+    | "/llms.txt"
     | "/marketplace"
     | "/plugin-guide"
     | "/privacy"
@@ -511,6 +543,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/search.json"
+    | "/docs/{$}.md"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -544,6 +577,8 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/dashboard"
     | "/link"
+    | "/llms-full.txt"
+    | "/llms.txt"
     | "/marketplace_"
     | "/plugin-guide"
     | "/privacy"
@@ -559,6 +594,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/docs/$"
     | "/docs/search.json"
+    | "/docs/{$}.md"
     | "/download/linux"
     | "/download/macos"
     | "/download/windows"
@@ -593,6 +629,8 @@ export interface RootRouteChildren {
   ChangelogRoute: typeof ChangelogRoute;
   DashboardRoute: typeof DashboardRoute;
   LinkRoute: typeof LinkRoute;
+  LlmsFullDottxtRoute: typeof LlmsFullDottxtRoute;
+  LlmsDottxtRoute: typeof LlmsDottxtRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
   PluginGuideRoute: typeof PluginGuideRoute;
   PrivacyRoute: typeof PrivacyRoute;
@@ -608,6 +646,7 @@ export interface RootRouteChildren {
   CompareSlugRoute: typeof CompareSlugRoute;
   DocsSplatRoute: typeof DocsSplatRoute;
   DocsSearchDotjsonRoute: typeof DocsSearchDotjsonRoute;
+  DocsChar123Char125DotmdRoute: typeof DocsChar123Char125DotmdRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
@@ -674,6 +713,20 @@ declare module "@tanstack/react-router" {
       path: "/marketplace";
       fullPath: "/marketplace";
       preLoaderRoute: typeof MarketplaceRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/llms.txt": {
+      id: "/llms.txt";
+      path: "/llms.txt";
+      fullPath: "/llms.txt";
+      preLoaderRoute: typeof LlmsDottxtRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/llms-full.txt": {
+      id: "/llms-full.txt";
+      path: "/llms-full.txt";
+      fullPath: "/llms-full.txt";
+      preLoaderRoute: typeof LlmsFullDottxtRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/link": {
@@ -779,6 +832,13 @@ declare module "@tanstack/react-router" {
       path: "/download/linux";
       fullPath: "/download/linux";
       preLoaderRoute: typeof DownloadLinuxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/docs/{$}.md": {
+      id: "/docs/{$}.md";
+      path: "/docs/{$}.md";
+      fullPath: "/docs/{$}.md";
+      preLoaderRoute: typeof DocsChar123Char125DotmdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/docs/search.json": {
@@ -981,6 +1041,8 @@ const rootRouteChildren: RootRouteChildren = {
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
   LinkRoute: LinkRoute,
+  LlmsFullDottxtRoute: LlmsFullDottxtRoute,
+  LlmsDottxtRoute: LlmsDottxtRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
   PluginGuideRoute: PluginGuideRoute,
   PrivacyRoute: PrivacyRoute,
@@ -999,6 +1061,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompareSlugRoute: CompareSlugRoute,
   DocsSplatRoute: DocsSplatRoute,
   DocsSearchDotjsonRoute: DocsSearchDotjsonRoute,
+  DocsChar123Char125DotmdRoute: DocsChar123Char125DotmdRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,

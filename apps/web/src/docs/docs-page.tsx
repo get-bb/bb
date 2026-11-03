@@ -1,3 +1,5 @@
+import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Menu01Icon from "@hugeicons/core-free-icons/Menu01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Suspense, useEffect, useRef } from "react";
@@ -5,11 +7,13 @@ import { AnchorProvider, TOCItem, type TOCItemType } from "fumadocs-core/toc";
 
 import { useInitAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { CopyToast } from "../guides/guide-blocks";
+import { CopyToast, PROMPT_COPIED, useCopy } from "../guides/guide-blocks";
 import { docs } from "./content";
 import { DocsH2, DocsH3, DocsPageUrl } from "./docs-headings";
 import { DocsSearch } from "./docs-search";
 import type { DocsNavSection, DocsPageView, DocsTocEntry } from "./page-view";
+
+const SITE = "https://getbb.app";
 
 function DocsNav({ view }: { view: DocsPageView }) {
   return (
@@ -91,6 +95,85 @@ function MobileNav({ view }: { view: DocsPageView }) {
   );
 }
 
+function CopyPageMenu({ view }: { view: DocsPageView }) {
+  const ref = useDismissableDetails();
+  const pageUrl = `${SITE}${view.markdownUrl}`;
+  const prompt = `Read ${pageUrl} and help me with it.`;
+  const aiPrompt = encodeURIComponent(
+    `Read ${pageUrl} and answer questions about it.`,
+  );
+  const markdown = useCopy(view.pageMarkdown, "Page copied as Markdown");
+  const openInBb = useCopy(prompt, PROMPT_COPIED);
+  const close = () => ref.current?.removeAttribute("open");
+  return (
+    <div className="docs-copy">
+      <button
+        type="button"
+        className="docs-copy-main"
+        onClick={() => void markdown.copy()}
+      >
+        <HugeiconsIcon icon={Copy01Icon} className="docs-ic" aria-hidden />
+        {markdown.copied ? "Copied" : "Copy page"}
+      </button>
+      <details ref={ref} className="docs-copy-more">
+        <summary aria-label="More ways to use this page">
+          <HugeiconsIcon
+            icon={ArrowDown01Icon}
+            className="docs-ic"
+            aria-hidden
+          />
+        </summary>
+        <div className="docs-copy-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              close();
+              void openInBb.copy();
+            }}
+          >
+            <span>Open in bb</span>
+            <small>Copy a prompt for a bb thread</small>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              close();
+              void markdown.copy();
+            }}
+          >
+            <span>Copy as Markdown</span>
+            <small>For pasting into any agent</small>
+          </button>
+          <a role="menuitem" href={view.markdownUrl}>
+            <span>View as Markdown</span>
+            <small>Open this page as plain text</small>
+          </a>
+          <a
+            role="menuitem"
+            href={`https://claude.ai/new?q=${aiPrompt}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span>Open in Claude</span>
+            <small>Ask Claude about this page</small>
+          </a>
+          <a
+            role="menuitem"
+            href={`https://chatgpt.com/?q=${aiPrompt}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span>Open in ChatGPT</span>
+            <small>Ask ChatGPT about this page</small>
+          </a>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function DocsToc({
   entries,
   editUrl,
@@ -165,6 +248,7 @@ export function DocsPage({ view }: { view: DocsPageView }) {
                 </div>
                 <div className="docs-title-row">
                   <h1>{view.title}</h1>
+                  <CopyPageMenu view={view} />
                 </div>
                 <p className="docs-lede">{view.description}</p>
                 <article className="docs-body">

@@ -102,7 +102,8 @@
   text-overflow: ellipsis;
 }
 
-.docs-wrap .docs-mobile-nav summary::-webkit-details-marker {
+.docs-wrap .docs-mobile-nav summary::-webkit-details-marker,
+.docs-wrap .docs-copy-more summary::-webkit-details-marker {
   display: none;
 }
 
@@ -275,6 +276,80 @@
   line-height: 1.15;
   letter-spacing: -0.02em;
   color: var(--heading);
+}
+
+.docs-wrap .docs-copy {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.docs-wrap .docs-copy-main,
+.docs-wrap .docs-copy-more summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.docs-wrap .docs-copy-more summary {
+  height: 100%;
+  padding: 5px 8px;
+  border-left: 1px solid var(--border);
+}
+
+.docs-wrap .docs-copy-main:hover,
+.docs-wrap .docs-copy-more summary:hover {
+  background: var(--state-hover);
+}
+
+.docs-wrap .docs-copy-menu {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  top: calc(100% + 4px);
+  width: 240px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 14%, transparent);
+}
+
+.docs-wrap .docs-copy-menu a,
+.docs-wrap .docs-copy-menu button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--heading);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.docs-wrap .docs-copy-menu small {
+  color: var(--subtle);
+  font-size: var(--text-label-small);
+}
+
+.docs-wrap .docs-copy-menu a:hover,
+.docs-wrap .docs-copy-menu button:hover {
+  background: var(--state-hover);
 }
 
 .docs-wrap .docs-lede {
@@ -470,5 +545,10 @@
 
   .docs-wrap .docs-title-row h1 {
     font-size: 26px;
+  }
+
+  .docs-wrap .docs-copy {
+    margin-top: 0;
+    margin-bottom: 8px;
   }
 }
