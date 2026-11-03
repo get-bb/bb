@@ -603,7 +603,7 @@ export function makeEnvironment(
 export function makeWorkspaceStatus(
   overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
-  const base: WorkspaceStatus = {
+  const base: Omit<WorkspaceStatus, "allChanges"> = {
     workingTree: {
       hasUncommittedChanges: false,
       state: "clean",
@@ -637,5 +637,19 @@ export function makeWorkspaceStatus(
       files: [],
     },
   };
-  return { ...base, ...overrides };
+  const workingTree = overrides.workingTree ?? base.workingTree;
+  const mergeBase =
+    overrides.mergeBase === undefined ? base.mergeBase : overrides.mergeBase;
+  const committed = mergeBase?.hasCommittedUnmergedChanges ? mergeBase : null;
+  return {
+    ...base,
+    allChanges: {
+      insertions: workingTree.insertions + (committed?.insertions ?? 0),
+      deletions: workingTree.deletions + (committed?.deletions ?? 0),
+      lineStatsComplete:
+        workingTree.lineStatsComplete && (committed?.lineStatsComplete ?? true),
+      fileCount: workingTree.fileCount + (committed?.fileCount ?? 0),
+    },
+    ...overrides,
+  };
 }

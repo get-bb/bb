@@ -2,7 +2,7 @@
 
 import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
 import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -46,6 +46,11 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { appQueryClient } from "./app-query-client";
+import { defaultExperiments } from "@bb/domain";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
   pluginId: string,
@@ -157,8 +162,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     importRetryDelaysMs: [] as readonly number[],
     applyCss: vi.fn(),
@@ -208,6 +213,70 @@ describe("reconcilePluginFrontends", () => {
       await expect(fetchFrontendCandidates(queryClient)).resolves.toEqual([
         candidate("account-pool", "v1"),
       ]);
+    },
+  );
+
+  it.each([
+    {
+      cancelledBy: "its last observer unmounting",
+      start: (queryClient: QueryClient) => {
+        const observer = new QueryObserver(
+          queryClient,
+          pluginListQueryOptions({ enabled: true }),
+        );
+        const unsubscribe = observer.subscribe(() => {});
+        return () => unsubscribe();
+      },
+    },
+    {
+      cancelledBy: "cancelQueries",
+      start: (queryClient: QueryClient) => () =>
+        void queryClient.cancelQueries(),
+    },
+  ])(
+    "fetches frontend candidates again when the shared plugin list fetch is cancelled by $cancelledBy",
+    async ({ start }) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const fetchMock = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            if (fetchMock.mock.calls.length === 1) {
+              init?.signal?.addEventListener("abort", () =>
+                reject(new DOMException("Aborted", "AbortError")),
+              );
+              return;
+            }
+            resolve(
+              new Response(
+                JSON.stringify({
+                  plugins: [
+                    makeInstalledPlugin({
+                      id: "account-pool",
+                      app: {
+                        hasApp: true,
+                        bundle: candidate("account-pool", "v1").bundle,
+                      },
+                    }),
+                  ],
+                }),
+                { headers: { "content-type": "application/json" } },
+              ),
+            );
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const cancel = start(queryClient);
+      const candidates = fetchFrontendCandidates(queryClient);
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      cancel();
+
+      await expect(candidates).resolves.toEqual([
+        candidate("account-pool", "v1"),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     },
   );
 
@@ -1433,6 +1502,7 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
@@ -1451,6 +1521,27 @@ describe("applyPluginCss", () => {
       ),
     ];
   }
+
+  it.each([
+    [false, `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`],
+    [
+      true,
+      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+    ],
+  ])(
+    "requests the narrow stylesheet only when narrowPluginCss is %s",
+    (narrowPluginCss, href) => {
+      appQueryClient.setQueryData(
+        systemConfigQueryKey(),
+        makeSystemConfig({
+          experiments: { ...defaultExperiments, narrowPluginCss },
+        }),
+      );
+      retainPluginCss("hello");
+      applyPluginCss("hello", "/assets/app.css?h=aaa");
+      expect(links("hello")[0]?.getAttribute("href")).toBe(href);
+    },
+  );
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");

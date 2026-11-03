@@ -25,8 +25,7 @@ import {
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-const { forkSessionMock, queryMock, contextQueryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
+const { queryMock, contextQueryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   contextQueryMock: vi.fn(),
 }));
@@ -38,7 +37,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
     args.options?.persistSession === false && args.options.forkSession === true
       ? contextQueryMock(args)
       : queryMock(args),
-  forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
@@ -685,7 +683,6 @@ describe("bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     contextQueryMock.mockImplementation(() => createControlledClaudeQuery());
-    forkSessionMock.mockResolvedValue({ sessionId: "forked-session-1" });
     queryMock.mockReturnValue({
       initializationResult: vi.fn().mockResolvedValue({
         account: {},
@@ -1235,10 +1232,6 @@ describe("bridge", () => {
   });
 
   it("forks a Claude session from the session config directory through the requested checkpoint", async () => {
-    const actualSdk = await vi.importActual<
-      typeof import("@anthropic-ai/claude-agent-sdk")
-    >("@anthropic-ai/claude-agent-sdk");
-    forkSessionMock.mockImplementation(actualSdk.forkSession);
     const root = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
     tempDirs.push(root);
     const hostConfigDir = join(root, "host-config");

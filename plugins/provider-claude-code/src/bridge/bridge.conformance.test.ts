@@ -13,16 +13,20 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
-const { forkSessionMock, queryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
+const { forkClaudeSessionMock, queryMock } = vi.hoisted(() => ({
+  forkClaudeSessionMock: vi.fn(),
   queryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: queryMock,
-  forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
+}));
+
+vi.mock("./session-fork.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session-fork.js")>()),
+  forkClaudeSession: forkClaudeSessionMock,
 }));
 
 import { handleLine } from "./bridge.js";
@@ -163,8 +167,9 @@ beforeEach(() => {
   queryMock.mockImplementation((call: ScriptedClaudeQueryCall) =>
     createScriptedClaudeQuery(call),
   );
-  forkSessionMock.mockImplementation((sessionId: string) =>
-    Promise.resolve({ sessionId: `${sessionId}-fork` }),
+  forkClaudeSessionMock.mockImplementation(
+    (args: { sourceSessionId: string }) =>
+      Promise.resolve(`${args.sourceSessionId}-fork`),
   );
   output = captureBridgeJsonRpcOutput();
 });

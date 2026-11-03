@@ -1,6 +1,5 @@
 import type { SidebarThread } from "./sidebar-thread.js";
 import type { ThreadComparator } from "./project-thread-groups.js";
-import { isUnreadDoneThread } from "./thread-activity.js";
 
 export interface HeldReadStatus {
   threadId: string;
@@ -8,6 +7,14 @@ export interface HeldReadStatus {
 }
 
 export type ThreadUnreadPredicate = (thread: SidebarThread) => boolean;
+
+function isUnreadDoneThread(thread: SidebarThread): boolean {
+  return (
+    thread.parentThreadId === null &&
+    thread.isUnread &&
+    (thread.status === "idle" || thread.status === "error")
+  );
+}
 
 let lastHeldReadStatus: HeldReadStatus | null = null;
 

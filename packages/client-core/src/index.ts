@@ -1,17 +1,11 @@
 export * from "./api-types.js";
 
 export * from "./thread/thread-read-state.js";
-export * from "./thread/thread-activity.js";
 
 export * from "./codepoint-compare.js";
 export * from "./environment-providers.js";
-export * from "./sidebar/sectionKeys.js";
 export * from "./sidebar/projectThreadGroups.js";
-export * from "./sidebar/machineThreadGroups.js";
-export * from "./sidebar/pinnedSidebarThreads.js";
 export * from "./sidebar/threadReadState.js";
-export * from "./sidebar/sidebarSectionId.js";
-export * from "./sidebar/sidebarSectionOrder.js";
 export * from "./sidebar/neighbor-reorder.js";
 
 export * from "./prompt/create-resource-prompts.js";

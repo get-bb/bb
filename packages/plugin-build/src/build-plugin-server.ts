@@ -11,6 +11,10 @@ import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { init as initModuleLexer, parse as parseModule } from "es-module-lexer";
 import { renameIntoPlace } from "./rename-into-place.js";
+import {
+  isPluginSdkImportProvided,
+  PLUGIN_SDK_ROOT_FILTER,
+} from "./plugin-sdk-runtime.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
 import { zodResolutionPlugin } from "./zod-resolution.js";
@@ -37,7 +41,6 @@ export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
   "better-sqlite3",
 ];
 
-const PLUGIN_SDK_ROOT_FILTER = /^@get-bb\/plugin-sdk$|^@bb\/plugin-sdk$/;
 const PLUGIN_SDK_SUBPATH_FILTER = /^@get-bb\/plugin-sdk\//;
 const PLUGIN_SDK_SUBPATH_RESOLVE_MARK = "bb-server-sdk-subpath";
 const PLUGIN_RUNTIME_FALLBACK_RESOLVE_MARK = "bb-server-runtime-fallback";
@@ -179,7 +182,7 @@ export async function buildPluginServer(
       ...(format === "esm" ? { banner: { js: NODE_ESM_REQUIRE_BANNER } } : {}),
       external: PLUGIN_SERVER_EXTERNALS.filter(
         (specifier) =>
-          !PLUGIN_SDK_ROOT_FILTER.test(specifier) &&
+          !isPluginSdkImportProvided("server", specifier, []) &&
           runtimeImports[specifier] === undefined,
       ).concat(
         Object.values(runtimeImports)

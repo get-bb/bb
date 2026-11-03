@@ -395,6 +395,32 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
   });
 
+  it("follows a scroll without input while the pointer is over an embedded frame, whose wheel events the timeline never receives", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const frame = document.createElement("iframe");
+    timeline.element("row-9").append(frame);
+
+    frame.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 300);
+    expect(timeline.keeper.isAttached()).toBe(false);
+    expect(timeline.layout.scrollTop).toBe(
+      timeline.layout.maxScrollTop() - 300,
+    );
+  });
+
+  it("keeps the end again once a hovered frame leaves the timeline, even before the pointer moves", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const frame = document.createElement("iframe");
+    timeline.element("row-9").append(frame);
+
+    frame.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    frame.remove();
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 300);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+  });
+
   it("follows a focus move after Tab as the reader's scroll", () => {
     const timeline = createTimeline(rowsOf(10), { attached: true });
 

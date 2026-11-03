@@ -864,6 +864,7 @@ function settleThreadCommandFailure(
           childThread: thread,
           parentThreadId,
           turnStatus: "failed",
+          turnId: null,
         }),
     });
   }
@@ -1888,6 +1889,7 @@ function interruptActiveThreads(
         childThread: thread,
         parentThreadId: thread.parentThreadId,
         turnStatus: "interrupted",
+        turnId: result.interruptedTurnId,
         interruption: {
           reason: args.reason,
           ...(args.cause ? { cause: args.cause } : {}),

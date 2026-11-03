@@ -1938,146 +1938,154 @@ describe("bb tasks CLI", () => {
     }
   });
 
-  it("routes file flags to the invoking thread's machine and honors --machine", async () => {
-    const remoteDir = resolve("/remote");
-    const remoteFiles = new Map<string, Buffer>([
-      [
-        join(remoteDir, "notes.md"),
-        Buffer.from("remote description\n", "utf8"),
-      ],
-      [
-        join(remoteDir, "shot.png"),
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      ],
-    ]);
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        threads: {
-          get: async ({ threadId }: { threadId: string }) =>
-            makeThreadResponse({ id: threadId, environmentId: "env-remote" }),
-        },
-        environments: {
-          get: async () => ({ hostId: "machine-remote" }),
-        },
-        hosts: {
-          list: async () => [{ id: "machine-remote", name: "Remote Laptop" }],
-        },
-        files: {
-          read: async ({ path }: { path: string }) => {
-            const contents = remoteFiles.get(path);
-            if (!contents) throw new Error(`Path does not exist: ${path}`);
-            const contentEncoding = isUtf8(contents) ? "utf8" : "base64";
-            return {
+  it.each([
+    ["/remote", "/remote", "/"],
+    ["C:", "C:", "\\"],
+    ["//server/share/remote", "\\\\server\\share\\remote", "\\"],
+  ])(
+    "routes file flags from %s to the invoking machine",
+    async (remoteDir, canonicalRoot, separator) => {
+      const remoteJoin = (_root: string, ...parts: string[]) =>
+        `${canonicalRoot}${separator}${parts.join(separator)}`;
+      const remoteFiles = new Map<string, Buffer>([
+        [
+          remoteJoin(remoteDir, "notes.md"),
+          Buffer.from("remote description\n", "utf8"),
+        ],
+        [
+          remoteJoin(remoteDir, "shot.png"),
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        ],
+      ]);
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "tasks",
+        sdk: {
+          threads: {
+            get: async ({ threadId }: { threadId: string }) =>
+              makeThreadResponse({ id: threadId, environmentId: "env-remote" }),
+          },
+          environments: {
+            get: async () => ({ hostId: "machine-remote" }),
+          },
+          hosts: {
+            list: async () => [{ id: "machine-remote", name: "Remote Laptop" }],
+          },
+          files: {
+            read: async ({ path }: { path: string }) => {
+              const contents = remoteFiles.get(path);
+              if (!contents) throw new Error(`Path does not exist: ${path}`);
+              const contentEncoding = isUtf8(contents) ? "utf8" : "base64";
+              return {
+                path,
+                content: contents.toString(contentEncoding),
+                contentEncoding,
+                sizeBytes: contents.byteLength,
+              };
+            },
+            write: async ({
               path,
-              content: contents.toString(contentEncoding),
+              content,
               contentEncoding,
-              sizeBytes: contents.byteLength,
-            };
-          },
-          write: async ({
-            path,
-            content,
-            contentEncoding,
-          }: {
-            path: string;
-            content: string;
-            contentEncoding?: "utf8" | "base64";
-          }) => {
-            remoteFiles.set(path, Buffer.from(content, contentEncoding));
-            return { outcome: "written", path };
+            }: {
+              path: string;
+              content: string;
+              contentEncoding?: "utf8" | "base64";
+            }) => {
+              remoteFiles.set(path, Buffer.from(content, contentEncoding));
+              return { outcome: "written", path };
+            },
           },
         },
-      },
-    });
-    await plugin(bb);
-    const threadCtx = { threadId: "thr_remote_worker", cwd: remoteDir };
+      });
+      await plugin(bb);
+      const threadCtx = { threadId: "thr_remote_worker", cwd: remoteDir };
 
-    stdout(
-      await harness.runCli([
-        "project",
-        "create",
-        "--name",
-        "Remote",
-        "--prefix",
-        "REM",
-      ]),
-    );
-    const created = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Remote",
+          "--prefix",
+          "REM",
+        ]),
+      );
+      const created = JSON.parse(
+        stdout(
+          await harness.runCli(
+            [
+              "create",
+              "--project",
+              "REM",
+              "--title",
+              "Remote files",
+              "--description-file",
+              "notes.md",
+              "--attach",
+              "shot.png",
+              "--json",
+            ],
+            threadCtx,
+          ),
+        ),
+      );
+      expect(created.task).toMatchObject({
+        key: "REM-1",
+        description: "remote description\n",
+      });
+      expect(created.attachments).toEqual([
+        expect.objectContaining({ fileName: "shot.png", mime: "image/png" }),
+      ]);
+      for (const [args] of harness.sdk.callsTo("files.read")) {
+        expect(args).toMatchObject({ hostId: "machine-remote" });
+      }
+
       stdout(
         await harness.runCli(
           [
-            "create",
-            "--project",
-            "REM",
-            "--title",
-            "Remote files",
-            "--description-file",
-            "notes.md",
-            "--attach",
-            "shot.png",
-            "--json",
+            "attachment",
+            "get",
+            created.attachments[0].id,
+            "--out",
+            "fetched/shot.png",
           ],
           threadCtx,
         ),
-      ),
-    );
-    expect(created.task).toMatchObject({
-      key: "REM-1",
-      description: "remote description\n",
-    });
-    expect(created.attachments).toEqual([
-      expect.objectContaining({ fileName: "shot.png", mime: "image/png" }),
-    ]);
-    for (const [args] of harness.sdk.callsTo("files.read")) {
-      expect(args).toMatchObject({ hostId: "machine-remote" });
-    }
-
-    stdout(
-      await harness.runCli(
+      );
+      expect(harness.sdk.callsTo("files.write")).toEqual([
         [
-          "attachment",
-          "get",
-          created.attachments[0].id,
-          "--out",
-          "fetched/shot.png",
+          expect.objectContaining({
+            hostId: "machine-remote",
+            path: remoteJoin(remoteDir, "fetched", "shot.png"),
+            contentEncoding: "base64",
+            createParents: true,
+          }),
         ],
-        threadCtx,
-      ),
-    );
-    expect(harness.sdk.callsTo("files.write")).toEqual([
-      [
-        expect.objectContaining({
-          hostId: "machine-remote",
-          path: join(remoteDir, "fetched", "shot.png"),
-          contentEncoding: "base64",
-          createParents: true,
-        }),
-      ],
-    ]);
-    expect(remoteFiles.get(join(remoteDir, "fetched", "shot.png"))).toEqual(
-      remoteFiles.get(join(remoteDir, "shot.png")),
-    );
+      ]);
+      expect(
+        remoteFiles.get(remoteJoin(remoteDir, "fetched", "shot.png")),
+      ).toEqual(remoteFiles.get(remoteJoin(remoteDir, "shot.png")));
 
-    stdout(
-      await harness.runCli([
-        "attachment",
-        "add",
-        "REM-1",
-        "--file",
-        join(remoteDir, "notes.md"),
-        "--machine",
-        "Remote Laptop",
-      ]),
-    );
-    const lastRead = harness.sdk.callsTo("files.read").at(-1)!;
-    expect(lastRead[0]).toMatchObject({
-      hostId: "machine-remote",
-      path: join(remoteDir, "notes.md"),
-    });
+      stdout(
+        await harness.runCli([
+          "attachment",
+          "add",
+          "REM-1",
+          "--file",
+          remoteJoin(remoteDir, "notes.md"),
+          "--machine",
+          "Remote Laptop",
+        ]),
+      );
+      const lastRead = harness.sdk.callsTo("files.read").at(-1)!;
+      expect(lastRead[0]).toMatchObject({
+        hostId: "machine-remote",
+        path: remoteJoin(remoteDir, "notes.md"),
+      });
 
-    await harness.dispose();
-  });
+      await harness.dispose();
+    },
+  );
 
   it("returns a friendly dispatch error when the task project is not linked", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });

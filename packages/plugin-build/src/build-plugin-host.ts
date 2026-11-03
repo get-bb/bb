@@ -10,6 +10,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { sourceImports } from "./source-imports.js";
+import {
+  isPluginSdkImportProvided,
+  PLUGIN_SDK_HOST_FALLBACK_SPECIFIER,
+} from "./plugin-sdk-runtime.js";
 import { renameIntoPlace } from "./rename-into-place.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { zodLocaleStubPlugin } from "./zod-locale-stub.mjs";
@@ -49,178 +54,10 @@ export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
 export function defineRpcContract(contract) { return contract; }
 ${PLUGIN_SDK_DEFINE_HOST_ENTRY_RUNTIME}`;
 
-const PLUGIN_SDK_HOST_FALLBACK_SPECIFIER = "@get-bb/plugin-sdk/host";
-const PLUGIN_SDK_HOST_FALLBACK_EXPORTS: ReadonlySet<string> = new Set([
-  "experimental_defineHostEntry",
-]);
 const PLUGIN_SDK_HOST_FALLBACK_NAMESPACE = "bb-host-sdk-fallback";
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-interface SourceToken {
-  kind: "identifier" | "punctuation" | "string";
-  value: string;
-}
-
-function sourceTokens(source: string): SourceToken[] {
-  const tokens: SourceToken[] = [];
-  let index = 0;
-  while (index < source.length) {
-    const character = source[index] ?? "";
-    if (/\s/u.test(character)) {
-      index += 1;
-      continue;
-    }
-    if (character === "/" && source[index + 1] === "/") {
-      index = source.indexOf("\n", index + 2);
-      if (index === -1) break;
-      continue;
-    }
-    if (character === "/" && source[index + 1] === "*") {
-      const end = source.indexOf("*/", index + 2);
-      index = end === -1 ? source.length : end + 2;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      const quote = character;
-      let value = "";
-      index += 1;
-      while (index < source.length) {
-        const next = source[index] ?? "";
-        if (next === "\\") {
-          value += source[index + 1] ?? "";
-          index += 2;
-          continue;
-        }
-        if (next === quote) {
-          index += 1;
-          break;
-        }
-        value += next;
-        index += 1;
-      }
-      tokens.push({ kind: "string", value });
-      continue;
-    }
-    if (character === "`") {
-      index += 1;
-      while (index < source.length) {
-        const next = source[index] ?? "";
-        if (next === "\\") index += 2;
-        else if (next === "`") {
-          index += 1;
-          break;
-        } else index += 1;
-      }
-      continue;
-    }
-    if (/[A-Za-z0-9_$]/u.test(character)) {
-      const start = index;
-      index += 1;
-      while (/[A-Za-z0-9_$]/u.test(source[index] ?? "")) index += 1;
-      tokens.push({
-        kind: "identifier",
-        value: source.slice(start, index),
-      });
-      continue;
-    }
-    tokens.push({ kind: "punctuation", value: character });
-    index += 1;
-  }
-  return tokens;
-}
-
-function sourceImportSpecifiers(source: string): string[] {
-  const tokens = sourceTokens(source);
-  const specifiers: string[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token?.kind !== "string") continue;
-    const previous = tokens[index - 1]?.value;
-    const callee = previous === "(" ? tokens[index - 2]?.value : undefined;
-    if (
-      previous === "from" ||
-      previous === "import" ||
-      callee === "import" ||
-      callee === "require"
-    ) {
-      specifiers.push(token.value);
-    }
-  }
-  return specifiers;
-}
-
-function importedRuntimeNames(source: string, specifier: string): string[] {
-  const tokens = sourceTokens(source);
-  const names: string[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token?.kind !== "string" || token.value !== specifier) continue;
-    if (tokens[index - 1]?.value !== "from") continue;
-    let start = index - 2;
-    while (start >= 0) {
-      const candidate = tokens[start];
-      if (
-        candidate?.kind === "identifier" &&
-        (candidate.value === "import" || candidate.value === "export")
-      ) {
-        break;
-      }
-      start -= 1;
-    }
-    if (start < 0) continue;
-    const clause = tokens.slice(start + 1, index - 1);
-    if (clause[0]?.kind === "identifier" && clause[0].value === "type") {
-      continue;
-    }
-    let braceDepth = 0;
-    let entry: SourceToken[] = [];
-    let previousTopLevel: SourceToken | undefined;
-    const flushEntry = () => {
-      const first = entry[0];
-      if (first !== undefined) {
-        const typeOnly =
-          first.kind === "identifier" &&
-          first.value === "type" &&
-          entry.length > 1 &&
-          entry[1]?.value !== "as";
-        if (!typeOnly) names.push(first.value);
-      }
-      entry = [];
-    };
-    for (const item of clause) {
-      if (item.kind === "punctuation" && item.value === "{") {
-        braceDepth += 1;
-        continue;
-      }
-      if (item.kind === "punctuation" && item.value === "}") {
-        flushEntry();
-        braceDepth -= 1;
-        continue;
-      }
-      if (item.kind === "punctuation" && item.value === ",") {
-        if (braceDepth > 0) flushEntry();
-        continue;
-      }
-      if (braceDepth > 0) {
-        entry.push(item);
-        continue;
-      }
-      if (item.kind === "punctuation" && item.value === "*") {
-        names.push("*");
-      } else if (
-        item.kind === "identifier" &&
-        item.value !== "as" &&
-        previousTopLevel?.value !== "as"
-      ) {
-        names.push("default");
-      }
-      previousTopLevel = item;
-    }
-  }
-  return names;
 }
 
 function describeImportedNames(names: readonly string[]): string {
@@ -357,7 +194,7 @@ export async function buildPluginHost(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const packageNameByDirectory = new Map<string, string | null>();
-    const sourceImports = new Map<string, string[]>();
+    const sourceImportsByFile = new Map<string, string[]>();
     const bundle = await esbuild.build({
       absWorkingDir: workingDir,
       metafile: true,
@@ -407,9 +244,16 @@ export async function buildPluginHost(
               const beyondStub =
                 importerSource === null
                   ? []
-                  : importedRuntimeNames(importerSource, args.path).filter(
-                      (name) => !PLUGIN_SDK_HOST_FALLBACK_EXPORTS.has(name),
-                    );
+                  : sourceImports(importerSource)
+                      .filter(
+                        (entry) =>
+                          entry.fromClause && entry.specifier === args.path,
+                      )
+                      .flatMap((entry) => entry.names)
+                      .filter(
+                        (name) =>
+                          !isPluginSdkImportProvided("host", args.path, [name]),
+                      );
               if (beyondStub.length > 0) {
                 return {
                   errors: [
@@ -455,7 +299,9 @@ export async function buildPluginHost(
                 };
               }
               const source = await readFile(args.path, "utf8");
-              const specifiers = sourceImportSpecifiers(source);
+              const specifiers = sourceImports(source).map(
+                (entry) => entry.specifier,
+              );
               for (const specifier of specifiers) {
                 if (specifier === "@bb" || specifier.startsWith("@bb/")) {
                   return {
@@ -463,7 +309,7 @@ export async function buildPluginHost(
                   };
                 }
               }
-              sourceImports.set(args.path, specifiers);
+              sourceImportsByFile.set(args.path, specifiers);
               return undefined;
             });
           },
@@ -491,7 +337,9 @@ export async function buildPluginHost(
           .filter((entry) => !entry.external)
           .map((entry) => entry.original ?? entry.path),
       );
-      const specifiers = [...new Set(sourceImports.get(importer) ?? [])].filter(
+      const specifiers = [
+        ...new Set(sourceImportsByFile.get(importer) ?? []),
+      ].filter(
         (specifier) =>
           !bundledImports.has(specifier) &&
           (specifier.startsWith(".") || isAbsolute(specifier)),

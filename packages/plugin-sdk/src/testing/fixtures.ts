@@ -359,6 +359,7 @@ export function makeTurnFailedEvent(
     inputAccepted: true,
     rateLimits: null,
     attemptNumber: 1,
+    originPluginId: null,
     ...overrides,
   };
 }

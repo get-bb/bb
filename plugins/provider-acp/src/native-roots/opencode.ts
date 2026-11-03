@@ -20,6 +20,17 @@ export const resolveOpenCodeNativeRoots: AcpNativeRootsResolver = async (
 ) => {
   const customDir = args.env.OPENCODE_CONFIG_DIR?.trim();
   return {
+    commands:
+      args.cwd === null
+        ? []
+        : [
+            {
+              origin: "project",
+              path: path.join(args.cwd, ".opencode", "commands"),
+              shape: "commands",
+              ancestors: true,
+            },
+          ],
     skills: [
       skillsRoot({
         origin: "user",

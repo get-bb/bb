@@ -24,20 +24,26 @@ const sdk = vi.hoisted(() => ({
   threadContextKind: "banner" as "banner" | "card",
 }));
 
-vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_useRpcKeyedQuery: () => ({
-    data: sdk.rows,
-    error: null,
-    refetch: async () => {},
-  }),
-  experimental_useRpcMutation: () => ({
-    mutate: sdk.mutate,
-    isPending: sdk.isPending,
-  }),
-  useBbNavigate: () => ({ openUrl: () => false }),
-  useSettings: () => ({ values: sdk.settings, isLoading: false }),
-  experimental_useThreadContextKind: () => sdk.threadContextKind,
-}));
+vi.mock("@get-bb/plugin-sdk/app", async () => {
+  const { createContext, useContext } = await import("react");
+  const threadContext = createContext(sdk);
+  return {
+    experimental_useRpcKeyedQuery: () => ({
+      data: sdk.rows,
+      error: null,
+      refetch: async () => {},
+    }),
+    experimental_useRpcMutation: () => ({
+      mutate: sdk.mutate,
+      isPending: sdk.isPending,
+    }),
+    useBbNavigate: () => ({ openUrl: () => false }),
+    useSettings: () => ({ values: sdk.settings, isLoading: false }),
+    experimental_useThreadContextKind: function useThreadContextKind() {
+      return useContext(threadContext).threadContextKind;
+    },
+  };
+});
 
 vi.mock("sonner", () => ({
   toast: { loading: vi.fn(), success: vi.fn(), error: vi.fn() },
@@ -104,6 +110,7 @@ function renderPart(
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   sdk.rows = {};
   sdk.settings = { showPullRequest: true };
   sdk.isPending = false;
@@ -113,6 +120,33 @@ afterEach(() => {
 });
 
 describe("pull request context segment", () => {
+  it("keeps hook order stable as settings load and toggle", () => {
+    show(PULL_REQUEST);
+    sdk.settings = undefined;
+    const errors = vi.spyOn(console, "error");
+    const { result, rerender } = renderHook(() =>
+      usePullRequestSegmentVisible({
+        threadId: "thr_1",
+        projectId: "proj_1",
+        environment: { id: "env_1" },
+      }),
+    );
+    expect(result.current).toBe(false);
+
+    sdk.settings = { showPullRequest: true };
+    rerender();
+    expect(result.current).toBe(true);
+
+    sdk.settings = { showPullRequest: false };
+    rerender();
+    expect(result.current).toBe(false);
+
+    sdk.settings = { showPullRequest: true };
+    rerender();
+    expect(result.current).toBe(true);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("shows only when the thread's environment has a pull request", () => {
     show(PULL_REQUEST);
     const input = { threadId: "thr_1", projectId: "proj_1" };

@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import {
   resolveNewThreadProjectDefaultsState,
+  resolveNewThreadBlocker,
   resolveNewThreadSubmitDisabledReason,
   restorePromptDraftAfterOptionChange,
   type ResolveNewThreadSubmitDisabledReasonArgs,
@@ -328,6 +329,42 @@ describe("resolveNewThreadSubmitDisabledReason", () => {
     expect(
       resolveNewThreadSubmitDisabledReason({ ...readyState, ...change }),
     ).toBe(reason);
+  });
+
+  it.each<
+    [
+      change: Partial<ResolveNewThreadSubmitDisabledReasonArgs>,
+      reason: string | null,
+    ]
+  >([
+    [{ isLoadingModels: true }, null],
+    [{ promptInputEmpty: true }, null],
+    [
+      {
+        modelLoadError: {
+          providerId: "codex",
+          code: "missing_executable",
+          detail: null,
+        },
+      },
+      "agent_missing",
+    ],
+    [
+      {
+        modelLoadError: {
+          providerId: "codex",
+          code: "auth_required",
+          detail: null,
+        },
+      },
+      "sign_in",
+    ],
+    [{ selectedThreadModel: "" }, "model_selection"],
+    [{ submissionEnvironmentUnavailable: true }, "project_setup"],
+  ])("classifies blocker %o as %s", (change, reason) => {
+    expect(resolveNewThreadBlocker({ ...readyState, ...change })?.reason).toBe(
+      reason,
+    );
   });
 
   it("returns no reason when every submission requirement is ready", () => {

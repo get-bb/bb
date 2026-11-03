@@ -112,3 +112,15 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
     DELETE FROM __drizzle_migrations WHERE created_at >= ${QUEUED_MESSAGE_STATE_MIGRATION_WHEN};
   `);
 }
+
+export function dropQueuedMessageDeliveryColumns(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS queued_thread_messages_coalesce_idx");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of ["coalesce_state", "coalesce_key", "delivery_mode"]) {
+    if (columns.some((column) => column.name === name)) {
+      db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+    }
+  }
+}

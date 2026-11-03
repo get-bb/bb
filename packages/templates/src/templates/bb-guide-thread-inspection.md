@@ -109,6 +109,10 @@ Inspecting:
     --timeout <duration>                   Seconds, or a duration with a unit: 90s, 20m, 4h (default: 1200s / 20 min)
     --poll-interval <duration>             Milliseconds, or a duration with a unit
 
+  Exit codes: 2 on timeout, 3 on invalid arguments, 4 when waiting for idle on
+  a thread in error with nothing queued to recover it. A failed thread whose
+  retry is queued to send by itself is still waited on.
+
 Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.

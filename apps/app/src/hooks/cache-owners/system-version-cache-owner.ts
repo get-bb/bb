@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import { systemVersionQueryKey } from "../queries/query-keys";
+import { setQueryDataOverInFlightFetch } from "./cache-effect-utils";
 
 interface HydrateSystemVersionCacheArgs {
   queryClient: QueryClient;
@@ -10,7 +11,11 @@ interface HydrateSystemVersionCacheArgs {
 export function hydrateSystemVersionCache(
   args: HydrateSystemVersionCacheArgs,
 ): void {
-  args.queryClient.setQueryData(systemVersionQueryKey(), args.version);
+  setQueryDataOverInFlightFetch<SystemVersionResponse>(
+    args.queryClient,
+    systemVersionQueryKey(),
+    args.version,
+  );
 }
 
 export function invalidateSystemVersion(args: {

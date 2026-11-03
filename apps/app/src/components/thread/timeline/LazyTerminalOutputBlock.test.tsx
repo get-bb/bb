@@ -46,7 +46,6 @@ it("requests full command output while the terminal renderer is still downloadin
           threadId="thr_main"
           timelineRows={[row]}
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />
       </Wrapper>
     </MemoryRouter>,

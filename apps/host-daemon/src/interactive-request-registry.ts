@@ -2,7 +2,10 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
 } from "@bb/domain";
-import type { HostDaemonInteractiveRequestResponse } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInteractiveRequestKey,
+  HostDaemonInteractiveRequestResponse,
+} from "@bb/host-daemon-contract";
 import { normalizeCaughtError } from "./error-utils.js";
 
 const DELIVERED_INTERACTIVE_REQUEST_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
@@ -122,6 +125,7 @@ export class InteractiveRequestRegistry {
         rejectEntry = reject;
       },
     );
+    promise.catch(() => undefined);
     const entry: PendingInteractiveRequestEntry = {
       interactionId: null,
       promise,
@@ -133,6 +137,9 @@ export class InteractiveRequestRegistry {
 
     try {
       const response = await this.options.registerRequest(request);
+      if (this.pendingEntries.get(key) !== entry) {
+        return promise;
+      }
       if (response.outcome === "rejected") {
         this.pendingEntries.delete(key);
         entry.reject(
@@ -154,7 +161,9 @@ export class InteractiveRequestRegistry {
         );
       }
     } catch (error) {
-      this.pendingEntries.delete(key);
+      if (this.pendingEntries.get(key) === entry) {
+        this.pendingEntries.delete(key);
+      }
       const registrationError = normalizeCaughtError(error);
       this.options.onRegistrationFailure?.({
         error: registrationError,
@@ -193,6 +202,33 @@ export class InteractiveRequestRegistry {
     this.pendingEntries.delete(key);
     this.addDeliveredTombstone(tombstoneKey);
     entry.resolve(request.resolution);
+  }
+
+  listOpenRequests(): HostDaemonInteractiveRequestKey[] {
+    return [...this.pendingEntries.values()].map((entry) => ({
+      threadId: entry.request.threadId,
+      providerId: entry.request.providerId,
+      providerThreadId: entry.request.providerThreadId,
+      providerRequestId: entry.request.providerRequestId,
+    }));
+  }
+
+  endRequests(
+    requests: readonly HostDaemonInteractiveRequestKey[],
+    reason: string,
+  ): void {
+    for (const request of requests) {
+      const key = buildInteractiveRequestKey(request);
+      const entry = this.pendingEntries.get(key);
+      if (!entry) continue;
+      this.pendingEntries.delete(key);
+      entry.reject(
+        new InteractiveRequestRegistryError(
+          "interactive_request_ended",
+          reason,
+        ),
+      );
+    }
   }
 
   interruptThreads(args: InterruptInteractiveThreadsArgs): void {

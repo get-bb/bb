@@ -369,7 +369,6 @@ function ScrollbackTimeline() {
       timelineRows={timeline.timelineRows}
       threadId={THREAD_ID}
       threadRuntimeDisplayStatus="idle"
-      workspaceRootPath={undefined}
     />
   );
 }

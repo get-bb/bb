@@ -162,6 +162,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const deliveryRef = useRef<VoiceDelivery>("insert");
   const mountedRef = useRef(true);
   const acceptedRecordingPendingRef = useRef(false);
+  const acceptOnUnmountRef = useRef(false);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
   const wakeLockSentinelRef = useRef<WakeLockSentinel | null>(null);
   const wakeLockRequestRef = useRef<Promise<void> | null>(null);
@@ -365,13 +366,21 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   useEffect(() => {
     return () => {
       const recorder = mediaRecorderRef.current;
-      const acceptedRecordingPending = acceptedRecordingPendingRef.current;
       if (recorder && recorder.state === "recording") {
-        shouldTranscribeRef.current = false;
+        if (acceptOnUnmountRef.current) {
+          deliveryRef.current = "insert";
+          shouldTranscribeRef.current = true;
+          acceptedRecordingPendingRef.current = true;
+        } else {
+          shouldTranscribeRef.current = false;
+        }
         try {
           recorder.stop();
-        } catch {}
+        } catch {
+          acceptedRecordingPendingRef.current = false;
+        }
       }
+      const acceptedRecordingPending = acceptedRecordingPendingRef.current;
       mediaRecorderRef.current = null;
       if (!acceptedRecordingPending) {
         chunksRef.current = [];
@@ -532,6 +541,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       promptContextRef.current = options.getPromptContext?.();
       shouldTranscribeRef.current = true;
       acceptedRecordingPendingRef.current = false;
+      acceptOnUnmountRef.current = persistRecordings;
       shouldHoldWakeLockRef.current = true;
       requestRecordingWakeLock();
 

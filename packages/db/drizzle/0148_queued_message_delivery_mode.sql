@@ -1,0 +1,1 @@
+ALTER TABLE `queued_thread_messages` ADD `delivery_mode` text DEFAULT 'steer' NOT NULL;

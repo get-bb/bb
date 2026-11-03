@@ -29,6 +29,12 @@ export interface QueuedMessageEditRequest {
   queuedMessageIndex: number;
 }
 
+export interface QueuedMessageSendTimeRequest {
+  expectedUpdatedAt: number;
+  queuedMessageId: string;
+  sendAt: number | null;
+}
+
 export interface QueuedMessageInlineEditor {
   content: ReactNode;
   queuedMessageId: string;
@@ -50,6 +56,7 @@ export interface QueuedMessagesListProps {
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
   onDelete: (id: string) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;

@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
   EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
@@ -11,18 +10,13 @@ import type { SkillSummary } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { hostPathDirname } from "../lib/host-path.js";
 import type { SharedInjectedSkillSource } from "./injected-skills.js";
 
 export interface ResolvedSharedSkills {
   runtimeSources: SharedInjectedSkillSource[];
   summaries: SkillSummary[];
   identities: ReadonlyMap<string, { contentSha256: string; realPath: string }>;
-}
-
-export function hostPathDirname(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.dirname(filePath)
-    : path.posix.dirname(filePath);
 }
 
 function toSharedSkill(

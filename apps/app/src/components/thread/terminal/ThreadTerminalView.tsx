@@ -73,6 +73,7 @@ import {
   applyTerminalControl,
   encodeTerminalArrow,
 } from "./terminal-mobile-input";
+import { forwardLateImeInput } from "./terminal-late-ime-input";
 import {
   createTerminalOsc8LinkHandler,
   isTerminalLinkActivation,
@@ -1043,6 +1044,7 @@ export function ThreadTerminalView({
     let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
+    let lateImeInputDisposable: { dispose: () => void } | null = null;
     let stopObservingFonts: (() => void) | null = null;
     const reportDocumentVisibility = () => {
       transport?.setVisible(document.visibilityState === "visible");
@@ -1141,6 +1143,7 @@ export function ThreadTerminalView({
         );
       }
       terminal.open(containerElement);
+      lateImeInputDisposable = forwardLateImeInput(terminal);
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
         session: sessionRef.current,
@@ -1348,6 +1351,7 @@ export function ThreadTerminalView({
       setConnectionNotice(null);
       resizeObserver?.disconnect();
       selectionChangeDisposable?.dispose();
+      lateImeInputDisposable?.dispose();
       document.removeEventListener(
         "visibilitychange",
         reportDocumentVisibility,

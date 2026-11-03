@@ -26,7 +26,8 @@ bb pull-request merge <environment-id> [--method merge|squash|rebase] [--json]
   PR GitHub reports as mergeable. Each re-reads the PR first and fails with
   the reason otherwise.
 - bb never wakes a machine for PR work. When the environment's machine is
-  suspended or offline, `show` reports `unavailable` and the actions fail
+  suspended or offline, `show` reports the last pull request bb saw for
+  the environment, or `unavailable` when it has none, and the actions fail
   with a message naming the machine.
 - `gh` must be installed and logged in on that machine.
 
