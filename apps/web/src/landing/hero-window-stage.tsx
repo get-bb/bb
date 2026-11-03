@@ -1,36 +1,3 @@
-import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
-import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import BookOpen01Icon from "@hugeicons/core-free-icons/BookOpen01Icon";
-import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
-import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
-import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
-import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
-import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
-import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
-import CornerDownLeftIcon from "@hugeicons/core-free-icons/CornerDownLeftIcon";
-import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
-import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
-import FlaskConicalIcon from "@hugeicons/core-free-icons/FlaskConicalIcon";
-import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
-import FolderGit2Icon from "@hugeicons/core-free-icons/FolderGit2Icon";
-import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
-import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
-import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
-import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
-import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
-import Mic02Icon from "@hugeicons/core-free-icons/Mic02Icon";
-import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
-import PinIcon from "@hugeicons/core-free-icons/PinIcon";
-import Plug02Icon from "@hugeicons/core-free-icons/Plug02Icon";
-import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
-import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
-import SentIcon from "@hugeicons/core-free-icons/SentIcon";
-import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
-import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
-import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   memo,
   startTransition,
@@ -43,46 +10,43 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import linearLogo from "../assets/company-logos/linear.svg";
-import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleCheckIcon,
+  CloseIcon,
+  ComposerBox,
+  ContextRow,
+  EditorButton,
+  Ellipsis,
+  FileCodeGlyph as FileIcon,
+  FileEditGlyph as EditIcon,
+  FolderGitIcon,
+  GitBranchIcon as BranchIcon,
+  MessageIcon,
+  MicIcon,
+  NAV_ITEMS,
+  NavRail,
+  NewThreadIcon,
+  PanelRightIcon,
+  PaperPlane as SentGlyph,
+  PhoneIcon,
+  PinGlyph,
+  PluginsIcon,
+  PullRequestIcon as PrIcon,
+  SearchIcon,
+  Spinner,
+  SubagentIcon,
+  TerminalIcon as TermIcon,
+  TestIcon,
+  ThreadStatus,
+  BugIcon,
+  QuestionIcon,
+  type MockIcon as IconComp,
+  type ThreadState as Status,
+} from "./app-mock-parts";
 
-type IconComp = (props: { className?: string }) => ReactNode;
-const hi =
-  (icon: IconSvgElement): IconComp =>
-  ({ className }) => <HugeiconsIcon icon={icon} className={className} />;
-const PanelRightIcon = hi(SidebarRightIcon);
-const ChevronRight = hi(ArrowRight01Icon);
-const ChevronDown = hi(ArrowDown01Icon);
-const Ellipsis = hi(MoreHorizontalIcon);
-const NewThreadIcon = hi(BubbleChatAddIcon);
-const HomeIcon = hi(Home01Icon);
-const SearchIcon = hi(Search01Icon);
-
-const PluginsIcon = hi(Plug02Icon);
-const SkillsIcon = hi(BookOpen01Icon);
-const ClockIcon = hi(Clock01Icon);
-const GearIcon = hi(Settings01Icon);
-const PhoneIcon = hi(SmartPhone01Icon);
-const BugIcon = hi(Bug01Icon);
-const CircleCheckIcon = hi(CheckmarkCircle02Icon);
-const QuestionIcon = hi(MessageQuestionIcon);
-const Spinner = hi(Loading03Icon);
-const PlusIcon = hi(PlusSignIcon);
-const MicIcon = hi(Mic02Icon);
-const SendIcon = hi(CornerDownLeftIcon);
-const FolderIcon = hi(Folder01Icon);
-const FolderGitIcon = hi(FolderGit2Icon);
-const BranchIcon = hi(GitBranchIcon);
-const PrIcon = hi(GitPullRequestIcon);
-const FileIcon = hi(FileCodeIcon);
-const CloseIcon = hi(Cancel01Icon);
-const TermIcon = hi(CommandLineIcon);
-const EditIcon = hi(FileEditIcon);
-const PinGlyph = hi(PinIcon);
-const TestIcon = hi(FlaskConicalIcon);
-const MessageIcon = hi(Message01Icon);
-const SentGlyph = hi(SentIcon);
-const SubagentIcon = hi(UserAdd01Icon);
 const LinearGlyph: IconComp = ({ className }) => (
   <img src={linearLogo} alt="" className={className} />
 );
@@ -99,7 +63,6 @@ const SentryGlyph: IconComp = ({ className }) => (
   </svg>
 );
 
-type Status = "running" | "done" | "waiting";
 type Flag =
   | "sentry"
   | "split"
@@ -755,25 +718,6 @@ function Spark({ values }: { values: number[] }) {
   );
 }
 
-const NAV: { icon: IconComp; label: string }[] = [
-  { icon: HomeIcon, label: "Home" },
-  { icon: SearchIcon, label: "Search" },
-  { icon: PluginsIcon, label: "Plugins" },
-  { icon: SkillsIcon, label: "Skills" },
-  { icon: ClockIcon, label: "Automations" },
-];
-
-function ThreadStatus({ status }: { status: Status | "unread" }) {
-  return (
-    <span className="tstatus" aria-hidden>
-      {status === "running" ? <Spinner className="trun" /> : null}
-      {status === "done" ? <CircleCheckIcon className="tdone" /> : null}
-      {status === "waiting" ? <QuestionIcon className="twait" /> : null}
-      {status === "unread" ? <span className="rhb-unread" /> : null}
-    </span>
-  );
-}
-
 function PanelBar({ name, meta }: { name: string; meta?: string }) {
   return (
     <div className="plugin-panel-bar">
@@ -998,7 +942,7 @@ const SENTRY_OPEN_MS = 1050;
 const SENTRY_CLOSE_MS = 850;
 const TOP = ".rhb-col-main, .rhb-col-page, .rhb-col-panel, .rhb-side";
 const KIDS =
-  ".rhb-side > :not(.rhb-xf), .rhb-rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
+  ".rhb-side > :not(.rhb-xf), .rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
 const XF = ".rhb-side > *, .rhb-feed, .rhb-dock-wrap";
 type Snap = {
   rects: Map<
@@ -1820,7 +1764,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     };
     const grow = (el: HTMLElement, room: number) => {
       const mb = parseFloat(getComputedStyle(el).marginBottom) || 0;
-      if (room < 1) return;
+      if (room < 1) return false;
       growing++;
       const anim = el.animate(
         [{ marginBottom: `${mb - room}px` }, { marginBottom: `${mb}px` }],
@@ -1832,8 +1776,15 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       };
       anim.onfinish = done;
       anim.oncancel = done;
+      return true;
     };
     const ITEMS = ":scope > *, .rhb-turn-body > *, .rhb-notes > *";
+    const layer = feed.parentElement;
+    const observe = () => {
+      ro.observe(feed);
+      if (layer) ro.observe(layer);
+    };
+    let resume = 0;
     const ro = new ResizeObserver(() => {
       const fresh: HTMLElement[] = [];
       for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
@@ -1843,13 +1794,14 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       }
       primed = true;
       let run = 0;
+      let grew = false;
       for (const el of fresh) {
         if (fresh.some((p) => p !== el && p.contains(el))) continue;
         run += roomOf(el);
         let next = el.nextElementSibling;
         while (next && !visible(next)) next = next.nextElementSibling;
         if (next && fresh.includes(next as HTMLElement)) continue;
-        grow(el, run);
+        if (grow(el, run)) grew = true;
         run = 0;
       }
       let moved = false;
@@ -1883,6 +1835,13 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
         }
       }
       if (moved && !raf) raf = requestAnimationFrame(tick);
+      if (grew && !resume) {
+        ro.disconnect();
+        resume = requestAnimationFrame(() => {
+          resume = 0;
+          observe();
+        });
+      }
     });
     const makeRoom = (start: HTMLElement) => {
       const host = feed.parentElement;
@@ -1929,10 +1888,10 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       "animationcancel",
     ] as const;
     animationEvents.forEach((type) => feed.addEventListener(type, onAnimation));
-    ro.observe(feed);
-    if (feed.parentElement) ro.observe(feed.parentElement);
+    observe();
     return () => {
       ro.disconnect();
+      cancelAnimationFrame(resume);
       animationEvents.forEach((type) =>
         feed.removeEventListener(type, onAnimation),
       );
@@ -2340,14 +2299,15 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
 
   const stripItems: { icon: IconComp; label: string }[] = [
     { icon: NewThreadIcon, label: "New thread" },
-    ...NAV.filter((x) => x.label === "Home"),
+    NAV_ITEMS[0],
     ...(hasSet.has("rail-sentry")
       ? [{ icon: SentryGlyph as IconComp, label: "Sentry" }]
       : []),
     ...(hasSet.has("rail-linear")
       ? [{ icon: LinearGlyph as IconComp, label: "Linear" }]
       : []),
-    ...NAV.filter((x) => x.label !== "Home"),
+    { icon: SearchIcon, label: "Search" },
+    ...NAV_ITEMS.slice(1),
   ];
   const stripRef = useRef<HTMLSpanElement>(null);
   const [stripFit, setStripFit] = useState(stripItems.length);
@@ -2529,32 +2489,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         <div className="rhb-left">
           <div className="rhb-band rhb-chrome-space" />
           <div className="rhb-left-body">
-            <nav className="rhb-rail">
-              {NAV.filter((x) => x.label !== "Search").map(
-                ({ icon: Icon, label }) => (
-                  <span
-                    className={
-                      label === "Home" ? "rhb-rail-btn is-on" : "rhb-rail-btn"
-                    }
-                    key={label}
-                  >
-                    <Icon className="rhb-ic" />
-                  </span>
-                ),
-              )}
-              <span className="rhb-rail-btn rhb-rail-new rhb-rail-sentry">
-                <SentryGlyph className="rhb-ic" />
+            <NavRail>
+              <span className="rail-btn rhb-rail-new rhb-rail-sentry">
+                <SentryGlyph className="rail-ic" />
               </span>
-              <span className="rhb-rail-btn rhb-rail-new rhb-rail-linear">
-                <LinearGlyph className="rhb-ic rhb-logo" />
+              <span className="rail-btn rhb-rail-new rhb-rail-linear">
+                <LinearGlyph className="rail-ic rhb-logo" />
               </span>
-              <span className="rhb-rail-btn">
-                <Ellipsis className="rhb-ic" />
-              </span>
-              <span className="rhb-rail-btn rhb-rail-gear">
-                <GearIcon className="rhb-ic" />
-              </span>
-            </nav>
+            </NavRail>
             <aside className="rhb-side">
               {uses("strip") ? (
                 <div className="rhb-strip">
@@ -2743,10 +2685,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </span>
             <Ellipsis className="rhb-ic" />
             <span className="rhb-band-end">
-              <span className="rhb-btn rhb-btn-editor">
-                <img src={vscodeIcon} alt="" className="rhb-editor-ic" />
-                <ChevronDown className="rhb-chev" />
-              </span>
+              <EditorButton />
               <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
             </span>
           </div>
@@ -2771,49 +2710,27 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </div>
 
             <div className="rhb-dock-wrap">
-              <div className="rhb-box">
-                <div className="rhb-input">
-                  <ComposerText
-                    demo={scene.id === "composer" && n === 1}
-                    leaving={
-                      outgoing != null && SCENES[outgoing].id === "composer"
-                    }
-                  />
-                </div>
-                <div className="rhb-box-row">
-                  <PlusIcon className="rhb-ic" />
-                  <span className="rhb-model">
-                    <ClaudeIcon className="rhb-model-ic" />
+              <ComposerBox
+                attach="plus"
+                model={
+                  <>
                     <span className="rhb-model-name">Opus 5.5</span>{" "}
                     <span className="rhb-model-sub">Medium</span>
-                    <ChevronDown className="rhb-chev" />
-                  </span>
-                  <span className="rhb-box-end">
-                    <MicIcon className="rhb-ic" />
-                    <span className="rhb-send">
-                      <SendIcon className="rhb-send-ic" />
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="rhb-context">
-                <span className="rhb-ctx">
-                  <FolderIcon className="rhb-ctx-ic" />
-                  bb
-                </span>
-                <span className="rhb-ctx rhb-ctx-wt">
-                  <FolderGitIcon className="rhb-ctx-ic" />
-                  Worktree
-                </span>
-                <span className="rhb-ctx rhb-ctx-branch">
-                  <BranchIcon className="rhb-ctx-ic" />
-                  main
-                </span>
-                <span className="rhb-perm">
-                  Full Access
-                  <ChevronDown className="rhb-chev" />
-                </span>
-              </div>
+                  </>
+                }
+              >
+                <ComposerText
+                  demo={scene.id === "composer" && n === 1}
+                  leaving={
+                    outgoing != null && SCENES[outgoing].id === "composer"
+                  }
+                />
+              </ComposerBox>
+              <ContextRow
+                project="bb"
+                place={{ icon: FolderGitIcon, label: "Worktree" }}
+                branch="main"
+              />
             </div>
           </div>
         </div>

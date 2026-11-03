@@ -68,6 +68,9 @@
   --spark: oklch(0.55 0.14 50); /* --warning-text */
   --attention: oklch(0.74 0.15 80);
   --radius: 0.5rem;
+  --mock-active: color-mix(in oklab, var(--ink) 10%, transparent);
+  --shadow-lift: 0 -4px 12px -4px
+    color-mix(in oklab, var(--shade) 8%, transparent);
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1440,6 +1443,43 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mock-dots i:nth-child(3) {
   background: #28c840;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.rail-btn.is-on {
+  background: var(--mock-active);
+}
+
+.rail-ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.rail-btn.is-on .rail-ic {
+  color: var(--ink);
+}
+
+.rail-settings {
+  margin-top: auto;
 }
 
 .trow-pin .trow-title {

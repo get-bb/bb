@@ -27,7 +27,7 @@ async function serverHtml(): Promise<string> {
   const HeroWindow = await loadHeroWindow();
   const { prerender } = await import("react-dom/static");
   const { prelude } = await prerender(
-    <HeroWindow ref={null} inView={false} onFilled={() => {}} />,
+    <HeroWindow ref={null} active={false} onFilled={() => {}} />,
     { progressiveChunkSize: Number.POSITIVE_INFINITY },
   );
   return new Response(prelude).text();
@@ -87,13 +87,13 @@ describe("hero window first frame", () => {
     await act(async () => {
       root = hydrateRoot(
         container,
-        <HeroWindow ref={null} inView={false} onFilled={onFilled} />,
+        <HeroWindow ref={null} active={false} onFilled={onFilled} />,
         { onRecoverableError: (error) => errors.push(error) },
       );
     });
     expect(onFilled).toHaveBeenCalled();
     await act(async () => {
-      root.render(<HeroWindow ref={null} inView onFilled={onFilled} />);
+      root.render(<HeroWindow ref={null} active onFilled={onFilled} />);
     });
     const win = container.querySelector(".rhb-win");
     expect(win?.querySelector(".rhb-stage")).not.toBeNull();
@@ -124,7 +124,7 @@ describe("hero window first frame", () => {
     const onFilled = vi.fn();
     const root = createRoot(container);
     await act(async () => {
-      root.render(<HeroWindow ref={null} inView onFilled={onFilled} />);
+      root.render(<HeroWindow ref={null} active onFilled={onFilled} />);
     });
     expect(container.querySelector(".rhb-stage")).toBeNull();
     expect(onFilled).not.toHaveBeenCalled();
