@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Icon } from "./icon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import { Icon } from "@bb/shared-ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
 
 export interface GitStatusDisplayStatus {

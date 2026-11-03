@@ -20,7 +20,7 @@ import {
   GitSegmentFixtureProvider,
   type GitSegmentFixture,
 } from "@/test/fixtures/git-segment-plugin";
-import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
+import type { WorkspaceChangedFilesSection } from "../../../../../../plugins/git/ui/workspace-change-summary";
 
 const noop = () => {};
 const CHILD_THREADS = "child-threads";

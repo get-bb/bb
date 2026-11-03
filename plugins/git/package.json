@@ -38,6 +38,7 @@
     "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/shared-ui": "workspace:*",
+    "@bb/thread-view": "workspace:*",
     "@tanstack/react-virtual": "3.14.20",
     "bb-environment-provider-host": "workspace:*",
     "mime-types": "^3.0.2",

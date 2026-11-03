@@ -1,12 +1,12 @@
-import { DiffStatsTally } from "./diff-stats-tally";
-import { EmptyState } from "./empty-state";
-import { FilePathLink } from "./file-path-link";
-import { cn } from "../../lib/utils";
+import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
+import { EmptyState } from "@bb/shared-ui/empty-state";
+import { FilePathLink } from "@bb/shared-ui/file-path-link";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
   formatOmittedChangedFilesLabel,
   formatWorkspaceFileStatus,
   type WorkspaceChangedFileStatus,
-} from "./workspace-change-summary";
+} from "./workspace-change-summary.js";
 
 export type WorkspaceChangedFile = WorkspaceChangedFileStatus;
 

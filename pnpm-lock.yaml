@@ -4524,6 +4524,9 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
+      '@bb/thread-view':
+        specifier: workspace:*
+        version: link:../../packages/thread-view
       '@tanstack/react-virtual':
         specifier: 3.14.20
         version: 3.14.20(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

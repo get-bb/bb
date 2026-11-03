@@ -449,16 +449,6 @@
       "types": "./src/components/ui/open-in-editor-button.tsx",
       "default": "./src/components/ui/open-in-editor-button.tsx"
     },
-    "./workspace-change-summary": {
-      "source": "./src/components/ui/workspace-change-summary.tsx",
-      "types": "./src/components/ui/workspace-change-summary.tsx",
-      "default": "./src/components/ui/workspace-change-summary.tsx"
-    },
-    "./workspace-changes-list": {
-      "source": "./src/components/ui/workspace-changes-list.tsx",
-      "types": "./src/components/ui/workspace-changes-list.tsx",
-      "default": "./src/components/ui/workspace-changes-list.tsx"
-    },
     "./git-diff/parsing": {
       "source": "./src/components/git-diff/git-diff-parsing.ts",
       "types": "./src/components/git-diff/git-diff-parsing.ts",
@@ -498,11 +488,6 @@
       "source": "./src/lib/image-preview.ts",
       "types": "./src/lib/image-preview.ts",
       "default": "./src/lib/image-preview.ts"
-    },
-    "./git-status-display": {
-      "source": "./src/components/ui/git-status-display.tsx",
-      "types": "./src/components/ui/git-status-display.tsx",
-      "default": "./src/components/ui/git-status-display.tsx"
     },
     "./lib/workspace-checkout-display": {
       "source": "./src/lib/workspace-checkout-display.ts",

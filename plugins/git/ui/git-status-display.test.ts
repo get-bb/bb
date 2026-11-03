@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { experimental_PluginRpcCallError } from "@get-bb/plugin-sdk";
+import type { WorkspaceStatus } from "../contract.js";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
   makeWorkspaceWorkingTree,
-  type WorkspaceStatusFixture,
-} from "./workspace-status-fixtures";
+} from "../testing.js";
 import {
   getGitStatusDisplay,
   gitStatusErrorMessage,
-} from "./git-status-display";
+} from "./git-status-display.js";
 
 interface MakeStatusOptions {
   aheadCount?: number;
@@ -17,10 +17,10 @@ interface MakeStatusOptions {
   changedFiles?: number;
   deletions?: number;
   insertions?: number;
-  state: WorkspaceStatusFixture["workingTree"]["state"];
+  state: WorkspaceStatus["workingTree"]["state"];
 }
 
-function makeStatus(options: MakeStatusOptions): WorkspaceStatusFixture {
+function makeStatus(options: MakeStatusOptions): WorkspaceStatus {
   const aheadCount = options.aheadCount ?? 0;
   const behindCount = options.behindCount ?? 0;
   const hasUncommittedChanges =
