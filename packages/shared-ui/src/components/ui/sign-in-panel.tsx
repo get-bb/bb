@@ -184,12 +184,19 @@ export function InlinePanel({
         <div className="flex flex-col gap-3 p-3">{children}</div>
       ) : null}
       {toggles === undefined ? null : (
-        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 border-t border-border-hairline px-2 py-1.5">
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-end gap-x-2 gap-y-1 px-2 py-1.5",
+            hasBody && "border-t border-border-hairline",
+          )}
+        >
           {toggles}
         </div>
       )}
       {expanded === undefined || expanded === null ? null : (
-        <div className="border-t border-border-hairline">{expanded}</div>
+        <div className={cn(!flush && "border-t border-border-hairline")}>
+          {expanded}
+        </div>
       )}
     </div>
   );
