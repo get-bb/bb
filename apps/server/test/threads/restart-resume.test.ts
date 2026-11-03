@@ -17,6 +17,7 @@ import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import { retryFailedTurn } from "../../src/services/threads/turn-retry.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import {
   internalAuthHeaders,
@@ -234,6 +235,83 @@ function requireRetryPayload(
   return row.payload;
 }
 
+async function failWithScheduledRetryBehindAMessage(harness: TestAppHarness) {
+  const fixture = seedHostWithProject(harness);
+  const { requestId, thread } = seedRunningThread(harness, fixture);
+  applyLoggedThreadLifecycleEvent(harness.deps, {
+    event: { type: "run.failed" },
+    threadId: thread.id,
+  });
+  const failed = getThread(harness.db, thread.id);
+  if (failed === null) throw new Error("expected a thread");
+  await acceptThreadSendRequest(harness.deps, {
+    payload: {
+      input: textInput("Also update the docs"),
+      mode: "auto",
+      sendAt: Date.now() + 30_000,
+    },
+    thread: failed,
+  });
+  await retryFailedTurn(harness.deps, {
+    thread: failed,
+    request: {
+      turnRequestId: requestId,
+      sendAt: Date.now() + 60_000,
+      reason: "Rate limited",
+    },
+  });
+  return thread;
+}
+
+describe("retries going first", () => {
+  it("puts a retry ahead of messages queued before it, and holds them behind it, with the experiment on", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const thread = await failWithScheduledRetryBehindAMessage(harness);
+
+      expect(queue(harness, thread.id).map((row) => row.payload.kind)).toEqual([
+        "retry",
+        "inline",
+      ]);
+
+      await sweepPastResume(harness);
+
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Please continue.",
+      ]);
+      const [held, ...rest] = queue(harness, thread.id);
+      expect(rest).toEqual([]);
+      expect(held?.waitingOn).toEqual({ kind: "thread-busy" });
+
+      await finishTurnAndDrain(harness, thread.id);
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Please continue.",
+        "Also update the docs",
+      ]);
+    });
+  });
+
+  it("leaves retry order and holding as before with the experiment off", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await failWithScheduledRetryBehindAMessage(harness);
+
+      expect(queue(harness, thread.id).map((row) => row.payload.kind)).toEqual([
+        "inline",
+        "retry",
+      ]);
+
+      await sweepPastResume(harness);
+
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Also update the docs",
+      ]);
+    });
+  });
+});
+
 describe("continuing threads after a restart", () => {
   it("queues a resume for a turn a daemon restart cut off, then continues it", async () => {
     await withTestHarness(async (harness) => {
@@ -278,49 +356,52 @@ describe("continuing threads after a restart", () => {
     });
   });
 
-  it("sends messages queued during the restart after the resume, in order", async () => {
-    await withTestHarness(async (harness) => {
-      continueAfterRestarts(harness, true);
-      const fixture = seedHostWithProject(harness);
-      const { thread } = seedRunningThread(harness, fixture);
+  it.each(["queue-if-active", "auto"] as const)(
+    "sends messages sent with mode %s during the restart after the resume, in order",
+    async (mode) => {
+      await withTestHarness(async (harness) => {
+        continueAfterRestarts(harness, true);
+        const fixture = seedHostWithProject(harness);
+        const { thread } = seedRunningThread(harness, fixture);
 
-      handleDaemonSocketClosed(harness.deps, {
-        sessionId: fixture.session.id,
-      });
-      await sendMessage(harness, {
-        mode: "queue-if-active",
-        text: "First follow-up",
-        threadId: thread.id,
-      });
-      await sendMessage(harness, {
-        mode: "queue-if-active",
-        text: "Second follow-up",
-        threadId: thread.id,
-      });
-      await restartDaemon(harness, fixture);
-      await runQueuedMessageDispatch(harness.deps, {
-        kind: "thread-ready",
-        threadId: thread.id,
-      });
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.session.id,
+        });
+        await sendMessage(harness, {
+          mode,
+          text: "First follow-up",
+          threadId: thread.id,
+        });
+        await sendMessage(harness, {
+          mode,
+          text: "Second follow-up",
+          threadId: thread.id,
+        });
+        await restartDaemon(harness, fixture);
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
 
-      expect(requestTexts(harness, thread.id)).toEqual(["Do the thing"]);
-      expect(
-        queue(harness, thread.id).map((row) => row.payload.kind),
-      ).toEqual(["retry", "inline", "inline"]);
+        expect(requestTexts(harness, thread.id)).toEqual(["Do the thing"]);
+        expect(
+          queue(harness, thread.id).map((row) => row.payload.kind),
+        ).toEqual(["retry", "inline", "inline"]);
 
-      await sweepPastResume(harness);
-      await finishTurnAndDrain(harness, thread.id);
-      await finishTurnAndDrain(harness, thread.id);
+        await sweepPastResume(harness);
+        await finishTurnAndDrain(harness, thread.id);
+        await finishTurnAndDrain(harness, thread.id);
 
-      expect(requestTexts(harness, thread.id)).toEqual([
-        "Do the thing",
-        "Please continue.",
-        "First follow-up",
-        "Second follow-up",
-      ]);
-      expect(queue(harness, thread.id)).toEqual([]);
-    });
-  });
+        expect(requestTexts(harness, thread.id)).toEqual([
+          "Do the thing",
+          "Please continue.",
+          "First follow-up",
+          "Second follow-up",
+        ]);
+        expect(queue(harness, thread.id)).toEqual([]);
+      });
+    },
+  );
 
   it("drops a pending resume when the user sends a message first", async () => {
     await withTestHarness(async (harness) => {
@@ -329,9 +410,9 @@ describe("continuing threads after a restart", () => {
       const { thread } = seedRunningThread(harness, fixture);
 
       await restartDaemon(harness, fixture);
-      expect(
-        queue(harness, thread.id).map((row) => row.payload.kind),
-      ).toEqual(["retry"]);
+      expect(queue(harness, thread.id).map((row) => row.payload.kind)).toEqual([
+        "retry",
+      ]);
 
       await sendMessage(harness, {
         mode: "auto",

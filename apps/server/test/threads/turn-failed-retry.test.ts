@@ -823,12 +823,12 @@ describe("retrying a failed turn", () => {
         })),
       ).toEqual([
         {
-          text: expect.objectContaining({ text: "Also check the tests" }),
-          waitingOn: "time",
-        },
-        {
           text: expect.objectContaining({ text: "Do the thing" }),
           waitingOn: "superseded",
+        },
+        {
+          text: expect.objectContaining({ text: "Also check the tests" }),
+          waitingOn: "time",
         },
       ]);
       expect(await drainRecoveries(harness, thread.id)).toBe(1);
@@ -872,8 +872,8 @@ describe("retrying a failed turn", () => {
           waitingOn: row.waitingOn?.kind,
         })),
       ).toEqual([
-        { retryOf: laterRequestId, waitingOn: "time" },
         { retryOf: requestId, waitingOn: "superseded" },
+        { retryOf: laterRequestId, waitingOn: "time" },
       ]);
     });
   });
@@ -1035,32 +1035,6 @@ async function sendNewMessage(
 }
 
 describe("a queued retry", () => {
-  it("goes ahead of messages queued before it, and they wait behind it", async () => {
-    await withTestHarness(async (harness) => {
-      const { requestId, thread } = seedFailableThread(harness, "host-front");
-      failThread(harness, thread.id);
-      await sendNewMessage(harness, {
-        threadId: thread.id,
-        text: "Also update the docs",
-        sendAt: Date.now() + 30_000,
-      });
-      await scheduleRetry(harness, { threadId: thread.id, requestId });
-
-      expect(
-        liveQueue(harness, thread.id).map((row) => row.payload.kind),
-      ).toEqual(["retry", "inline"]);
-
-      await sweepPastResume(harness);
-
-      const requests = turnRequests(harness, thread.id);
-      expect(requests).toHaveLength(2);
-      expect(turnRequestData(requests[1]!).retryOfRequestId).toBe(requestId);
-      expect(
-        liveQueue(harness, thread.id).map((row) => row.content[0]),
-      ).toEqual([expect.objectContaining({ text: "Also update the docs" })]);
-    });
-  });
-
   it("is kept as Not sent when a newer message overtakes input the provider never accepted", async () => {
     await withTestHarness(async (harness) => {
       const { requestId, thread } = seedFailableThread(
