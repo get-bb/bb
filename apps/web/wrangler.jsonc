@@ -36,6 +36,7 @@
     // Not a secret — only the API key is.
     "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
     "PRESENCE_WRITES": "on-change",
+    "COMMUNITY_FORMS_ENABLED": "false",
     "NEXT_BASE_DOMAIN": "next.vibecodethis.site",
     "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"staging-2026-10-20\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"R5uinj0FFjpFtS9QHKb7LY7wsPo9RZkoRRsxegheihw\"}]}",
   },
@@ -76,6 +77,11 @@
   ],
   "ratelimits": [
     {
+      "name": "COMMUNITY_FORM_RATE_LIMITER",
+      "namespace_id": "4205",
+      "simple": { "limit": 6, "period": 60 },
+    },
+    {
       "name": "LINK_START_RATE_LIMITER",
       "namespace_id": "4203",
       "simple": { "limit": 10, "period": 60 },
@@ -107,6 +113,7 @@
         "BASE_DOMAIN": "getbb.app",
         "APP_URL": "https://getbb.app",
         "PRESENCE_WRITES": "on-change",
+        "COMMUNITY_FORMS_ENABLED": "false",
         "NEXT_BASE_DOMAIN": "next.getbb.app",
         "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"prod-2026-10-21\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"sSHHgGnUQNXtsJ2_4EDXj4ZpIq9y45fZDvMGkKsWnGU\"}]}",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
@@ -134,6 +141,11 @@
         },
       ],
       "ratelimits": [
+        {
+          "name": "COMMUNITY_FORM_RATE_LIMITER",
+          "namespace_id": "4206",
+          "simple": { "limit": 6, "period": 60 },
+        },
         {
           "name": "LINK_START_RATE_LIMITER",
           "namespace_id": "4204",

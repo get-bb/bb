@@ -47,6 +47,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "better-sqlite3": "12.10.0",
+    "miniflare": "^4.20260701.0",
     "tailwindcss": "^4.3.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
