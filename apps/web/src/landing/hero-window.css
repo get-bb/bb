@@ -2999,3 +2999,17 @@
     rotate: -90deg;
   }
 }
+
+.rhb .rhb-feed.is-measure {
+  position: absolute;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.rhb .rhb-feed.is-measure,
+.rhb .rhb-feed.is-measure * {
+  animation: none !important;
+  transition: none !important;
+  translate: none !important;
+}
