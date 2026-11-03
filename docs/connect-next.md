@@ -326,9 +326,8 @@ failing account API with backoff for up to 7 s (`HOOK_RESOLVE_DEADLINE_MS`, insi
 wait), so a short outage or a mass reconnect delays logins instead of refusing them.
 Install paths (`GATE_PUBLIC_PATHS`) are forwarded with a `public` assertion (`sub: ""`) and no `x-bb-gate-auth`. An
 assertion the server refuses (`401 {code:"gate_assertion_invalid"}`) is logged as
-`assertion_refused` and answered with the gate's `502`. Deadlines: 30 s to the response head (90 s for
-`POST /api/v1/system/voice-transcription`), including the wait of up to 15 s for a tunnel that dropped;
-then `504`. Answers from the account API are cached (see Answer cache). Assets are cached in memory per label and encoding (immutable
+`assertion_refused` and answered with the gate's `502`. Deadlines: 30 s without progress, then `504`
+naming the stage (see Request deadlines). Answers from the account API are cached (see Answer cache). Assets are cached in memory per label and encoding (immutable
 `max-age ≥ 300`, shells revalidated with their `etag`; `CACHE_MAX_BYTES`, default 256 MiB), and
 compressible bodies the origin left unencoded are sent as `br` or `gzip`: brotli quality 5 for
 bodies the asset cache stores and for dynamic bodies under 16 KiB, quality 4 for larger or
@@ -405,6 +404,16 @@ apps/connect-next/dist/gate.mjs`, and point frpc at `ws://tunnel.next.localhost:
 A visitor `Host` may carry a port in such a local run (`<label>.next.localhost:8080`): the gate
 routes on the host without it and keeps the port on the upstream `Host`, so the server ingress still
 sees `Origin` equal to `http://<Host>`.
+
+### Request deadlines
+
+The gate times out a request body after 30 seconds without another chunk. Once the body has been
+forwarded, the response head gets a fresh 30 seconds. If headers are still pending and the directory
+still locates that tunnel, the gate checks again every 30 seconds, up to 10 minutes from arrival.
+That cap also bounds progressing uploads. A stalled upload still gets `504` with stage `request-body`;
+a response-head timeout gets stage `response-head`. Voice transcription uses the same rule, matching
+the healthy-tunnel wait policy of the Cloudflare gate. Routing, including the wait of up to 15 s
+for a tunnel that dropped, and WebSocket handshakes keep a 30-second deadline from arrival.
 
 ### Answer cache
 
