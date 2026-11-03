@@ -759,6 +759,8 @@ function Swap({
   );
 }
 
+const MUTE_AFTER = 0.9;
+
 function WorkRow({
   step,
   style,
@@ -768,10 +770,21 @@ function WorkRow({
   style?: CSSProperties;
   doneAt?: number | null;
 }) {
+  // Like the app's closed steps, each tool call is muted to the subtle text
+  // colour shortly after it lands; a running one only once it finishes.
+  const at = parseFloat(String(style?.animationDelay ?? "0")) || 0;
+  const muteAt =
+    step.doneAs && doneAt ? doneAt + 0.3 : step.spin ? null : at + MUTE_AFTER;
   return (
     <div
-      className={`rhb-work rhb-work-${step.kind} customize-msg`}
-      style={style}
+      className={`rhb-work rhb-work-${step.kind} customize-msg${
+        muteAt === null ? "" : " is-muting"
+      }`}
+      style={
+        muteAt === null
+          ? style
+          : ({ ...style, "--rhb-mute-at": `${muteAt}s` } as CSSProperties)
+      }
     >
       {step.doneAs && doneAt ? (
         <Swap
