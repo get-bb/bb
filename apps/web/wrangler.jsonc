@@ -94,7 +94,7 @@
     {
       "name": "EMAIL_LINK_SITE_RATE_LIMITER",
       "namespace_id": "4206",
-      "simple": { "limit": 30, "period": 60 },
+      "simple": { "limit": 5, "period": 60 },
     },
   ],
   "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }],
@@ -166,7 +166,7 @@
         {
           "name": "EMAIL_LINK_SITE_RATE_LIMITER",
           "namespace_id": "4208",
-          "simple": { "limit": 30, "period": 60 },
+          "simple": { "limit": 5, "period": 60 },
         },
       ],
     },

@@ -37,6 +37,8 @@
   --text-body-sm: 13.5px;
   --text-body: 14.5px;
   --text-lead: 16px;
+  --text-control: 15px;
+  --install-action-width: 340px;
   --icon-sm: 14px;
   --gap-xs: 4px;
   --gap-sm: 8px;
@@ -716,42 +718,21 @@ html:has(.nav-sticky) {
   font-family: var(--font-sans);
 }
 
-.install-email {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 340px;
+.subscribe-form.install-email {
+  gap: var(--gap-sm);
+  width: var(--install-action-width);
   max-width: 100%;
+  margin: 0;
 }
 
-.install-email-input {
+.install-email .subscribe-input {
   flex: 1 1 160px;
-  min-width: 0;
   padding: 12px 14px;
-  font-family: inherit;
-  font-size: 15px;
+  font-size: var(--text-control);
   line-height: 1.5;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 2px);
 }
 
-.install-email-input::placeholder {
-  color: var(--subtle);
-}
-
-.install-email-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
-}
-
-.install-email-input[aria-invalid="true"] {
-  border-color: var(--del);
-}
-
-.install-email .install-email-send {
+.install-email .subscribe-btn {
   flex: 0 0 7.75em;
   width: 7.75em;
   padding-inline: 0;
@@ -759,16 +740,9 @@ html:has(.nav-sticky) {
   font-family: var(--font-sans);
 }
 
-.install-email-send:disabled {
-  opacity: 0.6;
-  cursor: default;
-  transform: none;
-}
-
-.install-email-error {
-  flex-basis: 100%;
-  color: var(--del);
-  font-size: 12.5px;
+.install-email .subscribe-error,
+.install-email-failed .subscribe-error {
+  font-size: var(--text-label-small);
   text-align: center;
 }
 
@@ -776,8 +750,8 @@ html:has(.nav-sticky) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
-  width: 340px;
+  gap: var(--gap-sm);
+  width: var(--install-action-width);
   max-width: 100%;
 }
 
@@ -788,14 +762,12 @@ html:has(.nav-sticky) {
   gap: 9px;
   margin: 0;
   padding: 13px 0;
-  font-size: 15px;
+  font-size: var(--text-control);
   line-height: 1.5;
   font-weight: 500;
   color: var(--ink);
 }
 
-/* Phones and tablets can't run an installer. Pages render both the desktop and
-   the touch option and CSS picks one, so nothing flashes after load. */
 @media not all and (hover: none) and (pointer: coarse) {
   .touch-only {
     display: none !important;
@@ -4443,7 +4415,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: center;
   }
 
-  .install-email,
+  .subscribe-form.install-email,
   .install-email-failed {
     width: 100%;
   }

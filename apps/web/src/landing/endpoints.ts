@@ -7,6 +7,7 @@ import {
   DOWNLOAD_PAGE_PATH,
   SEND_LINK_VIA_PARAM,
   VISIT_PARAM_NAMES,
+  isPlausibleEmail,
   parseSendLinkVia,
 } from "./site";
 import type { CtaPlacement, DesktopPlatform, SendLinkVia } from "./site";
@@ -19,8 +20,6 @@ const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const RESEND_GLOBAL_CONTACTS_URL = "https://api.resend.com/contacts";
 const MAX_CAMPAIGN_VALUE_LENGTH = 200;
 const MAX_SEARCH_LENGTH = 2048;
-const MAX_EMAIL_LENGTH = 254;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const POSTHOG_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PATH_LENGTH = 512;
@@ -246,10 +245,7 @@ function parseEmail(payload: Record<string, unknown> | null): string | null {
     return null;
   }
   const email = value.trim();
-  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) {
-    return null;
-  }
-  return email;
+  return isPlausibleEmail(email) ? email : null;
 }
 
 function parseCampaignParams(value: unknown): URLSearchParams {
