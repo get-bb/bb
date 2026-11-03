@@ -358,7 +358,7 @@ first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, `onboarding_left`, `new_thread_submit` (started,
+`onboarding_sign_in`, `onboarding_left`, `onboarding_error`, `new_thread_submit` (started,
 accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
@@ -414,6 +414,14 @@ count. It goes as a keepalive request so it survives the unload. In the
 desktop app, closing the window sends it, but quitting the app while a guide
 is open may not when the app runs its own bb server, which stops before the
 window unloads.
+`onboarding_error` (`step`, the step on screen, `entry`, and `kind`) is sent
+while a guide is open, in either guide, when the app hits an error: `render`
+(the guide itself crashed and the app showed its error screen), `uncaught` (an
+uncaught error anywhere in the app window), or `unhandled_rejection` (an
+unhandled promise rejection). It is sent at most once per `kind` and step and
+at most five times per guide, and carries no error message, stack, or file
+name. Crashes of the desktop app's main process, the bb server, or a machine's
+host daemon aren't reported.
 A failed `new_thread_submit` adds `failure_reason` (`host_unavailable`,
 `timed_out`, `not_found`, `permission`, or `other`), from the same mapping as
 setup-guide failures; `started` and `accepted` carry no reason.

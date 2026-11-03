@@ -3982,6 +3982,10 @@ before the guide finished; it passes the optional second argument
 `{ keepalive: true }`, which sends the request with `fetch`'s `keepalive` so it
 outlives the page. A failed `new_thread_submit` may add `failure_reason` from
 the same fixed set.
+`onboarding_error` reports `kind` (`render`, `uncaught` or
+`unhandled_rejection`) with the guide's step, from `OnboardingErrorTelemetry`
+around the guide in `OnboardingGate`, which reports and rethrows render errors
+and listens for window errors only while the guide is open.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
 both assignments, adds `setup_guide_variant`, `setup_guide_source`,
 `featured_plugins_variant` and `featured_plugins_source`, sets both variants

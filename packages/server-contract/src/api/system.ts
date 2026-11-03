@@ -411,6 +411,18 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("onboarding_error"),
+      properties: z
+        .object({
+          step: onboardingStepTelemetrySchema,
+          entry: onboardingEntryTelemetrySchema,
+          kind: z.enum(["render", "uncaught", "unhandled_rejection"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("release_notes_opened"),
       properties: z
         .object({

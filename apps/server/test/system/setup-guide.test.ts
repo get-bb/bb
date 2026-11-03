@@ -144,6 +144,10 @@ describe("setup guide route", () => {
         properties: { step: "plugins", entry: "first_run" },
       });
       await postEvent(harness, {
+        name: "onboarding_error",
+        properties: { step: "plugins", entry: "first_run", kind: "render" },
+      });
+      await postEvent(harness, {
         name: "new_thread_submit",
         properties: { outcome: "accepted" },
       });
@@ -166,6 +170,16 @@ describe("setup guide route", () => {
           properties: {
             step: "plugins",
             entry: "first_run",
+            setup_guide_variant: "new",
+            featured_plugins_variant: "new",
+          },
+        },
+        {
+          name: "onboarding_error",
+          properties: {
+            step: "plugins",
+            entry: "first_run",
+            kind: "render",
             setup_guide_variant: "new",
             featured_plugins_variant: "new",
           },

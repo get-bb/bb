@@ -83,6 +83,18 @@ describe("client telemetry events", () => {
           properties: { step: "plugins", entry: "replay" },
         },
         {
+          name: "onboarding_error",
+          properties: { step: "projects", entry: "first_run", kind: "render" },
+        },
+        {
+          name: "onboarding_error",
+          properties: {
+            step: "agent",
+            entry: "replay",
+            kind: "unhandled_rejection",
+          },
+        },
+        {
           name: "onboarding_operation",
           properties: {
             entry: "first_run",
@@ -512,6 +524,36 @@ describe("client telemetry events", () => {
             entry: "first_run",
             url: "https://example.com/private",
           },
+        },
+        {
+          name: "onboarding_error",
+          properties: {
+            step: "agent",
+            entry: "first_run",
+            kind: "uncaught",
+            message: "Cannot read properties of undefined",
+          },
+        },
+        {
+          name: "onboarding_error",
+          properties: {
+            step: "agent",
+            entry: "first_run",
+            kind: "uncaught",
+            stack: "TypeError at OnboardingFlow (/Users/me/app.js:1:1)",
+          },
+        },
+        {
+          name: "onboarding_error",
+          properties: {
+            step: "agent",
+            entry: "first_run",
+            kind: "TypeError: x is undefined",
+          },
+        },
+        {
+          name: "onboarding_error",
+          properties: { step: "agent", entry: "first_run" },
         },
         {
           name: "new_thread_blocker",
