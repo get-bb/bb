@@ -3,6 +3,7 @@ export const EXPERIMENT_VARIANTS = {
   "homepage-sticky-header": ["test"],
   "homepage-header-download": ["test"],
   "homepage-download-area": ["test"],
+  "homepage-subhead-text": ["test"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type ExperimentKey = keyof typeof EXPERIMENT_VARIANTS;
