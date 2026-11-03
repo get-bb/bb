@@ -10,11 +10,7 @@ import {
   type ExperimentVariant,
 } from "./flags";
 
-export {
-  ExperimentsProvider,
-  RouteExperimentsProvider,
-  useExperimentBootstrap,
-} from "./context";
+export { RouteExperimentsProvider } from "./context";
 
 export function experimentsBeforeLoad({
   serverContext,

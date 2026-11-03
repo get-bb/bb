@@ -9,7 +9,7 @@ import {
   type ExperimentKey,
 } from "./flags";
 
-export const FLAGS_TIMEOUT_MS = 400;
+const FLAGS_TIMEOUT_MS = 400;
 export const EXPERIMENT_CACHE_CONTROL = "private, no-cache";
 export const SITE_WIDE_COOKIE_NAME = "bb_site_experiments";
 const COOKIE_DAYS = 365;
@@ -28,7 +28,7 @@ const MAX_SITE_WIDE_COOKIE_LENGTH = 1024;
 const MAX_DISTINCT_ID_LENGTH = 200;
 const DISTINCT_ID_PATTERN = /^[\x21-\x7e]+$/;
 
-export type FlagsOutcome =
+type FlagsOutcome =
   | "ok"
   | "timeout"
   | "error"
@@ -57,7 +57,7 @@ export type ExperimentServerConfig = {
   siteWideKeys?: readonly ExperimentKey[];
 };
 
-export type ExperimentResolution = {
+type ExperimentResolution = {
   bootstrap: ExperimentBootstrap;
   setCookies: readonly string[];
 };
@@ -67,7 +67,7 @@ type CookieRead =
   | { kind: "unreadable" }
   | { kind: "found"; distinctId: string };
 
-export function postHogCookieName(postHogKey: string): string {
+function postHogCookieName(postHogKey: string): string {
   return `ph_${postHogKey}_posthog`;
 }
 
@@ -127,7 +127,7 @@ export function uuidv7(now: number, random: Uint8Array): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function cookieDomain(
+function cookieDomain(
   hostname: string,
   baseDomain: string,
 ): string | null {
@@ -163,7 +163,7 @@ function cookieExpiry(now: number): number {
   return now + COOKIE_DAYS * 24 * 60 * 60 * 1000;
 }
 
-export function postHogCookie(
+function postHogCookie(
   args: CookieTarget & { name: string; distinctId: string },
 ): string {
   const value = encodeURIComponent(
@@ -187,7 +187,7 @@ type FlagsRequest = {
   timeoutMs: number;
 };
 
-export type FlagsEvaluation = {
+type FlagsEvaluation = {
   outcome: FlagsOutcome;
   flags: Record<string, string>;
 };
@@ -284,7 +284,7 @@ function readFlagsBody(
   return { outcome: "ok", assigned };
 }
 
-export function isSitePage(request: Request, url: URL): boolean {
+function isSitePage(request: Request, url: URL): boolean {
   if (EXPERIMENT_PATHS.has(url.pathname)) {
     return true;
   }
@@ -298,7 +298,7 @@ export function isSitePage(request: Request, url: URL): boolean {
   );
 }
 
-export type StoredAssignments = Readonly<Record<string, string | null>>;
+type StoredAssignments = Readonly<Record<string, string | null>>;
 
 export function readSiteWideCookie(
   cookieHeader: string | null,
@@ -328,7 +328,7 @@ export function readSiteWideCookie(
   return stored;
 }
 
-export function siteWideCookie(
+function siteWideCookie(
   args: CookieTarget & { assignments: StoredAssignments },
 ): string {
   const value = new URLSearchParams(
