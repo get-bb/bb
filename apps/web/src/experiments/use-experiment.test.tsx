@@ -161,14 +161,11 @@ describe("server-rendered experiments", () => {
     expect(posthog.getFeatureFlag.mock.calls).toEqual([["homepage-qa-check"]]);
   });
 
-  it.each([
-    ["control", "control"],
-    ["holdout-7", "control"],
-  ])("renders %s as %s and still exposes it", async (assigned, rendered) => {
+  it("renders control and exposes it", async () => {
     const modules = await loadModules();
-    const experiments = bootstrap({ "homepage-qa-check": assigned });
+    const experiments = bootstrap({ "homepage-qa-check": "control" });
     const html = await serverRender(modules, experiments);
-    expect(html).toContain(`<main>${rendered}</main>`);
+    expect(html).toContain("<main>control</main>");
     const { errors } = await hydratePage(modules, experiments, html);
     expect(errors).toEqual([]);
     await vi.waitFor(() =>
@@ -176,6 +173,16 @@ describe("server-rendered experiments", () => {
         ["homepage-qa-check"],
       ]),
     );
+  });
+
+  it("renders an unknown variant as control and exposes nothing", async () => {
+    const modules = await loadModules();
+    const experiments = bootstrap({ "homepage-qa-check": "holdout-7" });
+    const html = await serverRender(modules, experiments);
+    expect(html).toContain("<main>control</main>");
+    await hydratePage(modules, experiments, html);
+    await vi.waitFor(() => expect(posthog.init).toHaveBeenCalled());
+    expect(posthog.getFeatureFlag).not.toHaveBeenCalled();
   });
 
   it("renders control and exposes nothing without an active flag", async () => {

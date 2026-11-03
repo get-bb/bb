@@ -4,6 +4,7 @@ import { exposeExperiment } from "../landing/analytics";
 import { useExperimentBootstrap } from "./context";
 import {
   experimentVariant,
+  isKnownVariant,
   type ExperimentBootstrap,
   type ExperimentDevices,
   type ExperimentKey,
@@ -34,7 +35,7 @@ export function useExperimentExposure(
 ): void {
   const bootstrap = useExperimentBootstrap();
   const assigned =
-    !bootstrap.preview && bootstrap.featureFlags[key] !== undefined;
+    !bootstrap.preview && isKnownVariant(key, bootstrap.featureFlags[key]);
   useEffect(() => {
     if (assigned) {
       exposeExperiment(key, devices);
