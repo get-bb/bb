@@ -10,6 +10,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
+  CLIENT_NOTIFICATION_DISMISS_CHANNEL,
   type pushNotificationsRpcContract,
 } from "./contract.js";
 import {
@@ -48,6 +49,9 @@ function NotificationDelivery() {
     const channel = clientChannel();
     const enabled = channel !== null && values?.[`${channel}Enabled`] === true;
     void delivery.current?.deliver(payload, enabled).catch(() => undefined);
+  });
+  useRealtime(CLIENT_NOTIFICATION_DISMISS_CHANNEL, (payload) => {
+    delivery.current?.dismiss(payload);
   });
   return null;
 }

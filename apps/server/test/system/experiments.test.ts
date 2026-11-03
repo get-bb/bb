@@ -40,6 +40,7 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         applicationLinks: false,
         compactExpiredCache: false,
+        dismissReadNotifications: false,
         narrowPluginCss: false,
         serverMove: false,
         performanceDiagnostics: false,
@@ -77,6 +78,7 @@ describe("experiments settings", () => {
         body: JSON.stringify({
           applicationLinks: true,
           compactExpiredCache: true,
+          dismissReadNotifications: true,
           narrowPluginCss: true,
           serverMove: true,
           performanceDiagnostics: true,
@@ -94,6 +96,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        dismissReadNotifications: true,
         narrowPluginCss: true,
         serverMove: true,
         performanceDiagnostics: true,
@@ -109,6 +112,7 @@ describe("experiments settings", () => {
       expect(getExperiments(harness.db)).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        dismissReadNotifications: true,
         narrowPluginCss: true,
         serverMove: true,
         performanceDiagnostics: true,
@@ -128,6 +132,7 @@ describe("experiments settings", () => {
       ).toEqual({
         applicationLinks: true,
         compactExpiredCache: true,
+        dismissReadNotifications: true,
         narrowPluginCss: true,
         serverMove: true,
         performanceDiagnostics: true,
@@ -151,6 +156,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: false,
         compactExpiredCache: false,
+        dismissReadNotifications: false,
         narrowPluginCss: false,
         serverMove: true,
         performanceDiagnostics: false,

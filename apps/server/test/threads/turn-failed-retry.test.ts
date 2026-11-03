@@ -90,6 +90,7 @@ function recordTurnFailedAnnouncements(): string[] {
     emitThreadFailed: () => {},
     emitThreadArchived: () => {},
     emitThreadDeleted: () => {},
+    emitThreadRead: () => {},
     emitInteractionPending: () => {},
     emitMessageQueued: () => {},
     emitMessageDispatched: () => {},

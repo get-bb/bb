@@ -11,6 +11,8 @@ import {
   dialog,
   systemPreferences,
   type BrowserWindowConstructorOptions,
+  type Event as ElectronEvent,
+  type InputEvent,
   type NavigationEntry,
   type Session,
   type WebContents,
@@ -161,6 +163,15 @@ export const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 const ERR_ABORTED = -3;
 
+const POINTER_PRESS_INPUT_TYPES: ReadonlySet<InputEvent["type"]> = new Set([
+  "mouseDown",
+  "pointerDown",
+  "touchStart",
+  "gestureTapDown",
+]);
+
+type PointerFocusListener = (event: ElectronEvent, input: InputEvent) => void;
+
 export interface DesktopBrowserNativeTab extends BbDesktopBrowserState {
   threadId: string;
   generation: string;
@@ -196,6 +207,7 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   suppressNextFocusNotification: boolean;
+  pointerFocusListener: PointerFocusListener | null;
   visible: boolean;
   activeFindRequestId: number | null;
   agentOwned: boolean;
@@ -998,16 +1010,26 @@ export function createDesktopBrowserViewManager(
       );
     }
 
+    webContents.on("did-start-loading", () => awaitPointerFocus(entry));
+
     webContents.on("focus", () => {
       if (entry.suppressNextFocusNotification) {
         entry.suppressNextFocusNotification = false;
         return;
       }
-      if (automationControlled.has(webContents) || !entry.visible) {
-        setTimeout(() => returnFocusToHost(hostWindow), 0);
+      if (!rejectsNativeFocus(entry)) {
+        send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
         return;
       }
-      send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
+      setTimeout(() => {
+        if (rejectsNativeFocus(entry)) {
+          returnFocusToHost(hostWindow);
+          return;
+        }
+        if (!webContents.isDestroyed() && webContents.isFocused()) {
+          send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
+        }
+      }, 0);
     });
 
     webContents.on("before-input-event", (event, input) => {
@@ -1284,6 +1306,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       suppressNextFocusNotification: false,
+      pointerFocusListener: null,
       visible: false,
       activeFindRequestId: null,
       agentOwned: false,
@@ -1407,7 +1430,7 @@ export function createDesktopBrowserViewManager(
     for (const [key, entry] of entries) {
       if (
         key.startsWith(hostPrefix) &&
-        (automationControlled.has(entry.webContents) || !entry.visible) &&
+        rejectsNativeFocus(entry) &&
         !entry.webContents.isDestroyed() &&
         entry.webContents.isFocused()
       ) {
@@ -1415,6 +1438,33 @@ export function createDesktopBrowserViewManager(
       }
     }
     return false;
+  }
+
+  function rejectsNativeFocus(entry: BrowserViewEntry): boolean {
+    return (
+      automationControlled.has(entry.webContents) ||
+      !entry.visible ||
+      entry.pointerFocusListener !== null
+    );
+  }
+
+  function awaitPointerFocus(entry: BrowserViewEntry): void {
+    if (entry.pointerFocusListener !== null || entry.webContents.isFocused()) {
+      return;
+    }
+    const listener: PointerFocusListener = (_event, input) => {
+      if (POINTER_PRESS_INPUT_TYPES.has(input.type)) {
+        stopAwaitingPointerFocus(entry);
+      }
+    };
+    entry.pointerFocusListener = listener;
+    entry.webContents.on("input-event", listener);
+  }
+
+  function stopAwaitingPointerFocus(entry: BrowserViewEntry): void {
+    if (entry.pointerFocusListener === null) return;
+    entry.webContents.off("input-event", entry.pointerFocusListener);
+    entry.pointerFocusListener = null;
   }
 
   function returnFocusToHost(hostWindow: DesktopBrowserHostWindow): void {
@@ -1436,6 +1486,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function focusEntryWithoutNotifying(entry: BrowserViewEntry): void {
+    stopAwaitingPointerFocus(entry);
     entry.suppressNextFocusNotification = true;
     entry.webContents.focus();
     setTimeout(() => {

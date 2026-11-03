@@ -29,6 +29,7 @@
     "@bb/frp-client": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
+    "bb-plugin-bb-account": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

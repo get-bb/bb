@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
+import { buildGateLikeDockerfile } from "./dockerfile-build.js";
 import { frpBinaries } from "./frp-binaries.js";
 import {
   BASE_DOMAIN,
@@ -25,8 +27,6 @@ if (!availability.ok) {
 
 const OWNER = "user-owner";
 const SESSION = "better-auth.session_token";
-const REPOSITORY = fileURLToPath(new URL("../../..", import.meta.url));
-const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
 
 const fixture: AccountFixture = {
   labels: {
@@ -53,10 +53,12 @@ describe.skipIf(!availability.ok)("connect-next gate process", () => {
   let gate: ChildProcess;
   let frpc: FrpcProcess;
   let output = "";
+  let gateBundle = "";
   let webPort = 0;
 
   beforeAll(async () => {
     if (!availability.ok) return;
+    gateBundle = await buildGateLikeDockerfile();
     const keys = await testKeys();
     account = await startAccountApi(fixture);
     origin = await startOrigin({
@@ -66,32 +68,28 @@ describe.skipIf(!availability.ok)("connect-next gate process", () => {
     for (let attempt = 0; ; attempt += 1) {
       output = "";
       webPort = await freePort();
-      gate = spawn(
-        process.execPath,
-        ["--conditions=source", "--import", "tsx", MAIN],
-        {
-          cwd: REPOSITORY,
-          stdio: ["ignore", "pipe", "pipe"],
-          env: {
-            PATH: process.env.PATH,
-            HOME: process.env.HOME,
-            PUBLIC_SCHEME: "http",
-            BASE_DOMAIN,
-            ACCOUNT_API_URL: account.url,
-            ACCOUNT_APP_URL: account.url,
-            GATE_SECRET,
-            GATE_SIGNING_KEY: JSON.stringify(keys.privateJwk),
-            FRPS: availability.binaries.frps,
-            BIND_HOST: "127.0.0.1",
-            PORT: String(webPort),
-            FRP_BIND_PORT: String(await freePort()),
-            FRP_VHOST_PORT: String(await freePort()),
-            FRP_HOOKS_PORT: String(await freePort()),
-            FLY_MACHINE_ID: "process-gate",
-            FLY_REGION: "test",
-          },
+      gate = spawn(process.execPath, [gateBundle], {
+        cwd: dirname(gateBundle),
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          PATH: process.env.PATH,
+          HOME: process.env.HOME,
+          PUBLIC_SCHEME: "http",
+          BASE_DOMAIN,
+          ACCOUNT_API_URL: account.url,
+          ACCOUNT_APP_URL: account.url,
+          GATE_SECRET,
+          GATE_SIGNING_KEY: JSON.stringify(keys.privateJwk),
+          FRPS: availability.binaries.frps,
+          BIND_HOST: "127.0.0.1",
+          PORT: String(webPort),
+          FRP_BIND_PORT: String(await freePort()),
+          FRP_VHOST_PORT: String(await freePort()),
+          FRP_HOOKS_PORT: String(await freePort()),
+          FLY_MACHINE_ID: "process-gate",
+          FLY_REGION: "test",
         },
-      );
+      });
       gate.stdout?.on("data", (chunk: Buffer) => (output += chunk.toString()));
       gate.stderr?.on("data", (chunk: Buffer) => (output += chunk.toString()));
       await waitFor(
@@ -123,6 +121,9 @@ describe.skipIf(!availability.ok)("connect-next gate process", () => {
     if (gate?.exitCode === null) gate.kill("SIGKILL");
     await frpc?.kill();
     await Promise.all([edge?.close(), origin?.close(), account?.close()]);
+    if (gateBundle !== "") {
+      await rm(dirname(gateBundle), { recursive: true, force: true });
+    }
   });
 
   it("exits within a few seconds of SIGTERM with tunnels and WebSockets open", async () => {
