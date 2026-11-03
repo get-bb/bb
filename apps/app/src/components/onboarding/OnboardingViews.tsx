@@ -375,7 +375,7 @@ function AgentActionButton({
       ) : (
         <AgentActionIcon agent={agent} quiet />
       )}
-      <span className="grid">
+      <span className="grid justify-items-start text-left">
         {[label, busyLabel].map((text) => (
           <span
             key={text}
