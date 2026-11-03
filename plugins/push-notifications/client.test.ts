@@ -14,6 +14,9 @@ class TestNotification {
   ) {
     TestNotification.instances.push(this);
   }
+  get tag(): string {
+    return this.options.tag ?? "";
+  }
 }
 const message = {
   id: "event-1",
@@ -232,6 +235,24 @@ describe("client system notifications", () => {
     await first.deliver({ ...message, id: "event-3" }, true);
     expect(TestNotification.instances).toHaveLength(2);
     second.dispose();
+  });
+
+  it("closes only the read thread's notification when it is dismissed", async () => {
+    const delivery = createClientDelivery(vi.fn());
+    await delivery.deliver(message, true);
+    await delivery.deliver(
+      { ...message, id: "event-2", threadId: "thread-2" },
+      true,
+    );
+    const [read, other] = TestNotification.instances;
+
+    delivery.dismiss({ threadId: "thread-1" });
+    delivery.dismiss({ threadId: "thread-1" });
+    delivery.dismiss({ thread: "thread-2" });
+
+    expect(read?.close).toHaveBeenCalledOnce();
+    expect(other?.close).not.toHaveBeenCalled();
+    delivery.dispose();
   });
 
   it("respects channel, permission, disabled state, and malformed input", async () => {

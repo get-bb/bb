@@ -901,6 +901,16 @@ either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
+- `dismissReadNotifications` makes the push-notifications plugin remove a
+  thread's notifications once the thread is read on any client (opened, marked
+  read, or sent a message). Registered phones and tablets get a silent push
+  (`{"kind":"dismiss","threadId":…}`; `_contentAvailable` on iOS, data-only on
+  Android) that the mobile app's background task uses to remove that thread's
+  delivered notifications, and open web and desktop clients close the system
+  notification they are showing for it. Phones need a mobile app version with
+  the background task; an older Android app in the foreground would list the
+  silent push as a blank notification, so it is off for early adopters too.
+  The plugin reads it on each delivery and read, so a toggle applies live.
 - `narrowPluginCss` makes the app request each plugin's
   stylesheet with `css-scope=owned-root-v1`. bb then serves utilities that
   match only inside that plugin's own roots, not inside any root without a

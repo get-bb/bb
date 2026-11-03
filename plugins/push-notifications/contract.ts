@@ -51,6 +51,13 @@ export const clientNotificationSchema = z
   })
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
+export const CLIENT_NOTIFICATION_DISMISS_CHANNEL = "notification-dismiss";
+export const clientNotificationDismissalSchema = z
+  .object({ threadId: z.string().min(1) })
+  .strict();
+export type ClientNotificationDismissal = z.infer<
+  typeof clientNotificationDismissalSchema
+>;
 
 export const NOTIFICATION_TITLE_MAX_LENGTH = 80;
 export const NOTIFICATION_BODY_MAX_LENGTH = 180;
