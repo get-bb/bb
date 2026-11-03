@@ -64,7 +64,7 @@ export default function plugin(bb: BbPluginApi) {
       type: "boolean",
       label: "Command descriptions",
       description:
-        "Title Bash command rows with Claude's short description of the command instead of the command itself. Approval prompts still show the command. Applies to commands from the next turn.",
+        "Title Bash command rows with Claude's short description of the command instead of the command itself. Approval prompts still show the command. Takes effect from each thread's next message; existing rows keep their titles.",
       default: false,
     },
   });

@@ -1098,7 +1098,7 @@ skills.
 | `artifactsEnabled`           | `false` | Sets `CLAUDE_CODE_ARTIFACT=1` so Claude Code loads its Artifact tools (read, publish, and edit claude.ai artifacts), which it withholds from SDK sessions by default; when off, bb leaves any inherited value alone. Claude may publish private pages without asking. |
 | `sandboxEnabled`             | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                                                           |
 | `fullAccessApprovalsEnabled` | `false` | Shows Claude Code's own prompts in Full Access (`permissions.ask` rules, PreToolUse hooks that answer `ask`, and built-in safety checks); `false` approves every request. Applies from the next turn without a restart.                                               |
-| `commandDescriptionsEnabled` | `false` | Titles Bash command rows with Claude's short description of the command instead of the command itself; approval prompts and the expanded row still show the command. Applies from the next turn without a restart.                                                    |
+| `commandDescriptionsEnabled` | `false` | Titles Bash command rows with Claude's short description of the command instead of the command itself; approval prompts and the expanded row still show the command. Takes effect from each thread's next message; existing rows keep their titles.                   |
 
 Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
 noted, a change restarts the thread's Claude process before its next turn,
