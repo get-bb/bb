@@ -1943,7 +1943,7 @@ function ConnectOnSetupRow({
         ) : null
       }
       description={
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground @max-xl/onboarding:flex-col @max-xl/onboarding:items-start">
           <span className="flex items-center gap-1.5">
             <Icon
               name="CircleCheck"
@@ -1954,7 +1954,10 @@ function ConnectOnSetupRow({
           </span>
           {url === null ? null : (
             <>
-              <span aria-hidden="true" className="text-subtle-foreground">
+              <span
+                aria-hidden="true"
+                className="text-subtle-foreground @max-xl/onboarding:hidden"
+              >
                 ·
               </span>
               <span className="flex min-w-0 items-center gap-1">
