@@ -1377,7 +1377,7 @@ function RefreshedBelowFold() {
         <p>
           Start bb from your desk, CI, the bb mobile app, even other AI apps
           like ChatGPT or Claude. Threads run on machines you own, from your
-          laptop to a home server or VM.
+          laptop to a remote server or VM.
         </p>
       </Band>
 
