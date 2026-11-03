@@ -37,7 +37,6 @@ import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import UserAdd01Icon from "@hugeicons/core-free-icons/UserAdd01Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect } from "react";
@@ -46,7 +45,7 @@ import type { ReactNode, RefObject } from "react";
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon } from "./icons";
 
-export type IconProps = { className?: string };
+type IconProps = { className?: string };
 export type MockIcon = (props: IconProps) => ReactNode;
 
 function glyph(icon: IconSvgElement): MockIcon {
@@ -55,18 +54,18 @@ function glyph(icon: IconSvgElement): MockIcon {
   };
 }
 
-export const PanelIcon = glyph(SidebarLeftIcon);
+const PanelIcon = glyph(SidebarLeftIcon);
 export const PanelRightIcon = glyph(SidebarRightIcon);
 export const ChevronLeft = glyph(ArrowLeft01Icon);
 export const ChevronRight = glyph(ArrowRight01Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
 export const Ellipsis = glyph(MoreHorizontalIcon);
 export const NewThreadIcon = glyph(BubbleChatAddIcon);
-export const HomeIcon = glyph(Home01Icon);
+const HomeIcon = glyph(Home01Icon);
 export const SearchIcon = glyph(Search01Icon);
 export const PluginsIcon = glyph(Plug02Icon);
-export const SkillsIcon = glyph(ZapIcon);
-export const AutomationsIcon = glyph(RepeatIcon);
+const SkillsIcon = glyph(ZapIcon);
+const AutomationsIcon = glyph(RepeatIcon);
 export const ClockIcon = glyph(Clock01Icon);
 export const GearIcon = glyph(Settings01Icon);
 export const PhoneIcon = glyph(SmartPhone01Icon);
@@ -76,8 +75,8 @@ export const CircleCheckIcon = glyph(CheckmarkCircle02Icon);
 export const QuestionIcon = glyph(MessageQuestionIcon);
 export const PaperPlane = glyph(SentIcon);
 export const Paperclip = glyph(AttachmentIcon);
-export const PlusIcon = glyph(PlusSignIcon);
-export const FolderIcon = glyph(Folder01Icon);
+const PlusIcon = glyph(PlusSignIcon);
+const FolderIcon = glyph(Folder01Icon);
 export const FolderGitIcon = glyph(FolderGit2Icon);
 export const GitBranchIcon = glyph(GitBranchGlyph);
 export const GitMergeIcon = glyph(GitMergeGlyph);
@@ -85,7 +84,7 @@ export const PullRequestIcon = glyph(GitPullRequestIcon);
 export const Spinner = glyph(Loading03Icon);
 export const Maximize2 = glyph(ArrowExpand01Icon);
 export const MicIcon = glyph(Mic02Icon);
-export const SendIcon = glyph(ArrowMoveDownLeftIcon);
+const SendIcon = glyph(ArrowMoveDownLeftIcon);
 export const LaptopGlyph = glyph(LaptopIcon);
 export const FileDiffIcon = glyph(PlusMinusSquare01Icon);
 export const FileCodeGlyph = glyph(FileCodeIcon);
@@ -95,11 +94,10 @@ export const FileEditGlyph = glyph(FileEditIcon);
 export const PinGlyph = glyph(PinIcon);
 export const TestIcon = glyph(FlaskConicalIcon);
 export const MessageIcon = glyph(Message01Icon);
-export const SubagentIcon = glyph(UserAdd01Icon);
 
 export type ThreadState = "running" | "done" | "waiting";
 
-export function StatusGlyph({ status }: { status: ThreadState | "unread" }) {
+function StatusGlyph({ status }: { status: ThreadState | "unread" }) {
   if (status === "running") return <Spinner className="trun" />;
   if (status === "done") return <CircleCheckIcon className="tdone" />;
   if (status === "waiting") return <QuestionIcon className="twait" />;
@@ -114,7 +112,7 @@ export function ThreadStatus({ status }: { status: ThreadState | "unread" }) {
   );
 }
 
-export function WindowDots() {
+function WindowDots() {
   return (
     <span className="mock-dots" aria-hidden>
       <i />
@@ -237,7 +235,7 @@ export const NAV_ITEMS = [
   { icon: AutomationsIcon, label: "Automations" },
 ] as const satisfies readonly { icon: MockIcon; label: string }[];
 
-export type NavLabel = (typeof NAV_ITEMS)[number]["label"];
+type NavLabel = (typeof NAV_ITEMS)[number]["label"];
 
 export function NavRail({
   active = "Home",

@@ -1,17 +1,23 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-export function useInView<T extends Element>() {
+export function useInView<T extends Element>(rootMargin = "0px") {
   const [el, setEl] = useState<T | null>(null);
+  const [inView, setInView] = useState(false);
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     if (!el) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) setSeen(true);
-    });
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry?.isIntersecting ?? false;
+        setInView(visible);
+        if (visible) setSeen(true);
+      },
+      { rootMargin },
+    );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [el]);
-  return { ref: setEl, seen };
+  }, [el, rootMargin]);
+  return { ref: setEl, inView, seen };
 }
 
 function subscribeVisibility(onChange: () => void) {

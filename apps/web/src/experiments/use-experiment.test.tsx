@@ -34,12 +34,11 @@ type Modules = Awaited<ReturnType<typeof loadModules>>;
 function createProbeRouter(
   modules: Modules,
   serverExperiments: ExperimentBootstrap | null,
-  seen = true,
 ) {
   const { router, experiments, analytics } = modules;
   function Probe() {
     const variant = experiments.useExperiment("homepage-qa-check");
-    experiments.useExperimentExposure("homepage-qa-check", "desktop", seen);
+    experiments.useExperimentExposure("homepage-qa-check", "desktop");
     analytics.useInitAnalytics();
     return (
       <main data-qa-check={variant === "test" ? variant : undefined}>
@@ -82,7 +81,6 @@ async function hydratePage(
   modules: Modules,
   experiments: ExperimentBootstrap | null,
   html: string,
-  seen = true,
 ) {
   const errors: unknown[] = [];
   vi.spyOn(console, "error").mockImplementation((...args) => {
@@ -91,7 +89,7 @@ async function hydratePage(
   const container = document.createElement("div");
   container.innerHTML = html;
   document.body.appendChild(container);
-  const instance = createProbeRouter(modules, experiments, seen);
+  const instance = createProbeRouter(modules, experiments);
   await instance.load();
   await act(async () => {
     modules.client.hydrateRoot(
@@ -178,16 +176,6 @@ describe("server-rendered experiments", () => {
         ["homepage-qa-check"],
       ]),
     );
-  });
-
-  it("waits to expose until the exposure point is seen", async () => {
-    const modules = await loadModules();
-    const experiments = bootstrap({ "homepage-qa-check": "test" });
-    const html = await serverRender(modules, experiments);
-    const { errors } = await hydratePage(modules, experiments, html, false);
-    expect(errors).toEqual([]);
-    await vi.waitFor(() => expect(posthog.init).toHaveBeenCalled());
-    expect(posthog.getFeatureFlag).not.toHaveBeenCalled();
   });
 
   it("renders control and exposes nothing without an active flag", async () => {
