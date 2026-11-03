@@ -118,6 +118,8 @@ const SIGN_IN_OUTPUT_TAIL_BYTES = 64 * 1024;
 const SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 6_000;
 const REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 3_000;
 const CONNECT_INPUT_SETTLE_MS = 500;
+const INSTALL_SETTLE_TIMEOUT_MS = 20_000;
+const INSTALL_SETTLE_POLL_MS = 2_000;
 const INSTALL_FAILED_MESSAGE = "Install failed";
 const REDESIGN_INSTALL_FAILED_MESSAGE =
   "Couldn't install. Check your connection and retry.";
@@ -434,6 +436,32 @@ function AgentStepContainer({
     if (runningJobKey === null) void refetchStates();
   }, [refetchStates, runningJobKey]);
 
+  const previousRunningJobKeyRef = useRef<string | null>(null);
+  const [settlingJobKey, setSettlingJobKey] = useState<string | null>(null);
+  const installFailures = installRunner.failuresByJobKey;
+  useEffect(() => {
+    const previous = previousRunningJobKeyRef.current;
+    previousRunningJobKeyRef.current = runningJobKey;
+    if (!redesign || previous === null || previous === runningJobKey) return;
+    if (installFailures.has(previous)) return;
+    setSettlingJobKey(previous);
+  }, [installFailures, redesign, runningJobKey]);
+  useEffect(() => {
+    if (settlingJobKey === null) return;
+    const poll = window.setInterval(
+      () => void refetchStates(),
+      INSTALL_SETTLE_POLL_MS,
+    );
+    const timeout = window.setTimeout(
+      () => setSettlingJobKey(null),
+      INSTALL_SETTLE_TIMEOUT_MS,
+    );
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(timeout);
+    };
+  }, [refetchStates, settlingJobKey]);
+
   const startSignIn = async (
     providerId: string,
     requestedMethod?: SignInMethod,
@@ -569,7 +597,10 @@ function AgentStepContainer({
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
                 installRunner.runningJobKey === jobKey ||
-                installRunner.queuedJobKeys.has(jobKey),
+                installRunner.queuedJobKeys.has(jobKey) ||
+                (settlingJobKey === jobKey &&
+                  (health.status === "not_installed" ||
+                    health.status === "unsupported_version")),
               installFailure:
                 installFailure === undefined
                   ? null
