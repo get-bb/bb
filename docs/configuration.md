@@ -396,8 +396,8 @@ records only `failed`, once each time the Agent step's agent states or the
 Plugins step's catalog start failing to load. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
-`no_host` (no computer was available; for `scan` and agent `load`, recorded
-once each time the step opens without one), `host_unavailable`, `timed_out`,
+`no_host` (no computer was available: once per guide for `scan`, and each
+time the Agent step opens without one for agent `load`), `host_unavailable`, `timed_out`,
 `not_found`, `permission`, `command_failed` (the agent install command, plugin
 install job, or new machine's setup ran and failed), or `other`. A failed
 `remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't
