@@ -43,7 +43,9 @@ describe("homepage-download-area install block", () => {
     const touch = renderArm("test").split(
       '<span class="install-note install-note-touch">',
     )[1];
-    expect(touch).toMatch(/^<a [^>]*>.*Open source<\/a> · <a class="install-note-link" href="\/download">Other platforms<\/a><\/span>/);
+    expect(touch).toMatch(
+      /^<a [^>]*>.*Open source<\/a> · <a class="install-note-link" href="\/download">Other platforms<\/a><\/span>/,
+    );
     expect(renderArm("test")).not.toContain("bb runs on macOS");
   });
 });

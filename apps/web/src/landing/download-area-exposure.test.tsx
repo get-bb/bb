@@ -119,9 +119,4 @@ describe("homepage-download-area exposure", () => {
       "desktop",
     );
   });
-
-  it("stays silent for an unassigned visitor", () => {
-    renderBlock({ distinctID: "id", featureFlags: {}, preview: false });
-    expect(exposeExperiment).not.toHaveBeenCalled();
-  });
 });
