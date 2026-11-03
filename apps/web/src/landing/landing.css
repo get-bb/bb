@@ -3862,9 +3862,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 /* ── Testimonials ───────────────────────────────────────────────── */
 
 /* One plain card per quote, whatever the source, and the whole card links to
-   the original post. Four columns on desktop (the longest quote spans two, so
-   seven cards fill two rows), two on tablets, and a swipeable row on phones
-   with the next card peeking in. */
+   the original post. Four columns on desktop (twelve cards fill three rows),
+   two on tablets, and a swipeable row on phones with the next card peeking
+   in. */
 .testimonials {
   border-top: 1px solid var(--border-soft);
   padding: 52px 0 56px;
