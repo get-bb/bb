@@ -14,19 +14,11 @@ import { AppFileExternalNavigationHost } from "./AppFileExternalNavigationHost";
 const openPreferred = vi.hoisted(() => vi.fn());
 const recordAccepted = vi.fn();
 
-vi.mock("@/hooks/useResolvedLiveFileTarget", () => ({
-  useResolvedLiveFileTarget: (target: { path: string }) => ({
-    status: "available",
-    absolutePath: `/workspace/${target.path}`,
-    hostId: "host_1",
-    openContext: { kind: "local" },
-  }),
-}));
-
-vi.mock("@/hooks/useLocalOpenTargets", () => ({
-  useLocalOpenTargets: () => ({
+vi.mock("@/hooks/useLiveFileOpenTargets", () => ({
+  useLiveFileOpenTargets: () => ({
     isLoading: false,
     openPathInPreferredFileTarget: openPreferred,
+    root: { status: "available", hostId: "host_1", rootPath: "/workspace" },
   }),
 }));
 

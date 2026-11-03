@@ -7,7 +7,9 @@ import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
   RUNTIME_SLOT_BY_SPECIFIER,
+  dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
+  findUnnamedPluginRoots,
 } from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
@@ -44,15 +46,21 @@ interface PluginAppState {
   bundle: PluginAppBundleInfo | null;
 }
 
+interface PluginCssBytes {
+  original: Buffer;
+  withoutHostTailwind: Buffer;
+}
+
 interface PluginAppAssets {
   jsPath: string;
-  css: { original: Buffer; withoutHostTailwind: Buffer } | null;
+  css: PluginCssBytes | null;
+  ownedRootCss: PluginCssBytes | null;
   hash: string;
 }
 
 export interface PluginAppAsset {
   hash: string;
-  read(hostTailwind: boolean): Promise<Buffer>;
+  read(options: { hostTailwind: boolean; ownedRoot: boolean }): Promise<Buffer>;
 }
 
 export function pluginAppAsset(
@@ -66,8 +74,12 @@ export function pluginAppAsset(
     ? undefined
     : {
         hash: assets.hash,
-        read: async (hostTailwind) =>
-          hostTailwind ? css.withoutHostTailwind : css.original,
+        read: async ({ hostTailwind, ownedRoot }) => {
+          const selected = ownedRoot ? (assets.ownedRootCss ?? css) : css;
+          return hostTailwind
+            ? selected.withoutHostTailwind
+            : selected.original;
+        },
       };
 }
 
@@ -367,10 +379,27 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
+  const ownedRootCss: PluginCssBytes | null =
+    css !== null && findUnnamedPluginRoots(js.toString("utf8")).length === 0
+      ? {
+          original: Buffer.from(
+            dropAnonymousPluginRootScope(css.original.toString("utf8")),
+          ),
+          withoutHostTailwind: Buffer.from(
+            dropAnonymousPluginRootScope(
+              css.withoutHostTailwind.toString("utf8"),
+            ),
+          ),
+        }
+      : null;
   const hasher = createHash("sha256").update(js);
   if (css !== null) {
     hasher.update(css.original);
     hasher.update(css.withoutHostTailwind);
+  }
+  if (ownedRootCss !== null) {
+    hasher.update(ownedRootCss.original);
+    hasher.update(ownedRootCss.withoutHostTailwind);
   }
   hasher.update(metaRaw);
   hasher.update(pluginId);
@@ -391,6 +420,6 @@ export async function loadPluginAppBundle(
         runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
       },
     },
-    assets: { jsPath, css, hash },
+    assets: { jsPath, css, ownedRootCss, hash },
   };
 }

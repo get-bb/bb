@@ -80,6 +80,18 @@ describe("shortenTimelineResponseOutputs", () => {
     ).toBe(true);
   });
 
+  it("does not split a surrogate pair at the cap", () => {
+    const head = "x".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS - 1);
+    const out = truncateOnly(
+      response([commandRow(`${head}\u{1F600}${"y".repeat(10)}`)]),
+    );
+    const row = out.rows[0] as Extract<
+      TimelineRow,
+      { kind: "work"; workKind: "command" }
+    >;
+    expect(row.output).toBe(`${head}\n…[12 more characters truncated]`);
+  });
+
   it("leaves small outputs and their row identity untouched", () => {
     const input = response([commandRow("ok")]);
     const out = truncateOnly(input);

@@ -582,7 +582,8 @@ export function createAcpDeltaTranslator(
     Extract<ThreadDelta, { kind: "item.close" }>,
     "aggregatedOutput" | "exitCode" | "resultText"
   > {
-    const normalizedEvent = dialect.normalizeCommandEvent?.(event) ?? event;
+    const normalizedEvent =
+      dialect.normalizeCommandEvent?.(event, event) ?? event;
     const result =
       dialect.commandResult?.(normalizedEvent) ??
       extractAcpCommandResult(normalizedEvent);
@@ -598,7 +599,9 @@ export function createAcpDeltaTranslator(
   function genericCloseFields(
     event: AcpToolCallUpdateEvent,
   ): Pick<Extract<ThreadDelta, { kind: "item.close" }>, "resultText"> {
-    const outputText = extractAcpToolCallOutputText(event);
+    const normalizedEvent =
+      dialect.normalizeToolCallEvent?.(event, event) ?? event;
+    const outputText = extractAcpToolCallOutputText(normalizedEvent);
     return outputText === undefined ? {} : { resultText: outputText };
   }
 
@@ -768,7 +771,7 @@ export function createAcpDeltaTranslator(
           open?.openedType === "command"
         ) {
           const normalizedEvent =
-            dialect.normalizeCommandEvent?.(event) ?? event;
+            dialect.normalizeCommandEvent?.(event, merged) ?? event;
           const streamed = extractAcpStreamedCommandOutput(normalizedEvent);
           return streamed === undefined
             ? suppressedUnhandled(rawEvent)
@@ -780,7 +783,9 @@ export function createAcpDeltaTranslator(
                 },
               ];
         }
-        const progressText = extractAcpToolCallOutputText(event);
+        const progressEvent =
+          dialect.normalizeToolCallEvent?.(event, merged) ?? event;
+        const progressText = extractAcpToolCallOutputText(progressEvent);
         if (progressText === undefined) {
           return suppressedUnhandled(rawEvent);
         }

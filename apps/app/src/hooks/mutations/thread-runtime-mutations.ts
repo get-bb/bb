@@ -236,17 +236,10 @@ export function useUpdateThreadQueuedMessage() {
       showErrorToast: false,
     },
     mutationFn: ({
-      expectedUpdatedAt,
       id,
-      input,
-      queuedMessageId,
+      ...request
     }: UpdateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
-      sdk.threads.queuedMessages.update({
-        expectedUpdatedAt,
-        input,
-        queuedMessageId,
-        threadId: id,
-      }),
+      sdk.threads.queuedMessages.update({ ...request, threadId: id }),
     onMutate: async (variables): Promise<UpdateQueuedMessageTransaction> =>
       beginUpdateQueuedMessageTransaction({
         queryClient,

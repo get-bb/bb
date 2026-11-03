@@ -1,3 +1,4 @@
+import { isAbsoluteHostPath, isWindowsUncHostPath } from "@bb/domain";
 import {
   getEnvironmentFilePreviewSourceRef,
   type EnvironmentFilePreviewSource,
@@ -9,8 +10,9 @@ function encodePathSegments(path: string): string {
 }
 
 function encodeHostFilePath(absolutePath: string): string {
+  const root = isWindowsUncHostPath(absolutePath) ? "\\\\" : "";
   return encodePathSegments(
-    absolutePath.replace(/\\/gu, "/").replace(/^\/+/u, ""),
+    absolutePath.replace(/\\/gu, "/").replace(/^\/+/u, root),
   );
 }
 
@@ -18,11 +20,10 @@ interface PathClassificationArgs {
   path: string;
 }
 
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
 const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
 export function isAbsoluteLocalPath({ path }: PathClassificationArgs): boolean {
-  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
+  return isAbsoluteHostPath(path);
 }
 
 export function isProjectAttachmentPath({

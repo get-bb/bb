@@ -3476,9 +3476,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding: 48px 0 40px;
 }
 
-/* The dark "bb" glyph is 105x89 px inside the 192px icon (x 43-148, y 51-140).
-   Scale the icon to 1.6em so the glyph is the heading's ascender height
-   (0.74em), then crop the box to the glyph so it sits on the baseline. */
 /* The vector bb mark, drawn whole so no edge is cropped. The SVG's viewBox
    keeps a small margin around the glyph, so its anti-aliased edges never
    touch the box. Dark mode inverts it to match the light dark-mode icon. */

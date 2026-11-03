@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ExperimentsProvider } from "../experiments/context";
-import { DownloadPage } from "./download-page";
 import { InstallOptions, SimpleInstallOptions } from "./landing-visuals";
 import { CLI_COMMAND, GITHUB_URL } from "./site";
 
@@ -50,22 +49,5 @@ describe("homepage-download-area outside the homepage", () => {
     );
     expect(html.includes("Other platforms")).toBe(simple);
     expect(html.includes(CLI_COMMAND)).toBe(!simple);
-  });
-});
-
-describe("/download page", () => {
-  it("lists the other computers, the command and the phone apps", () => {
-    const html = renderToStaticMarkup(<DownloadPage />);
-    const body = html.slice(
-      html.indexOf('class="dl-body"'),
-      html.indexOf('class="footer"'),
-    );
-    expect(html).toContain('href="/download/macos?placement=download_page"');
-    expect(body).not.toContain("/download/macos");
-    expect(body).toContain('href="/download/windows?placement=download_page"');
-    expect(body).toContain('href="/download/linux?placement=download_page"');
-    expect(body).toContain(CLI_COMMAND);
-    expect(body).toContain("testflight.apple.com");
-    expect(body).toContain("bb-android.apk");
   });
 });

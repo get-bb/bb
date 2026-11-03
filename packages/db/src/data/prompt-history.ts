@@ -62,6 +62,10 @@ export interface ListPromptHistoryPageArgs {
   limit: number;
 }
 
+export const PROMPT_HISTORY_ENTRY_MAX_BYTES = 256 * 1024;
+
+const promptHistoryEntryWithinSizeLimit = sql`octet_length(${promptHistoryEntries.input}) <= ${PROMPT_HISTORY_ENTRY_MAX_BYTES}`;
+
 function rawPromptHistoryRowLimit(limit: number): number {
   return Math.min(
     PROMPT_HISTORY_ENTRY_LIMIT * 2,
@@ -112,6 +116,7 @@ export function listStoredProjectPromptHistoryRows(
         eq(promptHistoryEntries.projectId, args.projectId),
         eq(promptHistoryEntries.scope, "project"),
         isNull(threads.deletedAt),
+        promptHistoryEntryWithinSizeLimit,
       ),
     )
     .orderBy(
@@ -134,6 +139,7 @@ export function listStoredThreadPromptHistoryRows(
       and(
         eq(promptHistoryEntries.threadId, args.threadId),
         eq(promptHistoryEntries.scope, "thread"),
+        promptHistoryEntryWithinSizeLimit,
       ),
     )
     .orderBy(
@@ -154,9 +160,12 @@ export function listPromptHistoryPage(
     .select(storedPromptHistoryEntryColumns)
     .from(promptHistoryEntries)
     .where(
-      before === null
-        ? undefined
-        : sql`(${promptHistoryEntries.createdAt}, ${promptHistoryEntries.requestSequence}, ${promptHistoryEntries.id}) < (${before.createdAt}, ${before.requestSequence}, ${before.id})`,
+      and(
+        promptHistoryEntryWithinSizeLimit,
+        before === null
+          ? undefined
+          : sql`(${promptHistoryEntries.createdAt}, ${promptHistoryEntries.requestSequence}, ${promptHistoryEntries.id}) < (${before.createdAt}, ${before.requestSequence}, ${before.id})`,
+      ),
     )
     .orderBy(
       desc(promptHistoryEntries.createdAt),

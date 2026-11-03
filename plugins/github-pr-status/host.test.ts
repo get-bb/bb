@@ -46,6 +46,7 @@ function pullRequestJson(): string {
 }
 
 let repositoryTemplate: string;
+let trackedForkRepositoryTemplate: string;
 
 beforeAll(async () => {
   repositoryTemplate = await fs.mkdtemp(path.join(tmpdir(), "bb-pr-template-"));
@@ -61,30 +62,18 @@ beforeAll(async () => {
   await runGit(["remote", "add", "origin", "git@github.com:acme/bb.git"], {
     cwd: workspacePath,
   });
-});
-
-afterAll(async () => {
-  if (repositoryTemplate) {
-    await fs.rm(repositoryTemplate, { recursive: true, force: true });
-  }
-});
-
-async function createRepository(prefix: string): Promise<string> {
-  const workspacePath = await makeTempDir(prefix);
-  await fs.cp(repositoryTemplate, workspacePath, { recursive: true });
-  return workspacePath;
-}
-
-async function createTrackedForkWorkspace(
-  remoteUrl = forkRemoteUrl,
-): Promise<string> {
-  const workspacePath = await createRepository("bb-pr-upstream-workspace-");
-  await runGit(["remote", "add", forkRemote, remoteUrl], {
-    cwd: workspacePath,
+  trackedForkRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-fork-template-"),
+  );
+  await fs.cp(repositoryTemplate, trackedForkRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["remote", "add", forkRemote, forkRemoteUrl], {
+    cwd: trackedForkRepositoryTemplate,
   });
   await runGit(
     ["update-ref", `refs/remotes/${forkRemote}/${upstreamBranch}`, "HEAD"],
-    { cwd: workspacePath },
+    { cwd: trackedForkRepositoryTemplate },
   );
   await runGit(
     [
@@ -93,8 +82,37 @@ async function createTrackedForkWorkspace(
       `${forkRemote}/${upstreamBranch}`,
       localBranch,
     ],
-    { cwd: workspacePath },
+    { cwd: trackedForkRepositoryTemplate },
   );
+});
+
+afterAll(async () => {
+  for (const template of [repositoryTemplate, trackedForkRepositoryTemplate]) {
+    if (template) await fs.rm(template, { recursive: true, force: true });
+  }
+});
+
+async function createRepository(
+  prefix: string,
+  template = repositoryTemplate,
+): Promise<string> {
+  const workspacePath = await makeTempDir(prefix);
+  await fs.cp(template, workspacePath, { recursive: true });
+  return workspacePath;
+}
+
+async function createTrackedForkWorkspace(
+  remoteUrl = forkRemoteUrl,
+): Promise<string> {
+  const workspacePath = await createRepository(
+    "bb-pr-upstream-workspace-",
+    trackedForkRepositoryTemplate,
+  );
+  if (remoteUrl !== forkRemoteUrl) {
+    await runGit(["remote", "set-url", forkRemote, remoteUrl], {
+      cwd: workspacePath,
+    });
+  }
   return workspacePath;
 }
 

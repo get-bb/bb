@@ -14,7 +14,7 @@ import {
   rewindThreadPruningWork,
   dropMarketplaceSourceGitSubdirectoryColumn,
   dropThreadParentNotificationsColumn,
-  dropQueuedMessageDeliveryModeColumn,
+  dropQueuedMessageDeliveryColumns,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
 
@@ -93,7 +93,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropQueuedMessageEditHeldUntilColumn(db);
           dropMarketplaceSourceGitSubdirectoryColumn(db);
           dropThreadParentNotificationsColumn(db);
-          dropQueuedMessageDeliveryModeColumn(db);
+          dropQueuedMessageDeliveryColumns(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
             .run(SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP);

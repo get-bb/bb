@@ -25,6 +25,7 @@ import {
   appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
   createClientTurnRequestId,
+  type TurnRequestRetryMarker,
 } from "./thread-events.js";
 import {
   hasLiveThreadStartInFlight,
@@ -61,7 +62,9 @@ interface RequestThreadProvisionArgs {
   execution: ResolvedThreadExecutionOptions;
   fork: ThreadForkDescriptor | null;
   input: PromptInput[];
+  originPluginId: string | null;
   providerInput?: PromptInput[];
+  retryOf?: TurnRequestRetryMarker;
   startedOnBehalfOf: StartedOnBehalfOf | null;
   thread: Thread;
   titleProvided: boolean;
@@ -74,6 +77,8 @@ interface RequestThreadTargetReprovisionArgs {
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   initiator: ThreadTurnInitiator;
+  originPluginId: string | null;
+  retryOf?: TurnRequestRetryMarker;
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
@@ -299,9 +304,11 @@ export function requestThreadProvision(
       threadId: args.thread.id,
       environmentId: args.thread.environmentId,
       type: "client/turn/requested",
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       input: args.input,
       execution: args.execution,
       initiator,
+      originPluginId: args.originPluginId,
       senderThreadId,
       requestMethod: "thread/start",
       source: "spawn",
@@ -442,12 +449,14 @@ function appendReprovisionTurnRequest(
             threadId: args.thread.id,
             environmentId: args.environment.id,
             type: "client/turn/requested",
+            ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
             input: args.input,
             ...(args.inputGroups !== undefined
               ? { inputGroups: args.inputGroups }
               : {}),
             execution: args.execution,
             initiator: args.initiator,
+            originPluginId: args.originPluginId,
             senderThreadId: args.senderThreadId,
             systemMessageKind: args.systemMessageKind,
             systemMessageSubject: args.systemMessageSubject,

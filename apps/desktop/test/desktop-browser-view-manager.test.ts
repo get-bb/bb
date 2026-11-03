@@ -3,7 +3,7 @@ import type {
   RenderProcessGoneDetails,
   WebContentsView,
 } from "electron";
-import { Menu } from "electron";
+import { clipboard, Menu, shell } from "electron";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -106,6 +106,12 @@ type FakeDidFailLoadListener = (
 ) => void;
 
 interface FakeContextMenuParams {
+  linkURL: string;
+  pageURL: string;
+  srcURL: string;
+  isEditable: boolean;
+  misspelledWord: string;
+  dictionarySuggestions: string[];
   mediaType: "image" | "none";
   hasImageContents: boolean;
   selectionText: string;
@@ -396,6 +402,9 @@ const electronMock = vi.hoisted(() => {
 
   class FakeWebContents {
     public readonly debugger = new FakeDebugger();
+    public readonly downloadURL = vi.fn<(url: string) => void>();
+    public readonly replaceMisspelling = vi.fn<(text: string) => void>();
+    public readonly session = { addWordToSpellCheckerDictionary: vi.fn() };
     public readonly copyImageAt = vi.fn<(x: number, y: number) => void>();
     emitContextMenu(params: FakeContextMenuParams): void {
       for (const listener of this.listeners["context-menu"])
@@ -938,6 +947,8 @@ const electronMock = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
+  clipboard: { writeText: vi.fn() },
+  shell: { openExternal: vi.fn() },
   Menu: {
     buildFromTemplate: vi.fn<
       (template: MenuItemConstructorOptions[]) => { popup(): void }
@@ -1955,7 +1966,7 @@ describe("DesktopBrowserViewManager", () => {
     { mediaType: "image", hasImageContents: false, offersCopy: true },
     { mediaType: "none", hasImageContents: false, offersCopy: false },
   ] as const)(
-    "handles image copying for $mediaType with contents=$hasImageContents",
+    "offers shared browser actions for $mediaType with contents=$hasImageContents",
     ({ mediaType, hasImageContents, offersCopy }) => {
       const hostWindow = new FakeHostWindow({
         webContentsId: 1,
@@ -1970,6 +1981,12 @@ describe("DesktopBrowserViewManager", () => {
       });
       const contents = requireFakeView(0).webContents;
       contents.emitContextMenu({
+        linkURL: "https://example.com/full.png",
+        pageURL: "https://example.com/",
+        srcURL: "https://example.com/thumb.png",
+        isEditable: true,
+        misspelledWord: "teh",
+        dictionarySuggestions: ["the"],
         mediaType,
         hasImageContents,
         x: 42,
@@ -1995,7 +2012,34 @@ describe("DesktopBrowserViewManager", () => {
           expect(contents.copyImageAt).toHaveBeenCalledWith(42, 63);
         }
       }
+      for (const [label, action, value] of [
+        ["Open in Browser", shell.openExternal, "https://example.com/full.png"],
+        ["Copy Link", clipboard.writeText, "https://example.com/full.png"],
+        ["the", contents.replaceMisspelling, "the"],
+        ...(offersCopy
+          ? ([
+              [
+                "Save Image As…",
+                contents.downloadURL,
+                "https://example.com/thumb.png",
+              ],
+            ] as const)
+          : []),
+      ] as const) {
+        const actionItem = template?.find((entry) => entry.label === label);
+        expect(actionItem, label).toBeDefined();
+        if (!actionItem?.click) throw new Error(`Missing ${label}`);
+        vi.mocked(action).mockClear();
+        Reflect.apply(actionItem.click, undefined, []);
+        expect(action).toHaveBeenCalledWith(value);
+        vi.mocked(action).mockClear();
+      }
       manager.destroyAll();
+      for (const entry of template ?? []) {
+        if (entry.click) Reflect.apply(entry.click, undefined, []);
+      }
+      expect(contents.downloadURL).not.toHaveBeenCalled();
+      expect(contents.replaceMisspelling).not.toHaveBeenCalled();
     },
   );
 

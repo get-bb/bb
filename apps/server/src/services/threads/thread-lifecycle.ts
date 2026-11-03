@@ -28,6 +28,7 @@ import {
   listThreadIdsStoppedSinceLastTurnStart,
   listThreadIdsWithLatestHostDaemonRestartInterruption,
   listThreadTurnInterruptionEventStates,
+  liveThread,
   markThreadStorageDeleted,
   threads,
   type DbNotifier,
@@ -864,6 +865,7 @@ function settleThreadCommandFailure(
           childThread: thread,
           parentThreadId,
           turnStatus: "failed",
+          turnId: null,
         }),
     });
   }
@@ -1888,6 +1890,7 @@ function interruptActiveThreads(
         childThread: thread,
         parentThreadId: thread.parentThreadId,
         turnStatus: "interrupted",
+        turnId: result.interruptedTurnId,
         interruption: {
           reason: args.reason,
           ...(args.cause ? { cause: args.cause } : {}),
@@ -2123,8 +2126,7 @@ export async function reconcileDaemonReportedThreads(
         and(
           eq(environments.hostId, args.hostId),
           eq(threads.status, "error"),
-          isNull(threads.deletedAt),
-          isNull(threads.archivedAt),
+          liveThread,
           inArray(threads.id, [...args.activeThreadIds]),
         ),
       )
@@ -2179,8 +2181,7 @@ export async function reconcileDaemonReportedThreads(
       and(
         eq(environments.hostId, args.hostId),
         inArray(threads.status, ["starting", "idle"]),
-        isNull(threads.deletedAt),
-        isNull(threads.archivedAt),
+        liveThread,
         inArray(threads.id, [...args.activeThreadIds]),
       ),
     )

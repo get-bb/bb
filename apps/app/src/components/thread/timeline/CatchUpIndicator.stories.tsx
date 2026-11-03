@@ -177,7 +177,6 @@ export function Overview() {
             timelineRows={cachedRows}
             unreadDividerAutoScroll={false}
             unreadDividerPlacement={null}
-            workspaceRootPath={undefined}
           />
         </PageShell>
       </div>

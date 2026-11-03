@@ -32,6 +32,7 @@ export {
   listPromptHistoryPage,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
+  PROMPT_HISTORY_ENTRY_MAX_BYTES,
 } from "./prompt-history.js";
 export type {
   ListPromptHistoryPageArgs,
@@ -67,7 +68,6 @@ export {
 export {
   createThread,
   InvalidLifecycleOwnerError,
-  countLiveThreadsInEnvironment,
   countThreads,
   countNonDeletedAssignedChildThreads,
   getThread,
@@ -81,6 +81,8 @@ export {
   listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listLiveThreadsInEnvironment,
+  liveThread,
+  threadHoldsEnvironment,
   listThreadMentionRowsByIds,
   listNonDeletedChildThreads,
   listThreadEnvironmentAssignmentsOnHost,
@@ -123,8 +125,11 @@ export type {
 } from "./threads.js";
 
 export {
+  deletePluginRecommendationId,
   forgetPluginProviders,
   getAiServiceSelections,
+  getPluginRecommendationId,
+  setPluginRecommendationId,
   getAppKeybindingOverrides,
   claimInstallTurnNumber,
   getAppSettings,
@@ -305,6 +310,7 @@ export {
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
+  hasStoredTurnCompleted,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
   wouldRemoveSharedProviderSessionClaim,
@@ -313,6 +319,7 @@ export {
   getLastStoredTurnRequestEvent,
   listStoredTaskTurnRequestEvents,
   listLatestTurnFinalAgentMessageEventRows,
+  getTurnFinalAgentMessageEventRow,
   getStoredTurnRequestEventForTurn,
   getLatestThreadOutputEventRow,
   getLatestStoredConversationOutlineSequence,
@@ -426,6 +433,7 @@ export {
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
+  listActiveProviderPendingInteractionsForHost,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
@@ -452,8 +460,10 @@ export {
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
+  getPendingCoalescedQueuedThreadMessage,
   getQueuedThreadMessage,
   getQueuedThreadStartMessage,
+  getFirstUnclaimedQueuedRetry,
   hasQueuedRetryOfTurnRequest,
   hasClaimedQueuedThreadMessages,
   holdQueuedThreadMessageForEdit,
@@ -461,6 +471,7 @@ export {
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
+  listReadySystemNoticesOnBusyThreads,
   listQueuedThreadMessageCountsByThreadIds,
   listQueuedThreadMessagePluginWaitRefs,
   listQueuedThreadMessages,
@@ -477,10 +488,13 @@ export {
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
+  supersedeQueuedRetriesInTransaction,
+  updateCoalescedQueuedThreadMessageInTransaction,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
+  QueuedThreadMessageExecution,
   QueuedThreadMessageGroupClaimPolicy,
   QueuedThreadMessageGroupEligibility,
   QueuedThreadMessageRow,

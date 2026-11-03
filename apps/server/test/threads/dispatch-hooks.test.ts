@@ -340,6 +340,7 @@ describe("pending admission races", () => {
       expect(stale.status).toBe("pending");
       const attempt = (text: string) =>
         attemptDispatch(harness.deps, {
+          systemNotice: null,
           thread: stale,
           payload: { input: textInput(text), mode: "start" },
           source: { kind: "inline" },
@@ -718,6 +719,7 @@ describe("message.dispatch hook message author", () => {
       const originalRequestId = createClientTurnRequestId();
 
       await attemptDispatch(harness.deps, {
+        systemNotice: null,
         thread,
         payload: { input: textInput("retried work"), mode: "auto" },
         source: { kind: "inline" },
@@ -957,6 +959,7 @@ describe("message.dispatch hook message author", () => {
       });
 
       await attemptDispatch(harness.deps, {
+        systemNotice: null,
         thread,
         payload: { input: textInput("spawned work"), mode: "auto" },
         source: { kind: "inline" },

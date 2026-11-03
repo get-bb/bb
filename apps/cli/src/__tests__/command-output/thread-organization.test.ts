@@ -348,6 +348,99 @@ describe("bb thread organization commands", () => {
     );
   });
 
+  it.each([
+    {
+      flags: ["--send-at", "2h"],
+      sendAt: Date.parse("2026-10-30T12:00:00Z") + 2 * 3_600_000,
+    },
+    { flags: ["--clear-send-at"], sendAt: null },
+  ])(
+    "changes only the send time with $flags",
+    async ({ flags, sendAt }) => {
+      vi.useFakeTimers({ now: Date.parse("2026-10-30T12:00:00Z") });
+      try {
+        const list = vi.fn(async () => [{ id: "queued-1", updatedAt: 42 }]);
+        const update = vi.fn(async () => ({ id: "queued-1", sendAt }));
+        stubServerApi({
+          "v1.threads.:id.queued-messages.$get": list,
+          "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+        });
+
+        await runCommand(
+          ["thread", "queue", "update", "thread-1", "queued-1", ...flags],
+          register,
+        );
+
+        expect(update).toHaveBeenCalledWith({
+          param: { id: "thread-1", queuedMessageId: "queued-1" },
+          json: { expectedUpdatedAt: 42, sendAt },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("changes only the execution options, mapping workspace-write to accept-edits", async () => {
+    const list = vi.fn(async () => [{ id: "queued-1", updatedAt: 42 }]);
+    const update = vi.fn(async () => ({ id: "queued-1", sendAt: null }));
+    stubServerApi({
+      "v1.threads.:id.queued-messages.$get": list,
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "queue",
+        "update",
+        "thread-1",
+        "queued-1",
+        "--model",
+        "gpt-5.1-codex",
+        "--reasoning-level",
+        "high",
+        "--permission-mode",
+        "workspace-write",
+      ],
+      register,
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      param: { id: "thread-1", queuedMessageId: "queued-1" },
+      json: {
+        expectedUpdatedAt: 42,
+        model: "gpt-5.1-codex",
+        permissionMode: "accept-edits",
+        reasoningLevel: "high",
+      },
+    });
+  });
+
+  it("rejects a send time that has passed before contacting the server", async () => {
+    const update = vi.fn();
+    stubServerApi({
+      "v1.threads.:id.queued-messages.:queuedMessageId.$patch": update,
+    });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "queue",
+          "update",
+          "thread-1",
+          "queued-1",
+          "--send-at",
+          "2020-01-01T09:00",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("rejects an update when the queued message is absent", async () => {
     const list = vi.fn(async () => [{ id: "queued-2", updatedAt: 43 }]);
     const update = vi.fn();

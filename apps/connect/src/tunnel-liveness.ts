@@ -47,3 +47,13 @@ export async function readTunnelLiveness(
     clearTimeout(timer);
   }
 }
+
+const STALE_HEARTBEAT_MS = 45_000;
+
+export function tunnelServing(liveness: TunnelLiveness): boolean {
+  return (
+    liveness.state === "connected" &&
+    liveness.lastHeartbeatAgeMs !== null &&
+    liveness.lastHeartbeatAgeMs < STALE_HEARTBEAT_MS
+  );
+}

@@ -1342,26 +1342,35 @@ async function discoverAcpNativeModelSupport(args: {
         for (const model of modelsToProbe) {
           if (timedOut) break;
           try {
-            const configState = await args.connection.request({
-              method: "session/set_config_option",
-              params: {
-                sessionId: args.sessionId,
-                configId: modelOption.id,
-                value: model.value,
-              },
-              resultSchema: acpConfigStateResultSchema,
-            });
-            if (timedOut) break;
-            supportByModel.set(model.value, {
-              ...buildAcpNativeReasoningSupport(
-                findAcpThoughtLevelConfigOption(configState.configOptions),
-              ),
-              supportedServiceTiers: findAcpFastConfigOption(
-                configState.configOptions,
-              )?.options?.some((option) => option.value === "true")
-                ? [{ id: "fast" }]
-                : [],
-            });
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              const configState = await args.connection.request({
+                method: "session/set_config_option",
+                params: {
+                  sessionId: args.sessionId,
+                  configId: modelOption.id,
+                  value: model.value,
+                },
+                resultSchema: acpConfigStateResultSchema,
+              });
+              if (timedOut) break;
+              if (
+                findAcpModelConfigOption(configState.configOptions)
+                  ?.currentValue !== model.value
+              ) {
+                continue;
+              }
+              supportByModel.set(model.value, {
+                ...buildAcpNativeReasoningSupport(
+                  findAcpThoughtLevelConfigOption(configState.configOptions),
+                ),
+                supportedServiceTiers: findAcpFastConfigOption(
+                  configState.configOptions,
+                )?.options?.some((option) => option.value === "true")
+                  ? [{ id: "fast" }]
+                  : [],
+              });
+              break;
+            }
           } catch (error) {
             if (timedOut) {
               break;

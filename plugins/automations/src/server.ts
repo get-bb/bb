@@ -10,6 +10,11 @@ import {
   reconcileRunningAutomationRuns,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
+import {
+  answerRetryConsent,
+  retryConsentContract,
+  retryConsentMethod,
+} from "./retry-consent.js";
 import { createScriptRunScope } from "./script-runner.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
@@ -35,6 +40,30 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
+  bb.rpc.register(
+    retryConsentContract,
+    {
+      [retryConsentMethod]: (input) =>
+        answerRetryConsent(
+          db,
+          async (threadId) =>
+            (
+              await bb.sdk.threads.events.list({
+                threadId,
+                types: ["client/turn/requested"],
+                order: "desc",
+                limit: "1",
+              })
+            )[0]?.data,
+          input,
+        ),
+    },
+    {
+      experimental_discoverable: true,
+      experimental_description:
+        "Declines provider retries of recurring automation runs, which run again on their schedule.",
+    },
+  );
   registerAutomationCli({ bb, service });
 
   bb.events.on("thread.idle", ({ thread }) => {

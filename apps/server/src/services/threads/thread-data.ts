@@ -2,6 +2,7 @@ import {
   canHydrateRetainedEventOutputRowsWithinDataByteLimit,
   findStoredEventRow as findStoredEventRowRecord,
   getLatestThreadOutputEventRow,
+  getTurnFinalAgentMessageEventRow,
   getLatestThreadSystemErrorEventRow,
   hydrateRetainedEventOutputRows,
   listLatestTurnFinalAgentMessageEventRows,
@@ -185,6 +186,28 @@ export function getLastThreadOutput(
     return eventRow.data.item.text;
   }
 
+  return null;
+}
+
+interface GetTurnFinalOutputArgs {
+  threadId: string;
+  turnId: string;
+}
+
+export function getTurnFinalOutput(
+  db: DbConnection,
+  args: GetTurnFinalOutputArgs,
+): string | null {
+  const row = getTurnFinalAgentMessageEventRow(db, args);
+  if (!row) return null;
+  const eventRow = parseStoredEventRow(row);
+  if (
+    eventRow.type === "item/completed" &&
+    eventRow.data.item.type === "agentMessage" &&
+    eventRow.data.item.text.trim().length > 0
+  ) {
+    return eventRow.data.item.text;
+  }
   return null;
 }
 

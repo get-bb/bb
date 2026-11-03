@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { getEnvironment } from "@bb/db";
+import { getEnvironment, threads } from "@bb/db";
 import {
   registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
@@ -15,7 +16,6 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
-
   it("stores viewed files per environment and diff target", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -531,6 +531,56 @@ describe("environment list and delete", () => {
       });
     });
   });
+
+  it.each([
+    { method: "DELETE", path: "" },
+    { method: "POST", path: "/cleanup" },
+    { method: "POST", path: "/cleanup?recover=true" },
+  ])(
+    "reports live threads for $method $path while an archived thread still runs",
+    async ({ method, path }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-env-archived-running",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/env-archived-running",
+          environmentProviderId: "git-worktree",
+          providerOwnsPath: true,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "active",
+        });
+        harness.db
+          .update(threads)
+          .set({ archivedAt: Date.now() })
+          .where(eq(threads.id, thread.id))
+          .run();
+
+        const response = await harness.app.request(
+          `/api/v1/environments/${environment.id}${path}`,
+          { method },
+        );
+
+        expect(response.status).toBe(409);
+        await expect(readJson(response)).resolves.toMatchObject({
+          message: "Environment still has live threads",
+        });
+        expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+          status: "ready",
+          teardownStatus: null,
+          retireAt: null,
+        });
+      });
+    },
+  );
 
   it("refuses to delete an environment with live threads", async () => {
     await withTestHarness(async (harness) => {

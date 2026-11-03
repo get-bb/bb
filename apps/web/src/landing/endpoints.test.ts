@@ -372,6 +372,17 @@ describe("download visit attribution", () => {
     expect(event.properties.placement).toBe("download_page");
   });
 
+  it("keeps the /download page's tags in the referrer", async () => {
+    const event = await captureDownload("placement=download_page", {
+      referer: "https://getbb.app/download?utm_source=x&via=email",
+    });
+
+    expect(event.properties.utm_source).toBe("x");
+    expect(
+      new URL(event.properties.$referrer ?? "").searchParams.get("via"),
+    ).toBe("email");
+  });
+
   it.each([
     ["visitor_id", `${VISITOR_ID}x`],
     ["visitor_id", "user@example.com"],

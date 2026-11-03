@@ -39,6 +39,17 @@ function storyReleaseNotes(version: string, expanded = false) {
     onToggle: noop,
   };
 }
+const SOURCE_FROM_COMMIT = "916d684a1b2c3d4e5f60718293a4b5c6d7e8f901";
+const SOURCE_INCOMING_SUBJECTS = [
+  "Wait for a moved server's ready state on desktop, with one shared health probe (#6757)",
+  "Use launcher resolution for the desktop local server URL (#6758)",
+  "Show all changes in the thread context card's diff stats (#6848)",
+  "Cancel dnd-kit drags released before the drag-start render (#6847)",
+  "Add @neoromantic to allow list",
+  "Let queued messages change their send time and execution options (#6750)",
+];
+
+const SOURCE_TO_COMMIT = "1555ccfc15a1b2c3d4e5f60718293a4b5c6d7e8f";
 const NO_JOBS: ReadonlySet<string> = new Set();
 const NO_FAILURES: ReadonlyMap<string, ProviderCliInstallFailure> = new Map();
 const STORY_NOW = 1_800_000_000_000;
@@ -382,6 +393,7 @@ export function RowVariations() {
               <ReleaseNotesPanel
                 id="story-release-notes-0.48.0"
                 version="0.48.0"
+                sourceUpdate={null}
               />
             </BbUpdatesCard>
           </div>
@@ -662,6 +674,54 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
+              />
+            </BbUpdatesCard>
+          </div>
+        </StoryRow>
+
+        <StoryRow
+          label="Source checkout — changelog"
+          hint="Changelog lists the incoming commits on main and compares the range on GitHub."
+        >
+          <div className="w-full">
+            <BbUpdatesCard>
+              <BbAppUpdateRows
+                systemVersion={{
+                  ...NPM_VERSION,
+                  currentVersion: "0.48.0",
+                  currentCommit: SOURCE_FROM_COMMIT,
+                  installKind: "source",
+                  latestVersion: null,
+                }}
+                appUpdate={{
+                  ...IN_APP_UPDATE,
+                  available: {
+                    channel: "main",
+                    commit: SOURCE_TO_COMMIT,
+                    commitCount: 41,
+                    subjects: SOURCE_INCOMING_SUBJECTS,
+                    version: "0.48.0",
+                  },
+                  current: { commit: SOURCE_FROM_COMMIT, version: "0.48.0" },
+                  support: { kind: "supported", mode: "source" },
+                }}
+                desktopInfo={null}
+                isDesktop={false}
+                onApplyAppUpdate={noop}
+                onRelaunchDesktop={null}
+                onRetryDesktop={null}
+                onShowAppUpdateResult={noop}
+                releaseNotes={storyReleaseNotes("0.48.0", true)}
+              />
+              <ReleaseNotesPanel
+                id="story-release-notes-source"
+                version="0.48.0"
+                sourceUpdate={{
+                  from: SOURCE_FROM_COMMIT,
+                  to: SOURCE_TO_COMMIT,
+                  commitCount: 41,
+                  subjects: SOURCE_INCOMING_SUBJECTS,
+                }}
               />
             </BbUpdatesCard>
           </div>

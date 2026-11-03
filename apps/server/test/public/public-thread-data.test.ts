@@ -929,6 +929,51 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("keeps another thread's outline cached while one thread advances", async () => {
+    await withTestHarness(async (harness) => {
+      const stable = seedThreadFixture(harness);
+      const changing = seedThreadFixture(harness);
+      const stableUrl = `/api/v1/threads/${stable.thread.id}/conversation-outline`;
+      const changingUrl = `/api/v1/threads/${changing.thread.id}/conversation-outline`;
+      expect((await harness.app.request(stableUrl)).status).toBe(200);
+
+      for (let sequence = 1; sequence <= 130; sequence++) {
+        seedEvent(harness.deps, {
+          threadId: changing.thread.id,
+          environmentId: changing.environment.id,
+          sequence,
+          type: "system/manager/user_message",
+          scope: threadScope(),
+          data: { text: `Message ${sequence}` },
+        });
+        const response = await harness.app.request(changingUrl);
+        expect(response.status).toBe(200);
+        const outline = threadConversationOutlineResponseSchema.parse(
+          await readJson(response),
+        );
+        expect(outline.maxSeq).toBe(sequence);
+        expect(outline.items.at(-1)?.preview).toBe(`Message ${sequence}`);
+      }
+
+      const prepareSpy = vi.spyOn(harness.db.$client, "prepare");
+      try {
+        const response = await harness.app.request(stableUrl);
+        expect(response.status).toBe(200);
+        expect(
+          threadConversationOutlineResponseSchema.parse(
+            await readJson(response),
+          ),
+        ).toEqual({ items: [], maxSeq: 0 });
+        const storedOutlineReads = prepareSpy.mock.calls.filter(([source]) =>
+          source.startsWith('select "items_json", "projection_key"'),
+        );
+        expect(storedOutlineReads).toHaveLength(0);
+      } finally {
+        prepareSpy.mockRestore();
+      }
+    });
+  });
+
   it("summarizes attachment-only messages in the conversation outline", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

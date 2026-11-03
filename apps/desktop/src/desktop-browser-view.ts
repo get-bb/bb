@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { buildDesktopContextMenuTemplate } from "./desktop-context-menu.js";
 import { captureDesktopBrowserPage } from "./desktop-browser-capture.js";
 import { setDesktopBrowserServerActive } from "./desktop-browser-throttling.js";
 import {
@@ -11,7 +12,6 @@ import {
   systemPreferences,
   type BrowserWindowConstructorOptions,
   type NavigationEntry,
-  type MenuItemConstructorOptions,
   type Session,
   type WebContents,
   type WebPreferences,
@@ -1094,41 +1094,21 @@ export function createDesktopBrowserViewManager(
       if (entry.registry !== entries || webContents.isDestroyed()) {
         return;
       }
-      const { editFlags } = params;
-      const template: MenuItemConstructorOptions[] = [];
-      if (params.mediaType === "image") {
-        template.push(
-          {
-            label: "Copy Image",
-            enabled: params.hasImageContents,
-            click: () => {
-              if (entry.registry !== entries || webContents.isDestroyed())
-                return;
-              webContents.copyImageAt(params.x, params.y);
-            },
-          },
-          { type: "separator" },
-        );
+      const template = buildDesktopContextMenuTemplate({
+        params,
+        webContents,
+        allowSameOriginLinks: true,
+      });
+      if (template.length === 0) return;
+      for (const item of template) {
+        const click = item.click;
+        if (click) {
+          item.click = (...args) => {
+            if (entry.registry !== entries || webContents.isDestroyed()) return;
+            click(...args);
+          };
+        }
       }
-      template.push(
-        {
-          role: "cut",
-          enabled: editFlags.canCut,
-        },
-        {
-          role: "copy",
-          enabled: editFlags.canCopy && params.selectionText.length > 0,
-        },
-        {
-          role: "paste",
-          enabled: editFlags.canPaste,
-        },
-        { type: "separator" },
-        {
-          role: "selectAll",
-          enabled: editFlags.canSelectAll,
-        },
-      );
       Menu.buildFromTemplate(template).popup();
     });
 

@@ -1,5 +1,7 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute } from "node:path";
 import {
+  experimental_resolveHostPath as resolveHostPath,
+  experimental_getHostPathBasename as getHostPathBasename,
   PluginCliError,
   cliCommand,
   defineCli,
@@ -46,15 +48,7 @@ import { interpreterForPath } from "./script-files.js";
 
 const DURATION_PATTERN =
   /^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/iu;
-const hostListSchema = z.array(
-  z
-    .object({
-      id: z.string().optional(),
-      status: z.string().optional(),
-      connected: z.boolean().optional(),
-    })
-    .passthrough(),
-);
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 const DESCRIPTION = `Automations run agent prompts or server-side scripts on a schedule.
 
@@ -156,7 +150,7 @@ const AGENT_OPTIONS = {
     type: "string",
     placeholder: "id-or-path",
     description:
-      "Existing environment id, or a workspace path to run in on a connected host",
+      "Existing environment id, or a workspace path on the calling thread's machine, else the primary host",
   },
   "new-environment": {
     type: "enum",
@@ -302,6 +296,12 @@ function requireOptionValue(name: string, value: string): string {
 }
 
 function parseRunAt(value: string): number {
+  if (DATE_ONLY_PATTERN.test(value.trim())) {
+    throw cliError(
+      "--at needs a time of day, such as 2026-08-25T09:00; a date alone is ambiguous about its time zone.",
+      "invalid_value",
+    );
+  }
   const runAt = Date.parse(value);
   if (!Number.isFinite(runAt)) {
     throw cliError(
@@ -444,26 +444,35 @@ function parseScriptEnv(
 }
 
 function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.startsWith(".") || value.startsWith("~");
+  return (
+    value.includes("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/u.test(value) ||
+    value.startsWith(".") ||
+    value.startsWith("~")
+  );
 }
 
-async function resolveConnectedHostId(
+async function resolveAgentHostId(
   bb: Pick<BbPluginApi, "sdk">,
+  ctx: Pick<PluginCliContext, "threadId">,
 ): Promise<string> {
-  const hosts = hostListSchema.parse(await bb.sdk.hosts.list());
-  const host =
-    hosts.find((candidate) => candidate.connected === true) ??
-    hosts.find((candidate) => candidate.status === "connected") ??
-    hosts[0];
-  if (!host?.id) {
-    throw cliError("No connected host is available.", "no_connected_host");
+  const threadHostId =
+    ctx.threadId === undefined
+      ? null
+      : await readThreadHostId(bb, ctx.threadId);
+  if (threadHostId !== null) return threadHostId;
+  const { primaryHostId } = await bb.sdk.system.config();
+  if (primaryHostId === null) {
+    throw cliError("No primary host is available.", "no_connected_host");
   }
-  return host.id;
+  return primaryHostId;
 }
 
 async function buildAgentEnvironment(
   bb: Pick<BbPluginApi, "sdk">,
   options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
 ): Promise<AgentEnvironment> {
   const environment = options.environment?.trim();
   const newEnvironment = options["new-environment"];
@@ -477,7 +486,7 @@ async function buildAgentEnvironment(
   if (newEnvironment) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveAgentHostId(bb, ctx),
       workspace: {
         type: "managed-worktree",
         baseBranch: baseBranch
@@ -490,7 +499,7 @@ async function buildAgentEnvironment(
   if (looksLikePath(environment)) {
     return {
       type: "host",
-      hostId: await resolveConnectedHostId(bb),
+      hostId: await resolveAgentHostId(bb, ctx),
       workspace: { type: "unmanaged", path: environment },
     };
   }
@@ -509,6 +518,16 @@ const threadEnvironmentHostSchema = z
       .optional(),
   })
   .passthrough();
+
+async function readThreadHostId(
+  bb: Pick<BbPluginApi, "sdk">,
+  threadId: string,
+): Promise<string | null> {
+  const thread = threadEnvironmentHostSchema.parse(
+    await bb.sdk.threads.get({ threadId, include: "environment" }),
+  );
+  return thread.environment?.hostId ?? null;
+}
 
 async function resolveScriptFileHostId(
   bb: Pick<BbPluginApi, "sdk">,
@@ -541,23 +560,19 @@ async function resolveScriptFileHostId(
     );
   }
   if (ctx.threadId === undefined) return undefined;
-  const thread = threadEnvironmentHostSchema.parse(
-    await bb.sdk.threads.get({
-      threadId: ctx.threadId,
-      include: "environment",
-    }),
-  );
-  if (!thread.environment) {
+  const hostId = await readThreadHostId(bb, ctx.threadId);
+  if (hostId === null) {
     throw cliError(
       `Thread ${ctx.threadId} has no environment, so the --script-file host cannot be resolved; pass --host <name-or-id>.`,
       "invalid_value",
     );
   }
-  return thread.environment.hostId;
+  return hostId;
 }
 
 type ScriptFileSource = {
   path: string;
+  fileName: string;
   hostId: string | undefined;
   content: string;
 };
@@ -575,17 +590,16 @@ async function loadScriptFileSource(
     }
     return undefined;
   }
-  let path: string;
-  if (isAbsolute(scriptFile)) {
-    path = scriptFile;
-  } else {
-    if (ctx.cwd === undefined || !isAbsolute(ctx.cwd)) {
-      throw cliError(
-        "Relative --script-file paths need the invoking CLI cwd; pass an absolute path.",
-        "invalid_value",
-      );
-    }
-    path = resolve(ctx.cwd, scriptFile);
+  const path = resolveHostPath({ rootPath: ctx.cwd ?? "", path: scriptFile });
+  if (path === null) {
+    throw cliError(
+      "Invalid --script-file path; relative paths need the invoking CLI cwd.",
+      "invalid_value",
+    );
+  }
+  const fileName = getHostPathBasename(path);
+  if (!fileName) {
+    throw cliError(`--script-file must name a file: ${path}`, "invalid_value");
   }
   const hostId = await resolveScriptFileHostId(bb, ctx, hostOverride);
   const file = await bb.sdk.files.read({
@@ -595,7 +609,7 @@ async function loadScriptFileSource(
   if (file.contentEncoding !== "utf8") {
     throw cliError(`--script-file is not UTF-8 text: ${path}`, "invalid_value");
   }
-  return { path, hostId, content: file.content };
+  return { path, fileName, hostId, content: file.content };
 }
 
 type BuiltExecution = {
@@ -647,7 +661,7 @@ async function buildExecution(
       );
     }
     validateAgentTargetOptions(options);
-    const environment = await buildAgentEnvironment(bb, options);
+    const environment = await buildAgentEnvironment(bb, options, ctx);
     const serviceTier = options["service-tier"];
     return {
       execution: {
@@ -710,7 +724,7 @@ async function buildExecution(
     execution: {
       mode: "script",
       script: content,
-      ...(scriptSource ? { scriptFile: scriptSource.path } : {}),
+      ...(scriptSource ? { scriptFile: scriptSource.fileName } : {}),
       ...(interpreter ? { interpreter } : {}),
       ...(workingDirectory ? { workingDirectory } : {}),
       timeoutMs: timeoutMs ?? AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
@@ -763,7 +777,7 @@ async function buildScriptExecutionUpdate(
   const update: ScriptExecutionUpdate = {};
   if (scriptSource !== undefined) {
     update.script = scriptSource.content;
-    update.scriptFile = scriptSource.path;
+    update.scriptFile = scriptSource.fileName;
   } else if (options.script !== undefined) {
     update.script = options.script;
   }
@@ -786,6 +800,7 @@ async function buildScriptExecutionUpdate(
 async function buildAgentExecutionUpdate(
   bb: Pick<BbPluginApi, "sdk">,
   options: AgentOptionValues,
+  ctx: Pick<PluginCliContext, "threadId">,
 ): Promise<AgentExecutionUpdate | undefined> {
   if (!hasAgentOptions(options)) return undefined;
 
@@ -823,7 +838,7 @@ async function buildAgentExecutionUpdate(
   ) {
     update.target = {
       type: "environment",
-      environment: await buildAgentEnvironment(bb, options),
+      environment: await buildAgentEnvironment(bb, options, ctx),
     };
   }
   return update;
@@ -879,7 +894,7 @@ async function buildUpdateRequest(
       scriptSource = built.scriptSource;
     }
   } else {
-    const agentUpdate = await buildAgentExecutionUpdate(bb, options);
+    const agentUpdate = await buildAgentExecutionUpdate(bb, options, ctx);
     if (agentUpdate !== undefined) {
       request.agent = agentUpdate;
     }

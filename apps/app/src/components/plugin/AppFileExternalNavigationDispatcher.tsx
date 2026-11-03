@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
 import { appToast } from "@/components/ui/app-toast";
-import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { useResolvedLiveFileTarget } from "@/hooks/useResolvedLiveFileTarget";
+import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
+import { resolveLiveFilePath } from "@/hooks/useResolvedLiveFileTarget";
 import { getExperimentalFileLocationStart } from "@/lib/live-file-navigation";
 
 export function AppFileExternalNavigationDispatcher({
@@ -13,28 +13,23 @@ export function AppFileExternalNavigationDispatcher({
   onSettled: () => void;
 }) {
   const didSettleRef = useRef(false);
-  const resolvedTarget = useResolvedLiveFileTarget(intent.target, {
-    enabled: true,
-  });
-  const { isLoading: areLocalTargetsLoading, openPathInPreferredFileTarget } =
-    useLocalOpenTargets({
-      enabled: resolvedTarget.status === "available",
-      ...(resolvedTarget.status === "available"
-        ? { openContext: resolvedTarget.openContext }
-        : {}),
-    });
+  const {
+    isLoading: areLocalTargetsLoading,
+    openPathInPreferredFileTarget,
+    root,
+  } = useLiveFileOpenTargets(intent.target);
 
   useEffect(() => {
     if (
       didSettleRef.current ||
-      resolvedTarget.status === "loading" ||
+      root.status === "loading" ||
       areLocalTargetsLoading
     ) {
       return;
     }
     didSettleRef.current = true;
     onSettled();
-    if (resolvedTarget.status === "unavailable") {
+    if (root.status === "unavailable") {
       appToast.error("Failed to open file externally", {
         description: "The file target is not available on its declared host.",
       });
@@ -44,14 +39,15 @@ export function AppFileExternalNavigationDispatcher({
     void openPathInPreferredFileTarget({
       columnNumber: location.columnNumber,
       lineNumber: location.lineNumber,
-      path: resolvedTarget.absolutePath,
+      path: resolveLiveFilePath(root, intent.target.path),
     });
   }, [
     intent.location,
+    intent.target.path,
     areLocalTargetsLoading,
     openPathInPreferredFileTarget,
     onSettled,
-    resolvedTarget,
+    root,
   ]);
 
   return null;

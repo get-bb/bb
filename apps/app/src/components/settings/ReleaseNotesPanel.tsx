@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@bb/shared-ui/icon";
@@ -11,10 +11,50 @@ import {
   releaseMetaQueryOptions,
   type ChangelogBlock,
 } from "./changelog-preview";
-import { findReleaseEntry } from "./release-notes-model";
-import { getReleaseNotesUrl, openReleaseNotesOnWeb } from "./release-notes";
+import {
+  findReleaseEntry,
+  nightlyBaseVersion,
+  type SourceUpdateNotes,
+} from "./release-notes-model";
+import {
+  getReleaseNotesUrl,
+  getSourceCompareUrl,
+  openReleaseNotesOnWeb,
+  openSourceCompareOnWeb,
+} from "./release-notes";
 
 const MARKDOWN_IMAGE_ONLY = /^!\[[^\]]*\]\([^)]*\)$/;
+const COMMIT_SUBJECT_PULL_REQUEST = /^(.*?)\s*\(#(\d+)\)$/;
+const PULL_REQUEST_BASE_URL = "https://github.com/get-bb/bb/pull/";
+const FOOTER_LINK_CLASS_NAME =
+  "inline-flex w-fit shrink-0 cursor-pointer items-center gap-1 rounded-sm text-xs whitespace-nowrap text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none";
+
+function ExternalLink({
+  href,
+  className,
+  onOpen,
+  children,
+}: {
+  href: string;
+  className: string;
+  onOpen: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      onClick={(event) => {
+        event.preventDefault();
+        onOpen();
+      }}
+    >
+      {children}
+    </a>
+  );
+}
 
 const INLINE_COMPONENTS: Components = {
   p: ({ children }) => <>{children}</>,
@@ -80,12 +120,57 @@ function Blocks({ blocks }: { blocks: ChangelogBlock[] }) {
   });
 }
 
+function pluralCommits(count: number): string {
+  return `${String(count)} new commit${count === 1 ? "" : "s"} on main`;
+}
+
+function IncomingCommits({ update }: { update: SourceUpdateNotes }) {
+  const remaining = update.commitCount - update.subjects.length;
+  return (
+    <ul className="mt-1 space-y-1">
+      {update.subjects.map((subject, index) => {
+        const match = COMMIT_SUBJECT_PULL_REQUEST.exec(subject);
+        const pullRequest = match?.[2] ?? null;
+        const href = `${PULL_REQUEST_BASE_URL}${pullRequest ?? ""}`;
+        return (
+          <li
+            key={index}
+            className="relative pl-3 before:absolute before:top-[0.55em] before:left-0 before:size-1 before:rounded-full before:bg-border"
+          >
+            {match === null ? subject : match[1]}
+            {pullRequest === null ? null : (
+              <>
+                {" "}
+                <ExternalLink
+                  href={href}
+                  className="whitespace-nowrap text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
+                  onOpen={() => openUrlInExternalBrowser(href)}
+                >
+                  #{pullRequest}
+                </ExternalLink>
+              </>
+            )}
+          </li>
+        );
+      })}
+      {remaining > 0 ? (
+        <li className="pl-3">and {String(remaining)} more</li>
+      ) : null}
+    </ul>
+  );
+}
+
 export interface ReleaseNotesPanelProps {
   id: string;
   version: string;
+  sourceUpdate: SourceUpdateNotes | null;
 }
 
-export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
+export function ReleaseNotesPanel({
+  id,
+  version,
+  sourceUpdate,
+}: ReleaseNotesPanelProps) {
   const changelogQuery = useQuery(changelogEntriesQueryOptions());
   const entry = findReleaseEntry(
     version,
@@ -109,7 +194,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
   };
   useEffect(() => {
     syncFade(scrollRef.current);
-  }, [entry]);
+  }, [entry, sourceUpdate]);
 
   return (
     <section
@@ -118,7 +203,18 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
       data-updates-domain="release-notes"
       className="bg-sidebar px-4 py-3 text-xs leading-relaxed text-muted-foreground"
     >
-      {releaseMeta === undefined ? (
+      {sourceUpdate !== null ? (
+        <div className="mb-2">
+          <h3 className="text-xs font-medium text-foreground">
+            {pluralCommits(sourceUpdate.commitCount)}
+          </h3>
+          <p className="text-2xs">
+            {sourceUpdate.from === null
+              ? sourceUpdate.to.slice(0, 7)
+              : `${sourceUpdate.from.slice(0, 7)} → ${sourceUpdate.to.slice(0, 7)}`}
+          </p>
+        </div>
+      ) : releaseMeta === undefined ? (
         <h3 className="mb-2 text-xs font-medium text-foreground">
           What&apos;s new in bb {notesVersion}
         </h3>
@@ -132,7 +228,7 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
           </p>
         </div>
       )}
-      {entry === null ? (
+      {sourceUpdate === null && entry === null ? (
         <p>
           {changelogQuery.isPending
             ? "Loading the changelog…"
@@ -140,7 +236,8 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
               ? "Couldn't load the changelog."
               : `bb ${version} has no changelog in the app.`}
         </p>
-      ) : (
+      ) : null}
+      {sourceUpdate !== null || entry !== null ? (
         <div className="relative min-w-0">
           <div
             ref={scrollRef}
@@ -148,15 +245,21 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
             onScroll={(event) => syncFade(event.currentTarget)}
             className="max-h-48 overflow-x-hidden overflow-y-auto pr-2 break-words"
           >
-            <Blocks blocks={entry.lede} />
-            {entry.sections.map((section) => (
-              <div key={section.title} className="mt-3">
-                <h4 className="font-semibold text-foreground">
-                  {section.title}
-                </h4>
-                <Blocks blocks={section.blocks} />
-              </div>
-            ))}
+            {sourceUpdate !== null ? (
+              <IncomingCommits update={sourceUpdate} />
+            ) : entry !== null ? (
+              <>
+                <Blocks blocks={entry.lede} />
+                {entry.sections.map((section) => (
+                  <div key={section.title} className="mt-3">
+                    <h4 className="font-semibold text-foreground">
+                      {section.title}
+                    </h4>
+                    <Blocks blocks={section.blocks} />
+                  </div>
+                ))}
+              </>
+            ) : null}
           </div>
           {moreAbove ? (
             <OverflowFade placement="above" tone="sidebar" inset />
@@ -165,21 +268,32 @@ export function ReleaseNotesPanel({ id, version }: ReleaseNotesPanelProps) {
             <OverflowFade placement="below" tone="sidebar" inset />
           ) : null}
         </div>
-      )}
-      <div className="mt-2 flex justify-end">
-        <a
-          href={getReleaseNotesUrl(notesVersion)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex w-fit cursor-pointer items-center gap-1 rounded-sm text-xs text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
-          onClick={(event) => {
-            event.preventDefault();
-            openReleaseNotesOnWeb(version, notesVersion);
-          }}
-        >
-          Full changelog
-          <Icon aria-hidden name="ExternalLink" className="size-3" />
-        </a>
+      ) : null}
+      <div className="mt-2 flex items-baseline justify-end gap-3">
+        {entry !== null && nightlyBaseVersion(version) !== null ? (
+          <p className="mr-auto min-w-0 text-2xs">
+            This build includes changes since {entry.version}
+          </p>
+        ) : null}
+        {sourceUpdate === null ? (
+          <ExternalLink
+            href={getReleaseNotesUrl(notesVersion)}
+            className={FOOTER_LINK_CLASS_NAME}
+            onOpen={() => openReleaseNotesOnWeb(version, notesVersion)}
+          >
+            Full changelog
+            <Icon aria-hidden name="ExternalLink" className="size-3" />
+          </ExternalLink>
+        ) : (
+          <ExternalLink
+            href={getSourceCompareUrl(sourceUpdate)}
+            className={FOOTER_LINK_CLASS_NAME}
+            onOpen={() => openSourceCompareOnWeb(version, sourceUpdate)}
+          >
+            Compare on GitHub
+            <Icon aria-hidden name="ExternalLink" className="size-3" />
+          </ExternalLink>
+        )}
       </div>
     </section>
   );

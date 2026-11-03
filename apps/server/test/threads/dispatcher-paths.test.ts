@@ -26,10 +26,12 @@ import {
   releaseStaleQueuedMessageDispatchClaims,
   sendNextQueuedMessageIfPresent,
 } from "../../src/services/threads/queued-messages.js";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
+import { buildTurnFailedEvent } from "../../src/services/threads/turn-failed.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
 import {
   EMPTY_WORKSPACE_AGENT_CONTEXT,
@@ -176,6 +178,110 @@ describe("first message of a pending thread", () => {
       });
       expect(firstText(request)).toContain(sender.id);
       expect(firstText(request)).toContain("Please review the plan");
+    });
+  });
+});
+
+describe("the plugin that sent a turn", () => {
+  function failedTurnSender(harness: TestAppHarness, threadId: string) {
+    applyLoggedThreadLifecycleEvent(harness.deps, {
+      event: { type: "run.failed" },
+      threadId,
+    });
+    return buildTurnFailedEvent(harness.db, threadId)?.originPluginId;
+  }
+
+  it("is recorded on an inline send and reported when the turn fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-plugin-inline",
+        status: "idle",
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("Run the check"),
+          mode: "steer-if-active",
+          originPluginId: "automations",
+        },
+        thread,
+      });
+
+      expect(turnRequests(harness, thread.id).at(-1)?.originPluginId).toBe(
+        "automations",
+      );
+      expect(failedTurnSender(harness, thread.id)).toBe("automations");
+    });
+  });
+
+  it("survives the queue when the message is released later", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-plugin-queued",
+        status: "idle",
+      });
+      const sendAt = Date.now() + 60_000;
+      const response = await acceptThreadSendRequest(harness.deps, {
+        payload: {
+          input: textInput("Later"),
+          mode: "auto",
+          originPluginId: "automations",
+          sendAt,
+        },
+        thread,
+      });
+      expect(response.delivery).toBe("queued");
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "time-reached",
+        now: sendAt + 1,
+      });
+
+      expect(firstText(turnRequests(harness, thread.id).at(-1))).toBe("Later");
+      expect(failedTurnSender(harness, thread.id)).toBe("automations");
+    });
+  });
+
+  it("is recorded on the first turn of a thread a plugin spawns", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedRunnableThread(harness, {
+        hostId: "host-plugin-spawn",
+        status: "idle",
+      });
+      const spawned = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+        },
+        input: textInput("First run"),
+        origin: "plugin",
+        originPluginId: "automations",
+        projectId: project.id,
+        providerId: "codex",
+        startedOnBehalfOf: null,
+      });
+
+      expect(turnRequests(harness, spawned.id)).toEqual([
+        expect.objectContaining({ originPluginId: "automations" }),
+      ]);
+    });
+  });
+
+  it("is null for a message nobody sent through a plugin", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedRunnableThread(harness, {
+        hostId: "host-plugin-user",
+        status: "idle",
+      });
+      await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("By hand"), mode: "auto" },
+        thread,
+      });
+
+      expect(
+        turnRequests(harness, thread.id).at(-1)?.originPluginId,
+      ).toBeUndefined();
+      expect(failedTurnSender(harness, thread.id)).toBeNull();
     });
   });
 });

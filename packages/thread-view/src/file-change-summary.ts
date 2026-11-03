@@ -23,11 +23,6 @@ interface FormatFileChangePathArgs {
   mode: TimelinePathDisplayMode;
 }
 
-const EMPTY_DIFF_STATS: FileChangeDiffStats = {
-  added: 0,
-  removed: 0,
-};
-
 function normalizeFileChangeKind(kind: string | null | undefined): string {
   return (kind ?? "").toLowerCase().replaceAll(/[^a-z0-9]/gu, "");
 }
@@ -49,6 +44,18 @@ export function isPatchMetadataLine(line: string): boolean {
   );
 }
 
+function splitDiffLines(diff: string): string[] {
+  const lines = diff.replaceAll("\r\n", "\n").split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return lines;
+}
+
+function isChangedLine(line: string): boolean {
+  return line.startsWith("+") || line.startsWith("-");
+}
+
 function hasSubstantiveDiff(change: FileChangeLike): boolean {
   const diff = change.diff;
   if (!diff) {
@@ -56,11 +63,9 @@ function hasSubstantiveDiff(change: FileChangeLike): boolean {
       (change.diffStats?.added ?? 0) + (change.diffStats?.removed ?? 0) > 0
     );
   }
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
-    if (line.startsWith("+") || line.startsWith("-")) return true;
-  }
-  return false;
+  return splitDiffLines(diff).some(
+    (line) => !isPatchMetadataLine(line) && isChangedLine(line),
+  );
 }
 
 export function getFileChangeAction(change: FileChangeLike): FileChangeAction {
@@ -134,63 +139,46 @@ export function formatFileChangePath({
   })}`;
 }
 
-function countPlainContentLines(diff: string): number {
-  return diff
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim().length > 0)
-    .filter((line) => !isPatchMetadataLine(line)).length;
+function isWholeFileChange(change: FileChangeLike): boolean {
+  const action = getFileChangeAction(change);
+  return action === "created" || action === "deleted";
 }
 
-function hasPatchMetadata(diff: string): boolean {
-  return diff.split("\n").some(isPatchMetadataLine);
+export function isPlainFileContentDiff(change: FileChangeLike): boolean {
+  return (
+    !!change.diff &&
+    isWholeFileChange(change) &&
+    !isPatchMetadataLine(splitDiffLines(change.diff)[0] ?? "")
+  );
+}
+
+export function getFileChangeDiffLines(change: FileChangeLike): string[] {
+  if (!change.diff) {
+    return [];
+  }
+  const lines = splitDiffLines(change.diff);
+  const prefix = getFileChangeAction(change) === "created" ? "+" : "-";
+  if (isPlainFileContentDiff(change)) {
+    return lines.map((line) => `${prefix}${line}`);
+  }
+  const bodyLines = lines.filter((line) => !isPatchMetadataLine(line));
+  if (isWholeFileChange(change) && !bodyLines.some(isChangedLine)) {
+    return bodyLines.map((line) => `${prefix}${line}`);
+  }
+  return bodyLines;
 }
 
 export function getFileChangeDiffStats(
   change: FileChangeLike,
 ): FileChangeDiffStats {
-  const diff = change.diff;
-  if (!diff) {
-    return EMPTY_DIFF_STATS;
-  }
-
-  const action = getFileChangeAction(change);
-  const plainContentLineCount = countPlainContentLines(diff);
-  if (
-    !hasPatchMetadata(diff) &&
-    (action === "created" || action === "deleted")
-  ) {
-    return action === "created"
-      ? { added: plainContentLineCount, removed: 0 }
-      : { added: 0, removed: plainContentLineCount };
-  }
-
   let added = 0;
   let removed = 0;
-  let sawUnifiedDiffLine = false;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++ ") || line.startsWith("--- ")) continue;
+  for (const line of getFileChangeDiffLines(change)) {
     if (line.startsWith("+")) {
-      sawUnifiedDiffLine = true;
       added += 1;
-      continue;
-    }
-    if (line.startsWith("-")) {
-      sawUnifiedDiffLine = true;
+    } else if (line.startsWith("-")) {
       removed += 1;
     }
   }
-  if (sawUnifiedDiffLine) {
-    return { added, removed };
-  }
-
-  switch (action) {
-    case "created":
-      return { added: plainContentLineCount, removed: 0 };
-    case "deleted":
-      return { added: 0, removed: plainContentLineCount };
-    case "renamed":
-    case "edited":
-      return EMPTY_DIFF_STATS;
-  }
+  return { added, removed };
 }

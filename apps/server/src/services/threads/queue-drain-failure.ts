@@ -94,6 +94,7 @@ export function recordQueuedMessageDrainFailure(
       childThread: args.thread,
       parentThreadId: args.thread.parentThreadId,
       turnStatus: "failed",
+      turnId: null,
       failureContext: "could not send a queued message after retrying",
     });
   }

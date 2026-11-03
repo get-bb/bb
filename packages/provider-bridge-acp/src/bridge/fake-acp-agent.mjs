@@ -140,6 +140,7 @@ const setConfigModelErrorValue =
   process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE;
 const setConfigFastError = process.env.FAKE_ACP_SET_CONFIG_FAST_ERROR === "1";
 const emptyModelResult = process.env.FAKE_ACP_EMPTY_MODEL_RESULT === "1";
+const modelConfigReply = process.env.FAKE_ACP_MODEL_CONFIG_REPLY;
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
 const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
@@ -1143,11 +1144,36 @@ async function handleMessage(message) {
             Number(process.env.FAKE_ACP_MODEL_DELAY_MS ?? "0"),
           ),
         );
-        selectedModel = value;
+        const previousConfig = configState();
+        const previousModel = selectedModel;
+        if (value !== "fake/strong" || modelConfigReply !== "stale") {
+          selectedModel = value;
+        }
+        const result = emptyModelResult ? {} : configState();
+        if (value === "fake/strong") {
+          if (
+            modelConfigReply === "stale" ||
+            (modelConfigReply === "stale-once" && previousModel !== value)
+          ) {
+            send({ jsonrpc: "2.0", id: message.id, result: previousConfig });
+            return;
+          }
+          if (modelConfigReply === "missing-model") {
+            result.configOptions = result.configOptions?.filter(
+              (option) => option.category !== "model",
+            );
+          }
+          if (modelConfigReply === "missing-value") {
+            const modelOption = result.configOptions?.find(
+              (option) => option.category === "model",
+            );
+            if (modelOption) delete modelOption.currentValue;
+          }
+        }
         send({
           jsonrpc: "2.0",
           id: message.id,
-          result: emptyModelResult ? {} : configState(),
+          result,
         });
         return;
       }

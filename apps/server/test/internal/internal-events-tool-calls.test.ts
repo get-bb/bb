@@ -216,7 +216,7 @@ async function runDirectorySwitchTurn(
     ],
   });
   expect(response.status).toBe(200);
-  await flushChildThreadNotifications();
+  await flushChildThreadNotifications(harness);
   return fixture;
 }
 
@@ -799,7 +799,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
 
       expect(
         harness.db
@@ -877,7 +877,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
       expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
       await vi.waitFor(() => {
         expect(
@@ -947,7 +947,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
       expect(getThread(harness.db, childThread.id)?.status).toBe("idle");
       expect(
         listQueuedThreadCommands(harness, "turn.submit", parentThread.id),
