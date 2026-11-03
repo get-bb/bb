@@ -629,28 +629,100 @@ html:has(.nav-sticky) {
   vertical-align: -2px;
 }
 
-.install-choice .install-send,
-.install-choice .install-note-touch {
-  display: none;
-}
-
 .install-send {
   position: relative;
   font-family: var(--font-sans);
 }
 
+.install-email {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 340px;
+  max-width: 100%;
+}
+
+.install-email-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.install-email-input::placeholder {
+  color: var(--subtle);
+}
+
+.install-email-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+.install-email-input[aria-invalid="true"] {
+  border-color: var(--del);
+}
+
+.install-email .install-email-send {
+  flex: 0 0 7.75em;
+  width: 7.75em;
+  padding-inline: 0;
+  justify-content: center;
+  font-family: var(--font-sans);
+}
+
+.install-email-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.install-email-error {
+  flex-basis: 100%;
+  color: var(--del);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.install-email-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 340px;
+  max-width: 100%;
+}
+
+.install-email-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 0;
+  padding: 13px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* Phones and tablets can't run an installer. Pages render both the desktop and
+   the touch option and CSS picks one, so nothing flashes after load. */
+@media not all and (hover: none) and (pointer: coarse) {
+  .touch-only {
+    display: none !important;
+  }
+}
+
 @media (hover: none) and (pointer: coarse) {
-  .install-choice .install-download,
-  .install-choice .install-note-desktop {
-    display: none;
-  }
-
-  .install-choice .install-send {
-    display: inline-flex;
-  }
-
-  .install-choice .install-note-touch {
-    display: inline;
+  .desktop-only {
+    display: none !important;
   }
 }
 
@@ -4268,6 +4340,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .btn-install {
     width: 100%;
     justify-content: center;
+  }
+
+  .install-email,
+  .install-email-failed {
+    width: 100%;
   }
 }
 

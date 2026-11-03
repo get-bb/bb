@@ -50,6 +50,7 @@ import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { EmailDownloadLinkForm } from "./email-download-link-form";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -65,17 +66,28 @@ import {
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 
-export function InstallOptions({ placement }: { placement: CtaPlacement }) {
+export function InstallOptions({
+  placement,
+  touchAction = "share",
+}: {
+  placement: CtaPlacement;
+  touchAction?: "share" | "email";
+}) {
   const simple = useExperiment("homepage-download-area") === "test";
   useExperimentExposure("homepage-download-area", "desktop");
   return simple ? (
     <SimpleInstallOptions placement={placement} />
   ) : (
-    <CurrentInstallOptions placement={placement} />
+    <CurrentInstallOptions placement={placement} touchAction={touchAction} />
   );
 }
-
-function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
+function CurrentInstallOptions({
+  placement,
+  touchAction,
+}: {
+  placement: CtaPlacement;
+  touchAction: "share" | "email";
+}) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
@@ -87,10 +99,14 @@ function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
           <DesktopDownloadButton
             placement={placement}
             platform={platform}
-            className="btn btn-primary btn-install install-download"
+            className="btn btn-primary btn-install desktop-only"
           />
-          <SendToComputerButton placement={placement} />
-          <span className="install-note install-note-desktop">
+          {touchAction === "email" ? (
+            <EmailDownloadLinkForm placement={placement} />
+          ) : (
+            <SendToComputerButton placement={placement} />
+          )}
+          <span className="install-note desktop-only">
             {download.note}
             {" · "}
             <DownloadLink
@@ -101,7 +117,7 @@ function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
               Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
             </DownloadLink>
           </span>
-          <span className="install-note install-note-touch">
+          <span className="install-note touch-only">
             bb runs on macOS, Windows, and Linux
           </span>
         </span>
@@ -119,7 +135,7 @@ function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
           />
           <span className="install-note">
             {platform !== "windows" && (
-              <>
+              <span className="desktop-only">
                 <DownloadLink
                   placement={placement}
                   platform="windows"
@@ -128,7 +144,7 @@ function CurrentInstallOptions({ placement }: { placement: CtaPlacement }) {
                   {DESKTOP_DOWNLOADS.windows.label}
                 </DownloadLink>
                 ,{" "}
-              </>
+              </span>
             )}
             Intel Macs &amp; remote machines
           </span>
@@ -162,10 +178,10 @@ export function SimpleInstallOptions({
           <DesktopDownloadButton
             placement={placement}
             platform={platform}
-            className="btn btn-primary btn-install install-download"
+            className="btn btn-primary btn-install install-download desktop-only"
           />
           <SendToComputerButton placement={placement} />
-          <span className="install-note install-note-desktop">
+          <span className="install-note install-note-desktop desktop-only">
             {platform === "macos" ? null : <>Alpha{" · "}</>}
             <OpenSourceLink placement={placement} />
             {" · "}
@@ -173,7 +189,7 @@ export function SimpleInstallOptions({
               Other platforms
             </a>
           </span>
-          <span className="install-note install-note-touch">
+          <span className="install-note install-note-touch touch-only">
             <OpenSourceLink placement={placement} />
             {" · "}bb runs on macOS, Windows, and Linux
           </span>

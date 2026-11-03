@@ -41,6 +41,15 @@ describe("/download page", () => {
     expect(body).toContain("bb-android.apk");
   });
 
+  it("shows the installer only on computers and the share button only on phones", () => {
+    const html = renderToStaticMarkup(<DownloadPage />);
+    expect(html).toContain(
+      'class="btn btn-primary btn-install desktop-only" href="/download/macos?placement=download_page"',
+    );
+    expect(html).toContain("install-send touch-only");
+    expect(html).toContain('class="install-note touch-only"');
+  });
+
   it("hides the computer rows on phones and keeps the phone options", () => {
     const html = renderToStaticMarkup(<DownloadPage />);
     const computers = html.slice(
@@ -53,8 +62,8 @@ describe("/download page", () => {
     const phones = html.slice(html.indexOf('class="dl-h2"'));
     expect(phones).toContain('<div class="dl-rows">');
     expect(phones).toContain("testflight.apple.com");
-    expect(html).toContain('class="install-note install-note-touch"');
-    expect(html).toContain("install-send");
+    expect(html).toContain('class="install-note touch-only"');
+    expect(html).toContain("install-send touch-only");
   });
 
   it("starts page-view analytics", async () => {

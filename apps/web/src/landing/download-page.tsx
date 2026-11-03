@@ -133,13 +133,13 @@ export function DownloadPage() {
             <DesktopDownloadButton
               placement={PLACEMENT}
               platform={platform}
-              className="btn btn-primary btn-install install-download"
+              className="btn btn-primary btn-install desktop-only"
             />
             <SendToComputerButton placement={PLACEMENT} />
             {note ? (
-              <span className="install-note install-note-desktop">{note}</span>
+              <span className="install-note desktop-only">{note}</span>
             ) : null}
-            <span className="install-note install-note-touch">
+            <span className="install-note touch-only">
               bb runs on macOS, Windows, and Linux
             </span>
           </span>

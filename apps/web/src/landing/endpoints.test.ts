@@ -5,7 +5,13 @@ import {
   DOWNLOAD_FALLBACK_URL,
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
 } from "./site";
-import { handleDownload, handleSubscribe } from "./endpoints";
+import {
+  downloadLinkEmail,
+  downloadLinkIdempotencyKey,
+  handleDownload,
+  handleEmailDownloadLink,
+  handleSubscribe,
+} from "./endpoints";
 
 describe("marketing download", () => {
   afterEach(() => {
@@ -242,7 +248,7 @@ describe("marketing download", () => {
           {
             headers: {
               referer:
-                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb",
+                "https://getbb.app/?utm_source=google&gclid=ref&gbraid=ref-gb&wbraid=ref-wb&via=share",
               ...(gpc ? { "Sec-GPC": gpc } : {}),
             },
           },
@@ -276,6 +282,9 @@ describe("marketing download", () => {
       expect(body.properties.placement).toBe("nav");
       expect(body.properties.utm_campaign).toBe("x");
       expect(body.properties.utm_source).toBe("google");
+      expect(
+        new URL(body.properties.$referrer ?? "").searchParams.get("via"),
+      ).toBe("share");
       for (const [name, value, referrerValue] of [
         ["gclid", "abc", "ref"],
         ["gbraid", "gb", "ref-gb"],
@@ -453,5 +462,324 @@ describe("marketing subscribe endpoint", () => {
 
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("email download link endpoint", () => {
+  const SEGMENT = "seg_download_link";
+  const ENV = {
+    APP_URL: "https://getbb.app",
+    RESEND_API_KEY: "re_test",
+    RESEND_DOWNLOAD_LINK_AUDIENCE_ID: SEGMENT,
+    RESEND_DOWNLOAD_LINK_FROM: "bb <updates@mail.getbb.app>",
+    RESEND_DOWNLOAD_LINK_REPLY_TO: "support@example.com",
+    EMAIL_LINK_IP_RATE_LIMITER: limiter(true),
+    EMAIL_LINK_SITE_RATE_LIMITER: limiter(true),
+  };
+
+  function limiter(success: boolean) {
+    return {
+      limit: vi.fn(async (_options: { key: string }) => ({ success })),
+    };
+  }
+  const NOW = () => new Date("2026-11-03T12:00:00Z");
+  const EMAILS_URL = "https://api.resend.com/emails";
+  const CONTACTS_URL = "https://api.resend.com/contacts";
+  const SEGMENT_URL = `https://api.resend.com/contacts/me%40example.com/segments/${SEGMENT}`;
+
+  type Call = { url: string; method: string; body: unknown; headers: Headers };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function linkRequest(body: unknown): Request {
+    return new Request("https://getbb.app/api/email-download-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function stubResend(
+    respond: (call: Call) => Response | undefined,
+  ): Call[] {
+    const calls: Call[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const call = {
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          headers: new Headers(init?.headers),
+        };
+        calls.push(call);
+        return respond(call) ?? new Response("{}", { status: 200 });
+      }),
+    );
+    return calls;
+  }
+
+  async function send(body: unknown, env: typeof ENV = ENV) {
+    const pending: Promise<void>[] = [];
+    const response = await handleEmailDownloadLink(
+      linkRequest(body),
+      env,
+      (promise) => pending.push(promise),
+      NOW,
+    );
+    await Promise.all(pending);
+    return { response, background: pending.length };
+  }
+
+  const routes = (calls: Call[]) =>
+    calls.map(({ method, url }) => `${method} ${url}`);
+
+  it("sends the email, then creates the contact unsubscribed in the segment", async () => {
+    const calls = stubResend(() => undefined);
+    const { response } = await send({
+      email: " me@example.com ",
+      search: "?utm_source=google&gclid=abc&ref=x&via=share",
+    });
+    expect(response.status).toBe(200);
+    expect(routes(calls)).toEqual([
+      `POST ${EMAILS_URL}`,
+      `POST ${CONTACTS_URL}`,
+    ]);
+    const link = "https://getbb.app/download?utm_source=google&gclid=abc&via=email";
+    expect(calls[0]?.body).toEqual({
+      from: "bb <updates@mail.getbb.app>",
+      to: ["me@example.com"],
+      reply_to: "support@example.com",
+      ...downloadLinkEmail(link, "getbb.app"),
+    });
+    expect(calls[0]?.headers.get("Idempotency-Key")).toBe(
+      await downloadLinkIdempotencyKey("me@example.com", NOW()),
+    );
+    expect(calls[1]?.body).toEqual({
+      email: "me@example.com",
+      unsubscribed: true,
+      segments: [{ id: SEGMENT }],
+    });
+  });
+
+  it("adds an existing contact to the segment without changing its unsubscribed flag", async () => {
+    const calls = stubResend((call) =>
+      call.url === CONTACTS_URL
+        ? new Response('{"message":"Contact already exists"}', { status: 409 })
+        : undefined,
+    );
+    const { response } = await send({ email: "me@example.com" });
+    expect(response.status).toBe(200);
+    expect(routes(calls)).toEqual([
+      `POST ${EMAILS_URL}`,
+      `POST ${CONTACTS_URL}`,
+      `POST ${SEGMENT_URL}`,
+    ]);
+    expect(calls[2]?.body).toBeUndefined();
+    expect(calls.filter((call) => call.method === "PATCH")).toEqual([]);
+  });
+
+  it("still sends the email and answers sent when the contact can't be added", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const calls = stubResend((call) =>
+      call.url === EMAILS_URL
+        ? undefined
+        : new Response('{"message":"boom"}', { status: 500 }),
+    );
+    const { response, background } = await send({ email: "me@example.com" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(background).toBe(1);
+    expect(routes(calls)[0]).toBe(`POST ${EMAILS_URL}`);
+    expect(log).toHaveBeenCalledWith(
+      JSON.stringify({ event: "download_link_contact", outcome: "failed" }),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain("example.com");
+  });
+
+  it("logs and answers sent when the contact call throws", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    stubResend((call) => {
+      if (call.url !== EMAILS_URL) {
+        throw new TypeError("network");
+      }
+      return undefined;
+    });
+    const { response } = await send({ email: "me@example.com" });
+    expect(response.status).toBe(200);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks the per-IP and site-wide limits before sending", async () => {
+    const perIp = limiter(true);
+    const siteWide = limiter(true);
+    const calls = stubResend(() => undefined);
+    const request = new Request("https://getbb.app/api/email-download-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.7",
+      },
+      body: JSON.stringify({ email: "me@example.com" }),
+    });
+    const response = await handleEmailDownloadLink(
+      request,
+      {
+        ...ENV,
+        EMAIL_LINK_IP_RATE_LIMITER: perIp,
+        EMAIL_LINK_SITE_RATE_LIMITER: siteWide,
+      },
+      () => {},
+      NOW,
+    );
+    expect(response.status).toBe(200);
+    expect(perIp.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(siteWide.limit).toHaveBeenCalledWith({
+      key: "email-download-link",
+    });
+    expect(routes(calls)[0]).toBe(`POST ${EMAILS_URL}`);
+  });
+
+  it.each([
+    ["per-IP", "EMAIL_LINK_IP_RATE_LIMITER"],
+    ["site-wide", "EMAIL_LINK_SITE_RATE_LIMITER"],
+  ] as const)(
+    "refuses without calling Resend over the %s limit",
+    async (_name, binding) => {
+      const calls = stubResend(() => undefined);
+      const { response, background } = await send(
+        { email: "me@example.com" },
+        { ...ENV, [binding]: limiter(false) },
+      );
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: "send_failed" });
+      expect(calls).toEqual([]);
+      expect(background).toBe(0);
+    },
+  );
+
+  it("reports not-configured without the segment, sender or key", async () => {
+    const calls = stubResend(() => undefined);
+    for (const missing of [
+      "RESEND_API_KEY",
+      "RESEND_DOWNLOAD_LINK_AUDIENCE_ID",
+      "RESEND_DOWNLOAD_LINK_FROM",
+    ] as const) {
+      const { response } = await send(
+        { email: "me@example.com" },
+        { ...ENV, [missing]: "" },
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "not_configured" });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it.each([["not-an-email"], [""], [42], [`${"a".repeat(250)}@b.co`]])(
+    "rejects %s without calling Resend",
+    async (email) => {
+      const calls = stubResend(() => undefined);
+      const { response } = await send({ email });
+      expect(response.status).toBe(400);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it("keys the send to the address and UTC day so a repeat that day sends nothing new", async () => {
+    const first = await downloadLinkIdempotencyKey("Me@Example.com", NOW());
+    expect(first).toBe(
+      await downloadLinkIdempotencyKey(
+        "me@example.com",
+        new Date("2026-11-03T23:59:59Z"),
+      ),
+    );
+    expect(first).not.toBe(
+      await downloadLinkIdempotencyKey(
+        "me@example.com",
+        new Date("2026-11-04T00:00:00Z"),
+      ),
+    );
+    expect(first).not.toContain("example");
+    expect(first.length).toBeLessThanOrEqual(256);
+  });
+
+  it("treats Resend's repeat-key conflict as already sent", async () => {
+    stubResend((call) =>
+      call.url === EMAILS_URL
+        ? new Response('{"name":"invalid_idempotent_request"}', { status: 409 })
+        : undefined,
+    );
+    const { response } = await send({
+      email: "me@example.com",
+      search: "?utm_source=x",
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("returns a send failure and skips the contact when the send fails", async () => {
+    const calls = stubResend((call) =>
+      call.url === EMAILS_URL
+        ? new Response('{"message":"boom"}', { status: 500 })
+        : undefined,
+    );
+    const { response, background } = await send({ email: "me@example.com" });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "send_failed" });
+    expect(routes(calls)).toEqual([`POST ${EMAILS_URL}`]);
+    expect(background).toBe(0);
+  });
+
+  it("returns a send failure when Resend is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network");
+      }),
+    );
+    const { response } = await send({ email: "me@example.com" });
+    expect(response.status).toBe(502);
+  });
+
+  it("writes a minimal email with one button, one line, and the plain link", () => {
+    const link = "https://getbb.app/download?utm_source=a&via=email";
+    const email = downloadLinkEmail(link, "getbb.app");
+    expect(email.subject).toBe("Your bb download link");
+    expect(email.text).toBe(
+      `Download bb: ${link}\n\nYou asked for this link on getbb.app. We won't email you again.\n`,
+    );
+    expect(email.html.match(/<a /g)).toHaveLength(2);
+    expect(email.html).toContain(
+      'href="https://getbb.app/download?utm_source=a&amp;via=email"',
+    );
+    expect(email.html).toContain(">Download bb</a>");
+    expect(email.html).not.toMatch(/unsubscribe|<img/i);
+  });
+
+  it("attributes a download that came from the email link", async () => {
+    const fetchMock = vi.fn(
+      async (..._args: Parameters<typeof fetch>) => new Response("{}"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const waitUntil = vi.fn<(promise: Promise<void>) => void>();
+    await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos?placement=hero", {
+        headers: { referer: "https://getbb.app/download?utm_source=x&via=email" },
+      }),
+      { LANDING_POSTHOG_KEY: "phc_test" },
+      waitUntil,
+    );
+    await waitUntil.mock.calls[0]?.[0];
+    const capture = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes("posthog"),
+    );
+    const body = JSON.parse(String(capture?.[1]?.body)) as {
+      properties: { send_link_via?: string; placement: string };
+    };
+    expect(body.properties.send_link_via).toBe("email");
+    expect(body.properties.placement).toBe("hero");
   });
 });
