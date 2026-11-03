@@ -2886,6 +2886,13 @@
   initial-value: 0;
 }
 
+.rhb {
+  /* Muted rows sit well below the live one: the subtle text colour pulled
+     halfway to the background, lighter than the app's subtle grey so the
+     hierarchy reads at the hero's small size. */
+  --rhb-muted: color-mix(in oklab, var(--subtle) 50%, var(--bg));
+}
+
 .rhb .rhb-turn-body > .rhb-work.is-muting > * {
   animation: rhb-mute 0.6s ease var(--rhb-mute-at, 0s) both;
 }
@@ -2898,31 +2905,31 @@
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic,
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-verb {
-  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--dim));
+  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--dim));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic.is-plugin {
-  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--accent));
+  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-em {
   color: color-mix(
     in oklab,
-    var(--subtle) calc(var(--rhb-m) * 100%),
+    var(--rhb-muted) calc(var(--rhb-m) * 100%),
     color-mix(in oklab, var(--ink) 78%, var(--bg))
   );
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-file {
-  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--accent));
+  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-add {
-  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--add));
+  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--add));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-del {
-  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--del));
+  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--del));
 }
 
 @media (prefers-reduced-motion: reduce) {
