@@ -117,7 +117,7 @@ export function DownloadPage() {
       <SiteNav />
       <header className="hero dl-hero">
         <h1 aria-label={DOWNLOAD_PAGE_TITLE}>
-          Download <span className="bb-mark dl-mark" aria-hidden="true" />
+          Download <span className="dl-mark" aria-hidden="true" />
         </h1>
         <p className="sub">
           For macOS, Windows, Linux, iPhone, and Android. Free and open source.
