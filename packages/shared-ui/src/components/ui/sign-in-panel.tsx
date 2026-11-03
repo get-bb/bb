@@ -121,11 +121,13 @@ export function QuietTextAction({
 export function DisclosureToggle({
   expanded,
   leading,
+  caretWhenCollapsed = true,
   children,
   onToggle,
 }: {
   expanded: boolean;
   leading?: ReactNode;
+  caretWhenCollapsed?: boolean;
   children: ReactNode;
   onToggle: () => void;
 }) {
@@ -141,11 +143,13 @@ export function DisclosureToggle({
     >
       {leading}
       <span className="underline underline-offset-2">{children}</span>
-      <Icon
-        name={expanded ? "ChevronDown" : "ChevronRight"}
-        aria-hidden
-        className="size-3.5 text-subtle-foreground"
-      />
+      {expanded || caretWhenCollapsed ? (
+        <Icon
+          name={expanded ? "ChevronDown" : "ChevronRight"}
+          aria-hidden
+          className="size-3.5 text-subtle-foreground"
+        />
+      ) : null}
     </button>
   );
 }
