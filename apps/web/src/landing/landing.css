@@ -4169,8 +4169,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin: 16px auto 0;
 }
 
-/* ── Testimonials ───────────────────────────────────────────────── */
-
 .testimonials {
   border-top: 1px solid var(--border-soft);
   padding: 52px 0 56px;
