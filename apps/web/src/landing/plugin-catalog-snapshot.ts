@@ -15,25 +15,13 @@ import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import type { IconSvgElement } from "@hugeicons/react";
 
-import AuraIcon from "../assets/plugin-icons/aura.svg";
-import AyuIcon from "../assets/plugin-icons/ayu.svg";
-import BeautifulChatIcon from "../assets/plugin-icons/beautiful-chat.svg";
 import BotsSidebarIcon from "../assets/plugin-icons/bots-sidebar.svg";
 import ContextMeterIcon from "../assets/plugin-icons/context-meter.svg";
 import FilesEditorIcon from "../assets/plugin-icons/files-editor.svg";
-import FontsIcon from "../assets/plugin-icons/fonts.svg";
 import GenuiIcon from "../assets/plugin-icons/genui.svg";
 import HandoffIcon from "../assets/plugin-icons/handoff.svg";
-import LinearIcon from "../assets/plugin-icons/linear.svg";
-import LinkHovercardsIcon from "../assets/plugin-icons/link-hovercards.svg";
-import MonokaiIcon from "../assets/plugin-icons/monokai.svg";
-import SubscriptionsIcon from "../assets/plugin-icons/subscriptions.svg";
 import TaskboardIcon from "../assets/plugin-icons/taskboard.svg";
-import TokyoNightIcon from "../assets/plugin-icons/tokyo-night.svg";
 import UsageTrackerIcon from "../assets/plugin-icons/usage-tracker.svg";
-
-/* Plugins in BB Community when the snapshot was taken. */
-export const CATALOG_PLUGIN_COUNT = 518;
 
 export type CatalogPlugin = {
   id: string;
@@ -152,110 +140,4 @@ export const CATALOG_PLUGINS: readonly CatalogPlugin[] = [
     installs: 323,
     icon: { url: HandoffIcon },
   },
-  {
-    id: "linear",
-    name: "Linear",
-    description:
-      "Linear inside bb — a list-first issue browser, inbox, and create dialog served from a local mirror, thirteen linear_* agent tools, a bb linear CLI, and every thread resolving which issue it works on, shown live in the header and side panel and injected into agent context.",
-    author: "Vedran Burojević",
-    installs: 224,
-    icon: { url: LinearIcon },
-  },
-  {
-    id: "link-hovercards",
-    name: "Link Hovercards",
-    description:
-      "See a pull request's CI, review and merge state by hovering its link, without leaving the thread.",
-    author: "Bruno Bornsztein",
-    installs: 18,
-    icon: { url: LinkHovercardsIcon },
-  },
-  {
-    id: "subscriptions",
-    name: "Subscriptions",
-    description:
-      "Get a short message in your thread when a GitHub pull request or Linear issue you follow changes.",
-    author: "grrowl",
-    installs: 17,
-    icon: { url: SubscriptionsIcon },
-  },
-  {
-    id: "beautiful-chat",
-    name: "Beautiful Chat",
-    description:
-      "Restyles BB's chat — composer, messages, work rows, loading states — in BeautifulUI's design language, using your active theme's colors.",
-    author: "Diip3sh",
-    installs: 250,
-    icon: { url: BeautifulChatIcon },
-  },
-  {
-    id: "aura",
-    name: "Aura",
-    description:
-      "Make your BB workspace your own with personal wallpapers and animated pixel textures.",
-    author: "Mateo Cerquetella",
-    installs: 221,
-    icon: { url: AuraIcon },
-  },
-  {
-    id: "monokai",
-    name: "bb Monokai",
-    description:
-      "A dark Monokai-family theme for bb: one meaning per hue, a single text ladder, and a matching terminal palette.",
-    author: "Scott Sunarto",
-    installs: 164,
-    icon: { url: MonokaiIcon },
-  },
-  {
-    id: "fonts",
-    name: "Fonts",
-    description:
-      "Choose local font families and tune interface, code, and serif typography independently of BB's active theme.",
-    author: "Guilherme J. Tramontina",
-    installs: 163,
-    icon: { url: FontsIcon },
-  },
-  {
-    id: "ayu",
-    name: "Ayu",
-    description:
-      "Adds the three ayu themes (Light, Dark and Mirage) and a settings panel that switches between them and copies any colour from the palette.",
-    author: "Vedran Burojević",
-    installs: 157,
-    icon: { url: AyuIcon },
-  },
-  {
-    id: "tokyo-night",
-    name: "Tokyo Night",
-    description:
-      "Adds the two Tokyo Night palettes (Night and Storm), each pairing its dark base with Tokyo Night Light for light mode.",
-    author: "Justin Krehel",
-    installs: 144,
-    icon: { url: TokyoNightIcon },
-  },
 ];
-
-/* What bb's Plugins page lists, sorted by installs: the whole catalog, then
-   the first results of two searches. bb's catalog search matches the query in
-   a plugin's id, name, description, category, marketplace name and tags
-   (plugin-catalog-service.ts); "linear" matches 4 plugins and "themes" 61. */
-export const CATALOG_VIEWS = {
-  "": [
-    "bb-sidebar",
-    "usage-tracker",
-    "file-manager",
-    "genui",
-    "taskboard",
-    "files-editor",
-    "agent-graph",
-    "t3sidebar",
-    "bots-sidebar",
-    "usage",
-    "context-meter",
-    "handoff",
-  ],
-  linear: ["taskboard", "linear", "link-hovercards", "subscriptions"],
-  themes: ["beautiful-chat", "aura", "monokai", "fonts", "ayu", "tokyo-night"],
-} as const satisfies Record<string, readonly string[]>;
-
-export type CatalogQuery = keyof typeof CATALOG_VIEWS;

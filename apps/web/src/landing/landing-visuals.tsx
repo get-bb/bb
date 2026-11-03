@@ -27,21 +27,14 @@ import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Edit04Icon from "@hugeicons/core-free-icons/Edit04Icon";
-import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import Book02Icon from "@hugeicons/core-free-icons/Book02Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
 import SortingNineOneIcon from "@hugeicons/core-free-icons/SortingNineOneIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
 import { trackLandingEvent } from "./analytics";
@@ -49,12 +42,11 @@ import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import {
-  CATALOG_PLUGIN_COUNT,
-  CATALOG_PLUGINS,
-  CATALOG_VIEWS,
-  type CatalogPlugin,
-  type CatalogQuery,
-} from "./plugin-catalog-snapshot";
+  BROWSE_ARCHETYPES,
+  BrowseHero,
+  HERO_SLIDE_MS,
+} from "./plugin-browse-hero";
+import { CATALOG_PLUGINS, type CatalogPlugin } from "./plugin-catalog-snapshot";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -988,17 +980,13 @@ function ComposerBox({
   );
 }
 
-/* Make bb yours: bb's Plugins page, as the app draws it (BrowsePluginsTab with
-   its PluginCollectionToolbar and PluginCatalogCard grid), browsing a snapshot
-   of the BB Community catalog sorted by installs. The page scrolls slowly
-   down the grid and back, then searches "linear" and "themes", typed one
-   character at a time; the grid filters when the search commits, as bb's
-   does 200 ms after the last keystroke, and the cards glide to their new
-   places (FLIP) while the ones that no longer match fade out. */
-
-/* The Plugins page's lede (PLUGINS_BROWSE_DESCRIPTION in the app). */
-const PLUGINS_BROWSE_DESCRIPTION =
-  "Discover plugins for bb. Install one, or describe your own and build it from a prompt.";
+/* Make bb yours: bb's Plugins page, as the app draws it with the sidebar
+   collapsed to the nav rail (BrowsePluginsTab): the Plugin Guide link and
+   New plugin button, the Browse hero, then the PluginCollectionToolbar and
+   the PluginCatalogCard grid of the BB Community catalog sorted by installs.
+   The hero autoplays every five seconds as bb's does; after every third
+   slide the page scrolls down to the grid, holds, and scrolls back, and the
+   hero waits for it before moving on. */
 
 const DownloadGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={Download01Icon} className={className} />
@@ -1012,63 +1000,45 @@ const FilterGlyph = ({ className }: IconProps) => (
 const SortGlyph = ({ className }: IconProps) => (
   <HugeiconsIcon icon={SortingNineOneIcon} className={className} />
 );
-const PlusGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={PlusSignIcon} className={className} />
-);
-const ClearGlyph = ({ className }: IconProps) => (
-  <HugeiconsIcon icon={Cancel01Icon} className={className} />
+const GuideGlyph = ({ className }: IconProps) => (
+  <HugeiconsIcon icon={Book02Icon} className={className} />
 );
 
-type CatalogFrame = {
-  scrolled: boolean;
-  scrollMs: number;
-  text: string;
-  focused: boolean;
-  selected: boolean;
-  query: CatalogQuery;
+type PluginsFrame = { slide: number; previous: number; scrolled: boolean };
+
+const PLUGINS_REST: PluginsFrame = { slide: 0, previous: -1, scrolled: false };
+
+const PAGE_SCROLL_MS = 1300;
+const GRID_HOLD_MS = 3000;
+
+type PluginsStep = {
+  wait: number;
+  next: (frame: PluginsFrame) => PluginsFrame;
 };
 
-const CATALOG_REST: CatalogFrame = {
-  scrolled: false,
-  scrollMs: 0,
-  text: "",
-  focused: false,
-  selected: false,
-  query: "",
-};
+const advance = (frame: PluginsFrame): PluginsFrame => ({
+  ...frame,
+  slide: (frame.slide + 1) % BROWSE_ARCHETYPES.length,
+  previous: frame.slide,
+});
 
-const TYPE_MS = 115;
-const SEARCH_COMMIT_MS = 200;
-const FLIP_MS = 650;
-
-type CatalogStep = { wait: number; frame: Partial<CatalogFrame> };
-
-function typed(word: string, firstWait: number): CatalogStep[] {
-  return [...word].map((_, index) => ({
-    wait: index === 0 ? firstWait : TYPE_MS,
-    frame: { text: word.slice(0, index + 1), selected: false },
-  }));
-}
-
-/* Each step waits, then applies its frame. The last step returns to
-   CATALOG_REST, so the loop starts over without a cut. */
-const CATALOG_STEPS: readonly CatalogStep[] = [
-  { wait: 1600, frame: { scrolled: true, scrollMs: 3400 } },
-  { wait: 3400 + 900, frame: { scrolled: false, scrollMs: 1100 } },
-  { wait: 1100 + 150, frame: { focused: true } },
-  ...typed("linear", 350),
-  { wait: SEARCH_COMMIT_MS, frame: { query: "linear" } },
-  { wait: FLIP_MS + 1900, frame: { selected: true } },
-  ...typed("themes", 450),
-  { wait: SEARCH_COMMIT_MS, frame: { query: "themes" } },
-  { wait: FLIP_MS + 2000, frame: { selected: true } },
-  { wait: 350, frame: CATALOG_REST },
+const PLUGINS_STEPS: readonly PluginsStep[] = [
+  { wait: HERO_SLIDE_MS, next: advance },
+  { wait: HERO_SLIDE_MS, next: advance },
+  { wait: HERO_SLIDE_MS, next: (frame) => ({ ...frame, scrolled: true }) },
+  {
+    wait: PAGE_SCROLL_MS + GRID_HOLD_MS,
+    next: (frame) => ({ ...frame, scrolled: false }),
+  },
+  { wait: PAGE_SCROLL_MS, next: advance },
 ];
 
-function useCatalogTimeline(ref: RefObject<Element | null>) {
-  const [frame, setFrame] = useState(CATALOG_REST);
+function usePluginsTimeline(ref: RefObject<Element | null>) {
+  const [frame, setFrame] = useState(PLUGINS_REST);
   const [inView, setInView] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const next = useRef(0);
+  const remaining = useRef<number | null>(null);
   useEffect(() => {
     const target = ref.current;
     if (!target || typeof IntersectionObserver === "undefined") {
@@ -1083,127 +1053,36 @@ function useCatalogTimeline(ref: RefObject<Element | null>) {
     return () => observer.disconnect();
   }, [ref]);
   useEffect(() => {
-    if (!inView) return;
+    const update = () => setHidden(document.hidden);
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  const running = inView && !hidden;
+  useEffect(() => {
+    if (!running) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let timer = 0;
+    let started = 0;
+    let wait = 0;
     const schedule = () => {
-      const step = CATALOG_STEPS[next.current]!;
+      const step = PLUGINS_STEPS[next.current]!;
+      wait = remaining.current ?? step.wait;
+      remaining.current = null;
+      started = Date.now();
       timer = window.setTimeout(() => {
-        setFrame((current) => ({ ...current, ...step.frame }));
-        next.current = (next.current + 1) % CATALOG_STEPS.length;
+        setFrame(step.next);
+        next.current = (next.current + 1) % PLUGINS_STEPS.length;
         schedule();
-      }, step.wait);
+      }, wait);
     };
     schedule();
-    return () => window.clearTimeout(timer);
-  }, [inView]);
-  return { frame, paused: !inView };
-}
-
-type CardBox = { x: number; y: number; w: number };
-
-/* FLIP for the catalog grid: every card stays mounted and the grid shows
-   the current view's cards in order. After each change, cards that stay
-   glide from where they were, cards that leave fade out where they were,
-   and cards that arrive fade in once the others have moved. */
-function useCatalogFlip(
-  grid: RefObject<HTMLDivElement | null>,
-  viewKey: string,
-) {
-  const boxes = useRef(new Map<string, CardBox>());
-  const measure = useCallback(() => {
-    const node = grid.current;
-    if (!node) return new Map<string, CardBox>();
-    const measured = new Map<string, CardBox>();
-    for (const card of node.querySelectorAll<HTMLElement>("[data-plugin]")) {
-      if (card.dataset.shown !== "true") continue;
-      measured.set(card.dataset.plugin!, {
-        x: card.offsetLeft,
-        y: card.offsetTop,
-        w: card.offsetWidth,
-      });
-    }
-    return measured;
-  }, [grid]);
-  useEffect(() => {
-    const node = grid.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      boxes.current = measure();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [grid, measure]);
-  useLayoutEffect(() => {
-    const node = grid.current;
-    if (!node) return;
-    const before = boxes.current;
-    boxes.current = measure();
-    if (
-      before.size === 0 ||
-      typeof node.animate !== "function" ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      return;
-    }
-    const cards = [...node.querySelectorAll<HTMLElement>("[data-plugin]")];
-    const moves = cards.some((card) => {
-      const was = before.get(card.dataset.plugin!);
-      const now = boxes.current.get(card.dataset.plugin!);
-      return was && now && (was.x !== now.x || was.y !== now.y);
-    });
-    for (const card of cards) {
-      const id = card.dataset.plugin!;
-      const was = before.get(id);
-      const now = boxes.current.get(id);
-      if (now && was) {
-        const dx = was.x - now.x;
-        const dy = was.y - now.y;
-        if (dx === 0 && dy === 0) continue;
-        /* Gliding cards pass over the ones fading in. */
-        card.style.zIndex = "1";
-        const glide = card.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
-          { duration: FLIP_MS, easing: "cubic-bezier(0.4, 0, 0.2, 1)" },
-        );
-        glide.onfinish = () => card.style.removeProperty("z-index");
-      } else if (now) {
-        /* Arrivals start as the leavers finish fading, or once the gliding
-           cards are under way. */
-        card.animate(
-          [
-            { opacity: 0, transform: "scale(0.97)" },
-            { opacity: 1, transform: "none" },
-          ],
-          {
-            duration: 300,
-            delay: moves ? 300 : 140,
-            easing: "ease-out",
-            fill: "backwards",
-          },
-        );
-      } else if (was) {
-        card.dataset.leaving = "";
-        card.style.left = `${was.x}px`;
-        card.style.top = `${was.y}px`;
-        card.style.width = `${was.w}px`;
-        const fade = card.animate(
-          [
-            { opacity: 1, transform: "none" },
-            { opacity: 0, transform: "scale(0.97)" },
-          ],
-          { duration: 220, easing: "ease-in", fill: "forwards" },
-        );
-        fade.onfinish = () => {
-          delete card.dataset.leaving;
-          card.style.removeProperty("left");
-          card.style.removeProperty("top");
-          card.style.removeProperty("width");
-          fade.cancel();
-        };
-      }
-    }
-  }, [grid, measure, viewKey]);
+    return () => {
+      window.clearTimeout(timer);
+      remaining.current = Math.max(0, wait - (Date.now() - started));
+    };
+  }, [running]);
+  return { frame, paused: !running };
 }
 
 const INSTALLS_FORMAT = new Intl.NumberFormat("en-US", {
@@ -1221,21 +1100,9 @@ function authorInitials(name: string) {
 
 /* PluginCatalogCard: the icon chip and name, two lines of description, then
    the author and the install control with the install count. */
-function CatalogCard({
-  plugin,
-  order,
-}: {
-  plugin: CatalogPlugin;
-  order: number;
-}) {
-  const shown = order >= 0;
+function CatalogCard({ plugin }: { plugin: CatalogPlugin }) {
   return (
-    <div
-      className="bw-pc"
-      data-plugin={plugin.id}
-      data-shown={shown}
-      style={shown ? { order } : undefined}
-    >
+    <div className="bw-pc">
       <span className="bw-pc-head">
         <span className="bw-pc-chip">
           {"glyph" in plugin.icon ? (
@@ -1269,27 +1136,12 @@ function CatalogCard({
 
 /* PluginCollectionToolbar: the search field, then the Category and Sort
    menus, with Sort on Installs. */
-function CatalogToolbar({ frame }: { frame: CatalogFrame }) {
-  const searchClass = ["bw-pc-search"];
-  if (frame.focused) searchClass.push("is-focused");
+function CatalogToolbar() {
   return (
     <div className="bw-pc-toolbar">
-      <span className={searchClass.join(" ")}>
+      <span className="bw-pc-search">
         <SearchGlyph className="bw-pc-search-ic" />
-        {frame.text === "" ? (
-          <span className="bw-pc-placeholder">
-            {frame.focused ? <i className="bw-pc-caret" /> : null}
-            Search plugins...
-          </span>
-        ) : (
-          <span className="bw-pc-text">
-            <span className={frame.selected ? "is-selected" : undefined}>
-              {frame.text}
-            </span>
-            {frame.selected ? null : <i className="bw-pc-caret" />}
-          </span>
-        )}
-        {frame.text === "" ? null : <ClearGlyph className="bw-pc-clear" />}
+        <span className="bw-pc-placeholder">Search plugins...</span>
       </span>
       <span className="bw-pc-control">
         <FilterGlyph className="bw-pc-control-ic" />
@@ -1306,55 +1158,47 @@ function CatalogToolbar({ frame }: { frame: CatalogFrame }) {
 
 export function PluginMap() {
   const ref = useRef<HTMLDivElement>(null);
-  const grid = useRef<HTMLDivElement>(null);
   useFitWindow(ref);
-  const { frame, paused } = useCatalogTimeline(ref);
-  const view: readonly string[] = CATALOG_VIEWS[frame.query];
-  useCatalogFlip(grid, frame.query);
+  const { frame, paused } = usePluginsTimeline(ref);
   const pageStyle = {
-    "--bw-pc-scroll-ms": `${frame.scrollMs}ms`,
+    "--bw-pc-scroll-ms": `${PAGE_SCROLL_MS}ms`,
   } as CSSProperties;
   return (
     <div
       ref={ref}
       className={`bw bw-plugins${paused ? " fw-paused" : ""}`}
       role="img"
-      aria-label={`bb's Plugins page, open from the nav rail: a grid of BB Community plugins sorted by installs, from ${CATALOG_PLUGIN_COUNT} plugins, starting with BB Sidebar, Usage Tracker, File Manager and Generative UI. The page scrolls through the grid, then a search for "linear" narrows it to Taskboard, Linear, Link Hovercards and Subscriptions, and a search for "themes" to Beautiful Chat, Aura, bb Monokai, Fonts, Ayu and Tokyo Night.`}
+      aria-label={`bb's Plugins page, open from the nav rail with the sidebar collapsed. At the top, "Turn bb into" cycles through a kanban board, a live dashboard, a chief of staff, a video editor, a prototyping lab and a support inbox, each shown as a small plugin app in a bb window. After every few, the page scrolls down to the grid of BB Community plugins sorted by installs, starting with BB Sidebar, Usage Tracker, File Manager and Generative UI, then back up.`}
     >
       <div className="mock bw-window">
         <WindowBar title="Plugins" />
         <div className="mock-body bw-body">
-          <Sidebar nav="plugins">
-            <div className="side-label">Threads</div>
-            <ThreadRow title="Signups by plan" status="done" />
-            <ThreadRow title="Fix the checkout bug" status="done" />
-            <ThreadRow title="Bump the SDK" status="done" />
-            <ThreadRow title="Refactor auth" status="waiting" />
-          </Sidebar>
+          <NavRail active="plugins" />
           <div className="main bw-pc-main" aria-hidden>
             <div
               className={`bw-pc-page${frame.scrolled ? " is-scrolled" : ""}`}
               style={pageStyle}
             >
               <div className="bw-pc-header">
-                <span className="bw-pc-title">Browse plugins</span>
-                <span className="bw-pc-total">
-                  {CATALOG_PLUGIN_COUNT} plugins
+                <span className="bw-pc-guide">
+                  <GuideGlyph className="bw-pc-control-ic" />
+                  <span>Plugin Guide</span>
                 </span>
-                <span className="bw-pc-create">
-                  <PlusGlyph className="bw-pc-control-ic" />
-                  Create
+                <span className="bw-pc-new">
+                  <span className="bw-pc-new-main">
+                    <NewThreadIcon className="bw-pc-control-ic" />
+                    New plugin
+                  </span>
+                  <span className="bw-pc-new-menu">
+                    <ChevronDown className="bw-pc-control-ic" />
+                  </span>
                 </span>
               </div>
-              <p className="bw-pc-lede">{PLUGINS_BROWSE_DESCRIPTION}</p>
-              <CatalogToolbar frame={frame} />
-              <div ref={grid} className="bw-pc-grid">
+              <BrowseHero active={frame.slide} previous={frame.previous} />
+              <CatalogToolbar />
+              <div className="bw-pc-grid">
                 {CATALOG_PLUGINS.map((plugin) => (
-                  <CatalogCard
-                    key={plugin.id}
-                    plugin={plugin}
-                    order={view.indexOf(plugin.id)}
-                  />
+                  <CatalogCard key={plugin.id} plugin={plugin} />
                 ))}
               </div>
             </div>

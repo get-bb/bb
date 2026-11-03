@@ -14,10 +14,10 @@ import {
   useCycle,
 } from "./landing-visuals";
 import {
-  CATALOG_PLUGIN_COUNT,
-  CATALOG_PLUGINS,
-  CATALOG_VIEWS,
-} from "./plugin-catalog-snapshot";
+  BROWSE_ARCHETYPES,
+  PLUGINS_BROWSE_DESCRIPTION,
+} from "./plugin-browse-hero";
+import { CATALOG_PLUGINS } from "./plugin-catalog-snapshot";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
@@ -176,12 +176,16 @@ describe("StartAnywhere", () => {
 });
 
 describe("PluginMap", () => {
-  it("shows bb's Plugins page with the most-installed catalog plugins", () => {
+  it("shows the Plugins page beside the nav rail, with the Browse hero above the grid", () => {
     const html = renderToStaticMarkup(<PluginMap />);
     for (const text of [
       ">Plugins<",
-      "Browse plugins",
-      `${CATALOG_PLUGIN_COUNT} plugins`,
+      "Plugin Guide",
+      "New plugin",
+      "Turn bb into",
+      "a kanban board",
+      PLUGINS_BROWSE_DESCRIPTION,
+      "bb — Kanban board",
       "Search plugins...",
       "Category",
       "Installs",
@@ -195,55 +199,66 @@ describe("PluginMap", () => {
     }
     expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
     expect(html.match(/class="bw-rail-btn is-on"/g)).toHaveLength(1);
-    expect(html.match(/class="bw-pc"/g)).toHaveLength(CATALOG_PLUGINS.length);
-    expect(html.match(/data-shown="true"/g)).toHaveLength(
-      CATALOG_VIEWS[""].length,
+    expect(html).not.toMatch(/class="side"|class="trow/);
+    expect(html.indexOf("Turn bb into")).toBeLessThan(
+      html.indexOf("Search plugins..."),
     );
-    expect(html).not.toMatch(/bw-catalog|bw-cat-|bw-inst|bw-burn|bw-recap/);
+    expect(html.match(/class="bh-chip( is-on)?"/g)).toHaveLength(
+      BROWSE_ARCHETYPES.length,
+    );
+    expect(html.match(/data-scene=/g)).toHaveLength(BROWSE_ARCHETYPES.length);
+    expect(html.match(/class="bh-layer is-on"/g)).toHaveLength(1);
+    expect(html.match(/class="bw-pc"/g)).toHaveLength(CATALOG_PLUGINS.length);
   });
 
-  it("types each search, then filters the grid, only while on screen", () => {
+  it("cycles the hero, peeks at the grid after every third slide, and pauses off screen", () => {
     vi.useFakeTimers();
     vi.stubGlobal("IntersectionObserver", FakeObserver);
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
     FakeObserver.instances = [];
     const { host, unmount } = render(<PluginMap />);
-    const shown = () => host.querySelectorAll('[data-shown="true"]').length;
-    const search = () => host.querySelector(".bw-pc-search")!.textContent;
+    const noun = () => host.querySelector(".bh-noun")!.textContent;
+    const scrolled = () =>
+      host.querySelector(".bw-pc-page")!.classList.contains("is-scrolled");
 
     act(() => vi.advanceTimersByTime(20_000));
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
+    expect(noun()).toBe("a kanban board");
 
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(8_100));
-    expect(search()).toContain("linear");
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
-    act(() => vi.advanceTimersByTime(200));
-    expect(shown()).toBe(CATALOG_VIEWS.linear.length);
-
-    act(() => vi.advanceTimersByTime(3_600));
-    expect(search()).toContain("themes");
-    expect(shown()).toBe(CATALOG_VIEWS.linear.length);
-    act(() => vi.advanceTimersByTime(200));
-    expect(shown()).toBe(CATALOG_VIEWS.themes.length);
-
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(noun()).toBe("a live dashboard");
     act(() => vi.advanceTimersByTime(3_000));
-    expect(search()).toContain("Search plugins...");
-    expect(shown()).toBe(CATALOG_VIEWS[""].length);
+    FakeObserver.instances[0]!.show(false);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(noun()).toBe("a live dashboard");
+    FakeObserver.instances[0]!.show(true);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(noun()).toBe("a chief of staff");
+
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(scrolled()).toBe(true);
+    expect(noun()).toBe("a chief of staff");
+    act(() => vi.advanceTimersByTime(4_300));
+    expect(scrolled()).toBe(false);
+    act(() => vi.advanceTimersByTime(1_300));
+    expect(noun()).toBe("a video editor");
+    expect(
+      host.querySelector(".bh-layer.is-under")!.getAttribute("data-scene"),
+    ).toBe("chief-of-staff");
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(noun()).toBe("a support inbox");
+    act(() => vi.advanceTimersByTime(5_000 + 4_300 + 1_300));
+    expect(noun()).toBe("a kanban board");
     unmount();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
   });
 
-  it("lists every plugin each view shows, sorted by installs", () => {
-    const byId = new Map(CATALOG_PLUGINS.map((plugin) => [plugin.id, plugin]));
-    expect(CATALOG_PLUGIN_COUNT).toBeGreaterThan(400);
-    for (const ids of Object.values(CATALOG_VIEWS)) {
-      const installs = ids.map((id) => byId.get(id)?.installs ?? -1);
-      expect(installs).not.toContain(-1);
-      expect(installs).toEqual([...installs].sort((a, b) => b - a));
-    }
+  it("lists the catalog's most-installed plugins in order", () => {
+    const installs = CATALOG_PLUGINS.map((plugin) => plugin.installs);
+    expect(installs).toEqual([...installs].sort((a, b) => b - a));
   });
 });
 

@@ -2713,15 +2713,33 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding-bottom: 6px;
 }
 
-/* Make bb yours: bb's Plugins page open from the rail, browsing the BB
-   Community catalog. Sizes follow the app's PluginCollectionToolbar (32px
-   controls, 12px text) and PluginCatalogCard (rounded-xl, 12px padding, a
-   24px icon chip, two lines of description, then author and installs). The
-   page scrolls by transform, and the grid filters with FLIP in
-   useCatalogFlip, so nothing in the window jumps. */
+/* Make bb yours: bb's Plugins page open from the rail with the sidebar
+   collapsed, so only the nav rail shows beside it. Sizes follow the app's
+   PluginCollectionToolbar (32px controls, 12px text) and PluginCatalogCard
+   (rounded-xl, 12px padding, a 24px icon chip, two lines of description,
+   then author and installs). The page scrolls by transform, so nothing in
+   the window jumps. */
 .bw-plugins {
   --bw-visible-width: 924px;
-  --bw-pc-scroll: -304px;
+  --bw-pc-scroll: -404px;
+  --hero-file-accent: var(--accent);
+  --hero-success: var(--ok);
+  --hero-attention: var(--attention);
+  --hero-warning: oklch(0.7 0.16 50);
+  --hero-pr-merged: oklch(0.53 0.2 295);
+  --hero-destructive: oklch(0.45 0.19 25.8625);
+  --hero-destructive-text: oklch(0.45 0.19 25.8625);
+}
+
+.dark .bw-plugins {
+  --hero-warning: oklch(0.75 0.16 50);
+  --hero-pr-merged: oklch(0.68 0.18 295);
+  --hero-destructive: oklch(0.56 0.19 22.1703);
+  --hero-destructive-text: oklch(0.65 0.16 22);
+}
+
+.bw-plugins .bar-left {
+  width: auto;
 }
 
 .bw-pc-main {
@@ -2730,7 +2748,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-pc-page {
-  padding: 22px 20px 24px;
+  padding: 18px 20px 24px;
   transition: transform var(--bw-pc-scroll-ms, 0ms)
     cubic-bezier(0.45, 0, 0.55, 1);
 }
@@ -2742,45 +2760,522 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-pc-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.bw-pc-title {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink-strong);
-}
-
-.bw-pc-total {
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--ink) 6%, var(--bg));
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--subtle);
-}
-
-.bw-pc-create {
+.bw-pc-guide {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  margin-left: auto;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink);
+  font-size: 12px;
+  color: var(--dim);
 }
 
-.bw-pc-lede {
-  margin: 6px 0 18px;
+.bw-pc-guide span {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.bw-pc-new {
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bg);
+}
+
+.bw-pc-new-main,
+.bw-pc-new-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+}
+
+.bw-pc-new-main {
+  padding: 0 4px 0 8px;
+  border-radius: 6px 0 0 6px;
+}
+
+.bw-pc-new-menu {
+  padding: 0 8px 0 4px;
+  border-radius: 0 6px 6px 0;
+}
+
+.bh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 28px 0;
+  padding-bottom: 16px;
+}
+
+.bh-headline {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  letter-spacing: -0.025em;
+  text-align: center;
+  color: var(--ink-strong);
+}
+
+.bh-noun {
+  display: inline-block;
+}
+
+.bh-noun.is-new {
+  animation: bh-rise 0.5s ease-out both;
+}
+
+@keyframes bh-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.bh-lede {
+  max-width: 65ch;
+  margin: 6px 0 0;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.43;
+  text-align: center;
   color: var(--dim);
+}
+
+.bh-orbit {
+  position: relative;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.bh-chip {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 144px;
+  padding: 6px 8px;
+  border: 1px solid;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 3px 0 color-mix(in oklab, var(--shade) 10%, transparent),
+    0 1px 2px -1px color-mix(in oklab, var(--shade) 10%, transparent);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+  opacity: 0.7;
+  transition:
+    opacity 0.5s,
+    background-color 0.5s,
+    border-color 0.5s;
+  animation: bh-drift var(--bh-drift-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--bh-drift-delay, 0s);
+}
+
+.bh-chip.is-on {
+  opacity: 1;
+}
+
+@keyframes bh-drift {
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+.bh-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bh-ic {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.bh-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 66%;
+  height: 208px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 9%, transparent);
+}
+
+.bh-frame-bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid;
+}
+
+.bh-lights {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.bh-lights i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.bh-frame-title {
+  margin: 0 auto;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bh-pill {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bh-frame-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.bh-frame-rail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  width: 32px;
+  padding: 8px 0;
+  border-right: 1px solid;
+}
+
+.bh-rail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.bh-rail-plugin {
+  border: 1px solid;
+  transition:
+    background-color 0.5s,
+    border-color 0.5s,
+    color 0.5s;
+}
+
+.bh-rail-rule {
+  width: 16px;
+  height: 1px;
+  margin: 2px 0;
+}
+
+.bh-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.bh-layer {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+
+.bh-layer.is-off {
+  opacity: 0;
+}
+
+.bh-layer.is-under {
+  z-index: 1;
+}
+
+.bh-layer.is-on {
+  z-index: 2;
+}
+
+.bh-layer.is-new {
+  animation: fw-fade-in 0.5s ease-out both;
+}
+
+.bh-scene {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 8px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.bh-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bh-cols3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bh-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bh-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bh-between {
+  justify-content: space-between;
+}
+
+.bh-end {
+  margin-left: auto;
+}
+
+.bh-card {
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid;
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.bh-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bh-scene .bh-gap2 {
+  gap: 2px;
+}
+
+.bh-scene .bh-gap4 {
+  gap: 4px;
+}
+
+.bh-scene .bh-gap6 {
+  gap: 6px;
+}
+
+.bh-scene .bh-gap8 {
+  gap: 8px;
+}
+
+.bh-fill {
+  flex: 1;
+  min-height: 0;
+}
+
+.bh-bar {
+  flex-shrink: 0;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.bh-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.bh-label,
+.bh-strong {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.bh-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bh-stat {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bh-mono {
+  font-family: var(--font-mono);
+}
+
+.bh-tag {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.bh-tag-pad {
+  padding: 2px 4px;
+}
+
+.bh-chart {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 0;
+}
+
+.bh-chart-bar {
+  flex: 1;
+  border-radius: 2px;
+}
+
+.bh-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.bh-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.bh-track-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.bh-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.bh-playhead {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 52%;
+  width: 1px;
+}
+
+.bh-lane {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.bh-clips {
+  display: flex;
+  gap: 2px;
+}
+
+.bh-clip {
+  border-radius: 2px;
+}
+
+.bh-proto {
+  min-height: 0;
+}
+
+.bh-preview {
+  flex: 1;
+  min-height: 0;
+  margin-top: auto;
+  padding: 4px;
+  border-style: dashed;
+}
+
+.bh-handoff {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px dashed;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.bh-push {
+  margin-top: auto;
+}
+
+.bh-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.bh-tab {
+  display: flex;
+  align-items: center;
+  height: 16px;
+}
+
+.bh-tab-bar {
+  display: block;
+  width: 16px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  transition:
+    width 0.3s,
+    background-color 0.3s;
+}
+
+.bh-tab-bar.is-on {
+  width: 40px;
+}
+
+.bh-tab-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  animation: bh-progress var(--bh-slide-ms, 5s) linear forwards;
+}
+
+@keyframes bh-progress {
+  from {
+    transform: scaleX(0);
+  }
 }
 
 .bw-pc-toolbar {
@@ -2800,14 +3295,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 7px;
   background: var(--bg);
   font-size: 12.5px;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.bw-pc-search.is-focused {
-  border-color: color-mix(in oklab, var(--accent) 55%, var(--bg));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
 }
 
 .bw-pc-search-ic {
@@ -2817,48 +3304,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-.bw-pc-placeholder,
-.bw-pc-text {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  white-space: nowrap;
-}
-
 .bw-pc-placeholder {
+  min-width: 0;
   color: var(--subtle);
-}
-
-.bw-pc-text {
-  color: var(--ink);
-}
-
-.bw-pc-text .is-selected {
-  border-radius: 2px;
-  background: color-mix(in oklab, var(--accent) 26%, var(--bg));
-}
-
-.bw-pc-caret {
-  display: inline-block;
-  width: 1px;
-  height: 15px;
-  margin: 0 1px;
-  background: var(--ink);
-  animation: bw-pc-blink 1s steps(1) infinite;
-}
-
-@keyframes bw-pc-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
-.bw-pc-clear {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  margin-left: auto;
-  color: var(--subtle);
+  white-space: nowrap;
 }
 
 .bw-pc-control {
@@ -2905,16 +3354,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
-}
-
-.bw-pc[data-shown="false"] {
-  display: none;
-}
-
-.bw-pc[data-leaving] {
-  position: absolute;
-  z-index: 0;
-  display: grid;
 }
 
 .bw-pc-head {
@@ -3479,18 +3918,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     --bw-fit-slice: var(--bw-slice, var(--bw-visible-width));
     zoom: var(--bw-scale, 0.62);
   }
-  /* On phones the Plugins page drops the thread list and the lede and shows
-     one column of cards in a 400px slice, so its text stays near full size. */
+  /* On phones the Plugins page drops the orbiting chips and shows one
+     column of cards in a 400px slice, so its text stays near full size. */
   .bw.bw-plugins {
     --bw-visible-width: 372px;
-    --bw-pc-scroll: -456px;
+    --bw-pc-scroll: -436px;
     zoom: var(--bw-scale, 0.9);
   }
 
-  .bw-plugins .side,
   .bw-plugins .bar-nav,
-  .bw-plugins .bw-pc-lede,
-  .bw-plugins .bw-pc-create,
+  .bw-plugins .bh-chip,
   .bw-plugins .bw-pc-control-label,
   .bw-plugins .bw-pc-control-chev {
     display: none;
@@ -3503,8 +3940,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     padding: 0;
   }
 
-  .bw-plugins .bar-left {
-    width: auto;
+  .bw-plugins .bh-frame {
+    width: 100%;
+  }
+
+  .bw-plugins .bh-noun {
+    display: block;
   }
 
   .bw-plugins .bw-pc-main {
@@ -3514,10 +3955,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .bw-plugins .bw-pc-page {
     padding: 18px 14px 24px;
-  }
-
-  .bw-plugins .bw-pc-toolbar {
-    margin-top: 14px;
   }
 
   .bw-plugins .bw-pc-grid {
