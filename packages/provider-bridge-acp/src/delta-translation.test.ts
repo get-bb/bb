@@ -1280,6 +1280,11 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         scope: turnScope(turnId),
         message: "Provider error",
         detail: "agent exploded",
+        errorInfo: {
+          category: "unknown",
+          providerCode: null,
+          httpStatusCode: null,
+        },
       },
       {
         type: "turn/completed",

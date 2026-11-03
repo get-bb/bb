@@ -410,13 +410,20 @@ function emitForSession(
   );
 }
 
-function emitSessionError(session: AcpThreadSession, message: string): void {
+function emitTurnError(session: AcpThreadSession, error: unknown): void {
+  emitForSession(session, "error", {
+    message: error instanceof Error ? error.message : String(error),
+    ...(error instanceof AcpAgentResponseError
+      ? { code: error.code, data: error.data }
+      : {}),
+  });
+}
+
+function emitSessionError(session: AcpThreadSession, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
   for (const controller of session.pendingToolCalls) controller.abort();
   if (session.activePromptKind !== null) {
-    emitForSession(session, "error", {
-      threadId: session.bbThreadId,
-      message,
-    });
+    emitTurnError(session, error);
   }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
     threadId: session.bbThreadId,
@@ -3178,15 +3185,10 @@ function runTurn(
         );
         session.cancelRequested = false;
         if (!session.stopping) {
-          const message =
-            error instanceof Error ? error.message : String(error);
           if (!session.connection.exited) {
-            emitSessionError(session, message);
+            emitSessionError(session, error);
           } else if (session.activePromptKind === "turn") {
-            emitForSession(session, "error", {
-              threadId: session.bbThreadId,
-              message,
-            });
+            emitTurnError(session, error);
           }
         }
         setActivePromptKind(session, null);
@@ -3374,12 +3376,8 @@ async function rebuildAgentSession(
     });
   } catch (error) {
     if (continuingTurn) {
-      const message = error instanceof Error ? error.message : String(error);
-      emitForSession(session, "error", {
-        threadId: session.bbThreadId,
-        message,
-      });
-      emitSessionError(session, message);
+      emitTurnError(session, error);
+      emitSessionError(session, error);
     }
     throw error;
   }

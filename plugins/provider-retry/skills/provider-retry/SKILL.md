@@ -5,9 +5,9 @@ description: "Diagnose automatic retries of BB turns after provider overloads, s
 
 # Provider retry
 
-The plugin is enabled on fresh installations. It reacts only to failed Codex
-and Claude Code turns and never blocks a send; prior output or tool activity
-does not prevent a retry. It queues a retry of the failed turn, which core
+The plugin is enabled on fresh installations. It reacts to classified failures
+from Codex, Claude Code, Pi, and ACP turns and never blocks a send; prior output
+or tool activity does not prevent a retry. It queues a retry of the failed turn, which core
 runs by continuing accepted input or re-sending input the provider never
 accepted, for one of three failures:
 
@@ -19,6 +19,12 @@ accepted, for one of three failures:
 - A subscription-window limit with a reported reset time: retried shortly
   after the window opens, with random spread so threads on one account do not
   wake together. Credit and spend limits are not retried.
+
+Pi finishes its native automatic retries before a turn fails. Its intermediate
+errors marked `willRetry` leave the turn open and do not queue a bb retry.
+ACP errors are classified from available HTTP status or JSON-RPC code/data;
+unclassified errors are not retried. A rate-limit category alone does not
+supply a reset time.
 
 For Account Pooler routes, retry timing comes from the pool's earliest usable
 account for the failed request's model, including parent pools, so a generic

@@ -1,5 +1,9 @@
 import { providerRawEventSchema, threadUsageCostSchema } from "@bb/domain";
-import type { ProviderRawEvent, ThreadUsageCost } from "@bb/domain";
+import type {
+  ProviderErrorInfo,
+  ProviderRawEvent,
+  ThreadUsageCost,
+} from "@bb/domain";
 import {
   COMPACTION_PRESENTATION,
   errorEnvelopeSchema,
@@ -70,6 +74,40 @@ import {
   type AcpToolCallContent,
   type AcpToolCallUpdateEvent,
 } from "./wire.js";
+
+function acpErrorInfo(error: Record<string, unknown> = {}): ProviderErrorInfo {
+  const data = isJsonObject(error.data) ? error.data : {};
+  const nested = isJsonObject(data.error) ? data.error : {};
+  const httpStatusCode =
+    [error, data, nested]
+      .flatMap((value) => [
+        value.httpStatusCode,
+        value.statusCode,
+        value.status,
+      ])
+      .find(
+        (value): value is number =>
+          typeof value === "number" &&
+          Number.isInteger(value) &&
+          value >= 400 &&
+          value < 600,
+      ) ?? null;
+  const providerCode =
+    typeof error.code === "number" ? String(error.code) : null;
+  const type = nested.type ?? data.type ?? nested.code ?? data.code;
+  const category =
+    httpStatusCode === 429 || type === "rate_limit_error"
+      ? "rate-limit"
+      : httpStatusCode === 529 || type === "overloaded_error"
+        ? "overloaded"
+        : (httpStatusCode !== null && httpStatusCode >= 500) ||
+            (httpStatusCode === null &&
+              type === undefined &&
+              error.code === -32603)
+          ? "internal"
+          : "unknown";
+  return { category, providerCode, httpStatusCode };
+}
 
 interface AcpDeltaTranslationContext {
   threadId?: string;
@@ -949,6 +987,7 @@ export function createAcpDeltaTranslator(
           kind: "provider.error",
           message: "Provider error",
           detail: errorEnvelope.data.params?.message ?? "unknown error",
+          errorInfo: acpErrorInfo(errorEnvelope.data.params),
           settlesTurn: true,
         },
       ];

@@ -562,12 +562,18 @@ async function handlePrompt(message) {
     return;
   }
 
-  if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
+  if (
+    process.env.FAKE_ACP_PROMPT_ERROR &&
+    process.env.FAKE_ACP_PROMPT_ERROR !== "0"
+  ) {
     activePromptId = null;
     send({
       jsonrpc: "2.0",
       id: message.id,
-      error: { code: -32000, message: "Fake prompt failure" },
+      error:
+        process.env.FAKE_ACP_PROMPT_ERROR === "1"
+          ? { code: -32000, message: "Fake prompt failure" }
+          : JSON.parse(process.env.FAKE_ACP_PROMPT_ERROR),
     });
     return;
   }
