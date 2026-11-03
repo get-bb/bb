@@ -1,18 +1,17 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_CREDENTIAL_CACHE_TTL_MS,
   SERVER_OFFLINE_AFTER_MS,
   ServerCredentialCache,
   isLive,
   nextTunnelConnected,
-  schema,
   server,
   sha256Hex,
   tunnelConnectedLookup,
   type ConnectDb,
   type TunnelConnectedLookup,
 } from "@bb/connect-db";
+import { openGateDb, type WaitUntilContext } from "./connect-db.js";
 import {
   parseCookie,
   verifyMachineCredential,
@@ -142,8 +141,12 @@ export async function listAccountServers(
   );
 }
 
-async function resolveRequestAccount(request: Request, env: Env) {
-  const db = drizzle(env.DB, { schema });
+async function resolveRequestAccount(
+  request: Request,
+  env: Env,
+  ctx: WaitUntilContext,
+) {
+  const { db } = openGateDb(env, ctx);
   const runtime = resolveConnectRuntime(env);
   const account = await resolveAccount(
     request,
@@ -157,12 +160,13 @@ async function resolveRequestAccount(request: Request, env: Env) {
 export async function handleListAccountServers(
   request: Request,
   env: Env,
+  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return methodNotAllowed("GET");
   }
 
-  const { account, db } = await resolveRequestAccount(request, env);
+  const { account, db } = await resolveRequestAccount(request, env, ctx);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
@@ -179,12 +183,13 @@ export async function handleListAccountServers(
 export async function handleDisconnectServer(
   request: Request,
   env: Env,
+  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
 
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env, ctx);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const revoked = await revokeServerCredential(credential, db);
   if (!revoked) {
@@ -201,11 +206,12 @@ export async function handleDisconnectServer(
 export async function handleCreateDesktopSession(
   request: Request,
   env: Env,
+  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
-  const { account, runtime } = await resolveRequestAccount(request, env);
+  const { account, runtime } = await resolveRequestAccount(request, env, ctx);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }

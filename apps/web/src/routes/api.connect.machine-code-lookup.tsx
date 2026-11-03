@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { serverCredentialFromHeaders } from "@bb/connect-db";
 import { readJsonObject } from "@/server/account";
-import {
-  depsFromEnv,
-  lookupMachineCodeForServerCredential,
-} from "@/server/api";
+import { lookupMachineCodeForServerCredential } from "@/server/api";
+import { depsFromEnv } from "@/server/deps";
 import { getEnv } from "@/server/env";
 
 export const Route = createFileRoute("/api/connect/machine-code-lookup")({

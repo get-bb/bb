@@ -1,5 +1,4 @@
 import { and, eq, isNotNull, isNull, ne } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   CONNECT_CODE_TTL_MS,
   MAX_PER_ACCOUNT,
@@ -16,7 +15,6 @@ import {
   rowsChanged,
   server,
   sha256Hex,
-  tunnelConnectedLookup,
   user,
 } from "@bb/connect-db";
 import type {
@@ -24,7 +22,6 @@ import type {
   LabelAvailability,
   TunnelConnectedLookup,
 } from "@bb/connect-db";
-import type { Env } from "./env.js";
 import { generateConnectCode, generateToken } from "./tokens.js";
 
 export interface Deps {
@@ -67,25 +64,6 @@ export function serverUrlForLabel(label: string, template: string): string {
 
 export function tunnelUrlForServerUrl(serverUrl: string): string {
   return `${serverUrl.replace(/^http/u, "ws")}/__tunnel`;
-}
-
-export function depsFromEnv(env: Env): Deps {
-  return {
-    db: drizzle(env.DB),
-    appUrl: env.APP_URL,
-    serverUrlTemplate: resolveServerUrlTemplate(
-      env.CONNECT_SERVER_URL_TEMPLATE,
-      env.BASE_DOMAIN,
-    ),
-    closeTunnel: async (routingKey) => {
-      const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
-      const response = await stub.fetch("https://tunnel/__control/close");
-      if (!response.ok) {
-        throw new Error(`tunnel close failed (${response.status})`);
-      }
-    },
-    tunnelConnected: tunnelConnectedLookup(env, env.TUNNEL_DO),
-  };
 }
 
 type ProfileRow = typeof profile.$inferSelect;

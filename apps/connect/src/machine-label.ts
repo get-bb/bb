@@ -1,12 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   HANDLE_MAX_LENGTH,
   machine,
-  schema,
   validateLabel,
   type ConnectDb,
 } from "@bb/connect-db";
+import { openGateDb, type WaitUntilContext } from "./connect-db.js";
 import { verifyMachineCredentialDetails } from "./session.js";
 import { methodNotAllowed } from "./json-response.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
@@ -139,12 +138,13 @@ function jsonError(error: string, status: number): Response {
 export async function handleAssignMachineLabel(
   request: Request,
   env: Env,
+  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
 
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env, ctx);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const body: unknown = await request.json().catch(() => null);
   if (

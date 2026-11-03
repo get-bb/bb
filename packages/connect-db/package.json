@@ -9,6 +9,16 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./store": {
+      "source": "./src/store/index.ts",
+      "types": "./src/store/index.ts",
+      "default": "./src/store/index.ts"
+    },
+    "./pg-migrations": {
+      "source": "./src/pg-migrations.ts",
+      "types": "./src/pg-migrations.ts",
+      "default": "./src/pg-migrations.ts"
+    },
     "./testing": {
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",
@@ -16,10 +26,12 @@
     }
   },
   "files": [
-    "migrations"
+    "migrations",
+    "migrations-pg"
   ],
   "scripts": {
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

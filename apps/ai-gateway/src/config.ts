@@ -1,5 +1,7 @@
 export interface Env {
   DB: D1Database;
+  HYPERDRIVE?: Hyperdrive;
+  CONNECT_DB_FLAGS?: KVNamespace;
   AI_RATE_LIMITER: RateLimit;
   AI_DAILY_BUDGET_MICROS: string;
   AI_MODELS: string;

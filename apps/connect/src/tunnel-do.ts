@@ -1,11 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   TUNNEL_STATUS_HEADER,
   machine,
   presenceWritesOnChange,
   server,
 } from "@bb/connect-db";
+import { type OpenConnectDb, openConnectDb } from "@bb/connect-db-pg";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -34,6 +34,8 @@ import {
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
   DB: D1Database;
+  HYPERDRIVE?: Hyperdrive;
+  CONNECT_DB_FLAGS?: KVNamespace;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
   GATE_EVENTS: AnalyticsEngineDataset;
@@ -279,8 +281,12 @@ export class TunnelDO {
     const serverId = await this.state.storage.get<string>("serverId");
     const machineId = await this.state.storage.get<string>("machineId");
     if (!serverId && !machineId) return;
+    let opened: OpenConnectDb | null = null;
     try {
-      const db = drizzle(this.env.DB);
+      opened = openConnectDb(this.env, (promise) =>
+        this.state.waitUntil(promise),
+      );
+      const { db } = opened;
       if (machineId) {
         await db
           .update(machine)
@@ -294,7 +300,10 @@ export class TunnelDO {
           .where(eq(server.id, serverId))
           .run();
       }
-    } catch {}
+    } catch {
+    } finally {
+      await opened?.close().catch(() => undefined);
+    }
   }
 
   private async restartIfTunnelVanished(): Promise<void> {

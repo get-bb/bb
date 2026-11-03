@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { workerNodeBuiltinsPlugin } from "@bb/connect-db-pg/testing";
 import { Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -53,6 +54,7 @@ async function bundleWorker(): Promise<string> {
     format: "esm",
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
+    plugins: [workerNodeBuiltinsPlugin],
     write: false,
   });
   return result.outputFiles[0].text;
