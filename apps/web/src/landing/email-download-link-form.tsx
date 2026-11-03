@@ -1,6 +1,6 @@
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import type { EmailLinkFailure } from "./analytics";
 import { trackLandingEvent } from "./analytics";
@@ -32,6 +32,8 @@ export function EmailDownloadLinkForm({
 }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
   const fail = (reason: EmailLinkFailure) => {
     trackLandingEvent({
@@ -103,6 +105,7 @@ export function EmailDownloadLinkForm({
   return (
     <form
       className="install-email touch-only"
+      method="post"
       onSubmit={(event) => void submit(event)}
       noValidate
     >
@@ -127,7 +130,7 @@ export function EmailDownloadLinkForm({
       <button
         type="submit"
         className="btn btn-primary btn-install install-email-send"
-        disabled={status === "sending"}
+        disabled={!ready || status === "sending"}
       >
         {status === "sending" ? "Sending…" : "Send link"}
       </button>

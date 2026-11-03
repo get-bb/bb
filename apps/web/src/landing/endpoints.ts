@@ -39,7 +39,15 @@ type DownloadLinkEnv = {
   RESEND_DOWNLOAD_LINK_AUDIENCE_ID?: string;
   RESEND_DOWNLOAD_LINK_FROM?: string;
   RESEND_DOWNLOAD_LINK_REPLY_TO?: string;
+  EMAIL_LINK_IP_RATE_LIMITER: AdmissionLimiter;
+  EMAIL_LINK_SITE_RATE_LIMITER: AdmissionLimiter;
 };
+
+type AdmissionLimiter = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
+
+const EMAIL_LINK_SITE_KEY = "email-download-link";
 
 type DownloadEventProperties = {
   $current_url: string;
@@ -344,6 +352,26 @@ async function addDownloadLinkContact(args: ContactRequest): Promise<void> {
   }
 }
 
+async function admitEmailLink(
+  request: Request,
+  env: DownloadLinkEnv,
+): Promise<boolean> {
+  const clientIp =
+    request.headers.get("cf-connecting-ip")?.trim() || "unknown";
+  try {
+    const perIp = await env.EMAIL_LINK_IP_RATE_LIMITER.limit({ key: clientIp });
+    if (!perIp.success) {
+      return false;
+    }
+    const siteWide = await env.EMAIL_LINK_SITE_RATE_LIMITER.limit({
+      key: EMAIL_LINK_SITE_KEY,
+    });
+    return siteWide.success;
+  } catch {
+    return false;
+  }
+}
+
 function logContactFailure(): void {
   console.log(
     JSON.stringify({ event: "download_link_contact", outcome: "failed" }),
@@ -366,6 +394,9 @@ export async function handleEmailDownloadLink(
   const email = parseEmail(payload);
   if (!email) {
     return jsonResponse({ error: "invalid_email" }, 400);
+  }
+  if (!(await admitEmailLink(request, env))) {
+    return jsonResponse({ error: "send_failed" }, 502);
   }
   const headers = {
     Authorization: `Bearer ${apiKey}`,

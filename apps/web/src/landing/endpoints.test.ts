@@ -473,7 +473,15 @@ describe("email download link endpoint", () => {
     RESEND_DOWNLOAD_LINK_AUDIENCE_ID: SEGMENT,
     RESEND_DOWNLOAD_LINK_FROM: "bb <updates@mail.getbb.app>",
     RESEND_DOWNLOAD_LINK_REPLY_TO: "support@example.com",
+    EMAIL_LINK_IP_RATE_LIMITER: limiter(true),
+    EMAIL_LINK_SITE_RATE_LIMITER: limiter(true),
   };
+
+  function limiter(success: boolean) {
+    return {
+      limit: vi.fn(async (_options: { key: string }) => ({ success })),
+    };
+  }
   const NOW = () => new Date("2026-11-03T12:00:00Z");
   const EMAILS_URL = "https://api.resend.com/emails";
   const CONTACTS_URL = "https://api.resend.com/contacts";
@@ -604,6 +612,54 @@ describe("email download link endpoint", () => {
     expect(response.status).toBe(200);
     expect(log).toHaveBeenCalledTimes(1);
   });
+
+  it("checks the per-IP and site-wide limits before sending", async () => {
+    const perIp = limiter(true);
+    const siteWide = limiter(true);
+    const calls = stubResend(() => undefined);
+    const request = new Request("https://getbb.app/api/email-download-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.7",
+      },
+      body: JSON.stringify({ email: "me@example.com" }),
+    });
+    const response = await handleEmailDownloadLink(
+      request,
+      {
+        ...ENV,
+        EMAIL_LINK_IP_RATE_LIMITER: perIp,
+        EMAIL_LINK_SITE_RATE_LIMITER: siteWide,
+      },
+      () => {},
+      NOW,
+    );
+    expect(response.status).toBe(200);
+    expect(perIp.limit).toHaveBeenCalledWith({ key: "203.0.113.7" });
+    expect(siteWide.limit).toHaveBeenCalledWith({
+      key: "email-download-link",
+    });
+    expect(routes(calls)[0]).toBe(`POST ${EMAILS_URL}`);
+  });
+
+  it.each([
+    ["per-IP", "EMAIL_LINK_IP_RATE_LIMITER"],
+    ["site-wide", "EMAIL_LINK_SITE_RATE_LIMITER"],
+  ] as const)(
+    "refuses without calling Resend over the %s limit",
+    async (_name, binding) => {
+      const calls = stubResend(() => undefined);
+      const { response, background } = await send(
+        { email: "me@example.com" },
+        { ...ENV, [binding]: limiter(false) },
+      );
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: "send_failed" });
+      expect(calls).toEqual([]);
+      expect(background).toBe(0);
+    },
+  );
 
   it("reports not-configured without the segment, sender or key", async () => {
     const calls = stubResend(() => undefined);

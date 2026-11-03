@@ -86,6 +86,16 @@
       "namespace_id": "4203",
       "simple": { "limit": 10, "period": 60 },
     },
+    {
+      "name": "EMAIL_LINK_IP_RATE_LIMITER",
+      "namespace_id": "4205",
+      "simple": { "limit": 3, "period": 60 },
+    },
+    {
+      "name": "EMAIL_LINK_SITE_RATE_LIMITER",
+      "namespace_id": "4206",
+      "simple": { "limit": 30, "period": 60 },
+    },
   ],
   "routes": [{ "pattern": "vibecodethis.site", "custom_domain": true }],
   "env": {
@@ -147,6 +157,16 @@
           "name": "LINK_START_RATE_LIMITER",
           "namespace_id": "4204",
           "simple": { "limit": 10, "period": 60 },
+        },
+        {
+          "name": "EMAIL_LINK_IP_RATE_LIMITER",
+          "namespace_id": "4207",
+          "simple": { "limit": 3, "period": 60 },
+        },
+        {
+          "name": "EMAIL_LINK_SITE_RATE_LIMITER",
+          "namespace_id": "4208",
+          "simple": { "limit": 30, "period": 60 },
         },
       ],
     },

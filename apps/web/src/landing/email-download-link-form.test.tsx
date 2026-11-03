@@ -194,6 +194,25 @@ describe("email download link form", () => {
   });
 });
 
+describe("email download link form before hydration", () => {
+  it("posts and keeps the button disabled so a native submit can't put the address in a URL", () => {
+    const html = renderToStaticMarkup(
+      <EmailDownloadLinkForm placement="hero" />,
+    );
+    expect(html).toContain('method="post"');
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);
+  });
+
+  it("enables the button once the client handler is attached", () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    render();
+    expect(container.querySelector("button")?.disabled).toBe(false);
+    act(() => root.unmount());
+    document.body.replaceChildren();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("phone email arm placement", () => {
   it("keeps the share button by default", () => {
     const html = renderToStaticMarkup(<InstallOptions placement="hero" />);
