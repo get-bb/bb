@@ -37,6 +37,7 @@ function backgroundTaskItemData(args: {
   itemId: string;
   taskStatus: string;
   status: string;
+  omitForeground?: boolean;
 }): Record<string, unknown> {
   return {
     providerThreadId: "claude-session-1",
@@ -48,7 +49,7 @@ function backgroundTaskItemData(args: {
       status: args.status,
       taskStatus: args.taskStatus,
       skipTranscript: false,
-      foreground: false,
+      ...(args.omitForeground ? {} : { foreground: false }),
       workflowName: "fixture-mini",
       usage: { totalTokens: 100, toolUses: 2, durationMs: 1500 },
     },
@@ -59,6 +60,7 @@ interface SeedOpenBackgroundTaskArgs {
   itemId?: string;
   taskStatus?: string;
   status?: string;
+  omitForeground?: boolean;
 }
 
 function seedOpenBackgroundTaskThread(
@@ -89,6 +91,7 @@ function seedOpenBackgroundTaskThread(
       itemId,
       status: "pending",
       taskStatus: "running",
+      omitForeground: args.omitForeground,
     }),
   });
   seedStoredEvent(harness.deps, {
@@ -104,6 +107,7 @@ function seedOpenBackgroundTaskThread(
       itemId,
       status: args.status ?? "pending",
       taskStatus: args.taskStatus ?? "running",
+      omitForeground: args.omitForeground,
     }),
   });
   return { ...fixture, itemId };
@@ -312,6 +316,20 @@ describe("settleDanglingBackgroundTasks", () => {
 
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
         { status: "completed", taskStatus: "completed" },
+      ]);
+    });
+  });
+
+  it("settles a task stored before background items had a foreground field", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, thread } = seedOpenBackgroundTaskThread(harness, {
+        omitForeground: true,
+      });
+
+      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
+        { status: "interrupted", taskStatus: "stopped" },
       ]);
     });
   });

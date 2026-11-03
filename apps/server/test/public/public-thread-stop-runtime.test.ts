@@ -746,64 +746,73 @@ describe("thread runtime stop", () => {
     });
   });
 
-  it("settles background commands terminated by an idle runtime release", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedThreadFixture(harness, {
-        thread: { status: "idle", visibility: "hidden" },
-      });
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        type: "item/started",
-        scope: turnScope("turn-1"),
-        providerThreadId: "provider-thread-1",
-        itemId: "task:orphaned-waiter",
-        itemKind: "backgroundTask",
-        data: {
+  it.each([
+    { storedItem: "current item", foregroundField: { foreground: false } },
+    {
+      storedItem: "item stored before foreground existed",
+      foregroundField: {},
+    },
+  ])(
+    "settles background commands terminated by an idle runtime release ($storedItem)",
+    async ({ foregroundField }) => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedThreadFixture(harness, {
+          thread: { status: "idle", visibility: "hidden" },
+        });
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          sequence: 1,
+          type: "item/started",
+          scope: turnScope("turn-1"),
           providerThreadId: "provider-thread-1",
-          item: {
-            type: "backgroundTask",
-            id: "task:orphaned-waiter",
-            taskType: "local_bash",
-            description: "Wait for tests",
-            status: "pending",
-            taskStatus: "running",
-            skipTranscript: false,
-            foreground: false,
+          itemId: "task:orphaned-waiter",
+          itemKind: "backgroundTask",
+          data: {
+            providerThreadId: "provider-thread-1",
+            item: {
+              type: "backgroundTask",
+              id: "task:orphaned-waiter",
+              taskType: "local_bash",
+              description: "Wait for tests",
+              status: "pending",
+              taskStatus: "running",
+              skipTranscript: false,
+              ...foregroundField,
+            },
           },
-        },
-      });
+        });
 
-      const responsePromise = harness.app.request(
-        `/api/v1/threads/${thread.id}/stop`,
-        { method: "POST" },
-      );
-      const stop = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "thread.stop" && command.threadId === thread.id,
-      );
-      await reportQueuedCommandSuccess(harness, stop, {
-        providerCheckpointId: null,
-      });
+        const responsePromise = harness.app.request(
+          `/api/v1/threads/${thread.id}/stop`,
+          { method: "POST" },
+        );
+        const stop = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.stop" && command.threadId === thread.id,
+        );
+        await reportQueuedCommandSuccess(harness, stop, {
+          providerCheckpointId: null,
+        });
 
-      expect((await responsePromise).status).toBe(200);
-      const taskCompletions = listEvents(harness.db, {
-        threadId: thread.id,
-      }).filter((event) => event.type === "item/backgroundTask/completed");
-      expect(taskCompletions).toHaveLength(1);
-      expect(JSON.parse(taskCompletions[0]!.data)).toMatchObject({
-        item: { status: "interrupted", taskStatus: "stopped" },
+        expect((await responsePromise).status).toBe(200);
+        const taskCompletions = listEvents(harness.db, {
+          threadId: thread.id,
+        }).filter((event) => event.type === "item/backgroundTask/completed");
+        expect(taskCompletions).toHaveLength(1);
+        expect(JSON.parse(taskCompletions[0]!.data)).toMatchObject({
+          item: { status: "interrupted", taskStatus: "stopped" },
+        });
+        expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+        expect(
+          listEvents(harness.db, { threadId: thread.id }).filter(
+            (event) => event.type === "system/thread/interrupted",
+          ),
+        ).toHaveLength(0);
       });
-      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
-      expect(
-        listEvents(harness.db, { threadId: thread.id }).filter(
-          (event) => event.type === "system/thread/interrupted",
-        ),
-      ).toHaveLength(0);
-    });
-  });
+    },
+  );
 
   it("waits for an active runtime release and settles the thread", async () => {
     await withTestHarness(async (harness) => {
