@@ -1111,6 +1111,11 @@ Two host-daemon environment variables reach the Claude Code bridge:
 such as a CI runner (mint it with `claude setup-token`). See the
 `claude-code-provider` skill.
 
+Claude Code sessions and the model and command probes run with
+`CLAUDE_CODE_ENTRYPOINT=bb`, replacing an inherited value. A
+`CLAUDE_CODE_ENTRYPOINT` in the thread's environment variables wins for
+sessions.
+
 ### Account Pooler [Experimental]
 
 The builtin Account Pooler plugin pools Claude and Codex accounts behind the bb

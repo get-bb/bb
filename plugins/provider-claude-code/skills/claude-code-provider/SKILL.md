@@ -57,6 +57,10 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 - bb passes only `BB_CLAUDE_CODE_EXECUTABLE` and `CLAUDE_CODE_OAUTH_TOKEN` to
   the CLI. Mint the token with `claude setup-token` for machines with no
   interactive login.
+- Claude Code sessions and the model and command probes run with
+  `CLAUDE_CODE_ENTRYPOINT=bb`, replacing an inherited value, so Anthropic sees
+  `cc_entrypoint=bb`. A `CLAUDE_CODE_ENTRYPOINT` in the thread's environment
+  variables wins for sessions.
 - Claude Code's own slash commands, including bundled skills such as
   `/simplify` and `/code-review`, appear in the composer's `/` menu,
   `bb project commands`, and `bb thread commands`. The provider reads them from

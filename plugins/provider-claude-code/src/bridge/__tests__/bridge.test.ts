@@ -3718,6 +3718,7 @@ describe("bridge", () => {
       ...process.env,
       ANTHROPIC_MODEL: "claude-previous",
       CLAUDE_CODE_CLIENT_DATA_URL: "https://example.com/client-data",
+      CLAUDE_CODE_ENTRYPOINT: "inherited",
     };
 
     await expect(listClaudeCodeBridgeModels(env)).resolves.toMatchObject({
@@ -3727,6 +3728,7 @@ describe("bridge", () => {
     expect(queryMock.mock.calls[1]?.[0]?.options.env).toEqual({
       ...env,
       ANTHROPIC_MODEL: undefined,
+      CLAUDE_CODE_ENTRYPOINT: "bb",
     });
     expect(env.ANTHROPIC_MODEL).toBe("claude-previous");
     expect(failedClose).toHaveBeenCalledOnce();
@@ -3780,7 +3782,7 @@ describe("bridge", () => {
 
       const queryOptions = getLatestQueryOptions();
       expect(queryOptions.env?.HOME).toBe("/Users/test-bb");
-      expect(queryOptions.env?.CLAUDE_CODE_ENTRYPOINT).toBe("cli");
+      expect(queryOptions.env?.CLAUDE_CODE_ENTRYPOINT).toBe("bb");
       expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBeUndefined();
       expect(queryOptions.settingSources).toEqual(["user", "project", "local"]);
 
@@ -3802,6 +3804,68 @@ describe("bridge", () => {
       bridge.restore();
     }
   });
+
+  it.each([
+    { configured: undefined, expected: "bb" },
+    { configured: "custom", expected: "custom" },
+  ])(
+    "replaces an inherited Claude entrypoint with $expected on thread/start",
+    async ({ configured, expected }) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+
+      const threadId = `thread-entrypoint-${expected}`;
+      const originalEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+      process.env.CLAUDE_CODE_ENTRYPOINT = "inherited";
+      try {
+        bridge.sendRequest(1, "thread/start", {
+          threadId,
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: {
+            permissionMode: "accept-edits",
+            permissionScope: "workspace",
+            approvalReviewer: "user",
+            permissionEscalation: "ask",
+            instructions: "test",
+            ...(configured
+              ? { envVars: { CLAUDE_CODE_ENTRYPOINT: configured } }
+              : {}),
+            providerOptions: {
+              workflowsEnabled: false,
+            },
+          },
+        });
+        await bridge.waitForResponse(1);
+
+        expect(getLatestQueryOptions().env?.CLAUDE_CODE_ENTRYPOINT).toBe(
+          expected,
+        );
+
+        bridge.sendRequest(2, "thread/stop", {
+          threadId,
+          providerThreadId: threadId,
+          intent: "interrupt",
+          activeTurnId: null,
+        });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(2);
+      } finally {
+        if (originalEntrypoint === undefined) {
+          delete process.env.CLAUDE_CODE_ENTRYPOINT;
+        } else {
+          process.env.CLAUDE_CODE_ENTRYPOINT = originalEntrypoint;
+        }
+        bridge.restore();
+      }
+    },
+  );
 
   it("includes captured Claude stderr when the SDK stream fails", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

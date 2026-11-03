@@ -194,6 +194,8 @@ function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
   return candidatePaths;
 }
 
+export const BB_CLAUDE_CODE_ENTRYPOINT = "bb";
+
 export function resolveClaudeCodeExecutable(
   args: ResolveClaudeCodeExecutableArgs,
 ): string | null {

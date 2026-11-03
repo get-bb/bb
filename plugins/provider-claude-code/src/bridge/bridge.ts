@@ -91,6 +91,7 @@ import {
   getClaudeProviderUsage,
 } from "./provider-maintenance.js";
 import {
+  BB_CLAUDE_CODE_ENTRYPOINT,
   buildChromeExtraArgs,
   buildClaudeFeatureEnv,
   buildReadonlyDenialMessage,
@@ -1786,8 +1787,8 @@ function buildSessionEnv(
 ): NodeJS.ProcessEnv {
   const sessionEnv: NodeJS.ProcessEnv = {
     ...withoutBridgeRuntimeEnv(process.env),
+    CLAUDE_CODE_ENTRYPOINT: BB_CLAUDE_CODE_ENTRYPOINT,
     ...envOverrides,
-    CLAUDE_CODE_ENTRYPOINT: "cli",
   };
   delete sessionEnv.CLAUDE_AGENT_SDK_CLIENT_APP;
   return sessionEnv;

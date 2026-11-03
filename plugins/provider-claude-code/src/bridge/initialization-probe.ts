@@ -4,7 +4,10 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { translateMissingClaudeCliCatalogError } from "./missing-cli-error.js";
-import { resolveClaudeCodeExecutable } from "./session-options.js";
+import {
+  BB_CLAUDE_CODE_ENTRYPOINT,
+  resolveClaudeCodeExecutable,
+} from "./session-options.js";
 
 async function* promptWithoutMessages(
   signal: AbortSignal,
@@ -31,7 +34,7 @@ export async function probeClaudeInitialization(args: {
       prompt: promptWithoutMessages(promptEnd.signal),
       options: {
         cwd: args.cwd,
-        env: args.env,
+        env: { ...args.env, CLAUDE_CODE_ENTRYPOINT: BB_CLAUDE_CODE_ENTRYPOINT },
         persistSession: false,
         settingSources: ["user", "project", "local"],
         ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
