@@ -44,6 +44,7 @@ export function createScheduledAppUpdateService(args: {
   const settleMs = args.settleMs ?? IDLE_SETTLE_MS;
   let waiting: Schedule | null = null;
   let starting: Schedule | null = null;
+  let startInFlight = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -57,7 +58,8 @@ export function createScheduledAppUpdateService(args: {
     status: AppUpdateServiceStatus,
   ): SystemAppUpdateStatus => {
     const pending =
-      waiting ?? (status.activity.phase === "idle" ? null : starting);
+      waiting ??
+      (startInFlight || status.activity.phase !== "idle" ? starting : null);
     return {
       ...status,
       scheduled: pending === null ? null : { requestedAt: pending.requestedAt },
@@ -94,6 +96,7 @@ export function createScheduledAppUpdateService(args: {
   const start = async (schedule: Schedule): Promise<AppUpdateServiceStatus> => {
     waiting = null;
     starting = schedule;
+    startInFlight = true;
     clearSettleTimer();
     try {
       return await args.inner.apply({
@@ -102,6 +105,8 @@ export function createScheduledAppUpdateService(args: {
     } catch (error) {
       if (starting === schedule) starting = null;
       throw error;
+    } finally {
+      startInFlight = false;
     }
   };
 

@@ -218,9 +218,17 @@ function printScheduledUpdate(status: SystemAppUpdateStatus): void {
 }
 
 function describeScheduledUpdate(status: SystemAppUpdateStatus): string {
+  const available = status.available;
   const target =
-    status.available === null ? "the latest version" : status.available.version;
-  return `bb will update to ${target} once ${threadCountLabel(status.runningThreadCount)} finish${status.runningThreadCount === 1 ? "es" : ""}.`;
+    available === null
+      ? "the latest version"
+      : available.commit === null
+        ? available.version
+        : available.commit.slice(0, 10);
+  const count = status.runningThreadCount;
+  return count === 0
+    ? `bb will update to ${target} once threads stay finished for a few seconds.`
+    : `bb will update to ${target} once ${threadCountLabel(count)} finish${count === 1 ? "es" : ""}.`;
 }
 
 function describeAppUpdateResult(result: SystemAppUpdateResult): string {

@@ -587,6 +587,33 @@ describe("app update scheduled for when threads finish", () => {
     ).toBeNull();
   });
 
+  it("keeps reporting the schedule while its start waits on the launcher", async () => {
+    const { applyRequests, launcher, service, setRunningThreads } =
+      createScheduledService({ runningThreads: 1 });
+    await service.schedule();
+    let accept = (): void => undefined;
+    launcher.respond = (request) =>
+      request.type === "apply"
+        ? new Promise((resolvePromise) => {
+            accept = () => resolvePromise(null);
+          })
+        : Promise.resolve(null);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(applyRequests()).toHaveLength(1);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).toEqual({ requestedAt: "2026-10-23T00:00:00.000Z" });
+    accept();
+    await vi.advanceTimersByTimeAsync(0);
+    launcher.push(PREPARING_STATUS);
+    expect(
+      (await service.getStatus({ forceRefresh: false })).scheduled,
+    ).not.toBeNull();
+  });
+
   it("starts at once when no thread is running", async () => {
     const { applyRequests, service } = createScheduledService({
       runningThreads: 0,
