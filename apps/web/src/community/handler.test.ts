@@ -13,8 +13,9 @@ import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 import {
   ALREADY_CLAIMED,
   CLAIM_NOT_OPEN,
-  CLAIM_PENDING,
+  DELIVERY_WINDOW_MS,
   emailKey,
+  runClaimRetries,
   SOLD_OUT,
 } from "./claims";
 import { handleSurveySubmission, rateLimitKey } from "./handler";
@@ -24,14 +25,39 @@ let runtime: Miniflare;
 let db: D1Database;
 const origin = "https://community.test";
 const claimBase = "https://test-shop.myshopify.com/cart/123:1";
-type ShopifyMode = "ok" | "down" | "tokenDenied" | "loseReply" | "taken";
+type ShopifyMode =
+  | "ok"
+  | "down"
+  | "tokenDenied"
+  | "tokenHangs"
+  | "loseReply"
+  | "taken";
 const shopify = {
   mode: "ok" as ShopifyMode,
   codes: new Set<string>(),
   requests: 0,
 };
+const mail = {
+  status: 200,
+  sent: [] as { headers: Headers; body: Record<string, unknown> }[],
+};
+async function fakeFetch(url: string, init: RequestInit) {
+  if (!url.startsWith("https://api.resend.com/")) return fakeShopify(url, init);
+  mail.sent.push({
+    headers: new Headers(init.headers),
+    body: JSON.parse(String(init.body)),
+  });
+  return new Response("{}", { status: mail.status });
+}
 async function fakeShopify(url: string, init: RequestInit) {
   shopify.requests++;
+  if (
+    url.endsWith("/admin/oauth/access_token") &&
+    shopify.mode === "tokenHangs"
+  )
+    return new Promise<Response>((_, reject) =>
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+    );
   if (url.endsWith("/admin/oauth/access_token"))
     return shopify.mode === "tokenDenied"
       ? Response.json({ error: "invalid_client" }, { status: 400 })
@@ -82,7 +108,20 @@ const enabled = {
   COMMUNITY_STICKER_LIMIT: "1000",
   SHOPIFY_CLIENT_ID: "client",
   SHOPIFY_CLIENT_SECRET: "secret",
+  RESEND_API_KEY: "test-key",
 };
+const worker = () => ({ DB: db, ...enabled });
+const claims = () =>
+  db
+    .prepare(
+      "SELECT c.status, c.submission_id, r.emailed_at FROM community_sticker_claim c LEFT JOIN community_survey_response r ON r.id = c.submission_id",
+    )
+    .all<{
+      status: string;
+      submission_id: string | null;
+      emailed_at: number | null;
+    }>()
+    .then((result) => result.results);
 const request = (body: string, headers: Record<string, string> = {}) =>
   new Request(`${origin}/api/community/survey`, {
     method: "POST",
@@ -135,7 +174,9 @@ beforeEach(async () => {
   shopify.mode = "ok";
   shopify.requests = 0;
   shopify.codes.clear();
-  vi.stubGlobal("fetch", fakeShopify);
+  mail.status = 200;
+  mail.sent = [];
+  vi.stubGlobal("fetch", fakeFetch);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -254,11 +295,16 @@ describe("survey submissions", () => {
     );
     expect(shopify.codes).toEqual(new Set([codeFrom(body)]));
     expect((await post(fields, {}, id)).body).toEqual({
-      result: { duplicate: true, claimLink: null, claimNote: null },
+      result: {
+        duplicate: true,
+        claimLink: null,
+        claimNote: null,
+        emailStatus: "sent",
+      },
     });
     expect(await count("community_survey_response")).toBe(1);
     expect(
-      await count("community_sticker_claim WHERE status = 'created'"),
+      await count("community_sticker_claim WHERE status = 'delivered'"),
     ).toBe(1);
   });
 
@@ -270,6 +316,7 @@ describe("survey submissions", () => {
         duplicate: false,
         claimLink: null,
         claimNote: ALREADY_CLAIMED,
+        emailStatus: "none",
       });
     }
     expect(
@@ -318,7 +365,8 @@ describe("survey submissions", () => {
       expect(body.result).toEqual({
         duplicate: false,
         claimLink: null,
-        claimNote: CLAIM_PENDING,
+        claimNote: null,
+        emailStatus: "queued",
       });
       expect(
         await count(
@@ -337,7 +385,7 @@ describe("survey submissions", () => {
       expect(codeFrom(body)).toBeDefined();
       expect(shopify.codes.size).toBe(1);
       expect(
-        await count("community_sticker_claim WHERE status = 'created'"),
+        await count("community_sticker_claim WHERE status = 'delivered'"),
       ).toBe(1);
     },
   );
@@ -365,5 +413,167 @@ describe("survey submissions", () => {
     expect(rateLimitKey("::ffff:192.0.2.1")).toBe("0:0:0:0::/64");
     expect(rateLimitKey("192.0.2.1")).toBe("192.0.2.1");
     expect(rateLimitKey(null)).toBe("local-preview");
+  });
+});
+
+describe("results email", () => {
+  it("emails a new finisher once, escaped, with their claim link", async () => {
+    const id = crypto.randomUUID();
+    const { body } = await post({ improve: "<b>Faster</b>" }, {}, id);
+    expect(body.result?.emailStatus).toBe("sent");
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent[0]!.headers.get("idempotency-key")).toBe(
+      `community-survey/${id}`,
+    );
+    expect(mail.sent[0]!.body.to).toEqual(["ada@example.test"]);
+    expect(String(mail.sent[0]!.body.html)).toContain(
+      "&lt;b&gt;Faster&lt;/b&gt;",
+    );
+    expect(String(mail.sent[0]!.body.html)).toContain(
+      `discount=${codeFrom(body)}`,
+    );
+    expect(await claims()).toEqual([
+      { status: "delivered", submission_id: null, emailed_at: null },
+    ]);
+    expect(
+      await count("community_survey_response WHERE emailed_at IS NOT NULL"),
+    ).toBe(1);
+  });
+
+  it("retries a rate-limited send right away", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) =>
+      url.startsWith("https://api.resend.com/")
+        ? new Response("{}", { status: ++calls === 1 ? 429 : 200 })
+        : fakeShopify(url, init),
+    );
+    expect((await post()).body.result?.emailStatus).toBe("sent");
+    expect(calls).toBe(2);
+  });
+
+  it("keeps retrying a failed email hourly, with one key", async () => {
+    mail.status = 503;
+    expect((await post()).body.result?.emailStatus).toBe("queued");
+    mail.status = 422;
+    await runClaimRetries(worker(), Date.now() + 3_600_000);
+    expect((await claims())[0]?.status).toBe("created");
+    mail.status = 200;
+    await runClaimRetries(worker(), Date.now() + 2 * 3_600_000);
+    expect((await claims())[0]?.status).toBe("delivered");
+    const sends = mail.sent.length;
+    await runClaimRetries(worker(), Date.now() + 3 * 3_600_000);
+    expect(mail.sent).toHaveLength(sends);
+    expect(
+      new Set(mail.sent.map(({ headers }) => headers.get("idempotency-key")))
+        .size,
+    ).toBe(1);
+  });
+
+  it("emails a created claim whose request ended before sending", async () => {
+    const id = crypto.randomUUID();
+    const created = Date.now() - 30 * 60_000;
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO community_survey_response (id, created_at, answers) VALUES (?, ?, ?)",
+        )
+        .bind(id, created, JSON.stringify({ email: ["ada@example.test"] })),
+      db
+        .prepare(
+          "INSERT INTO community_sticker_claim (code, submission_id, status, created_at) VALUES ('BB-AAAAAAAAAAAA', ?, 'created', ?)",
+        )
+        .bind(id, created),
+    ]);
+    await runClaimRetries(worker(), created + 4 * 60_000);
+    expect(mail.sent).toHaveLength(0);
+    await runClaimRetries(worker(), created + 6 * 60_000);
+    expect(mail.sent).toHaveLength(1);
+    expect((await claims())[0]?.status).toBe("delivered");
+  });
+
+  it("finishes a pending claim once Shopify recovers and emails its link", async () => {
+    shopify.mode = "down";
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    expect((await post({}, {}, id)).body.result?.emailStatus).toBe("queued");
+    expect((await post({}, {}, id)).body.result).toMatchObject({
+      duplicate: true,
+      emailStatus: "queued",
+    });
+    shopify.mode = "ok";
+    await runClaimRetries(worker(), now + 8 * 24 * 3_600_000);
+    expect(shopify.codes.size).toBe(1);
+    expect(String(mail.sent[0]!.body.html)).toContain(
+      `discount=${[...shopify.codes][0]}`,
+    );
+    expect((await claims())[0]?.status).toBe("delivered");
+  });
+
+  it("expires claims it couldn't deliver in 30 days and unlinks the response", async () => {
+    mail.status = 503;
+    await post();
+    shopify.mode = "down";
+    await post({ email: "grace@example.test" });
+    await runClaimRetries(worker(), Date.now() + DELIVERY_WINDOW_MS + 60_000);
+    expect(await claims()).toEqual([
+      { status: "expired", submission_id: null, emailed_at: null },
+      { status: "expired", submission_id: null, emailed_at: null },
+    ]);
+    expect(await count("community_survey_email")).toBe(2);
+    const sends = mail.sent.length;
+    mail.status = 200;
+    shopify.mode = "ok";
+    await runClaimRetries(
+      worker(),
+      Date.now() + DELIVERY_WINDOW_MS + 3_600_000,
+    );
+    expect(mail.sent).toHaveLength(sends);
+  });
+
+  it("promises no email to a repeat send without a claim", async () => {
+    await post();
+    const id = crypto.randomUUID();
+    await post({ email: "Ada+again@example.test" }, {}, id);
+    expect(
+      (await post({ email: "Ada+again@example.test" }, {}, id)).body.result,
+    ).toMatchObject({ duplicate: true, emailStatus: "none" });
+    expect(mail.sent).toHaveLength(1);
+  });
+
+  it("sends due emails, then stops at a hanging Shopify and logs once", async () => {
+    mail.status = 503;
+    await post();
+    shopify.mode = "down";
+    for (const email of ["b@example.test", "c@example.test"])
+      await post({ email });
+    mail.status = 200;
+    shopify.mode = "tokenHangs";
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    await runClaimRetries(worker(), Date.now() + 3_600_000);
+    expect(
+      await count("community_sticker_claim WHERE status = 'delivered'"),
+    ).toBe(1);
+    expect(
+      await count(
+        "community_sticker_claim WHERE status = 'pending' AND attempts = 2",
+      ),
+    ).toBe(1);
+    expect(errors.mock.calls).toHaveLength(1);
+    expect(String(errors.mock.calls[0]?.[0])).toContain(
+      '"event":"community_sticker_deliveries_stuck","claims":2',
+    );
+    expect(String(errors.mock.calls[0]?.[0])).toContain(
+      '"failure":"unreachable"',
+    );
+  }, 20_000);
+
+  it("logs an auth failure when Shopify rejects the credentials", async () => {
+    shopify.mode = "tokenDenied";
+    await post();
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    await runClaimRetries(worker(), Date.now() + 3_600_000);
+    expect(String(errors.mock.calls.at(-1)?.[0])).toContain('"failure":"auth"');
   });
 });

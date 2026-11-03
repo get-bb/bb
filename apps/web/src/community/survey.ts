@@ -148,6 +148,7 @@ export const surveyReply = z.object({
       duplicate: z.literal([true, false]),
       claimLink: z.string().nullable(),
       claimNote: z.string().nullable(),
+      emailStatus: z.enum(["sent", "queued", "none"]),
     })
     .optional(),
   errors: z.object({}).catchall(z.string()).optional(),

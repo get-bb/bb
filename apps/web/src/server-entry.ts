@@ -3,6 +3,8 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 
+import { runClaimRetries } from "./community/claims.js";
+import type { Env } from "./server/env.js";
 import {
   marketplaceHtmlCacheControl,
   marketplaceResponseStatus,
@@ -33,4 +35,9 @@ const fetch = createStartHandler(async (context) => {
     : updatedResponse;
 });
 
-export default { fetch };
+export default {
+  fetch,
+  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runClaimRetries(env, Date.now()));
+  },
+};

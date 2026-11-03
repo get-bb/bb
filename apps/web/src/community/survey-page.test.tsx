@@ -101,6 +101,7 @@ describe("survey page", () => {
           duplicate: false,
           claimLink: "https://shop.example/cart/1:1?discount=CODE",
           claimNote: null,
+          emailStatus: "sent",
         },
       }),
     );
@@ -116,9 +117,43 @@ describe("survey page", () => {
     expect(field<HTMLAnchorElement>("main a.btn")!.href).toBe(
       "https://shop.example/cart/1:1?discount=CODE",
     );
+    expect(field("main")!.textContent).toContain(
+      "Thanks! We've emailed you your results.",
+    );
     expect(document.activeElement).toBe(field(".community-thanks"));
     expect(localStorage.getItem(key)).toBeNull();
   });
+
+  it.each([
+    [
+      "sent",
+      "Thanks! We already have your answers. Check your email for your results and sticker link.",
+    ],
+    [
+      "queued",
+      "Thanks! We already have your answers. We'll email you your results and sticker link shortly.",
+    ],
+    ["none", "Thanks! We already have your answers."],
+  ])(
+    "points a repeat send to the email only when one exists (%s)",
+    async (emailStatus, text) => {
+      vi.stubGlobal("fetch", async () =>
+        Response.json({
+          result: {
+            duplicate: true,
+            claimLink: null,
+            claimNote: null,
+            emailStatus,
+          },
+        }),
+      );
+      vi.stubGlobal("scrollTo", () => {});
+      localStorage.setItem(key, JSON.stringify(answers));
+      await render();
+      await submit();
+      expect(field(".community-thanks")!.textContent).toBe(text);
+    },
+  );
 
   it("points to an unanswered checkbox question without sending", async () => {
     const fetch = vi.fn();

@@ -60,6 +60,27 @@ async function send(id: string, answers: FormValues): Promise<SurveyReply> {
   return { error: "We couldn't send your answers. Please try again." };
 }
 
+const THANKS = {
+  repeat: {
+    sent: " We already have your answers. Check your email for your results and sticker link.",
+    queued:
+      " We already have your answers. We'll email you your results and sticker link shortly.",
+    none: " We already have your answers.",
+  },
+  first: {
+    sent: " We've emailed you your results.",
+    queued: " We'll email you your results shortly.",
+    none: "",
+  },
+} as const;
+
+function thanksLine(result: NonNullable<SurveyReply["result"]>): string {
+  if (result.duplicate) return THANKS.repeat[result.emailStatus];
+  if (result.emailStatus === "queued" && !result.claimLink)
+    return " We'll email you your results and sticker link shortly.";
+  return THANKS.first[result.emailStatus];
+}
+
 function Question({
   question,
   values,
@@ -242,7 +263,7 @@ export function SurveyPage({
           >
             <p>
               <strong>Thanks!</strong>
-              {result.duplicate ? " We already have your answers." : ""}
+              {thanksLine(result)}
             </p>
             {!result.duplicate && (
               <p>
