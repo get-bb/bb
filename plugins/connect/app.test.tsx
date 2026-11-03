@@ -904,7 +904,6 @@ describe("connect setup guide section", () => {
   });
 
   it("turns bb connect on after signing in when it was turned off before", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     let signedIn = false;
     let currentStatus = status({ paired: false, enabled: false });
     const account = fakeAccountSdk({
@@ -939,16 +938,18 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
-    await slot.findByText("bb connect is on");
+    const setUp = await slot.findByRole("button", { name: "Set up" });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(setUp));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(slot.getByText("bb connect is on")).toBeTruthy();
     expect(
       slot.rpcCalls.filter((call) => call.method === "setRemoteAccess"),
     ).toHaveLength(1);
   });
 
   it("shows why bb connect couldn't turn on after signing in", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     let currentStatus = status({ paired: false, enabled: false });
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
@@ -972,9 +973,14 @@ describe("connect setup guide section", () => {
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
-    await slot.findByText(/Remote access is unavailable right now/u);
+    const setUp = await slot.findByRole("button", { name: "Set up" });
+    vi.useFakeTimers();
+    await act(async () => fireEvent.click(setUp));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(
+      slot.getByText(/Remote access is unavailable right now/u),
+    ).toBeTruthy();
     expect(slot.queryByText(/Turning on bb connect/u)).toBeNull();
     slot.getByRole("button", { name: "Set up" });
   });
