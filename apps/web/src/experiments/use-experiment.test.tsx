@@ -39,7 +39,7 @@ function createProbeRouter(
   function Probe() {
     const variant = experiments.useExperiment("homepage-qa-check");
     experiments.useExperimentExposure("homepage-qa-check", "desktop");
-    analytics.useInitAnalytics(experiments.useExperimentBootstrap());
+    analytics.useInitAnalytics();
     return (
       <main data-qa-check={variant === "test" ? variant : undefined}>
         {variant}
@@ -48,7 +48,11 @@ function createProbeRouter(
   }
   const rootRoute = router.createRootRoute({
     beforeLoad: experiments.experimentsBeforeLoad,
-    component: Probe,
+    component: () => (
+      <experiments.RouteExperimentsProvider>
+        <Probe />
+      </experiments.RouteExperimentsProvider>
+    ),
   });
   const instance = router.createRouter({
     routeTree: rootRoute,

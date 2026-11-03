@@ -33,7 +33,6 @@ import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
 import {
   useExperiment,
-  useExperimentBootstrap,
   useExperimentExposure,
 } from "../experiments/use-experiment";
 import { useInitAnalytics } from "../landing/analytics";
@@ -261,7 +260,7 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingRoute() {
-  useInitAnalytics(useExperimentBootstrap());
+  useInitAnalytics();
   return <LandingPage />;
 }
 
