@@ -1690,12 +1690,13 @@ async function requireLiveSessionForTurn(
   }
 
   const decoded = decodeCodexOptions(params.options);
+  const turnEnvVars = decoded.sessionOptions.envVars ?? {};
   const signature = constructionSignature(
     session.construction.cwd,
     decoded.sessionOptions,
-    decoded.sessionOptions.envVars === undefined
+    Object.keys(turnEnvVars).length === 0
       ? session.environmentHash
-      : environmentHash(decoded.sessionOptions.envVars),
+      : environmentHash(turnEnvVars),
   );
   if (session.connection === null || session.connection.exited) {
     session = await rebuildThreadSession(
