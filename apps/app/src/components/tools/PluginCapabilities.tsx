@@ -224,6 +224,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.setupGuideSections,
+      "setup-guide",
+      "Adds a row to the setup guide.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadLists,
       "thread-list",
       "Can replace the sidebar thread list; configured in Appearance.",
