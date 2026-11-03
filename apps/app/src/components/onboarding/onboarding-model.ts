@@ -174,18 +174,15 @@ export function agentContinueDisabled({
 }
 
 export function projectsPrimaryAction({
-  redesign,
   selectedCount,
   existingProjectIds,
   projectIds,
 }: {
-  redesign: boolean;
   selectedCount: number;
   existingProjectIds: ReadonlySet<string> | null;
   projectIds: readonly string[];
 }): "import" | StepOutcome {
   if (selectedCount > 0) return "import";
-  if (!redesign) return "completed";
   const added =
     existingProjectIds !== null &&
     projectIds.some((id) => !existingProjectIds.has(id));

@@ -368,10 +368,10 @@ notes open under the bb row, `web` for the full notes on getbb.app).
 that isn't listed", with `item_count` 1), `remote_access` (`started` when
 getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
 not when the bb connect panel is merely opened), and `add_machine` (`started`
-when the machine setup command is shown). Continue on the projects step counts
-as completed in the new guide when a project was added during the guide by
-either route. Continue on the plugins step counts as completed in both guides
-only when a featured plugin is on, otherwise as skipped.
+when the machine setup command is shown). In both guides, Continue on the projects
+step counts as completed only when a project was selected or added during the
+guide (by either route), and Continue on the plugins step only when a featured
+plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves both flag assignments, adds
 `setup_guide_variant`, `setup_guide_source`, `featured_plugins_variant`, and

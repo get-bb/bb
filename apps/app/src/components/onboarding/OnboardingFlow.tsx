@@ -754,7 +754,6 @@ function ProjectsStepContainer({
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
         const action = projectsPrimaryAction({
-          redesign,
           selectedCount: selectedPaths.size,
           existingProjectIds: projectIdsAtOpen,
           projectIds: hostProjects.map((project) => project.id),
