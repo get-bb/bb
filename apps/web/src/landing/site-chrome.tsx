@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   compareLinks,
@@ -216,15 +220,15 @@ export function GitHubStarsLink({ stars }: { stars: number | null }) {
 export function SiteNav({
   current,
   path,
-  sticky = false,
-  downloadPage = false,
 }: {
   current?: SiteNavPage;
   path?: string;
-  sticky?: boolean;
-  downloadPage?: boolean;
 }) {
   const platform = useDesktopPlatform();
+  const sticky = useExperiment("homepage-sticky-header") === "test";
+  useExperimentExposure("homepage-sticky-header", "desktop");
+  const downloadPage = useExperiment("homepage-header-download") === "test";
+  useExperimentExposure("homepage-header-download", "desktop");
   return (
     <nav className={sticky ? "nav nav-sticky" : "nav"}>
       <a className="logo" href="/" aria-label="bb">

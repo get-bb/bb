@@ -1412,10 +1412,6 @@ function LandingPage() {
   const subhead = useExperiment("homepage-subhead-text");
   useExperimentExposure("homepage-subhead-text", "desktop");
   useExperimentExposure("homepage-aa", "all");
-  const stickyHeader = useExperiment("homepage-sticky-header");
-  useExperimentExposure("homepage-sticky-header", "desktop");
-  const headerDownload = useExperiment("homepage-header-download");
-  useExperimentExposure("homepage-header-download", "desktop");
   const heroWindow = useExperiment("homepage-hero-window");
   const heroWindowRef = useRef<HTMLElement>(null);
   const [heroWindowInView, setHeroWindowInView] = useState(false);
@@ -1460,10 +1456,7 @@ function LandingPage() {
       className="wrap"
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
-      <SiteNav
-        sticky={stickyHeader === "test"}
-        downloadPage={headerDownload === "test"}
-      />
+      <SiteNav />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>

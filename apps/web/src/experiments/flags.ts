@@ -24,7 +24,9 @@ export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set([
   "/download",
 ]);
 
-export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [];
+export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [
+  "homepage-sticky-header",
+];
 
 export const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
 
