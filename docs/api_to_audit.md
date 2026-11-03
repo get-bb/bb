@@ -3947,10 +3947,11 @@ reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
-the setup-guide assignment, adds `setup_guide_variant`, `setup_guide_source`
-and a `$set` of `setup_guide_variant`, and also sends `$feature_flag_called`
-when the variant came from the PostHog flag. Every setup-guide event gets
-`setup_guide_variant` from the server.
+both assignments, adds `setup_guide_variant`, `setup_guide_source`,
+`featured_plugins_variant` and `featured_plugins_source`, sets both variants
+as person properties (`$set`), and sends `$feature_flag_called` for each
+variant that came from a PostHog flag. Every setup-guide event gets
+`setup_guide_variant` and `featured_plugins_variant` from the server.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -3959,17 +3960,9 @@ at all and, if so, how they are namespaced and rate limited.
 
 Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new",
 featuredPluginEntryIds: string[] | null }`, the first-run setup guide this
-install sees. The server resolves it once per process, on the first call,
-from two independent PostHog flags evaluated in one request for the anonymous
-install id (3 s timeout): `setup-guide-redesign` sets `variant`, and
-`onboarding-featured-plugins` sets `featuredPluginEntryIds` from its `new`
-variant's payload (`{"plugins": [...]}` of bb-official entry ids; `null` means
-use the default list). Each flag is `control` on its own with telemetry off or
-unavailable (dev builds, no PostHog key, opt-out), on any failure, or for a
-missing, disabled, or unknown variant. Assignments saved in
-`<dataDir>/setup-guide-assignment.json` win over a new evaluation, and
-`BB_SETUP_GUIDE_VARIANT` forces only `variant`. Both assignments are saved when the app reports `onboarding_exposed`
-through `experimental_recordTelemetryEvent`. Core caller:
+install sees. Flag resolution, saved assignments, and the
+`BB_SETUP_GUIDE_VARIANT` override are described under Setup guide in
+[configuration.md](configuration.md#general-settings). Core caller:
 `apps/app/src/components/onboarding/OnboardingGate.tsx`.
 
 Stabilize or remove when the setup-guide experiment concludes; decide then

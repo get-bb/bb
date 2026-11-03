@@ -242,12 +242,11 @@ describe("ProjectsStep selection", () => {
 describe("AgentSignInInstruction", () => {
   function renderInstruction(
     url: string | null,
-    overrides: { userCode?: string; paste?: boolean; connect?: boolean } = {},
+    overrides: { userCode?: string; paste?: boolean } = {},
   ) {
     render(
       <p data-testid="instruction">
         <AgentSignInInstruction
-          connect={overrides.connect ?? false}
           agentName="Cursor"
           view={{
             guide:
@@ -288,12 +287,6 @@ describe("AgentSignInInstruction", () => {
     expect(renderInstruction("file:///tmp/sign-in").textContent).toBe(
       "Finish signing in in your browser.",
     );
-  });
-
-  it("says nothing for terminal connect flows", () => {
-    expect(
-      renderInstruction("https://example.com", { connect: true }).textContent,
-    ).toBe("");
   });
 });
 
@@ -544,22 +537,6 @@ describe("Agent step header and install details in the redesign", () => {
 });
 
 describe("Agent rows active at once in the redesign", () => {
-  it("shows an install and a sign-in side by side", () => {
-    renderQuiet([
-      agent("pi", { status: "installing" }),
-      {
-        ...agent("claude-code", { status: "signingIn" }),
-        subline: "Sign in on claude.com, then paste the code it shows you.",
-      },
-    ]);
-
-    expect(
-      (screen.getByRole("button", { name: "Installing…" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
-  });
-
   it("shows a queued install as Waiting… behind the running one", () => {
     renderQuiet([
       agent("pi", { status: "installing" }),

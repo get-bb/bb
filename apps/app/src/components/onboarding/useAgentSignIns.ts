@@ -11,7 +11,7 @@ const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 
 export type SignInMethod = "local" | "remote";
 
-export interface SignInSession {
+interface SignInSession {
   providerId: string;
   session: TerminalSession;
   method: SignInMethod;

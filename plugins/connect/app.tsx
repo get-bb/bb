@@ -1674,50 +1674,6 @@ function SetupGuideError({ children }: { children: ReactNode }) {
   );
 }
 
-function AppInstallToggles({
-  label,
-  openPlatform,
-  onOpenPlatformChange,
-  trailing,
-}: {
-  label: ReactNode;
-  openPlatform: MobilePlatform | null;
-  onOpenPlatformChange: (platform: MobilePlatform | null) => void;
-  trailing?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {label}
-      <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
-        {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
-          const expanded = openPlatform === option.platform;
-          return (
-            <Fragment key={option.platform}>
-              {index > 0 ? <span aria-hidden="true">·</span> : null}
-              <DisclosureToggle
-                expanded={expanded}
-                caretWhenCollapsed={false}
-                leading={<MobilePlatformIcon platform={option.platform} />}
-                onToggle={() =>
-                  onOpenPlatformChange(expanded ? null : option.platform)
-                }
-              >
-                {option.label}
-              </DisclosureToggle>
-            </Fragment>
-          );
-        })}
-        {trailing === undefined ? null : (
-          <>
-            <span aria-hidden="true">·</span>
-            {trailing}
-          </>
-        )}
-      </p>
-    </div>
-  );
-}
-
 function HaveTheAppLink({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -1917,16 +1873,35 @@ function PhonePairingSteps({
     <div className="flex flex-col items-start gap-3 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
       {step === "install" ? (
         <>
-          <AppInstallToggles
-            label={
-              <span className="text-foreground">
-                Install the bb app on your phone:
-              </span>
-            }
-            openPlatform={openPlatform}
-            onOpenPlatformChange={setOpenPlatform}
-            trailing={<HaveTheAppLink onClick={() => onStepChange("pair")} />}
-          />
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-foreground">
+              Install the bb app on your phone:
+            </span>
+            <p className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-1">
+              {MOBILE_APP_INSTALL_OPTIONS.map((option, index) => {
+                const expanded = openPlatform === option.platform;
+                return (
+                  <Fragment key={option.platform}>
+                    {index > 0 ? <span aria-hidden="true">·</span> : null}
+                    <DisclosureToggle
+                      expanded={expanded}
+                      caretWhenCollapsed={false}
+                      leading={
+                        <MobilePlatformIcon platform={option.platform} />
+                      }
+                      onToggle={() =>
+                        setOpenPlatform(expanded ? null : option.platform)
+                      }
+                    >
+                      {option.label}
+                    </DisclosureToggle>
+                  </Fragment>
+                );
+              })}
+              <span aria-hidden="true">·</span>
+              <HaveTheAppLink onClick={() => onStepChange("pair")} />
+            </p>
+          </div>
           {openPlatform === null ? null : (
             <AppInstallQr platform={openPlatform} />
           )}

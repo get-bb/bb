@@ -1053,7 +1053,6 @@ function RedesignAgentFrame({
         agent.id === signingIn &&
         (agent.id === "claude-code" || agent.id === "codex") ? (
           <AgentSignInInstruction
-            connect={false}
             agentName={agent.name}
             view={redesignSignInView(agent.id)}
             alternate={agent.id === "codex" ? "browser" : null}

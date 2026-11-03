@@ -8,7 +8,7 @@ export interface AccountLoginTransport {
   cancel(loginId: string): Promise<void>;
 }
 
-export const ACCOUNT_LOGIN_POLL_MS = 2_000;
+const ACCOUNT_LOGIN_POLL_MS = 2_000;
 const ACCOUNT_LOGIN_POLL_MAX_MS = 30_000;
 
 function loginPollDelay(failures: number): number {
