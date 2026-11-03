@@ -11,6 +11,7 @@ import {
   type SurfaceReference,
 } from "./annotation";
 import { pluginIcon, surfaceIcon } from "./plugin-icons";
+import { surfaceDocsUrl } from "./surface-docs";
 import { UsedByList, UsedByPager } from "./used-by";
 import { SurfaceMapContext } from "./wireframes";
 
@@ -39,6 +40,9 @@ export function SurfaceCard({
   const ExampleList = mobile ? UsedByPager : UsedByList;
   const surfaceMap = useContext(SurfaceMapContext);
   const pluginPageHref = surfaceMap?.pluginPageHref;
+  const docsHref =
+    surfaceMap?.surfaceDocsHref?.(surface.id) ?? surfaceDocsUrl(surface.id);
+  const docsOpensElsewhere = /^https?:/u.test(docsHref);
   const icon = surfaceIcon(surface.id);
   const { currentGroupId, onGoToSurface, numberOf } = surfaceMap ?? {};
   const [copyState, setCopyState] = useState<
@@ -201,79 +205,85 @@ export function SurfaceCard({
         </details>
       ) : null}
 
-      {(surface.firstParty && surface.firstParty.length > 0) ||
-      onCopyForAgent ? (
-        <div className="mt-3 flex min-w-0 items-center gap-2 border-t border-border-hairline pt-2.5">
-          {surface.firstParty && surface.firstParty.length > 0 ? (
-            <div className={`flex min-w-0 flex-1 items-center ${mobile ? "gap-1" : "gap-2"}`}>
-              <span className={`shrink-0 whitespace-nowrap text-xs text-subtle-foreground ${mobile ? "" : "rounded bg-surface-recessed px-2 py-0.5 font-normal"}`}>
-                Used by
-              </span>
-              <ExampleList
-                key={surface.id}
-                items={surface.firstParty}
-                renderItem={(plugin) => {
-                  const icon = pluginIcon(plugin);
-                  const href = pluginPageHref?.(plugin) ?? null;
-                  const body = (
-                    <>
-                      {surfaceMap?.renderPluginIcon?.(plugin) ??
-                        (icon ? (
-                          <Icon
-                            name={icon}
-                            className="size-3.5 shrink-0 text-subtle-foreground"
-                          />
-                        ) : null)}
-                      {mobile ? <span className="min-w-0 truncate">{plugin}</span> : plugin}
-                    </>
-                  );
-                  return href ? (
-                    <a
-                      href={href}
-                      title={plugin}
-                      className={mobile
-                        ? `flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`
-                        : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"}
-                    >
-                      {body}
-                    </a>
-                  ) : (
-                    <span className={mobile
-                      ? "flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground"
-                      : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"}>
-                      {body}
-                    </span>
-                  );
-                }}
-              />
-            </div>
-          ) : null}
-          {onCopyForAgent ? (
-            <button
-              type="button"
-              onClick={() => void copyForAgent()}
-              disabled={copyState === "copying"}
-              aria-label={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
-              title={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
-              className={`ml-auto inline-flex shrink-0 cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:opacity-60 ${mobile ? "size-9 @2xl/guide:size-7 justify-center" : "h-7 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"} ${FOCUS_RING_CLASS}`}
-            >
-              <Icon
-                name={copyState === "copied" ? "Check" : copyState === "failed" ? "AlertCircle" : "Copy"}
-                className="size-3.5"
-              />
-              <span className={mobile ? "sr-only" : undefined} aria-live="polite">
-                {copyState === "copying"
-                  ? "Copying…"
-                  : copyState === "copied"
-                    ? "Copied"
-                    : copyState === "failed"
-                      ? "Copy failed"
-                      : "Copy for agent"}
-              </span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="mt-3 flex min-w-0 items-center gap-2 border-t border-border-hairline pt-2.5">
+        {surface.firstParty && surface.firstParty.length > 0 ? (
+          <div className={`flex min-w-0 flex-1 items-center ${mobile ? "gap-1" : "gap-2"}`}>
+            <span className={`shrink-0 whitespace-nowrap text-xs text-subtle-foreground ${mobile ? "" : "rounded bg-surface-recessed px-2 py-0.5 font-normal"}`}>
+              Used by
+            </span>
+            <ExampleList
+              key={surface.id}
+              items={surface.firstParty}
+              renderItem={(plugin) => {
+                const icon = pluginIcon(plugin);
+                const href = pluginPageHref?.(plugin) ?? null;
+                const body = (
+                  <>
+                    {surfaceMap?.renderPluginIcon?.(plugin) ??
+                      (icon ? (
+                        <Icon
+                          name={icon}
+                          className="size-3.5 shrink-0 text-subtle-foreground"
+                        />
+                      ) : null)}
+                    {mobile ? <span className="min-w-0 truncate">{plugin}</span> : plugin}
+                  </>
+                );
+                return href ? (
+                  <a
+                    href={href}
+                    title={plugin}
+                    className={mobile
+                      ? `flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`
+                      : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"}
+                  >
+                    {body}
+                  </a>
+                ) : (
+                  <span className={mobile
+                    ? "flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-surface-recessed px-2 py-1 text-xs text-muted-foreground"
+                    : "flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"}>
+                    {body}
+                  </span>
+                );
+              }}
+            />
+          </div>
+        ) : null}
+        <a
+          href={docsHref}
+          target={docsOpensElsewhere ? "_blank" : undefined}
+          rel={docsOpensElsewhere ? "noreferrer" : undefined}
+          aria-label={`${surface.title} docs`}
+          className={`inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground ${FOCUS_RING_CLASS}`}
+        >
+          Docs
+        </a>
+        {onCopyForAgent ? (
+          <button
+            type="button"
+            onClick={() => void copyForAgent()}
+            disabled={copyState === "copying"}
+            aria-label={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
+            title={copyState === "failed" ? "Copy failed. Retry copy for agent" : "Copy for agent"}
+            className={`ml-auto inline-flex shrink-0 cursor-pointer items-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:opacity-60 ${mobile ? "size-9 @2xl/guide:size-7 justify-center" : "h-7 gap-1.5 whitespace-nowrap px-2 text-xs font-medium"} ${FOCUS_RING_CLASS}`}
+          >
+            <Icon
+              name={copyState === "copied" ? "Check" : copyState === "failed" ? "AlertCircle" : "Copy"}
+              className="size-3.5"
+            />
+            <span className={mobile ? "sr-only" : undefined} aria-live="polite">
+              {copyState === "copying"
+                ? "Copying…"
+                : copyState === "copied"
+                  ? "Copied"
+                  : copyState === "failed"
+                    ? "Copy failed"
+                    : "Copy for agent"}
+            </span>
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

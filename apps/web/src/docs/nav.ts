@@ -1,3 +1,4 @@
+import { SURFACE_DOCS_BASE_PATH } from "../../../../plugins/plugin-api-docs/src/surface-docs";
 import { DISCORD_URL, GITHUB_URL } from "../landing/site";
 
 interface DocsNavPage {
@@ -243,10 +244,13 @@ export const DOCS_NAV_COMMUNITY: {
   ],
 };
 
+export const PLUGIN_SDK_SLUG = SURFACE_DOCS_BASE_PATH.replace(/^\/docs\//u, "");
+
 export function navSectionOf(slug: string): string | null {
+  const owner = slug.startsWith(`${PLUGIN_SDK_SLUG}/`) ? PLUGIN_SDK_SLUG : slug;
   return (
     DOCS_NAV.find((section) =>
-      section.pages.some((candidate) => candidate.slug === slug),
+      section.pages.some((candidate) => candidate.slug === owner),
     )?.label ?? null
   );
 }

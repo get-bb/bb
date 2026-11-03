@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { breadcrumbJsonLd } from "./breadcrumbs";
 import { DocsH2, DocsH3 } from "./docs-headings";
+import { ReferenceBody } from "./reference-body";
 import { searchEntries, tableRowText } from "./search-results";
 
 const dir = mkdtempSync(path.join(tmpdir(), "bb-docs-reader-"));
@@ -127,6 +128,18 @@ describe("docs headings", () => {
       '<h3 id="on-a-phone">On a phone<a class="docs-anchor" href="#on-a-phone"',
     );
     expect(html).not.toContain("[#change-folder]");
+  });
+
+  it("give generated reference h2 and h3 ids", () => {
+    const html = renderToStaticMarkup(
+      <ReferenceBody
+        markdown={"## bb thread\n\n### bb thread list\n\nLists threads."}
+        toc={[{ id: "bb-thread", title: "bb thread", depth: 2 }]}
+      />,
+    );
+    expect(html).toContain('<h2 id="bb-thread">');
+    expect(html).toContain('<h3 id="bb-thread-list">');
+    expect(html).toContain('href="#bb-thread-list"');
   });
 });
 

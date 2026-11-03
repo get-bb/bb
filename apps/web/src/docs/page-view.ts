@@ -1,4 +1,5 @@
 import { DOCS_NAV, DOCS_NAV_COMMUNITY, navSectionOf } from "./nav";
+import { REPO_BLOB } from "./reference";
 import {
   DOCS_BASE,
   docsLlms,
@@ -6,8 +7,6 @@ import {
   source,
   type DocsPage,
 } from "./source";
-
-const REPO_BLOB = "https://github.com/get-bb/bb/blob/main";
 
 interface DocsNavLink {
   title: string;
@@ -31,7 +30,7 @@ interface DocsBreadcrumb {
   url: string;
 }
 
-export interface DocsPageView {
+interface DocsPageViewBase {
   url: string;
   title: string;
   description: string;
@@ -44,8 +43,11 @@ export interface DocsPageView {
   community: { label: string; links: { title: string; href: string }[] };
   toc: DocsTocEntry[];
   breadcrumbs: DocsBreadcrumb[];
-  contentPath: string;
 }
+
+export type DocsPageView =
+  | (DocsPageViewBase & { kind: "mdx"; contentPath: string })
+  | (DocsPageViewBase & { kind: "reference"; markdown: string });
 
 function pageUrl(slug: string): string {
   return slug === "" ? DOCS_BASE : `${DOCS_BASE}/${slug}`;
@@ -76,10 +78,13 @@ function docsNav(currentSlug: string | null): DocsNavSection[] {
 export const TOC_MAX_DEPTH = 3;
 
 export async function pageStructuredData(page: DocsPage) {
-  return await page.data.structuredData();
+  return page.type === "reference"
+    ? page.data.structuredData
+    : await page.data.structuredData();
 }
 
 async function headingDepths(page: DocsPage): Promise<Map<string, number>> {
+  if (page.type === "reference") return new Map();
   const { toc } = await page.data.load();
   return new Map(toc.map((item) => [item.url.replace(/^#/u, ""), item.depth]));
 }
@@ -119,15 +124,13 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     throw new Error(`Docs page ${page.url} is not in the docs sidebar`);
   }
   const nav = docsNav(slug);
-  return {
+  const base = {
     url: page.url,
     title: page.data.title,
     description: page.data.description,
     section,
-    unreleased: page.data.since === "unreleased",
     markdownUrl: markdownPath(page),
     pageMarkdown: await docsLlms.page(page),
-    editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
     nav,
     community: {
       label: DOCS_NAV_COMMUNITY.label,
@@ -135,7 +138,22 @@ async function viewOf(page: DocsPage): Promise<DocsPageView> {
     },
     toc: await docsToc(page),
     breadcrumbs: breadcrumbsOf(page, section, nav),
+  };
+  if (page.type === "reference") {
+    return {
+      ...base,
+      kind: "reference",
+      unreleased: false,
+      editUrl: `${REPO_BLOB}/${page.data.editPath}`,
+      markdown: page.data.markdown,
+    };
+  }
+  return {
+    ...base,
+    kind: "mdx",
+    unreleased: page.data.since === "unreleased",
     contentPath: page.path,
+    editUrl: `${REPO_BLOB}/apps/web/content/docs/${page.path}`,
   };
 }
 
