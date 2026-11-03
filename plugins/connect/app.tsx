@@ -49,16 +49,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import {
+  formatCountdown,
+  useCountdown,
+} from "@bb/shared-ui/hooks/use-countdown";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
 import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
-import { SetupOptionRow } from "@bb/shared-ui/setup-option-row";
+import {
+  SETUP_OPTION_ICON_GUTTER_CLASS,
+  SETUP_OPTION_ICON_OUTDENT_CLASS,
+  SetupOptionRow,
+} from "@bb/shared-ui/setup-option-row";
 import {
   CodeDisplay,
   DisclosureToggle,
+  INLINE_CHIP_BUTTON_CLASS,
   InlineTextLink,
+  PendingStatus,
   QuietTextAction,
   SignInPanel,
 } from "@bb/shared-ui/sign-in-panel";
@@ -67,6 +77,8 @@ import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+const COPIED_RESET_MS = 1_500;
 
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
@@ -361,7 +373,10 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
       }
       setCopyState("copied");
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+      timerRef.current = setTimeout(
+        () => setCopyState("idle"),
+        COPIED_RESET_MS,
+      );
     });
   }, [url, selectUrl]);
 
@@ -417,7 +432,7 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
       if (!written) return;
       setCopied(true);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), 1500);
+      timerRef.current = setTimeout(() => setCopied(false), COPIED_RESET_MS);
     });
   }, [text]);
   return (
@@ -561,23 +576,6 @@ function toMachineCodeErrorCode(error: unknown): MachineCodeErrorCode {
   const message = errorText(error);
   if (message === "machine_limit" || message === "not_paired") return message;
   return "network";
-}
-
-function formatCountdown(remainingMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function useCountdown(expiresAt: number | null): number | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (expiresAt === null) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [expiresAt]);
-  return expiresAt === null ? null : expiresAt - now;
 }
 
 function MobilePairingCard({
@@ -1679,7 +1677,7 @@ function HaveTheAppLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center rounded-md px-1 py-0.5 text-foreground hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className={INLINE_CHIP_BUTTON_CLASS}
     >
       <span className="underline underline-offset-2">I have the app</span>
     </button>
@@ -1826,16 +1824,7 @@ function PairingCode({
     );
   }
   if (pairing.kind !== "code") {
-    return (
-      <p role="status" className="flex items-center gap-2">
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        Getting a pairing code…
-      </p>
-    );
+    return <PendingStatus>Getting a pairing code…</PendingStatus>;
   }
   return (
     <div className="flex items-stretch gap-3">
@@ -1948,7 +1937,12 @@ function ConnectOnSetupRow({
       }
       description={
         <div className="flex items-start">
-          <span className="-ml-8 mr-3 flex h-4 w-5 shrink-0 items-center justify-center">
+          <span
+            className={cn(
+              SETUP_OPTION_ICON_OUTDENT_CLASS,
+              "flex h-4 shrink-0 items-center justify-center",
+            )}
+          >
             <Icon
               name="CircleCheck"
               aria-hidden
@@ -2010,7 +2004,10 @@ function setupGuideLoginPanel(
     <div className="flex flex-col gap-3">
       <p
         role="status"
-        className="flex items-center gap-1.5 pl-8 text-xs text-muted-foreground"
+        className={cn(
+          "flex items-center gap-1.5 text-xs text-muted-foreground",
+          SETUP_OPTION_ICON_GUTTER_CLASS,
+        )}
       >
         <Icon
           name="Spinner"
@@ -2043,16 +2040,7 @@ function setupGuideLoginContent(login: AccountLogin["login"]): ReactNode {
   if (login === null) return null;
   if (login.state === "pending") return null;
   if (login.state === "signed-in") {
-    return (
-      <p role="status" className="flex items-center gap-2">
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        Signed in. Turning on bb connect…
-      </p>
-    );
+    return <PendingStatus>Signed in. Turning on bb connect…</PendingStatus>;
   }
   return (
     <SetupGuideError>
@@ -2162,16 +2150,11 @@ function ConnectSetupGuideSection({
       {showsContent ? (
         <>
           {connecting ? (
-            <p role="status" className="flex items-center gap-2">
-              <Icon
-                name="Spinner"
-                aria-hidden
-                className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-              />
+            <PendingStatus>
               {connectingState === "reconnecting"
                 ? "bb connect is reconnecting…"
                 : "bb connect is starting…"}
-            </p>
+            </PendingStatus>
           ) : turnOnError !== null ? null : (
             setupGuideLoginContent(login)
           )}

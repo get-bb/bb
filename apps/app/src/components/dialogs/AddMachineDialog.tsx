@@ -13,7 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import {
+  formatCountdown,
+  useCountdown,
+} from "@bb/shared-ui/hooks/use-countdown";
 import { Icon } from "@bb/shared-ui/icon";
+import { InlineTextButton, PendingStatus } from "@bb/shared-ui/sign-in-panel";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
@@ -23,6 +28,7 @@ import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
+const ENROLLMENT_POLL_MS = 1_000;
 
 export function AddMachineDialog({
   open,
@@ -233,7 +239,9 @@ function useManualMachineEnrollment(): ManualMachineEnrollment {
                   },
             );
           }
-          await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, ENROLLMENT_POLL_MS),
+          );
           controller.signal.throwIfAborted();
           host = await sdk.hosts.get({
             hostId: host.id,
@@ -377,16 +385,11 @@ export function QuickMachineSetupView({
         )}
       </div>
       {connectedHost === null ? (
-        <p role="status" className="flex items-center gap-2">
-          <Icon
-            name="Spinner"
-            aria-hidden
-            className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-          />
+        <PendingStatus>
           {command === null
             ? "Preparing a command…"
             : "Waiting for it to connect…"}
-        </p>
+        </PendingStatus>
       ) : (
         <p role="status" className="flex items-center gap-1.5 text-foreground">
           <Icon
@@ -442,13 +445,9 @@ function QuickMachineCommand({
       ) : expired ? (
         <p role="status" className="flex flex-wrap items-center gap-x-2">
           Command expired
-          <button
-            type="button"
-            className="rounded-sm text-foreground underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onClick={onRegenerate}
-          >
+          <InlineTextButton onClick={onRegenerate}>
             Get a new command
-          </button>
+          </InlineTextButton>
         </p>
       ) : (
         <p className="tabular-nums">Expires in {formatCountdown(remaining)}</p>
@@ -554,13 +553,6 @@ export function ManualMachineSetupView({
   );
 }
 
-function formatCountdown(remainingMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
 type MachineLaunchPlatform = "posix" | "windows";
 
 const MACHINE_LAUNCH_PLATFORMS: readonly {
@@ -571,19 +563,6 @@ const MACHINE_LAUNCH_PLATFORMS: readonly {
   { id: "posix", label: "macOS or Linux", shortLabel: "Mac/Linux" },
   { id: "windows", label: "Windows", shortLabel: "Windows" },
 ];
-
-function useCountdown(expiresAt: number): number {
-  const [remaining, setRemaining] = useState(() => expiresAt - Date.now());
-  useEffect(() => {
-    setRemaining(expiresAt - Date.now());
-    const timer = setInterval(
-      () => setRemaining(expiresAt - Date.now()),
-      1_000,
-    );
-    return () => clearInterval(timer);
-  }, [expiresAt]);
-  return remaining;
-}
 
 export function MachineLaunchCommand({
   command,
