@@ -27,6 +27,7 @@ jobs:
       - name: Fetch committed candidates
         shell: bash
         run: |
+          git fetch --depth=1 origin d0bf4528508b46beafe5f7ef526e506cde5e0313
           git fetch --depth=1 origin bb/ci-nov3-git-cost
           git fetch --depth=1 origin bb/ci-nov3-worktree-cost
       - name: Compare full cold Windows plugins-2 shard
