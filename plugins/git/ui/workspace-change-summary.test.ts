@@ -1,20 +1,25 @@
+import { describe, expect, it } from "vitest";
+import type {
+  WorkspaceCommitSummary,
+  WorkspaceFileStatus,
+  WorkspaceFileStatusKind,
+} from "../contract.js";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
   makeWorkspaceWorkingTree,
-  type WorkspaceCommitFixture,
-} from "./workspace-status-fixtures";
-import { describe, expect, it } from "vitest";
+} from "../testing.js";
 import {
   formatChangeSummary,
   formatWorkspaceFileStatus,
   selectWorkspaceAheadCommits,
   selectWorkspaceChangedFilesSection,
   selectWorkspaceChangedFilesSections,
-  type WorkspaceChangedFileStatus,
-} from "./workspace-change-summary";
+} from "./workspace-change-summary.js";
 
-function makeWorkspaceFileStatus(status: string): WorkspaceChangedFileStatus {
+function makeWorkspaceFileStatus(
+  status: WorkspaceFileStatusKind,
+): WorkspaceFileStatus {
   return {
     path: "src/file.ts",
     status,
@@ -23,7 +28,7 @@ function makeWorkspaceFileStatus(status: string): WorkspaceChangedFileStatus {
   };
 }
 
-function makeCommit(shortSha: string): WorkspaceCommitFixture {
+function makeCommit(shortSha: string): WorkspaceCommitSummary {
   return {
     sha: `${shortSha}0000000000000000000000000000000000`,
     shortSha,

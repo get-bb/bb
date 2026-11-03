@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   WorkspaceChangesList,
   type WorkspaceChangedFile,
-} from "./workspace-changes-list";
+} from "./workspace-changes-list.js";
 
 function makeFiles(count: number): WorkspaceChangedFile[] {
   return Array.from({ length: count }, (_, index) => ({

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatDiffStatsText } from "@bb/thread-view";
-import { DiffStatsTally } from "./diff-stats-tally";
+import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 
 export interface WorkspaceChangedFileStatus {
   path: string;
