@@ -3,7 +3,7 @@ import {
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
   type AppCommandId,
-} from "@bb/domain";
+} from "./app-keybindings.js";
 
 interface AppCommandMetadata {
   command: AppCommandId;

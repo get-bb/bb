@@ -9,7 +9,7 @@ import {
   QUESTION_SELECT_APP_COMMAND_IDS,
   PANE_FOCUS_APP_COMMAND_IDS,
   THREAD_JUMP_APP_COMMAND_IDS,
-} from "@bb/domain";
+} from "./app-keybindings.js";
 
 interface ShortcutModifiers {
   mod?: boolean;
