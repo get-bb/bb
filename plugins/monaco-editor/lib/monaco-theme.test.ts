@@ -141,8 +141,46 @@ describe("toMonacoTheme", () => {
       token: "keyword.yaml",
       foreground: "a895fe",
     });
+    expect(rules).toContainEqual({
+      token: "number.float.yaml",
+      foreground: "a895fe",
+    });
     expect(rules).toContainEqual({ token: "keyword", foreground: "fe5d86" });
     expect(rules.some((rule) => rule.token === "type")).toBe(false);
+    expect(rules.some((rule) => rule.token === "number")).toBe(false);
+  });
+
+  it("colors YAML keys from a theme that only styles generic tags", () => {
+    const { rules } = toMonacoTheme(
+      theme({
+        tokenColors: [
+          { scope: "entity.name", settings: { foreground: "#111111" } },
+          { scope: "entity.name.tag", settings: { foreground: "#ff855e" } },
+          { scope: "constant.numeric", settings: { foreground: "#68cdf2" } },
+        ],
+      }),
+    );
+    expect(rules).toContainEqual({ token: "type.yaml", foreground: "ff855e" });
+    expect(rules).toContainEqual({
+      token: "number.yaml",
+      foreground: "68cdf2",
+    });
+  });
+
+  it("prefers the most specific TextMate scope regardless of source order", () => {
+    const { rules } = toMonacoTheme(
+      theme({
+        tokenColors: [
+          {
+            scope: "entity.name.tag.yaml",
+            settings: { foreground: "#9ddd54" },
+          },
+          { scope: "entity.name.tag", settings: { foreground: "#ff855e" } },
+          { scope: "entity.name.tagged", settings: { foreground: "#000000" } },
+        ],
+      }),
+    );
+    expect(rules).toContainEqual({ token: "type.yaml", foreground: "9ddd54" });
   });
 
   it("lets explicit Monarch rules override the TextMate aliases regardless of source order", () => {

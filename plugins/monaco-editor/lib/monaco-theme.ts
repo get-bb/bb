@@ -3,10 +3,22 @@ import type { PluginCodeThemeData } from "@get-bb/plugin-sdk/app";
 
 const TOKEN_COLOR = /^#?([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?$/;
 const WORKBENCH_COLOR = /^#([0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/;
-const MONARCH_ALIASES = new Map([
-  ["entity.name.tag.yaml", "type.yaml"],
-  ["constant.language", "keyword.yaml"],
-]);
+const YAML_NUMBER_TOKENS = [
+  "number",
+  "number.float",
+  "number.octal",
+  "number.hex",
+  "number.infinity",
+  "number.nan",
+];
+const MONARCH_TEXTMATE_SCOPES: ReadonlyArray<[string, string]> = [
+  ["type.yaml", "entity.name.tag.yaml"],
+  ["keyword.yaml", "constant.language.boolean.yaml"],
+  ...YAML_NUMBER_TOKENS.map((token): [string, string] => [
+    `${token}.yaml`,
+    "constant.numeric.yaml",
+  ]),
+];
 
 export function monacoThemeName(name: string): string {
   const safe = name.replace(/[^a-zA-Z0-9-]/g, "-");
@@ -47,7 +59,6 @@ function tokenRules(
   theme: PluginCodeThemeData,
 ): MonacoNs.editor.ITokenThemeRule[] {
   const rules: MonacoNs.editor.ITokenThemeRule[] = [];
-  const aliases: MonacoNs.editor.ITokenThemeRule[] = [];
   const defaultBackground = theme.type === "light" ? "ffffff" : "1e1e1e";
   const themeBackground =
     tokenColor(theme.bg, defaultBackground) ?? defaultBackground;
@@ -76,18 +87,34 @@ function tokenRules(
     for (const scope of scopes) {
       const token = scope.trim();
       if (rule.scope !== undefined && token === "") continue;
-      const tokenRule = {
+      rules.push({
         token,
         ...(foreground === undefined ? {} : { foreground }),
         ...(background === undefined ? {} : { background }),
         ...(fontStyle === undefined ? {} : { fontStyle }),
-      };
-      rules.push(tokenRule);
-      const alias = MONARCH_ALIASES.get(token);
-      if (alias !== undefined) aliases.push({ ...tokenRule, token: alias });
+      });
     }
   }
+  const aliases = MONARCH_TEXTMATE_SCOPES.flatMap(([token, scope]) => {
+    const rule = mostSpecificRule(rules, scope);
+    return rule === undefined ? [] : [{ ...rule, token }];
+  });
   return [...aliases, ...rules];
+}
+
+function mostSpecificRule(
+  rules: MonacoNs.editor.ITokenThemeRule[],
+  scope: string,
+): MonacoNs.editor.ITokenThemeRule | undefined {
+  let best: MonacoNs.editor.ITokenThemeRule | undefined;
+  for (const rule of rules) {
+    if (rule.token === "") continue;
+    if (rule.token !== scope && !scope.startsWith(`${rule.token}.`)) continue;
+    if (best === undefined || rule.token.length >= best.token.length) {
+      best = rule;
+    }
+  }
+  return best;
 }
 
 function fontStyleFor(value: string | undefined): string | undefined {
