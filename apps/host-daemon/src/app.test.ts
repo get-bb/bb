@@ -980,7 +980,7 @@ describe("createHostDaemonApp", () => {
       setIntervalFn,
     });
 
-    expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), 60_000);
     expect(timer.unref).toHaveBeenCalledTimes(1);
 
     triggerTick();

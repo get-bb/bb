@@ -392,7 +392,7 @@ export function ProvidersSettingsSection({
           </SettingsWithControl>
           <SettingsWithControl
             label="Release idle agent sessions"
-            description="Stop agents that have been idle this long to free memory. Threads keep their history and pick up on your next message. Checked every 5 minutes."
+            description="Stop agents that have been idle this long to free memory. Threads keep their history and pick up on your next message. Checked every minute."
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
