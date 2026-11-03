@@ -1185,6 +1185,7 @@ function selectStandardTimelineEventRows(
     [...contextRows, ...rows].map((row) => row.sequence),
   );
   return {
+    budgetFloorSequence: budgetFloor,
     hints,
     fetchedTurnIds: fetchedTurns,
     selection: {
@@ -1224,10 +1225,17 @@ function selectStandardTimelineEventRows(
   };
 }
 
+const storedEventRowByteLengths = new WeakMap<StoredEventRow, number>();
+
 function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
   let byteLength = 0;
   for (const row of rows) {
-    byteLength += Buffer.byteLength(row.data, "utf8");
+    let rowByteLength = storedEventRowByteLengths.get(row);
+    if (rowByteLength === undefined) {
+      rowByteLength = Buffer.byteLength(row.data, "utf8");
+      storedEventRowByteLengths.set(row, rowByteLength);
+    }
+    byteLength += rowByteLength;
   }
   return byteLength;
 }

@@ -3248,19 +3248,30 @@ export interface FindTimelineWindowBudgetFloorSequenceArgs {
   beforeSequence?: number;
 }
 
-export function findTimelineWindowBudgetFloorSequence(
-  db: DbConnection,
-  args: FindTimelineWindowBudgetFloorSequenceArgs,
-): number | undefined {
+function timelineWindowBudgetConditions(args: {
+  excludeDiagnosticEvents?: boolean;
+  excludedTypes: readonly ThreadEventType[];
+  threadId: string;
+}): SQL[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
-    gte(events.sequence, args.sequenceStart),
     isNotSupersededBackgroundTaskProgress,
   ];
   if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
   if (args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
+  return conditions;
+}
+
+export function findTimelineWindowBudgetFloorSequence(
+  db: DbConnection,
+  args: FindTimelineWindowBudgetFloorSequenceArgs,
+): number | undefined {
+  const conditions: SQL[] = [
+    ...timelineWindowBudgetConditions(args),
+    gte(events.sequence, args.sequenceStart),
+  ];
   if (args.beforeSequence !== undefined) {
     conditions.push(lt(events.sequence, args.beforeSequence));
   }
@@ -3272,6 +3283,35 @@ export function findTimelineWindowBudgetFloorSequence(
     .orderBy(desc(events.sequence))
     .limit(1)
     .offset(args.eventBudget)
+    .get();
+  return row?.sequence;
+}
+
+export interface AdvanceTimelineWindowBudgetFloorSequenceArgs {
+  appendedEventCount: number;
+  excludeDiagnosticEvents?: boolean;
+  excludedTypes: readonly ThreadEventType[];
+  floorSequence: number;
+  threadId: string;
+}
+
+export function advanceTimelineWindowBudgetFloorSequence(
+  db: DbConnection,
+  args: AdvanceTimelineWindowBudgetFloorSequenceArgs,
+): number | undefined {
+  if (args.appendedEventCount === 0) return args.floorSequence;
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        ...timelineWindowBudgetConditions(args),
+        gt(events.sequence, args.floorSequence),
+      ),
+    )
+    .orderBy(events.sequence)
+    .limit(1)
+    .offset(args.appendedEventCount - 1)
     .get();
   return row?.sequence;
 }

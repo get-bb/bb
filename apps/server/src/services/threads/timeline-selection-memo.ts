@@ -1,15 +1,18 @@
 import { THREAD_TIMELINE_EXCLUDED_EVENT_TYPES } from "@bb/thread-view";
-import type { ThreadEventType } from "@bb/domain";
+import type { ThreadEventItemType, ThreadEventType } from "@bb/domain";
 import {
+  advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
   getDatabaseDataVersion,
   getLatestThreadSequence,
   getThreadEventRewriteGeneration,
   listStoredEventRowsInSequenceRange,
+  listStoredTimelineWindowEventRows,
   type DbConnection,
   type TimelineWindowHint,
   type StoredEventRow,
 } from "@bb/db";
+import { getTimelineGroupingContext } from "./timeline-context-order.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
@@ -27,6 +30,7 @@ export interface TimelineEventRowSelection {
 }
 
 export interface StandardTimelineEventRowSelection {
+  budgetFloorSequence: number | undefined;
   hints: readonly TimelineWindowHint[];
   fetchedTurnIds: ReadonlySet<string>;
   selection: TimelineEventRowSelection;
@@ -54,8 +58,10 @@ export interface LatestTimelineSelectionLookup {
 }
 
 interface TimelineSelectionMemoEntry {
+  budgetFloorSequence: number | undefined;
   hints: readonly TimelineWindowHint[];
   appendableTurnIds: ReadonlySet<string>;
+  delegatingItemIds: ReadonlySet<string>;
   dataChars: number;
   dataVersion: number;
   epochSequenceStart: number;
@@ -74,19 +80,23 @@ export const TIMELINE_SELECTION_MEMO_MAX_ENTRIES = 16;
 const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
 const TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS = 512;
 
-const APPENDABLE_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
-  "item/agentMessage/delta",
-  "item/reasoning/textDelta",
-  "item/reasoning/summaryTextDelta",
-  "item/commandExecution/outputDelta",
-  "item/fileChange/outputDelta",
-  "item/plan/delta",
-  "item/toolCall/progress",
-  "item/mcpToolCall/progress",
+const SELECTION_CHANGING_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
+  "client/turn/requested",
+  "client/turn/rejected",
+  "turn/input/accepted",
+  "turn/started",
+  "turn/completed",
+  "turn/plan/updated",
+  "system/thread/interrupted",
+  "thread/goal/updated",
+  "thread/goal/cleared",
+  "thread/extensionState/updated",
+  "item/backgroundTask/progress",
+  "item/backgroundTask/completed",
 ]);
 
-const IGNORABLE_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set(
-  THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+const SELECTION_CHANGING_ITEM_KINDS: ReadonlySet<ThreadEventItemType> = new Set(
+  ["backgroundTask", "delegation", "planSteps"],
 );
 
 const selectionMemos = new WeakMap<DbConnection, TimelineSelectionMemo>();
@@ -186,29 +196,64 @@ function selectionMemoKey(args: LatestTimelineSelectionMemoArgs): string {
   ]);
 }
 
-function isAppendableRow(
-  row: StoredEventRow,
-  appendableTurnIds: ReadonlySet<string>,
-): boolean {
+function collectDelegatingItemIds(
+  rows: readonly StoredEventRow[],
+): Set<string> {
+  const itemIds = new Set<string>();
+  for (const row of rows) {
+    if (
+      (row.itemKind === "toolCall" || row.itemKind === "delegation") &&
+      row.itemId !== null
+    ) {
+      itemIds.add(row.itemId);
+    }
+  }
+  return itemIds;
+}
+
+function changesSelection(row: StoredEventRow): boolean {
   return (
-    APPENDABLE_EVENT_TYPES.has(row.type) &&
-    row.scopeKind === "turn" &&
-    row.turnId !== null &&
-    appendableTurnIds.has(row.turnId) &&
-    row.parentToolCallId === null &&
-    row.itemKind === null
+    SELECTION_CHANGING_EVENT_TYPES.has(row.type) ||
+    (row.itemKind !== null && SELECTION_CHANGING_ITEM_KINDS.has(row.itemKind))
   );
 }
 
-function isIgnorableRow(row: StoredEventRow): boolean {
-  return IGNORABLE_EVENT_TYPES.has(row.type) && row.parentToolCallId === null;
+function hasParentToolCall(row: StoredEventRow): boolean {
+  return row.parentToolCallId !== null && row.parentToolCallId.length > 0;
+}
+
+function extendsSelection(
+  row: StoredEventRow,
+  entry: TimelineSelectionMemoEntry,
+): boolean {
+  if (
+    row.scopeKind === "turn" &&
+    (row.turnId === null || !entry.appendableTurnIds.has(row.turnId))
+  ) {
+    return false;
+  }
+  if (
+    hasParentToolCall(row) &&
+    !entry.delegatingItemIds.has(row.parentToolCallId ?? "")
+  ) {
+    return false;
+  }
+  return (
+    row.itemKind !== "toolCall" ||
+    (row.itemId !== null && entry.delegatingItemIds.has(row.itemId))
+  );
+}
+
+interface AppendedSelectionRows {
+  parented: boolean;
+  rows: StoredEventRow[];
 }
 
 function listAppendableRows(
   db: DbConnection,
   args: LatestTimelineSelectionMemoArgs,
   entry: TimelineSelectionMemoEntry,
-): StoredEventRow[] | null {
+): AppendedSelectionRows | null {
   if (
     args.maxSeq < entry.maxSeq ||
     args.maxSeq - entry.maxSeq > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS ||
@@ -223,18 +268,27 @@ function listAppendableRows(
     threadId: args.threadId,
     throughSequence: args.maxSeq,
   });
-  if (appendedRows.length > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS) {
+  if (
+    appendedRows.length > TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS ||
+    appendedRows.some(changesSelection)
+  ) {
     return null;
   }
-  const appendableRows: StoredEventRow[] = [];
-  for (const row of appendedRows) {
-    if (isAppendableRow(row, entry.appendableTurnIds)) {
-      appendableRows.push(row);
-    } else if (!isIgnorableRow(row)) {
-      return null;
-    }
+  const rows =
+    appendedRows.length === 0
+      ? []
+      : listStoredTimelineWindowEventRows(db, {
+          beforeSequence: args.maxSeq + 1,
+          excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          maxInlineOutputChars: args.maxInlineOutputChars,
+          sequenceStart: entry.maxSeq + 1,
+          threadId: args.threadId,
+        });
+  if (!rows.every((row) => extendsSelection(row, entry))) {
+    return null;
   }
-  return appendableRows;
+  return { parented: appendedRows.some(hasParentToolCall), rows };
 }
 
 export function forgetLatestTimelineSelections(
@@ -269,19 +323,28 @@ export function lookupLatestTimelineSelection(
   ) {
     return miss;
   }
-  const appendableRows = listAppendableRows(db, args, entry);
-  if (appendableRows === null) {
+  const appended = listAppendableRows(db, args, entry);
+  if (appended === null) {
     return miss;
   }
   const budgetFloor: TimelineBudgetFloor = {
-    sequence: findTimelineWindowBudgetFloorSequence(db, {
-      threadId: args.threadId,
-      sequenceStart: args.epochSequenceStart,
-      beforeSequence: args.maxSeq + 1,
-      eventBudget: args.eventBudget,
-      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-      excludeDiagnosticEvents: args.excludeDiagnosticEvents,
-    }),
+    sequence:
+      entry.budgetFloorSequence === undefined
+        ? findTimelineWindowBudgetFloorSequence(db, {
+            threadId: args.threadId,
+            sequenceStart: args.epochSequenceStart,
+            beforeSequence: args.maxSeq + 1,
+            eventBudget: args.eventBudget,
+            excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+            excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+          })
+        : advanceTimelineWindowBudgetFloorSequence(db, {
+            appendedEventCount: appended.rows.length,
+            excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+            excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+            floorSequence: entry.budgetFloorSequence,
+            threadId: args.threadId,
+          }),
   };
   const sequenceStart = selectTimelineWindowStart(
     entry.hints,
@@ -294,13 +357,21 @@ export function lookupLatestTimelineSelection(
   }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
+    orderingBoundarySequence: appended.parented
+      ? getTimelineGroupingContext(db, {
+          maxSeq: args.maxSeq,
+          sequenceStart: args.epochSequenceStart,
+          threadId: args.threadId,
+        }).orderingBoundarySequence
+      : entry.selection.orderingBoundarySequence,
     ownedSequenceEnd: args.maxSeq + 1,
     paginationPage: args.page,
-    rows: entry.selection.rows.concat(appendableRows),
+    rows: entry.selection.rows.concat(appended.rows),
   };
   storeMemoEntry(memo, key, {
     ...entry,
-    dataChars: entry.dataChars + dataCharsOfRows(appendableRows),
+    budgetFloorSequence: budgetFloor.sequence,
+    dataChars: entry.dataChars + dataCharsOfRows(appended.rows),
     maxSeq: args.maxSeq,
     selection,
   });
@@ -320,8 +391,10 @@ export function rememberLatestTimelineSelection(
     (entry) => entry.epochSequenceStart === args.epochSequenceStart,
   );
   storeMemoEntry(memo, selectionMemoKey(args), {
+    budgetFloorSequence: result.budgetFloorSequence,
     hints: result.hints,
     appendableTurnIds: result.fetchedTurnIds,
+    delegatingItemIds: collectDelegatingItemIds(result.selection.rows),
     dataChars:
       dataCharsOfRows(result.selection.rows) +
       dataCharsOfRows(result.selection.headStateRows),

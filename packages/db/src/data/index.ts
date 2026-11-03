@@ -340,6 +340,7 @@ export {
   listStoredEventRowsInSequenceRange,
   listTimelineOrderingContext,
   listTimelineInterruptionRows,
+  advanceTimelineWindowBudgetFloorSequence,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
   isTimelineCursorSequencePresent,
