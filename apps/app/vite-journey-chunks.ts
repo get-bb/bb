@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { normalizePath } from "vite";
 
 interface ModuleGraph {
   getModuleInfo(moduleId: string): { importedIds: readonly string[] } | null;
@@ -64,7 +65,9 @@ export function journeyChunkGroups(
 ): JourneyChunkGroup[] {
   const absolute = journeys.map((journey) => ({
     name: journey.name,
-    entries: journey.entries.map((entry) => resolve(rootDir, entry)),
+    entries: journey.entries.map((entry) =>
+      normalizePath(resolve(rootDir, entry)),
+    ),
   }));
   let assignment: Map<string, string> | undefined;
   const chunkOf = (moduleId: string, graph: ModuleGraph) => {
