@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { exposeExperiment } from "../landing/analytics";
 import { useExperimentBootstrap } from "./context";
@@ -28,17 +28,27 @@ export function useExperiment<K extends ExperimentKey>(
   return experimentVariant(useExperimentBootstrap(), key);
 }
 
+export function useExperimentExposer(
+  key: ExperimentKey,
+  devices: ExperimentDevices,
+): () => void {
+  const bootstrap = useExperimentBootstrap();
+  const assigned =
+    !bootstrap.preview && bootstrap.featureFlags[key] !== undefined;
+  return useCallback(() => {
+    if (assigned) {
+      exposeExperiment(key, devices);
+    }
+  }, [assigned, key, devices]);
+}
+
 export function useExperimentExposure(
   key: ExperimentKey,
   devices: ExperimentDevices,
   seen = true,
 ): void {
-  const bootstrap = useExperimentBootstrap();
-  const assigned =
-    !bootstrap.preview && bootstrap.featureFlags[key] !== undefined;
+  const expose = useExperimentExposer(key, devices);
   useEffect(() => {
-    if (assigned && seen) {
-      exposeExperiment(key, devices);
-    }
-  }, [assigned, seen, key, devices]);
+    if (seen) expose();
+  }, [expose, seen]);
 }

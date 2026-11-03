@@ -16,6 +16,10 @@ type LandingEvent =
       properties: { placement: CtaPlacement };
     }
   | {
+      name: "landing_marketplace_clicked";
+      properties: { placement: CtaPlacement };
+    }
+  | {
       name: "landing_discord_clicked";
       properties: { placement: CtaPlacement };
     }
