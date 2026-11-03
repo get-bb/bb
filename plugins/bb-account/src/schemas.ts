@@ -1,6 +1,12 @@
 import { z } from "zod";
 
+export const ACCOUNT_PLUGIN_ID = "bb-account";
 export const ACCOUNT_REALTIME_CHANNEL = "account";
+
+export function accountErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^HTTP \d+: /u, "");
+}
 
 export const accountSchema = z
   .object({

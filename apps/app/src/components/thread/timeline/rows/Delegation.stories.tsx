@@ -33,6 +33,7 @@ const correctnessChild01: TimelineRow = {
   status: "completed",
   callId: "toolu_01TpyeWMqu4G5aCbShDsiv4X",
   command: "git diff 97aa16934..e547e8106 --stat",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -57,6 +58,7 @@ const correctnessChild02: TimelineRow = {
   callId: "toolu_01TcFvrJ5Z7xswQsbA8DwuiS",
   command:
     "git diff 97aa16934..e547e8106 -- packages/agent-runtime/src/runtime-provider-requests.ts packages/agent-runtime/src/shared/provider-tool-call-contract.ts packages/domain/src/provider-types.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -132,6 +134,7 @@ const correctnessChild06: TimelineRow = {
   callId: "toolu_01Mr1LjyreTqTD3nHzDxWmHB",
   command:
     'grep -r "getActiveTurnId" --include="*.ts" packages/agent-runtime/src/',
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -234,6 +237,7 @@ const correctnessChild11: TimelineRow = {
   callId: "toolu_016CvX8aof8TvLnJQAHzm9Kp",
   command:
     'git diff 97aa16934..e547e8106 -- packages/agent-runtime/src/shared/provider-tool-call-contract.ts | grep -A 5 -B 5 "normalizeDecodedTurnId"',
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -427,6 +431,7 @@ const maintainabilityChild01: TimelineRow = {
   status: "completed",
   callId: "toolu_015c6YonUcnAaKbMibXaHsvx",
   command: "git diff 97aa16934..e547e8106 --stat",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -468,6 +473,7 @@ const maintainabilityChild03: TimelineRow = {
   callId: "toolu_01FDLgX2tYJnA5v74VkUCZPY",
   command:
     "git diff 97aa16934..e547e8106 packages/domain/src/provider-types.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -492,6 +498,7 @@ const maintainabilityChild04: TimelineRow = {
   callId: "toolu_01TRjfsFujnuK8gYy2hA2S6z",
   command:
     "git diff 97aa16934..e547e8106 packages/agent-runtime/src/runtime-provider-requests.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -516,6 +523,7 @@ const maintainabilityChild05: TimelineRow = {
   callId: "toolu_01Gz64C6FQJZP5pMy2u8rGTa",
   command:
     "git diff 97aa16934..e547e8106 packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -540,6 +548,7 @@ const maintainabilityChild06: TimelineRow = {
   callId: "toolu_01Laa6LAdEEuUho3bFEe4NWw",
   command:
     "git diff 97aa16934..e547e8106 packages/agent-runtime/src/runtime.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -564,6 +573,7 @@ const maintainabilityChild07: TimelineRow = {
   callId: "toolu_019xtsxgbj33QMijxpDAUJdg",
   command:
     "git diff 97aa16934..e547e8106 packages/agent-runtime/src/provider-adapter.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -587,6 +597,7 @@ const maintainabilityChild08: TimelineRow = {
   status: "completed",
   callId: "toolu_01KXspdWg8VQ29yyhyVXgT9w",
   command: "git diff 97aa16934..e547e8106 apps/host-daemon/src/app.ts",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -611,6 +622,7 @@ const maintainabilityChild09: TimelineRow = {
   callId: "toolu_01NJoEUxMguFeAjrnTZwj8GV",
   command:
     'grep -r "getActiveTurnId\\|activeTurnId" /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages --include="*.ts" --include="*.tsx" | grep -v test | grep -v node_modules | head -20',
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -643,6 +655,7 @@ const maintainabilityChild10: TimelineRow = {
   callId: "toolu_01Qh9ZSnXFXQz1Mcf9TVKpBP",
   command:
     'grep -r "normalizeProviderRequestTurnId\\|resolveTurnId\\|turnId.*null\\|turnId.*undefined" /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src --include="*.ts" | grep -v test | head -20',
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -869,6 +882,7 @@ const maintainabilityChild22: TimelineRow = {
   callId: "toolu_01VobbeuPdbWkxhbn1t6dS9V",
   command:
     'grep -n "normalizeDecodedTurnId\\|normalizeProviderRequestTurnId" /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts',
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -944,6 +958,7 @@ const testQualityChild01: TimelineRow = {
   status: "completed",
   callId: "toolu_019aG3TWUimWvWRahTUNouZT",
   command: "git log --oneline 97aa16934..e547e8106",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -967,6 +982,7 @@ const testQualityChild02: TimelineRow = {
   status: "completed",
   callId: "toolu_01LZYN998xx7gtnoFFca21Bd",
   command: "git diff 97aa16934..e547e8106",
+  description: null,
   cwd: null,
   source: null,
   output:
@@ -1042,6 +1058,7 @@ const testQualityChild06: TimelineRow = {
   callId: "toolu_01RsbcAF3JqweDSdRyYwAgLr",
   command:
     'grep -n "function resolveRuntimeProviderRequestTurnId" /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts -A 25',
+  description: null,
   cwd: null,
   source: null,
   output:

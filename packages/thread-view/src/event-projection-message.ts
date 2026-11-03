@@ -175,6 +175,7 @@ export interface EventProjectionCommandMessage
   kind: "command";
   callId: string;
   command: string;
+  description: string | null;
   cwd: string | null;
   parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;

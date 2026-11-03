@@ -20,6 +20,7 @@
   },
   "include": [
     "src/types",
+    "index.ts",
     "app",
     "src",
     "e2e",

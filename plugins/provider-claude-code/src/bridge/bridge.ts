@@ -319,6 +319,7 @@ interface SessionConstructionConfig {
 }
 
 interface ClaudeLiveSessionSettings {
+  commandDescriptionsEnabled: boolean;
   fullAccessApprovalsEnabled: boolean;
   memoryEnabled: boolean;
   model?: string;
@@ -853,6 +854,9 @@ async function applyLiveSessionSettings(
     });
   }
 
+  threadSession.translator.configureCommandDescriptions(
+    next.commandDescriptionsEnabled,
+  );
   threadSession.attachment.liveSettings = next;
 }
 
@@ -1076,6 +1080,7 @@ function toInitialLiveSessionSettings(
   params: SessionConstructionParams,
 ): ClaudeLiveSessionSettings {
   return {
+    commandDescriptionsEnabled: params.commandDescriptionsEnabled ?? false,
     fullAccessApprovalsEnabled: params.fullAccessApprovalsEnabled,
     memoryEnabled: params.memoryEnabled ?? true,
     ...(params.model !== undefined ? { model: params.model } : {}),
@@ -1095,6 +1100,8 @@ function withTurnLiveSessionSettings(
   const model = params.model ?? current.model;
   const reasoningLevel = params.reasoningLevel ?? current.reasoningLevel;
   return {
+    commandDescriptionsEnabled:
+      params.commandDescriptionsEnabled ?? current.commandDescriptionsEnabled,
     fullAccessApprovalsEnabled:
       params.fullAccessApprovalsEnabled ?? current.fullAccessApprovalsEnabled,
     memoryEnabled: params.memoryEnabled ?? current.memoryEnabled,
@@ -1161,6 +1168,8 @@ function createThreadSession(attachment: ThreadAttachment): ThreadSession {
   const translator = createClaudeDeltaTranslator({
     cwd: attachment.sessionConstructionConfig.sessionOptions.cwd,
     sandboxEnabled: attachment.sessionOptions.sandbox?.enabled === true,
+    commandDescriptionsEnabled:
+      attachment.liveSettings.commandDescriptionsEnabled,
   });
   translator.configureInjectedTools(
     (attachment.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({

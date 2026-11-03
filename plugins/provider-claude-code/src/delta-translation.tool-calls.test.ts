@@ -1132,11 +1132,230 @@ describe("claude tool-result translation (delta path)", () => {
           cwd: "/repo",
           aggregatedOutput:
             "Error: Exit code 2\ngrep: parentheses not balanced",
-          exitCode: 1,
+          exitCode: 2,
           status: "failed",
         }),
       }),
     );
+  });
+
+  it.each([
+    {
+      name: "content header",
+      content: "Exit code 127\nbash: nope: command not found",
+      toolUseResult: { stdout: "", stderr: "bash: nope: command not found" },
+      exitCode: 127,
+    },
+    {
+      name: "string tool_use_result header",
+      content: "(Bash completed with no output)",
+      toolUseResult: "Error: Exit code 2\ngrep: parentheses not balanced",
+      exitCode: 2,
+    },
+    {
+      name: "no header",
+      content: "permission denied",
+      toolUseResult: { stdout: "", stderr: "permission denied" },
+      exitCode: 1,
+    },
+    {
+      name: "header not on the first line",
+      content: "log line\nExit code 23",
+      toolUseResult: { stdout: "log line\nExit code 23", stderr: "" },
+      exitCode: 1,
+    },
+  ])(
+    "reports the real exit code of a failed Bash command ($name)",
+    ({ content, toolUseResult, exitCode }) => {
+      const harness = createClaudeDeltaHarness();
+      harness.translate({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "nope", cwd: "/repo" },
+            },
+          ],
+        },
+        session_id: "sess-1",
+      });
+
+      const events = harness.translate({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content,
+              is_error: true,
+              tool_use_result: toolUseResult,
+            },
+          ],
+        },
+        session_id: "sess-1",
+      });
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({
+            type: "commandExecution",
+            exitCode,
+            status: "failed",
+          }),
+        }),
+      );
+    },
+  );
+
+  it("keeps exit code 0 for successful Bash output that looks like a header", () => {
+    const harness = createClaudeDeltaHarness();
+    harness.translate({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-1",
+            name: "Bash",
+            input: { command: "echo 'Exit code 3'", cwd: "/repo" },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+
+    const events = harness.translate({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tool-1",
+            content: "Exit code 3",
+            is_error: false,
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "commandExecution",
+          exitCode: 0,
+          status: "completed",
+        }),
+      }),
+    );
+  });
+
+  function runBashWithDescription(
+    harness: ReturnType<typeof createClaudeDeltaHarness>,
+    toolUseId: string,
+    description: unknown,
+  ): (string | undefined)[] {
+    const started = harness.translate({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: toolUseId,
+            name: "Bash",
+            input: { command: "ls -a", cwd: "/repo", description },
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+    const completed = harness.translate({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            content: "README.md",
+            is_error: false,
+          },
+        ],
+      },
+      session_id: "sess-1",
+    });
+
+    return (
+      [
+        [started, "item/started"],
+        [completed, "item/completed"],
+      ] as const
+    ).map(([events, type]) => {
+      const item = events.find((event) => event.type === type);
+      expect(item).toMatchObject({
+        item: {
+          type: "commandExecution",
+          command: "ls -a",
+          presentation: { title: "ls -a" },
+        },
+      });
+      return item?.type === type && item.item.type === "commandExecution"
+        ? item.item.description
+        : undefined;
+    });
+  }
+
+  it.each([
+    { input: "List workspace files", description: "List workspace files" },
+    { input: "  List workspace files\n", description: "List workspace files" },
+    { input: "   ", description: undefined },
+    { input: 42, description: undefined },
+    { input: undefined, description: undefined },
+  ])(
+    "carries the Bash description on the command item when command descriptions are on ($input)",
+    ({ input, description }) => {
+      const harness = createClaudeDeltaHarness({
+        commandDescriptionsEnabled: true,
+      });
+
+      expect(runBashWithDescription(harness, "tool-1", input)).toEqual([
+        description,
+        description,
+      ]);
+    },
+  );
+
+  it("leaves the Bash description off the command item when command descriptions are off", () => {
+    const harness = createClaudeDeltaHarness();
+
+    expect(
+      runBashWithDescription(harness, "tool-1", "List workspace files"),
+    ).toEqual([undefined, undefined]);
+  });
+
+  it("applies a command descriptions change to the next command", () => {
+    const harness = createClaudeDeltaHarness();
+
+    harness.translator.configureCommandDescriptions(true);
+    expect(
+      runBashWithDescription(harness, "tool-1", "List workspace files"),
+    ).toEqual(["List workspace files", "List workspace files"]);
+
+    harness.translator.configureCommandDescriptions(false);
+    expect(
+      runBashWithDescription(harness, "tool-2", "List workspace files"),
+    ).toEqual([undefined, undefined]);
   });
 
   it("recovers missing tool names from prior tool uses", () => {

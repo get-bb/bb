@@ -91,6 +91,7 @@ type BufferedExecutionOutput = RunningExecCall | PendingExecutionOutput;
 interface RunningCommandExecution extends RunningExecutionBase {
   kind: "command";
   command: string;
+  description: string | null;
   cwd: string | null;
   parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
@@ -324,6 +325,7 @@ function createRunningExecCall(
         ...base,
         kind: "command",
         command: incoming.command ?? "",
+        description: incoming.description ?? null,
         cwd: incoming.cwd ?? null,
         parsedIntents: incoming.parsedIntents ?? [],
         source: incoming.source ?? null,
@@ -355,6 +357,7 @@ function createRunningExecCall(
 interface CommandExecutionFieldsTarget {
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   command: string;
+  description: string | null;
   cwd: string | null;
   exitCode: number | null;
   parsedIntents: EventProjectionToolParsedIntent[];
@@ -364,6 +367,7 @@ interface CommandExecutionFieldsTarget {
 interface CommandExecutionFieldsSource {
   approvalStatus?: EventProjectionApprovalLifecycleStatus | null;
   command?: string;
+  description?: string | null;
   cwd?: string | null;
   exitCode?: number | null;
   parsedIntents?: EventProjectionToolParsedIntent[];
@@ -425,6 +429,7 @@ function mergeCommandExecutionFields(
 ): void {
   if (incoming.cwd && !target.cwd) target.cwd = incoming.cwd;
   if (incoming.source && !target.source) target.source = incoming.source;
+  if (incoming.description) target.description = incoming.description;
   if (incoming.command && incoming.command !== target.command) {
     target.command = incoming.command;
     target.parsedIntents = incoming.parsedIntents ?? [];
@@ -937,6 +942,7 @@ function createExecMessage(
       ...base,
       kind: "command",
       command: call.command,
+      description: call.description,
       cwd: call.cwd,
       parsedIntents: call.parsedIntents,
       source: call.source,

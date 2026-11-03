@@ -102,6 +102,7 @@ function commandRow(args: {
     callId: `${args.id}-call`,
     command: args.command,
     cwd: null,
+    description: null,
     source: null,
     output: "",
     exitCode: 0,
