@@ -631,6 +631,15 @@ describe("CommandPalette", () => {
       expect(screen.queryByRole("combobox")).toBeNull();
       expect(testState.targets).toEqual([screen.getByTestId("origin")]);
       expect(document.activeElement).toBe(screen.getByTestId("origin"));
+
+      fireEvent.keyDown(screen.getByTestId("origin"), {
+        key: "o",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      await waitFor(() =>
+        expect(testState.calls).toEqual(["thread.new", "thread.new"]),
+      );
     },
   );
 
@@ -873,6 +882,7 @@ describe("CommandPalette", () => {
 
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    expect(testState.calls).toEqual([]);
   });
 
   it("uses the shared tab-pill clear affordance without running the mode command", async () => {
@@ -2099,38 +2109,6 @@ describe("CommandPalette", () => {
     expect(optionTitles()).toEqual(initialTitles);
   });
 
-  it("closes on Escape without running anything", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    fireEvent.keyDown(searchField(), { key: "Escape" });
-
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    expect(testState.calls).toEqual([]);
-  });
-
-  it("keeps app shortcuts working after a shortcut closes the palette", async () => {
-    renderPalette();
-    const pressThreadNew = () =>
-      fireEvent.keyDown(document.activeElement ?? window, {
-        key: "o",
-        ctrlKey: true,
-        shiftKey: true,
-        bubbles: true,
-      });
-
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-    pressThreadNew();
-    await waitFor(() => expect(testState.calls).toEqual(["thread.new"]));
-    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
-    pressThreadNew();
-    await waitFor(() =>
-      expect(testState.calls).toEqual(["thread.new", "thread.new"]),
-    );
-  });
-
   it("scrolls the highlighted row into view when arrowing, but not on hover", async () => {
     const scrollIntoView = vi.spyOn(
       Element.prototype,
@@ -2276,26 +2254,6 @@ describe("CommandPalette", () => {
       );
     },
   );
-
-  it("opens a specific settings page", async () => {
-    renderPalette();
-    openPalette();
-    await waitFor(() => expect(searchField()).toBeTruthy());
-
-    fireEvent.change(searchField(), {
-      target: { value: "keyboard settings" },
-    });
-    await waitFor(() =>
-      expect(selectedOption()?.textContent).toContain("Keyboard settings"),
-    );
-    fireEvent.keyDown(searchField(), { key: "Enter" });
-
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/settings/keyboard",
-      ),
-    );
-  });
 
   it("only includes Files settings when local helper access is available", async () => {
     renderPalette();

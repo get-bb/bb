@@ -35,7 +35,9 @@ describe("ThreadTitle", () => {
       </ThreadTitleMentionResourcesProvider>,
     );
 
-    expect(screen.getByText("Design review")).not.toBeNull();
+    expect(
+      screen.getByText("Design review").closest("a, [role='link']"),
+    ).toBeNull();
     expect(container.textContent).not.toContain("@thread:thr_mentioned");
     expect(container.querySelector("mark")?.textContent).toBe("auth");
     expect(screen.getByTitle("Follow up on Design review auth")).not.toBeNull();

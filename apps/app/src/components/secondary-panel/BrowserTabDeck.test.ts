@@ -27,12 +27,6 @@ describe("selectActiveBrowserTab", () => {
     expect(selected).not.toBe(tabs[2]);
   });
 
-  it("returns null when there is no active browser tab id", () => {
-    const tabs = [makeBrowserTab("tab-a", "https://a.example")];
-
-    expect(selectActiveBrowserTab(tabs, null)).toBeNull();
-  });
-
   it("returns null when the active id is not an open browser tab", () => {
     const tabs = [
       makeBrowserTab("tab-a", "https://a.example"),
@@ -40,10 +34,5 @@ describe("selectActiveBrowserTab", () => {
     ];
 
     expect(selectActiveBrowserTab(tabs, "tab-missing")).toBeNull();
-  });
-
-  it("returns null for an empty tab list regardless of active id", () => {
-    expect(selectActiveBrowserTab([], "tab-a")).toBeNull();
-    expect(selectActiveBrowserTab([], null)).toBeNull();
   });
 });

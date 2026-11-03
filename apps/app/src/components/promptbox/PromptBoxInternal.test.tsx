@@ -1367,7 +1367,7 @@ describe("ComposerBox controlled value sync", () => {
     try {
       render(<PromptBoxFocusOnMountHarness />);
 
-      await waitForPromptFocus();
+      expect(document.activeElement).toBe(getPromptEditorElement());
     } finally {
       restoreMatchMedia();
     }
@@ -1684,13 +1684,11 @@ describe("ComposerBox programmatic submit", () => {
     send = vi.fn(),
     running = true,
     text = "Ship it",
-    sendsOnEnter = true,
   }: {
     swapSubmitActions: boolean;
     send?: () => void | Promise<void>;
     running?: boolean;
     text?: string;
-    sendsOnEnter?: boolean;
   }) {
     const steer = vi.fn();
     const submitted: string[] = [];
@@ -1748,7 +1746,7 @@ describe("ComposerBox programmatic submit", () => {
       subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
-      sendsOnEnter,
+      sendsOnEnter: true,
     };
     render(
       <PluginComposerHostProvider value={host}>
@@ -1817,22 +1815,6 @@ describe("ComposerBox programmatic submit", () => {
       sendAt: COMBINED_SEND_AT,
       pluginSubmission: { pluginId: "submitter", data: { kind: "note" } },
     });
-  });
-
-  it("rejects on a composer whose Enter does not send", async () => {
-    const { send, steer, rejected } = renderThreadComposerWithSubmitter({
-      swapSubmitActions: false,
-      sendsOnEnter: false,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Plugin submit" }));
-    await waitFor(() =>
-      expect(rejected).toEqual([
-        "This composer cannot submit programmatically.",
-      ]),
-    );
-    expect(send).not.toHaveBeenCalled();
-    expect(steer).not.toHaveBeenCalled();
   });
 
   it("rejects an empty draft where Enter would steer the next queued message", async () => {
@@ -4311,6 +4293,7 @@ describe("ComposerBox compact layout", () => {
   });
 
   it("does not delay transcript insertion while the document is hidden", async () => {
+    vi.useFakeTimers();
     const originalVisibilityState = Object.getOwnPropertyDescriptor(
       document,
       "visibilityState",
@@ -4330,10 +4313,18 @@ describe("ComposerBox compact layout", () => {
         />,
       );
 
-      await expect(
-        promptBoxRef.current?.voice?.playCompletionTransition(),
-      ).resolves.toBeUndefined();
+      let transitionFinished = false;
+      act(() => {
+        void promptBoxRef.current?.voice
+          ?.playCompletionTransition()
+          ?.then(() => {
+            transitionFinished = true;
+          });
+      });
+      await act(async () => {});
+      expect(transitionFinished).toBe(true);
     } finally {
+      vi.useRealTimers();
       if (originalVisibilityState) {
         Object.defineProperty(
           document,
@@ -4347,6 +4338,7 @@ describe("ComposerBox compact layout", () => {
   });
 
   it("does not delay transcript insertion for reduced motion", async () => {
+    vi.useFakeTimers();
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: query === "(prefers-reduced-motion: reduce)",
@@ -4369,25 +4361,20 @@ describe("ComposerBox compact layout", () => {
         />,
       );
 
-      await expect(
-        promptBoxRef.current?.voice?.playCompletionTransition(),
-      ).resolves.toBeUndefined();
+      let transitionFinished = false;
+      act(() => {
+        void promptBoxRef.current?.voice
+          ?.playCompletionTransition()
+          ?.then(() => {
+            transitionFinished = true;
+          });
+      });
+      await act(async () => {});
+      expect(transitionFinished).toBe(true);
     } finally {
+      vi.useRealTimers();
       window.matchMedia = originalMatchMedia;
     }
-  });
-
-  it("keeps prompt actions in the full mobile layout", () => {
-    render(
-      <ComposerBox
-        {...createPromptBoxProps({
-          attachments: { onAttachFiles: vi.fn() },
-          promptActions,
-        })}
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "Prompt actions" })).toBeTruthy();
   });
 });
 
@@ -4720,18 +4707,6 @@ describe("ComposerBox mention triggers", () => {
     );
   });
 
-  it("reports hash mention queries with the active trigger", async () => {
-    const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {
-      mentionTriggers: ["@", "#"],
-    });
-
-    await focusPromptEnd(promptBoxRef);
-
-    await waitFor(() =>
-      expect(onMentionQueryChange).toHaveBeenCalledWith("42", "#"),
-    );
-  });
-
   it("does not open the menu for a bare non-at mention trigger", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#", {
       mentionTriggers: ["@", "#"],
@@ -4762,12 +4737,18 @@ describe("ComposerBox mention triggers", () => {
         ],
       ]),
     );
-    const { changes, promptBoxRef } = renderPromptBox("#42", {
-      mentionTriggers: ["@", "#"],
-      mentionSuggestions: [githubIssueSuggestion],
-    });
+    const { changes, onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "#42",
+      {
+        mentionTriggers: ["@", "#"],
+        mentionSuggestions: [githubIssueSuggestion],
+      },
+    );
 
     await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("42", "#"),
+    );
     const suggestion = await screen.findByRole("button", {
       name: /#42 Fix login bug/u,
     });

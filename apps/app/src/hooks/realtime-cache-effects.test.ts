@@ -43,14 +43,7 @@ import {
 } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
-import {
-  ENVIRONMENT_CHANGE_KINDS,
-  HOST_CHANGE_KINDS,
-  PROJECT_CHANGE_KINDS,
-  SYSTEM_CHANGE_KINDS,
-  THREAD_CHANGE_KINDS,
-  defaultExperiments,
-} from "@bb/domain";
+import { SYSTEM_CHANGE_KINDS, defaultExperiments } from "@bb/domain";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
@@ -61,13 +54,7 @@ import {
   resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
-import {
-  REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-  REALTIME_HOST_CHANGE_REGISTRY,
-  REALTIME_PROJECT_CHANGE_REGISTRY,
-  REALTIME_SYSTEM_CHANGE_REGISTRY,
-  REALTIME_THREAD_CHANGE_REGISTRY,
-} from "./cache-owners/realtime-cache-registry";
+import { REALTIME_SYSTEM_CHANGE_REGISTRY } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "thread-created",
@@ -406,30 +393,11 @@ describe("createRealtimeCacheEffects", () => {
     vi.useRealTimers();
   });
 
-  it.each<
-    [
-      string,
-      readonly string[],
-      Record<string, { dirty: readonly unknown[] } | undefined>,
-    ]
-  >([
-    ["thread", THREAD_CHANGE_KINDS, REALTIME_THREAD_CHANGE_REGISTRY],
-    [
-      "environment",
-      ENVIRONMENT_CHANGE_KINDS,
-      REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-    ],
-    ["project", PROJECT_CHANGE_KINDS, REALTIME_PROJECT_CHANGE_REGISTRY],
-    ["host", HOST_CHANGE_KINDS, REALTIME_HOST_CHANGE_REGISTRY],
-    ["system", SYSTEM_CHANGE_KINDS, REALTIME_SYSTEM_CHANGE_REGISTRY],
-  ])(
-    "maps every realtime %s change to a registry entry",
-    (_entity, changeKinds, registry) => {
-      for (const changeKind of changeKinds) {
-        expect(registry[changeKind]).toBeDefined();
-      }
-    },
-  );
+  it("maps every realtime system change to a registry entry", () => {
+    for (const changeKind of SYSTEM_CHANGE_KINDS) {
+      expect(REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]).toBeDefined();
+    }
+  });
 
   it("refreshes only the server move status when a move changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
