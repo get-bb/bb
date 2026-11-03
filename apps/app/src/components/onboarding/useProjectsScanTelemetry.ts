@@ -1,4 +1,5 @@
 import type { HostDiscoveredReposResponse } from "@bb/server-contract";
+import { isCancelledError } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { operationFailureReason } from "./onboarding-model";
 import {
@@ -38,8 +39,11 @@ export function useProjectsScanTelemetry({
       },
     });
   }, [data, dataUpdatedAt, entry]);
+  const reportedErrorAtRef = useRef(0);
   useEffect(() => {
-    if (errorUpdatedAt === 0) return;
+    if (errorUpdatedAt === reportedErrorAtRef.current) return;
+    if (error === null || isCancelledError(error)) return;
+    reportedErrorAtRef.current = errorUpdatedAt;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
