@@ -1,5 +1,5 @@
 import { PluginMobileSettingsSections } from "@/components/plugin/PluginSettingsSections";
-import { MobilePlatformIcon } from "@bb/shared-ui/mobile-platform-icon";
+import { MobilePlatformIcon } from "./MobilePlatformIcon";
 import { MachineAccessSettings } from "./MachineAccessSettings";
 import { mobileAppDownloads } from "@bb/domain";
 import { buttonVariants } from "@bb/shared-ui/button";

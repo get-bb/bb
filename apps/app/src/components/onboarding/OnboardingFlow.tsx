@@ -9,13 +9,9 @@ import {
 } from "@bb/domain";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
-import {
-  AddMachineDialog,
-  AddMachineInline,
-} from "@/components/dialogs/AddMachineDialog";
+import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
-import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
@@ -35,7 +31,6 @@ import {
   usePrimaryHost,
 } from "@/hooks/queries/host-queries";
 import {
-  pluginCatalogSearchQueryOptions,
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
@@ -69,12 +64,7 @@ import { sdk } from "@/lib/sdk";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
-  AgentInstallErrorDetails,
-  AgentSignInInstruction,
-  hasSignInInstruction,
-  type AgentSignInView,
   AgentSignInGuide,
-  AgentSignInPanel,
   AgentStep,
   DevicesStep,
   OnboardingLayout,
@@ -82,55 +72,36 @@ import {
   OnboardingPluginGrid,
   OnboardingPluginGridSkeleton,
   ProjectsStep,
-  ConnectUnavailableRow,
-  RedesignedDevicesStep,
   type OnboardingAgent,
   type OnboardingRepo,
 } from "./OnboardingViews";
 import {
   CONNECT_PLUGIN_ID,
+  ONBOARDING_PLUGINS,
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
-  agentContinueDisabled,
-  featuredPluginEntryIds,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
+  resolveSignInCommand,
   shortRemoteName,
-  skippedStepIds,
-  terminalConnectFlow,
   type OnboardingStepId,
-  type TerminalConnectFlow,
-  type SetupGuide,
-  type StepOutcome,
 } from "./onboarding-model";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
-import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
-import {
-  useAgentSignIns,
-  type AgentSignInTerminals,
-  type SignInMethod,
-} from "./useAgentSignIns";
 
+const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 const SIGN_IN_TERMINAL_COLS = 200;
 const SIGN_IN_TERMINAL_ROWS = 14;
 const SIGN_IN_OUTPUT_POLL_INTERVAL_MS = 1_000;
 const SIGN_IN_OUTPUT_TAIL_BYTES = 64 * 1024;
 const SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 6_000;
-const REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 3_000;
-const CONNECT_INPUT_SETTLE_MS = 500;
-const INSTALL_SETTLE_TIMEOUT_MS = 20_000;
-const INSTALL_SETTLE_POLL_MS = 2_000;
 const INSTALL_FAILED_MESSAGE = "Install failed";
-const REDESIGN_INSTALL_FAILED_MESSAGE =
-  "Couldn't install. Check your connection and retry.";
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
-const PHONE_MEDIA_QUERY = "(max-width: 640px) and (pointer: coarse)";
 
 function decodeTerminalChunks(chunks: readonly TerminalOutputChunk[]): string {
   const decoder = new TextDecoder();
@@ -150,18 +121,12 @@ function encodeTerminalInput(text: string): string {
 }
 
 function AgentSignInContainer({
-  redesign,
-  connectFlow,
   agentName,
   session,
   alternate,
   onUseAlternate,
   onExit,
-  onViewChange,
 }: {
-  redesign: boolean;
-  connectFlow: TerminalConnectFlow | null;
-  onViewChange: (view: AgentSignInView) => void;
   agentName: string;
   session: TerminalSession;
   alternate: { label: string; method: SignInMethod } | null;
@@ -195,42 +160,12 @@ function AgentSignInContainer({
   useEffect(() => {
     const timer = window.setTimeout(
       () => setFallbackDue(true),
-      redesign
-        ? REDESIGN_SIGN_IN_TERMINAL_FALLBACK_DELAY_MS
-        : SIGN_IN_TERMINAL_FALLBACK_DELAY_MS,
+      SIGN_IN_TERMINAL_FALLBACK_DELAY_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [redesign]);
+  }, []);
   const terminalVisible =
-    terminalChoice ??
-    (connectFlow !== null ||
-      (fallbackDue && (guide === null || guide.url === null)));
-  const started =
-    guide?.url != null ||
-    fallbackDue ||
-    terminalChoice !== null ||
-    connectFlow !== null;
-  const view = useMemo(
-    () => ({ guide, terminalVisible, started }),
-    [guide, terminalVisible, started],
-  );
-  useEffect(() => {
-    onViewChange(view);
-  }, [onViewChange, view]);
-  useSendAfterFirstOutput({
-    enabled: connectFlow !== null,
-    hasOutput: (output?.chunks.length ?? 0) > 0,
-    settleMs: CONNECT_INPUT_SETTLE_MS,
-    send: () => {
-      if (connectFlow === null) return;
-      void sdk.terminals
-        .input({
-          terminalId: session.id,
-          dataBase64: encodeTerminalInput(connectFlow.input),
-        })
-        .catch(() => undefined);
-    },
-  });
+    terminalChoice ?? (fallbackDue && (guide === null || guide.url === null));
 
   const exited =
     output !== undefined && !isActiveTerminalSessionStatus(output.status);
@@ -254,28 +189,6 @@ function AgentSignInContainer({
       });
   };
 
-  const terminal = (
-    <ThreadTerminalView autoFocus={false} isPanelOpen session={session} />
-  );
-  if (redesign) {
-    return (
-      <AgentSignInPanel
-        connect={connectFlow !== null}
-        agentName={agentName}
-        view={view}
-        code={code}
-        codeSubmitted={codeSubmitted}
-        terminal={terminal}
-        onCodeChange={(next) => {
-          setCode(next);
-          setCodeSubmitted(false);
-        }}
-        onSubmitCode={submitCode}
-        onCopy={(text) => void copyToClipboardWithToast(text)}
-        onToggleTerminal={() => setTerminalChoice(!terminalVisible)}
-      />
-    );
-  }
   return (
     <AgentSignInGuide
       agentName={agentName}
@@ -283,7 +196,9 @@ function AgentSignInContainer({
       code={code}
       codeSubmitted={codeSubmitted}
       terminalVisible={terminalVisible}
-      terminal={terminal}
+      terminal={
+        <ThreadTerminalView autoFocus={false} isPanelOpen session={session} />
+      }
       onCodeChange={(next) => {
         setCode(next);
         setCodeSubmitted(false);
@@ -303,9 +218,6 @@ function AgentSignInContainer({
 interface StepChrome {
   compact: boolean;
   reserveMacosTrafficLights: boolean;
-  composition: "docked" | "centered";
-  showSkipAll: boolean;
-  skippedSteps: ReadonlySet<OnboardingStepId>;
   onSelectStep: (step: OnboardingStepId) => void;
   onSkipAll: () => void;
 }
@@ -333,16 +245,23 @@ async function closeAbandonedSignInTerminals({
   );
 }
 
+type SignInMethod = "local" | "remote";
+
+interface SignInSession {
+  providerId: string;
+  session: TerminalSession;
+  method: SignInMethod;
+  hasAlternateMethod: boolean;
+}
+
 function AgentStepContainer({
   chrome,
-  redesign,
   entry,
   hostId,
   hostName,
   onContinue,
 }: {
   chrome: StepChrome;
-  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
   hostName: string | null;
@@ -360,71 +279,132 @@ function AgentStepContainer({
   const { isLocalDaemonHost } = useHostDaemon();
   const createTerminal = useCreateTerminal();
   const closeTerminal = useCloseTerminal();
+  const [signIn, setSignIn] = useState<SignInSession | null>(null);
+  const [signInFailedProviderId, setSignInFailedProviderId] = useState<
+    string | null
+  >(null);
+  const signInRef = useRef<SignInSession | null>(null);
   const { refetch: refetchStates } = statesQuery;
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
-  const states = statesQuery.data?.providers;
-  const refetchProviderStates = useCallback(() => {
-    void refetchStates();
-  }, [refetchStates]);
-  const signInTerminals = useMemo<AgentSignInTerminals>(
-    () => ({
-      closeAbandoned: closeAbandonedSignInTerminals,
-      create: ({ hostId: targetHostId, title, command }) =>
-        createTerminalAsync({
-          cols: SIGN_IN_TERMINAL_COLS,
-          rows: SIGN_IN_TERMINAL_ROWS,
-          title,
-          start: { mode: "command", command },
-          target: { kind: "host_path", hostId: targetHostId, cwd: null },
-        }),
-      close: (terminalId) => closeTerminalMutate({ mode: "force", terminalId }),
-    }),
-    [closeTerminalMutate, createTerminalAsync],
+
+  const endSignIn = useCallback(
+    (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
+      const current = signInRef.current;
+      if (current === null) return;
+      signInRef.current = null;
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome },
+      });
+      setSignIn(null);
+      closeTerminalMutate({ mode: "force", terminalId: current.session.id });
+      void refetchStates();
+    },
+    [closeTerminalMutate, entry, refetchStates],
   );
-  const signIns = useAgentSignIns({
-    concurrent: redesign,
-    entry,
-    hostId,
-    states,
-    isLocalHost: isLocalDaemonHost,
-    terminals: signInTerminals,
-    refetchStates: refetchProviderStates,
-  });
-  const startSignIn = signIns.start;
+
+  const signInRequestRef = useRef(0);
+  useEffect(
+    () => () => {
+      signInRequestRef.current += 1;
+      endSignIn();
+    },
+    [endSignIn],
+  );
+
+  const handleSignInExit = useCallback(
+    (exitCode: number | null) => {
+      const current = signInRef.current;
+      if (current !== null && exitCode !== 0) {
+        setSignInFailedProviderId(current.providerId);
+      }
+      endSignIn(exitCode === 0 ? "exited" : "failed");
+    },
+    [endSignIn],
+  );
+
+  useEffect(() => {
+    if (signIn === null) return;
+    const interval = window.setInterval(() => {
+      void refetchStates();
+    }, SIGN_IN_POLL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [refetchStates, signIn]);
+
+  const states = statesQuery.data?.providers;
+  const signingInProviderId = signIn?.providerId ?? null;
+  const signingInProviderReady =
+    signingInProviderId !== null &&
+    states?.find((state) => state.providerId === signingInProviderId)
+      ?.status === "ready";
+  useEffect(() => {
+    if (signingInProviderReady) endSignIn("ready");
+  }, [endSignIn, signingInProviderReady]);
 
   const { runningJobKey } = installRunner;
   useEffect(() => {
     if (runningJobKey === null) void refetchStates();
   }, [refetchStates, runningJobKey]);
 
-  const previousRunningJobKeyRef = useRef<string | null>(null);
-  const [settlingJobKeys, setSettlingJobKeys] = useState<
-    ReadonlyMap<string, number>
-  >(() => new Map());
-  const installFailures = installRunner.failuresByJobKey;
-  useEffect(() => {
-    const previous = previousRunningJobKeyRef.current;
-    previousRunningJobKeyRef.current = runningJobKey;
-    if (!redesign || previous === null || previous === runningJobKey) return;
-    if (installFailures.has(previous)) return;
-    setSettlingJobKeys((keys) =>
-      new Map(keys).set(previous, Date.now() + INSTALL_SETTLE_TIMEOUT_MS),
-    );
-  }, [installFailures, redesign, runningJobKey]);
-  const settlingCount = settlingJobKeys.size;
-  useEffect(() => {
-    if (settlingCount === 0) return;
-    const poll = window.setInterval(() => {
-      void refetchStates();
-      const now = Date.now();
-      setSettlingJobKeys((keys) => {
-        const live = [...keys].filter(([, deadline]) => deadline > now);
-        return live.length === keys.size ? keys : new Map(live);
+  const startSignIn = async (
+    providerId: string,
+    requestedMethod?: SignInMethod,
+  ) => {
+    const state = states?.find((entry) => entry.providerId === providerId);
+    if (hostId === null || !state) return;
+    const method =
+      requestedMethod ?? (isLocalDaemonHost(hostId) ? "local" : "remote");
+    const command = resolveSignInCommand(state, method === "local");
+    if (command === null) return;
+    endSignIn();
+    setSignInFailedProviderId(null);
+    signInRequestRef.current += 1;
+    const request = signInRequestRef.current;
+    recordTelemetryEvent({
+      name: "onboarding_sign_in",
+      properties: { entry, outcome: "started" },
+    });
+    const title = `Sign in to ${state.displayName}`;
+    await closeAbandonedSignInTerminals({ hostId, title });
+    let session: TerminalSession;
+    try {
+      session = await createTerminalAsync({
+        cols: SIGN_IN_TERMINAL_COLS,
+        rows: SIGN_IN_TERMINAL_ROWS,
+        title,
+        start: { mode: "command", command },
+        target: { kind: "host_path", hostId, cwd: null },
       });
-    }, INSTALL_SETTLE_POLL_MS);
-    return () => window.clearInterval(poll);
-  }, [refetchStates, settlingCount]);
+    } catch {
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome: "failed" },
+      });
+      return;
+    }
+    if (signInRequestRef.current !== request) {
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome: "cancelled" },
+      });
+      void sdk.terminals
+        .close({ mode: "force", terminalId: session.id })
+        .catch(() => null);
+      return;
+    }
+    const next: SignInSession = {
+      providerId,
+      session,
+      method,
+      hasAlternateMethod:
+        state.localLoginCommand !== null &&
+        state.loginCommand !== null &&
+        state.localLoginCommand !== state.loginCommand,
+    };
+    signInRef.current = next;
+    setSignIn(next);
+  };
 
   const startInstall = (providerId: string) => {
     const status = cliStatusQuery.data?.[providerId];
@@ -451,75 +431,28 @@ function AgentStepContainer({
             (provider) => provider.id === health.providerId,
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
-          const signIn = signIns.signIns.get(health.providerId) ?? null;
-          const signingIn = signIn !== null;
-          const installFailure = installRunner.failuresByJobKey.get(jobKey);
-          const connectFlow = redesign
-            ? terminalConnectFlow(health.providerId)
-            : null;
-          const view = signIns.views.get(health.providerId) ?? null;
-          const instructionReady =
-            view !== null && hasSignInInstruction(view, connectFlow !== null);
+          const signingIn = signIn?.providerId === health.providerId;
           return {
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
-            setup: connectFlow !== null ? "connect" : "signIn",
-            installQueued: redesign && installRunner.queuedJobKeys.has(jobKey),
-            busy:
-              redesign &&
-              (signIns.startingProviderIds.has(health.providerId) ||
-                (signingIn && connectFlow === null && !instructionReady)),
-            subline:
-              redesign &&
-              signIn !== null &&
-              view !== null &&
-              instructionReady ? (
-                <AgentSignInInstruction
-                  connect={connectFlow !== null}
-                  agentName={health.displayName}
-                  view={view}
-                  alternate={
-                    signIn.hasAlternateMethod
-                      ? signIn.method === "local"
-                        ? "code"
-                        : "browser"
-                      : null
-                  }
-                  onOpenUrl={openUrlInExternalBrowser}
-                  onUseAlternate={() =>
-                    void startSignIn(
-                      health.providerId,
-                      signIn.method === "local" ? "remote" : "local",
-                    )
-                  }
-                />
-              ) : undefined,
             state: resolveAgentSetupState({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
                 installRunner.runningJobKey === jobKey ||
-                installRunner.queuedJobKeys.has(jobKey) ||
-                (settlingJobKeys.has(jobKey) &&
-                  (health.status === "not_installed" ||
-                    health.status === "unsupported_version")),
-              installFailure:
-                installFailure === undefined
-                  ? null
-                  : redesign
-                    ? REDESIGN_INSTALL_FAILED_MESSAGE
-                    : INSTALL_FAILED_MESSAGE,
+                installRunner.queuedJobKeys.has(jobKey),
+              installFailure: installRunner.failuresByJobKey.has(jobKey)
+                ? INSTALL_FAILED_MESSAGE
+                : null,
               signingIn,
-              signInFailed: signIns.failedProviderIds.has(health.providerId),
+              signInFailed: signInFailedProviderId === health.providerId,
               installInfoPending: cliStatusQuery.isPending,
             }),
             expanded:
               signingIn && signIn !== null ? (
                 <AgentSignInContainer
                   key={signIn.session.id}
-                  redesign={redesign}
-                  connectFlow={connectFlow}
                   agentName={health.displayName}
                   session={signIn.session}
                   alternate={
@@ -538,16 +471,7 @@ function AgentStepContainer({
                   onUseAlternate={(method) =>
                     void startSignIn(health.providerId, method)
                   }
-                  onExit={(exitCode) =>
-                    signIns.handleExit(health.providerId, exitCode)
-                  }
-                  onViewChange={(nextView) =>
-                    signIns.setView(health.providerId, nextView)
-                  }
-                />
-              ) : redesign && installFailure !== undefined ? (
-                <AgentInstallErrorDetails
-                  log={installFailure.logDialogState.log}
+                  onExit={handleSignInExit}
                 />
               ) : undefined,
           };
@@ -560,35 +484,23 @@ function AgentStepContainer({
       {...chrome}
       step="agent"
       title="Connect a coding agent"
-      description={
-        !redesign
-          ? "bb runs the agents you already use. You need one that is installed and signed in on this computer."
-          : "Agents run on your machine. bb needs one installed and signed in."
-      }
+      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
       footerNote={
-        agentBlocked && !redesign
-          ? "Threads can't start until one agent is ready."
-          : null
+        agentBlocked ? "Threads can't start until one agent is ready." : null
       }
       primaryLabel="Continue"
-      primaryDisabled={agentContinueDisabled({
-        redesign,
-        agentReady,
-        statesLoading:
-          hostId !== null && states === undefined && !statesQuery.isError,
-      })}
-      secondaryLabel={agentBlocked && !redesign ? "Skip for now" : undefined}
+      primaryDisabled={!agentReady}
+      secondaryLabel={agentBlocked ? "Skip for now" : undefined}
       onPrimary={onContinue}
       onSecondary={onContinue}
     >
       <AgentStep
-        quiet={redesign}
         machineName={hostName}
         agents={agents}
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={startInstall}
         onViewInstallLog={viewInstallLog}
-        onCancelSignIn={(providerId) => signIns.end(providerId)}
+        onCancelSignIn={() => endSignIn()}
         onRecheck={() => {
           void refetchStates();
           void cliStatusQuery.refetch();
@@ -600,7 +512,6 @@ function AgentStepContainer({
 
 function ProjectsStepContainer({
   chrome,
-  redesign,
   entry,
   hostId,
   projectIdsAtOpen,
@@ -609,7 +520,6 @@ function ProjectsStepContainer({
   onSkip,
 }: {
   chrome: StepChrome;
-  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
@@ -718,11 +628,7 @@ function ProjectsStepContainer({
       {...chrome}
       step="projects"
       title="Add your projects"
-      description={
-        redesign
-          ? "Choose local Git repos used in the last 30 days."
-          : "Git repos on this computer that you've worked in over the last 30 days."
-      }
+      description="Git repos on this computer that you've worked in over the last 30 days."
       primaryLabel={
         scanning || selectedPaths.size === 0
           ? "Continue"
@@ -730,17 +636,15 @@ function ProjectsStepContainer({
       }
       primaryDisabled={scanning}
       primaryBusy={importing}
-      secondaryLabel={redesign ? undefined : "Skip"}
+      secondaryLabel="Skip"
       onPrimary={() => {
-        if (selectedPaths.size > 0) void importSelected();
-        else if (redesign) onSkip();
-        else onContinue();
+        if (selectedPaths.size === 0) onContinue();
+        else void importSelected();
       }}
       onSecondary={onSkip}
       onBack={onBack}
     >
       <ProjectsStep
-        selection={redesign ? "header" : "line"}
         status={
           scanning
             ? { kind: "scanning" }
@@ -791,18 +695,14 @@ function ProjectsStepContainer({
 
 function PluginCardContainer({
   entry,
-  compact,
   enabled,
   onChanged,
   onSelected,
-  onDeselected,
 }: {
   entry: PluginCatalogSearchEntry;
-  compact: boolean;
   enabled: boolean;
   onChanged: () => Promise<void>;
   onSelected: () => void;
-  onDeselected: () => void;
 }) {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
@@ -825,7 +725,6 @@ function PluginCardContainer({
 
   const toggle = async (next: boolean) => {
     if (next) onSelected();
-    else onDeselected();
     setTarget(next);
     setWorking(true);
     try {
@@ -853,8 +752,6 @@ function PluginCardContainer({
 
   return (
     <OnboardingPluginCard
-      density={compact ? "compact" : "default"}
-      showStateLabel={!compact}
       name={entry.displayName}
       description={entry.description}
       icon={{
@@ -876,14 +773,12 @@ function PluginCardContainer({
 
 function PluginsStepContainer({
   chrome,
-  setupGuide,
   entry: onboardingEntry,
   onBack,
   onContinue,
   onSkip,
 }: {
   chrome: StepChrome;
-  setupGuide: SetupGuide;
   entry: OnboardingEntry;
   onBack: () => void;
   onContinue: () => void;
@@ -903,15 +798,10 @@ function PluginsStepContainer({
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
-  const redesign = setupGuide.variant === "new";
-  const entryIds = useMemo(
-    () => featuredPluginEntryIds(setupGuide),
-    [setupGuide],
-  );
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return entryIds.flatMap((entryId) => {
+    return ONBOARDING_PLUGINS.flatMap(({ entryId }) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -919,16 +809,11 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries, entryIds]);
-  const isEnabled = (entry: PluginCatalogSearchEntry) =>
-    entry.installed &&
-    (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
-      ?.enabled ??
-      false);
+  }, [catalogQuery.data?.entries]);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
-    (pluginId: string, action: "shown" | "selected" | "deselected") => {
+    (pluginId: string, action: "shown" | "selected") => {
       let recommendationId = recommendationIds.get(pluginId);
       if (recommendationId === undefined) {
         recommendationId = nanoid();
@@ -960,38 +845,32 @@ function PluginsStepContainer({
     <OnboardingLayout
       {...chrome}
       step="plugins"
-      width={redesign ? "wide" : "default"}
       title="Make bb yours"
-      description={
-        redesign
-          ? "Customize almost everything in bb with plugins. Turn on a few, change them anytime."
-          : "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
-      }
+      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
       primaryLabel="Continue"
-      secondaryLabel={redesign ? undefined : "Skip"}
-      onPrimary={() => {
-        if (redesign && !(entries ?? []).some(isEnabled)) onSkip();
-        else onContinue();
-      }}
+      secondaryLabel="Skip"
+      onPrimary={onContinue}
       onSecondary={onSkip}
       onBack={onBack}
     >
-      <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
+      <OnboardingPluginGrid compact={chrome.compact}>
         {entries === null ? (
-          <OnboardingPluginGridSkeleton count={entryIds.length} />
+          <OnboardingPluginGridSkeleton count={ONBOARDING_PLUGINS.length} />
         ) : (
           entries.map((entry) => (
             <PluginCardContainer
               key={entry.entryId}
               entry={entry}
-              compact={redesign}
-              enabled={isEnabled(entry)}
+              enabled={
+                entry.installed &&
+                (installedPlugins?.find(
+                  (plugin) => plugin.id === entry.pluginId,
+                )?.enabled ??
+                  false)
+              }
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
-              }
-              onDeselected={() =>
-                recordRecommendation(entry.pluginId, "deselected")
               }
             />
           ))
@@ -1003,19 +882,15 @@ function PluginsStepContainer({
 
 function DevicesStepContainer({
   chrome,
-  redesign,
   entry,
   hostId,
-  hostName,
   onBack,
   onFinish,
   onLeave,
 }: {
   chrome: StepChrome;
-  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
-  hostName: string | null;
   onBack: () => void;
   onFinish: () => void;
   onLeave: () => void;
@@ -1024,7 +899,6 @@ function DevicesStepContainer({
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
-  const onPhone = useMediaQuery(PHONE_MEDIA_QUERY);
   const location = useLocation();
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
@@ -1071,59 +945,6 @@ function DevicesStepContainer({
     recordDeviceSetup("add_machine", "succeeded");
   }, [connectedMachineCount, recordDeviceSetup]);
 
-  const startRemoteAccessSetup = () => {
-    if (connect.status !== "off" || pendingSetup.current.remoteAccess) return;
-    pendingSetup.current.remoteAccess = true;
-    recordDeviceSetup("remote_access", "started");
-  };
-  const addMachine = () => {
-    if (
-      connectedMachineCount !== undefined &&
-      pendingSetup.current.machinesBefore === null
-    ) {
-      pendingSetup.current.machinesBefore = connectedMachineCount;
-      recordDeviceSetup("add_machine", "started");
-    }
-    setAddMachineOpen(true);
-  };
-  const closeAddMachine = () => {
-    void hostsQuery.refetch();
-    setAddMachineOpen(false);
-  };
-  if (redesign) {
-    return (
-      <OnboardingLayout
-        {...chrome}
-        step="devices"
-        width="wide"
-        title="Use bb away from this computer"
-        description="Start a task at your desk, then check on it from anywhere. Change these later in Settings."
-        primaryLabel="Start using bb"
-        onPrimary={onFinish}
-        onBack={onBack}
-      >
-        <RedesignedDevicesStep
-          hostName={hostName}
-          showMachines={connect.status === "on"}
-          connectSection={
-            <PluginSetupGuideSections
-              pluginId={CONNECT_PLUGIN_ID}
-              onPhone={onPhone}
-              onSetupStarted={startRemoteAccessSetup}
-              fallback={<ConnectUnavailableRow />}
-            />
-          }
-          addMachinePanel={
-            addMachineOpen && connect.status === "on" ? (
-              <AddMachineInline />
-            ) : null
-          }
-          onAddMachine={addMachine}
-          onCloseAddMachine={closeAddMachine}
-        />
-      </OnboardingLayout>
-    );
-  }
   return (
     <OnboardingLayout
       {...chrome}
@@ -1141,11 +962,27 @@ function DevicesStepContainer({
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
         onToggleConnectSetup={() => {
-          if (!connectSetupOpen) startRemoteAccessSetup();
+          if (
+            !connectSetupOpen &&
+            connect.status === "off" &&
+            !pendingSetup.current.remoteAccess
+          ) {
+            pendingSetup.current.remoteAccess = true;
+            recordDeviceSetup("remote_access", "started");
+          }
           setConnectSetupOpen((open) => !open);
         }}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
-        onAddMachine={addMachine}
+        onAddMachine={() => {
+          if (
+            connectedMachineCount !== undefined &&
+            pendingSetup.current.machinesBefore === null
+          ) {
+            pendingSetup.current.machinesBefore = connectedMachineCount;
+            recordDeviceSetup("add_machine", "started");
+          }
+          setAddMachineOpen(true);
+        }}
       />
       <AddMachineDialog
         open={addMachineOpen}
@@ -1165,29 +1002,13 @@ const STEP_ORDER: readonly OnboardingStepId[] = [
 export function OnboardingFlow({
   initialStep,
   entry,
-  setupGuide,
   onClose,
 }: {
   initialStep: OnboardingStepId;
   entry: OnboardingEntry;
-  setupGuide: SetupGuide;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
-  const redesign = setupGuide.variant === "new";
-  const [stepOutcomes, setStepOutcomes] = useState<
-    ReadonlyMap<OnboardingStepId, StepOutcome>
-  >(() => new Map());
-  const queryClient = useQueryClient();
-  useEffect(() => {
-    void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
-  }, [queryClient]);
-  const exposedRef = useRef(false);
-  useEffect(() => {
-    if (exposedRef.current) return;
-    exposedRef.current = true;
-    recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
-  }, [entry]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
     useState<ReadonlySet<string> | null>(null);
@@ -1311,9 +1132,6 @@ export function OnboardingFlow({
       desktopInfo,
       windowState,
     }),
-    composition: redesign ? "centered" : "docked",
-    showSkipAll: !redesign,
-    skippedSteps: redesign ? skippedStepIds(stepOutcomes) : new Set(),
     onSelectStep: setStep,
     onSkipAll: () => close("skipped"),
   };
@@ -1321,8 +1139,7 @@ export function OnboardingFlow({
     const next = STEP_ORDER[STEP_ORDER.indexOf(step) + offset];
     if (next !== undefined) setStep(next);
   };
-  const advance = (outcome: StepOutcome) => () => {
-    setStepOutcomes((current) => new Map(current).set(step, outcome));
+  const advance = (outcome: "completed" | "skipped") => () => {
     recordTelemetryEvent({
       name:
         outcome === "completed"
@@ -1338,7 +1155,6 @@ export function OnboardingFlow({
       return (
         <AgentStepContainer
           chrome={chrome}
-          redesign={redesign}
           entry={entry}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
@@ -1351,7 +1167,6 @@ export function OnboardingFlow({
       return (
         <ProjectsStepContainer
           chrome={chrome}
-          redesign={redesign}
           entry={entry}
           hostId={hostId}
           projectIdsAtOpen={projectIdsAtOpen}
@@ -1364,7 +1179,6 @@ export function OnboardingFlow({
       return (
         <PluginsStepContainer
           chrome={chrome}
-          setupGuide={setupGuide}
           entry={entry}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
@@ -1375,10 +1189,8 @@ export function OnboardingFlow({
       return (
         <DevicesStepContainer
           chrome={chrome}
-          redesign={redesign}
           entry={entry}
           hostId={hostId}
-          hostName={primaryHost?.name ?? null}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}
           onLeave={() => close("skipped")}

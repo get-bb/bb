@@ -33,46 +33,6 @@ export const ONBOARDING_PLUGINS: readonly {
 
 export const CONNECT_PLUGIN_ID = "connect";
 
-export interface TerminalConnectFlow {
-  input: string;
-}
-
-const TERMINAL_CONNECT_FLOWS: Readonly<Record<string, TerminalConnectFlow>> = {
-  pi: { input: "/login\r" },
-};
-
-export function terminalConnectFlow(
-  providerId: string,
-): TerminalConnectFlow | null {
-  return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
-}
-
-export type SetupGuideVariant = "control" | "new";
-
-export interface SetupGuide {
-  variant: SetupGuideVariant;
-  featuredPluginEntryIds: readonly string[] | null;
-}
-
-export function featuredPluginEntryIds(guide: SetupGuide): readonly string[] {
-  return (
-    guide.featuredPluginEntryIds ??
-    ONBOARDING_PLUGINS.map((plugin) => plugin.entryId)
-  );
-}
-
-export type StepOutcome = "completed" | "skipped";
-
-export function skippedStepIds(
-  outcomes: ReadonlyMap<OnboardingStepId, StepOutcome>,
-): ReadonlySet<OnboardingStepId> {
-  return new Set(
-    [...outcomes]
-      .filter(([, outcome]) => outcome === "skipped")
-      .map(([step]) => step),
-  );
-}
-
 export type AgentSetupState =
   | { status: "checking" }
   | { status: "ready"; detail: string | null }
@@ -161,18 +121,6 @@ export function resolveSignInCommand(
     : health.loginCommand;
 }
 
-export function agentContinueDisabled({
-  redesign,
-  agentReady,
-  statesLoading,
-}: {
-  redesign: boolean;
-  agentReady: boolean;
-  statesLoading: boolean;
-}): boolean {
-  return redesign ? statesLoading : !agentReady;
-}
-
 export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {
@@ -226,15 +174,6 @@ export function connectAccessUrl(
     return { status: "on", url: provider.availability.serverUrl };
   }
   return { status: "off" };
-}
-
-export function signInSiteName(url: string): string | null {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./u, "");
-    return host === "" ? null : host;
-  } catch {
-    return null;
-  }
 }
 
 export interface SignInGuide {

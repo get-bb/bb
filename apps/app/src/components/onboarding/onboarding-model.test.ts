@@ -6,17 +6,13 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
-  agentContinueDisabled,
   connectAccessUrl,
   defaultSelectedRepoPaths,
-  featuredPluginEntryIds,
-  skippedStepIds,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
-  signInSiteName,
 } from "./onboarding-model";
 
 function health(
@@ -511,100 +507,5 @@ describe("parseSignInOutput", () => {
       userCode: null,
       acceptsPastedCode: false,
     });
-  });
-});
-
-describe("featuredPluginEntryIds", () => {
-  it("uses the experiment's plugin list when it has one", () => {
-    expect(
-      featuredPluginEntryIds({
-        variant: "new",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      }),
-    ).toEqual(["memory", "inline-vis"]);
-  });
-
-  it("falls back to today's six plugins without a list", () => {
-    expect(
-      featuredPluginEntryIds({ variant: "new", featuredPluginEntryIds: null }),
-    ).toEqual([
-      "browser-automation",
-      "workflows",
-      "monaco-editor",
-      "prompt-library",
-      "agent-annotations",
-      "ask-user-question",
-    ]);
-  });
-});
-
-describe("skippedStepIds", () => {
-  it("marks only the steps whose last forward move was a skip", () => {
-    expect(
-      [
-        ...skippedStepIds(
-          new Map([
-            ["agent", "skipped"],
-            ["projects", "completed"],
-            ["plugins", "skipped"],
-          ] as const),
-        ),
-      ].sort(),
-    ).toEqual(["agent", "plugins"]);
-  });
-});
-
-describe("agentContinueDisabled", () => {
-  it("holds Continue in the redesign only while agent states load", () => {
-    expect(
-      agentContinueDisabled({
-        redesign: true,
-        agentReady: false,
-        statesLoading: true,
-      }),
-    ).toBe(true);
-    expect(
-      agentContinueDisabled({
-        redesign: true,
-        agentReady: false,
-        statesLoading: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps today's guide blocked until an agent is ready", () => {
-    expect(
-      agentContinueDisabled({
-        redesign: false,
-        agentReady: false,
-        statesLoading: false,
-      }),
-    ).toBe(true);
-    expect(
-      agentContinueDisabled({
-        redesign: false,
-        agentReady: true,
-        statesLoading: true,
-      }),
-    ).toBe(false);
-  });
-});
-
-describe("signInSiteName", () => {
-  it("names the sign-in website without www", () => {
-    expect(signInSiteName("https://www.cursor.com/loginDeepControl?x=1")).toBe(
-      "cursor.com",
-    );
-    expect(signInSiteName("https://auth.openai.com/codex/device")).toBe(
-      "auth.openai.com",
-    );
-    expect(signInSiteName("https://claude.ai/oauth/authorize?code=true")).toBe(
-      "claude.ai",
-    );
-  });
-
-  it("returns null when the URL has no usable host", () => {
-    expect(signInSiteName("not a url")).toBeNull();
-    expect(signInSiteName("file:///tmp/sign-in")).toBeNull();
   });
 });

@@ -347,15 +347,7 @@ export function registerSystemRoutes(
     return context.json(compatibleGeneralSettings());
   });
 
-  get(routes.setupGuide, async (context) => {
-    const { guide, plugins } = await deps.setupGuideExperiment.resolve();
-    return context.json({
-      variant: guide.variant,
-      featuredPluginEntryIds: plugins.featuredPluginEntryIds,
-    });
-  });
-
-  post(routes.recordTelemetryEvent, async (context, payload) => {
+  post(routes.recordTelemetryEvent, (context, payload) => {
     if (
       payload.name === "recommendation" &&
       payload.properties.action === "selected"
@@ -366,24 +358,18 @@ export function registerSystemRoutes(
         payload.properties.recommendation_id,
       );
     }
-    if (payload.name === "onboarding_exposed") {
-      await deps.setupGuideExperiment.recordExposure(payload.properties.entry);
-      return context.json({ ok: true });
-    }
     deps.telemetry.capture(
-      await deps.setupGuideExperiment.annotate(
-        payload.name === "onboarding_operation" &&
-          payload.properties.step === "agent" &&
-          payload.properties.resource_id !== undefined
-          ? {
-              ...payload,
-              properties: {
-                ...payload.properties,
-                resource_id: reportedProviderId(payload.properties.resource_id),
-              },
-            }
-          : payload,
-      ),
+      payload.name === "onboarding_operation" &&
+        payload.properties.step === "agent" &&
+        payload.properties.resource_id !== undefined
+        ? {
+            ...payload,
+            properties: {
+              ...payload.properties,
+              resource_id: reportedProviderId(payload.properties.resource_id),
+            },
+          }
+        : payload,
     );
     return context.json({ ok: true });
   });

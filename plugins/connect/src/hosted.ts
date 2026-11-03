@@ -187,34 +187,19 @@ export class HostedConnectApi {
     code: string,
     signal?: AbortSignal,
   ): Promise<{ consumed: boolean; machineId: string | null }> {
-    let result: AccountFetchResult;
-    try {
-      result = await this.send(
-        {
-          target: "api",
-          method: "POST",
-          path: "/api/connect/machine-code-lookup",
-          body: { code },
-        },
-        signal,
-      );
-    } catch (error) {
-      signal?.throwIfAborted();
-      if (
-        error instanceof NotSignedInError ||
-        error instanceof AccountUnavailableError
-      ) {
-        throw new MachineCodeError("not_paired");
-      }
-      throw new MachineCodeError("network");
-    }
-    if (result.status === 401) throw new MachineCodeError("not_paired");
+    const result = await this.send(
+      {
+        target: "api",
+        method: "POST",
+        path: "/api/connect/machine-code-lookup",
+        body: { code },
+      },
+      signal,
+    );
     if (result.status < 200 || result.status >= 300) {
-      throw new MachineCodeError("network");
+      throw new Error(`Machine code lookup failed (${result.status})`);
     }
-    const parsed = machineCodeLookupSchema.safeParse(result.body);
-    if (!parsed.success) throw new MachineCodeError("network");
-    return parsed.data;
+    return machineCodeLookupSchema.parse(result.body);
   }
 
   async revokeMachine(machineId: string, signal?: AbortSignal): Promise<void> {

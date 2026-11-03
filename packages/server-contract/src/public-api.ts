@@ -199,7 +199,6 @@ import {
   type SendQueuedMessageResponse,
   type SidebarBootstrapResponse,
   type SystemAttentionResponse,
-  type SystemSetupGuideResponse,
   type SystemConfigReloadResponse,
   type SystemConfigResponse,
   type SystemMobileAppReleasesResponse,
@@ -1938,12 +1937,6 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
-    }),
-    setupGuide: defineRoute({
-      path: "/system/setup-guide",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<SystemSetupGuideResponse>(),
     }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",

@@ -4,7 +4,6 @@ import type {
   ExperimentalTabRegistration,
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
-  InternalDoNotUseSetupGuideSectionRegistration,
   ExperimentalCodeFenceRendererRegistration,
   ExperimentalSidebarFooter,
   ExperimentalSidebarFooterActionRegistration,
@@ -308,7 +307,6 @@ export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
   appOverlays: ExperimentalAppOverlayRegistration[];
-  setupGuideSections: InternalDoNotUseSetupGuideSectionRegistration[];
   navPanels: LegacyNavPanelRegistration[];
   tabs: ExperimentalTabRegistration[];
   threadPanelActions: LegacyThreadPanelActionRegistration[];
@@ -443,7 +441,6 @@ export function collectPluginAppRegistrations(
     homepageSections: [],
     settingsSections: [],
     appOverlays: [],
-    setupGuideSections: [],
     navPanels: [],
     tabs: [],
     get threadPanelActions() {
@@ -493,7 +490,6 @@ export function collectPluginAppRegistrations(
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
     appOverlay: new Set<string>(),
-    setupGuideSection: new Set<string>(),
     navPanel: new Set<string>(),
     tab: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
@@ -738,15 +734,6 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.appOverlay, id);
         collected.appOverlays.push({
-          id,
-          component: requireComponent(kind, registration.component),
-        });
-      },
-      internal_DO_NOT_USE_setupGuideSection(registration) {
-        const kind = "slots.internal_DO_NOT_USE_setupGuideSection";
-        const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.setupGuideSection, id);
-        collected.setupGuideSections.push({
           id,
           component: requireComponent(kind, registration.component),
         });
