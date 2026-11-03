@@ -319,9 +319,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 600px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 22px 24px;
+  padding: 22px 16px;
 }
 
 .rhb .rhb-user {
@@ -364,7 +364,7 @@
 .rhb .rhb-dock-wrap {
   flex-shrink: 0;
   width: 100%;
-  max-width: 620px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 0 16px 8px;
 }
@@ -650,7 +650,6 @@
   display: flex;
   flex-direction: column;
   width: min(100%, 420px);
-  margin-left: 8px;
   padding: 12px 14px 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1221,6 +1220,7 @@
 }
 
 .rhb .rhb-still .rhb-feed {
+  --rhb-feed-gap: 10px;
   gap: 10px;
   padding-block: 14px;
 }
@@ -1321,14 +1321,6 @@
     --rhb-rail-w: 44px;
     --rhb-side-w: 176px;
     --rhb-panel-w: 236px;
-  }
-
-  .rhb .rhb-feed {
-    padding-inline: 18px;
-  }
-
-  .rhb .rhb-dock-wrap {
-    padding-inline: 12px;
   }
 
   .rhb .rhb-strip-label,
@@ -1922,12 +1914,6 @@
   margin-top: 9px;
 }
 
-/* Keyed to the feed's own scene so an outgoing feed keeps its layout while
-   it fades out. */
-.rhb .rhb-fl-linear > .rhb-feed {
-  padding-inline: 16px;
-}
-
 .rhb .rhb-ctx-branch {
   white-space: nowrap;
 }
@@ -2083,7 +2069,6 @@
   display: flex;
   flex-direction: column;
   width: min(100%, 460px);
-  margin-left: 8px;
   padding: 10px 12px 6px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -2387,7 +2372,6 @@
   align-items: center;
   gap: 12px;
   width: min(100%, 460px);
-  margin-left: 8px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -2759,7 +2743,7 @@
   }
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-col-page { width: calc(50% - 8px); }
   .rhb .rhb-scene-sentry.rhb-has-collapsed .rhb-feed,
-  .rhb .rhb-scene-sentry.rhb-has-collapsed .rhb-dock-wrap { width: 400px; max-width: 100%; }
+  .rhb .rhb-scene-sentry.rhb-has-collapsed .rhb-dock-wrap { width: 50%; }
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-feed,
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-dock-wrap { margin-right: 0; }
   .rhb .rhb-scene-sentry.rhb-has-sentry .rhb-col-main > .rhb-band { padding-left: calc(50% + 14px); }
@@ -2894,7 +2878,7 @@
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting > * {
-  animation: rhb-mute 0.6s ease var(--rhb-mute-at, 0s) both;
+  animation: rhb-mute 0.35s ease var(--rhb-mute-at, 0s) both;
 }
 
 @keyframes rhb-mute {
@@ -2956,4 +2940,62 @@
 .rhb .rhb-feed .rhb-work,
 .rhb .rhb-say {
   padding-left: 0;
+}
+
+.rhb .rhb-turn-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-top: -6px;
+}
+
+.rhb .rhb-turn-fold > .rhb-turn-body {
+  min-height: 0;
+  margin-top: 0;
+}
+
+.rhb .rhb-turn-fold.is-furling {
+  animation:
+    rhb-reveal 0s linear backwards,
+    rhb-furl 0.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes rhb-furl {
+  from {
+    grid-template-rows: 1fr;
+    margin-bottom: 0;
+    opacity: 1;
+    clip-path: inset(0);
+  }
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
+    opacity: 0;
+    clip-path: inset(0);
+  }
+}
+
+.rhb .rhb-turn.is-furling > .rhb-chev {
+  animation: rhb-chev-furl 0.3s cubic-bezier(0.65, 0, 0.35, 1)
+    var(--rhb-furl-at, 0s) both;
+}
+
+@keyframes rhb-chev-furl {
+  to {
+    rotate: -90deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rhb .rhb-turn-fold.is-furling {
+    animation: none;
+    grid-template-rows: 0fr;
+    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
+    opacity: 0;
+    clip-path: inset(0);
+  }
+
+  .rhb .rhb-turn.is-furling > .rhb-chev {
+    animation: none;
+    rotate: -90deg;
+  }
 }
