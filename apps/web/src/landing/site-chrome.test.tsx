@@ -20,20 +20,6 @@ function navFor(key: string, variant: string): string {
   );
 }
 
-function navFor(key: string, variant: string): string {
-  return renderToStaticMarkup(
-    <ExperimentsProvider
-      value={{
-        distinctID: null,
-        featureFlags: { [key]: variant },
-        preview: false,
-      }}
-    >
-      <SiteNav current="blog" />
-    </ExperimentsProvider>,
-  );
-}
-
 describe("site navigation", () => {
   it("shows the compact link set with an icon-only GitHub button", () => {
     const html = renderToStaticMarkup(<SiteNav current="plugins" />);
