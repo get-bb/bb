@@ -741,21 +741,6 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
   ].filter((value) => value !== undefined);
 }
 
-function buildListThreadsForProjectsFilters(
-  options: ListThreadsForProjectsOptions,
-) {
-  return [
-    inArray(threads.projectId, [...options.projectIds]),
-    eq(threads.visibility, "visible"),
-    nonDeletedThreads(),
-    options.archived === true
-      ? isNotNull(threads.archivedAt)
-      : options.archived === false
-        ? isNull(threads.archivedAt)
-        : undefined,
-  ].filter((value) => value !== undefined);
-}
-
 function buildActiveProjectThreadOrderBy() {
   return [
     asc(threads.projectId),
@@ -1508,7 +1493,12 @@ export function listThreadsWithPendingInteractionStateForProjects(
   }
 
   const rows = threadWithPendingInteractionBaseQuery(db)
-    .where(and(...buildListThreadsForProjectsFilters(options)))
+    .where(
+      and(
+        inArray(threads.projectId, [...options.projectIds]),
+        ...buildListThreadsFilters(options),
+      ),
+    )
     .orderBy(...buildListThreadsOrderBy(options))
     .all();
 
