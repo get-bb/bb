@@ -120,6 +120,7 @@ const testState = vi.hoisted(() => ({
 const modeState = vi.hoisted(() => ({
   activeRecents: [] as ThreadListEntry[],
   archivedRecents: [] as ThreadListEntry[],
+  archivedRecentsEnabled: false,
   threadDraftIds: new Set<string>(),
   searchResponse: undefined as ThreadSearchResponse | undefined,
   recentLoading: false,
@@ -243,11 +244,14 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/palette-thread-queries", () => ({
-  usePaletteRecentArchivedThreads: () => ({
-    data: modeState.archivedRecents,
-    isLoading: false,
-    isError: false,
-  }),
+  usePaletteRecentArchivedThreads: ({ enabled }: { enabled: boolean }) => {
+    modeState.archivedRecentsEnabled = enabled;
+    return {
+      data: modeState.archivedRecents,
+      isLoading: false,
+      isError: false,
+    };
+  },
 }));
 
 vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
@@ -414,6 +418,7 @@ afterEach(() => {
   testState.plugins.length = 0;
   modeState.activeRecents = [];
   modeState.archivedRecents = [];
+  modeState.archivedRecentsEnabled = false;
   modeState.threadDraftIds.clear();
   modeState.searchResponse = undefined;
   modeState.recentLoading = false;
@@ -1107,6 +1112,22 @@ describe("CommandPalette", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       selectedOption()?.id,
     );
+  });
+
+  it("loads archived recents only while Archived is selected and the query is empty", async () => {
+    const { store } = renderPalette();
+    openThreadSearch();
+    await screen.findByRole("combobox", { name: "Search threads" });
+    expect(modeState.archivedRecentsEnabled).toBe(false);
+
+    act(() => store.set(paletteThreadLifecyclesAtom, ["active", "archived"]));
+    expect(modeState.archivedRecentsEnabled).toBe(true);
+
+    fireEvent.change(searchField(), { target: { value: "match" } });
+    expect(modeState.archivedRecentsEnabled).toBe(false);
+
+    fireEvent.change(searchField(), { target: { value: "  " } });
+    expect(modeState.archivedRecentsEnabled).toBe(true);
   });
 
   it("operates the lifecycle filter with the keyboard without selecting a result", async () => {

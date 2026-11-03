@@ -52,7 +52,6 @@ import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-un
 import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,
-  resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
 import { REALTIME_SYSTEM_CHANGE_REGISTRY } from "./cache-owners/realtime-cache-registry";
@@ -2985,16 +2984,49 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("keeps the fine-pointer cadence and widens it for coarse pointers", () => {
-    expect(resolveThreadInvalidationDebounce(false)).toEqual({
-      debounceMs: 50,
-      maxWaitMs: 200,
-    });
-    expect(resolveThreadInvalidationDebounce(true)).toEqual({
-      debounceMs: 150,
-      maxWaitMs: 400,
-    });
-  });
+  it.each([
+    { pointer: "fine", coarse: false, debounceMs: 50, maxWaitMs: 200 },
+    { pointer: "coarse", coarse: true, debounceMs: 150, maxWaitMs: 400 },
+  ])(
+    "flushes thread changes $debounceMs ms after the last one, or $maxWaitMs ms into a burst, for a $pointer pointer",
+    ({ coarse, debounceMs, maxWaitMs }) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("window", {
+        matchMedia: (query: string) => ({
+          matches: coarse && query === "(pointer: coarse)",
+        }),
+      });
+      const { effects, queryClient, terminalKey } =
+        createRealtimeEffectsTestContext();
+      vi.unstubAllGlobals();
+      const changeTerminals = () =>
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: "thr_1",
+          changes: ["terminals-changed"],
+        });
+      const invalidated = () =>
+        queryClient.getQueryState(terminalKey)?.isInvalidated === true;
+
+      changeTerminals();
+      vi.advanceTimersByTime(debounceMs - 1);
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      queryClient.setQueryData(terminalKey, { sessions: [] });
+      for (let elapsed = 0; elapsed < maxWaitMs - 1; elapsed += 10) {
+        changeTerminals();
+        vi.advanceTimersByTime(Math.min(10, maxWaitMs - 1 - elapsed));
+      }
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      effects.dispose();
+    },
+  );
 
   it("applies the reconnect watermark from the connected event", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
