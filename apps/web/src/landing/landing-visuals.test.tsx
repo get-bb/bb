@@ -10,6 +10,7 @@ import { MarketplaceLink } from "./cta";
 import {
   DelegationTree,
   PluginMap,
+  PluginMorph,
   StartAnywhere,
   useCycle,
 } from "./landing-visuals";
@@ -247,6 +248,85 @@ describe("PluginMap", () => {
   });
 });
 
+describe("PluginMorph", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  function mount(reduce = false) {
+    vi.useFakeTimers();
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    vi.stubGlobal("matchMedia", () => ({ matches: reduce }));
+    FakeObserver.instances = [];
+    const view = render(<PluginMorph />);
+    const root = view.host.querySelector<HTMLElement>(".bw-morph")!;
+    const layer = (selector: string) =>
+      view.host.querySelector(selector)!.className;
+    return { ...view, root, layer };
+  }
+
+  it("draws every configuration in one window, starting on a plain thread", () => {
+    const html = renderToStaticMarkup(<PluginMorph />);
+    for (const text of [
+      'role="img"',
+      'data-scene="stock"',
+      "Fix the checkout bug",
+      "Kanban",
+      "Start task",
+      "Agent graph",
+      "Working set",
+      "PR needs you",
+      "Settled (23)",
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html.match(/class="mock bw-window mx-window"/g)).toHaveLength(1);
+    expect(html.match(/mx-layer is-on/g)).toHaveLength(2);
+  });
+
+  it("changes configuration on a beat, only while on screen and visible", () => {
+    const { root, layer, unmount } = mount();
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(root.dataset.scene).toBe("stock");
+
+    FakeObserver.instances[0]!.show(true);
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(root.dataset.scene).toBe("taskboard");
+    expect(root.className).toContain("mx-taskboard");
+    expect(layer(".mx-center > .main:nth-child(2)")).toContain("is-entering");
+    expect(layer(".mx-center > .main:nth-child(1)")).toContain("is-under");
+
+    act(() => vi.advanceTimersByTime(1_100));
+    expect(layer(".mx-center > .main:nth-child(1)")).not.toContain("is-under");
+
+    act(() => vi.advanceTimersByTime(4_100 * 3));
+    expect(root.dataset.scene).toBe("shelves");
+
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(root.dataset.scene).toBe("shelves");
+    expect(root.className).toContain("fw-paused");
+
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    act(() => vi.advanceTimersByTime(4_100));
+    expect(root.dataset.scene).toBe("stock");
+    unmount();
+  });
+
+  it("holds one static configuration under reduced motion", () => {
+    const { root, unmount } = mount(true);
+    FakeObserver.instances[0]!.show(true);
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(root.dataset.scene).toBe("taskboard");
+    expect(root.querySelector(".is-entering")).toBeNull();
+    unmount();
+  });
+});
+
 describe("DelegationTree", () => {
   it("shows the lead, its three children, their updates and one ping", () => {
     const html = renderToStaticMarkup(<DelegationTree />);
@@ -272,6 +352,7 @@ describe("DelegationTree", () => {
 describe("below-the-fold bb windows", () => {
   it.each([
     ["PluginMap", PluginMap],
+    ["PluginMorph", PluginMorph],
     ["DelegationTree", DelegationTree],
     ["StartAnywhere", StartAnywhere],
   ])("%s uses the nav rail and no Commit button", (_, Visual) => {
