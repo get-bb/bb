@@ -37,6 +37,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
+    "remark-directive": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
     "zod": "4.6.5"
@@ -47,6 +48,7 @@
     "@cloudflare/workers-types": "^4.20260610.0",
     "@tailwindcss/vite": "^4.3.0",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/mdast": "^4.0.4",
     "@types/mdx": "^2.0.13",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

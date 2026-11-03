@@ -10,6 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { breadcrumbJsonLd } from "./breadcrumbs";
 import { DocsH2, DocsH3 } from "./docs-headings";
 import { ReferenceBody } from "./reference-body";
+import { docsMdxOptions } from "./mdx-options";
 import { searchEntries, tableRowText } from "./search-results";
 
 const dir = mkdtempSync(path.join(tmpdir(), "bb-docs-reader-"));
@@ -23,7 +24,7 @@ async function compileHtml(source: string): Promise<string> {
     {
       docs: defineDocs({
         dir,
-        docs: { async: true },
+        docs: { async: true, mdxOptions: docsMdxOptions },
       }),
     },
     { environment: "test", outDir: dir },
