@@ -1,0 +1,98 @@
+---
+title: Move your server to another machine
+description: Move the bb server to another computer, such as a new laptop. Turn on the Server move experiment, add the computer as a machine, then move the server.
+type: how-to
+sources:
+  - apps/app/src/components/machines/MoveServerDialog.tsx
+  - apps/app/src/components/machines/server-move.ts
+  - apps/app/src/components/machines/OldServerCopySection.tsx
+  - apps/server/src/services/server-move/**
+  - apps/cli/src/commands/server.ts
+since: 0.43.3
+owner: brsbl
+verified: 2026-10-30
+---
+
+Your data moves, every machine and app switches over, and the old computer stays a regular machine. Moving is experimental.
+
+## Before you start
+
+1. Turn on **Settings → Experiments → Server move**, or run `bb settings experiment serverMove true`.
+2. [Add the new computer as a machine](/docs/add-a-machine) and keep it online. It must run macOS or Linux, with the server's bb version or older.
+3. Finish running work. Moving stops every turn and pauses automations.
+
+<Screenshot
+  src="/docs-images/move-your-server-to-another-machine/server-move-experiment"
+  alt="Settings → Experiments lists the Server move experiment with a switch to turn it on."
+  width={760}
+  height={284}
+/>
+
+## What moves and what stays
+
+| Moves to the new server | Stays where it is |
+| --- | --- |
+| Threads, projects and history | Worktrees and checkouts |
+| Settings, plugin data and attachments | Thread storage |
+
+With bb connect, the `getbb.app` address stays the same. Without it, you give the new address.
+
+## Move the server
+
+<Tabs items={["Desktop", "CLI"]}>
+<Tab value="Desktop">
+
+1. Open **Settings → Machines**.
+2. In the **⋯** menu on the new computer, choose **Move server here**.
+3. Fix anything under **Fix before moving**, then choose **Check again**.
+4. Without bb connect, enter the **New server address** and choose **Check address**.
+5. Choose **Stop all and move**.
+
+Apps reconnect when it's done.
+
+</Tab>
+<Tab value="CLI">
+
+Print the checklist without moving:
+
+```bash
+bb server move --to "<machine name>" --check
+```
+
+Move (without bb connect, add `--address` with the new server's URL):
+
+```bash
+bb server move --to "<machine name>"
+```
+
+```bash
+bb server move status
+bb server move cancel
+```
+
+It exits 0 once moved, 1 on failure or cancel, and 2 while waiting for the new server.
+
+</Tab>
+</Tabs>
+
+If the new computer already has server data, confirm in the checklist or pass `--archive-existing-data` to set it aside. It's never merged.
+
+## After the move
+
+- **The old data stays as a backup.** Remove it with **Delete old copy** on the old computer in **Settings → Machines**, or `bb server delete-old-copy` there.
+- **Old server ran with `npx bb-app`?** Run `bb server install-machine-service` on it to stay connected after reboots.
+
+## Check it worked
+
+- **Settings → Machines** shows the `server` badge on the new computer.
+- `bb server move status` shows the last move as finished.
+
+## Related troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| **Move server here** is missing | Turn on the experiment. It appears only for a connected, persistent machine. |
+| The checklist says the new computer is offline | Use **Reconnect** in **Settings → Machines**. |
+| The checklist says it runs a newer bb | Update the current server first, then move. |
+| `bb server move status` exits with 2 | The old server stays up, read-only, until the new one confirms. `bb server move cancel` stays put. |
+| The old copy won't start after an abandoned move | As a last resort, `bb server unlock`. Changes since the move are lost. |

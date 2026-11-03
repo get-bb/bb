@@ -1,0 +1,80 @@
+---
+title: Machines, servers and the host daemon
+description: One computer runs the bb server, which keeps threads and settings. Every computer that runs agents runs a host daemon and shows up as a machine.
+type: concept
+sources:
+  - apps/app/src/components/settings/MachinesSettingsSection.tsx
+  - apps/app/src/components/settings/MachineAccessSettings.tsx
+  - apps/server/src/services/machines/**
+  - apps/desktop/src/menu.ts
+  - docs/multiple-devices.md
+since: 0.0.30
+owner: brsbl
+verified: 2026-10-30
+---
+
+<Screenshot
+  src="/docs-images/machines-servers-and-the-host-daemon/how-bb-connects"
+  alt="The desktop, browser and phone apps connect to one bb server, which sends work to machines that each run a host daemon."
+  width={720}
+  height={400}
+/>
+
+## What runs where
+
+| Part | Where it runs | What it does |
+| --- | --- | --- |
+| **Server** | One computer you choose | Stores threads, projects, settings and plugin data. Serves the app and API, and sends work to machines. |
+| **Host daemon** | Every machine | Creates worktrees, runs agent CLIs, terminals and commands, and reports to the server. |
+| **Apps** | Your laptop, a browser, your phone | Show the server's threads and send your messages. They don't make a computer a machine. |
+
+The desktop app or `npx bb-app@latest` runs both the server and that computer's host daemon. With nothing else added, it is your only machine.
+
+## The server machine
+
+It has a `server` badge in **Settings → Machines** and `bb machine list`.
+
+- **Keep it on.** While it sleeps or is off, no app or machine can reach bb, and running threads may stop.
+- **It can't be removed.** To change computers, [move your server](/docs/move-your-server-to-another-machine).
+- **Its data stays put** in `~/.bb` on that computer. Worktrees and checkouts stay on the machine that created them.
+
+## Machines
+
+A machine is any computer whose host daemon is connected to your server. You pick one when you start a thread, and the agent runs there.
+
+| Kind | Notes |
+| --- | --- |
+| The server's own computer | A machine from the start |
+| Computers you add | Run only a host daemon, not a second server. See [Add a machine](/docs/add-a-machine). |
+| Sandboxes from a plugin, such as Modal Sandbox | Made for a thread and removed after it. See [Run threads in sandboxes](/docs/run-threads-in-sandboxes). |
+
+A computer can be a machine for several servers, with a separate host daemon and folder for each.
+
+## How apps and machines reach the server
+
+The server listens only on `127.0.0.1` by default. Choose a route in **Settings → Machines → Machine access**:
+
+- **bb connect:** a private `getbb.app` address that only your bb account can open.
+- **Manual:** your own domain or a shared-network address, such as Tailscale.
+
+## One server per app
+
+Each app shows one server at a time. Switch with **Window → Server** on desktop, or **Servers** in the phone app's device settings. Servers share nothing.
+
+## When to use which
+
+| If you want to | Do this |
+| --- | --- |
+| Use bb on one computer | Nothing: the desktop app is the server and the only machine |
+| Run agents on a second computer, VM or container | [Add it as a machine](/docs/add-a-machine) |
+| Keep bb running while your laptop sleeps | [Run the server on an always-on machine](/docs/run-bb-on-an-always-on-machine) and use the laptop as a client |
+| Keep work and personal threads apart | [Run two servers](/docs/run-several-servers) and switch between them |
+| Use a new computer as the server | [Move your server](/docs/move-your-server-to-another-machine) |
+| Check on threads from your phone | [Use bb on your phone](/docs/use-bb-on-your-phone) |
+| Give each thread a fresh, disposable computer | [Run threads in sandboxes](/docs/run-threads-in-sandboxes) |
+
+## Next steps
+
+- [Add a machine](/docs/add-a-machine)
+- [Run bb on an always-on machine](/docs/run-bb-on-an-always-on-machine)
+- [Set up remote access](/docs/set-up-remote-access)
