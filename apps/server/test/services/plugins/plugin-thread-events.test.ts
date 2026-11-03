@@ -682,6 +682,41 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
+  it("delivers a read event when a thread is marked read but not unread", async () => {
+    const recorded: Array<{ threadId: string; read: boolean }> = [];
+    globals.__readEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("experimental_thread.read", ({ thread }: any) => {
+          (globalThis as any).__readEvents.push({
+            threadId: thread.id,
+            read: (thread.lastReadAt ?? 0) >= thread.latestAttentionAt,
+          });
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      const post = (action: "read" | "unread") =>
+        harness.app.request(`/api/v1/threads/${thread.id}/${action}`, {
+          method: "POST",
+        });
+
+      expect((await post("unread")).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(recorded).toEqual([]);
+      expect((await post("read")).status).toBe(200);
+      await vi.waitFor(() =>
+        expect(recorded).toEqual([{ threadId: thread.id, read: true }]),
+      );
+    } finally {
+      delete globals.__readEvents;
+      await cleanup();
+    }
+  });
+
   it("delivers one delete event per thread when deleting a project", async () => {
     const recorded: string[] = [];
     globals.__projectDeletedEvents = recorded;

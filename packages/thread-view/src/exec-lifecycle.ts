@@ -77,6 +77,7 @@ interface ExecutionUpdateBase {
 export interface CommandExecutionUpdate extends ExecutionUpdateBase {
   kind: "command";
   command?: string;
+  description?: string | null;
   cwd?: string | null;
   parsedIntents?: EventProjectionToolParsedIntent[];
   source?: string | null;
@@ -190,6 +191,7 @@ export function parseExecLifecycleEvent(
         kind: "command",
         callId,
         command,
+        description: decoded.item.description ?? null,
         cwd: decoded.item.cwd,
         parsedIntents: parseShellCommandIntents(command),
         output: decoded.item.aggregatedOutput,

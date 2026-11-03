@@ -24,6 +24,8 @@ interface FakeAccountState {
 
 export class FakeAccount {
   available = true;
+  moving = false;
+  movingReads = 0;
   credential: string | null = null;
   private current: FakeAccountState = {
     state: "signed-out",
@@ -68,14 +70,35 @@ export class FakeAccount {
     this.wake();
   }
 
+  startServerMove(): void {
+    this.moving = true;
+    this.wake();
+  }
+
+  finishServerMove(): void {
+    this.moving = false;
+  }
+
   readonly callRpc = async (args: FakeRpcArgs): Promise<unknown> => {
+    this.refuseWhileMoving();
     if (args.pluginId !== "bb-account" || !this.available) {
       throw Object.assign(new Error("HTTP 503: bb-account is not running"), {
         status: 503,
       });
     }
-    return args.outputSchema.parse(await this.handle(args));
+    const result = await this.handle(args);
+    this.refuseWhileMoving();
+    return args.outputSchema.parse(result);
   };
+
+  private refuseWhileMoving(): void {
+    if (!this.moving) return;
+    this.movingReads += 1;
+    throw Object.assign(new Error("HTTP 503: Changes are paused"), {
+      status: 503,
+      code: "server_moving",
+    });
+  }
 
   private wake(): void {
     for (const waiter of [...this.waiters]) waiter();

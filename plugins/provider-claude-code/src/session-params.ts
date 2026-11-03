@@ -79,6 +79,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   artifactsEnabled: boolean;
   sandboxEnabled: boolean;
   fullAccessApprovalsEnabled: boolean;
+  commandDescriptionsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
   skillRoots?: readonly ClaudeCodeSkillRoot[] | undefined;
@@ -142,6 +143,7 @@ function buildInternalSessionParams(
     artifactsEnabled: args.options.artifactsEnabled,
     sandboxEnabled: args.options.sandboxEnabled,
     fullAccessApprovalsEnabled: args.options.fullAccessApprovalsEnabled,
+    commandDescriptionsEnabled: args.options.commandDescriptionsEnabled,
     memoryEnabled: args.options.memoryEnabled,
     providerSubagentsEnabled: args.options.providerSubagentsEnabled,
     ...(dynamicTools && dynamicTools.length > 0 ? { dynamicTools } : {}),
@@ -157,6 +159,7 @@ const claudeProviderOptionsSchema = z
     artifactsEnabled: z.boolean().optional(),
     sandboxEnabled: z.boolean().optional(),
     fullAccessApprovalsEnabled: z.boolean().optional(),
+    commandDescriptionsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
     additionalWorkspaceWriteRoots: z.array(z.string()).optional(),
@@ -206,6 +209,8 @@ export function buildClaudeSessionParams(
       sandboxEnabled: providerOptions.sandboxEnabled ?? true,
       fullAccessApprovalsEnabled:
         providerOptions.fullAccessApprovalsEnabled ?? false,
+      commandDescriptionsEnabled:
+        providerOptions.commandDescriptionsEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     },
@@ -263,6 +268,7 @@ export function buildClaudeTurnParams(
     artifactsEnabled: providerOptions.artifactsEnabled,
     sandboxEnabled: providerOptions.sandboxEnabled,
     fullAccessApprovalsEnabled: providerOptions.fullAccessApprovalsEnabled,
+    commandDescriptionsEnabled: providerOptions.commandDescriptionsEnabled,
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     ...(config ? { config } : {}),

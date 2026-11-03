@@ -76,6 +76,7 @@ describe("bb thread log command output", () => {
           status: "pending",
           callId: "cmd-1",
           command: "git push",
+          description: null,
           cwd: null,
           source: null,
           output: "",

@@ -107,6 +107,7 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
+import { shellSetBadge } from "@/lib/native-shell";
 import {
   desktopAttentionThreads,
   shouldShowFaviconAttentionDot,
@@ -722,11 +723,17 @@ function AppLayoutContent({ children }: AppLayoutProps) {
     ? "unread"
     : "none";
   useFaviconBadge(faviconBadge);
+  const attentionThreads = useMemo(
+    () => desktopAttentionThreads(sidebarThreads),
+    [sidebarThreads],
+  );
+  const pendingThreadCount = attentionThreads.pendingThreadIds.length;
   useEffect(() => {
-    window.bbDesktop?.setAttentionThreads?.(
-      desktopAttentionThreads(sidebarThreads),
-    );
-  }, [sidebarThreads]);
+    window.bbDesktop?.setAttentionThreads?.(attentionThreads);
+  }, [attentionThreads]);
+  useEffect(() => {
+    shellSetBadge(pendingThreadCount);
+  }, [pendingThreadCount]);
   useEffect(
     () => () =>
       window.bbDesktop?.setAttentionThreads?.({
