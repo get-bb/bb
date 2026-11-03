@@ -6,7 +6,7 @@
 }
 
 .rhb .rhb-win {
-  --rhb-frame: var(--mock-active);
+  --rhb-frame: color-mix(in oklch, var(--ink) 7%, var(--bg));
   --rhb-sidebar: color-mix(in oklch, var(--ink) 2.5%, var(--bg));
   --rhb-seam: color-mix(in oklch, var(--ink) 9.5%, var(--bg));
   position: relative;
