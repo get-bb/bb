@@ -68,6 +68,7 @@ export function ReviewPanel() {
               </li>
             ))}
           </ul>
+          <YoursSwitch />
           <span className="review-panel-all">
             <button type="button" onClick={() => all("new")}>All new</button>
             <button type="button" onClick={() => all("control")}>All control</button>
@@ -75,5 +76,44 @@ export function ReviewPanel() {
         </>
       ) : null}
     </aside>
+  );
+}
+
+const YOURS_OPTIONS = [
+  ["morph", "Changing window"],
+  ["browse", "Browse hero"],
+  ["marketplace", "Marketplace"],
+] as const;
+
+function YoursSwitch() {
+  const [current, setCurrent] = useState("morph");
+  useEffect(() => {
+    setCurrent(new URLSearchParams(window.location.search).get("yours") ?? "morph");
+  }, []);
+  const pick = (value: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("yours", value);
+    window.location.assign(url.toString());
+  };
+  return (
+    <ul>
+      <li>
+        <span>Make bb yours graphic</span>
+      </li>
+      <li>
+        <span className="review-panel-seg">
+          {YOURS_OPTIONS.map(([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              aria-pressed={current === value}
+              onClick={() => pick(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      </li>
+    </ul>
   );
 }
