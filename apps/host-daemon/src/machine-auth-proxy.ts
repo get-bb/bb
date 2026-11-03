@@ -144,6 +144,9 @@ function proxyRequest(args: {
     args.target,
     args.serverHeaders,
   );
+  args.response.once("close", () => {
+    if (!args.response.writableFinished) upstream.destroy();
+  });
   upstream.once("response", (upstreamResponse) => {
     args.response.writeHead(
       upstreamResponse.statusCode ?? 502,
@@ -157,6 +160,7 @@ function proxyRequest(args: {
     upstreamResponse.pipe(args.response);
   });
   upstream.on("error", () => {
+    if (args.response.destroyed) return;
     if (args.response.headersSent) {
       args.response.destroy();
       return;
