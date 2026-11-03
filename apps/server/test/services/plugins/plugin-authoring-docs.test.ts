@@ -260,9 +260,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "originPluginId",
   ],
 } as const satisfies {
-  [
-    E in keyof PluginThreadEventPayloads
-  ]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -477,7 +475,8 @@ const FRONTEND_SLOT_PROP_FIELDS = {
 type MissingSlotPropField = {
   [S in keyof SlotPropsByName]: Exclude<
     SlotPropKeys<SlotPropsByName[S]>,
-    (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | `internal_DO_NOT_USE_${string}`
   >;
 }[keyof SlotPropsByName];
 const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never

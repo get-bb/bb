@@ -759,6 +759,66 @@ describe("connect settings section", () => {
       }),
     );
   });
+
+  it("reports setup started when sign-in starts, not when the section opens", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    const signIn = await slot.findByRole("button", {
+      name: "Sign in to your bb account",
+    });
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.click(signIn);
+    await slot.findByText("K7QP-2M4X");
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+  });
+
+  it("reports setup started when a pairing code is submitted or remote access is turned on", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
+    const unpaired = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+    fireEvent.click(
+      await unpaired.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.change(unpaired.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+    await waitFor(() => expect(onSetupStarted).toHaveBeenCalledOnce());
+    cleanup();
+
+    onSetupStarted.mockClear();
+    const off = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        rpc: {
+          status: () => connected({ enabled: false, state: "disconnected" }),
+          setRemoteAccess: () => connected({ state: "reconnecting" }),
+        },
+      },
+    );
+    const turnOn = await off.findByRole("button", { name: "Turn on" });
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.click(turnOn);
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Connect settings realtime recovery", () => {

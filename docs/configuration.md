@@ -363,6 +363,14 @@ first-send events through `POST /api/v1/system/telemetry/events`
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
+`onboarding_operation` records setup-guide work by `operation`: `import`
+(selected repos imported together, or one folder added through "Add a folder
+that isn't listed", with `item_count` 1), `remote_access` (`started` when
+getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
+not when the bb connect panel is merely opened), and `add_machine` (`started`
+when the machine setup command is shown). Continue on the projects step counts
+as completed in the new guide when a project was added during the guide by
+either route.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves both flag assignments, adds
 `setup_guide_variant`, `setup_guide_source`, `featured_plugins_variant`, and

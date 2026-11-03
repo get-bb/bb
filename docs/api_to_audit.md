@@ -1328,6 +1328,27 @@ Devices step, which renders `PluginSetupGuideSections` for `connect`.
 setup guide rows, which groups they may target, and whether the guide should
 own the row chrome instead of the plugin rendering `SetupOptionRow`.
 
+## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` (`@get-bb/plugin-sdk/app`)
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_onSetupStarted` is set only when the setup guide renders a
+plugin's settings section inline (the current guide's Devices step expands the
+bb connect settings under Set up). The section calls it when the user actually
+starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
+code is submitted, or Turn on is pressed, so the current guide records
+`remote_access` `started` at the same moment as the redesigned guide's
+`onSetupStarted`. Core's `PluginSettingsSections` passes it through its
+`onSetupStarted` prop; Settings never sets it.
+
+Callers: the bundled `connect` plugin only. Core caller: the onboarding
+Devices step (current guide), which renders `PluginSettingsSections` for
+`connect`.
+
+**Audit before stabilizing.** Decide whether the setup guide should render
+setup guide rows in both variants instead, which would make this prop
+unnecessary.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto

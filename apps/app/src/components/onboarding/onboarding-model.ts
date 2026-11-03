@@ -173,6 +173,25 @@ export function agentContinueDisabled({
   return redesign ? statesLoading : !agentReady;
 }
 
+export function projectsPrimaryAction({
+  redesign,
+  selectedCount,
+  existingProjectIds,
+  projectIds,
+}: {
+  redesign: boolean;
+  selectedCount: number;
+  existingProjectIds: ReadonlySet<string> | null;
+  projectIds: readonly string[];
+}): "import" | StepOutcome {
+  if (selectedCount > 0) return "import";
+  if (!redesign) return "completed";
+  const added =
+    existingProjectIds !== null &&
+    projectIds.some((id) => !existingProjectIds.has(id));
+  return added ? "completed" : "skipped";
+}
+
 export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {

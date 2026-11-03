@@ -18,6 +18,7 @@ import {
   useRpc,
   useSdk,
   type InternalDoNotUseSetupGuideSectionProps,
+  type PluginSettingsSectionProps,
 } from "@get-bb/plugin-sdk/app";
 import { mobileAppDownloads } from "@bb/domain";
 import {
@@ -435,9 +436,11 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
 
 function PairForm({
   dashboardUrl,
+  onSubmitted,
   onPaired,
 }: {
   dashboardUrl: string;
+  onSubmitted: () => void;
   onPaired: () => void;
 }) {
   const sdk = useSdk();
@@ -452,6 +455,7 @@ function PairForm({
       const canonical = formatConnectCode(value);
       if (!isCompleteCode(canonical)) return;
       submittedRef.current = canonical;
+      onSubmitted();
       setPending(true);
       setErrorCode(null);
       sdk.plugins
@@ -474,7 +478,7 @@ function PairForm({
           },
         );
     },
-    [pending, sdk, onPaired],
+    [pending, sdk, onSubmitted, onPaired],
   );
 
   const onChange = useCallback(
@@ -1151,7 +1155,13 @@ function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
   });
 }
 
-function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
+function AccountSignInCard({
+  onStarted,
+  onSignedIn,
+}: {
+  onStarted: () => void;
+  onSignedIn: () => void;
+}) {
   const navigate = useBbNavigate();
   const { login, starting, error, start, cancel } =
     useConnectAccountLogin(onSignedIn);
@@ -1163,7 +1173,10 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
           type="button"
           className="h-auto min-h-9 max-w-full whitespace-normal"
           disabled={starting}
-          onClick={start}
+          onClick={() => {
+            onStarted();
+            start();
+          }}
         >
           {starting ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
@@ -1228,9 +1241,11 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
 
 function NotPairedContent({
   dashboardUrl,
+  onSetupStarted,
   onPaired,
 }: {
   dashboardUrl: string;
+  onSetupStarted: () => void;
   onPaired: () => void;
 }) {
   const dashboardHost = hostOf(dashboardUrl);
@@ -1247,7 +1262,7 @@ function NotPairedContent({
       </p>
 
       <div className="flex flex-col items-start gap-2 @min-[32rem]/connect-controls:flex-row @min-[32rem]/connect-controls:flex-wrap @min-[32rem]/connect-controls:items-center">
-        <AccountSignInCard onSignedIn={onPaired} />
+        <AccountSignInCard onStarted={onSetupStarted} onSignedIn={onPaired} />
         <Button
           type="button"
           variant="ghost"
@@ -1259,7 +1274,11 @@ function NotPairedContent({
         </Button>
       </div>
       {codeOpen ? (
-        <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
+        <PairForm
+          dashboardUrl={dashboardUrl}
+          onSubmitted={onSetupStarted}
+          onPaired={onPaired}
+        />
       ) : null}
 
       <p className="text-xs text-subtle-foreground">
@@ -1422,9 +1441,11 @@ function ReconnectingContent({
 
 function OffContent({
   status,
+  onTurnOnStarted,
   onChanged,
 }: {
   status: ConnectStatus;
+  onTurnOnStarted: () => void;
   onChanged: () => void;
 }) {
   const rpc = useRpc<typeof connectRpcContract>();
@@ -1432,6 +1453,7 @@ function OffContent({
   const [error, setError] = useState<string | null>(null);
 
   const turnOn = useCallback(() => {
+    onTurnOnStarted();
     setPending(true);
     setError(null);
     rpc.call("setRemoteAccess", { enabled: true }).then(
@@ -1444,7 +1466,7 @@ function OffContent({
         setError(errorText(rpcError));
       },
     );
-  }, [rpc, onChanged]);
+  }, [rpc, onTurnOnStarted, onChanged]);
 
   return (
     <div className="space-y-4">
@@ -1544,8 +1566,14 @@ function MobilePairingSection() {
   return <AddMobileDeviceSection dashboardUrl={status.dashboardUrl} />;
 }
 
-function ConnectSettingsSection() {
+function ConnectSettingsSection({
+  internal_DO_NOT_USE_onSetupStarted: onSetupStarted,
+}: PluginSettingsSectionProps) {
   const { status, loadError, refetch } = useConnectStatus();
+  const reportSetupStarted = useCallback(
+    () => onSetupStarted?.(),
+    [onSetupStarted],
+  );
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showTurnedOff = useCallback(() => {
@@ -1586,10 +1614,15 @@ function ConnectSettingsSection() {
       {!status.paired ? (
         <NotPairedContent
           dashboardUrl={status.dashboardUrl}
+          onSetupStarted={reportSetupStarted}
           onPaired={refetch}
         />
       ) : !status.enabled ? (
-        <OffContent status={status} onChanged={refetch} />
+        <OffContent
+          status={status}
+          onTurnOnStarted={reportSetupStarted}
+          onChanged={refetch}
+        />
       ) : status.state === "reconnecting" ? (
         <ReconnectingContent
           status={status}
@@ -2094,12 +2127,12 @@ function ConnectSetupGuideSection({
     (login.state === "pending" ||
       (login.state === "signed-in" && turnOnError === null));
   const setUp = () => {
-    onSetupStarted();
     setTurnOnError(null);
     if (status === null) {
       refetch();
       return;
     }
+    onSetupStarted();
     if (!status.paired) {
       start();
       return;

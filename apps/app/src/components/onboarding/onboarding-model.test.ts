@@ -13,6 +13,7 @@ import {
   skippedStepIds,
   hasReadyAgent,
   parseSignInOutput,
+  projectsPrimaryAction,
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
@@ -551,6 +552,64 @@ describe("skippedStepIds", () => {
         ),
       ].sort(),
     ).toEqual(["agent", "plugins"]);
+  });
+});
+
+describe("projectsPrimaryAction", () => {
+  const atOpen = new Set(["prj_existing"]);
+
+  it("imports the selection in both guides", () => {
+    for (const redesign of [false, true]) {
+      expect(
+        projectsPrimaryAction({
+          redesign,
+          selectedCount: 2,
+          existingProjectIds: atOpen,
+          projectIds: ["prj_existing"],
+        }),
+      ).toBe("import");
+    }
+  });
+
+  it("completes the new guide's step when a folder was added during the guide", () => {
+    expect(
+      projectsPrimaryAction({
+        redesign: true,
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing", "prj_added_folder"],
+      }),
+    ).toBe("completed");
+  });
+
+  it("skips the new guide's step when nothing was added, and counts earlier projects as not added", () => {
+    expect(
+      projectsPrimaryAction({
+        redesign: true,
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+    expect(
+      projectsPrimaryAction({
+        redesign: true,
+        selectedCount: 0,
+        existingProjectIds: null,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+  });
+
+  it("keeps control's Continue as completed", () => {
+    expect(
+      projectsPrimaryAction({
+        redesign: false,
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("completed");
   });
 });
 

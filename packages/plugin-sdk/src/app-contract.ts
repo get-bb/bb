@@ -67,9 +67,16 @@ export interface PluginHomepageSectionProps {
 /**
  * Props passed to a `settingsSection` component.
  *
- * Deliberately empty in V1; versioned additive like the other slot props.
+ * Versioned additive like the other slot props.
  */
-export interface PluginSettingsSectionProps {}
+export interface PluginSettingsSectionProps {
+  /**
+   * Internal to bb's bundled connect plugin; not part of the plugin API.
+   * Set only when the setup guide renders the section; call it when the user
+   * starts setting it up.
+   */
+  internal_DO_NOT_USE_onSetupStarted?: () => void;
+}
 
 /**
  * Props passed to an `experimental_appOverlay` component.

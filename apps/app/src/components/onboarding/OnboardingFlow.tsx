@@ -14,6 +14,7 @@ import {
   AddMachineInline,
 } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { machineServerAccessReady } from "@/components/machines/machine-server-access";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
@@ -96,6 +97,7 @@ import {
   featuredPluginEntryIds,
   hasReadyAgent,
   parseSignInOutput,
+  projectsPrimaryAction,
   resolveAgentSetupState,
   shortRemoteName,
   skippedStepIds,
@@ -704,6 +706,24 @@ function ProjectsStepContainer({
     ];
   }, [discovered, hostProjects, now, projectIdsAtOpen]);
 
+  const recordFolderAdd = (outcome: "started" | "succeeded" | "failed") =>
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "import",
+        outcome,
+        item_count: 1,
+        succeeded_count: outcome === "succeeded" ? 1 : 0,
+      },
+    });
+  const addFolder = () =>
+    quickCreateProject.openObservedCreateDialog({
+      onStarted: () => recordFolderAdd("started"),
+      onSettled: recordFolderAdd,
+    });
+
   const importSelected = () => {
     if (hostId === null || discovered === undefined) return;
     const chosen = discovered.filter(
@@ -732,9 +752,15 @@ function ProjectsStepContainer({
       primaryBusy={importing}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (selectedPaths.size > 0) void importSelected();
-        else if (redesign) onSkip();
-        else onContinue();
+        const action = projectsPrimaryAction({
+          redesign,
+          selectedCount: selectedPaths.size,
+          existingProjectIds: projectIdsAtOpen,
+          projectIds: hostProjects.map((project) => project.id),
+        });
+        if (action === "import") importSelected();
+        else if (action === "completed") onContinue();
+        else onSkip();
       }}
       onSecondary={onSkip}
       onBack={onBack}
@@ -769,7 +795,7 @@ function ProjectsStepContainer({
           )
         }
         onSelectNone={() => setSelection(new Set())}
-        onAddFolder={quickCreateProject.openCreateDialog}
+        onAddFolder={addFolder}
         onRetry={() => {
           setRescanning(true);
           void refetchRepos().finally(() => setRescanning(false));
@@ -1076,8 +1102,12 @@ function DevicesStepContainer({
     pendingSetup.current.remoteAccess = true;
     recordDeviceSetup("remote_access", "started");
   };
+  const enrollmentShown = redesign
+    ? connect.status === "on"
+    : machineServerAccessReady(configQuery.data?.serverAccess);
   const addMachine = () => {
     if (
+      enrollmentShown &&
       connectedMachineCount !== undefined &&
       pendingSetup.current.machinesBefore === null
     ) {
@@ -1136,14 +1166,16 @@ function DevicesStepContainer({
     >
       <DevicesStep
         connect={connect}
-        connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
+        connectSetup={
+          <PluginSettingsSections
+            pluginId={CONNECT_PLUGIN_ID}
+            onSetupStarted={startRemoteAccessSetup}
+          />
+        }
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => {
-          if (!connectSetupOpen) startRemoteAccessSetup();
-          setConnectSetupOpen((open) => !open);
-        }}
+        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={addMachine}
       />
