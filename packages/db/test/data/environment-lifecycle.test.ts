@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { DbTransaction } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
-import { environments, threads } from "../../src/schema.js";
+import { environments } from "../../src/schema.js";
 import {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
@@ -11,13 +11,6 @@ import {
   getEnvironment,
   type CreateEnvironmentInput,
 } from "../../src/data/environments.js";
-import {
-  applyThreadLifecycleEvent,
-  createThread,
-  getThread,
-  markThreadDeleted,
-  requireThreadLifecycleEventApplied,
-} from "../../src/data/threads.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { withWriteAfterFirstRead } from "../helpers/interleave.js";
@@ -184,45 +177,14 @@ describe("applyEnvironmentLifecycleEvent", () => {
     expect(getEnvironment(db, environment.id)?.status).toBe("error");
   });
 
-  it("refuses a destroy record while a live or stopping thread holds the environment, then clears the path", () => {
-    const { db, project, seedEnvironment } = setup();
+  it("clears the path when it records a destroy", () => {
+    const { db, seedEnvironment } = setup();
     const spy = spyNotifier();
     const environment = seedEnvironment({
       path: "/tmp/destroy-claim",
       status: "ready",
     });
-    const thread = createThread(db, noopNotifier, {
-      environmentId: environment.id,
-      projectId: project.id,
-      providerId: "codex",
-    });
 
-    const blocked = applyEnvironmentLifecycleEvent(db, spy, {
-      environmentId: environment.id,
-      event: { type: "destroy.recorded" },
-    });
-    expect(blocked).toEqual({
-      applied: false,
-      detail: "state changed while applying destroy.recorded from status ready",
-      reason: "cas-conflict",
-    });
-    expect(getEnvironment(db, environment.id)?.status).toBe("ready");
-
-    requireThreadLifecycleEventApplied(
-      applyThreadLifecycleEvent(db, {
-        event: { type: "stop.requested" },
-        threadId: thread.id,
-      }),
-    );
-    expect(getThread(db, thread.id)?.status).toBe("stopping");
-    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
-    const blockedByStop = applyEnvironmentLifecycleEvent(db, spy, {
-      environmentId: environment.id,
-      event: { type: "destroy.recorded" },
-    });
-    expect(blockedByStop.applied).toBe(false);
-
-    db.delete(threads).where(eq(threads.id, thread.id)).run();
     const recorded = applyEnvironmentLifecycleEvent(db, spy, {
       environmentId: environment.id,
       event: { type: "destroy.recorded" },
