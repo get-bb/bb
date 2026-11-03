@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { workerNodeBuiltinsPlugin } from "@bb/connect-db-pg/testing";
 import {
   Miniflare,
   type Request as MiniflareRequest,
@@ -20,6 +21,7 @@ async function bundleWorker(): Promise<string> {
     format: "esm",
     target: "esnext",
     conditions: ["workerd", "worker", "browser"],
+    plugins: [workerNodeBuiltinsPlugin],
     banner: { js: `Date.now = () => ${NOW};` },
     write: false,
   });
@@ -40,6 +42,7 @@ function gateway(script: string, bindings: Record<string, string>) {
     modules: true,
     script,
     compatibilityDate: "2026-06-11",
+    compatibilityFlags: ["nodejs_compat"],
     d1Databases: { DB: "ai-gateway-test" },
     ratelimits: { AI_RATE_LIMITER: { simple: { limit: 60, period: 60 } } },
     bindings,

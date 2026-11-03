@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { depsFromEnv } from "@/server/api";
+import { depsFromEnv } from "@/server/deps";
 import { getEnv } from "@/server/env";
 import { handleOAuthTokenRequest } from "@/server/oauth";
 

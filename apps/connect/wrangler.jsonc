@@ -91,6 +91,19 @@
           "migrations_dir": "../../packages/connect-db/migrations",
         },
       ],
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "c4123f16fa6d4ef084d4531996012f1b",
+          "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CONNECT_DB_FLAGS",
+          "id": "5eed6edac43a416ca47483042381e6d4",
+        },
+      ],
       "analytics_engine_datasets": [
         {
           "binding": "GATE_EVENTS",

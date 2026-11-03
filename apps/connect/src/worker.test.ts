@@ -178,11 +178,25 @@ vi.mock("./cache.js", async () => {
   };
 });
 
-vi.mock("drizzle-orm/d1", () => ({
-  drizzle: vi.fn(() => ({})),
+vi.mock("@bb/connect-db-pg", () => ({
+  openConnectDb: vi.fn(() => ({
+    db: {},
+    backends: async () => ({ mode: "d1", primary: null, secondary: null }),
+    close: async () => {},
+  })),
 }));
 
-import { drizzle } from "drizzle-orm/d1";
+import { openConnectDb } from "@bb/connect-db-pg";
+
+function mockConnectDb(db: unknown): void {
+  vi.mocked(openConnectDb).mockReturnValue({
+    db,
+    backends: async () => {
+      throw new Error("backends are not used by these tests");
+    },
+    close: async () => {},
+  } as never);
+}
 
 import {
   invalidateSessionCookie,
@@ -398,7 +412,11 @@ describe("POST /api/connect/disconnect", () => {
     const response = await worker.fetch(request, env as never, ctx);
 
     expect(response.status).toBe(200);
-    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
+    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(
+      request,
+      env,
+      expect.anything(),
+    );
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -426,7 +444,11 @@ describe("POST /api/connect/machine-label", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
-    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(request, env);
+    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(
+      request,
+      env,
+      expect.anything(),
+    );
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -2468,7 +2490,7 @@ describe("TunnelDO machine presence", () => {
     const where = vi.fn(() => ({ run }));
     const set = vi.fn(() => ({ where }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ machineId: "machine-air", protocolVersion: 1 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
@@ -2486,7 +2508,7 @@ describe("TunnelDO machine presence", () => {
     const update = vi.fn(() => ({
       set: () => ({ where: () => ({ run }) }),
     }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
     const setAlarm = vi.fn(async (_at: number) => {});
     state.api.storage.setAlarm = setAlarm;
@@ -2505,11 +2527,11 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("spreads presence alarms across the interval instead of a fixed period", async () => {
-    vi.mocked(drizzle).mockReturnValue({
+    mockConnectDb({
       update: () => ({
         set: () => ({ where: () => ({ run: async () => {} }) }),
       }),
-    } as never);
+    });
     const offsets: number[] = [];
     for (const roll of [0, 0.5, 0.999]) {
       const random = vi.spyOn(Math, "random").mockReturnValue(roll);
@@ -3722,7 +3744,7 @@ describe("TunnelDO status and on-change presence", () => {
     const run = vi.fn(async () => {});
     const set = vi.fn(() => ({ where: () => ({ run }) }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     return { run, set, update };
   }
 

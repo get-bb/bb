@@ -1,0 +1,43 @@
+{
+  "name": "@bb/connect-db-pg",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./testing": {
+      "source": "./src/testing.ts",
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
+    },
+    "./migrate": {
+      "source": "./src/migrate.ts",
+      "types": "./src/migrate.ts",
+      "default": "./src/migrate.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/connect-db": "workspace:*",
+    "@electric-sql/pglite": "^0.5.15",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "better-sqlite3": "12.10.0",
+    "drizzle-orm": "^0.38.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",
+    "@bb/connect-db-pg": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",

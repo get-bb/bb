@@ -1,4 +1,3 @@
-import { drizzle } from "drizzle-orm/d1";
 import { escapeHtmlText } from "@bb/text-utils";
 import {
   GATE_OAUTH_AUTH_KIND,
@@ -10,9 +9,9 @@ import {
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
   parseVisitorHost,
-  schema,
   sha256Hex,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import {
   getSetCookies,
   refreshAccountSessionCookies,
@@ -493,27 +492,27 @@ const gate = {
         return handleGateResolve(request, env, ctx);
       }
       if (url.pathname === GATE_PRESENCE_PATH) {
-        return handleGatePresence(request, env);
+        return handleGatePresence(request, env, ctx);
       }
       if (url.pathname === GATE_RESOLVE_BATCH_PATH) {
         return handleGateResolveBatch(request, env, ctx);
       }
       if (url.pathname === GATE_PRESENCE_BATCH_PATH) {
-        return handleGatePresenceBatch(request, env);
+        return handleGatePresenceBatch(request, env, ctx);
       }
     }
     if (parsed === null || parsed.target === null) {
       if (url.pathname === "/api/connect/servers") {
-        return handleListAccountServers(request, env);
+        return handleListAccountServers(request, env, ctx);
       }
       if (url.pathname === "/api/connect/disconnect") {
-        return handleDisconnectServer(request, env);
+        return handleDisconnectServer(request, env, ctx);
       }
       if (url.pathname === "/api/connect/desktop-session") {
-        return handleCreateDesktopSession(request, env);
+        return handleCreateDesktopSession(request, env, ctx);
       }
       if (url.pathname === "/api/connect/machine-label") {
-        return handleAssignMachineLabel(request, env);
+        return handleAssignMachineLabel(request, env, ctx);
       }
     }
     if (!parsed) return text("bb connect: unknown host\n", 404);
@@ -532,7 +531,7 @@ const gate = {
       );
     }
 
-    const db = drizzle(env.DB, { schema });
+    const { db } = openGateDb(env, ctx);
     const isTunnelDial = url.pathname === "/__tunnel";
     const resolved = await resolveLabel(
       label,

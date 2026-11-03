@@ -62,7 +62,7 @@ export async function settleBudget(
   await db
     .update(aiUsageDay)
     .set({
-      reservedMicros: sql`max(${aiUsageDay.reservedMicros} - ${reserveMicros}, 0)`,
+      reservedMicros: sql`case when ${aiUsageDay.reservedMicros} > ${reserveMicros} then ${aiUsageDay.reservedMicros} - ${reserveMicros} else 0 end`,
       spentMicros: sql`${aiUsageDay.spentMicros} + ${charged}`,
     })
     .where(and(eq(aiUsageDay.userId, key.userId), eq(aiUsageDay.day, key.day)))
