@@ -111,6 +111,19 @@ browser—chooses the environment and working directory, serializes
 installations, supervises the process, streams output, and asks the bridge
 for fresh status to verify success.
 
+Full discovery starts several npm and CLI processes per provider and takes
+seconds, so the server caches each provider's status per machine for
+`GET /hosts/:id/provider-clis/status`. For 30 seconds the cached status is
+served as is. After that, a request still gets the cached status while the
+server probes again in the background; when the new status differs, the
+server sends a `provider-cli-status-changed` host change so open clients
+refetch. A failed refresh keeps the previous status. Machine reconnects keep
+the cache. An install or update through bb drops the machine's cached
+statuses before and after it runs, so the next read waits for a fresh probe.
+`?refresh=true` (`hosts.providerCliStatus({ refresh: true })`) always waits
+for a fresh probe; Settings → Updates uses it when it checks for updates, as
+do `bb machine provider-cli status` and `bb updates`.
+
 Every handshake capability gates a request method, which is why the set holds
 no compaction fact: there is no compact request method. Compaction is a
 standalone builtin `/compact` prompt travelling the normal turn pipeline,
