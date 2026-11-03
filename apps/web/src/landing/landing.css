@@ -3586,4 +3586,30 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     width: 100%;
     max-width: 420px;
   }
+
+  .dl-body {
+    margin-bottom: 48px;
+  }
+
+  .dl-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name action"
+      "tag action";
+    row-gap: 2px;
+  }
+
+  .dl-row-name {
+    grid-area: name;
+  }
+
+  .dl-row-tag {
+    grid-area: tag;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .dl-row-action {
+    grid-area: action;
+  }
 }
