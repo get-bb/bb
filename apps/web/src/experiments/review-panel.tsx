@@ -68,7 +68,6 @@ export function ReviewPanel() {
               </li>
             ))}
           </ul>
-          <YoursSwitch />
           <span className="review-panel-all">
             <button type="button" onClick={() => all("new")}>All new</button>
             <button type="button" onClick={() => all("control")}>All control</button>
@@ -79,51 +78,3 @@ export function ReviewPanel() {
   );
 }
 
-const YOURS_OPTIONS = [
-  ["morph", "Changing window"],
-  ["browse", "Browse hero"],
-  ["marketplace", "Marketplace"],
-] as const;
-
-function YoursSwitch() {
-  const [current, setCurrent] = useState("morph");
-  useEffect(() => {
-    setCurrent(
-      window.location.host.includes("61033")
-        ? "browse"
-        : (new URLSearchParams(window.location.search).get("yours") ?? "morph"),
-    );
-  }, []);
-  const pick = (value: string) => {
-    // The Browse hero version replaces the marketplace graphic's code, so it
-    // runs as a second review build on the next port.
-    const url = new URL(window.location.href);
-    url.host = url.host.replace(
-      value === "browse" ? "61032" : "61033",
-      value === "browse" ? "61033" : "61032",
-    );
-    url.searchParams.set("yours", value);
-    window.location.assign(url.toString());
-  };
-  return (
-    <ul>
-      <li>
-        <span>Make bb yours graphic</span>
-      </li>
-      <li>
-        <span className="review-panel-seg">
-          {YOURS_OPTIONS.map(([value, label]) => (
-            <button
-              type="button"
-              key={value}
-              aria-pressed={current === value}
-              onClick={() => pick(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </span>
-      </li>
-    </ul>
-  );
-}

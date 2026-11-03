@@ -97,7 +97,6 @@ import {
   SimpleInstallOptions,
   CustomizeBuild,
   DelegationTree,
-  PluginMap,
   PluginMorph,
   SpawnSidebar,
   StartAnywhere,
@@ -1337,23 +1336,6 @@ function TodayBelowFold() {
   );
 }
 
-// Review build only: pick the Make bb yours graphic with ?yours=.
-function MakeYoursVisual() {
-  const [variant, setVariant] = useState<string | null>(null);
-  useEffect(() => {
-    const picked = new URLSearchParams(window.location.search).get("yours");
-    setVariant(picked);
-    if (picked)
-      window.setTimeout(() => {
-        document
-          .querySelector('[data-section="make-it-yours"]')
-          ?.scrollIntoView({ block: "start" });
-      }, 300);
-  }, []);
-  if (variant === "marketplace") return <PluginMap />;
-  return <PluginMorph />;
-}
-
 function RefreshedBelowFold() {
   return (
     <>
@@ -1361,7 +1343,7 @@ function RefreshedBelowFold() {
         title="Make bb yours. No need to fork."
         stacked
         section="make-it-yours"
-        visual={<MakeYoursVisual />}
+        visual={<PluginMorph />}
       >
         <p>
           bb adapts to how you work, not the other way around. Prompt an agent
