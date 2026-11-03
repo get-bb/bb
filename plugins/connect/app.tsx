@@ -1943,41 +1943,43 @@ function ConnectOnSetupRow({
         ) : null
       }
       description={
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-foreground @max-xl/onboarding:flex-col @max-xl/onboarding:items-start">
-          <span className="flex items-center gap-1.5">
+        <div className="flex items-start">
+          <span className="-ml-8 mr-3 flex h-4 w-5 shrink-0 items-center justify-center">
             <Icon
               name="CircleCheck"
               aria-hidden
               className="size-3.5 text-success"
             />
-            bb connect is on
           </span>
-          {url === null ? null : (
-            <>
-              <span
-                aria-hidden="true"
-                className="text-subtle-foreground @max-xl/onboarding:hidden"
-              >
-                ·
-              </span>
-              <span className="flex min-w-0 max-w-full items-center gap-1">
-                <code className="min-w-0 truncate font-mono text-xs">
-                  {url}
-                </code>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="-my-1 size-6 shrink-0"
-                  aria-label="Copy URL"
-                  onClick={() => void copyTextWithSdkToast(url)}
+          <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-foreground @max-xl/onboarding:flex-col @max-xl/onboarding:items-start">
+            <span>bb connect is on</span>
+            {url === null ? null : (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="text-subtle-foreground @max-xl/onboarding:hidden"
                 >
-                  <Icon name="Copy" aria-hidden className="size-3.5" />
-                </Button>
-              </span>
-            </>
-          )}
-        </p>
+                  ·
+                </span>
+                <span className="flex min-w-0 max-w-full items-center gap-1">
+                  <code className="min-w-0 truncate font-mono text-xs">
+                    {url}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="-my-1 size-6 shrink-0"
+                    aria-label="Copy URL"
+                    onClick={() => void copyTextWithSdkToast(url)}
+                  >
+                    <Icon name="Copy" aria-hidden className="size-3.5" />
+                  </Button>
+                </span>
+              </>
+            )}
+          </p>
+        </div>
       }
     >
       {!onPhone && pairing.kind === "paired" ? (
