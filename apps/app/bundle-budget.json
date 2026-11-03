@@ -139,12 +139,12 @@
     "statically imports the workspace-route chunk that every page modulepreloads,",
     "so PluginFrontend measures the same page journey as the other two closures:",
     "the workspace route plus the plugin runtime. Measured that way, main was",
-    "56 chunks / 760.9 KB raw / 234.0 KB brotli and is now 2 chunks / 857.5 KB raw /",
-    "223.5 KB brotli. The raw growth is first-party code reached through",
-    "package barrels that the old per-module split left to tree-shaking. The",
+    "56 chunks / 760.8 KB raw / 234.2 KB brotli and is now 2 chunks / 771.2 KB raw /",
+    "203.2 KB brotli. Journey membership follows only the re-exports a module",
+    "actually imports, so package barrels do not pull unused code forward. The",
     "PluginFrontend limits sit 25% above the new measurement. ThreadPage went",
-    "from 95 chunks / 522.1 KB brotli to 4 / 462.3 KB, and NewThreadPage from 74 /",
-    "290.9 KB to 4 / 268.7 KB. Their limits are unchanged."
+    "from 95 chunks / 522.0 KB brotli to 4 / 460.2 KB, and NewThreadPage from 74 /",
+    "291.1 KB to 4 / 252.0 KB. Their limits are unchanged."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 424031,
@@ -295,8 +295,8 @@
   },
   "routeClosures": {
     "PluginFrontend": {
-      "maxBytes": 1097632,
-      "maxBrotliBytes": 286101,
+      "maxBytes": 987175,
+      "maxBrotliBytes": 260094,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",

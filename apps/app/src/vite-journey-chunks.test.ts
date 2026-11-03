@@ -30,7 +30,7 @@ function staticClosure(
   return seen;
 }
 
-it("merges each journey's static modules into one chunk without making another journey's entry eager", async () => {
+it("merges each journey's used modules into one chunk without making another journey's entry eager", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "bb-journey-")));
   try {
     await Promise.all(
@@ -39,10 +39,15 @@ it("merges each journey's static modules into one chunk without making another j
         "main.js":
           'window.route = import("./route.js"); window.thread = () => import("./thread.js"); window.compose = () => import("./compose.js"); window.menu = () => import("./menu.js");',
         "route.js":
-          'import { shell } from "./shell.js"; import { pill } from "./pill.js"; export default shell + pill;',
+          'import { shell, starred } from "./barrel.js"; import { pill } from "./pill.js"; export default shell + pill + starred;',
+        "barrel.js":
+          'export { shell } from "./shell.js"; export { heavy } from "./heavy.js"; export * from "./star.js";',
         "shell.js": "export const shell = Math.random();",
+        "heavy.js": "export const heavy = Math.random();",
+        "star.js": "export const starred = Math.random();",
         "pill.js": "export const pill = Math.random();",
-        "menu.js": 'import { pill } from "./pill.js"; export default pill;',
+        "menu.js":
+          'import { pill } from "./pill.js"; import { heavy } from "./heavy.js"; export default pill + heavy;',
         "thread.js":
           'import { shared } from "./shared.js"; import { timeline } from "./timeline.js"; window.diff = () => import("./diff.js"); export default shared + timeline;',
         "compose.js":
@@ -85,7 +90,9 @@ it("merges each journey's static modules into one chunk without making another j
     const workspace = chunkWith(chunks, "route.js");
     expect(chunkWith(chunks, "shell.js")).toBe(workspace);
     expect(chunkWith(chunks, "pill.js")).toBe(workspace);
+    expect(chunkWith(chunks, "star.js")).toBe(workspace);
     expect(chunkWith(chunks, "menu.js")).not.toBe(workspace);
+    expect(chunkWith(chunks, "heavy.js")).not.toBe(workspace);
 
     const thread = chunkWith(chunks, "thread.js");
     const compose = chunkWith(chunks, "compose.js");

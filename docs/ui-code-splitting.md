@@ -205,10 +205,11 @@ page chunk never imports the other page's chunk. Dependency modules and
 anything behind a dynamic import keep automatic chunking, so `defineSplit`
 boundaries still emit their own chunks.
 
-The closure is computed on the module graph before tree-shaking. A first-party
-module reached only through an unused barrel re-export therefore lands in the
-journey chunk instead of staying with its later importer. Import from the
-defining module rather than a barrel to keep such code out of a journey.
+Chunking runs before tree-shaking, so the walk follows names rather than whole
+files: through a barrel it reaches only the modules that export a name some
+journey module imports. A module whose parsed imports cannot be matched to its
+resolved ones falls back to following every import, which can only pull a
+little code forward, never split a journey.
 
 Because the plugin runtime chunk imports the workspace-route chunk, the
 `PluginFrontend` journey measures both, like `ThreadPage` and `NewThreadPage`.
