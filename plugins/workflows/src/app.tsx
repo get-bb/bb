@@ -750,11 +750,11 @@ function WorkflowPreviewLoaded({
         </span>
         {pillState === null ? null : <WorkflowStatusPill state={pillState} />}
         <Icon
-          name="ChevronDown"
+          name="ChevronRight"
           className={cn(
             activityIconClass(activityState),
             "size-3.5 shrink-0 transition-transform duration-200",
-            expanded && "rotate-180",
+            expanded && "rotate-90",
           )}
           aria-hidden
         />

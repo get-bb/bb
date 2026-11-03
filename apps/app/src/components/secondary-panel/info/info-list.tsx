@@ -137,8 +137,8 @@ export function InfoListMoreRow({
       >
         <span className={INFO_LIST_LEADING_CLASS}>
           <Icon
-            name="ChevronDown"
-            className={cn(INFO_LIST_CARET_CLASS, expanded && "rotate-180")}
+            name="ChevronRight"
+            className={cn(INFO_LIST_CARET_CLASS, expanded && "rotate-90")}
             aria-hidden
           />
         </span>

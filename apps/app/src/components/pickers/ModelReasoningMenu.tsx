@@ -508,7 +508,7 @@ function MoreModelsToggleRow({
     >
       <span>{expanded ? "Fewer models" : "More models"}</span>
       <Icon
-        name={expanded ? "ChevronUp" : "ChevronDown"}
+        name={expanded ? "ChevronDown" : "ChevronRight"}
         className="size-3.5 shrink-0"
       />
     </button>

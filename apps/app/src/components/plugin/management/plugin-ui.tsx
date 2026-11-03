@@ -288,8 +288,8 @@ export function DetailsDisclosure({
       >
         <span className="min-w-0 truncate">{summary}</span>
         <Icon
-          name="ChevronDown"
-          className={cn("size-3.5 shrink-0", expanded && "rotate-180")}
+          name="ChevronRight"
+          className={cn("size-3.5 shrink-0", expanded && "rotate-90")}
         />
       </button>
       {expanded ? (

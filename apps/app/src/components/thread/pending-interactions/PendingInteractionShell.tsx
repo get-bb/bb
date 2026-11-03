@@ -79,10 +79,10 @@ export function PendingInteractionShell({
       className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <Icon
-        name="ChevronDown"
+        name="ChevronRight"
         className={cn(
           "size-3.5 transition-transform duration-200",
-          isExpanded ? "rotate-180" : undefined,
+          isExpanded ? "rotate-90" : undefined,
         )}
       />
     </button>

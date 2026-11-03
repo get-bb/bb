@@ -252,11 +252,11 @@ function MarkdownDocument({
           >
             {expanded ? "Show less" : "Show more"}
             <Icon
-              name="ChevronDown"
+              name="ChevronRight"
               aria-hidden
               className={cn(
                 "size-3.5 transition-transform duration-200",
-                expanded && "rotate-180",
+                expanded && "rotate-90",
               )}
             />
           </button>

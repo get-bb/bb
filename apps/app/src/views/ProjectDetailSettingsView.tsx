@@ -447,10 +447,10 @@ export function ProjectDetailSettingsView() {
               className="-ml-1 inline-flex items-center gap-1.5 self-start rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             >
               <Icon
-                name="ChevronDown"
+                name="ChevronRight"
                 className={cn(
                   "size-3.5 transition-transform",
-                  showAllMachines && "rotate-180",
+                  showAllMachines && "rotate-90",
                 )}
                 aria-hidden
               />

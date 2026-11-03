@@ -156,10 +156,10 @@ export function ThreadContextWindowCard({
               data-icon-root=""
               className={cn(
                 "size-3 transition-transform duration-200 ease-out motion-reduce:transition-none",
-                detailsExpanded && "rotate-180",
+                detailsExpanded && "rotate-90",
               )}
             >
-              <path d="m4 6 4 4 4-4" />
+              <path d="M6 4l4 4-4 4" />
             </svg>
           </button>
         </>

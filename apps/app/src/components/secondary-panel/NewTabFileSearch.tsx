@@ -439,11 +439,11 @@ function ShowMoreToggle({
       )}
     >
       <Icon
-        name="ChevronDown"
+        name="ChevronRight"
         className={cn(
           COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
           "transition-transform",
-          isExpanded && "rotate-180",
+          isExpanded && "rotate-90",
         )}
         aria-hidden
       />
