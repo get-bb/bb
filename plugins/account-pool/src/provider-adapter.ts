@@ -8,6 +8,7 @@ import type {
   PoolProvider,
 } from "./contracts.js";
 import { retryAfterMilliseconds } from "./quota.js";
+import type { RequestBodyParts } from "./request-body.js";
 import type { AccountStore, QuotaStore } from "./store.js";
 
 const OAUTH_REFRESH_TIMEOUT_MS = 15_000;
@@ -80,7 +81,7 @@ export interface ProviderAdapter {
     family: ModelFamily;
     affinityId: string | null;
     parentAffinityId: string | null;
-    forAccount: (account: Account) => Uint8Array;
+    forAccount: (account: Account) => RequestBodyParts;
   };
   upstreamUrl(request: Request, settings: AccountPoolConfig): URL;
   requestHeaders(

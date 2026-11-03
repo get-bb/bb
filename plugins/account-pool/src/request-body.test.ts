@@ -6,6 +6,8 @@ const nextAccountUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const sessionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const encode = (value: object) =>
   new TextEncoder().encode(JSON.stringify(value));
+const decode = (parts: readonly Uint8Array[]) =>
+  new TextDecoder().decode(Buffer.concat(parts));
 
 describe("Claude request parsing", () => {
   it.each([accountUuid, "invalid-account-uuid", 123, null])(
@@ -27,7 +29,7 @@ describe("Claude request parsing", () => {
       expect(parsed.affinityId).toBe(`session:${sessionId}`);
       expect(parsed.parentAffinityId).toBe("session:parent");
       if (account === "invalid-account-uuid" || account === 123)
-        expect(parsed.forAccount(nextAccountUuid)).toBe(body);
+        expect(parsed.forAccount(nextAccountUuid)).toEqual([body]);
     },
   );
 
@@ -61,9 +63,7 @@ describe("Claude request parsing", () => {
       const parsed = parseRequestBody(encode(request));
       expect(parsed.affinityId).toBeNull();
       expect(parsed.parentAffinityId).toBeNull();
-      const rewritten = JSON.parse(
-        new TextDecoder().decode(parsed.forAccount(nextAccountUuid)),
-      );
+      const rewritten = JSON.parse(decode(parsed.forAccount(nextAccountUuid)));
       expect(rewritten).toEqual({
         ...request,
         metadata: {
@@ -100,12 +100,8 @@ describe("Claude request parsing", () => {
       const parsed = parseRequestBody(body);
       expect(parsed.affinityId).toBe(`session:${sessionId}`);
       expect(parsed.parentAffinityId).toBe(expected);
-      expect(parsed.forAccount(accountUuid)).toBe(body);
-      expect(
-        JSON.parse(
-          new TextDecoder().decode(parsed.forAccount(nextAccountUuid)),
-        ),
-      ).toEqual({
+      expect(parsed.forAccount(accountUuid)).toEqual([body]);
+      expect(JSON.parse(decode(parsed.forAccount(nextAccountUuid)))).toEqual({
         ...request,
         metadata: {
           ...request.metadata,
@@ -131,9 +127,7 @@ describe("Claude request parsing", () => {
     const parsed = parseRequestBody(body);
     expect(parsed.affinityId).toBe(`session:${sessionId}`);
     expect(parsed.parentAffinityId).toBeNull();
-    expect(
-      JSON.parse(new TextDecoder().decode(parsed.forAccount(nextAccountUuid))),
-    ).toEqual({
+    expect(JSON.parse(decode(parsed.forAccount(nextAccountUuid)))).toEqual({
       metadata: {
         user_id: `user_hash_account_${nextAccountUuid}_session_${sessionId}`,
         extra: "keep",
@@ -150,7 +144,71 @@ describe("Claude request parsing", () => {
     const body = new TextEncoder().encode(raw);
     const parsed = parseRequestBody(body);
     expect(parsed.affinityId).toBeNull();
-    expect(parsed.forAccount(nextAccountUuid)).toBe(body);
+    expect(parsed.forAccount(nextAccountUuid)).toEqual([body]);
+  });
+  it("splices only the account UUID and keeps every other request byte", () => {
+    const user = JSON.stringify({
+      account_uuid: accountUuid,
+      session_id: sessionId,
+    });
+    const raw = [
+      "{\n",
+      '  "model" : "claude-opus-5",\n',
+      '  "messages": [{"role":"user","content":"say \\"metadata\\": {\\"user_id\\": 1} \\\\"},',
+      ' {"metadata": {"user_id": "nested"}, "content": [[], {}, "]}"]}],\n',
+      '  "system": "caf\\u00e9 \u2603",\n',
+      `  "metadata": {"user_id": ${JSON.stringify(user)}, "extra": [1, 2]},\n`,
+      '  "stream": true\n',
+      "}\n",
+    ].join("");
+    const body = new TextEncoder().encode(raw);
+    const parsed = parseRequestBody(body);
+    expect(parsed.family).toBe("opus");
+    expect(parsed.affinityId).toBe(`session:${sessionId}`);
+    expect(decode(parsed.forAccount(nextAccountUuid))).toBe(
+      raw.replace(
+        JSON.stringify(user),
+        JSON.stringify(
+          JSON.stringify({
+            account_uuid: nextAccountUuid,
+            session_id: sessionId,
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("reads the last duplicate top-level field like JSON.parse", () => {
+    const first = JSON.stringify({
+      account_uuid: accountUuid,
+      session_id: "first",
+    });
+    const last = JSON.stringify({
+      account_uuid: accountUuid,
+      session_id: sessionId,
+    });
+    const raw = `{"model":"claude-opus-5","metadata":{"user_id":${JSON.stringify(first)}},"model":"claude-fable-5","metadata":{"user_id":"ignored","user_id":${JSON.stringify(last)}}}`;
+    const parsed = parseRequestBody(new TextEncoder().encode(raw));
+    expect(parsed.family).toBe("fable");
+    expect(parsed.affinityId).toBe(`session:${sessionId}`);
+    const rewritten = JSON.parse(decode(parsed.forAccount(nextAccountUuid)));
+    expect(JSON.parse(rewritten.metadata.user_id)).toEqual({
+      account_uuid: nextAccountUuid,
+      session_id: sessionId,
+    });
+  });
+
+  it.each([
+    '{"model":"claude-fable-5","messages":[}',
+    '{"model":"claude-fable-5","messages":["unterminated}',
+    '{"model":"claude-fable-5"} trailing',
+    '{"model":"claude-fable-5",}',
+    '{"model":claude}',
+  ])("leaves structurally invalid request %s unbound", (raw) => {
+    const body = new TextEncoder().encode(raw);
+    const parsed = parseRequestBody(body);
+    expect(parsed.family).toBe("other");
+    expect(parsed.forAccount(nextAccountUuid)).toEqual([body]);
   });
 });
 
@@ -224,7 +282,7 @@ describe("Codex request parsing", () => {
       const parsed = parseCodexRequestBody(body, new Headers(headers));
       expect(parsed.affinityId).toBe(expected);
       expect(parsed.parentAffinityId).toBeNull();
-      expect(parsed.forAccount(nextAccountUuid)).toBe(body);
+      expect(parsed.forAccount(nextAccountUuid)).toEqual([body]);
     },
   );
 
@@ -386,7 +444,7 @@ describe("Codex request parsing", () => {
       expect(parsed.parentAffinityId).toBe(
         parent === null ? null : `session:${parent}`,
       );
-      expect(parsed.forAccount(nextAccountUuid)).toBe(body);
+      expect(parsed.forAccount(nextAccountUuid)).toEqual([body]);
     },
   );
 
@@ -412,7 +470,7 @@ describe("Codex request parsing", () => {
       const parsed = parseCodexRequestBody(body, new Headers());
       expect(parsed.affinityId).toBe("session:child");
       expect(parsed.parentAffinityId).toBe(expected);
-      expect(parsed.forAccount(null)).toBe(body);
+      expect(parsed.forAccount(null)).toEqual([body]);
     },
   );
 
@@ -432,7 +490,7 @@ describe("Codex request parsing", () => {
       const body = new TextEncoder().encode(raw);
       const parsed = parseCodexRequestBody(body, new Headers());
       expect(parsed.affinityId).toBeNull();
-      expect(parsed.forAccount(null)).toBe(body);
+      expect(parsed.forAccount(null)).toEqual([body]);
     },
   );
 });

@@ -392,7 +392,7 @@ export function createCodexAdapter(options: {
         family: parsed.family,
         affinityId: parsed.affinityId,
         parentAffinityId: parsed.parentAffinityId,
-        forAccount: () => body,
+        forAccount: () => [body],
       };
     },
     upstreamUrl: (request, settings) =>

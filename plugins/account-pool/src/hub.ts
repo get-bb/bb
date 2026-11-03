@@ -19,6 +19,7 @@ import {
   DEFAULT_CODEX_USAGE_URL,
 } from "./codex-adapter.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import type { RequestBodyParts } from "./request-body.js";
 import {
   OAuthRefreshError,
   TransientOAuthRefreshError,
@@ -272,13 +273,14 @@ export class AccountPoolHub {
       const search = new URL(request.url).search;
       const body =
         request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await request.arrayBuffer();
+          ? null
+          : request.body;
       const response = await this.options
         .fetch(`${parent.baseUrl}${routePath}${search}`, {
           method: request.method,
           headers: parentRequestHeaders(request.headers, parent.token),
-          ...(body === undefined ? {} : { body }),
+          ...(body === null ? {} : { body, duplex: "half" }),
+          redirect: "error",
           signal: controller.signal,
         })
         .catch((cause: unknown) => {
@@ -1222,7 +1224,7 @@ export class AccountPoolHub {
 
   private async fetchUpstream(
     request: Request,
-    body: Uint8Array,
+    body: RequestBodyParts,
     account: Account,
     secret: AccountSecret,
     adapter: ProviderAdapter,
@@ -1232,17 +1234,25 @@ export class AccountPoolHub {
       this.decrement(account.id),
     );
     try {
-      const upstreamBody = new ArrayBuffer(body.byteLength);
-      new Uint8Array(upstreamBody).set(body);
       const url = adapter.upstreamUrl(request, this.options.getSettings());
       const headers = adapter.requestHeaders(request.headers, account, secret);
+      const hasBody = request.method !== "GET" && request.method !== "HEAD";
+      if (hasBody)
+        headers.set(
+          "content-length",
+          String(body.reduce((total, part) => total + part.byteLength, 0)),
+        );
       const response = await this.options
         .fetch(url, {
           method: request.method,
           headers,
-          ...(request.method === "GET" || request.method === "HEAD"
-            ? {}
-            : { body: upstreamBody }),
+          ...(hasBody
+            ? {
+                body: requestBodyStream(body),
+                duplex: "half",
+              }
+            : {}),
+          redirect: "error",
           signal: controller.signal,
         })
         .catch((cause: unknown) => {
@@ -1523,6 +1533,20 @@ export function createHub(options: {
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),
     onOAuthRefresh: options.onOAuthRefresh ?? (() => {}),
+  });
+}
+
+function requestBodyStream(
+  parts: RequestBodyParts,
+): ReadableStream<Uint8Array> {
+  let pending: RequestBodyParts | null = parts;
+  return new ReadableStream<Uint8Array>({
+    pull(stream) {
+      if (pending === null) return;
+      for (const part of pending) stream.enqueue(part);
+      pending = null;
+      stream.close();
+    },
   });
 }
 

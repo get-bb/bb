@@ -2781,6 +2781,62 @@ describe("Account Pool plugin", () => {
     );
   });
 
+  it("replays the exact request bytes and length to each failover account", async () => {
+    const attempts: Array<{
+      key: string | undefined;
+      contentLength: string | undefined;
+      transferEncoding: string | undefined;
+      body: Buffer;
+    }> = [];
+    const upstream = await startUpstream(async (request, response) => {
+      attempts.push({
+        key: request.headers["x-api-key"]?.toString(),
+        contentLength: request.headers["content-length"],
+        transferEncoding: request.headers["transfer-encoding"],
+        body: await readRequestBody(request),
+      });
+      if (attempts.length === 1) {
+        response.writeHead(529, { "content-type": "application/json" });
+        response.end('{"type":"error","error":{"type":"overloaded_error"}}');
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      apiKey: "sk-first",
+      priority: 1,
+    });
+    await addApiAccount(fixture, "sk-second", 2);
+    const body = Buffer.from(
+      JSON.stringify({
+        model: "claude-fable-5",
+        messages: [
+          { role: "user", content: "caf\u00e9 \u2603 ".repeat(100_000) },
+        ],
+        metadata: { user_id: "user_hash" },
+      }),
+    );
+    const response = await fixture.host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(fixture.key), body },
+    );
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(attempts.map((attempt) => attempt.key)).toEqual([
+      "sk-first",
+      "sk-second",
+    ]);
+    for (const attempt of attempts) {
+      expect(attempt.contentLength).toBe(String(body.byteLength));
+      expect(attempt.transferEncoding).toBeUndefined();
+      expect(attempt.body.equals(body)).toBe(true);
+    }
+  });
+
   it("preserves request bytes when an account UUID rewrite cannot apply", async () => {
     const bodies: Buffer[] = [];
     const upstream = await startUpstream(async (request, response) => {
@@ -4750,11 +4806,7 @@ describe("Account Pool plugin", () => {
                   headers.get("x-api-key") ??
                   headers.get("authorization")?.slice(7) ??
                   null,
-                body: new TextDecoder().decode(
-                  init?.body instanceof ArrayBuffer
-                    ? init.body
-                    : new ArrayBuffer(0),
-                ),
+                body: await new Response(init?.body).text(),
               });
               if (seen.length === 1) return openStream();
               if (rejectNext) {
@@ -5253,9 +5305,7 @@ describe("Account Pool plugin", () => {
       const fixture = await affinityFixture("codex", async (_input, init) => {
         seen.push({
           headers: new Headers(init?.headers),
-          body: new TextDecoder().decode(
-            init?.body instanceof ArrayBuffer ? init.body : new ArrayBuffer(0),
-          ),
+          body: await new Response(init?.body).text(),
         });
         if (seen.length === 1) return openStream();
         return new Response(
@@ -7717,6 +7767,64 @@ describe("Account Pool nested proxy", () => {
       model: "claude-opus-4",
       messages: [],
     });
+  });
+
+  it("streams the request body to the parent before the client finishes sending it", async () => {
+    let firstChunkSeen!: () => void;
+    const parentSawFirstChunk = new Promise<void>((resolve) => {
+      firstChunkSeen = resolve;
+    });
+    const received: Buffer[] = [];
+    const parent = await startUpstream(async (request, response) => {
+      response.setHeader("content-type", "application/json");
+      if ((request.url ?? "").startsWith("/availability")) {
+        await readRequestBody(request);
+        response.end(JSON.stringify({ claude: true, codex: true }));
+        return;
+      }
+      for await (const chunk of request) {
+        received.push(Buffer.from(chunk));
+        firstChunkSeen();
+      }
+      response.end(JSON.stringify({ ok: true }));
+    });
+    cleanups.push(parent.close);
+    const host = await createChild({ parentUrl: parent.url });
+    const entries = await host.harness.behavior.resolveProviderEnv(
+      "claude-code",
+      { threadId: "thread-one", projectId: "project-one", hostId: "host-one" },
+    );
+    const childToken = entries.find(
+      (entry) => entry.name === "ANTHROPIC_AUTH_TOKEN",
+    )?.value;
+    const head = '{"model":"claude-opus-4","messages":[';
+    const tail = "]}";
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        pulls++;
+        if (pulls === 1) {
+          controller.enqueue(new TextEncoder().encode(head));
+          return;
+        }
+        await parentSawFirstChunk;
+        controller.enqueue(new TextEncoder().encode(tail));
+        controller.close();
+      },
+    });
+    const response = await host.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${String(childToken)}` },
+        body,
+        duplex: "half",
+      } as RequestInit,
+    );
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(Buffer.concat(received).toString()).toBe(head + tail);
   });
 
   it("rejects pooled traffic that does not present the child's own token", async () => {
