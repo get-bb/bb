@@ -392,7 +392,9 @@ never their paths). A failed Projects `import` reports `item_count` (repos
 selected) and `succeeded_count` (imported before the failure). Plugins step
 `install` (a featured plugin that wasn't installed yet), `enable`, and
 `disable` carry the plugin's public id in `resource_id`; `install` succeeds or
-fails when its install job finishes, not when the request is accepted. `load`
+fails when its install job finishes, not when the request is accepted, even
+if the guide moved to another step meanwhile; a cancelled install job records
+no outcome. `load`
 records only `failed`, once each time the Agent step's agent states or the
 Plugins step's catalog start failing to load. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished

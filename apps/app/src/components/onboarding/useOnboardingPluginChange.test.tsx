@@ -4,9 +4,13 @@ import { BbHttpError } from "@bb/sdk/browser";
 import type { PluginInstallJob } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startCatalogPluginInstall } from "@/hooks/queries/plugin-install-job-queries";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
-import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
+import {
+  useOnboardingPluginChange,
+  useOnboardingPluginInstallOutcomes,
+} from "./useOnboardingPluginChange";
 
 const plugins = vi.hoisted(() => ({
   setEnabled: vi.fn(),
@@ -20,10 +24,12 @@ vi.mock("@/components/plugin/useSetPluginEnabled", () => ({
 vi.mock("@/hooks/cache-owners/plugin-cache-owner", () => ({
   applyPluginInstallJob: vi.fn(),
 }));
-vi.mock("@/hooks/queries/plugin-install-job-queries", () => ({
+vi.mock("@/hooks/queries/plugin-install-job-queries", async (original) => ({
+  ...(await original<
+    typeof import("@/hooks/queries/plugin-install-job-queries")
+  >()),
   startCatalogPluginInstall: vi.fn(),
-  usePluginInstallJob: (jobId: string | null) =>
-    jobId === null ? null : (plugins.jobs.get(jobId) ?? null),
+  usePluginInstallJobs: () => ({ data: [...plugins.jobs.values()] }),
 }));
 
 afterEach(() => {
@@ -32,36 +38,56 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function job(state: "running" | "failed"): PluginInstallJob {
+function job(
+  state: PluginInstallJob["state"],
+  id = "job_1",
+  entryId = "workflows",
+): PluginInstallJob {
   const fields = {
-    id: "job_1",
-    target: {
-      kind: "catalog" as const,
-      entryId: "workflows",
-      marketplace: "bb",
-    },
-    displayName: "Workflows",
+    id,
+    target: { kind: "catalog" as const, entryId, marketplace: "bb" },
+    displayName: entryId,
   };
-  return state === "failed"
-    ? { ...fields, state, error: "npm exited 1" }
-    : { ...fields, state };
+  switch (state) {
+    case "succeeded":
+      return {
+        ...fields,
+        state,
+        plugin: makeInstalledPlugin({ id: entryId }),
+      };
+    case "failed":
+      return { ...fields, state, error: "npm exited 1" };
+    default:
+      return { ...fields, state };
+  }
+}
+
+function renderGuide() {
+  const { wrapper } = createQueryClientTestHarness();
+  const guide = renderHook(
+    () => useOnboardingPluginInstallOutcomes("first_run"),
+    { wrapper },
+  );
+  const renderCard = (pluginId: string, installed: boolean) =>
+    renderHook(
+      () =>
+        useOnboardingPluginChange({
+          onboardingEntry: "first_run",
+          plugin: { pluginId, entryId: pluginId, marketplace: "bb", installed },
+          trackInstall: guide.result.current,
+        }),
+      { wrapper },
+    );
+  const settle = (next: PluginInstallJob) => {
+    plugins.jobs.set(next.id, next);
+    guide.rerender();
+    guide.rerender();
+  };
+  return { guide, renderCard, settle };
 }
 
 function renderChange(installed: boolean) {
-  const { wrapper } = createQueryClientTestHarness();
-  return renderHook(
-    () =>
-      useOnboardingPluginChange({
-        onboardingEntry: "first_run",
-        plugin: {
-          pluginId: "workflows",
-          entryId: "workflows",
-          marketplace: "bb",
-          installed,
-        },
-      }),
-    { wrapper },
-  );
+  return renderGuide().renderCard("workflows", installed);
 }
 
 function recorded() {
@@ -77,29 +103,84 @@ const base = {
 } as const;
 
 describe("onboarding plugin changes", () => {
-  it("records an install job that fails after it started", async () => {
-    vi.mocked(startCatalogPluginInstall).mockResolvedValue(job("running"));
-    plugins.jobs.set("job_1", job("running"));
-    const view = renderChange(false);
+  it.each([
+    ["succeeded", [{ ...base, operation: "install", outcome: "succeeded" }]],
+    [
+      "failed",
+      [
+        {
+          ...base,
+          operation: "install",
+          outcome: "failed",
+          failure_reason: "command_failed",
+        },
+      ],
+    ],
+    ["cancelled", []],
+  ] as const)(
+    "records a %s install job once after its card unmounts",
+    async (state, outcomes) => {
+      vi.mocked(startCatalogPluginInstall).mockResolvedValue(job("running"));
+      plugins.jobs.set("job_1", job("running"));
+      const { renderCard, settle } = renderGuide();
+      const card = renderCard("workflows", false);
 
-    await act(() => view.result.current(true));
-    expect(recorded()).toEqual([
-      { ...base, operation: "install", outcome: "started" },
-    ]);
+      await act(() => card.result.current(true));
+      card.unmount();
+      settle(job(state));
+      settle(job(state));
+      const remounted = renderCard("workflows", true);
+      remounted.rerender();
 
-    plugins.jobs.set("job_1", job("failed"));
-    view.rerender();
-    view.rerender();
+      expect(recorded()).toEqual([
+        { ...base, operation: "install", outcome: "started" },
+        ...outcomes,
+      ]);
+    },
+  );
+
+  it("records each started job once while its card stays mounted", async () => {
+    const { renderCard, settle } = renderGuide();
+    const workflows = renderCard("workflows", false);
+    const briefs = renderCard("briefs", false);
+    vi.mocked(startCatalogPluginInstall).mockResolvedValueOnce(
+      job("running", "job_1", "workflows"),
+    );
+    await act(() => workflows.result.current(true));
+    vi.mocked(startCatalogPluginInstall).mockResolvedValueOnce(
+      job("queued", "job_2", "briefs"),
+    );
+    await act(() => briefs.result.current(true));
+
+    settle(job("failed", "job_2", "briefs"));
+    settle(job("succeeded", "job_1", "workflows"));
+    workflows.rerender();
+    briefs.rerender();
+    settle(job("succeeded", "job_1", "workflows"));
 
     expect(recorded()).toEqual([
       { ...base, operation: "install", outcome: "started" },
       {
         ...base,
+        resource_id: "briefs",
+        operation: "install",
+        outcome: "started",
+      },
+      {
+        ...base,
+        resource_id: "briefs",
         operation: "install",
         outcome: "failed",
         failure_reason: "command_failed",
       },
+      { ...base, operation: "install", outcome: "succeeded" },
     ]);
+  });
+
+  it("ignores jobs the guide did not start", () => {
+    const { settle } = renderGuide();
+    settle(job("succeeded", "job_9", "workflows"));
+    expect(recorded()).toEqual([]);
   });
 
   it("records why an install request was refused and rethrows it", async () => {

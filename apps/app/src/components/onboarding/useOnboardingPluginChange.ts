@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { PluginInstallJob } from "@bb/server-contract";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  isActivePluginInstallJob,
   startCatalogPluginInstall,
-  usePluginInstallJob,
+  usePluginInstallJobs,
 } from "@/hooks/queries/plugin-install-job-queries";
+import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
 import {
   operationFailureReason,
   type OperationFailureReason,
@@ -17,9 +20,80 @@ import {
 
 type PluginOperation = "install" | "enable" | "disable";
 
+type PluginOutcome = "started" | "succeeded" | "failed";
+
+function recordPluginOperation(
+  onboardingEntry: OnboardingEntry,
+  pluginId: string,
+  operation: PluginOperation,
+  outcome: PluginOutcome,
+  failureReason?: OperationFailureReason | "command_failed",
+): void {
+  recordTelemetryEvent({
+    name: "onboarding_operation",
+    properties: {
+      entry: onboardingEntry,
+      step: "plugins",
+      operation,
+      outcome,
+      resource_id: pluginId,
+      ...(failureReason === undefined ? {} : { failure_reason: failureReason }),
+    },
+  });
+}
+
+export type TrackPluginInstall = (jobId: string, pluginId: string) => void;
+
+export function useOnboardingPluginInstallOutcomes(
+  onboardingEntry: OnboardingEntry,
+): TrackPluginInstall {
+  const queryClient = useQueryClient();
+  const jobs = usePluginInstallJobs().data;
+  const trackedRef = useRef(new Map<string, string>());
+  const settle = useCallback(
+    (current: readonly PluginInstallJob[] | undefined) => {
+      for (const job of current ?? []) {
+        const pluginId = trackedRef.current.get(job.id);
+        if (pluginId === undefined || isActivePluginInstallJob(job)) continue;
+        trackedRef.current.delete(job.id);
+        if (job.state === "succeeded") {
+          recordPluginOperation(
+            onboardingEntry,
+            pluginId,
+            "install",
+            "succeeded",
+          );
+        } else if (job.state === "failed") {
+          recordPluginOperation(
+            onboardingEntry,
+            pluginId,
+            "install",
+            "failed",
+            "command_failed",
+          );
+        }
+      }
+    },
+    [onboardingEntry],
+  );
+  useEffect(() => settle(jobs), [jobs, settle]);
+  return useCallback(
+    (jobId: string, pluginId: string) => {
+      trackedRef.current.set(jobId, pluginId);
+      settle(
+        queryClient.getQueryData<PluginInstallJob[]>(
+          pluginInstallJobsQueryKey(),
+        ),
+      );
+    },
+    [queryClient, settle],
+  );
+}
+
 export function useOnboardingPluginChange({
   onboardingEntry,
   plugin,
+  trackInstall,
 }: {
   onboardingEntry: OnboardingEntry;
   plugin: {
@@ -28,54 +102,28 @@ export function useOnboardingPluginChange({
     marketplace: string;
     installed: boolean;
   };
+  trackInstall: TrackPluginInstall;
 }): (enabled: boolean) => Promise<void> {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
   const { pluginId, entryId, marketplace, installed } = plugin;
-  const record = useCallback(
-    (
-      operation: PluginOperation,
-      outcome: "started" | "succeeded" | "failed",
-      failureReason?: OperationFailureReason | "command_failed",
-    ) =>
-      recordTelemetryEvent({
-        name: "onboarding_operation",
-        properties: {
-          entry: onboardingEntry,
-          step: "plugins",
-          operation,
-          outcome,
-          resource_id: pluginId,
-          ...(failureReason === undefined
-            ? {}
-            : { failure_reason: failureReason }),
-        },
-      }),
-    [onboardingEntry, pluginId],
-  );
-
-  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
-  const trackedJobState = usePluginInstallJob(trackedJobId)?.state;
-  const settledJobIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (trackedJobId === null || settledJobIdRef.current === trackedJobId) {
-      return;
-    }
-    if (trackedJobState === "succeeded") {
-      record("install", "succeeded");
-    } else if (trackedJobState === "failed") {
-      record("install", "failed", "command_failed");
-    } else if (trackedJobState !== "cancelled") {
-      return;
-    }
-    settledJobIdRef.current = trackedJobId;
-  }, [record, trackedJobId, trackedJobState]);
 
   return useCallback(
     async (enabled: boolean) => {
       const operation: PluginOperation =
         enabled && !installed ? "install" : enabled ? "enable" : "disable";
-      record(operation, "started");
+      const record = (
+        outcome: PluginOutcome,
+        failureReason?: OperationFailureReason,
+      ) =>
+        recordPluginOperation(
+          onboardingEntry,
+          pluginId,
+          operation,
+          outcome,
+          failureReason,
+        );
+      record("started");
       try {
         if (operation === "install") {
           const job = await startCatalogPluginInstall(fetch, {
@@ -83,13 +131,13 @@ export function useOnboardingPluginChange({
             marketplace,
           });
           applyPluginInstallJob({ queryClient, job });
-          setTrackedJobId(job.id);
+          trackInstall(job.id, pluginId);
         } else {
           await setPluginEnabled(pluginId, enabled);
-          record(operation, "succeeded");
+          record("succeeded");
         }
       } catch (error) {
-        record(operation, "failed", operationFailureReason(error));
+        record("failed", operationFailureReason(error));
         throw error;
       }
     },
@@ -97,10 +145,11 @@ export function useOnboardingPluginChange({
       entryId,
       installed,
       marketplace,
+      onboardingEntry,
       pluginId,
       queryClient,
-      record,
       setPluginEnabled,
+      trackInstall,
     ],
   );
 }

@@ -113,7 +113,11 @@ import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
 import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
 import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
-import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
+import {
+  useOnboardingPluginChange,
+  useOnboardingPluginInstallOutcomes,
+  type TrackPluginInstall,
+} from "./useOnboardingPluginChange";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
@@ -825,6 +829,7 @@ function ProjectsStepContainer({
 
 function PluginCardContainer({
   onboardingEntry,
+  trackInstall,
   entry,
   compact,
   enabled,
@@ -833,6 +838,7 @@ function PluginCardContainer({
   onDeselected,
 }: {
   onboardingEntry: OnboardingEntry;
+  trackInstall: TrackPluginInstall;
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
@@ -843,6 +849,7 @@ function PluginCardContainer({
   const changePlugin = useOnboardingPluginChange({
     onboardingEntry,
     plugin: entry,
+    trackInstall,
   });
   const installJob = useCatalogEntryInstallJob(entry);
   const [working, setWorking] = useState(false);
@@ -908,6 +915,7 @@ function PluginsStepContainer({
   chrome,
   setupGuide,
   entry: onboardingEntry,
+  trackInstall,
   onBack,
   onContinue,
   onSkip,
@@ -915,6 +923,7 @@ function PluginsStepContainer({
   chrome: StepChrome;
   setupGuide: SetupGuide;
   entry: OnboardingEntry;
+  trackInstall: TrackPluginInstall;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -1014,6 +1023,7 @@ function PluginsStepContainer({
             <PluginCardContainer
               key={entry.entryId}
               onboardingEntry={onboardingEntry}
+              trackInstall={trackInstall}
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
@@ -1234,6 +1244,7 @@ export function OnboardingFlow({
       properties: { step, entry },
     });
   }, [entry, step]);
+  const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
   const finishedRef = useRef(false);
   useOnboardingLeftTelemetry({ entry, step, finishedRef });
   useOnboardingErrorStep(step);
@@ -1322,6 +1333,7 @@ export function OnboardingFlow({
           chrome={chrome}
           setupGuide={setupGuide}
           entry={entry}
+          trackInstall={trackPluginInstall}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}
