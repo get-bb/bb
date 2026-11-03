@@ -3917,24 +3917,31 @@ describe("Account Pool plugin", () => {
       return fixture;
     }
 
+    const upstreamKey = (init: RequestInit | undefined) => {
+      const headers = new Headers(init?.headers);
+      return (
+        headers.get("x-api-key") ??
+        headers.get("authorization")?.slice(7) ??
+        ""
+      );
+    };
+
     it.each(["claude", "codex"] as const)(
-      "keeps %s sessions and the pool cursor on the third account after two failures",
+      "keeps %s session pins through a transient failover while the pool cursor advances",
       async (provider) => {
         let outage = false;
         const attempts: string[] = [];
         const fixture = await affinityFixture(
           provider,
           async (_input, init) => {
-            const headers = new Headers(init?.headers);
-            const key =
-              headers.get("x-api-key") ??
-              headers.get("authorization")?.slice(7) ??
-              "";
+            const key = upstreamKey(init);
             attempts.push(key);
-            return Response.json(
-              {},
-              { status: outage && key !== "sk-third" ? 503 : 200 },
-            );
+            return outage && key !== "sk-third"
+              ? Response.json(
+                  {},
+                  { status: 503, headers: { "retry-after": "0" } },
+                )
+              : Response.json({});
           },
         );
         if (provider === "claude") await addApiAccount(fixture, "sk-third");
@@ -3966,15 +3973,91 @@ describe("Account Pool plugin", () => {
         expect(attempts).toEqual([
           "sk-first",
           "sk-first",
+          "sk-first",
+          "sk-first",
+          "sk-second",
+          "sk-third",
+          "sk-first",
+          "sk-first",
+          "sk-first",
           "sk-second",
           "sk-third",
           "sk-third",
-          "sk-third",
-          "sk-third",
+          "sk-first",
           "sk-third",
         ]);
       },
     );
+
+    it.each(["claude", "codex"] as const)(
+      "retries a pinned %s session on its account after a transport error",
+      async (provider) => {
+        let failures = 0;
+        const attempts: Array<{ key: string; at: number }> = [];
+        const fixture = await affinityFixture(
+          provider,
+          async (_input, init) => {
+            const key = upstreamKey(init);
+            attempts.push({ key, at: Date.now() });
+            if (key === "sk-first" && failures > 0) {
+              failures--;
+              throw new TypeError("fetch failed");
+            }
+            return Response.json({});
+          },
+        );
+        const send = async (id: string) => {
+          const response = await fixture.host.harness.behavior.fetchHttp(
+            "POST",
+            provider === "claude" ? "/v1/messages" : "/v1/responses",
+            {
+              headers: { ...authHeaders(fixture.key), "session-id": id },
+              body: provider === "claude" ? claudeBody(id) : "{}",
+            },
+          );
+          expect(response.status).toBe(200);
+          await response.text();
+        };
+        await send("warm");
+        failures = 1;
+        await send("warm");
+        expect(attempts.map(({ key }) => key)).toEqual([
+          "sk-first",
+          "sk-first",
+          "sk-first",
+        ]);
+        expect(
+          (attempts[2]?.at ?? 0) - (attempts[1]?.at ?? 0),
+        ).toBeGreaterThanOrEqual(990);
+      },
+    );
+
+    it("fails a pinned session over at once when a transient failure asks for a long wait, keeping its pin", async () => {
+      let overloaded = false;
+      const attempts: string[] = [];
+      const fixture = await affinityFixture("claude", async (_input, init) => {
+        const key = upstreamKey(init);
+        attempts.push(key);
+        return overloaded && key === "sk-first"
+          ? Response.json({}, { status: 529, headers: { "retry-after": "60" } })
+          : Response.json({});
+      });
+      const send = async (id: string) => {
+        const response = await fixture.host.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          { headers: authHeaders(fixture.key), body: claudeBody(id) },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+      };
+      await send("warm");
+      overloaded = true;
+      await send("warm");
+      overloaded = false;
+      await send("warm");
+      expect(attempts).toEqual(["sk-first", "sk-first", "sk-second", "sk-first"]);
+    });
 
     it.each(["claude", "codex"] as const)(
       "lets new %s conversations bypass long holds while preserving established pins",
@@ -4734,13 +4817,13 @@ describe("Account Pool plugin", () => {
         "codex-parent-body",
         "codex-spawn",
       ])(
-        "inherits the eligible %s parent once and keeps child failover independent",
+        "inherits the eligible %s parent once and keeps both pins through a child failover",
         async (wire) => {
           const provider = wire === "claude" ? "claude" : "codex";
           const route =
             provider === "claude" ? "/v1/messages" : "/v1/responses";
           const seen: Array<{ key: string | null; body: string }> = [];
-          let rejectNext = false;
+          let rejections = 0;
           const fixture = await affinityFixture(
             provider,
             async (_input, init) => {
@@ -4757,9 +4840,12 @@ describe("Account Pool plugin", () => {
                 ),
               });
               if (seen.length === 1) return openStream();
-              if (rejectNext) {
-                rejectNext = false;
-                return Response.json({}, { status: 503 });
+              if (rejections > 0) {
+                rejections--;
+                return Response.json(
+                  {},
+                  { status: 503, headers: { "retry-after": "0" } },
+                );
               }
               return Response.json({});
             },
@@ -4780,7 +4866,7 @@ describe("Account Pool plugin", () => {
             expect(seen[1]?.body).toBe(
               forkRequest(wire, "child-session", "parent-session").body,
             );
-            rejectNext = true;
+            rejections = 3;
             const failover = await send("child-session", "parent-session");
             expect(failover.status).toBe(200);
             await failover.text();
@@ -4792,9 +4878,11 @@ describe("Account Pool plugin", () => {
               "sk-first",
               "sk-first",
               "sk-first",
-              "sk-second",
+              "sk-first",
               "sk-first",
               "sk-second",
+              "sk-first",
+              "sk-first",
             ]);
           } finally {
             await held.body?.cancel();
@@ -5178,9 +5266,11 @@ describe("Account Pool plugin", () => {
           const afterCompletion = await send("claude-opus-4-1");
           await afterCompletion.text();
           expect(attempts).toEqual(
-            reason === "auth error" || reason === "network error"
+            reason === "auth error"
               ? ["sk-first", "sk-first", "sk-second", "sk-second"]
-              : [
+              : reason === "network error"
+                ? ["sk-first", "sk-first", "sk-first", "sk-first"]
+                : [
                   "sk-first",
                   "sk-second",
                   reason === "family quota" ? "sk-first" : "sk-second",
@@ -6299,7 +6389,9 @@ describe("sequential pool recovery", () => {
       options: {
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
-          return Response.json({}, { status: outage ? 503 : 200 });
+          return outage
+            ? Response.json({}, { status: 503, headers: { "retry-after": "0" } })
+            : Response.json({});
         },
       },
     });
@@ -6316,7 +6408,14 @@ describe("sequential pool recovery", () => {
     await failed.text();
     outage = false;
     await (await send()).text();
-    expect(attempts).toEqual(["sk-first", "sk-first", "sk-second", "sk-first"]);
+    expect(attempts).toEqual([
+      "sk-first",
+      "sk-first",
+      "sk-first",
+      "sk-first",
+      "sk-second",
+      "sk-first",
+    ]);
   });
 
   it("sends new conversations to accounts past the switch threshold behind those below it until the provider refuses them", async () => {

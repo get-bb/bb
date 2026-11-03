@@ -118,7 +118,18 @@ past the switch threshold, until the provider refuses their account; a
 conversation that inherits its parent's pin follows the same rule. Short temporary rate limits wait on the same
 account once; longer holds return Retry-After for pinned conversations while new
 conversations can advance. A model-family limit detours only requests for that
-family without moving the session's main pin or the provider cursor. The cursor
+family without moving the session's main pin or the provider cursor.
+
+An HTTP 408, 500, 502, 503, 504 or 529 response, or a connection failure,
+before the response starts, retries a pinned conversation on its own account
+first: up to twice, after 1 and then 2 seconds, or after the response's
+`Retry-After` when that is at most 20 seconds. Prompt caches stay with the
+account, so a move would rewrite the whole cached context. When the retries
+fail, or the wait is longer, the request fails over to the next account without
+moving the session's pin, and the next request returns to the pinned account.
+A failed token refresh keeps the pin the same way. The provider cursor still
+advances, and a new conversation pins to the account that served its first
+request. HTTP 401 and 403 and quota refusals move the pin as before. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
