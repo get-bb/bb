@@ -17,7 +17,7 @@ const ASSIGNMENT_COOKIE_MS = 24 * 60 * 60 * 1000;
 const UNASSIGNED_TTL_MS = 60 * 60 * 1000;
 const STAMP = "~";
 const AUTOMATED_USER_AGENT =
-  /bot|crawl|spider|slurp|preview|monitor|uptime|pingdom|statuscake|headless|lighthouse|curl|wget|python|httpclient|go-http|axios|node-fetch|okhttp|java\//i;
+  /bot|crawl|spider|slurp|preview|monitor|uptime|pingdom|statuscake|headless|lighthouse|curl|wget|python|httpclient|go-http|axios|node-fetch|okhttp|java\/|^node\b/i;
 const NON_PAGE_ROOTS = [
   "/api",
   "/oauth",
