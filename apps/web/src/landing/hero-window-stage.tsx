@@ -1761,6 +1761,9 @@ const LinearPanel = memo(function LinearPanel() {
   );
 });
 
+const GLIDE_RATE = 0.02;
+const ROOM_RATE = 0.011;
+
 type FeedProps = {
   scene: Scene;
   reduced: boolean;
@@ -1777,9 +1780,9 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     const feed = feedRef.current;
     if (!feed || reduced || out || pre) return;
 
-    type Off = { top: number; off: number; v: number };
+    type Off = { top: number; off: number; v: number; w: number };
     const offs = new Map<HTMLElement, Off>();
-    const self: Off = { top: feed.offsetTop, off: 0, v: 0 };
+    const self: Off = { top: feed.offsetTop, off: 0, v: 0, w: GLIDE_RATE };
     let raf = 0;
     let last = 0;
     const apply = (el: HTMLElement, off: number) => {
@@ -1787,12 +1790,11 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
     };
     // Critically damped spring (settles in ~0.33s): a push starts from rest
     // and eases out, and a second push mid-glide keeps the current velocity.
-    const W = 0.02;
     const settle = (o: Off, dt: number) => {
-      const e = Math.exp(-W * dt);
-      const c = o.v + W * o.off;
+      const e = Math.exp(-o.w * dt);
+      const c = o.v + o.w * o.off;
       o.off = (o.off + c * dt) * e;
-      o.v = (o.v - W * c * dt) * e;
+      o.v = (o.v - o.w * c * dt) * e;
       return Math.abs(o.off) >= 0.3 || Math.abs(o.v) * 16 >= 0.3;
     };
     const tick = (ts: number) => {
@@ -1807,6 +1809,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       if (live) raf = requestAnimationFrame(tick);
       else {
         self.off = self.v = 0;
+        self.w = GLIDE_RATE;
         apply(feed, 0);
         offs.forEach((o, el) => {
           o.off = o.v = 0;
@@ -1895,7 +1898,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
           child.offsetParent === feed ? child.offsetTop : child.offsetTop - ft;
         const o = offs.get(child);
         if (!o) {
-          offs.set(child, { top, off: 0, v: 0 });
+          offs.set(child, { top, off: 0, v: 0, w: GLIDE_RATE });
           continue;
         }
         const d = furling ? 0 : o.top - top;
@@ -1908,21 +1911,58 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       }
       if (moved && !raf) raf = requestAnimationFrame(tick);
     });
-    const onFurl = (e: AnimationEvent) => {
+    const makeRoom = (start: HTMLElement) => {
+      const host = feed.parentElement;
+      if (!host) return;
+      const ghost = feed.cloneNode(true);
+      if (!(ghost instanceof HTMLElement)) return;
+      ghost.classList.add("is-measure");
+      ghost.style.width = `${feed.offsetWidth}px`;
+      host.appendChild(ghost);
+      const mark = ghost.querySelector("[data-room]");
+      const extent = mark
+        ? ghost.getBoundingClientRect().bottom -
+          mark.getBoundingClientRect().top
+        : 0;
+      ghost.remove();
+      const at =
+        start.getBoundingClientRect().top - feed.getBoundingClientRect().top;
+      feed.style.minHeight = `${Math.ceil(at + extent)}px`;
+      const ft = feed.offsetTop;
+      const fd = self.top - ft;
+      self.top = ft;
+      if (Math.abs(fd) < 0.5) return;
+      self.off += fd;
+      self.w = ROOM_RATE;
+      apply(feed, self.off);
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const onAnimation = (e: AnimationEvent) => {
+      if (
+        e.type === "animationstart" &&
+        e.animationName === "rhb-reveal" &&
+        e.target instanceof HTMLElement &&
+        e.target.hasAttribute("data-room")
+      ) {
+        makeRoom(e.target);
+        return;
+      }
       if (e.animationName !== "rhb-furl") return;
       furling = Math.max(0, furling + (e.type === "animationstart" ? 1 : -1));
     };
-    const furlEvents = [
+    const animationEvents = [
       "animationstart",
       "animationend",
       "animationcancel",
     ] as const;
-    furlEvents.forEach((type) => feed.addEventListener(type, onFurl));
+    animationEvents.forEach((type) => feed.addEventListener(type, onAnimation));
     ro.observe(feed);
     if (feed.parentElement) ro.observe(feed.parentElement);
     return () => {
       ro.disconnect();
-      furlEvents.forEach((type) => feed.removeEventListener(type, onFurl));
+      animationEvents.forEach((type) =>
+        feed.removeEventListener(type, onAnimation),
+      );
       cancelAnimationFrame(raf);
     };
   }, [reduced, out, pre]);
@@ -2136,7 +2176,11 @@ const FeedBody = memo(function FeedBody({
 
       {f ? (
         <>
-          <div className="rhb-user customize-msg" style={delay(f.at.user)}>
+          <div
+            className="rhb-user customize-msg"
+            data-room=""
+            style={delay(f.at.user)}
+          >
             {f.prompt}
           </div>
           <Turn
