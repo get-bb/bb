@@ -261,9 +261,12 @@ describe("public project attachments", () => {
     ["photo.heic", raw, undefined, raw],
     ["photo.heic", "image/heic", raw, raw],
     ["notes.txt", "", undefined, raw],
+    ["photo.heic", "image/heic", undefined, "image/png", true],
+    ["photo.HEIC", "", undefined, "image/png", true],
+    ["photo.heic", "image/heic", raw, raw, true],
   ])(
-    "uploads %s (%s, override %s) as %s",
-    async (name, mimeType, override, storedMimeType) => {
+    "uploads %s (%s, override %s) as %s (dropped: %s)",
+    async (name, mimeType, override, storedMimeType, dropped = false) => {
       const bytes = await readFile(
         new URL("../fixtures/images/quadrants.heic", import.meta.url),
       );
@@ -280,9 +283,12 @@ describe("public project attachments", () => {
               harness.app.request(new Request(input, init)),
           }),
         });
+        const file = new File(dropped ? [] : [bytes], name, { type: mimeType });
+        if (dropped)
+          file.arrayBuffer = async () => Uint8Array.from(bytes).buffer;
         const uploaded = await sdk.projects.attachments.upload({
           projectId: project.id,
-          clientFile: new File([bytes], name, { type: mimeType }),
+          clientFile: file,
           ...(override === undefined ? {} : { mimeType: override }),
         });
         const converted = storedMimeType === "image/png";
