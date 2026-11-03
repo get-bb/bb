@@ -1,13 +1,30 @@
 import {
   EXPERIMENT_KEYS,
   EXPERIMENT_PATHS,
+  SITE_WIDE_EXPERIMENTS,
+  isExperimentKey,
+  isVariantName,
   parseForcedFlags,
   type ExperimentBootstrap,
+  type ExperimentKey,
 } from "./flags";
 
 export const FLAGS_TIMEOUT_MS = 400;
 export const EXPERIMENT_CACHE_CONTROL = "private, no-cache";
+export const SITE_WIDE_COOKIE_NAME = "bb_site_experiments";
 const COOKIE_DAYS = 365;
+const SITE_WIDE_COOKIE_MS = 24 * 60 * 60 * 1000;
+const NON_PAGE_ROOTS = [
+  "/api",
+  "/oauth",
+  "/.well-known",
+  "/dashboard",
+  "/link",
+  "/marketplace/v1",
+  "/marketplace/v2",
+  "/marketplace/og",
+];
+const MAX_SITE_WIDE_COOKIE_LENGTH = 1024;
 const MAX_DISTINCT_ID_LENGTH = 200;
 const DISTINCT_ID_PATTERN = /^[\x21-\x7e]+$/;
 
@@ -37,11 +54,12 @@ export type ExperimentServerConfig = {
   now?: () => number;
   randomBytes?: (length: number) => Uint8Array;
   timeoutMs?: number;
+  siteWideKeys?: readonly ExperimentKey[];
 };
 
 export type ExperimentResolution = {
   bootstrap: ExperimentBootstrap;
-  setCookie: string | null;
+  setCookies: readonly string[];
 };
 
 type CookieRead =
@@ -53,24 +71,32 @@ export function postHogCookieName(postHogKey: string): string {
   return `ph_${postHogKey}_posthog`;
 }
 
-export function readPostHogCookie(
+function readCookieValue(
   cookieHeader: string | null,
   name: string,
-): CookieRead {
+): string | null {
   if (!cookieHeader) {
-    return { kind: "missing" };
+    return null;
   }
   const prefix = `${name}=`;
   const raw = cookieHeader
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(prefix));
-  if (raw === undefined) {
+  return raw === undefined ? null : raw.slice(prefix.length);
+}
+
+export function readPostHogCookie(
+  cookieHeader: string | null,
+  name: string,
+): CookieRead {
+  const raw = readCookieValue(cookieHeader, name);
+  if (raw === null) {
     return { kind: "missing" };
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(decodeURIComponent(raw.slice(prefix.length)));
+    parsed = JSON.parse(decodeURIComponent(raw));
   } catch {
     return { kind: "unreadable" };
   }
@@ -110,13 +136,36 @@ export function cookieDomain(
     : null;
 }
 
-export function postHogCookie(args: {
-  name: string;
-  distinctId: string;
+type CookieTarget = {
   url: URL;
   baseDomain: string;
   now: number;
-}): string {
+};
+
+function setCookieHeader(
+  name: string,
+  value: string,
+  expiresAt: number,
+  target: CookieTarget,
+): string {
+  const domain = cookieDomain(target.url.hostname, target.baseDomain);
+  return [
+    `${name}=${value}`,
+    `expires=${new Date(expiresAt).toUTCString()}`,
+    "SameSite=Lax",
+    "path=/",
+    ...(domain === null ? [] : [`domain=.${domain}`]),
+    ...(target.url.protocol === "https:" ? ["secure"] : []),
+  ].join("; ");
+}
+
+function cookieExpiry(now: number): number {
+  return now + COOKIE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+export function postHogCookie(
+  args: CookieTarget & { name: string; distinctId: string },
+): string {
   const value = encodeURIComponent(
     JSON.stringify({
       distinct_id: args.distinctId,
@@ -124,18 +173,7 @@ export function postHogCookie(args: {
       $user_state: "anonymous",
     }),
   );
-  const expires = new Date(
-    args.now + COOKIE_DAYS * 24 * 60 * 60 * 1000,
-  ).toUTCString();
-  const domain = cookieDomain(args.url.hostname, args.baseDomain);
-  return [
-    `${args.name}=${value}`,
-    `expires=${expires}`,
-    "SameSite=Lax",
-    "path=/",
-    ...(domain === null ? [] : [`domain=.${domain}`]),
-    ...(args.url.protocol === "https:" ? ["secure"] : []),
-  ].join("; ");
+  return setCookieHeader(args.name, value, cookieExpiry(args.now), args);
 }
 
 type FlagsRequest = {
@@ -149,9 +187,14 @@ type FlagsRequest = {
   timeoutMs: number;
 };
 
+export type FlagsEvaluation = {
+  outcome: FlagsOutcome;
+  flags: Record<string, string>;
+};
+
 export async function evaluateFlags(
   request: FlagsRequest,
-): Promise<Record<string, string>> {
+): Promise<FlagsEvaluation> {
   const startedAt = request.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
@@ -192,7 +235,7 @@ export async function evaluateFlags(
     ...(status === undefined ? {} : { status }),
     assigned: Object.keys(assigned).length,
   });
-  return outcome === "ok" ? assigned : {};
+  return { outcome, flags: outcome === "ok" ? assigned : {} };
 }
 
 function readFlagsBody(
@@ -241,64 +284,153 @@ function readFlagsBody(
   return { outcome: "ok", assigned };
 }
 
+export function isSitePage(request: Request, url: URL): boolean {
+  if (EXPERIMENT_PATHS.has(url.pathname)) {
+    return true;
+  }
+  const path = url.pathname;
+  const lastSegment = path.slice(path.lastIndexOf("/") + 1);
+  return (
+    (request.headers.get("accept") ?? "").includes("text/html") &&
+    !path.startsWith("/download/") &&
+    !lastSegment.includes(".") &&
+    !NON_PAGE_ROOTS.some((root) => path === root || path.startsWith(`${root}/`))
+  );
+}
+
+export type StoredAssignments = Readonly<Record<string, string | null>>;
+
+export function readSiteWideCookie(
+  cookieHeader: string | null,
+  keys: readonly ExperimentKey[],
+): StoredAssignments {
+  const raw = readCookieValue(cookieHeader, SITE_WIDE_COOKIE_NAME);
+  if (raw === null || raw.length > MAX_SITE_WIDE_COOKIE_LENGTH) {
+    return {};
+  }
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(decodeURIComponent(raw));
+  } catch {
+    return {};
+  }
+  const stored: Record<string, string | null> = {};
+  for (const [key, variant] of params) {
+    if (!isExperimentKey(key) || !keys.includes(key)) {
+      continue;
+    }
+    if (variant === "") {
+      stored[key] = null;
+    } else if (isVariantName(variant)) {
+      stored[key] = variant;
+    }
+  }
+  return stored;
+}
+
+export function siteWideCookie(
+  args: CookieTarget & { assignments: StoredAssignments },
+): string {
+  const value = new URLSearchParams(
+    Object.entries(args.assignments)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, variant]) => [key, variant ?? ""]),
+  ).toString();
+  return setCookieHeader(
+    SITE_WIDE_COOKIE_NAME,
+    encodeURIComponent(value),
+    args.now + SITE_WIDE_COOKIE_MS,
+    args,
+  );
+}
+
 export async function resolveExperiments(
   request: Request,
   config: ExperimentServerConfig,
 ): Promise<ExperimentResolution | null> {
   const url = new URL(request.url);
-  if (request.method !== "GET" || !EXPERIMENT_PATHS.has(url.pathname)) {
+  if (request.method !== "GET" || !isSitePage(request, url)) {
     return null;
   }
+  const siteWideKeys = config.siteWideKeys ?? SITE_WIDE_EXPERIMENTS;
+  const keys = EXPERIMENT_PATHS.has(url.pathname)
+    ? EXPERIMENT_KEYS
+    : siteWideKeys;
   const forced = parseForcedFlags(url.searchParams);
   const preview = forced !== null;
+  if (keys.length === 0 && !preview) {
+    return null;
+  }
   if (!config.postHogKey) {
     return preview
       ? {
           bootstrap: { distinctID: null, featureFlags: forced, preview },
-          setCookie: null,
+          setCookies: [],
         }
       : null;
   }
   const now = config.now ?? Date.now;
+  const cookieHeader = request.headers.get("cookie");
   const name = postHogCookieName(config.postHogKey);
-  const cookie = readPostHogCookie(request.headers.get("cookie"), name);
+  const cookie = readPostHogCookie(cookieHeader, name);
   if (cookie.kind === "unreadable") {
     return {
       bootstrap: { distinctID: null, featureFlags: forced ?? {}, preview },
-      setCookie: null,
+      setCookies: [],
     };
   }
   const distinctId =
     cookie.kind === "found"
       ? cookie.distinctId
       : uuidv7(now(), (config.randomBytes ?? defaultRandomBytes)(10));
-  const setCookie =
+  const target = { url, baseDomain: config.baseDomain, now: now() };
+  const setCookies =
     cookie.kind === "found"
+      ? []
+      : [postHogCookie({ name, distinctId, ...target })];
+  if (forced !== null) {
+    return {
+      bootstrap: { distinctID: distinctId, featureFlags: forced, preview },
+      setCookies,
+    };
+  }
+  const stored = readSiteWideCookie(cookieHeader, siteWideKeys);
+  const missing = keys.filter((key) => !Object.hasOwn(stored, key));
+  const evaluation =
+    missing.length === 0
       ? null
-      : postHogCookie({
-          name,
-          distinctId,
-          url,
-          baseDomain: config.baseDomain,
-          now: now(),
-        });
-  const featureFlags =
-    forced ??
-    (EXPERIMENT_KEYS.length === 0
-      ? {}
       : await evaluateFlags({
           host: config.postHogHost,
           apiKey: config.postHogKey,
           distinctId,
-          keys: EXPERIMENT_KEYS,
+          keys: missing,
           fetch: config.fetch,
           log: config.log,
           now,
           timeoutMs: config.timeoutMs ?? FLAGS_TIMEOUT_MS,
-        }));
+        });
+  const featureFlags: Record<string, string> = {};
+  for (const key of keys) {
+    const variant = Object.hasOwn(stored, key)
+      ? stored[key]
+      : evaluation?.flags[key];
+    if (variant) {
+      featureFlags[key] = variant;
+    }
+  }
+  const newlyStored = missing.filter((key) => siteWideKeys.includes(key));
+  if (evaluation?.outcome === "ok" && newlyStored.length > 0) {
+    const assignments: Record<string, string | null> = { ...stored };
+    for (const key of newlyStored) {
+      const variant = evaluation.flags[key];
+      assignments[key] =
+        variant !== undefined && isVariantName(variant) ? variant : null;
+    }
+    setCookies.push(siteWideCookie({ assignments, ...target }));
+  }
   return {
     bootstrap: { distinctID: distinctId, featureFlags, preview },
-    setCookie,
+    setCookies,
   };
 }
 
@@ -306,17 +438,32 @@ function defaultRandomBytes(length: number): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(length));
 }
 
+function isHtml(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("text/html");
+}
+
 export function withExperimentHeaders(
   response: Response,
-  resolution: ExperimentResolution,
+  resolution: ExperimentResolution | null,
 ): Response {
-  if (resolution.bootstrap.distinctID === null) {
+  const personalized =
+    resolution !== null &&
+    (resolution.bootstrap.distinctID !== null ||
+      Object.keys(resolution.bootstrap.featureFlags).length > 0 ||
+      resolution.setCookies.length > 0);
+  const html = isHtml(response);
+  if (!html && !personalized) {
     return response;
   }
   const headers = new Headers(response.headers);
-  headers.set("cache-control", EXPERIMENT_CACHE_CONTROL);
-  if (resolution.setCookie !== null) {
-    headers.append("set-cookie", resolution.setCookie);
+  if (html) {
+    headers.append("vary", "Cookie");
+  }
+  if (personalized) {
+    headers.set("cache-control", EXPERIMENT_CACHE_CONTROL);
+  }
+  for (const cookie of resolution?.setCookies ?? []) {
+    headers.append("set-cookie", cookie);
   }
   return new Response(response.body, {
     status: response.status,

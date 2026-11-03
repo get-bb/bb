@@ -52,9 +52,7 @@ export default {
     const response = await handleRequest(request, {
       context: { experiments: resolution?.bootstrap ?? NO_EXPERIMENTS },
     });
-    return resolution === null
-      ? response
-      : withExperimentHeaders(response, resolution);
+    return withExperimentHeaders(response, resolution);
   },
 };
 
