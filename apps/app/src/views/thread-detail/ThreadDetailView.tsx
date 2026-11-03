@@ -50,7 +50,6 @@ import {
   usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
 import {
@@ -545,7 +544,6 @@ function ThreadDetailViewInternal(
     threadId,
     enabled: timelineEnabled,
   });
-  const updateEnvironment = useUpdateEnvironment();
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
@@ -1764,8 +1762,7 @@ function ThreadDetailViewInternal(
                 environmentProvisioningFailure,
                 environmentDisplayHost: environmentDisplayHostContext,
                 threadEnvironmentId: threadTabEnvironmentId,
-                updateThreadPending:
-                  updateThread.isPending || updateEnvironment.isPending,
+                updateThreadPending: updateThread.isPending,
                 storage: metadataStorage,
                 onAssignParent: handleAssignParent,
                 onParentSelectorOpenChange: handleParentSelectorOpenChange,

@@ -52,7 +52,7 @@ function getCheckoutMutationAdmissionLockSpec(
   };
 }
 
-async function withCheckoutMutationAdmission<T>(
+export async function withCheckoutMutationAdmission<T>(
   checkoutPath: string,
   work: ProcessLocalQueuedLockWork<T>,
   signal?: AbortSignal,
