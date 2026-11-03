@@ -1,21 +1,15 @@
 import { useEffect, useState } from "react";
 
-export function useInView<T extends Element>(rootMargin = "0px") {
+export function useInView<T extends Element>() {
   const [el, setEl] = useState<T | null>(null);
-  const [inView, setInView] = useState(false);
   const [seen, setSeen] = useState(false);
   useEffect(() => {
     if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const visible = entry?.isIntersecting ?? false;
-        setInView(visible);
-        if (visible) setSeen(true);
-      },
-      { rootMargin },
-    );
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setSeen(true);
+    });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [el, rootMargin]);
-  return { ref: setEl, inView, seen };
+  }, [el]);
+  return { ref: setEl, seen };
 }
