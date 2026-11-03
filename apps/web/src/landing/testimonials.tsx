@@ -35,20 +35,20 @@ const SOURCE_ICON = {
 
 const TESTIMONIALS: readonly Testimonial[] = [
   {
-    author: "Tobi Lütke",
-    byline: "CEO, Shopify",
-    avatar: lutkeAvatar,
-    source: "x",
-    url: "https://x.com/tobi/status/2104898204135297252",
-    quote: "I think it’s really really good, too! Use it daily.",
-  },
-  {
     author: "Ben Tossell",
     byline: "Founder, Ben’s Bites",
     avatar: tossellAvatar,
     source: "x",
     url: "https://x.com/bentossell/status/2085300851824787550",
     quote: "best new app i’ve tried in a while\n\nlikely my new default",
+  },
+  {
+    author: "Tobi Lütke",
+    byline: "CEO, Shopify",
+    avatar: lutkeAvatar,
+    source: "x",
+    url: "https://x.com/tobi/status/2104898204135297252",
+    quote: "I think it’s really really good, too! Use it daily.",
   },
   {
     author: "David Ondrej",
