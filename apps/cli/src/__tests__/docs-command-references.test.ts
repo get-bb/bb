@@ -23,7 +23,7 @@ const SCANNED_ROOTS: readonly { dir: string; extensions: readonly string[] }[] =
 const SKIPPED_DIRS = new Set(["node_modules", "dist", ".turbo"]);
 const GLOBAL_FLAGS = new Set(["--help", "--version"]);
 const WORD = /^[a-z][a-z0-9-]*$/u;
-const NON_COMMAND_NAMES = new Set(["cloud", "weather"]);
+const NON_COMMAND_NAMES = new Set(["cloud", "hello", "weather"]);
 
 interface CommandNode {
   children: Map<string, CommandNode>;
