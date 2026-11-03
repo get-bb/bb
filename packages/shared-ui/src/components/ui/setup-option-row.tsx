@@ -2,6 +2,10 @@ import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { Icon, type IconName } from "./icon";
 
+export const SETUP_GUIDE_CONTAINER_CLASS = "@container/onboarding";
+export const SETUP_OPTION_ICON_GUTTER_CLASS = "pl-8";
+export const SETUP_OPTION_ICON_OUTDENT_CLASS = "-ml-8 mr-3 w-5";
+
 export function SetupOptionRow({
   icon,
   title,
