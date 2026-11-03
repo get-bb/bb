@@ -101,6 +101,11 @@ describe("createAsyncTtlMemo", () => {
     await vi.waitFor(async () =>
       expect(await cache.run("key", load)).toBe("new"),
     );
+    now = 200;
+    expect(await cache.run("key", load, { revalidateStale: false })).toBe(
+      "new",
+    );
+    expect(load).toHaveBeenCalledTimes(2);
     now = 300;
     const forced = createDeferredPromise<string>();
     load.mockImplementation(() => forced.promise);

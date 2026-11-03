@@ -435,7 +435,7 @@ export function registerHostRoutes(
     assertUsableHostId(deps, { hostId });
     const result = await getProviderInstallations(deps, {
       hostId,
-      refresh: query.refresh === "true",
+      mode: query.refresh === "true" ? "refresh" : "read",
     });
     return context.json(result);
   });

@@ -1,5 +1,6 @@
 export interface AsyncTtlMemoRunOptions<TValue> {
   refresh?: boolean;
+  revalidateStale?: boolean;
   onReplaced?: (previous: TValue, next: TValue) => void;
   onRevalidateError?: (error: unknown) => void;
 }
@@ -97,7 +98,7 @@ export function createAsyncTtlMemo<TKey, TValue>({
       if (options.refresh !== true && settled !== undefined) {
         if (settled.expiresAt > now()) return Promise.resolve(settled.value);
         if (staleWhileRevalidate) {
-          if (!pendingByKey.has(key)) {
+          if (options.revalidateStale !== false && !pendingByKey.has(key)) {
             start(key, task, settled, options.onReplaced).catch((error) =>
               options.onRevalidateError?.(error),
             );
