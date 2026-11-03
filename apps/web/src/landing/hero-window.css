@@ -2931,3 +2931,13 @@
     --rhb-m: 1;
   }
 }
+
+/* Tool calls sit flush under "Working", as the app's timeline lists them:
+   same 8px inset as the header, no extra indent or seam line. */
+.rhb .rhb-turn-body {
+  padding-left: 0;
+}
+
+.rhb .rhb-turn-body > .rhb-work::before {
+  content: none;
+}
