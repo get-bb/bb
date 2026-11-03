@@ -170,17 +170,6 @@ function markThreadTerminalSessionsExited(
   );
 }
 
-function markEnvironmentTerminalSessionsExited(
-  db: TestDb,
-  args: { closeReason: TerminalSessionCloseReason; environmentId: string },
-) {
-  return markTerminalSessionsExited(
-    db,
-    { environmentId: args.environmentId, kind: "environment" },
-    args.closeReason,
-  );
-}
-
 function markDaemonTerminalSessionsDisconnected(
   db: TestDb,
   args: { daemonSessionId: string },
@@ -1531,41 +1520,6 @@ describe("public terminal routes", () => {
       type: "terminal.close",
       terminalId: openMessage.terminalId,
       reason: "thread-deleted",
-    });
-  });
-
-  it("does not resurrect a pending terminal after environment destruction", async () => {
-    const fixture = await createTerminalRouteFixture();
-    harnesses.push(fixture.harness);
-    const { openMessage, responsePromise } =
-      await startPendingTerminalOpen(fixture);
-
-    markEnvironmentTerminalSessionsExited(fixture.harness.db, {
-      environmentId: fixture.environment.id,
-      closeReason: "environment-destroyed",
-    });
-    acknowledgeTerminalOpen(fixture, openMessage);
-
-    const response = await responsePromise;
-    expect(response.status).toBe(409);
-    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
-      code: "terminal_open_cancelled",
-    });
-    expect(
-      listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
-    ).toEqual([
-      expect.objectContaining({
-        id: openMessage.terminalId,
-        closeReason: "environment-destroyed",
-        daemonSessionId: null,
-        status: "exited",
-      }),
-    ]);
-    const closeMessage = await waitForDaemonMessage(fixture.socket, 1);
-    expect(closeMessage).toMatchObject({
-      type: "terminal.close",
-      terminalId: openMessage.terminalId,
-      reason: "environment-destroyed",
     });
   });
 

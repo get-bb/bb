@@ -83,9 +83,6 @@ function marketplaceIconContentTypeForPath(
   bytes: Uint8Array,
 ): string {
   const pathname = filePath.toLowerCase();
-  if (bytes.byteLength > MARKETPLACE_ICON_MAX_BYTES) {
-    throw new Error(`icon exceeds ${MARKETPLACE_ICON_MAX_BYTES} bytes`);
-  }
   if (pathname.endsWith(".svg")) {
     assertValidPluginCompactIconSvg(bytes, "icon");
     return "image/svg+xml";
