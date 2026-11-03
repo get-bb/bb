@@ -70,7 +70,7 @@ function submitArgs() {
 function mutateCallbacks() {
   return mocks.mutate.mock.lastCall?.[1] as {
     onSuccess: (project: { id: string }) => void;
-    onError: () => void;
+    onError: (error: unknown) => void;
   };
 }
 
@@ -124,12 +124,18 @@ describe("useQuickCreateProject", () => {
     expect(mocks.openPathEntry).toHaveBeenCalledWith({ kind: "create" });
     act(() => submit());
     expect(observer.onStarted).toHaveBeenCalledOnce();
-    act(() => mutateCallbacks().onError());
-    expect(observer.onSettled).toHaveBeenLastCalledWith("failed");
+    const failure = new Error("exists");
+    act(() => mutateCallbacks().onError(failure));
+    expect(observer.onSettled).toHaveBeenLastCalledWith({
+      outcome: "failed",
+      error: failure,
+    });
 
     act(() => submit());
     act(() => mutateCallbacks().onSuccess({ id: "prj_notes" }));
-    expect(observer.onSettled).toHaveBeenLastCalledWith("succeeded");
+    expect(observer.onSettled).toHaveBeenLastCalledWith({
+      outcome: "succeeded",
+    });
     expect(observer.onStarted).toHaveBeenCalledTimes(2);
 
     act(() => result.current.openCreateDialog());

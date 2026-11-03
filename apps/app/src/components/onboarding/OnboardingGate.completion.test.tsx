@@ -24,6 +24,7 @@ import { createAppQueryClient } from "@/lib/query-client";
 import { sdk } from "@/lib/sdk";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { OnboardingGate } from "./OnboardingGate";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
 
 const guide = vi.hoisted(() => ({ mounts: 0 }));
 
@@ -38,6 +39,7 @@ vi.mock("@/lib/sdk", () => ({
     },
   },
 }));
+vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useHostListRealtimeSubscription: () => undefined,
   useSystemRealtimeSubscription: () => undefined,
@@ -45,12 +47,16 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 vi.mock("./OnboardingFlow", async () => {
   const { useEffect } = await import("react");
   return {
-    OnboardingFlow: ({ onClose }: { onClose: () => void }) => {
+    OnboardingFlow: ({
+      onClose,
+    }: {
+      onClose: (lastStep: "devices") => void;
+    }) => {
       useEffect(() => {
         guide.mounts += 1;
       }, []);
       return (
-        <button type="button" onClick={onClose}>
+        <button type="button" onClick={() => onClose("devices")}>
           Start using bb
         </button>
       );
@@ -227,4 +233,33 @@ describe("OnboardingGate completion against the settings cache", () => {
     expect(currentCompletedAt(queryClient)).toBeNull();
     expect(screen.getByText("Start using bb")).toBeTruthy();
   });
+
+  it.each(["control", "new"] as const)(
+    "records a failed completion save from the last step in the %s guide",
+    async (variant) => {
+      vi.mocked(sdk.system.experimental_setupGuide).mockResolvedValueOnce({
+        variant,
+        featuredPluginEntryIds: null,
+      });
+      const queryClient = createTestQueryClient();
+      renderGate(queryClient);
+      await screen.findByText("Start using bb");
+      server.failSaves = true;
+
+      await closeGuide();
+      expect(recordTelemetryEvent).not.toHaveBeenCalled();
+      await settle(server.saveReplies);
+
+      expect(recordTelemetryEvent).toHaveBeenCalledExactlyOnceWith({
+        name: "onboarding_operation",
+        properties: {
+          entry: "first_run",
+          step: "devices",
+          operation: "finish",
+          outcome: "failed",
+          failure_reason: "other",
+        },
+      });
+    },
+  );
 });

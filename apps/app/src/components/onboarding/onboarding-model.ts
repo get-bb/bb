@@ -1,5 +1,6 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
-import { BbHttpError } from "@bb/sdk/browser";
+import { BbRequestTimeoutError } from "@bb/sdk/browser";
+import { asHttpError } from "@/lib/http-error";
 import type {
   HostDiscoveredRepo,
   ServerAccessStatus,
@@ -267,12 +268,25 @@ export function defaultSelectedRepoPaths(
   return new Set(chosen.map((repo) => repo.path));
 }
 
-export type OperationFailureReason = "host_unavailable" | "timed_out" | "other";
+export type OperationFailureReason =
+  | "host_unavailable"
+  | "timed_out"
+  | "not_found"
+  | "permission"
+  | "other";
 
 export function operationFailureReason(error: unknown): OperationFailureReason {
-  if (!(error instanceof BbHttpError)) return "other";
-  if (error.code === "host_unavailable") return "host_unavailable";
-  if (error.code === "command_timeout") return "timed_out";
+  if (error instanceof BbRequestTimeoutError) return "timed_out";
+  const httpError = asHttpError(error);
+  if (httpError === null) return "other";
+  if (httpError.code === "host_unavailable") return "host_unavailable";
+  if (httpError.code === "command_timeout" || httpError.status === 504) {
+    return "timed_out";
+  }
+  if (httpError.status === 404) return "not_found";
+  if (httpError.status === 401 || httpError.status === 403) {
+    return "permission";
+  }
   return "other";
 }
 

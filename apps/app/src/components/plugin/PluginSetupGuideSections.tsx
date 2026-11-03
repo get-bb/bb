@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { InternalDoNotUseSetupFailureStage } from "@get-bb/plugin-sdk/app";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
 
@@ -6,11 +7,13 @@ export function PluginSetupGuideSections({
   pluginId,
   onPhone,
   onSetupStarted,
+  onSetupFailed,
   fallback,
 }: {
   pluginId: string;
   onPhone: boolean;
   onSetupStarted: () => void;
+  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
   fallback: ReactNode;
 }) {
   const { setupGuideSections } = usePluginSlots();
@@ -26,7 +29,11 @@ export function PluginSetupGuideSections({
       slotId={section.id}
       crashFallback={fallback}
     >
-      <section.component onPhone={onPhone} onSetupStarted={onSetupStarted} />
+      <section.component
+        onPhone={onPhone}
+        onSetupStarted={onSetupStarted}
+        onSetupFailed={onSetupFailed}
+      />
     </PluginSlotMount>
   ));
 }

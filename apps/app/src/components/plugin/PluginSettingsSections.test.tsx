@@ -20,16 +20,24 @@ afterEach(() => {
 
 function Section({
   internal_DO_NOT_USE_onSetupStarted: onSetupStarted,
+  internal_DO_NOT_USE_onSetupFailed: onSetupFailed,
 }: PluginSettingsSectionProps) {
   return (
-    <button type="button" onClick={onSetupStarted}>
-      {onSetupStarted === undefined ? "settings" : "setup guide"}
-    </button>
+    <>
+      <button type="button" onClick={onSetupStarted}>
+        {onSetupStarted === undefined ? "settings" : "setup guide"}
+      </button>
+      {onSetupFailed === undefined ? null : (
+        <button type="button" onClick={() => onSetupFailed("pairing")}>
+          fail
+        </button>
+      )}
+    </>
   );
 }
 
 describe("PluginSettingsSections", () => {
-  it("passes the setup guide's start callback only when the guide renders the section", () => {
+  it("passes the setup guide's callbacks only when the guide renders the section", () => {
     setPluginSlotRegistrations(
       "connect",
       registrationSet({
@@ -37,12 +45,14 @@ describe("PluginSettingsSections", () => {
       }),
     );
     const onSetupStarted = vi.fn();
+    const onSetupFailed = vi.fn();
     const { unmount } = render(
       <MemoryRouter>
         <PluginSettingsSections pluginId="connect" />
       </MemoryRouter>,
     );
     expect(screen.getByRole("button", { name: "settings" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "fail" })).toBeNull();
     unmount();
 
     render(
@@ -50,10 +60,13 @@ describe("PluginSettingsSections", () => {
         <PluginSettingsSections
           pluginId="connect"
           onSetupStarted={onSetupStarted}
+          onSetupFailed={onSetupFailed}
         />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "setup guide" }));
     expect(onSetupStarted).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "fail" }));
+    expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("pairing");
   });
 });

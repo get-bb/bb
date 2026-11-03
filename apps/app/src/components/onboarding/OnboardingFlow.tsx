@@ -17,7 +17,6 @@ import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
-import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -29,7 +28,6 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
-import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   useHostDiscoveredRepos,
   useHosts,
@@ -40,10 +38,7 @@ import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import {
-  startCatalogPluginInstall,
-  useCatalogEntryInstallJob,
-} from "@/hooks/queries/plugin-install-job-queries";
+import { useCatalogEntryInstallJob } from "@/hooks/queries/plugin-install-job-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { terminalOutputTailQueryKey } from "@/hooks/queries/query-keys";
@@ -97,6 +92,7 @@ import {
   agentContinueDisabled,
   featuredPluginEntryIds,
   hasReadyAgent,
+  operationFailureReason,
   parseSignInOutput,
   projectsPrimaryAction,
   resolveAgentSetupState,
@@ -113,6 +109,8 @@ import {
   type OnboardingEntry,
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
+import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
@@ -348,6 +346,7 @@ function AgentStepContainer({
   redesign,
   entry,
   hostId,
+  noHost,
   hostName,
   onContinue,
 }: {
@@ -355,6 +354,7 @@ function AgentStepContainer({
   redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
+  noHost: boolean;
   hostName: string | null;
   onContinue: () => void;
 }) {
@@ -362,6 +362,7 @@ function AgentStepContainer({
     enabled: hostId !== null,
     ...(hostId === null ? {} : { hostId }),
   });
+  useLoadFailureTelemetry({ entry, step: "agent", noHost, query: statesQuery });
   const providersQuery = useSystemProviders(
     hostId === null ? { enabled: false } : { hostId },
   );
@@ -707,21 +708,28 @@ function ProjectsStepContainer({
     ];
   }, [discovered, hostProjects, now, projectIdsAtOpen]);
 
-  const recordFolderAdd = (outcome: "started" | "succeeded" | "failed") =>
+  const recordFolderAdd = (
+    result:
+      | { outcome: "started" | "succeeded" }
+      | { outcome: "failed"; error: unknown },
+  ) =>
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {
         entry,
         step: "projects",
         operation: "import",
-        outcome,
+        outcome: result.outcome,
         item_count: 1,
-        succeeded_count: outcome === "succeeded" ? 1 : 0,
+        succeeded_count: result.outcome === "succeeded" ? 1 : 0,
+        ...(result.outcome === "failed"
+          ? { failure_reason: operationFailureReason(result.error) }
+          : {}),
       },
     });
   const addFolder = () =>
     quickCreateProject.openObservedCreateDialog({
-      onStarted: () => recordFolderAdd("started"),
+      onStarted: () => recordFolderAdd({ outcome: "started" }),
       onSettled: recordFolderAdd,
     });
 
@@ -813,6 +821,7 @@ function ProjectsStepContainer({
 }
 
 function PluginCardContainer({
+  onboardingEntry,
   entry,
   compact,
   enabled,
@@ -820,6 +829,7 @@ function PluginCardContainer({
   onSelected,
   onDeselected,
 }: {
+  onboardingEntry: OnboardingEntry;
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
@@ -827,8 +837,10 @@ function PluginCardContainer({
   onSelected: () => void;
   onDeselected: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const setPluginEnabled = useSetPluginEnabled();
+  const changePlugin = useOnboardingPluginChange({
+    onboardingEntry,
+    plugin: entry,
+  });
   const installJob = useCatalogEntryInstallJob(entry);
   const [working, setWorking] = useState(false);
   const [target, setTarget] = useState<boolean | null>(null);
@@ -852,15 +864,7 @@ function PluginCardContainer({
     setTarget(next);
     setWorking(true);
     try {
-      if (next && !entry.installed) {
-        const job = await startCatalogPluginInstall(fetch, {
-          entryId: entry.entryId,
-          marketplace: entry.marketplace,
-        });
-        applyPluginInstallJob({ queryClient, job });
-      } else {
-        await setPluginEnabled(entry.pluginId, next);
-      }
+      await changePlugin(next);
       await onChanged();
     } catch (error) {
       setTarget(null);
@@ -913,6 +917,12 @@ function PluginsStepContainer({
   onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  useLoadFailureTelemetry({
+    entry: onboardingEntry,
+    step: "plugins",
+    noHost: false,
+    query: catalogQuery,
+  });
   const listQuery = usePluginList({ enabled: true });
   const { refetch: refetchCatalog } = catalogQuery;
   const { refetch: refetchList } = listQuery;
@@ -1000,6 +1010,7 @@ function PluginsStepContainer({
           entries.map((entry) => (
             <PluginCardContainer
               key={entry.entryId}
+              onboardingEntry={onboardingEntry}
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
@@ -1055,16 +1066,17 @@ function DevicesStepContainer({
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
-  const { startRemoteAccessSetup } = useDeviceSetupTracking({
-    entry,
-    connectStatus: connect.status,
-    addMachineCommandShown:
-      addMachineOpen &&
-      (redesign
-        ? connect.status === "on"
-        : machineServerAccessReady(configQuery.data?.serverAccess)),
-    connectedMachineCount,
-  });
+  const { startRemoteAccessSetup, failRemoteAccessSetup, failAddMachine } =
+    useDeviceSetupTracking({
+      entry,
+      connectStatus: connect.status,
+      addMachineCommandShown:
+        addMachineOpen &&
+        (redesign
+          ? connect.status === "on"
+          : machineServerAccessReady(configQuery.data?.serverAccess)),
+      connectedMachineCount,
+    });
   const addMachine = () => setAddMachineOpen(true);
   const closeAddMachine = () => {
     void hostsQuery.refetch();
@@ -1088,12 +1100,13 @@ function DevicesStepContainer({
               pluginId={CONNECT_PLUGIN_ID}
               onPhone={onPhone}
               onSetupStarted={startRemoteAccessSetup}
+              onSetupFailed={failRemoteAccessSetup}
               fallback={<ConnectUnavailableRow />}
             />
           }
           addMachinePanel={
             addMachineOpen && connect.status === "on" ? (
-              <AddMachineInline />
+              <AddMachineInline onEnrollmentFailed={failAddMachine} />
             ) : null
           }
           onAddMachine={addMachine}
@@ -1116,6 +1129,7 @@ function DevicesStepContainer({
           <PluginSettingsSections
             pluginId={CONNECT_PLUGIN_ID}
             onSetupStarted={startRemoteAccessSetup}
+            onSetupFailed={failRemoteAccessSetup}
           />
         }
         connectSetupOpen={connectSetupOpen}
@@ -1128,6 +1142,7 @@ function DevicesStepContainer({
       <AddMachineDialog
         open={addMachineOpen}
         onOpenChange={setAddMachineOpen}
+        onEnrollmentFailed={failAddMachine}
       />
     </OnboardingLayout>
   );
@@ -1146,7 +1161,7 @@ export function OnboardingFlow({
   initialStep: OnboardingStepId;
   entry: OnboardingEntry;
   setupGuide: SetupGuide;
-  onClose: () => void;
+  onClose: (lastStep: OnboardingStepId) => void;
 }) {
   const [step, setStep] = useState(initialStep);
   const redesign = setupGuide.variant === "new";
@@ -1175,10 +1190,11 @@ export function OnboardingFlow({
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
   const reposQuery = useHostDiscoveredRepos(hostId);
+  const noHost = hostsLoaded && primaryHost === null;
   useProjectsScanTelemetry({
     entry,
     scan: reposQuery,
-    noHost: step === "projects" && hostsLoaded && primaryHost === null,
+    noHost: step === "projects" && noHost,
   });
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
@@ -1254,7 +1270,7 @@ export function OnboardingFlow({
       name: "onboarding_finished",
       properties: { outcome, entry, last_step: step },
     });
-    onClose();
+    onClose(step);
   };
   const compact = useMediaQuery(ONBOARDING_COMPACT_QUERY);
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -1295,6 +1311,7 @@ export function OnboardingFlow({
           redesign={redesign}
           entry={entry}
           hostId={hostId}
+          noHost={noHost}
           hostName={primaryHost?.name ?? null}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",

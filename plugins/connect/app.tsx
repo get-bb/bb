@@ -17,6 +17,7 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
+  type InternalDoNotUseSetupFailureStage,
   type InternalDoNotUseSetupGuideSectionProps,
   type PluginSettingsSectionProps,
 } from "@get-bb/plugin-sdk/app";
@@ -452,10 +453,12 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
 function PairForm({
   dashboardUrl,
   onSubmitted,
+  onFailed,
   onPaired,
 }: {
   dashboardUrl: string;
   onSubmitted: () => void;
+  onFailed: () => void;
   onPaired: () => void;
 }) {
   const sdk = useSdk();
@@ -490,10 +493,11 @@ function PairForm({
           (rpcError: unknown) => {
             setPending(false);
             setErrorCode(toPairErrorCode(rpcError));
+            onFailed();
           },
         );
     },
-    [pending, sdk, onSubmitted, onPaired],
+    [pending, sdk, onSubmitted, onFailed, onPaired],
   );
 
   const onChange = useCallback(
@@ -1113,7 +1117,10 @@ function TurnOffDialog({
   );
 }
 
-function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
+function useConnectAccountLogin(
+  onSignedIn: () => void,
+  onFailed: () => void,
+): AccountLogin {
   const sdk = useSdk();
   const transport = useMemo<AccountLoginTransport>(
     () => ({
@@ -1145,24 +1152,47 @@ function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
     }),
     [sdk],
   );
-  return useAccountLogin({
+  const accountLogin = useAccountLogin({
     transport,
     describeStartError: signInStartErrorText,
     onSignedIn,
     observedLogin: null,
   });
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => {
+    onFailedRef.current = onFailed;
+  });
+  const { login, error } = accountLogin;
+  const failedLoginId =
+    login !== null &&
+    (login.state === "denied" ||
+      login.state === "expired" ||
+      login.state === "failed")
+      ? login.id
+      : null;
+  useEffect(() => {
+    if (failedLoginId !== null) onFailedRef.current();
+  }, [failedLoginId]);
+  useEffect(() => {
+    if (error !== null) onFailedRef.current();
+  }, [error]);
+  return accountLogin;
 }
 
 function AccountSignInCard({
   onStarted,
+  onFailed,
   onSignedIn,
 }: {
   onStarted: () => void;
+  onFailed: () => void;
   onSignedIn: () => void;
 }) {
   const navigate = useBbNavigate();
-  const { login, starting, error, start, cancel } =
-    useConnectAccountLogin(onSignedIn);
+  const { login, starting, error, start, cancel } = useConnectAccountLogin(
+    onSignedIn,
+    onFailed,
+  );
 
   if (login === null) {
     return (
@@ -1240,12 +1270,22 @@ function AccountSignInCard({
 function NotPairedContent({
   dashboardUrl,
   onSetupStarted,
+  onSetupFailed,
   onPaired,
 }: {
   dashboardUrl: string;
   onSetupStarted: () => void;
+  onSetupFailed: (stage: InternalDoNotUseSetupFailureStage) => void;
   onPaired: () => void;
 }) {
+  const reportSignInFailed = useCallback(
+    () => onSetupFailed("sign_in"),
+    [onSetupFailed],
+  );
+  const reportPairingFailed = useCallback(
+    () => onSetupFailed("pairing"),
+    [onSetupFailed],
+  );
   const dashboardHost = hostOf(dashboardUrl);
   const [codeOpen, setCodeOpen] = useState(false);
   return (
@@ -1260,7 +1300,11 @@ function NotPairedContent({
       </p>
 
       <div className="flex flex-col items-start gap-2 @min-[32rem]/connect-controls:flex-row @min-[32rem]/connect-controls:flex-wrap @min-[32rem]/connect-controls:items-center">
-        <AccountSignInCard onStarted={onSetupStarted} onSignedIn={onPaired} />
+        <AccountSignInCard
+          onStarted={onSetupStarted}
+          onFailed={reportSignInFailed}
+          onSignedIn={onPaired}
+        />
         <Button
           type="button"
           variant="ghost"
@@ -1275,6 +1319,7 @@ function NotPairedContent({
         <PairForm
           dashboardUrl={dashboardUrl}
           onSubmitted={onSetupStarted}
+          onFailed={reportPairingFailed}
           onPaired={onPaired}
         />
       ) : null}
@@ -1440,10 +1485,12 @@ function ReconnectingContent({
 function OffContent({
   status,
   onTurnOnStarted,
+  onTurnOnFailed,
   onChanged,
 }: {
   status: ConnectStatus;
   onTurnOnStarted: () => void;
+  onTurnOnFailed: () => void;
   onChanged: () => void;
 }) {
   const rpc = useRpc<typeof connectRpcContract>();
@@ -1462,9 +1509,10 @@ function OffContent({
       (rpcError: unknown) => {
         setPending(false);
         setError(errorText(rpcError));
+        onTurnOnFailed();
       },
     );
-  }, [rpc, onTurnOnStarted, onChanged]);
+  }, [rpc, onTurnOnStarted, onTurnOnFailed, onChanged]);
 
   return (
     <div className="space-y-4">
@@ -1566,11 +1614,20 @@ function MobilePairingSection() {
 
 function ConnectSettingsSection({
   internal_DO_NOT_USE_onSetupStarted: onSetupStarted,
+  internal_DO_NOT_USE_onSetupFailed: onSetupFailed,
 }: PluginSettingsSectionProps) {
   const { status, loadError, refetch } = useConnectStatus();
   const reportSetupStarted = useCallback(
     () => onSetupStarted?.(),
     [onSetupStarted],
+  );
+  const reportSetupFailed = useCallback(
+    (stage: InternalDoNotUseSetupFailureStage) => onSetupFailed?.(stage),
+    [onSetupFailed],
+  );
+  const reportTurnOnFailed = useCallback(
+    () => onSetupFailed?.("turn_on"),
+    [onSetupFailed],
   );
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1613,12 +1670,14 @@ function ConnectSettingsSection({
         <NotPairedContent
           dashboardUrl={status.dashboardUrl}
           onSetupStarted={reportSetupStarted}
+          onSetupFailed={reportSetupFailed}
           onPaired={refetch}
         />
       ) : !status.enabled ? (
         <OffContent
           status={status}
           onTurnOnStarted={reportSetupStarted}
+          onTurnOnFailed={reportTurnOnFailed}
           onChanged={refetch}
         />
       ) : status.state === "reconnecting" ? (
@@ -2052,11 +2111,19 @@ function setupGuideLoginContent(login: AccountLogin["login"]): ReactNode {
 function ConnectSetupGuideSection({
   onPhone,
   onSetupStarted,
+  onSetupFailed,
 }: InternalDoNotUseSetupGuideSectionProps) {
   const rpc = useRpc<typeof connectRpcContract>();
   const navigate = useBbNavigate();
   const { status, loadError, refetch } = useConnectStatus();
-  const { login, starting, error, start } = useConnectAccountLogin(refetch);
+  const reportSignInFailed = useCallback(
+    () => onSetupFailed("sign_in"),
+    [onSetupFailed],
+  );
+  const { login, starting, error, start } = useConnectAccountLogin(
+    refetch,
+    reportSignInFailed,
+  );
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
   const signedInLoginId = login?.state === "signed-in" ? login.id : null;
@@ -2068,10 +2135,11 @@ function ConnectSetupGuideSection({
     turnedOnForLoginRef.current = signedInLoginId;
     rpc
       .call("setRemoteAccess", { enabled: true })
-      .then(refetch, (rpcError: unknown) =>
-        setTurnOnError(errorText(rpcError)),
-      );
-  }, [refetch, remoteAccessOff, rpc, signedInLoginId]);
+      .then(refetch, (rpcError: unknown) => {
+        setTurnOnError(errorText(rpcError));
+        onSetupFailed("turn_on");
+      });
+  }, [onSetupFailed, refetch, remoteAccessOff, rpc, signedInLoginId]);
 
   if (
     status !== null &&
@@ -2109,6 +2177,7 @@ function ConnectSetupGuideSection({
       (rpcError: unknown) => {
         setTurningOn(false);
         setTurnOnError(errorText(rpcError));
+        onSetupFailed("turn_on");
       },
     );
   };

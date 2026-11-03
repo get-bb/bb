@@ -22,6 +22,7 @@ afterEach(() => {
 function Section({
   onPhone,
   onSetupStarted,
+  onSetupFailed,
 }: InternalDoNotUseSetupGuideSectionProps) {
   return (
     <li>
@@ -29,11 +30,16 @@ function Section({
       <button type="button" onClick={onSetupStarted}>
         Set up
       </button>
+      <button type="button" onClick={() => onSetupFailed("turn_on")}>
+        Fail
+      </button>
     </li>
   );
 }
 
-function renderSections(onSetupStarted = vi.fn()) {
+function renderSections() {
+  const onSetupStarted = vi.fn();
+  const onSetupFailed = vi.fn();
   render(
     <MemoryRouter>
       <ul>
@@ -41,12 +47,13 @@ function renderSections(onSetupStarted = vi.fn()) {
           pluginId="connect"
           onPhone
           onSetupStarted={onSetupStarted}
+          onSetupFailed={onSetupFailed}
           fallback={<li>core fallback</li>}
         />
       </ul>
     </MemoryRouter>,
   );
-  return onSetupStarted;
+  return { onSetupStarted, onSetupFailed };
 }
 
 describe("PluginSetupGuideSections", () => {
@@ -57,12 +64,14 @@ describe("PluginSetupGuideSections", () => {
         setupGuideSections: [{ id: "remote-access", component: Section }],
       }),
     );
-    const onSetupStarted = renderSections();
+    const { onSetupStarted, onSetupFailed } = renderSections();
 
     expect(screen.getByText("phone row")).toBeDefined();
     expect(screen.queryByText("core fallback")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set up" }));
     expect(onSetupStarted).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Fail" }));
+    expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("turn_on");
   });
 
   it("renders the fallback when the plugin registers no section", () => {

@@ -1314,10 +1314,12 @@ for the first-run setup guide's "Where you use bb" group. Core renders the
 group heading and the `<ul>`; the component renders the `<li>` (the connect
 plugin uses `SetupOptionRow` from `@bb/shared-ui/setup-option-row`). The
 component receives `InternalDoNotUseSetupGuideSectionProps`:
-`{ onPhone, onSetupStarted }`. `onPhone` is true when the guide is open on a
-phone, so the row hides install links and phone pairing. The row calls
-`onSetupStarted()` when the user starts setting it up, so the guide can record
-the step. Core's `PluginSetupGuideSections` renders a plugin's rows through
+`{ onPhone, onSetupStarted, onSetupFailed }`. `onPhone` is true when the guide
+is open on a phone, so the row hides install links and phone pairing. The row
+calls `onSetupStarted()` when the user starts setting it up and
+`onSetupFailed(stage)` (`InternalDoNotUseSetupFailureStage`: `sign_in`,
+`pairing`, or `turn_on`) when an attempt fails, so the guide can record the
+step. Core's `PluginSetupGuideSections` renders a plugin's rows through
 the ordinary plugin slot boundary, and renders the caller's `fallback` when the
 plugin registers none (disabled or not installed) or its row crashes.
 
@@ -1328,7 +1330,7 @@ Devices step, which renders `PluginSetupGuideSections` for `connect`.
 setup guide rows, which groups they may target, and whether the guide should
 own the row chrome instead of the plugin rendering `SetupOptionRow`.
 
-## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` (`@get-bb/plugin-sdk/app`)
+## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` and `internal_DO_NOT_USE_onSetupFailed` (`@get-bb/plugin-sdk/app`)
 
 Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
@@ -1338,8 +1340,13 @@ bb connect settings under Set up). The section calls it when the user actually
 starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
 code is submitted, or Turn on is pressed, so the current guide records
 `remote_access` `started` at the same moment as the redesigned guide's
-`onSetupStarted`. Core's `PluginSettingsSections` passes it through its
-`onSetupStarted` prop; Settings never sets it.
+`onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
+counterpart, called with the same `InternalDoNotUseSetupFailureStage` the
+redesigned guide's `onSetupFailed` receives (`sign_in` when getbb.app sign-in
+can't start or ends denied, expired, or failed; `pairing` when a pairing code
+is rejected; `turn_on` when turning remote access on fails). Core's
+`PluginSettingsSections` passes them through its `onSetupStarted` and
+`onSetupFailed` props; Settings never sets them.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
 Devices step (current guide), which renders `PluginSettingsSections` for
@@ -3962,9 +3969,12 @@ Plugins step reports `recommendation` `shown`, `selected` and `deselected`
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
-outcome with only a public agent id or counts and, for the Projects step,
-whether the scan ran out of time, how many folders it could not open, and a
-failure reason (`no_host`, `host_unavailable`, `timed_out`, or `other`).
+outcome with only a public agent or plugin id or counts and, for the Projects
+step, whether the scan ran out of time and how many folders it could not open.
+A failed operation or `onboarding_sign_in` adds a `failure_reason` from a fixed
+set (`no_host`, `host_unavailable`, `timed_out`, `not_found`, `permission`,
+`command_failed`, `unsupported`, or `other`); a failed `remote_access` adds a
+`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
 both assignments, adds `setup_guide_variant`, `setup_guide_source`,
 `featured_plugins_variant` and `featured_plugins_source`, sets both variants

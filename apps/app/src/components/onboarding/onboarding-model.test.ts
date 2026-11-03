@@ -4,7 +4,7 @@ import type {
   ServerAccessStatus,
   SystemProviderState,
 } from "@bb/server-contract";
-import { BbHttpError } from "@bb/sdk/browser";
+import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
@@ -519,19 +519,32 @@ describe("parseSignInOutput", () => {
 
 describe("operationFailureReason", () => {
   it.each([
-    ["host_unavailable", "host_unavailable"],
-    ["command_timeout", "timed_out"],
-    ["project_not_found", "other"],
-    [null, "other"],
-  ] as const)("maps the %s error code to %s", (code, reason) => {
-    expect(
-      operationFailureReason(
-        new BbHttpError({ body: null, code, message: "failed", status: 502 }),
-      ),
-    ).toBe(reason);
+    ["host_unavailable", 502, "host_unavailable"],
+    ["command_timeout", 502, "timed_out"],
+    [null, 504, "timed_out"],
+    ["project_not_found", 404, "not_found"],
+    ["unauthorized", 401, "permission"],
+    ["forbidden", 403, "permission"],
+    ["project_not_found", 502, "other"],
+    [null, 500, "other"],
+  ] as const)(
+    "maps the %s error code with status %s to %s",
+    (code, status, reason) => {
+      expect(
+        operationFailureReason(
+          new BbHttpError({ body: null, code, message: "failed", status }),
+        ),
+      ).toBe(reason);
+    },
+  );
+
+  it("reports a request that ran out of time as timed out", () => {
+    expect(operationFailureReason(new BbRequestTimeoutError(30_000))).toBe(
+      "timed_out",
+    );
   });
 
-  it("reports errors without an HTTP code as other", () => {
+  it("reports errors without an HTTP status as other", () => {
     expect(operationFailureReason(new TypeError("Failed to fetch"))).toBe(
       "other",
     );

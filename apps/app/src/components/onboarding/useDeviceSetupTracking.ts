@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { InternalDoNotUseSetupFailureStage } from "@get-bb/plugin-sdk/app";
+import { MachineEnrollmentEndedError } from "@/components/dialogs/AddMachineDialog";
+import { operationFailureReason } from "./onboarding-model";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
@@ -65,5 +68,40 @@ export function useDeviceSetupTracking({
     record("remote_access", "started");
   }, [connectStatus, record]);
 
-  return { startRemoteAccessSetup };
+  const failRemoteAccessSetup = useCallback(
+    (stage: InternalDoNotUseSetupFailureStage) => {
+      pending.current.remoteAccess = false;
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          entry,
+          step: "devices",
+          operation: "remote_access",
+          outcome: "failed",
+          failure_stage: stage,
+        },
+      });
+    },
+    [entry],
+  );
+
+  const failAddMachine = useCallback(
+    (error: unknown) =>
+      recordTelemetryEvent({
+        name: "onboarding_operation",
+        properties: {
+          entry,
+          step: "devices",
+          operation: "add_machine",
+          outcome: "failed",
+          failure_reason:
+            error instanceof MachineEnrollmentEndedError
+              ? "command_failed"
+              : operationFailureReason(error),
+        },
+      }),
+    [entry],
+  );
+
+  return { startRemoteAccessSetup, failRemoteAccessSetup, failAddMachine };
 }

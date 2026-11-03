@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SystemProviderState, TerminalSession } from "@bb/server-contract";
 import type { AgentSignInView } from "./OnboardingViews";
-import { resolveSignInCommand } from "./onboarding-model";
+import {
+  operationFailureReason,
+  resolveSignInCommand,
+  type OperationFailureReason,
+} from "./onboarding-model";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
@@ -19,6 +23,12 @@ interface SignInSession {
 }
 
 type SignInOutcome = "ready" | "exited" | "failed" | "cancelled";
+
+type SignInFailureReason =
+  | OperationFailureReason
+  | "no_host"
+  | "command_failed"
+  | "unsupported";
 
 export interface AgentSignInTerminals {
   closeAbandoned: (args: { hostId: string; title: string }) => Promise<void>;
@@ -80,6 +90,26 @@ export function useAgentSignIns({
   >(() => new Set());
   const requestsRef = useRef<Map<string, number>>(new Map());
 
+  const record = useCallback(
+    (
+      providerId: string,
+      outcome: SignInOutcome | "started",
+      failureReason?: SignInFailureReason,
+    ) =>
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: {
+          entry,
+          outcome,
+          resource_id: providerId,
+          ...(failureReason === undefined
+            ? {}
+            : { failure_reason: failureReason }),
+        },
+      }),
+    [entry],
+  );
+
   const bumpRequest = (providerId: string): number => {
     const next = (requestsRef.current.get(providerId) ?? 0) + 1;
     requestsRef.current.set(providerId, next);
@@ -87,20 +117,21 @@ export function useAgentSignIns({
   };
 
   const end = useCallback(
-    (providerId: string, outcome: SignInOutcome = "cancelled") => {
+    (
+      providerId: string,
+      outcome: SignInOutcome = "cancelled",
+      failureReason?: SignInFailureReason,
+    ) => {
       const current = signInsRef.current.get(providerId);
       if (current === undefined) return;
       signInsRef.current.delete(providerId);
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome },
-      });
+      record(providerId, outcome, failureReason);
       setSignIns(new Map(signInsRef.current));
       setViews((previous) => withoutEntry(previous, providerId));
       terminals.close(current.session.id);
       refetchStates();
     },
-    [entry, refetchStates, terminals],
+    [record, refetchStates, terminals],
   );
 
   const endRef = useRef(end);
@@ -128,7 +159,8 @@ export function useAgentSignIns({
       if (exitCode !== 0) {
         setFailedProviderIds((ids) => withKey(ids, providerId));
       }
-      end(providerId, exitCode === 0 ? "exited" : "failed");
+      if (exitCode === 0) end(providerId, "exited");
+      else end(providerId, "failed", "command_failed");
     },
     [end],
   );
@@ -162,11 +194,17 @@ export function useAgentSignIns({
 
   const start = async (providerId: string, requestedMethod?: SignInMethod) => {
     const state = states?.find((entry) => entry.providerId === providerId);
-    if (hostId === null || state === undefined) return;
+    if (hostId === null || state === undefined) {
+      record(providerId, "failed", hostId === null ? "no_host" : "not_found");
+      return;
+    }
     const method =
       requestedMethod ?? (isLocalHost(hostId) ? "local" : "remote");
     const command = resolveSignInCommand(state, method === "local");
-    if (command === null) return;
+    if (command === null) {
+      record(providerId, "failed", "unsupported");
+      return;
+    }
     if (concurrent) {
       end(providerId);
     } else {
@@ -180,30 +218,21 @@ export function useAgentSignIns({
     setFailedProviderIds((ids) => withoutKey(ids, providerId));
     const request = bumpRequest(providerId);
     setStartingProviderIds((ids) => withKey(ids, providerId));
-    recordTelemetryEvent({
-      name: "onboarding_sign_in",
-      properties: { entry, outcome: "started" },
-    });
+    record(providerId, "started");
     const title = `Sign in to ${state.displayName}`;
     await terminals.closeAbandoned({ hostId, title });
     let session: TerminalSession;
     try {
       session = await terminals.create({ hostId, title, command });
-    } catch {
+    } catch (error) {
       if (requestsRef.current.get(providerId) === request) {
         setStartingProviderIds((ids) => withoutKey(ids, providerId));
       }
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "failed" },
-      });
+      record(providerId, "failed", operationFailureReason(error));
       return;
     }
     if (requestsRef.current.get(providerId) !== request) {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "cancelled" },
-      });
+      record(providerId, "cancelled");
       terminals.close(session.id);
       return;
     }

@@ -1,3 +1,4 @@
+import type { InternalDoNotUseSetupFailureStage } from "@get-bb/plugin-sdk/app";
 import {
   usePluginSlots,
   type PluginSettingsSectionSlot,
@@ -7,9 +8,11 @@ import { PluginSlotMount } from "./PluginSlotMount";
 export function PluginSettingsSections({
   pluginId,
   onSetupStarted,
+  onSetupFailed,
 }: {
   pluginId: string;
   onSetupStarted?: () => void;
+  onSetupFailed?: (stage: InternalDoNotUseSetupFailureStage) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   const sections = settingsSections.filter(
@@ -21,6 +24,7 @@ export function PluginSettingsSections({
     <PluginSettingsSectionList
       sections={sections}
       onSetupStarted={onSetupStarted}
+      onSetupFailed={onSetupFailed}
     />
   );
 }
@@ -42,9 +46,13 @@ export function PluginMobileSettingsSections({
 function PluginSettingsSectionList({
   sections,
   onSetupStarted,
+  onSetupFailed,
 }: {
   sections: readonly PluginSettingsSectionSlot[];
   onSetupStarted?: (() => void) | undefined;
+  onSetupFailed?:
+    | ((stage: InternalDoNotUseSetupFailureStage) => void)
+    | undefined;
 }) {
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
@@ -71,6 +79,9 @@ function PluginSettingsSectionList({
                 {...(onSetupStarted === undefined
                   ? {}
                   : { internal_DO_NOT_USE_onSetupStarted: onSetupStarted })}
+                {...(onSetupFailed === undefined
+                  ? {}
+                  : { internal_DO_NOT_USE_onSetupFailed: onSetupFailed })}
               />
             </PluginSlotMount>
           </div>

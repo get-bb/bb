@@ -224,6 +224,17 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const onboardingFailureReasonTelemetrySchema = z.enum([
+  "no_host",
+  "host_unavailable",
+  "timed_out",
+  "not_found",
+  "permission",
+  "command_failed",
+  "unsupported",
+  "other",
+]);
+
 const telemetryResourceIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
@@ -263,6 +274,10 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "import",
             "remote_access",
             "add_machine",
+            "enable",
+            "disable",
+            "load",
+            "finish",
           ]),
           outcome: z.enum(["started", "succeeded", "failed"]),
           resource_id: telemetryResourceIdSchema.optional(),
@@ -270,9 +285,8 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           succeeded_count: z.number().int().nonnegative().optional(),
           timed_out: z.boolean().optional(),
           unreadable_count: z.number().int().nonnegative().optional(),
-          failure_reason: z
-            .enum(["no_host", "host_unavailable", "timed_out", "other"])
-            .optional(),
+          failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
+          failure_stage: z.enum(["sign_in", "pairing", "turn_on"]).optional(),
         })
         .strict(),
     })
@@ -302,6 +316,8 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "failed",
             "cancelled",
           ]),
+          resource_id: telemetryResourceIdSchema,
+          failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
         })
         .strict(),
     })

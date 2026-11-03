@@ -33,7 +33,9 @@ interface QuickCreateProjectDialogState {
 
 export interface ProjectCreateObserver {
   onStarted: () => void;
-  onSettled: (outcome: "succeeded" | "failed") => void;
+  onSettled: (
+    result: { outcome: "succeeded" } | { outcome: "failed"; error: unknown },
+  ) => void;
 }
 
 interface QuickCreateProjectController {
@@ -80,14 +82,14 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         },
         {
           onSuccess: (project) => {
-            observer?.onSettled("succeeded");
+            observer?.onSettled({ outcome: "succeeded" });
             closeDialog();
             setRootComposeProjectId(project.id);
             void navigate(getRootComposeRoutePath(), {
               replace: shouldReplaceRoute,
             });
           },
-          onError: () => observer?.onSettled("failed"),
+          onError: (error) => observer?.onSettled({ outcome: "failed", error }),
         },
       );
     },

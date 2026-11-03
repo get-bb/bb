@@ -39,7 +39,20 @@ describe("client telemetry events", () => {
         },
         {
           name: "onboarding_sign_in",
-          properties: { entry: "first_run", outcome: "failed" },
+          properties: {
+            entry: "first_run",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: "command_failed",
+          },
+        },
+        {
+          name: "onboarding_sign_in",
+          properties: {
+            entry: "replay",
+            outcome: "started",
+            resource_id: "claude-code",
+          },
         },
         {
           name: "new_thread_submit",
@@ -124,6 +137,79 @@ describe("client telemetry events", () => {
             failure_reason: "no_host",
           },
         },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "load",
+            outcome: "failed",
+            failure_reason: "timed_out",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "plugins",
+            operation: "install",
+            outcome: "failed",
+            resource_id: "workflows",
+            failure_reason: "command_failed",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "plugins",
+            operation: "enable",
+            outcome: "failed",
+            resource_id: "workflows",
+            failure_reason: "permission",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "replay",
+            step: "plugins",
+            operation: "disable",
+            outcome: "failed",
+            resource_id: "workflows",
+            failure_reason: "not_found",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "devices",
+            operation: "remote_access",
+            outcome: "failed",
+            failure_stage: "pairing",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "devices",
+            operation: "add_machine",
+            outcome: "failed",
+            failure_reason: "unsupported",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "agent",
+            operation: "finish",
+            outcome: "failed",
+            failure_reason: "other",
+          },
+        },
         { name: "plugin_creation_started", properties: {} },
       ];
       for (const event of events) {
@@ -155,6 +241,29 @@ describe("client telemetry events", () => {
       expect(response.status).toBe(200);
       expect(capture).toHaveBeenCalledExactlyOnceWith({
         name: "onboarding_operation",
+        properties: { ...properties, resource_id: "other" },
+      });
+    });
+  });
+
+  it("reports a custom agent's sign-in as other", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const properties = {
+        entry: "first_run",
+        outcome: "failed",
+        failure_reason: "host_unavailable",
+      } as const;
+
+      const response = await post(harness, {
+        name: "onboarding_sign_in",
+        properties: { ...properties, resource_id: "acp-my-private-agent" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(capture).toHaveBeenCalledExactlyOnceWith({
+        name: "onboarding_sign_in",
         properties: { ...properties, resource_id: "other" },
       });
     });
@@ -273,6 +382,49 @@ describe("client telemetry events", () => {
         {
           name: "onboarding_sign_in",
           properties: { entry: "first_run", outcome: "account@example.com" },
+        },
+        {
+          name: "onboarding_sign_in",
+          properties: { entry: "first_run", outcome: "started" },
+        },
+        {
+          name: "onboarding_sign_in",
+          properties: {
+            entry: "first_run",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: "spawn /usr/local/bin/codex ENOENT",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "devices",
+            operation: "remote_access",
+            outcome: "failed",
+            failure_stage: "That code is invalid or has expired.",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "plugins",
+            operation: "install",
+            outcome: "failed",
+            resource_id: "workflows",
+            failure_reason: "npm ERR! 404 Not Found",
+          },
+        },
+        {
+          name: "onboarding_operation",
+          properties: {
+            entry: "first_run",
+            step: "plugins",
+            operation: "Install Workflows",
+            outcome: "failed",
+          },
         },
         {
           name: "new_thread_submit",

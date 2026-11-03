@@ -383,15 +383,36 @@ onboarding `recommendation`), and once a flag assignment is known every event,
 including `turn_finished`, carries `$feature/setup-guide-redesign` or
 `$feature/onboarding-featured-plugins`.
 `onboarding_operation` records a setup-guide action's `started`,
-`succeeded`, or `failed` outcome with counts only. A Projects step `scan`
-adds `timed_out` (true when the repo scan ran out of time and the list may be
-partial) and `unreadable_count` (how many folders the scan was not allowed to
-open, such as macOS Documents or Desktop; never their paths). A failed scan
-adds `failure_reason`: `no_host` (no computer was available when the step
-opened, recorded once per guide), `host_unavailable`, `timed_out`, or `other`.
-A failed Projects `import` reports `item_count` (repos selected),
-`succeeded_count` (imported before the failure), and the same
-`failure_reason` values except `no_host`.
+`succeeded`, or `failed` outcome with counts only, the same way in both
+guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran
+out of time and the list may be partial) and `unreadable_count` (how many
+folders the scan was not allowed to open, such as macOS Documents or Desktop;
+never their paths). A failed Projects `import` reports `item_count` (repos
+selected) and `succeeded_count` (imported before the failure). Plugins step
+`install` (a featured plugin that wasn't installed yet), `enable`, and
+`disable` carry the plugin's public id in `resource_id`; `install` succeeds or
+fails when its install job finishes, not when the request is accepted. `load`
+records only `failed`, once each time the Agent step's agent states or the
+Plugins step's catalog start failing to load. `finish` records only `failed`,
+with the step the guide closed from, when saving that setup was finished
+fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
+`no_host` (no computer was available; for `scan` and agent `load`, recorded
+once each time the step opens without one), `host_unavailable`, `timed_out`,
+`not_found`, `permission`, `command_failed` (the agent install command, plugin
+install job, or new machine's setup ran and failed), or `other`. A failed
+`remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't
+start or ended denied, expired, or failed), `pairing` (a pairing code was
+rejected), or `turn_on` (turning remote access on failed); a retry after a
+failure records a new `started`. `add_machine` can fail before `started` when
+the setup command couldn't be prepared.
+`onboarding_sign_in` carries the agent's public id in `resource_id`
+(custom agents report `other`, as agent installs do). A `failed` sign-in adds
+`failure_reason`: `command_failed` (the sign-in command exited non-zero),
+`no_host`, `not_found` (the agent's state wasn't loaded), or `unsupported`
+(the agent has no sign-in command) when it couldn't start, and
+`host_unavailable`, `timed_out`, `not_found`, `permission`, or `other` when
+its terminal couldn't be created. A sign-in that couldn't start records only
+`failed`, without `started`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
