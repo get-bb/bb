@@ -1148,6 +1148,7 @@ describe("connect setup guide section", () => {
 
     await showPairingCode(slot);
     await slot.findByText("PAIR-CODE");
+    await slot.findByRole("img", { name: "QR code to pair the bb mobile app" });
     expect(
       slot.queryByRole("img", { name: "QR code to install bb on Android" }),
     ).toBeNull();
