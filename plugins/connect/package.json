@@ -6,7 +6,7 @@
   "description": "Remote access via getbb.app — this bb becomes reachable at https://<handle>.getbb.app. Disable to cut off all remote access.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.116"
+    "bbPluginSdk": ">=0.6.118"
   },
   "bb": {
     "name": "bb connect",
@@ -31,6 +31,7 @@
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
+    "bb-plugin-bb-account": "workspace:*",
     "qrcode": "^1.5.4",
     "ws": "^8.18.0",
     "zod": "^4.3.6"
@@ -44,7 +45,6 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
     "@types/ws": "^8.18.1",
-    "bb-plugin-bb-account": "workspace:*",
     "better-sqlite3": "12.10.0",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",

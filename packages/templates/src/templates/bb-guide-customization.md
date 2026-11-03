@@ -197,6 +197,8 @@ applies after a reload.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
+`dismissReadNotifications` removes a thread's push, web, and desktop
+notifications once the thread is read on any client.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `skipFocusedThreadNotifications` skips the web and desktop system notification

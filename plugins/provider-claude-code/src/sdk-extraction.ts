@@ -60,6 +60,12 @@ interface ClaudeCommandExecutionOutputArgs {
   toolUseResult: ClaudeToolUseResult | null;
 }
 
+interface ClaudeCommandExitCodeArgs extends ClaudeCommandExecutionOutputArgs {
+  isError: boolean;
+}
+
+const CLAUDE_EXIT_CODE_HEADER_PATTERN = /^(?:Error: )?Exit code ([1-9]\d*)$/;
+
 const CLAUDE_EMPTY_BASH_OUTPUT_PLACEHOLDERS = [
   "(Bash completed with no output)",
 ] as const;
@@ -200,6 +206,28 @@ function combineClaudeProcessOutput(
   return streams.stdout.endsWith("\n")
     ? `${streams.stdout}${streams.stderr}`
     : `${streams.stdout}\n${streams.stderr}`;
+}
+
+export function extractClaudeCommandExitCode(
+  args: ClaudeCommandExitCodeArgs,
+): number {
+  if (!args.isError) {
+    return 0;
+  }
+  const headerSources = [
+    extractResultText(args.content),
+    typeof args.toolUseResult === "string" ? args.toolUseResult : "",
+  ];
+  for (const text of headerSources) {
+    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    const exitCode = Number(
+      CLAUDE_EXIT_CODE_HEADER_PATTERN.exec(firstLine)?.[1],
+    );
+    if (Number.isSafeInteger(exitCode)) {
+      return exitCode;
+    }
+  }
+  return 1;
 }
 
 export function extractClaudeCommandExecutionOutput(
