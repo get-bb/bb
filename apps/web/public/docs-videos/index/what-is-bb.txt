@@ -1,0 +1,9 @@
+What is bb
+
+1. A thread is one conversation with one agent about one piece of work.
+2. A child thread is started by another thread and reports back when it finishes.
+3. A project is a repository bb works in.
+4. By default each thread's code lives in its own Git worktree.
+5. Agents are the coding agent CLIs that do the work. Settings calls them Providers.
+6. The server keeps your threads. Each machine runs agents for it.
+7. Plugins add features to bb. Skills are instructions your agents load.

@@ -1,3 +1,5 @@
+import { videoFiles } from "./video-files";
+
 export const SHOT_PLACEHOLDER_PATTERN = /<Shot\b/u;
 
 export const DOCS_IMAGES_BASE = "/docs-images";
@@ -45,6 +47,45 @@ export function Screenshot({
           decoding="async"
         />
       </picture>
+    </figure>
+  );
+}
+
+export function Video({
+  src,
+  title,
+  width,
+  height,
+}: {
+  src: string;
+  title: string;
+  width: number;
+  height: number;
+}) {
+  const files = videoFiles(src);
+  return (
+    <figure className="docs-video">
+      <video
+        controls
+        muted
+        playsInline
+        preload="none"
+        poster={files.poster}
+        width={width}
+        height={height}
+        aria-label={title}
+      >
+        <source src={files.video} type="video/mp4" />
+        <track
+          kind="captions"
+          src={files.captions}
+          srcLang="en"
+          label="English"
+        />
+      </video>
+      <figcaption>
+        {title} · <a href={files.text}>Text version</a>
+      </figcaption>
     </figure>
   );
 }

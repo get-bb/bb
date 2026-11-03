@@ -7,8 +7,10 @@ export const DOCS_PATHS = [
   /^apps\/web\/src\/routes\/docs[.]/u,
   /^apps\/web\/src\/routes\/llms(-full)?\[\.\]txt\.tsx$/u,
   /^apps\/web\/public\/docs-images\//u,
+  /^apps\/web\/public\/docs-videos\//u,
   /^\.bb\/skills\/docs-writing\//u,
   /^\.bb\/skills\/docs-images\//u,
+  /^\.bb\/skills\/docs-walkthroughs\//u,
 ];
 
 export function touchesDocs(files) {

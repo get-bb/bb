@@ -18,6 +18,7 @@ import {
   tabGroupKey,
 } from "./docs-blocks";
 import { docsMdxOptions } from "./mdx-options";
+import { Video } from "./shot";
 
 const dir = mkdtempSync(path.join(tmpdir(), "bb-docs-mdx-"));
 let pageCount = 0;
@@ -60,6 +61,7 @@ async function compileDocsPage(source: string) {
           Callout,
           CalloutTitle,
           CalloutDescription,
+          Video,
         }}
       />,
     ),
@@ -193,6 +195,35 @@ describe("docs callouts", () => {
     const { html, markdown } = await page;
     expect(html).toContain("The meeting is at 10:30 in Settings:Plugins.");
     expect(markdown).toContain("The meeting is at 10:30 in Settings:Plugins.");
+  });
+});
+
+describe("docs videos", () => {
+  const page = compileDocsPage(
+    [
+      "Before.",
+      "",
+      '<Video src="/docs-videos/example/clip" title="Clip, step by step" width={1280} height={720} />',
+      "",
+      "After.",
+    ].join("\n"),
+  );
+
+  it("become a link to the video and its text version in the Markdown copy", async () => {
+    const { markdown } = await page;
+    expect(markdown).toContain(
+      "[Video: Clip, step by step](/docs-videos/example/clip.mp4) ([text version](/docs-videos/example/clip.txt))",
+    );
+    expect(markdown).not.toContain("<Video");
+  });
+
+  it("render a muted player with a poster, controls and no autoplay", async () => {
+    const { html } = await page;
+    expect(html).toContain('poster="/docs-videos/example/clip-poster.jpg"');
+    expect(html).toContain("controls");
+    expect(html).toContain("muted");
+    expect(html).not.toContain("autoplay");
+    expect(html).toContain('href="/docs-videos/example/clip.txt"');
   });
 });
 

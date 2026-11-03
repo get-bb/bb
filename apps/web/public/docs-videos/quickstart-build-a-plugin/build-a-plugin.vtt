@@ -1,0 +1,21 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.470
+1. In the folder where you keep your code, run bb plugin new hello.
+
+2
+00:00:06.470 --> 00:00:17.300
+2. Install it from its folder, then confirm the full-trust prompt.
+
+3
+00:00:17.300 --> 00:00:24.830
+3. Open Example todos. A todo added from the terminal appears without a reload.
+
+4
+00:00:24.830 --> 00:00:33.960
+4. Run bb plugin dev and change the title in app.tsx. The sidebar shows the new name.
+
+5
+00:00:33.960 --> 00:00:39.330
+5. Find every place a plugin can add to bb in the Plugin Guide.

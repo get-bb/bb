@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { getTableOfContents } from "fumadocs-core/content/toc";
 import matter from "gray-matter";
@@ -31,6 +31,11 @@ import {
   SHOT_PLACEHOLDER_PATTERN,
   screenshotFiles,
 } from "./shot";
+import {
+  DOCS_VIDEO_MAX_BYTES,
+  DOCS_VIDEOS_BASE,
+  videoFiles,
+} from "./video-files";
 
 const WEB_ROOT = path.resolve(__dirname, "../..");
 const CONTENT_DIR = path.join(WEB_ROOT, "content/docs");
@@ -208,6 +213,38 @@ function screenshotProblems(markdown: string): string[] {
       if (size.width !== width * 2 || size.height !== height * 2) {
         problems.push(
           `${file} is ${size.width}×${size.height}; a 2× capture of ${width}×${height} is ${width * 2}×${height * 2}`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+function videoProblems(markdown: string): string[] {
+  const problems: string[] = [];
+  const tags = withoutCodeFences(markdown).match(/<Video\b[^>]*>/gu) ?? [];
+  for (const tag of tags) {
+    const src = jsxAttribute(tag, "src");
+    if (!src?.startsWith(`${DOCS_VIDEOS_BASE}/`)) {
+      problems.push(`${tag}: src must start with ${DOCS_VIDEOS_BASE}/`);
+      continue;
+    }
+    if (!jsxAttribute(tag, "title")) problems.push(`${src}: needs a title`);
+    if (!jsxAttribute(tag, "width") || !jsxAttribute(tag, "height")) {
+      problems.push(`${src}: needs a width and height`);
+    }
+    for (const file of Object.values(videoFiles(src))) {
+      const onDisk = path.join(PUBLIC_DIR, file);
+      if (!existsSync(onDisk)) {
+        problems.push(`${file} is missing`);
+        continue;
+      }
+      if (
+        file.endsWith(".mp4") &&
+        statSync(onDisk).size > DOCS_VIDEO_MAX_BYTES
+      ) {
+        problems.push(
+          `${file} is over ${DOCS_VIDEO_MAX_BYTES / 1024 / 1024} MB`,
         );
       }
     }
@@ -704,6 +741,25 @@ describe("docs images", () => {
       "/docs-images/none/shot: alt text must be a full sentence",
       "/docs-images/none/shot-light.png is missing",
       "/docs-images/none/shot-dark.png is missing",
+    ]);
+  });
+
+  it.each(
+    mdxFiles(CONTENT_DIR).map((file) => [path.relative(WEB_ROOT, file), file]),
+  )("every video on %s has its video, poster and text files", (_name, file) => {
+    expect(videoProblems(readFileSync(file, "utf8"))).toEqual([]);
+  });
+
+  it("reports a video's missing files", () => {
+    expect(
+      videoProblems(
+        '<Video src="/docs-videos/none/clip" title="Clip" width={1280} height={720} />',
+      ),
+    ).toEqual([
+      "/docs-videos/none/clip.mp4 is missing",
+      "/docs-videos/none/clip-poster.jpg is missing",
+      "/docs-videos/none/clip.txt is missing",
+      "/docs-videos/none/clip.vtt is missing",
     ]);
   });
 });
