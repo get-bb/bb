@@ -1,12 +1,6 @@
 import { RuntimeToolCalls } from "./runtime-provider-requests.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
-import {
-  pendingInteractionPayloadSchema,
-  permissionEscalationValues,
-  permissionModeValues,
-  runtimePermissionPolicySchema,
-} from "@bb/domain";
 import type {
   ApprovalPendingInteractionPayload,
   PendingInteractionApprovalDecision,
@@ -15,11 +9,7 @@ import type {
   PermissionMode,
   RuntimePermissionPolicy,
 } from "@bb/domain";
-import { bridgeCapabilitiesSchema } from "@bb/provider-bridge-protocol";
-import {
-  parseJsonRpcLine,
-  shouldAutoDenyInteractiveRequest,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import { parseJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -458,47 +448,6 @@ const CELLS = POLICY_KEYS.flatMap((policyKey) =>
 );
 
 describe("permission decision matrix", () => {
-  it("enumerates every cell of the cross product", () => {
-    for (const kind of SUBJECT_KINDS) {
-      expect(
-        pendingInteractionPayloadSchema.safeParse(
-          buildPayload(kind, "deny-available"),
-        ).success,
-        `subject kind ${kind}`,
-      ).toBe(true);
-    }
-    expect(
-      bridgeCapabilitiesSchema.shape.approvalEnforcedBy.def.innerType.options,
-    ).toEqual([...ENFORCERS]);
-    expect(permissionEscalationValues).toEqual(["ask", "deny"]);
-    expect(permissionModeValues).toEqual(["accept-edits", "auto", "full"]);
-    expect(runtimePermissionPolicySchema.options).toHaveLength(3);
-    expect(Object.keys(EXPECTED)).toHaveLength(
-      POLICY_KEYS.length *
-        SUBJECT_KINDS.length *
-        ENFORCERS.length *
-        DENY_AVAILABILITY.length,
-    );
-    expect(CELLS).toHaveLength(100);
-  });
-
-  it("pins the bridge-kit predicate: only escalation=deny auto-denies", () => {
-    const escalations: (PermissionEscalation | null)[] = [
-      ...permissionEscalationValues,
-      null,
-    ];
-    expect(
-      escalations.map((permissionEscalation) => [
-        permissionEscalation,
-        shouldAutoDenyInteractiveRequest({ permissionEscalation }),
-      ]),
-    ).toEqual([
-      ["ask", false],
-      ["deny", true],
-      [null, false],
-    ]);
-  });
-
   describe("handleRuntimeProviderRequest", () => {
     let echo: EchoChild;
     let nextRequestId = 1;

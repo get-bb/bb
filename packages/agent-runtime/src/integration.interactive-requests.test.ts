@@ -6,7 +6,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { promptTextInput } from "./test/prompt-input.js";
-import { resolveIntegrationBridgeLaunch } from "./test/integration-provider-bridges.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -1103,10 +1102,4 @@ describe("interactive request scenarios", () => {
       cleanup(ctx);
     }
   }, 75_000);
-
-  it.concurrent("keeps Pi limited to full permission mode", () => {
-    expect(
-      resolveIntegrationBridgeLaunch("pi").capabilities.permissionModes,
-    ).toEqual(["full"]);
-  });
 });

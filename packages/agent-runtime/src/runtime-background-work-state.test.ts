@@ -210,9 +210,12 @@ describe("RuntimeBackgroundWorkState", () => {
       providerThreadId: "p1",
       scope: turnScope("turn-1"),
       item: {
-        type: "agentMessage",
-        id: "msg-1",
-        text: "hello",
+        type: "commandExecution",
+        id: "cmd-1",
+        command: "sleep 10",
+        cwd: "/tmp",
+        status: "pending",
+        approvalStatus: null,
       },
     });
 

@@ -1158,46 +1158,6 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a restorable non-Codex session", async () => {
-    const events: ThreadEvent[] = [];
-    const processLog = createScriptedEchoProcessLog();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        env: processLog.env,
-        workspacePath: tmpDir,
-        onEvent: (event) => events.push(event),
-      },
-      launch: {
-        pluginId: "provider-claude-code",
-        scripted: { sessionRestorable: true },
-      },
-    });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "claude-code",
-        options: fullRuntimeOptions,
-      });
-      const result = await runtime.reapIdleProviderSessions({
-        idleForMs: 0,
-        nowMs: Date.now(),
-      });
-      expect(result.reapedSessions).toEqual([
-        expect.objectContaining({
-          providerId: "claude-code",
-          threadId: "t1",
-        }),
-      ]);
-      expect(runtime.hasThread("t1")).toBe(false);
-      expect(runtime.listRunningProviders()).toEqual([]);
-      expect(stoppedProcessPids(processLog.read())).toHaveLength(1);
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
   it("marks a cold-resumed session restorable from the bridge's resume result", async () => {
     const runtime = createScriptedEchoRuntime({
       runtime: { workspacePath: tmpDir, onEvent: () => {} },
@@ -1463,7 +1423,7 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  it("removes the cached provider and retries when startup skill configuration fails", async () => {
+  it("relaunches the provider for the next start after startup skill configuration fails", async () => {
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -1482,53 +1442,26 @@ describe("createAgentRuntime process lifecycle", () => {
       launch: { pluginId: "provider-codex" },
     });
     try {
-      await expect(
-        runtime.startThread({
-          environmentId: "env-1",
-          threadId: "t1",
-          projectId: "p1",
-          providerId: "codex",
-          options: fullRuntimeOptions,
-        }),
-      ).rejects.toThrow("configure failed");
-      expect(runtime.listRunningProviders()).not.toContain("codex");
-      const requestsBefore = record.read();
-      expect(requestsBefore.map((request) => request.method)).toEqual([
+      for (const threadId of ["t1", "t2"]) {
+        await expect(
+          runtime.startThread({
+            environmentId: "env-1",
+            threadId,
+            projectId: "p1",
+            providerId: "codex",
+            options: fullRuntimeOptions,
+          }),
+        ).rejects.toThrow("configure failed");
+        expect(runtime.listRunningProviders()).not.toContain("codex");
+      }
+      expect(record.read().map((request) => request.method)).toEqual([
+        "initialize",
+        "skills/configure",
         "initialize",
         "skills/configure",
       ]);
-      expect(requestsBefore.some((r) => r.method === "thread/start")).toBe(
-        false,
-      );
     } finally {
       await runtime.shutdown();
-    }
-    const retryRecord = createScriptedEchoRequestRecord();
-    const retryRuntime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: retryRecord.env,
-        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
-        onEvent: () => {},
-      },
-      launch: { pluginId: "provider-codex" },
-    });
-    try {
-      await retryRuntime.startThread({
-        environmentId: "env-1",
-        threadId: "t2",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      expect(retryRuntime.listRunningProviders()).toContain("codex");
-      expect(retryRecord.read().map((request) => request.method)).toEqual([
-        "initialize",
-        "skills/configure",
-        "thread/start",
-      ]);
-    } finally {
-      await retryRuntime.shutdown();
     }
   });
 

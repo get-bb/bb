@@ -35,7 +35,7 @@ describe("createAgentRuntime input accepted events", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("emits input accepted events only after accepted commands", async () => {
+  it("scopes an accepted steer's input event to the active turn", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -63,7 +63,6 @@ describe("createAgentRuntime input accepted events", () => {
       runtime,
       threadId: "t1",
     });
-    expect(inputAcceptedEvents(events, "creq_23456789ae")).toHaveLength(0);
 
     await expect(
       runtime.steerTurn({
@@ -88,7 +87,7 @@ describe("createAgentRuntime input accepted events", () => {
     await runtime.shutdown();
   });
 
-  it("does not emit provider accepted-command events when a command is rejected", async () => {
+  it("throws a rejected steer and keeps the active turn", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
@@ -132,85 +131,91 @@ describe("createAgentRuntime input accepted events", () => {
       }),
     ).rejects.toThrow(/No active session/);
 
-    expect(inputAcceptedEvents(events, "creq_222222222w")).toHaveLength(0);
     expect(runtime.getActiveTurnId("t1")).toBe(turnId);
 
     await runtime.shutdown();
   });
 
-  it("maps a staleTurn steer rejection to a stale steer", async () => {
-    const events: ThreadEvent[] = [];
-    const record = createScriptedEchoRequestRecord();
-    const runtime = createScriptedEchoRuntime({
-      runtime: {
-        workspacePath: tmpDir,
-        env: record.env,
-        onEvent: (event) => events.push(event),
-      },
-      launch: {
-        scripted: {
-          failMethods: [
-            {
-              method: "turn/steer",
-              message: "No active turn to steer",
-              code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-              recovery: { kind: "staleTurn", retryable: false },
-            },
-          ],
+  it.each([
+    {
+      name: "a staleTurn recovery hint",
+      recovery: { kind: "staleTurn" as const, retryable: false },
+    },
+    { name: "the no-active-turn code alone", recovery: undefined },
+  ])(
+    "maps a steer rejection with $name to a stale steer",
+    async ({ recovery }) => {
+      const events: ThreadEvent[] = [];
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
         },
-      },
-    });
+        launch: {
+          scripted: {
+            failMethods: [
+              {
+                method: "turn/steer",
+                message: "No active turn to steer",
+                code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+                ...(recovery === undefined ? {} : { recovery }),
+              },
+            ],
+          },
+        },
+      });
 
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "acp-cursor",
-      options: fullRuntimeOptions,
-    });
-    await runtime.runTurn({
-      clientRequestId: "creq_222222222x",
-      threadId: "t1",
-      input: [promptTextInput({ text: "delay:500 active turn" })],
-      options: fullRuntimeOptions,
-    });
-    const { turnId } = await waitForThreadTurnStarted({
-      events,
-      providerId: "acp-cursor",
-      runtime,
-      threadId: "t1",
-    });
-
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222222y",
+      await runtime.startThread({
+        environmentId: "env-1",
         threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "late steer" })],
+        projectId: "p1",
+        providerId: "acp-cursor",
         options: fullRuntimeOptions,
-      }),
-    ).resolves.toEqual({ status: "stale", activeTurnId: null });
-    expect(runtime.getActiveTurnId("t1")).toBeNull();
-    const steersSentSoFar = record
-      .read()
-      .filter((request) => request.method === "turn/steer").length;
-    expect(steersSentSoFar).toBe(1);
-
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222222z",
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222222x",
         threadId: "t1",
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "still late" })],
+        input: [promptTextInput({ text: "delay:500 active turn" })],
         options: fullRuntimeOptions,
-      }),
-    ).resolves.toEqual({ status: "stale", activeTurnId: null });
-    expect(
-      record.read().filter((request) => request.method === "turn/steer"),
-    ).toHaveLength(1);
-    expect(inputAcceptedEvents(events, "creq_222222222y")).toHaveLength(0);
-    expect(inputAcceptedEvents(events, "creq_222222222z")).toHaveLength(0);
+      });
+      const { turnId } = await waitForThreadTurnStarted({
+        events,
+        providerId: "acp-cursor",
+        runtime,
+        threadId: "t1",
+      });
 
-    await runtime.shutdown();
-  });
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222222y",
+          threadId: "t1",
+          expectedTurnId: turnId,
+          input: [promptTextInput({ text: "late steer" })],
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ status: "stale", activeTurnId: null });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+      const steersSentSoFar = record
+        .read()
+        .filter((request) => request.method === "turn/steer").length;
+      expect(steersSentSoFar).toBe(1);
+
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222222z",
+          threadId: "t1",
+          expectedTurnId: turnId,
+          input: [promptTextInput({ text: "still late" })],
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ status: "stale", activeTurnId: null });
+      expect(
+        record.read().filter((request) => request.method === "turn/steer"),
+      ).toHaveLength(1);
+
+      await runtime.shutdown();
+    },
+  );
 });

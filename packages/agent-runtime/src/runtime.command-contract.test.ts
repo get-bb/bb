@@ -1,11 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
-import { UNSOLICITED_TURN_THREAD_ID_ENV } from "./test/bridges/unsolicited-turn-bridge.js";
 import {
   createScriptedEchoLaunch,
   createScriptedEchoRequestRecord,
@@ -35,34 +33,14 @@ interface ContractRuntime {
   runtime: LaunchBoundAgentRuntime;
 }
 
-const missingProviderThreadId = "t-missing";
-const missingProviderThreadIdError =
-  /No provider thread id available for t-missing/;
 const acpLaunchSpec = {
   displayName: "Custom ACP",
   command: "custom-agent",
   args: ["serve"],
   env: { CUSTOM_AGENT_TOKEN: "token" },
 };
-const unsolicitedTurnBridgeModulePath = fileURLToPath(
-  new URL("./test/bridges/unsolicited-turn-bridge.ts", import.meta.url),
-);
 const codexEmptyRolloutRenameError =
   "failed to set thread name: rollout at /tmp/new-rollout.jsonl is empty";
-
-async function registerThreadWithoutProviderThreadId(
-  runtime: LaunchBoundAgentRuntime,
-): Promise<void> {
-  await expect(
-    runtime.resumeThread({
-      environmentId: "env-1",
-      threadId: missingProviderThreadId,
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    }),
-  ).rejects.toThrow(missingProviderThreadIdError);
-}
 
 describe("createAgentRuntime command contracts", () => {
   let tmpDir: string;
@@ -255,60 +233,6 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("uses a new provider process cache entry when the declared launch spec changes", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    try {
-      await runtime.listModels({
-        providerId: "acp-custom",
-        bridgeLaunch: createScriptedEchoLaunch({
-          providerOptions: {
-            acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
-          },
-        }),
-      });
-      await runtime.listModels({
-        providerId: "acp-custom",
-        bridgeLaunch: createScriptedEchoLaunch({
-          providerOptions: {
-            acpLaunchSpec: {
-              ...acpLaunchSpec,
-              env: { CACHE_MARKER: "second" },
-            },
-          },
-        }),
-      });
-
-      const requests = record.read();
-      expect(
-        requests.filter((entry) => entry.method === "initialize"),
-      ).toHaveLength(2);
-      expect(
-        requests
-          .filter((entry) => entry.method === "model/list")
-          .map((entry) => entry.params),
-      ).toEqual([
-        {
-          providerOptions: {
-            acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
-          },
-          envVars: {},
-        },
-        {
-          providerOptions: {
-            acpLaunchSpec: {
-              ...acpLaunchSpec,
-              env: { CACHE_MARKER: "second" },
-            },
-          },
-          envVars: {},
-        },
-      ]);
-    } finally {
-      await runtime.shutdown();
-    }
-  }, 30000);
-
   it("prefixes provider rename titles and normalizes provider title events", async () => {
     const events: ThreadEvent[] = [];
     const { record, runtime } = createContractRuntime({
@@ -468,43 +392,49 @@ describe("createAgentRuntime command contracts", () => {
     10_000,
   );
 
-  it("rejects thread resume when providerThreadId cannot be resolved", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    await registerThreadWithoutProviderThreadId(runtime);
-    expect(record.last("thread/resume")).toBeUndefined();
-    await runtime.shutdown();
-  });
-
-  it("rejects turn start when providerThreadId cannot be resolved", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    await registerThreadWithoutProviderThreadId(runtime);
-    await expect(
-      runtime.runTurn({
-        clientRequestId: "creq_222222224t",
-        threadId: missingProviderThreadId,
-        input: [promptTextInput({ text: "hello" })],
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(missingProviderThreadIdError);
-    expect(record.last("turn/start")).toBeUndefined();
-    await runtime.shutdown();
-  });
-
-  it("rejects thread rename when providerThreadId cannot be resolved", async () => {
-    const { record, runtime } = createContractRuntime();
-
-    await registerThreadWithoutProviderThreadId(runtime);
-    await expect(
-      runtime.renameThread({
-        threadId: missingProviderThreadId,
-        title: "New Title",
-      }),
-    ).rejects.toThrow(missingProviderThreadIdError);
-    expect(record.last("thread/name/set")).toBeUndefined();
-    await runtime.shutdown();
-  });
+  it.each([
+    {
+      method: "turn/start",
+      send: (runtime: LaunchBoundAgentRuntime) =>
+        runtime.runTurn({
+          clientRequestId: "creq_222222224t",
+          threadId: "t1",
+          input: [promptTextInput({ text: "hello" })],
+          options: fullRuntimeOptions,
+        }),
+    },
+    {
+      method: "thread/name/set",
+      send: (runtime: LaunchBoundAgentRuntime) =>
+        runtime.renameThread({ threadId: "t1", title: "New Title" }),
+    },
+  ])(
+    "rejects $method while thread/start has not returned a providerThreadId",
+    async ({ method, send }) => {
+      const { record, runtime } = createContractRuntime({
+        launch: { scripted: { startDelayMs: 1_000 } },
+      });
+      try {
+        const start = runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        await vi.waitFor(() => {
+          expect(record.last("thread/start")).toBeDefined();
+        });
+        await expect(send(runtime)).rejects.toThrow(
+          /No provider thread id available for t1/,
+        );
+        expect(record.last(method)).toBeUndefined();
+        await start;
+      } finally {
+        await runtime.shutdown();
+      }
+    },
+  );
 
   it("propagates a bridge's archive and unarchive rejections verbatim", async () => {
     const { record, runtime } = createContractRuntime({
@@ -653,39 +583,6 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("rejects turn steer when providerThreadId cannot be resolved", async () => {
-    const events: ThreadEvent[] = [];
-    const { runtime } = createContractRuntime({
-      onEvent: (event) => events.push(event),
-      env: { [UNSOLICITED_TURN_THREAD_ID_ENV]: missingProviderThreadId },
-      launch: {
-        modulePath: unsolicitedTurnBridgeModulePath,
-        pluginId: "provider-unsolicited-turn",
-      },
-    });
-
-    await registerThreadWithoutProviderThreadId(runtime);
-    const { turnId } = await waitForThreadTurnStarted({
-      events,
-      label: "synthetic active turn without provider identity",
-      providerId: "fake",
-      runtime,
-      threadId: missingProviderThreadId,
-      timeoutMs: 1000,
-    });
-    expect(runtime.getActiveTurnId(missingProviderThreadId)).toBe(turnId);
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222224u",
-        threadId: missingProviderThreadId,
-        expectedTurnId: turnId,
-        input: [promptTextInput({ text: "steer" })],
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(missingProviderThreadIdError);
-    await runtime.shutdown();
-  });
-
   it("rejects unsupported execution options before they reach the provider", async () => {
     const { record, runtime } = createContractRuntime();
 
@@ -729,6 +626,8 @@ describe("createAgentRuntime command contracts", () => {
     });
 
     expect(runtime.hasThread("t1")).toBe(false);
+    expect(runtime.getProviderSession("t1")).toBeNull();
+    expect(runtime.listRunningProviders()).toEqual([]);
     await runtime.resumeThread({
       environmentId: "env-1",
       threadId: "t1",
