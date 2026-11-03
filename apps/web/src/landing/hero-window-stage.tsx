@@ -440,7 +440,6 @@ const FIRST_ROW = 0.6;
 
 const REST = 1.1;
 const REST_AFTER_CLOSE = 1.4;
-const XFADE = 0.35;
 
 function timing(scene: Scene, tablet = false) {
   const posts = scene.post ?? [];
@@ -988,7 +987,7 @@ function dissolve(
 ) {
   const host = el.parentElement;
   if (!host) return;
-  const ax =
+  let ax =
     pad !== undefined
       ? a.left + pad - b.left - parseFloat(getComputedStyle(el).paddingLeft)
       : el.parentElement?.matches(".rhb-side")
@@ -998,6 +997,10 @@ function dissolve(
             a.right - b.right,
             (a.left + a.right - b.left - b.right) / 2,
           );
+  // Never start the new content outside the column it sits in (where it
+  // would be clipped and look like it vanished for a few frames): fall back
+  // to keeping its left edge where the old content's was.
+  if (b.left + ax < bp.left + t.x - 1) ax = a.left - b.left;
   const ay = nearest(a.top - b.top, a.bottom - b.bottom);
   const cx = a.left - (b.left + ax);
   const cy = a.top - (b.top + ay);
@@ -1050,20 +1053,36 @@ function dissolve(
     glide(wrap, move);
   }
   // Old and new content overlap while they trade places, so the column never
-  // shows an empty frame between them.
-  if (seq)
+  // shows an empty frame between them. In the drawer the new content fades
+  // in on an opaque background above the old copy, which stays fully opaque
+  // until the new content is, and only then fades out where it still shows;
+  // the two are never both part-transparent.
+  let lift: (() => void) | undefined;
+  if (seq) {
+    const was = {
+      position: el.style.position,
+      zIndex: el.style.zIndex,
+      background: el.style.background,
+    };
+    if (getComputedStyle(el).position === "static")
+      el.style.position = "relative";
+    el.style.zIndex = "4";
+    el.style.background = solidBg(host);
     el.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: 260,
-      delay: 40,
       fill: "backwards",
       easing: "ease-out",
     });
+    lift = () => Object.assign(el.style, was);
+  }
   const anim = wrap.animate([{ opacity: 1 }, { opacity: 0 }], {
-    duration: seq ? 300 : 150,
+    duration: 150,
+    delay: seq ? 260 : 0,
     easing: "cubic-bezier(0.7, 0, 0.3, 1)",
     fill: "forwards",
   });
   anim.onfinish = () => {
+    lift?.();
     wrap.remove();
     if (
       host.dataset.rhbPos !== undefined &&
@@ -1121,6 +1140,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
       finals.set(el, { b: box(el), pb: boxOf(el.parentElement) });
   });
   const moved = new Map<Element, { x: number; y: number }>();
+  const entering = new Set<Element>();
   root.querySelectorAll(TOP).forEach((el) => {
     const s = first.rects.get(el);
     const a = s?.r;
@@ -1160,9 +1180,23 @@ function flipLayout(root: HTMLElement, first: Snap) {
       const dx = first.root.left - b.right;
       moved.set(el, { x: dx, y: 0 });
       glide(el, [{ transform: `translateX(${dx}px)` }, { transform: "none" }]);
-    } else if ((a.width < 2 || a.height < 2) && b.width >= 2 && b.height >= 2) {
-      const dx = el.matches(".rhb-col-panel") ? 28 : -28;
+    } else if (
+      (a.width < 2 || a.height < 2) &&
+      b.width >= 2 &&
+      b.height >= 2 &&
+      el.matches(".rhb-col-panel")
+    ) {
+      // The side panel arrives as one opaque piece, sliding in from the
+      // window's right edge the way it later slides out, so nothing under it
+      // shows through and its header, tabs and rows never move on their own.
+      const dx = first.root.right - b.left;
       moved.set(el, { x: dx, y: 0 });
+      entering.add(el);
+      glide(el, [{ transform: `translateX(${dx}px)` }, { transform: "none" }]);
+    } else if ((a.width < 2 || a.height < 2) && b.width >= 2 && b.height >= 2) {
+      const dx = -28;
+      moved.set(el, { x: dx, y: 0 });
+      entering.add(el);
       glide(el, [
         { opacity: 0, transform: `translateX(${dx}px)` },
         { opacity: 1, transform: "none" },
@@ -1231,6 +1265,8 @@ function flipLayout(root: HTMLElement, first: Snap) {
   root.querySelectorAll(KIDS).forEach((el) => {
     if (el.closest(".rhb-frozen")) return;
     if (drawer && el.closest(".rhb-col-page")) return;
+    const col = el.closest(TOP);
+    if (col && entering.has(col)) return;
     const s = first.rects.get(el);
     const fin = finals.get(el);
     const b = fin?.b ?? box(el);
@@ -1296,10 +1332,16 @@ function flipLayout(root: HTMLElement, first: Snap) {
   const leftBody = root.querySelector<HTMLElement>(".rhb-left-body");
   const now = boxOf(leftBody);
   if (leftBody && first.left && now && first.left.width - now.width > 40) {
-    const ghost = freeze(leftBody);
-    pin(ghost, first.left, first.root, "0");
+    // When the rail stays (the sidebar folds down to it), only the sidebar
+    // beside it is copied, so the rail icons are never doubled, and the copy
+    // fades underneath the thread column as that slides over it.
+    const side = leftBody.querySelector<HTMLElement>(":scope > .rhb-side");
+    const sideWas = side ? first.rects.get(side)?.r : undefined;
+    const keep = now.width >= 2 && !!sideWas && sideWas.width >= 2;
+    const ghost = freeze(keep && side ? side : leftBody);
+    pin(ghost, keep && sideWas ? sideWas : first.left, first.root, "0");
     root.appendChild(ghost);
-    const out = drawer ? first.root.left - first.left.right : -24;
+    const out = drawer ? first.root.left - first.left.right : 0;
     const a = ghost.animate(
       [
         { opacity: 1, transform: "none" },
@@ -1318,11 +1360,16 @@ function flipLayout(root: HTMLElement, first: Snap) {
     now &&
     now.width - first.left.width > 40
   ) {
+    const side = leftBody.querySelector(":scope > .rhb-side");
     if (drawer)
       glide(leftBody, [
         { transform: `translateX(${first.root.left - now.right}px)` },
         { transform: "none" },
       ]);
+    else if (first.left.width >= 2 && side)
+      // The rail was already showing: it stays put and only the sidebar
+      // beside it fades in.
+      glide(side, [{ opacity: 0 }, { opacity: 1 }], 450);
     else
       glide(
         leftBody,
@@ -1412,19 +1459,31 @@ function slideRows(root: HTMLElement, first: RowSnap) {
       st.style.position = "relative";
       Object.assign(was.status.style, { position: "absolute", inset: "0" });
       st.appendChild(was.status);
+      // The new status fades in above the old one, which stays opaque until
+      // the new one is, then fades out where it still shows.
       was.status.animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: ROW_SWAP,
+        duration: 100,
+        delay: ROW_SWAP,
         easing: "ease-out",
         fill: "forwards",
       });
       const fresh = [...st.children].filter(
         (c) => c !== was.status,
       ) as HTMLElement[];
-      fresh.forEach((c) =>
+      fresh.forEach((c) => {
+        Object.assign(c.style, { position: "relative", zIndex: "1" });
         c.animate([{ opacity: 0 }, { opacity: 1 }], {
           duration: ROW_SWAP,
-          easing: "ease-in",
-        }),
+          easing: "ease-out",
+        });
+      });
+      window.setTimeout(
+        () =>
+          fresh.forEach((c) => {
+            c.style.removeProperty("position");
+            c.style.removeProperty("z-index");
+          }),
+        ROW_SWAP + 120,
       );
     }
     const bg = solidBg(el.parentElement);
@@ -1448,33 +1507,6 @@ function slideRows(root: HTMLElement, first: RowSnap) {
       ROW_SWAP + ROW_MOVE + 20,
     );
   });
-}
-
-function onReveal(e: AnimationEvent) {
-  if (e.animationName !== "rhb-reveal") return;
-  const el = e.target as HTMLElement;
-  if (!el.closest(".rhb-side")) return;
-  if (el.matches(".rhb-kids, .rhb-thread"))
-    el.animate([{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1 }], {
-      duration: 300,
-    });
-  const cs = getComputedStyle(el);
-  const h =
-    box(el).height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
-
-  for (
-    let node: Element | null = el;
-    node && !node.classList.contains("rhb-list");
-    node = node.parentElement
-  ) {
-    for (let sib = node.nextElementSibling; sib; sib = sib.nextElementSibling) {
-      glide(
-        sib,
-        [{ transform: `translateY(${-h}px)` }, { transform: "none" }],
-        300,
-      );
-    }
-  }
 }
 
 const SentryPage = memo(function SentryPage() {
@@ -1564,12 +1596,8 @@ const LinearPanel = memo(function LinearPanel() {
         <div className="plugin-panel rhb-side-panel">
           <PanelBar name="Linear issues" meta="bb · 6 open" />
           <div className="plugin-panel-rows">
-            {LINEAR_TASKS.map((task, i) => (
-              <div
-                className="plugin-task"
-                key={task.key}
-                style={{ animationDelay: `${0.45 + i * 0.06}s` }}
-              >
+            {LINEAR_TASKS.map((task) => (
+              <div className="plugin-task" key={task.key}>
                 <span className={`plugin-task-status is-${task.status}`} />
                 <span className="plugin-task-key">{task.key}</span>
                 <span className="plugin-task-title">{task.title}</span>
@@ -1590,9 +1618,11 @@ type FeedProps = {
   reduced: boolean;
   out?: boolean;
   pre?: boolean;
+  // Called once this incoming layer has fully faded in.
+  onIn?: () => void;
 };
 
-function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
+function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
   const tablet = useMedia(TABLET_QUERY);
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1639,10 +1669,52 @@ function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
       }
     };
 
+    // Each new timeline item opens its own room: it starts with a negative
+    // bottom margin equal to the space it takes and eases that back to its
+    // own margin, so whatever sits after it (or, once the feed overflows,
+    // everything above it) glides instead of snapping. It is caught here,
+    // after layout and before paint, so no frame shows the full jump.
+    const seen = new WeakSet<Element>();
+    let primed = false;
+    let growing = 0;
+    const visible = (el: Element | null) =>
+      !!el && (el as HTMLElement).offsetParent !== null;
+    const grow = (el: HTMLElement) => {
+      const parent = el.parentElement;
+      if (!parent) return;
+      let prev = el.previousElementSibling;
+      while (prev && !visible(prev)) prev = prev.previousElementSibling;
+      const cs = getComputedStyle(el);
+      const mb = parseFloat(cs.marginBottom) || 0;
+      const gap = prev ? parseFloat(getComputedStyle(parent).rowGap) || 0 : 0;
+      const room = el.offsetHeight + (parseFloat(cs.marginTop) || 0) + mb + gap;
+      if (room < 1) return;
+      growing++;
+      const anim = el.animate(
+        [{ marginBottom: `${mb - room}px` }, { marginBottom: `${mb}px` }],
+        { duration: 300, easing: EASE_OUT },
+      );
+      const done = () => {
+        growing--;
+        self.top = feed.offsetTop;
+      };
+      anim.onfinish = done;
+      anim.oncancel = done;
+    };
+    const ITEMS = ":scope > *, .rhb-turn-body > *, .rhb-notes > *";
     const ro = new ResizeObserver(() => {
+      const fresh: HTMLElement[] = [];
+      for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
+        if (!visible(el) || seen.has(el)) continue;
+        seen.add(el);
+        if (primed) fresh.push(el);
+      }
+      primed = true;
+      for (const el of fresh)
+        if (!fresh.includes(el.parentElement as HTMLElement)) grow(el);
       let moved = false;
       const ft = feed.offsetTop;
-      const fd = self.top - ft;
+      const fd = growing ? 0 : self.top - ft;
       self.top = ft;
       if (Math.abs(fd) >= 0.5) {
         self.off += fd;
@@ -1683,6 +1755,10 @@ function FeedLayer({ scene, reduced, out, pre }: FeedProps) {
   return (
     <div
       className={`rhb-feed-layer rhb-fl-${scene.id}${pre ? " is-pre" : out ? " is-out" : ""}`}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget && e.animationName === "rhb-feed-in")
+          onIn?.();
+      }}
     >
       <div className="rhb-feed" ref={feedRef}>
         <FeedBody scene={scene} reduced={reduced} tablet={tablet} />
@@ -2002,10 +2078,12 @@ type ShellProps = {
   reduced: boolean;
   ghost?: boolean;
   pre?: boolean;
+  // Held on its first frame, animations paused, under the restart crossfade.
+  frozen?: boolean;
   nextFeed?: number | null;
 };
 
-function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
+function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   const scene = SCENES[idx];
   const tablet = useMedia(TABLET_QUERY);
   const t = timing(scene, tablet);
@@ -2033,7 +2111,6 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
   if (scene.id === "sentry" && (n === 5 || n === 1)) hasSet.add("collapsed");
   if (scene.id === "linear" && tablet && (n === 5 || n === 1 || n === 3))
     hasSet.add("panel-collapsed");
-  const has = (x: string) => hasSet.has(x);
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
@@ -2097,12 +2174,6 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     flipLayout(rootRef.current, first);
     if (rows) slideRows(rootRef.current, rows);
   }, [idx, n, reduced]);
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root || reduced) return;
-    root.addEventListener("animationend", onReveal);
-    return () => root.removeEventListener("animationend", onReveal);
-  }, [reduced]);
 
   const [outIdx, setOutIdx] = useState<number | null>(null);
   const prevIdx = useRef(idx);
@@ -2111,9 +2182,10 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     const from = prevIdx.current;
     prevIdx.current = idx;
     if (reduced) return;
+    // The outgoing feed and title stay fully opaque underneath until the
+    // incoming feed has faded in over them (FeedLayer's onIn), so the two are
+    // never both part-transparent.
     setOutIdx(from);
-    const id = window.setTimeout(() => setOutIdx(null), XFADE * 1000 + 40);
-    return () => window.clearTimeout(id);
   }, [idx, reduced]);
 
   const titleRef = useRef<HTMLSpanElement>(null);
@@ -2124,17 +2196,26 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     const was = titleW.current;
     const w = el.offsetWidth;
     titleW.current = { idx, w };
-    // The title column takes the new title's width at once; the icon after
-    // it glides over from where the old title ended.
-    const icon = el.nextElementSibling;
-    if (!reduced && icon && was.idx !== idx && was.w && Math.abs(was.w - w) > 1)
-      glide(
-        icon,
-        [{ transform: `translateX(${was.w - w}px)` }, { transform: "none" }],
-        300,
-      );
+    if (reduced || was.idx === idx || !was.w || Math.abs(was.w - w) <= 1)
+      return;
+    // The title slot eases from the old title's width to the new one's, and
+    // the icon after it follows. The new title (on the band colour) spans
+    // the whole slot while it fades in over the old one, so the old title,
+    // tail included, crossfades out underneath and is never cut off.
+    const titles = Array.from(el.children) as HTMLElement[];
+    el.style.overflow = "hidden";
+    titles.forEach((t) => (t.style.textOverflow = "clip"));
+    const anim = el.animate([{ width: `${was.w}px` }, { width: `${w}px` }], {
+      duration: 300,
+      easing: EASE_OUT,
+    });
+    anim.onfinish = anim.oncancel = () => {
+      el.style.removeProperty("overflow");
+      titles.forEach((t) => t.style.removeProperty("text-overflow"));
+    };
   }, [idx, n, reduced]);
 
+  const clearOut = () => setOutIdx(null);
   const outgoing = prevIdx.current < idx ? prevIdx.current : outIdx;
   const shellClass = [
     "rhb-stage",
@@ -2144,6 +2225,7 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
     reduced && "rhb-still",
     ghost && "rhb-stage-out",
     pre && "rhb-stage-pre",
+    frozen && "rhb-stage-held",
     ...[...hasSet].map((x) => `rhb-has-${x}`),
     ...[...usesSet].map((x) => `rhb-uses-${x}`),
     (n >= 1 && scene.sideView) || n === 4 ? "rhb-side-view" : "",
@@ -2330,7 +2412,9 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
                       </div>
                       {k === spawnIdx ? (
                         <div
-                          className="rhb-kids"
+                          className={
+                            k === idx ? "rhb-kids rhb-kids-late" : "rhb-kids"
+                          }
                           style={
                             k === idx
                               ? delay((t.stepAt[1] ?? t.changeAt) + 0.35)
@@ -2454,9 +2538,7 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
                 <img src={vscodeIcon} alt="" className="rhb-editor-ic" />
                 <ChevronDown className="rhb-chev" />
               </span>
-              {has("panel") ? null : (
-                <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
-              )}
+              <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
             </span>
           </div>
           <div className="rhb-card rhb-card-main">
@@ -2474,6 +2556,7 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
                   reduced={reduced}
                   out={k < idx}
                   pre={k > idx}
+                  onIn={k === idx ? clearOut : undefined}
                 />
               ))}
             </div>
@@ -2532,7 +2615,13 @@ function Shell({ idx, n, reduced, ghost, pre, nextFeed }: ShellProps) {
   );
 }
 
-const FINAL_HOLD = 2.2;
+// The finished frame settles (about 0.7 s of layout moves) and then holds
+// still for about 4 s before the loop crossfades back to the first scene.
+const FINAL_HOLD = 4.7;
+// Length of the restart crossfade (rhb-wrap-out in hero-window.css). The new
+// loop's first scene waits, frozen at its first frame, until the outgoing
+// frame has fully faded, so only one layer is ever partly transparent.
+const RESTART_FADE = 0.7;
 
 type Clock = {
   at: (sec: number, fn: () => void) => () => void;
@@ -2588,12 +2677,18 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
   const [nextFeed, setNextFeed] = useState<number | null>(null);
   const [ghost, setGhost] = useState<number | null>(null);
   const [pre, setPre] = useState<number | null>(null);
+  const ghostRef = useRef(ghost);
+  useLayoutEffect(() => {
+    ghostRef.current = ghost;
+  }, [ghost]);
   useEffect(() => {
     if (reduced) return;
     const idx = pos.idx;
     const scene = SCENES[idx];
     const t = timing(scene, tablet);
-    const at = clock.at;
+    // After a restart the first scene's clock starts once the crossfade ends.
+    const lead = idx === 0 && ghostRef.current != null ? RESTART_FADE : 0;
+    const at = (sec: number, fn: () => void) => clock.at(sec + lead, fn);
     const ids = [at(t.changeAt, () => setPos({ idx, n: 1 }))];
     if (t.collapseAt !== null)
       ids.push(at(t.collapseAt, () => setPos({ idx, n: 5 })));
@@ -2604,7 +2699,7 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
     const next =
       t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
-    if (idx === 0) ids.push(at(XFADE + 0.05, () => setGhost(null)));
+    if (lead) ids.push(clock.at(lead, () => setGhost(null)));
     if (idx < last) {
       ids.push(
         at(next - 0.8, () => startTransition(() => setNextFeed(idx + 1))),
@@ -2644,6 +2739,7 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
         n={pos.n}
         reduced={false}
         nextFeed={nextFeed}
+        frozen={ghost != null}
       />
       {pre != null ? (
         <Shell key={pre} idx={0} n={0} reduced={false} pre />
