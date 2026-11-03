@@ -144,19 +144,10 @@ function proxyRequest(args: {
     args.target,
     args.serverHeaders,
   );
-  const abortUpstream = () => {
-    upstream.destroy();
-  };
-  args.request.once("aborted", abortUpstream);
   args.response.once("close", () => {
-    if (!args.response.writableFinished) abortUpstream();
+    if (!args.response.writableFinished) upstream.destroy();
   });
   upstream.once("response", (upstreamResponse) => {
-    if (args.response.destroyed) {
-      upstreamResponse.destroy();
-      upstream.destroy();
-      return;
-    }
     args.response.writeHead(
       upstreamResponse.statusCode ?? 502,
       upstreamResponse.statusMessage,
