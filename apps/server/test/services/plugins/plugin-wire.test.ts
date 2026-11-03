@@ -60,8 +60,6 @@ const WIRE_SOURCE = `
     bb.http.route("GET", "/boom", () => {
       throw new Error("route boom");
     });
-    // A structurally valid Response whose prototype is not this realm's
-    // Response, as a handler running in another realm would return (#1661).
     bb.http.route("GET", "/foreign", () => {
       const real = new Response(JSON.stringify({ foreign: true }), {
         status: 201,
@@ -77,8 +75,6 @@ const WIRE_SOURCE = `
         clone: () => real.clone(),
       };
     });
-    // Streams two chunks; the second is only produced after the test releases
-    // it, so buffering the whole body would hang the first read.
     bb.http.route("GET", "/foreign-stream", () => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({

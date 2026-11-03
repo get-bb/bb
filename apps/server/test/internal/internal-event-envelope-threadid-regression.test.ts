@@ -33,17 +33,21 @@ describe("internal event envelope threadId regression", () => {
         hostId: hostB.host.id,
         projectId: projectB.id,
       });
-      const threadA = seedThread(harness.deps, {
+      const threadA = createThread(harness.db, harness.hub, {
         projectId: projectA.id,
         environmentId: environmentA.id,
-        title: "Owned thread",
+        providerId: "codex",
+        title: null,
         titleFallback: "Owned thread",
+        status: "active",
       });
-      const threadB = seedThread(harness.deps, {
+      const threadB = createThread(harness.db, harness.hub, {
         projectId: projectB.id,
         environmentId: environmentB.id,
-        title: "Foreign thread",
+        providerId: "codex",
+        title: null,
         titleFallback: "Foreign thread",
+        status: "active",
       });
 
       const response = await harness.app.request("/internal/session/events", {
@@ -59,7 +63,8 @@ describe("internal event envelope threadId regression", () => {
                 threadId: threadB.id,
                 providerThreadId: "provider-envelope",
                 scope: threadScope(),
-                threadName: "hacked",
+                threadName: "Renamed by the agent",
+                source: "agent",
               },
             }),
           ]),
@@ -67,8 +72,10 @@ describe("internal event envelope threadId regression", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(getThread(harness.db, threadA.id)?.title).toBe("Owned thread");
-      expect(getThread(harness.db, threadB.id)?.title).toBe("Foreign thread");
+      expect(getThread(harness.db, threadA.id)?.title).toBe(
+        "Renamed by the agent",
+      );
+      expect(getThread(harness.db, threadB.id)?.title).toBeNull();
     });
   });
 

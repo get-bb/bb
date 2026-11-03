@@ -1680,6 +1680,56 @@ describe("pending interaction lifecycle", () => {
         "availableDecisions",
       );
 
+      const questionPayload = createUserQuestionPayload();
+      const question = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-lifecycle",
+          providerId: "codex",
+          providerThreadId: "provider-thread-lifecycle",
+          providerRequestId: "request-lifecycle-question",
+          payload: questionPayload,
+        },
+      );
+      if (question.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${question.reason}`);
+      }
+      const answer = createUserAnswerResolution({ freeText: "Ship it." });
+      harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: question.interaction.id,
+        resolution: answer,
+      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          { interactionId: question.interaction.id, resolution: answer },
+        ),
+      );
+      expect(
+        lifecycleEvents()
+          .filter((event) => event.interaction.id === question.interaction.id)
+          .map((event) => ({ scope: event.scope, ...event.interaction })),
+      ).toEqual([
+        {
+          scope: { kind: "turn", turnId: "turn-lifecycle" },
+          id: question.interaction.id,
+          status: "pending",
+          statusReason: null,
+          origin: {
+            kind: "provider",
+            providerId: "codex",
+            providerRequestId: "request-lifecycle-question",
+          },
+          payload: questionPayload,
+          resolution: null,
+        },
+        expect.objectContaining({ status: "resolving", resolution: answer }),
+        expect.objectContaining({ status: "resolved", resolution: answer }),
+      ]);
+
       const pending = requestPluginInteraction(harness.deps, {
         threadId: thread.id,
         name: "SENTINEL_FIELD",
