@@ -67,6 +67,7 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         applicationLinks: false,
         compactExpiredCache: false,
+        continueThreadsAfterRestarts: false,
         dismissReadNotifications: false,
         narrowPluginCss: false,
         serverMove: true,
