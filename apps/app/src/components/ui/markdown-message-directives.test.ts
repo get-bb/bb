@@ -27,19 +27,6 @@ afterEach(() => {
 });
 
 describe("buildMessageDirectiveRegistry", () => {
-  it("maps a unique directive id to its slot", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo" }),
-    ]);
-    expect(registry.get("inline-vis")).toEqual({
-      status: "ok",
-      slot: expect.objectContaining({
-        id: "inline-vis",
-        pluginId: "demo",
-      }),
-    });
-  });
-
   it("records cross-plugin collisions with no winner and warns once", () => {
     const warn = vi.fn();
     const registry = buildMessageDirectiveRegistry(

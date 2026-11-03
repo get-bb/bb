@@ -1998,6 +1998,7 @@ describe("PluginDetail banner precedence", () => {
     expect(alerts[0]?.textContent).toContain("Wait, then reload.");
     expect(alerts[0]?.textContent).not.toContain("issue-sync");
     expect(alerts[0]?.textContent).not.toContain("handler");
+    expect(alerts[0]?.textContent).not.toContain("Restart bb");
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
   });
@@ -2129,27 +2130,6 @@ describe("PluginDetail runtime health", () => {
     expect(
       alert.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-  });
-
-  it("offers Reload for degraded runtime status and keeps diagnostics out of the banner", () => {
-    renderRuntimeStatus("degraded", {
-      statusDetail: "service issue-sync did not stop",
-      handlerStats: {
-        ...GITHUB_PLUGIN.handlerStats,
-        errorCount: 3,
-      },
-    });
-
-    const alerts = screen.getAllByRole("alert");
-    expect(alerts).toHaveLength(1);
-    const alertText = alerts[0]?.textContent;
-    expect(alertText).toContain("Degraded");
-    expect(alertText).toContain("A service is still stopping.");
-    expect(alertText).toContain("Wait, then reload.");
-    expect(alertText).not.toContain("issue-sync");
-    expect(alertText).not.toContain("handler");
-    expect(alertText).not.toContain("Restart bb");
-    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   });
 
   it.each([

@@ -278,8 +278,10 @@ describe("EnvironmentPickerUI", () => {
       screen.queryByRole("option", { name: /New branch workspace/u }),
     ).toBeNull();
     expect(
-      screen.getByRole("option", { name: /Optional sandbox/u }),
-    ).toBeTruthy();
+      screen
+        .getByRole("option", { name: /Optional sandbox/u })
+        .getAttribute("aria-disabled"),
+    ).toBe("false");
     expect(screen.getByText("Configure credentials")).toBeTruthy();
   });
   it("omits a projectless-only provider from a project picker", () => {
@@ -391,40 +393,6 @@ describe("EnvironmentPickerUI", () => {
     expect(
       screen.getByRole("option", { name: /Optional sandbox/u }),
     ).toBeTruthy();
-  });
-
-  it("shows a setup-required provider enabled with its message", () => {
-    render(
-      <EnvironmentPickerUI
-        value="provider:project-checkout"
-        sources={sources}
-        host={host}
-        isLocal
-        providers={[
-          checkoutProvider,
-          {
-            ...branchProvider,
-            availability: {
-              status: "setup-required",
-              message: "Configure credentials",
-            },
-          },
-        ]}
-        selectedProviderHostId={host.id}
-        onSelectProvider={vi.fn()}
-        modal={false}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Environment" }), {
-      button: 0,
-    });
-
-    const branchItem = screen.getByRole("option", {
-      name: /New branch workspace/u,
-    });
-    expect(branchItem.getAttribute("aria-disabled")).toBe("false");
-    expect(screen.getByText("Configure credentials")).toBeTruthy();
   });
 
   it("selects a setup-required composed provider without navigating away", () => {

@@ -572,6 +572,9 @@ describe.each(COMPOSERS)("$name", (composer) => {
       );
       expect(rejected).toBe(surface.pluginSubmit === "rejects");
       if (surface.pluginSubmit === "rejects") {
+        await expect(handle.submit()).rejects.toThrow(
+          "This composer cannot submit programmatically.",
+        );
         expect(onSubmit).not.toHaveBeenCalled();
         expect(onModifierSubmit).not.toHaveBeenCalled();
         return;

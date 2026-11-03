@@ -4,7 +4,6 @@ import { HttpError } from "./api";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
-  parseLifecycleError,
   type LifecycleErrorDescription,
   type LifecycleErrorOperation,
 } from "./lifecycle-errors";
@@ -50,22 +49,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         environmentStatus: "ready",
         hasPath: false,
-      },
-    },
-    expected: {
-      title: "Workspace unavailable",
-      body: "Workspace is unavailable.",
-      severity: "warning",
-    },
-  },
-  {
-    name: "environment_not_ready ready with path",
-    body: {
-      code: "environment_not_ready",
-      message: "Environment unavailable",
-      details: {
-        environmentStatus: "ready",
-        hasPath: true,
       },
     },
     expected: {
@@ -537,36 +520,6 @@ const descriptionCases: DescriptionCase[] = [
   },
 ];
 
-describe("parseLifecycleError", () => {
-  it("parses HttpError bodies that match the lifecycle union", () => {
-    const body: LifecycleApiError = {
-      code: "environment_not_ready",
-      message: "Environment unavailable",
-      details: {
-        environmentStatus: "provisioning",
-        hasPath: false,
-      },
-    };
-
-    expect(parseLifecycleError(httpError(body))).toEqual(body);
-  });
-
-  it("returns null for non-lifecycle errors", () => {
-    const genericError = new HttpError({
-      body: {
-        code: "invalid_request",
-        message: "Request failed",
-      },
-      code: "invalid_request",
-      message: "Request failed",
-      status: 400,
-    });
-
-    expect(parseLifecycleError(new Error("Nope"))).toBeNull();
-    expect(parseLifecycleError(genericError)).toBeNull();
-  });
-});
-
 describe("describeLifecycleError", () => {
   it.each(descriptionCases)("$name", ({ body, expected, operation }) => {
     expect(
@@ -610,11 +563,18 @@ describe("describeLifecycleError", () => {
   });
 
   it("returns null for non-lifecycle errors", () => {
-    expect(
-      describeLifecycleError({
-        error: new Error("Failed"),
-      }),
-    ).toBeNull();
+    const genericError = new HttpError({
+      body: {
+        code: "invalid_request",
+        message: "Request failed",
+      },
+      code: "invalid_request",
+      message: "Request failed",
+      status: 400,
+    });
+
+    expect(describeLifecycleError({ error: new Error("Failed") })).toBeNull();
+    expect(describeLifecycleError({ error: genericError })).toBeNull();
   });
 
   it("keeps a gate rejection readable under an operation title", () => {

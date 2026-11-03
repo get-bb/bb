@@ -419,23 +419,6 @@ describe("KeyboardSettingsSection", () => {
     ).toBe(true);
   });
 
-  it("ranks visible label matches ahead of description matches across groups", () => {
-    render(<KeyboardSettingsSection />);
-
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
-      {
-        target: { value: "  SiDeBaR  " },
-      },
-    );
-
-    expect(
-      screen
-        .getAllByRole("button", { name: /^Record shortcut for / })[0]
-        ?.getAttribute("aria-label"),
-    ).toMatch(/^Record shortcut for Toggle sidebar,/);
-  });
-
   it("ranks exact labels, label prefixes, label substrings, IDs, and descriptions in order", () => {
     setPluginSlotRegistrations(
       "test-shortcuts",
@@ -458,7 +441,7 @@ describe("KeyboardSettingsSection", () => {
     fireEvent.change(
       screen.getByRole("textbox", { name: "Search keyboard shortcuts" }),
       {
-        target: { value: "sidebar" },
+        target: { value: "  SiDeBaR  " },
       },
     );
 
