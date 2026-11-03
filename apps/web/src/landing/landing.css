@@ -664,14 +664,15 @@ html:has(.nav-sticky) {
 }
 
 .oss-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
   white-space: nowrap;
 }
 
 .oss-ic {
-  width: 14px;
-  height: 14px;
-  margin-right: 4px;
-  vertical-align: -2px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .install-choice .install-send,

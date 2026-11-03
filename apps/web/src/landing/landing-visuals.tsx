@@ -10,7 +10,7 @@ import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode, Ref } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import {
   useExperiment,
@@ -18,10 +18,9 @@ import {
 } from "../experiments/use-experiment";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DesktopDownloadButton, DownloadLink, GitHubLink } from "./cta";
+import { DownloadLink, GitHubLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DesktopInstallChoice } from "./install-choice";
-import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -34,52 +33,25 @@ import {
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
-
-function useFirstSeen(): [(el: HTMLDivElement | null) => void, boolean] {
-  const [el, setEl] = useState<HTMLDivElement | null>(null);
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    if (!el || seen) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) setSeen(true);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [el, seen]);
-  return [setEl, seen];
-}
-
-function DownloadAreaExposure() {
-  useExperimentExposure("homepage-download-area", "desktop");
-  return null;
-}
+import { useInView } from "./visibility";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const simple = useExperiment("homepage-download-area") === "test";
-  const [ref, seen] = useFirstSeen();
-  return (
-    <>
-      {simple ? (
-        <SimpleInstallOptions ref={ref} placement={placement} />
-      ) : (
-        <CurrentInstallOptions ref={ref} placement={placement} />
-      )}
-      {seen ? <DownloadAreaExposure /> : null}
-    </>
-  );
-}
-
-function CurrentInstallOptions({
-  ref,
-  placement,
-}: {
-  ref?: Ref<HTMLDivElement>;
-  placement: CtaPlacement;
-}) {
+  const { ref, seen } = useInView<HTMLDivElement>();
+  useExperimentExposure("homepage-download-area", "desktop", seen);
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
     platform === "macos" ? "linux" : "macos";
+  const simpleLinks = (
+    <>
+      <OpenSourceLink placement={placement} />
+      {" · "}
+      <a className="install-note-link" href={DOWNLOAD_PAGE_PATH}>
+        Other platforms
+      </a>
+    </>
+  );
   return (
     <div ref={ref} className="install-options">
       <div className="install-actions">
@@ -87,47 +59,58 @@ function CurrentInstallOptions({
           placement={placement}
           platform={platform}
           note={
-            <>
-              {download.note}
-              {" · "}
-              <DownloadLink
-                placement={placement}
-                platform={otherPlatform}
-                className="install-note-link"
-              >
-                Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
-              </DownloadLink>
-            </>
-          }
-        />
-        <span className="install-choice">
-          <CommandButton
-            command={CLI_COMMAND}
-            label={`Copy browser install command: ${CLI_COMMAND}`}
-            size="hero"
-            onCopy={() =>
-              trackLandingEvent({
-                name: "landing_cli_command_copied",
-                properties: { placement, command: CLI_COMMAND },
-              })
-            }
-          />
-          <span className="install-note">
-            {platform !== "windows" && (
+            simple ? (
               <>
+                {download.shortNote}
+                {" · "}
+                {simpleLinks}
+              </>
+            ) : (
+              <>
+                {download.note}
+                {" · "}
                 <DownloadLink
                   placement={placement}
-                  platform="windows"
+                  platform={otherPlatform}
                   className="install-note-link"
                 >
-                  {DESKTOP_DOWNLOADS.windows.label}
+                  Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
                 </DownloadLink>
-                ,{" "}
               </>
-            )}
-            Intel Macs &amp; remote machines
+            )
+          }
+          touchNote={simple ? simpleLinks : undefined}
+        />
+        {simple ? null : (
+          <span className="install-choice">
+            <CommandButton
+              command={CLI_COMMAND}
+              label={`Copy browser install command: ${CLI_COMMAND}`}
+              size="hero"
+              onCopy={() =>
+                trackLandingEvent({
+                  name: "landing_cli_command_copied",
+                  properties: { placement, command: CLI_COMMAND },
+                })
+              }
+            />
+            <span className="install-note">
+              {platform !== "windows" && (
+                <>
+                  <DownloadLink
+                    placement={placement}
+                    platform="windows"
+                    className="install-note-link"
+                  >
+                    {DESKTOP_DOWNLOADS.windows.label}
+                  </DownloadLink>
+                  ,{" "}
+                </>
+              )}
+              Intel Macs &amp; remote machines
+            </span>
           </span>
-        </span>
+        )}
       </div>
     </div>
   );
@@ -139,40 +122,6 @@ function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
       <HugeiconsIcon icon={GithubIcon} className="oss-ic" aria-hidden />
       Open source
     </GitHubLink>
-  );
-}
-
-export function SimpleInstallOptions({
-  ref,
-  placement,
-}: {
-  ref?: Ref<HTMLDivElement>;
-  placement: CtaPlacement;
-}) {
-  const platform = useDesktopPlatform();
-  return (
-    <div ref={ref} className="install-options">
-      <div className="install-actions">
-        <span className="install-choice">
-          <DesktopDownloadButton
-            placement={placement}
-            platform={platform}
-            className="btn btn-primary btn-install install-download"
-          />
-          <SendToComputerButton placement={placement} />
-          <span className="install-note">
-            {platform === "macos" ? null : (
-              <span className="install-note-desktop">Alpha{" · "}</span>
-            )}
-            <OpenSourceLink placement={placement} />
-            {" · "}
-            <a className="install-note-link" href={DOWNLOAD_PAGE_PATH}>
-              Other platforms
-            </a>
-          </span>
-        </span>
-      </div>
-    </div>
   );
 }
 

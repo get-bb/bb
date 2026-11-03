@@ -8,10 +8,12 @@ export function DesktopInstallChoice({
   placement,
   platform,
   note,
+  touchNote = "bb runs on macOS, Windows, and Linux",
 }: {
   placement: CtaPlacement;
   platform: DesktopPlatform;
   note: ReactNode;
+  touchNote?: ReactNode;
 }) {
   return (
     <span className="install-choice">
@@ -22,9 +24,7 @@ export function DesktopInstallChoice({
       />
       <SendToComputerButton placement={placement} />
       <span className="install-note install-note-desktop">{note}</span>
-      <span className="install-note install-note-touch">
-        bb runs on macOS, Windows, and Linux
-      </span>
+      <span className="install-note install-note-touch">{touchNote}</span>
     </span>
   );
 }
