@@ -663,6 +663,17 @@ html:has(.nav-sticky) {
   color: var(--ink);
 }
 
+.oss-link {
+  white-space: nowrap;
+}
+
+.oss-ic {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
 .install-choice .install-send,
 .install-choice .install-note-touch {
   display: none;
