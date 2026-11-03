@@ -2875,3 +2875,59 @@
 .rhb.is-paused .rhb-win * {
   animation-play-state: paused !important;
 }
+
+/* Tool calls mute after they land, the way the app draws a closed step's
+   rows (text-subtle-foreground throughout, diff counts included). The row's
+   own animations stay untouched: the fade runs on --rhb-m, which every part
+   of the row mixes toward the subtle colour. */
+@property --rhb-m {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting > * {
+  animation: rhb-mute 0.6s ease var(--rhb-mute-at, 0s) both;
+}
+
+@keyframes rhb-mute {
+  to {
+    --rhb-m: 1;
+  }
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic,
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-verb {
+  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--dim));
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic.is-plugin {
+  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--accent));
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-em {
+  color: color-mix(
+    in oklab,
+    var(--subtle) calc(var(--rhb-m) * 100%),
+    color-mix(in oklab, var(--ink) 78%, var(--bg))
+  );
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-file {
+  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--accent));
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-add {
+  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--add));
+}
+
+.rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-del {
+  color: color-mix(in oklab, var(--subtle) calc(var(--rhb-m) * 100%), var(--del));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rhb .rhb-turn-body > .rhb-work.is-muting > * {
+    animation: none;
+    --rhb-m: 1;
+  }
+}
