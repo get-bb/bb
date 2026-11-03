@@ -251,8 +251,8 @@ function describeScheduledUpdate(status: SystemAppUpdateStatus): string {
         : available.commit.slice(0, 10);
   const count = status.runningThreadCount;
   return count === 0
-    ? `bb will update to ${target} once threads stay finished for a few seconds.`
-    : `bb will update to ${target} once ${threadCountLabel(count)} finish${count === 1 ? "es" : ""}.`;
+    ? `All threads are idle; bb will update to ${target} shortly.`
+    : `bb will update to ${target} when all threads are idle (${String(count)} running).`;
 }
 
 function describeAppUpdateResult(result: SystemAppUpdateResult): string {

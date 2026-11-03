@@ -590,7 +590,7 @@ describe("bb updates app command output", () => {
     expect(schedule).toHaveBeenCalledOnce();
     expect(apply).not.toHaveBeenCalled();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "bb will update to 0.0.33 once 2 running threads finish.",
+      "bb will update to 0.0.33 when all threads are idle (2 running).",
       "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
     ]);
   });
@@ -609,7 +609,7 @@ describe("bb updates app command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "bb-app 0.0.32 -> 0.0.33",
-      "bb will update to 0.0.33 once 1 running thread finishes.",
+      "bb will update to 0.0.33 when all threads are idle (1 running).",
       "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
     ]);
   });
@@ -684,7 +684,7 @@ describe("bb updates app command output", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Updating bb to 0.0.33",
       "Downloading bb-app 0.0.33…",
-      "bb will update to 0.0.33 once 1 running thread finishes.",
+      "bb will update to 0.0.33 when all threads are idle (1 running).",
       "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
     ]);
   });

@@ -2414,7 +2414,7 @@ The published lede.
     );
 
     expect(
-      await screen.findByText("Updates when 2 running threads finish"),
+      await screen.findByText("Updates when all threads are idle (2 running)"),
     ).toBeDefined();
     expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();

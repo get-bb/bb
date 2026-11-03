@@ -110,8 +110,8 @@ export function runningThreadsCaption(count: number): string {
 
 export function scheduledAppUpdateCaption(count: number): string {
   return count === 0
-    ? "Updating once threads stay finished"
-    : `Updates when ${String(count)} running thread${count === 1 ? " finishes" : "s finish"}`;
+    ? "All threads are idle; updating shortly"
+    : `Updates when all threads are idle (${String(count)} running)`;
 }
 
 export function runningThreadsWarning(count: number): string {
