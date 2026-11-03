@@ -15,7 +15,9 @@ export const EXPERIMENT_KEYS = Object.keys(
 
 export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set(["/"]);
 
-export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [];
+export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [
+  "homepage-header-download",
+];
 
 export const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
 

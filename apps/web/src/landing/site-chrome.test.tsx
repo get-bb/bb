@@ -1,8 +1,23 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { ExperimentsProvider } from "../experiments/context";
 import { guideMenu } from "./content-links";
 import { SiteFooter, SiteNav } from "./site-chrome";
+
+function navFor(key: string, variant: string): string {
+  return renderToStaticMarkup(
+    <ExperimentsProvider
+      value={{
+        distinctID: null,
+        featureFlags: { [key]: variant },
+        preview: false,
+      }}
+    >
+      <SiteNav current="blog" />
+    </ExperimentsProvider>,
+  );
+}
 
 describe("site navigation", () => {
   it("shows the compact link set with an icon-only GitHub button", () => {
@@ -33,8 +48,11 @@ describe("site navigation", () => {
     expect(html).not.toContain("Theme");
   });
 
-  it("can send the header button to the download page", () => {
-    const html = renderToStaticMarkup(<SiteNav downloadPage />);
+  it("sends the header button to the download page on any page in the test", () => {
+    expect(navFor("homepage-header-download", "control")).toContain(
+      "/download/macos",
+    );
+    const html = navFor("homepage-header-download", "test");
     expect(html).toContain(
       '<a class="btn btn-primary btn-sm nav-download" href="/download">Download</a>',
     );
@@ -66,7 +84,13 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Guides", "Compare", "Community", "Legal"]) {
+    for (const title of [
+      "Product",
+      "Guides",
+      "Compare",
+      "Community",
+      "Legal",
+    ]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(

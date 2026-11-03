@@ -1206,8 +1206,6 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
-  const headerDownload = useExperiment("homepage-header-download");
-  useExperimentExposure("homepage-header-download", "desktop");
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1228,7 +1226,7 @@ function LandingPage() {
       className="wrap"
       data-qa-check={qaCheck === "test" ? qaCheck : undefined}
     >
-      <SiteNav downloadPage={headerDownload === "test"} />
+      <SiteNav />
 
       <header className="hero">
         <a className="updates-callout" href={LATEST_RELEASE_URL}>

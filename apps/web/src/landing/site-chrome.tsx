@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  useExperiment,
+  useExperimentExposure,
+} from "../experiments/use-experiment";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   compareLinks,
@@ -192,13 +196,13 @@ function GuidesMenu({
 export function SiteNav({
   current,
   path,
-  downloadPage = false,
 }: {
   current?: SiteNavPage;
   path?: string;
-  downloadPage?: boolean;
 }) {
   const platform = useDesktopPlatform();
+  const downloadPage = useExperiment("homepage-header-download") === "test";
+  useExperimentExposure("homepage-header-download", "desktop");
   return (
     <nav className="nav">
       {}
