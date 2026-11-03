@@ -255,7 +255,12 @@ async function installedPackageVersion(
   return null;
 }
 
-export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
+export function runtimeShimPlugin(
+  pluginSdkAppModuleUrl?: string,
+  { hostProvidedZod }: { hostProvidedZod: boolean } = {
+    hostProvidedZod: false,
+  },
+): Plugin {
   return {
     name: "bb-plugin-runtime-shims",
     setup(build) {
@@ -308,7 +313,9 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
       );
       const versions = new Map<string, Promise<string | null>>();
       build.onResolve({ filter: VERSIONED_SHIM_FILTER }, async (args) => {
-        if (args.pluginData === VERSIONED_RESOLVE_MARK) return undefined;
+        if (!hostProvidedZod || args.pluginData === VERSIONED_RESOLVE_MARK) {
+          return undefined;
+        }
         const hostVersion = RUNTIME_PACKAGE_VERSIONS[args.path];
         if (hostVersion === undefined) return undefined;
         const resolved = await build.resolve(args.path, {
@@ -617,13 +624,14 @@ interface PluginAppBuildResult {
 
 interface PluginAppBuildOptions {
   minify: boolean;
+  hostProvidedZod: boolean;
 }
 
 export async function buildPluginApp(
   rootDir: string,
   bbVersion: string,
   toolchain: PluginBuildToolchain,
-  options: PluginAppBuildOptions = { minify: true },
+  options: PluginAppBuildOptions = { minify: true, hostProvidedZod: false },
 ): Promise<PluginAppBuildResult> {
   const { appEntry, packageName, pluginVersion } =
     await readPluginAppConfig(rootDir);
@@ -663,7 +671,12 @@ export async function buildPluginApp(
         __BB_PLUGIN_ID__: JSON.stringify(pluginId),
       },
       logLevel: "error",
-      plugins: [zodLocaleStubPlugin(), runtimeShimPlugin()],
+      plugins: [
+        zodLocaleStubPlugin(),
+        runtimeShimPlugin(undefined, {
+          hostProvidedZod: options.hostProvidedZod,
+        }),
+      ],
     });
 
     migrationWarnings = bundle.warnings

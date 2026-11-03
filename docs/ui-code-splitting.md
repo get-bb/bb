@@ -121,9 +121,10 @@ against `lazyRuntimeGroups` and loads the matching groups in parallel while
 preloading the bundle itself. Each group shares a cached, retryable loader.
 Pierre's core and React bindings form the first lazy group. zod forms the
 second: `vite-plugin-zod-runtime.ts` builds it from its own module ids, so its
-full namespace stays out of the boot chunk's tree-shaken zod. Plugin builds use
-the zod slot only when the plugin's installed zod has the host's major and is
-not newer. Other runtime slots remain eager. Older bundles without dependency metadata receive all slots for
+full namespace stays out of the boot chunk's tree-shaken zod. Only builds the
+server makes itself use the zod slot (`hostProvidedZod`), and only when the
+plugin's installed zod has the host's major and is not newer. `bb plugin build`
+artifacts keep their own zod so they still load on older hosts. Other runtime slots remain eager. Older bundles without dependency metadata receive all slots for
 compatibility. SDK component splits remain separate from this mechanism:
 runtime slots must be installed before a plugin module evaluates, while SDK
 components can load when rendered or warmed at idle.

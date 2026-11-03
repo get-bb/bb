@@ -1778,7 +1778,7 @@ export function registerPluginCommands(
               rootDir,
               resolveBbCliVersion(),
               await cliBuildToolchain(),
-              { minify: false },
+              { minify: false, hostProvidedZod: false },
             );
             for (const warning of app.migrationWarnings)
               console.warn(`warning: ${warning}`);

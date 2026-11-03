@@ -282,11 +282,12 @@ composer.
   `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
   host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
   your declared ranges inside those majors.
-- `zod` in your app bundle uses one copy the host loads on demand and shares
-  across plugins, provided the `zod` installed in your `node_modules` has
-  the host's major and is not newer than the host's copy (bb ships zod 4).
-  Otherwise, and always in `server.ts`, it bundles from your
-  `node_modules`, so keep it in `dependencies`. `zod/mini` always bundles.
+- `zod` bundles from your `node_modules`, so keep it in `dependencies`.
+  When bb itself builds your frontend (git and local installs), it instead
+  uses one copy the host loads on demand and shares across plugins, provided
+  your installed `zod` has the host's major and is not newer than the host's
+  copy (bb ships zod 4). `bb plugin build` artifacts, `server.ts` and
+  `zod/mini` always bundle their own, so a prebuilt bundle runs on older bb.
 - Source and diffs: use the host components
   `experimental_SourceCode` / `experimental_Diff` (frontend-components.md),
   NOT a direct

@@ -474,7 +474,7 @@ describe("plugin app runtime shim", () => {
       dir,
       "0.9.0-test",
       await testToolchain(),
-      { minify: true },
+      { minify: true, hostProvidedZod: false },
     );
     const warnings = result.migrationWarnings;
     expect(await readFile(result.jsPath, "utf8")).toContain(
@@ -611,11 +611,11 @@ describe("plugin app runtime shim", () => {
     expect(hostProvidesPackageVersion("4.6.5", "4.6.5-beta.1")).toBe(false);
   });
 
-  it("shims zod only when the plugin's installed zod is one the host provides", async () => {
+  it("shims zod only in host builds, and only for an installed zod the host provides", async () => {
     const hostZod = RUNTIME_PACKAGE_VERSIONS.zod;
     if (hostZod === undefined) throw new Error("no host zod version");
     const [major] = hostZod.split(".");
-    const bundleWithZod = async (version: string) => {
+    const bundleWithZod = async (version: string, hostProvidedZod = true) => {
       const dir = await mkdtemp(join(tmpdir(), "bb-plugin-zod-"));
       tempDirs.push(dir);
       const zodDir = join(dir, "node_modules", "zod");
@@ -644,7 +644,7 @@ describe("plugin app runtime shim", () => {
         platform: "browser",
         write: false,
         logLevel: "silent",
-        plugins: [runtimeShimPlugin()],
+        plugins: [runtimeShimPlugin(undefined, { hostProvidedZod })],
       });
       return result.outputFiles[0]?.text ?? "";
     };
@@ -652,6 +652,10 @@ describe("plugin app runtime shim", () => {
     const shared = await bundleWithZod(hostZod);
     expect(shared).toMatch(/runtime\d*\.zod\b/);
     expect(shared).not.toContain("plugin-installed-zod");
+
+    const published = await bundleWithZod(hostZod, false);
+    expect(published).toContain("plugin-installed-zod");
+    expect(published).not.toMatch(/runtime\d*\.zod\b/);
 
     for (const version of [`${Number(major) + 1}.0.0`, `${major}.999.0`]) {
       const bundled = await bundleWithZod(version);
@@ -804,6 +808,7 @@ describe("plugin app runtime shim", () => {
 
     const readable = await buildPluginApp(dir, "0.9.0-test", toolchain, {
       minify: false,
+      hostProvidedZod: false,
     });
     const readableJs = await readFile(readable.jsPath, "utf8");
     const readableCss = await readFile(readable.cssPath, "utf8");

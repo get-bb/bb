@@ -60,8 +60,9 @@ export const SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER =
  *    added +193 KB raw / +33 KB brotli to the payload every phone downloads
  *    before first paint — so zod is in VERSIONED_RUNTIME_SLOT_BY_SPECIFIER
  *    instead: the host loads a separate zod copy only when a plugin needs
- *    it, and a plugin uses that slot only when its resolved zod has the
- *    host's major and is not newer than the host's.
+ *    it. Only host-side builds (`hostProvidedZod`) use that slot, and only
+ *    when the plugin's resolved zod has the host's major and is not newer
+ *    than the host's, so published artifacts still run on older hosts.
  *
  * Everything else (non-portal radix, lucide-react, zod/mini, form/calendar/chart
  * libs, hugeicons imported directly) bundles from the plugin's own
