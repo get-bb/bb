@@ -18,10 +18,7 @@ export const EXPERIMENT_KEYS = Object.keys(
   EXPERIMENT_VARIANTS,
 ) as ExperimentKey[];
 
-export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set([
-  "/",
-  "/download",
-]);
+export const EXPERIMENT_PATHS: ReadonlySet<string> = new Set(["/"]);
 
 export const SITE_WIDE_EXPERIMENTS: readonly ExperimentKey[] = [
   "homepage-header",
@@ -54,13 +51,20 @@ export function isExperimentKey(value: string): value is ExperimentKey {
   return Object.hasOwn(EXPERIMENT_VARIANTS, value);
 }
 
+export function isKnownVariant(
+  key: ExperimentKey,
+  value: string | undefined,
+): boolean {
+  const known: readonly string[] = EXPERIMENT_VARIANTS[key];
+  return value === "control" || (value !== undefined && known.includes(value));
+}
+
 export function experimentVariant<K extends ExperimentKey>(
   bootstrap: ExperimentBootstrap,
   key: K,
 ): ExperimentVariant<K> {
   const value = bootstrap.featureFlags[key];
-  const known: readonly string[] = EXPERIMENT_VARIANTS[key];
-  return value !== undefined && known.includes(value)
+  return isKnownVariant(key, value)
     ? (value as ExperimentVariant<K>)
     : "control";
 }

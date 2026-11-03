@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { EXPERIMENT_KEYS, NO_EXPERIMENTS } from "./flags";
 import {
   EXPERIMENT_CACHE_CONTROL,
-  SITE_WIDE_COOKIE_NAME,
+  ASSIGNMENT_COOKIE_NAME,
   evaluateFlags,
+  readAssignmentCookie,
   readPostHogCookie,
-  readSiteWideCookie,
   resolveExperiments,
   uuidv7,
   withExperimentHeaders,
@@ -18,6 +18,8 @@ const KEY = "phc_test";
 const COOKIE_NAME = `ph_${KEY}_posthog`;
 const NOW = Date.UTC(2026, 9, 30, 12, 0, 0);
 const EXISTING_ID = "0199f0a1-2b3c-7d4e-8f90-a1b2c3d4e5f6";
+const BROWSER =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const UUID_V7 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -58,7 +60,7 @@ function setup(respond: (init: RequestInit) => Promise<Response>) {
 function pageRequest(path = "/", cookie?: string, method = "GET"): Request {
   return new Request(`https://getbb.app${path}`, {
     method,
-    headers: cookie ? { cookie } : {},
+    headers: { "user-agent": BROWSER, ...(cookie ? { cookie } : {}) },
   });
 }
 
@@ -67,6 +69,7 @@ function htmlRequest(path: string, cookie?: string, method = "GET"): Request {
     method,
     headers: {
       accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+      "user-agent": BROWSER,
       ...(cookie ? { cookie } : {}),
     },
   });
@@ -111,19 +114,21 @@ describe("PostHog visitor cookie", () => {
         $user_state: "anonymous",
       }),
     );
-    expect(resolution?.setCookies).toEqual([
+    expect(resolution?.setCookies[0]).toBe(
       `${COOKIE_NAME}=${value}; expires=Sat, 30 Oct 2027 12:00:00 GMT; SameSite=Lax; path=/; domain=.getbb.app; secure`,
-    ]);
+    );
   });
 
-  it("keeps an existing ID and writes no cookie", async () => {
+  it("keeps an existing ID and writes no visitor cookie", async () => {
     const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
     const resolution = await resolveExperiments(
       pageRequest("/", cookieFor({ distinct_id: EXISTING_ID })),
       config,
     );
     expect(resolution?.bootstrap.distinctID).toBe(EXISTING_ID);
-    expect(resolution?.setCookies).toEqual([]);
+    expect(
+      resolution?.setCookies.some((c) => c.startsWith(COOKIE_NAME)),
+    ).toBe(false);
     expect(calls[0]?.body).toMatchObject({ distinct_id: EXISTING_ID });
   });
 
@@ -143,21 +148,52 @@ describe("PostHog visitor cookie", () => {
   it("writes a host-only cookie off the site domain", async () => {
     const { config } = setup(async () => flagsResponse({ flags: {} }));
     const resolution = await resolveExperiments(
-      new Request("http://localhost:3000/"),
+      new Request("http://localhost:3000/", {
+        headers: { "user-agent": BROWSER },
+      }),
       config,
     );
     expect(resolution?.setCookies[0]).not.toContain("domain=");
     expect(resolution?.setCookies[0]).not.toContain("secure");
   });
 
-  it("evaluates the /download page", async () => {
+  it("evaluates only the site-wide experiments on /download", async () => {
     const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
-    const resolution = await resolveExperiments(
-      pageRequest("/download", cookieFor({ distinct_id: EXISTING_ID })),
-      config,
+    await resolveExperiments(
+      htmlRequest("/download", cookieFor({ distinct_id: EXISTING_ID })),
+      { ...config, siteWideKeys: ["homepage-sticky-header"] },
     );
-    expect(resolution?.bootstrap.distinctID).toBe(EXISTING_ID);
-    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toMatchObject({
+      flag_keys_to_evaluate: ["homepage-sticky-header"],
+    });
+  });
+
+  it.each([
+    ["a crawler", "Mozilla/5.0 (compatible; Googlebot/2.1)"],
+    ["an uptime check", "UptimeRobot/2.0"],
+    ["a script", "curl/8.5.0"],
+    ["no user agent", ""],
+  ])("renders control for %s without calling /flags", async (_name, ua) => {
+    const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
+    const request = new Request("https://getbb.app/", {
+      headers: { "user-agent": ua },
+    });
+    expect(await resolveExperiments(request, config)).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("still previews forced variants for automated clients", async () => {
+    const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
+    const request = new Request(
+      "https://getbb.app/?ph_flag=homepage-qa-check:test",
+      { headers: { "user-agent": "curl/8.5.0" } },
+    );
+    expect((await resolveExperiments(request, config))?.bootstrap).toEqual({
+      distinctID: null,
+      featureFlags: { "homepage-qa-check": "test" },
+      preview: true,
+    });
+    expect(calls).toHaveLength(0);
   });
 
   it.each([
@@ -197,13 +233,22 @@ describe("/flags evaluation", () => {
       { "homepage-qa-check": "test" },
     ],
     [
-      "a holdout variant",
+      "a control variant",
+      {
+        flags: {
+          "homepage-qa-check": { enabled: true, variant: "control" },
+        },
+      },
+      { "homepage-qa-check": "control" },
+    ],
+    [
+      "an unknown variant to nothing",
       {
         flags: {
           "homepage-qa-check": { enabled: true, variant: "holdout-12" },
         },
       },
-      { "homepage-qa-check": "holdout-12" },
+      {},
     ],
     [
       "a disabled flag",
@@ -355,9 +400,10 @@ describe("site-wide experiments", () => {
   };
   const visitor = cookieFor({ distinct_id: EXISTING_ID });
   const stored = (value: string) =>
-    `${visitor}; ${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}`;
+    `${visitor}; ${ASSIGNMENT_COOKIE_NAME}=${encodeURIComponent(value)}`;
   const siteCookie = (value: string) =>
-    `${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}; expires=Sat, 31 Oct 2026 12:00:00 GMT; SameSite=Lax; path=/; domain=.getbb.app; secure`;
+    `${ASSIGNMENT_COOKIE_NAME}=${encodeURIComponent(value)}; expires=Sat, 31 Oct 2026 12:00:00 GMT; SameSite=Lax; Path=/; Secure`;
+  const unassigned = (at: number) => `homepage-qa-check=~${at}`;
 
   function siteSetup(respond: (init: RequestInit) => Promise<Response>) {
     const context = setup(respond);
@@ -380,21 +426,53 @@ describe("site-wide experiments", () => {
     });
     expect(resolution?.setCookies.map((c) => c.split("=")[0])).toEqual([
       COOKIE_NAME,
-      SITE_WIDE_COOKIE_NAME,
+      ASSIGNMENT_COOKIE_NAME,
     ]);
     expect(resolution?.setCookies[1]).toBe(
       siteCookie("homepage-qa-check=test"),
     );
   });
 
-  it("stores a visitor outside the experiment without assigning them", async () => {
+  it("stores a visitor outside the experiment for an hour only", async () => {
     const { config } = siteSetup(async () => flagsResponse({ flags: {} }));
     const resolution = await resolveExperiments(
       htmlRequest("/changelog", visitor),
       config,
     );
     expect(resolution?.bootstrap.featureFlags).toEqual({});
-    expect(resolution?.setCookies).toEqual([siteCookie("homepage-qa-check=")]);
+    expect(resolution?.setCookies).toEqual([
+      siteCookie(`homepage-qa-check=%7E${NOW}`),
+    ]);
+  });
+
+  it("asks again an hour after a flag was not live, so a launch applies", async () => {
+    const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+    const resolution = await resolveExperiments(
+      htmlRequest("/changelog", stored(unassigned(NOW - 60 * 60 * 1000))),
+      config,
+    );
+    expect(calls).toHaveLength(1);
+    expect(resolution?.bootstrap.featureFlags).toEqual({
+      "homepage-qa-check": "test",
+    });
+    expect(resolution?.setCookies).toEqual([
+      siteCookie("homepage-qa-check=test"),
+    ]);
+  });
+
+  it("skips the homepage's /flags call once every experiment is stored", async () => {
+    const { calls, config } = siteSetup(async () => flagsResponse(assigned));
+    const all = EXPERIMENT_KEYS.map((key) =>
+      key === "homepage-qa-check" ? `${key}=test` : `${key}=~${NOW}`,
+    ).join("&");
+    const resolution = await resolveExperiments(
+      pageRequest("/", stored(all)),
+      config,
+    );
+    expect(calls).toHaveLength(0);
+    expect(resolution?.bootstrap.featureFlags).toEqual({
+      "homepage-qa-check": "test",
+    });
   });
 
   it.each([
@@ -403,7 +481,7 @@ describe("site-wide experiments", () => {
       "homepage-qa-check=test",
       { "homepage-qa-check": "test" },
     ],
-    ["a visitor outside the experiment", "homepage-qa-check=", {}],
+    ["a visitor outside the experiment", unassigned(NOW - 1000), {}],
   ])(
     "renders %s from the cookie without calling /flags",
     async (_name, value, featureFlags) => {
@@ -489,22 +567,25 @@ describe("site-wide experiments", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("follows only listed experiments with well-formed variants", () => {
+  it("follows only listed experiments with known variants", () => {
     const header = (value: string) =>
-      `${SITE_WIDE_COOKIE_NAME}=${encodeURIComponent(value)}`;
+      `${ASSIGNMENT_COOKIE_NAME}=${encodeURIComponent(value)}`;
+    const keys = ["homepage-qa-check"] as const;
     expect(
-      readSiteWideCookie(
+      readAssignmentCookie(
         header("homepage-qa-check=%3Cb%3E&constructor=test&unknown=test"),
-        ["homepage-qa-check"],
+        keys,
+        NOW,
       ),
     ).toEqual({});
-    expect(readSiteWideCookie(header("homepage-qa-check=test"), [])).toEqual(
-      {},
-    );
     expect(
-      readSiteWideCookie(`${SITE_WIDE_COOKIE_NAME}=%E0%A4%A`, [
-        "homepage-qa-check",
-      ]),
+      readAssignmentCookie(header("homepage-qa-check=holdout-12"), keys, NOW),
+    ).toEqual({});
+    expect(
+      readAssignmentCookie(header("homepage-qa-check=test"), [], NOW),
+    ).toEqual({});
+    expect(
+      readAssignmentCookie(`${ASSIGNMENT_COOKIE_NAME}=%E0%A4%A`, keys, NOW),
     ).toEqual({});
   });
 });
@@ -519,14 +600,14 @@ describe("experiment response headers", () => {
   it("marks every page with a distinctID private and sets its cookies", async () => {
     const response = withExperimentHeaders(page(), {
       bootstrap: { distinctID: EXISTING_ID, featureFlags: {}, preview: false },
-      setCookies: [`${COOKIE_NAME}=x`, `${SITE_WIDE_COOKIE_NAME}=y`],
+      setCookies: [`${COOKIE_NAME}=x`, `${ASSIGNMENT_COOKIE_NAME}=y`],
     });
     expect(response.headers.get("cache-control")).toBe(
       EXPERIMENT_CACHE_CONTROL,
     );
     expect(response.headers.getSetCookie()).toEqual([
       `${COOKIE_NAME}=x`,
-      `${SITE_WIDE_COOKIE_NAME}=y`,
+      `${ASSIGNMENT_COOKIE_NAME}=y`,
     ]);
     expect(response.headers.get("vary")).toBe("Cookie");
     expect(await response.text()).toBe("<html></html>");

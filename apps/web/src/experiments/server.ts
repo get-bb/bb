@@ -3,17 +3,21 @@ import {
   EXPERIMENT_PATHS,
   SITE_WIDE_EXPERIMENTS,
   isExperimentKey,
-  isVariantName,
+  isKnownVariant,
   parseForcedFlags,
   type ExperimentBootstrap,
   type ExperimentKey,
 } from "./flags";
 
-const FLAGS_TIMEOUT_MS = 400;
+const FLAGS_TIMEOUT_MS = 250;
 export const EXPERIMENT_CACHE_CONTROL = "private, no-cache";
-export const SITE_WIDE_COOKIE_NAME = "bb_site_experiments";
+export const ASSIGNMENT_COOKIE_NAME = "__Host-bb_experiments";
 const COOKIE_DAYS = 365;
-const SITE_WIDE_COOKIE_MS = 24 * 60 * 60 * 1000;
+const ASSIGNMENT_COOKIE_MS = 24 * 60 * 60 * 1000;
+const UNASSIGNED_TTL_MS = 60 * 60 * 1000;
+const UNASSIGNED_PREFIX = "~";
+const AUTOMATED_USER_AGENT =
+  /bot|crawl|spider|slurp|preview|monitor|uptime|pingdom|statuscake|headless|lighthouse|curl|wget|python|httpclient|go-http|axios|node-fetch|okhttp|java\//i;
 const NON_PAGE_ROOTS = [
   "/api",
   "/oauth",
@@ -24,7 +28,7 @@ const NON_PAGE_ROOTS = [
   "/marketplace/v2",
   "/marketplace/og",
 ];
-const MAX_SITE_WIDE_COOKIE_LENGTH = 1024;
+const MAX_ASSIGNMENT_COOKIE_LENGTH = 1024;
 const MAX_DISTINCT_ID_LENGTH = 200;
 const DISTINCT_ID_PATTERN = /^[\x21-\x7e]+$/;
 
@@ -270,13 +274,14 @@ function readFlagsBody(
   for (const key of keys) {
     const detail = flags[key];
     if (
+      isExperimentKey(key) &&
       typeof detail === "object" &&
       detail !== null &&
       "enabled" in detail &&
       detail.enabled === true &&
       "variant" in detail &&
       typeof detail.variant === "string" &&
-      detail.variant !== ""
+      isKnownVariant(key, detail.variant)
     ) {
       assigned[key] = detail.variant;
     }
@@ -298,14 +303,22 @@ function isSitePage(request: Request, url: URL): boolean {
   );
 }
 
-type StoredAssignments = Readonly<Record<string, string | null>>;
+export function isAutomatedClient(request: Request): boolean {
+  const userAgent = request.headers.get("user-agent") ?? "";
+  return userAgent === "" || AUTOMATED_USER_AGENT.test(userAgent);
+}
 
-export function readSiteWideCookie(
+type StoredAssignments = Readonly<
+  Record<string, { variant: string | null; value: string }>
+>;
+
+export function readAssignmentCookie(
   cookieHeader: string | null,
   keys: readonly ExperimentKey[],
+  now: number,
 ): StoredAssignments {
-  const raw = readCookieValue(cookieHeader, SITE_WIDE_COOKIE_NAME);
-  if (raw === null || raw.length > MAX_SITE_WIDE_COOKIE_LENGTH) {
+  const raw = readCookieValue(cookieHeader, ASSIGNMENT_COOKIE_NAME);
+  if (raw === null || raw.length > MAX_ASSIGNMENT_COOKIE_LENGTH) {
     return {};
   }
   let params: URLSearchParams;
@@ -314,34 +327,38 @@ export function readSiteWideCookie(
   } catch {
     return {};
   }
-  const stored: Record<string, string | null> = {};
-  for (const [key, variant] of params) {
+  const stored: Record<string, { variant: string | null; value: string }> =
+    {};
+  for (const [key, value] of params) {
     if (!isExperimentKey(key) || !keys.includes(key)) {
       continue;
     }
-    if (variant === "") {
-      stored[key] = null;
-    } else if (isVariantName(variant)) {
-      stored[key] = variant;
+    if (value.startsWith(UNASSIGNED_PREFIX)) {
+      const checkedAt = Number(value.slice(UNASSIGNED_PREFIX.length));
+      if (checkedAt <= now && now - checkedAt < UNASSIGNED_TTL_MS) {
+        stored[key] = { variant: null, value };
+      }
+    } else if (isKnownVariant(key, value)) {
+      stored[key] = { variant: value, value };
     }
   }
   return stored;
 }
 
-function siteWideCookie(
-  args: CookieTarget & { assignments: StoredAssignments },
+function assignmentCookie(
+  assignments: Readonly<Record<string, string>>,
+  now: number,
 ): string {
   const value = new URLSearchParams(
-    Object.entries(args.assignments)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, variant]) => [key, variant ?? ""]),
+    Object.entries(assignments).sort(([a], [b]) => a.localeCompare(b)),
   ).toString();
-  return setCookieHeader(
-    SITE_WIDE_COOKIE_NAME,
-    encodeURIComponent(value),
-    args.now + SITE_WIDE_COOKIE_MS,
-    args,
-  );
+  return [
+    `${ASSIGNMENT_COOKIE_NAME}=${encodeURIComponent(value)}`,
+    `expires=${new Date(now + ASSIGNMENT_COOKIE_MS).toUTCString()}`,
+    "SameSite=Lax",
+    "Path=/",
+    "Secure",
+  ].join("; ");
 }
 
 export async function resolveExperiments(
@@ -361,7 +378,7 @@ export async function resolveExperiments(
   if (keys.length === 0 && !preview) {
     return null;
   }
-  if (!config.postHogKey) {
+  if (!config.postHogKey || isAutomatedClient(request)) {
     return preview
       ? {
           bootstrap: { distinctID: null, featureFlags: forced, preview },
@@ -394,7 +411,7 @@ export async function resolveExperiments(
       setCookies,
     };
   }
-  const stored = readSiteWideCookie(cookieHeader, siteWideKeys);
+  const stored = readAssignmentCookie(cookieHeader, EXPERIMENT_KEYS, now());
   const missing = keys.filter((key) => !Object.hasOwn(stored, key));
   const evaluation =
     missing.length === 0
@@ -412,21 +429,23 @@ export async function resolveExperiments(
   const featureFlags: Record<string, string> = {};
   for (const key of keys) {
     const variant = Object.hasOwn(stored, key)
-      ? stored[key]
+      ? stored[key]?.variant
       : evaluation?.flags[key];
     if (variant) {
       featureFlags[key] = variant;
     }
   }
-  const newlyStored = missing.filter((key) => siteWideKeys.includes(key));
-  if (evaluation?.outcome === "ok" && newlyStored.length > 0) {
-    const assignments: Record<string, string | null> = { ...stored };
-    for (const key of newlyStored) {
-      const variant = evaluation.flags[key];
-      assignments[key] =
-        variant !== undefined && isVariantName(variant) ? variant : null;
+  if (evaluation?.outcome === "ok") {
+    const checkedAt = now();
+    const values: Record<string, string> = {};
+    for (const [key, entry] of Object.entries(stored)) {
+      values[key] = entry.value;
     }
-    setCookies.push(siteWideCookie({ assignments, ...target }));
+    for (const key of missing) {
+      values[key] =
+        evaluation.flags[key] ?? `${UNASSIGNED_PREFIX}${checkedAt}`;
+    }
+    setCookies.push(assignmentCookie(values, checkedAt));
   }
   return {
     bootstrap: { distinctID: distinctId, featureFlags, preview },
