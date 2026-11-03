@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  AgentInstallErrorDetails,
   AgentSignInInstruction,
   AgentSignInPanel,
   AgentStep,
@@ -521,5 +522,22 @@ describe("AgentStep progress in the redesign", () => {
     ]);
     expect(screen.getByText("Installed · not signed in")).toBeTruthy();
     expect(screen.getByText("Installing…")).toBeTruthy();
+  });
+});
+
+describe("Agent step header and install details in the redesign", () => {
+  it("shows the machine line without Check again", () => {
+    renderQuiet([agent("codex", { status: "install", canInstall: true })]);
+    expect(screen.getByText("On bee")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Check again/u })).toBeNull();
+  });
+
+  it("opens the install output from the details strip", () => {
+    render(<AgentInstallErrorDetails log="npm ERR! code ECONNRESET" />);
+    expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Show details/u }));
+    expect(screen.getByText("npm ERR! code ECONNRESET")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Hide details/u }));
+    expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
 import {
   DisclosureToggle,
+  InlinePanel,
   InlineTextButton,
   InlineTextLink,
   SignInPanel,
@@ -618,30 +619,28 @@ export function AgentStep({
 }: AgentStepProps) {
   return (
     <div className="flex flex-col gap-3">
-      {quiet ? null : (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Icon name="Laptop" aria-hidden className="size-3.5" />
-          <span className="min-w-0 flex-1 truncate">
-            {machineName === null
-              ? "Waiting for this computer to connect…"
-              : `On ${machineName}`}
-          </span>
-          {machineName === null ? null : (
-            <button
-              type="button"
-              onClick={onRecheck}
-              className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <Icon
-                name="ArrowReloadHorizontal"
-                aria-hidden
-                className="size-3.5"
-              />
-              Check again
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Icon name="Laptop" aria-hidden className="size-3.5" />
+        <span className="min-w-0 flex-1 truncate">
+          {machineName === null
+            ? "Waiting for this computer to connect…"
+            : `On ${machineName}`}
+        </span>
+        {quiet || machineName === null ? null : (
+          <button
+            type="button"
+            onClick={onRecheck}
+            className="flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <Icon
+              name="ArrowReloadHorizontal"
+              aria-hidden
+              className="size-3.5"
+            />
+            Check again
+          </button>
+        )}
+      </div>
       {agents === null ? (
         <ul className="divide-y divide-border-hairline rounded-lg border border-border">
           {[0, 1, 2].map((index) => (
@@ -1310,15 +1309,26 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
   const [open, setOpen] = useState(false);
   if (log.trim().length === 0) return null;
   return (
-    <div className="mt-1 flex flex-col items-start gap-1 pl-8 text-xs text-muted-foreground">
-      <DisclosureToggle expanded={open} onToggle={() => setOpen(!open)}>
-        {open ? "Hide details" : "Show details"}
-      </DisclosureToggle>
-      {open ? (
-        <pre className="max-h-32 w-full overflow-auto whitespace-pre-wrap px-1 font-mono text-xs text-muted-foreground">
-          {log}
-        </pre>
-      ) : null}
+    <div className="mt-3">
+      <InlinePanel
+        flush
+        flushBottom
+        hasBody={false}
+        toggles={
+          <DisclosureToggle expanded={open} onToggle={() => setOpen(!open)}>
+            {open ? "Hide details" : "Show details"}
+          </DisclosureToggle>
+        }
+        expanded={
+          open ? (
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap px-3 pb-3 pt-1 font-mono text-xs text-muted-foreground">
+              {log}
+            </pre>
+          ) : null
+        }
+      >
+        {null}
+      </InlinePanel>
     </div>
   );
 }
