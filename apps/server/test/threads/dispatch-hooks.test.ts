@@ -371,6 +371,66 @@ describe("pending admission races", () => {
   });
 });
 
+describe("thread status races under a send", () => {
+  it("queues a send whose thread changes twice under it, then drains it", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedRunnableThread(harness, {
+        hostId: "host-status-flap",
+        status: "idle",
+      });
+      let passes = 0;
+      const registry = emptyRegistry();
+      registry["message.dispatch"].push({
+        pluginId: "limiter",
+        handler: () => {
+          passes += 1;
+          if (passes === 1) {
+            applyLoggedThreadLifecycleEvent(harness.deps, {
+              event: { type: "run.started" },
+              threadId: thread.id,
+            });
+            seedTurnStarted(harness.deps, {
+              environmentId: environment.id,
+              providerThreadId: "provider-host-status-flap",
+              threadId: thread.id,
+              turnId: "turn-host-status-flap",
+            });
+          }
+          if (passes === 2) {
+            applyLoggedThreadLifecycleEvent(harness.deps, {
+              event: { type: "run.succeeded" },
+              threadId: thread.id,
+            });
+          }
+          return { action: "proceed" } as const;
+        },
+      });
+      installHooks(registry);
+
+      const response = await acceptThreadSendRequest(harness.deps, {
+        payload: { input: textInput("keep me"), mode: "auto" },
+        thread,
+      });
+
+      expect(passes).toBe(2);
+      expect(response.delivery).toBe("queued");
+      if (response.delivery !== "queued") throw new Error("expected queued");
+      expect(response.queuedMessage.waitingOn).toEqual({
+        kind: "thread-busy",
+      });
+      const submit = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === thread.id,
+      );
+      expect(submit.command).toMatchObject({
+        input: textInput("keep me"),
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
+    });
+  });
+});
+
 describe("message.dispatch hook composition", () => {
   it("runs every handler in install order and freezes the resolved tuple", async () => {
     await withTestHarness(async (harness) => {
