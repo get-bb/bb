@@ -1347,7 +1347,7 @@ function RefreshedBelowFold() {
       >
         <p>
           bb adapts to how you work, not the other way around. Prompt an agent
-          to change almost anything in bb, or choose from 400+ plugins built by
+          to change almost anything in bb, or choose from 500+ plugins built by
           the community.
         </p>
         <MarketplaceLink placement="customize" className="band-link">
@@ -1375,10 +1375,9 @@ function RefreshedBelowFold() {
         visual={<StartAnywhere />}
       >
         <p>
-          bb is fully self-hostable. Run your threads on your own laptop,
-          desktop, home server, or VM, or spread them across several machines.
-          Start them from other AI apps like ChatGPT and Claude, or from CI, and
-          pick them up anywhere, including the bb mobile app.
+          Start bb from your desk, CI, the bb mobile app, even other AI apps
+          like ChatGPT or Claude. Threads run on machines you own, from your
+          laptop to a home server or VM.
         </p>
       </Band>
 
