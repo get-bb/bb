@@ -541,3 +541,35 @@ describe("Agent step header and install details in the redesign", () => {
     expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
   });
 });
+
+describe("Agent rows active at once in the redesign", () => {
+  it("shows an install and a sign-in side by side", () => {
+    renderQuiet([
+      agent("pi", { status: "installing" }),
+      {
+        ...agent("claude-code", { status: "signingIn" }),
+        subline: "Sign in on claude.com, then paste the code it shows you.",
+      },
+    ]);
+
+    expect(
+      (screen.getByRole("button", { name: "Installing…" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
+  });
+
+  it("shows a queued install as Waiting… behind the running one", () => {
+    renderQuiet([
+      agent("pi", { status: "installing" }),
+      { ...agent("codex", { status: "installing" }), installQueued: true },
+    ]);
+
+    within(rowOf("pi")).getByRole("button", { name: "Installing…" });
+    const waiting = within(rowOf("codex")).getByRole("button", {
+      name: "Waiting…",
+    });
+    expect((waiting as HTMLButtonElement).disabled).toBe(true);
+    expect(waiting.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+  });
+});

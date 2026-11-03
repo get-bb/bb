@@ -109,8 +109,12 @@ import {
 } from "./onboarding-telemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
+import {
+  useAgentSignIns,
+  type AgentSignInTerminals,
+  type SignInMethod,
+} from "./useAgentSignIns";
 
-const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 const SIGN_IN_TERMINAL_COLS = 200;
 const SIGN_IN_TERMINAL_ROWS = 14;
 const SIGN_IN_OUTPUT_POLL_INTERVAL_MS = 1_000;
@@ -327,15 +331,6 @@ async function closeAbandonedSignInTerminals({
   );
 }
 
-type SignInMethod = "local" | "remote";
-
-interface SignInSession {
-  providerId: string;
-  session: TerminalSession;
-  method: SignInMethod;
-  hasAlternateMethod: boolean;
-}
-
 function AgentStepContainer({
   chrome,
   redesign,
@@ -363,73 +358,38 @@ function AgentStepContainer({
   const { isLocalDaemonHost } = useHostDaemon();
   const createTerminal = useCreateTerminal();
   const closeTerminal = useCloseTerminal();
-  const [signIn, setSignIn] = useState<SignInSession | null>(null);
-  const [signInFailedProviderId, setSignInFailedProviderId] = useState<
-    string | null
-  >(null);
-  const signInRef = useRef<SignInSession | null>(null);
-  const [signInView, setSignInView] = useState<AgentSignInView | null>(null);
   const { refetch: refetchStates } = statesQuery;
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
-
-  const endSignIn = useCallback(
-    (outcome: "ready" | "exited" | "failed" | "cancelled" = "cancelled") => {
-      const current = signInRef.current;
-      if (current === null) return;
-      signInRef.current = null;
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome },
-      });
-      setSignIn(null);
-      setSignInView(null);
-      closeTerminalMutate({ mode: "force", terminalId: current.session.id });
-      void refetchStates();
-    },
-    [closeTerminalMutate, entry, refetchStates],
-  );
-
-  const signInRequestRef = useRef(0);
-  const [startingProviderId, setStartingProviderId] = useState<string | null>(
-    null,
-  );
-  useEffect(
-    () => () => {
-      signInRequestRef.current += 1;
-      endSignIn();
-    },
-    [endSignIn],
-  );
-
-  const handleSignInExit = useCallback(
-    (exitCode: number | null) => {
-      const current = signInRef.current;
-      if (current !== null && exitCode !== 0) {
-        setSignInFailedProviderId(current.providerId);
-      }
-      endSignIn(exitCode === 0 ? "exited" : "failed");
-    },
-    [endSignIn],
-  );
-
-  useEffect(() => {
-    if (signIn === null) return;
-    const interval = window.setInterval(() => {
-      void refetchStates();
-    }, SIGN_IN_POLL_INTERVAL_MS);
-    return () => window.clearInterval(interval);
-  }, [refetchStates, signIn]);
-
   const states = statesQuery.data?.providers;
-  const signingInProviderId = signIn?.providerId ?? null;
-  const signingInProviderReady =
-    signingInProviderId !== null &&
-    states?.find((state) => state.providerId === signingInProviderId)
-      ?.status === "ready";
-  useEffect(() => {
-    if (signingInProviderReady) endSignIn("ready");
-  }, [endSignIn, signingInProviderReady]);
+  const refetchProviderStates = useCallback(() => {
+    void refetchStates();
+  }, [refetchStates]);
+  const signInTerminals = useMemo<AgentSignInTerminals>(
+    () => ({
+      closeAbandoned: closeAbandonedSignInTerminals,
+      create: ({ hostId: targetHostId, title, command }) =>
+        createTerminalAsync({
+          cols: SIGN_IN_TERMINAL_COLS,
+          rows: SIGN_IN_TERMINAL_ROWS,
+          title,
+          start: { mode: "command", command },
+          target: { kind: "host_path", hostId: targetHostId, cwd: null },
+        }),
+      close: (terminalId) => closeTerminalMutate({ mode: "force", terminalId }),
+    }),
+    [closeTerminalMutate, createTerminalAsync],
+  );
+  const signIns = useAgentSignIns({
+    concurrent: redesign,
+    entry,
+    hostId,
+    states,
+    isLocalHost: isLocalDaemonHost,
+    terminals: signInTerminals,
+    refetchStates: refetchProviderStates,
+  });
+  const startSignIn = signIns.start;
 
   const { runningJobKey } = installRunner;
   useEffect(() => {
@@ -437,93 +397,32 @@ function AgentStepContainer({
   }, [refetchStates, runningJobKey]);
 
   const previousRunningJobKeyRef = useRef<string | null>(null);
-  const [settlingJobKey, setSettlingJobKey] = useState<string | null>(null);
+  const [settlingJobKeys, setSettlingJobKeys] = useState<
+    ReadonlyMap<string, number>
+  >(() => new Map());
   const installFailures = installRunner.failuresByJobKey;
   useEffect(() => {
     const previous = previousRunningJobKeyRef.current;
     previousRunningJobKeyRef.current = runningJobKey;
     if (!redesign || previous === null || previous === runningJobKey) return;
     if (installFailures.has(previous)) return;
-    setSettlingJobKey(previous);
+    setSettlingJobKeys((keys) =>
+      new Map(keys).set(previous, Date.now() + INSTALL_SETTLE_TIMEOUT_MS),
+    );
   }, [installFailures, redesign, runningJobKey]);
+  const settlingCount = settlingJobKeys.size;
   useEffect(() => {
-    if (settlingJobKey === null) return;
-    const poll = window.setInterval(
-      () => void refetchStates(),
-      INSTALL_SETTLE_POLL_MS,
-    );
-    const timeout = window.setTimeout(
-      () => setSettlingJobKey(null),
-      INSTALL_SETTLE_TIMEOUT_MS,
-    );
-    return () => {
-      window.clearInterval(poll);
-      window.clearTimeout(timeout);
-    };
-  }, [refetchStates, settlingJobKey]);
-
-  const startSignIn = async (
-    providerId: string,
-    requestedMethod?: SignInMethod,
-  ) => {
-    const state = states?.find((entry) => entry.providerId === providerId);
-    if (hostId === null || !state) return;
-    const method =
-      requestedMethod ?? (isLocalDaemonHost(hostId) ? "local" : "remote");
-    const command = resolveSignInCommand(state, method === "local");
-    if (command === null) return;
-    endSignIn();
-    setSignInFailedProviderId(null);
-    signInRequestRef.current += 1;
-    const request = signInRequestRef.current;
-    setStartingProviderId(providerId);
-    recordTelemetryEvent({
-      name: "onboarding_sign_in",
-      properties: { entry, outcome: "started" },
-    });
-    const title = `Sign in to ${state.displayName}`;
-    await closeAbandonedSignInTerminals({ hostId, title });
-    let session: TerminalSession;
-    try {
-      session = await createTerminalAsync({
-        cols: SIGN_IN_TERMINAL_COLS,
-        rows: SIGN_IN_TERMINAL_ROWS,
-        title,
-        start: { mode: "command", command },
-        target: { kind: "host_path", hostId, cwd: null },
+    if (settlingCount === 0) return;
+    const poll = window.setInterval(() => {
+      void refetchStates();
+      const now = Date.now();
+      setSettlingJobKeys((keys) => {
+        const live = [...keys].filter(([, deadline]) => deadline > now);
+        return live.length === keys.size ? keys : new Map(live);
       });
-    } catch {
-      if (signInRequestRef.current === request) setStartingProviderId(null);
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "failed" },
-      });
-      return;
-    }
-    if (signInRequestRef.current !== request) {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "cancelled" },
-      });
-      void sdk.terminals
-        .close({ mode: "force", terminalId: session.id })
-        .catch(() => null);
-      return;
-    }
-    const next: SignInSession = {
-      providerId,
-      session,
-      method,
-      hasAlternateMethod:
-        state.localLoginCommand !== null &&
-        state.loginCommand !== null &&
-        state.localLoginCommand !== state.loginCommand,
-    };
-    signInRef.current = next;
-    setSignInView(null);
-    setStartingProviderId(null);
-    setSignIn(next);
-  };
+    }, INSTALL_SETTLE_POLL_MS);
+    return () => window.clearInterval(poll);
+  }, [refetchStates, settlingCount]);
 
   const startInstall = (providerId: string) => {
     const status = cliStatusQuery.data?.[providerId];
@@ -550,12 +449,13 @@ function AgentStepContainer({
             (provider) => provider.id === health.providerId,
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
-          const signingIn = signIn?.providerId === health.providerId;
+          const signIn = signIns.signIns.get(health.providerId) ?? null;
+          const signingIn = signIn !== null;
           const installFailure = installRunner.failuresByJobKey.get(jobKey);
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
             : null;
-          const view = signingIn ? signInView : null;
+          const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady =
             view !== null && hasSignInInstruction(view, connectFlow !== null);
           return {
@@ -563,9 +463,10 @@ function AgentStepContainer({
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
             setup: connectFlow !== null ? "connect" : "signIn",
+            installQueued: redesign && installRunner.queuedJobKeys.has(jobKey),
             busy:
               redesign &&
-              (startingProviderId === health.providerId ||
+              (signIns.startingProviderIds.has(health.providerId) ||
                 (signingIn && connectFlow === null && !instructionReady)),
             subline:
               redesign &&
@@ -598,7 +499,7 @@ function AgentStepContainer({
               installing:
                 installRunner.runningJobKey === jobKey ||
                 installRunner.queuedJobKeys.has(jobKey) ||
-                (settlingJobKey === jobKey &&
+                (settlingJobKeys.has(jobKey) &&
                   (health.status === "not_installed" ||
                     health.status === "unsupported_version")),
               installFailure:
@@ -608,7 +509,7 @@ function AgentStepContainer({
                     ? REDESIGN_INSTALL_FAILED_MESSAGE
                     : INSTALL_FAILED_MESSAGE,
               signingIn,
-              signInFailed: signInFailedProviderId === health.providerId,
+              signInFailed: signIns.failedProviderIds.has(health.providerId),
               installInfoPending: cliStatusQuery.isPending,
             }),
             expanded:
@@ -635,8 +536,12 @@ function AgentStepContainer({
                   onUseAlternate={(method) =>
                     void startSignIn(health.providerId, method)
                   }
-                  onExit={handleSignInExit}
-                  onViewChange={setSignInView}
+                  onExit={(exitCode) =>
+                    signIns.handleExit(health.providerId, exitCode)
+                  }
+                  onViewChange={(nextView) =>
+                    signIns.setView(health.providerId, nextView)
+                  }
                 />
               ) : redesign && installFailure !== undefined ? (
                 <AgentInstallErrorDetails
@@ -681,7 +586,7 @@ function AgentStepContainer({
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={startInstall}
         onViewInstallLog={viewInstallLog}
-        onCancelSignIn={() => endSignIn()}
+        onCancelSignIn={(providerId) => signIns.end(providerId)}
         onRecheck={() => {
           void refetchStates();
           void cliStatusQuery.refetch();

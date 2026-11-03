@@ -283,6 +283,7 @@ export interface OnboardingAgent {
   state: AgentSetupState;
   setup?: "signIn" | "connect";
   busy?: boolean;
+  installQueued?: boolean;
   subline?: ReactNode;
   expanded?: ReactNode;
 }
@@ -547,7 +548,9 @@ function AgentRow({
                     ? "Update"
                     : "Install"
               }
-              busyLabel="Installing…"
+              busyLabel={
+                agent.installQueued === true ? "Waiting…" : "Installing…"
+              }
               busy={state.status === "installing"}
               onClick={() => onInstall(agent.id)}
             />
