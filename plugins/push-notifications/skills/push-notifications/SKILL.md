@@ -9,7 +9,9 @@ The plugin notifies when a thread asks a question, finishes a turn, or stops on
 an error, and anyone can send their own through the same channels. Mobile devices receive Expo push messages even when the app is
 closed. Web and desktop clients receive system notifications only while a bb
 tab or app window stays open, and each browser grants permission separately in
-the plugin settings.
+the plugin settings. When a notified thread is read on any client, the plugin
+sends registered iOS devices a silent push that removes the thread's delivered
+notifications.
 
 ```sh
 bb push-notifications status [--json]

@@ -524,6 +524,14 @@ iOS keeps its existing APNs registration behavior.
   when no hint matches. The shell accepts a bridge `badge` message
   (`useShellBridge` → `updateAppBadgeCount`), and `AppBadgeSync` writes that
   count on background; the web app does not send it yet.
+- Read elsewhere (iOS): once a thread the server notified about is read on
+  any client, the server sends each iOS device a silent push
+  (`_contentAvailable`, data `{"kind":"dismiss","threadId":"…"}`).
+  `src/notifications/dismiss-read-threads-task.ts`, loaded from `index.ts`
+  before expo-router, runs as an `expo-task-manager` background notification
+  task and removes the delivered notifications whose `threadId` matches. iOS
+  delays or drops silent pushes under load and skips apps the user
+  force-quit; the notifications then stay until cleared.
 - Simulator check without APNs: `xcrun simctl push <udid> app.getbb.mobile
 payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
 "threadId":"…","projectId":"…","serverUrl":"https://…"}}`

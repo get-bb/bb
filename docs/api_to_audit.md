@@ -3587,6 +3587,22 @@ Docs: `backend-sdk.md`.
 Stabilization requires deciding whether a general `thread.updated` event
 should replace it, and a second consumer.
 
+## Thread read notifications
+
+`experimental_thread.read` delivers `{ thread }` after a thread's read state
+changes and it is now read (`lastReadAt >= latestAttentionAt`): a client
+opened it or marked it read, or the user sent it a turn. Marking a thread
+unread does not fire it. Core's own read path is the trigger: every
+`lastReadAt` write raises the `read-state-changed` thread change, and the hub
+emits the event from there, so the payload is the same read state the
+sidebar's unread dot uses. Push-notifications uses it to tell iOS devices to
+remove the thread's delivered notifications.
+
+Docs: `backend-sdk.md`, `backend-events.md`.
+
+Stabilization requires deciding whether a general `thread.updated` event
+should replace it, and a second consumer.
+
 ## Host deletion notifications
 
 `experimental_host.deleted` delivers the removed host's public DTO once,

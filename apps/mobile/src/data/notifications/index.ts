@@ -5,6 +5,10 @@ export {
   type PushNotificationTarget,
 } from "./push-notification-target";
 export {
+  parseDismissedThreadId,
+  presentedNotificationIdsForThread,
+} from "./push-dismissal";
+export {
   describePushStatus,
   isPushRegistrationAllowed,
   shouldOfferPushPrompt,

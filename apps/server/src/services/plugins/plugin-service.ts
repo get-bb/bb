@@ -1447,6 +1447,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitThreadRead(threadId) {
+        emitThreadEvent("experimental_thread.read", () => {
+          const thread = getThread(deps.db, threadId);
+          if (
+            thread === null ||
+            (thread.lastReadAt ?? 0) < thread.latestAttentionAt
+          ) {
+            return null;
+          }
+          return { thread: buildThreadDto(thread) };
+        });
+      },
       emitInteractionPending(thread, interaction) {
         emitThreadEvent("interaction.pending", () => ({
           thread: buildThreadDto(thread),
