@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useRef } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import {
   StartAnywhere,
   useCycle,
 } from "./landing-visuals";
+import { useActiveWhileVisible } from "./visibility";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
@@ -62,8 +63,8 @@ describe("useCycle", () => {
   });
 
   function Watched() {
-    const ref = useRef<HTMLDivElement>(null);
-    const { cycle, leaving, paused } = useCycle(1000, 100, ref);
+    const { ref, active } = useActiveWhileVisible<HTMLDivElement>();
+    const { cycle, leaving, paused } = useCycle(1000, 100, active);
     return (
       <div ref={ref} data-cycle={cycle} data-paused={paused}>
         {leaving ? "leaving" : "holding"}
@@ -326,7 +327,7 @@ describe("below-the-fold bb windows", () => {
     ["StartAnywhere", StartAnywhere],
   ])("%s uses the nav rail and no Commit button", (_, Visual) => {
     const html = renderToStaticMarkup(<Visual />);
-    expect(html.match(/class="bw-rail"/g)).toHaveLength(1);
+    expect(html.match(/class="rail"/g)).toHaveLength(1);
     expect(html).not.toMatch(/Commit|commit-btn|Opus 4\.8/);
   });
 });
