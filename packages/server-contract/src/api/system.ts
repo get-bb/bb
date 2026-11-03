@@ -239,6 +239,54 @@ const telemetryResourceIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
 
+const agentStatusTelemetrySchema = providerHealthSchema.shape.status.optional();
+
+const agentStatusTelemetryProperties = {
+  agent_status_claude_code: agentStatusTelemetrySchema,
+  agent_status_codex: agentStatusTelemetrySchema,
+  agent_status_pi: agentStatusTelemetrySchema,
+  agent_status_acp_cursor: agentStatusTelemetrySchema,
+  agent_status_acp_grok: agentStatusTelemetrySchema,
+  agent_status_acp_hermes_agent: agentStatusTelemetrySchema,
+  agent_status_acp_omp: agentStatusTelemetrySchema,
+  agent_status_acp_opencode: agentStatusTelemetrySchema,
+};
+
+export const agentStatusTelemetryPropertyByProviderId = {
+  "claude-code": "agent_status_claude_code",
+  codex: "agent_status_codex",
+  pi: "agent_status_pi",
+  "acp-cursor": "agent_status_acp_cursor",
+  "acp-grok": "agent_status_acp_grok",
+  "acp-hermes-agent": "agent_status_acp_hermes_agent",
+  "acp-omp": "agent_status_acp_omp",
+  "acp-opencode": "agent_status_acp_opencode",
+} as const satisfies Record<
+  string,
+  keyof typeof agentStatusTelemetryProperties
+>;
+
+const newThreadBlockerReasonTelemetrySchema = z.enum([
+  "agent_missing",
+  "agent_update",
+  "sign_in",
+  "model_unavailable",
+  "provider_selection",
+  "model_selection",
+  "project_setup",
+]);
+
+const newThreadFirstUseTelemetryPropertiesSchema = z
+  .object({
+    blocker: z.enum([
+      ...newThreadBlockerReasonTelemetrySchema.options,
+      "none",
+      "pending",
+    ]),
+    resource_id: telemetryResourceIdSchema.optional(),
+  })
+  .strict();
+
 const releaseVersionTelemetrySchema = z
   .string()
   .max(32)
@@ -299,6 +347,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           entry: onboardingEntryTelemetrySchema,
           agent_installed: z.boolean().nullable(),
           agent_ready: z.boolean().nullable(),
+          ...agentStatusTelemetryProperties,
         })
         .strict(),
     })
@@ -326,18 +375,20 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .object({
       name: z.literal("new_thread_blocker"),
       properties: z
-        .object({
-          reason: z.enum([
-            "agent_missing",
-            "agent_update",
-            "sign_in",
-            "model_unavailable",
-            "provider_selection",
-            "model_selection",
-            "project_setup",
-          ]),
-        })
+        .object({ reason: newThreadBlockerReasonTelemetrySchema })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_composer_shown"),
+      properties: newThreadFirstUseTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_draft_started"),
+      properties: newThreadFirstUseTelemetryPropertiesSchema,
     })
     .strict(),
   z

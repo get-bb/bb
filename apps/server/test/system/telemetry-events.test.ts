@@ -1,4 +1,6 @@
+import { agentStatusTelemetryPropertyByProviderId } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
+import { listShippedProviderIds } from "../../src/services/system/provider-telemetry.js";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
@@ -36,6 +38,34 @@ describe("client telemetry events", () => {
             agent_installed: null,
             agent_ready: null,
           },
+        },
+        {
+          name: "onboarding_agent_state",
+          properties: {
+            entry: "first_run",
+            agent_installed: true,
+            agent_ready: false,
+            agent_status_claude_code: "unauthenticated",
+            agent_status_codex: "not_installed",
+            agent_status_pi: "unknown",
+            agent_status_acp_cursor: "expired",
+            agent_status_acp_grok: "unsupported_version",
+            agent_status_acp_hermes_agent: "ready",
+            agent_status_acp_omp: "not_installed",
+            agent_status_acp_opencode: "not_installed",
+          },
+        },
+        {
+          name: "new_thread_composer_shown",
+          properties: { blocker: "sign_in", resource_id: "claude-code" },
+        },
+        {
+          name: "new_thread_composer_shown",
+          properties: { blocker: "pending" },
+        },
+        {
+          name: "new_thread_draft_started",
+          properties: { blocker: "none", resource_id: "acp-hermes-agent" },
         },
         {
           name: "onboarding_sign_in",
@@ -245,6 +275,33 @@ describe("client telemetry events", () => {
       });
     });
   });
+
+  it("has an agent status property for every shipped agent", () => {
+    expect(
+      Object.keys(agentStatusTelemetryPropertyByProviderId).sort(),
+    ).toEqual(listShippedProviderIds().sort());
+  });
+
+  it.each(["new_thread_composer_shown", "new_thread_draft_started"] as const)(
+    "reports a custom agent selected in the composer as other in %s",
+    async (name) => {
+      await withTestHarness(async (harness) => {
+        const capture = vi.fn<TelemetryService["capture"]>();
+        harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+
+        const response = await post(harness, {
+          name,
+          properties: { blocker: "none", resource_id: "acp-my-private-agent" },
+        });
+
+        expect(response.status).toBe(200);
+        expect(capture).toHaveBeenCalledExactlyOnceWith({
+          name,
+          properties: { blocker: "none", resource_id: "other" },
+        });
+      });
+    },
+  );
 
   it("reports a custom agent's sign-in as other", async () => {
     await withTestHarness(async (harness) => {
@@ -469,6 +526,41 @@ describe("client telemetry events", () => {
           name: "plugin_creation_started",
           properties: { pluginName: "bb-plugin-secret" },
         },
+        {
+          name: "onboarding_agent_state",
+          properties: {
+            entry: "first_run",
+            agent_installed: true,
+            agent_ready: true,
+            agent_status_my_private_agent: "ready",
+          },
+        },
+        {
+          name: "onboarding_agent_state",
+          properties: {
+            entry: "first_run",
+            agent_installed: true,
+            agent_ready: true,
+            agent_status_claude_code: "person@example.com",
+          },
+        },
+        {
+          name: "new_thread_composer_shown",
+          properties: { blocker: "Sign in to Codex to continue." },
+        },
+        {
+          name: "new_thread_composer_shown",
+          properties: { blocker: "none", resource_id: "/Users/me/agent" },
+        },
+        {
+          name: "new_thread_draft_started",
+          properties: { blocker: "none", prompt: "fix the login bug" },
+        },
+        {
+          name: "new_thread_draft_started",
+          properties: { blocker: "none", draft_length: 17 },
+        },
+        { name: "new_thread_draft_started", properties: {} },
       ]) {
         expect((await post(harness, event)).status).toBe(400);
       }

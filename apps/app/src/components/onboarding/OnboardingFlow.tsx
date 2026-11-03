@@ -109,6 +109,7 @@ import {
   type OnboardingEntry,
 } from "./onboarding-telemetry";
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
+import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
 import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
 import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
@@ -1202,31 +1203,11 @@ export function OnboardingFlow({
     ...(hostId === null ? {} : { hostId }),
   });
   const agentStates = agentStatesQuery.data?.providers;
-  const agentStateRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (agentStates === undefined && !agentStatesQuery.isError) return;
-    const knownStates = agentStatesQuery.isError ? undefined : agentStates;
-    const hasUnknown =
-      knownStates?.some((state) => state.status === "unknown") ?? true;
-    const installed =
-      knownStates?.some(
-        (state) =>
-          state.status !== "not_installed" && state.status !== "unknown",
-      ) ?? false;
-    const properties = {
-      entry,
-      agent_installed: installed ? true : hasUnknown ? null : false,
-      agent_ready: hasReadyAgent(knownStates)
-        ? true
-        : hasUnknown
-          ? null
-          : false,
-    };
-    const key = JSON.stringify(properties);
-    if (agentStateRef.current === key) return;
-    agentStateRef.current = key;
-    recordTelemetryEvent({ name: "onboarding_agent_state", properties });
-  }, [agentStates, agentStatesQuery.isError, entry]);
+  useAgentStateTelemetry({
+    entry,
+    states: agentStates,
+    isError: agentStatesQuery.isError,
+  });
   const startReportedRef = useRef(entry !== "first_run");
   useEffect(() => {
     if (startReportedRef.current || agentStates === undefined) return;

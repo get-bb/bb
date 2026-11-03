@@ -16,34 +16,41 @@ for (const { rootDir } of listBundledPluginRegistrations()) {
   } catch {}
 }
 
+export function listShippedProviderIds(): string[] {
+  return [...shippedProviderIds];
+}
+
 export function reportedProviderId(providerId: string): string {
   return shippedProviderIds.has(providerId) ? providerId : "other";
+}
+
+function withReportedResourceId<
+  Event extends { properties: { resource_id?: string } },
+>(event: Event): Event {
+  const resourceId = event.properties.resource_id;
+  if (resourceId === undefined) return event;
+  return {
+    ...event,
+    properties: {
+      ...event.properties,
+      resource_id: reportedProviderId(resourceId),
+    },
+  };
 }
 
 export function withReportedProviderId(
   event: RecordTelemetryEventRequest,
 ): RecordTelemetryEventRequest {
-  if (event.name === "onboarding_sign_in") {
-    return {
-      ...event,
-      properties: {
-        ...event.properties,
-        resource_id: reportedProviderId(event.properties.resource_id),
-      },
-    };
+  switch (event.name) {
+    case "onboarding_sign_in":
+    case "new_thread_composer_shown":
+    case "new_thread_draft_started":
+      return withReportedResourceId(event);
+    case "onboarding_operation":
+      return event.properties.step === "agent"
+        ? withReportedResourceId(event)
+        : event;
+    default:
+      return event;
   }
-  if (
-    event.name === "onboarding_operation" &&
-    event.properties.step === "agent" &&
-    event.properties.resource_id !== undefined
-  ) {
-    return {
-      ...event,
-      properties: {
-        ...event.properties,
-        resource_id: reportedProviderId(event.properties.resource_id),
-      },
-    };
-  }
-  return event;
 }

@@ -3967,7 +3967,12 @@ changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 Plugins step reports `recommendation` `shown`, `selected` and `deselected`
 (a featured plugin switched back off) with a per-visit `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
-reports `new_thread_blocker` once per blocker reason while a draft exists.
+reports `new_thread_blocker` once per blocker reason while a draft exists,
+and, on the new-thread page only, `new_thread_composer_shown` and
+`new_thread_draft_started` once per app session with the current blocker
+(`none`, `pending`, or a blocker reason) and the selected agent's public id.
+`onboarding_agent_state` adds a fixed `agent_status_<agent>` property per
+shipped agent with that agent's provider status.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent or plugin id or counts and, for the Projects
 step, whether the scan ran out of time and how many folders it could not open.

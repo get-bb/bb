@@ -1,12 +1,14 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { asHttpError } from "@/lib/http-error";
-import type {
-  HostDiscoveredRepo,
-  ServerAccessStatus,
-  SetupGuideVariant,
-  SystemProviderState,
-  SystemSetupGuideResponse,
+import {
+  agentStatusTelemetryPropertyByProviderId,
+  type HostDiscoveredRepo,
+  type RecordTelemetryEventRequest,
+  type ServerAccessStatus,
+  type SetupGuideVariant,
+  type SystemProviderState,
+  type SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
@@ -248,6 +250,39 @@ export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {
   return providers?.some((provider) => provider.status === "ready") ?? false;
+}
+
+type AgentStateTelemetryProperties = Extract<
+  RecordTelemetryEventRequest,
+  { name: "onboarding_agent_state" }
+>["properties"];
+
+const agentStatusPropertyKeys = Object.entries(
+  agentStatusTelemetryPropertyByProviderId,
+);
+
+export function agentStateTelemetryProperties(
+  entry: AgentStateTelemetryProperties["entry"],
+  states: readonly SystemProviderState[] | undefined,
+): AgentStateTelemetryProperties {
+  const hasUnknown =
+    states?.some((state) => state.status === "unknown") ?? true;
+  const installed =
+    states?.some(
+      (state) => state.status !== "not_installed" && state.status !== "unknown",
+    ) ?? false;
+  const properties: AgentStateTelemetryProperties = {
+    entry,
+    agent_installed: installed ? true : hasUnknown ? null : false,
+    agent_ready: hasReadyAgent(states) ? true : hasUnknown ? null : false,
+  };
+  for (const [providerId, key] of agentStatusPropertyKeys) {
+    const state = states?.find(
+      (candidate) => candidate.providerId === providerId,
+    );
+    if (state !== undefined) properties[key] = state.status;
+  }
+  return properties;
 }
 
 const RECENT_REPO_WINDOW_MS = 7 * 86_400_000;

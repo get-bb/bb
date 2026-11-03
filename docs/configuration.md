@@ -405,6 +405,26 @@ start or ended denied, expired, or failed), `pairing` (a pairing code was
 rejected), or `turn_on` (turning remote access on failed); a retry after a
 failure records a new `started`. `add_machine` can fail before `started` when
 the setup command couldn't be prepared.
+`onboarding_agent_state` (`agent_installed` and `agent_ready`, each `null`
+when unknown) also carries, for each shipped agent the host reports, its
+status in `agent_status_claude_code`, `agent_status_codex`, `agent_status_pi`,
+`agent_status_acp_cursor`, `agent_status_acp_grok`,
+`agent_status_acp_hermes_agent`, `agent_status_acp_omp`, or
+`agent_status_acp_opencode`: `ready`, `not_installed`, `unauthenticated`,
+`expired`, `unsupported_version`, or `unknown`. Custom agents get no status
+property, and none are sent when the agent states fail to load. It is sent
+again only when one of these values changes.
+The new-thread page's composer sends `new_thread_composer_shown` once per app
+session when it first shows, and `new_thread_draft_started` once per app
+session when its draft first goes from empty to non-empty (a draft restored
+when the page opens doesn't count). Both carry `blocker`, what would stop a
+send at that moment: `none`, `pending` (still loading; the composer is
+reported as `pending` if it hasn't settled after 10 seconds), or a
+`new_thread_blocker` reason (`agent_missing`, `agent_update`, `sign_in`,
+`model_unavailable`, `provider_selection`, `model_selection`, or
+`project_setup`), and `resource_id`, the selected agent's public id (`other`
+for custom agents; absent when none is selected). Neither carries prompt text
+or length.
 `onboarding_sign_in` carries the agent's public id in `resource_id`
 (custom agents report `other`, as agent installs do). A `failed` sign-in adds
 `failure_reason`: `command_failed` (the sign-in command exited non-zero),
