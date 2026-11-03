@@ -1801,33 +1801,6 @@ function usePhonePairing(active: boolean): PhonePairing {
   return pairing;
 }
 
-function PairingStep({
-  step,
-  title,
-  children,
-}: {
-  step: number;
-  title: ReactNode;
-  children?: ReactNode;
-}) {
-  return (
-    <li className="flex flex-col gap-2">
-      <div className="flex items-start gap-2">
-        <span
-          aria-hidden="true"
-          className="flex size-4 shrink-0 items-center justify-center rounded-full bg-state-hover text-2xs font-medium tabular-nums text-foreground"
-        >
-          {step}
-        </span>
-        <div className="min-w-0 flex-1">{title}</div>
-      </div>
-      {children === undefined || children === null ? null : (
-        <div className="pl-6">{children}</div>
-      )}
-    </li>
-  );
-}
-
 function PairingCode({
   pairing,
   dashboardHost,
@@ -1872,58 +1845,57 @@ function PairingCode({
   );
 }
 
-type PhoneStepPanel = MobilePlatform | "pairing";
+type PhoneStep = "install" | "pair";
 
 function PhonePairingSteps({
+  step,
+  onStepChange,
   pairing,
   dashboardHost,
 }: {
+  step: PhoneStep;
+  onStepChange: (step: PhoneStep) => void;
   pairing: PhonePairing;
   dashboardHost: string;
 }) {
-  const [open, setOpen] = useState<PhoneStepPanel | null>(null);
-  const openPlatform = open === "pairing" ? null : open;
+  const [openPlatform, setOpenPlatform] = useState<MobilePlatform | null>(null);
   return (
-    <ol className="flex flex-col gap-4 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
-      <PairingStep
-        step={1}
-        title={
+    <div className="flex flex-col items-start gap-3 border-t border-border-hairline bg-surface-recessed p-3 text-xs text-muted-foreground">
+      {step === "install" ? (
+        <>
           <AppInstallToggles
-            label={<span className="text-foreground">Install the bb app:</span>}
+            label={
+              <span className="text-foreground">
+                Install the bb app on your phone:
+              </span>
+            }
             openPlatform={openPlatform}
-            onOpenPlatformChange={setOpen}
+            onOpenPlatformChange={setOpenPlatform}
           />
-        }
-      >
-        {openPlatform === null ? null : (
-          <AppInstallQr platform={openPlatform} />
-        )}
-      </PairingStep>
-      <PairingStep
-        step={2}
-        title={
-          <div className="flex flex-col items-start gap-1">
-            <span className="text-foreground">Open the app and pair it:</span>
-            <span className="-ml-1">
-              <DisclosureToggle
-                expanded={open === "pairing"}
-                onToggle={() =>
-                  setOpen((current) =>
-                    current === "pairing" ? null : "pairing",
-                  )
-                }
-              >
-                Show pairing code
-              </DisclosureToggle>
-            </span>
+          {openPlatform === null ? null : (
+            <AppInstallQr platform={openPlatform} />
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onStepChange("pair")}
+          >
+            I have the app
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="text-foreground">Open the bb app and scan this code:</p>
+          <div className="w-full">
+            <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
           </div>
-        }
-      >
-        {open === "pairing" ? (
-          <PairingCode pairing={pairing} dashboardHost={dashboardHost} />
-        ) : null}
-      </PairingStep>
-    </ol>
+          <QuietTextAction onClick={() => onStepChange("install")}>
+            Don't have the app yet?
+          </QuietTextAction>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1934,7 +1906,8 @@ function ConnectOnSetupRow({
   status: ConnectStatus;
   onPhone: boolean;
 }) {
-  const pairing = usePhonePairing(!onPhone);
+  const [step, setStep] = useState<PhoneStep>("install");
+  const pairing = usePhonePairing(!onPhone && step === "pair");
   const url = status.url;
   const showsSteps = !onPhone && pairing.kind !== "paired";
   return (
@@ -1944,6 +1917,8 @@ function ConnectOnSetupRow({
       footer={
         showsSteps ? (
           <PhonePairingSteps
+            step={step}
+            onStepChange={setStep}
             pairing={pairing}
             dashboardHost={hostOf(status.dashboardUrl)}
           />
