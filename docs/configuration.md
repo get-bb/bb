@@ -358,7 +358,8 @@ first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
+`onboarding_sign_in`, `onboarding_left`, `new_thread_submit` (started,
+accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
@@ -405,6 +406,17 @@ start or ended denied, expired, or failed), `pairing` (a pairing code was
 rejected), or `turn_on` (turning remote access on failed); a retry after a
 failure records a new `started`. `add_machine` can fail before `started` when
 the setup command couldn't be prepared.
+`onboarding_left` (`step`, the step on screen, and `entry`) is sent at most
+once per guide, in either guide, when the page unloads (the browser's
+`pagehide`: closing the tab or window, reloading, or navigating away) while the
+guide is open and before `onboarding_finished`; switching tabs or apps doesn't
+count. It goes as a keepalive request so it survives the unload. In the
+desktop app, closing the window sends it, but quitting the app while a guide
+is open may not when the app runs its own bb server, which stops before the
+window unloads.
+A failed `new_thread_submit` adds `failure_reason` (`host_unavailable`,
+`timed_out`, `not_found`, `permission`, or `other`), from the same mapping as
+setup-guide failures; `started` and `accepted` carry no reason.
 `onboarding_agent_state` (`agent_installed` and `agent_ready`, each `null`
 when unknown) also carries `agent_statuses`, an object from each shipped
 agent's public id the host reports (such as `claude-code` or `codex`) to its

@@ -140,6 +140,10 @@ describe("setup guide route", () => {
         },
       });
       await postEvent(harness, {
+        name: "onboarding_left",
+        properties: { step: "plugins", entry: "first_run" },
+      });
+      await postEvent(harness, {
         name: "new_thread_submit",
         properties: { outcome: "accepted" },
       });
@@ -152,6 +156,15 @@ describe("setup guide route", () => {
             recommendation_id: "V1StGXR8_Z5jdHi6B-myT",
             action: "shown",
             surface: "onboarding",
+            entry: "first_run",
+            setup_guide_variant: "new",
+            featured_plugins_variant: "new",
+          },
+        },
+        {
+          name: "onboarding_left",
+          properties: {
+            step: "plugins",
             entry: "first_run",
             setup_guide_variant: "new",
             featured_plugins_variant: "new",

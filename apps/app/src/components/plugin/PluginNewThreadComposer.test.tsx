@@ -23,6 +23,8 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BbHttpError } from "@bb/sdk/browser";
+import { sdk } from "@/lib/sdk";
 import type {
   ExperimentalComposerSelection,
   NewThreadRequest,
@@ -988,6 +990,35 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
     });
+  });
+
+  it("reports a failed first send with a fixed failure reason", async () => {
+    const recordEvent = vi.mocked(sdk.system.experimental_recordTelemetryEvent);
+    recordEvent.mockClear();
+    renderComposer(
+      STORED_REQUEST,
+      () => {
+        throw new BbHttpError({
+          body: null,
+          code: "host_unavailable",
+          message: "Host /Users/me is not connected",
+          status: 502,
+        });
+      },
+      "failed-submit",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(recordEvent.mock.calls.map(([event]) => event)).toEqual([
+      { name: "new_thread_submit", properties: { outcome: "started" } },
+      {
+        name: "new_thread_submit",
+        properties: { outcome: "failed", failure_reason: "host_unavailable" },
+      },
+    ]);
   });
 
   it("submits an initial thread token with its resolved mention range", async () => {

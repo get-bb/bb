@@ -87,6 +87,14 @@ describe("client telemetry events", () => {
           properties: { outcome: "failed" },
         },
         {
+          name: "new_thread_submit",
+          properties: { outcome: "failed", failure_reason: "host_unavailable" },
+        },
+        {
+          name: "onboarding_left",
+          properties: { step: "plugins", entry: "replay" },
+        },
+        {
           name: "onboarding_operation",
           properties: {
             entry: "first_run",
@@ -511,6 +519,32 @@ describe("client telemetry events", () => {
         {
           name: "new_thread_submit",
           properties: { outcome: "failed", message: "private prompt" },
+        },
+        {
+          name: "new_thread_submit",
+          properties: {
+            outcome: "failed",
+            failure_reason: "HTTP 502: Host /Users/me is not connected",
+          },
+        },
+        {
+          name: "new_thread_submit",
+          properties: { outcome: "accepted", failure_reason: "other" },
+        },
+        {
+          name: "onboarding_left",
+          properties: {
+            step: "Devices: pairing code 123456",
+            entry: "first_run",
+          },
+        },
+        {
+          name: "onboarding_left",
+          properties: {
+            step: "devices",
+            entry: "first_run",
+            url: "https://example.com/private",
+          },
         },
         {
           name: "new_thread_blocker",

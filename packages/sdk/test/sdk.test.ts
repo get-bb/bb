@@ -338,6 +338,32 @@ describe("@bb/sdk", () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 
+  it("sends telemetry as a keepalive request only when asked", async () => {
+    const keepalives: Array<boolean | undefined> = [];
+    const fetch: FetchImplementation = async (_input, init) => {
+      keepalives.push(init?.keepalive);
+      return jsonResponse({ body: { ok: true } });
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch,
+        runtime: "node",
+      }),
+    });
+    const event = {
+      name: "onboarding_left",
+      properties: { step: "projects", entry: "first_run" },
+    } as const;
+
+    await sdk.system.experimental_recordTelemetryEvent(event);
+    await sdk.system.experimental_recordTelemetryEvent(event, {
+      keepalive: true,
+    });
+
+    expect(keepalives).toEqual([undefined, true]);
+  });
+
   it("forwards thread read action abort signals to fetch", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | null | undefined;

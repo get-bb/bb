@@ -111,6 +111,7 @@ import {
 import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
 import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
 import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
 import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
@@ -1233,6 +1234,7 @@ export function OnboardingFlow({
     });
   }, [entry, step]);
   const finishedRef = useRef(false);
+  useOnboardingLeftTelemetry({ entry, step, finishedRef });
   const close = (outcome: "completed" | "skipped") => {
     if (finishedRef.current) return;
     finishedRef.current = true;

@@ -371,9 +371,15 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
       name: z.literal("new_thread_submit"),
-      properties: z
-        .object({ outcome: z.enum(["started", "accepted", "failed"]) })
-        .strict(),
+      properties: z.discriminatedUnion("outcome", [
+        z.object({ outcome: z.enum(["started", "accepted"]) }).strict(),
+        z
+          .object({
+            outcome: z.literal("failed"),
+            failure_reason: onboardingFailureReasonTelemetrySchema.optional(),
+          })
+          .strict(),
+      ]),
     })
     .strict(),
   z
@@ -418,6 +424,12 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           last_step: onboardingStepTelemetrySchema,
         })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_left"),
+      properties: onboardingStepTelemetryPropertiesSchema,
     })
     .strict(),
   z

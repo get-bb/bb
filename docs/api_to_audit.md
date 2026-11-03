@@ -3980,6 +3980,11 @@ A failed operation or `onboarding_sign_in` adds a `failure_reason` from a fixed
 set (`no_host`, `host_unavailable`, `timed_out`, `not_found`, `permission`,
 `command_failed`, `unsupported`, or `other`); a failed `remote_access` adds a
 `failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead.
+`onboarding_left` reports the step a guide was on when the page unloaded
+before the guide finished; it passes the optional second argument
+`{ keepalive: true }`, which sends the request with `fetch`'s `keepalive` so it
+outlives the page. A failed `new_thread_submit` may add `failure_reason` from
+the same fixed set.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
 both assignments, adds `setup_guide_variant`, `setup_guide_source`,
 `featured_plugins_variant` and `featured_plugins_source`, sets both variants
