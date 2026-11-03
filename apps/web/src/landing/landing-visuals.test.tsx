@@ -175,28 +175,17 @@ describe("StartAnywhere", () => {
     expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto|bw-chat/);
   });
 
-  it("opens the desktop Diff panel on the change the thread made", () => {
+  it("shows the thread on its own, with no side panel open", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
-    expect(html.match(/class="bw-sp"/g)).toHaveLength(1);
-    expect(html).toContain('class="bar-toggle active"');
+    expect(html).not.toContain("bw-sp");
+    expect(html).not.toContain("bar-toggle active");
     expect(html.match(/class="composer"/g)).toHaveLength(1);
-    for (const text of [
-      "Ask for a follow-up",
-      ">Codex<",
-      "All changes",
-      "No changes",
-      "No diff to display.",
-      "Uncommitted changes",
-      "src/checkout/pay.ts",
-      "src/checkout/pay.test.ts",
-      "AbortSignal.timeout(TIMEOUT_MS)",
-      "Viewed",
-    ]) {
-      expect(html).toContain(text);
-    }
+    expect(html).toContain("Ask for a follow-up");
+    expect(html).toContain(">Codex<");
     const label = html.match(/aria-label="([^"]*)"/)![1]!;
-    expect(label).toContain("Diff panel");
-    expect(label).not.toContain("ChatGPT");
+    expect(label).toContain("desktop app");
+    expect(label).toContain("iPhone");
+    expect(label).not.toMatch(/Diff panel|ChatGPT/);
   });
 });
 
