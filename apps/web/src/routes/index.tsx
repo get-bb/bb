@@ -1070,6 +1070,25 @@ const BELOW_FOLD_SECTIONS: Record<"control" | "test", readonly string[]> = {
   test: ["make-it-yours", "hand-off", "start-anywhere", "closer"],
 };
 
+function Closer({
+  title,
+  lede,
+  children,
+}: {
+  title: string;
+  lede: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="closer" data-reveal data-section="closer">
+      <h2 className="sec-title">{title}</h2>
+      <p>{lede}</p>
+      <InstallOptions placement="closer" />
+      {children}
+    </section>
+  );
+}
+
 function TodayBelowFold() {
   return (
     <>
@@ -1145,16 +1164,16 @@ function TodayBelowFold() {
         </div>
       </section>
 
-      <section className="closer" data-reveal data-section="closer">
-        <h2 className="sec-title">Put your agents to work.</h2>
-        <p>Free, open source, and local-first. Install in under a minute.</p>
-        <InstallOptions placement="closer" />
+      <Closer
+        title="Put your agents to work."
+        lede="Free, open source, and local-first. Install in under a minute."
+      >
         <div className="cta-row cta-row-secondary">
           <GitHubLink placement="closer" className="btn btn-ghost">
             View on GitHub
           </GitHubLink>
         </div>
-      </section>
+      </Closer>
     </>
   );
 }
@@ -1204,13 +1223,10 @@ function RefreshedBelowFold() {
         </p>
       </Band>
 
-      <section className="closer" data-reveal data-section="closer">
-        <h2 className="sec-title">
-          One programmable workspace for all your agents.
-        </h2>
-        <p>Free and self-hostable.</p>
-        <InstallOptions placement="closer" />
-      </section>
+      <Closer
+        title="One programmable workspace for all your agents."
+        lede="Free and self-hostable."
+      />
     </>
   );
 }
