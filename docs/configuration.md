@@ -952,7 +952,8 @@ either way.
     background command its agent was waiting on (the retry re-runs the
     thread's latest turn).
 
-  The retry is the same row as `bb thread retry`. When the provider had
+  The retry is the same row as `bb thread retry`, titled "Resume after bb
+  restarted" in the app's queue and in `bb thread queue list`. When the provider had
   accepted the turn's input, it sends an agent-only message instead of
   "Please continue.": it says bb or the machine restarted, names the command
   the turn was running and any background work the restart stopped (command

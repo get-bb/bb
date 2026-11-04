@@ -11,7 +11,10 @@ import {
   threads,
   type DbConnection,
 } from "@bb/db";
-import { threadEventBackgroundTaskItemSchema } from "@bb/domain";
+import {
+  RESTART_RESUME_RETRY_REASON,
+  threadEventBackgroundTaskItemSchema,
+} from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
@@ -26,7 +29,6 @@ import { retryTurnAfterRestart } from "./turn-retry.js";
 
 type RestartResumeDeps = LoggedPendingInteractionWorkSessionDeps;
 
-const RESTART_RESUME_REASON = "bb restarted";
 const RESTART_RESUME_DELAY_MS = 5_000;
 const MAX_RESTART_RESUME_ATTEMPT = 4;
 const MAX_NAMED_COMMAND_CHARS = 200;
@@ -251,7 +253,7 @@ export async function queueRestartResumes(
         request: {
           turnRequestId: null,
           sendAt,
-          reason: RESTART_RESUME_REASON,
+          reason: RESTART_RESUME_RETRY_REASON,
         },
       });
       deps.logger.info(

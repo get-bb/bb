@@ -62,7 +62,8 @@ Lifecycle:
   crashed, updated, or the machine restarted) gets a retry with reason "bb
   restarted", sent a few seconds later. So does an idle thread whose
   background work, such as a background command it was waiting on, the
-  restart stopped. The retry tells the agent what the restart cut: the
+  restart stopped. Its queue row reads "Resume after bb restarted". The retry
+  tells the agent what the restart cut: the
   command it was running and the background work it stopped, and that the
   restart, not the user, interrupted them. Turns stopped by the user, threads waiting on a question or
   approval, and archived threads are left in error. After three of these in a
