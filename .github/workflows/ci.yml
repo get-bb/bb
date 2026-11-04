@@ -5,12 +5,16 @@ env:
   PNPM_VERSION: "9.15.0"
 jobs:
   windows-foundation:
-    name: Windows identity ${{ matrix.mode }}
+    name: Windows foundation ${{ matrix.cpu }} CPU
     strategy:
       fail-fast: false
       matrix:
-        mode: [plain, minimalpath]
-    runs-on: blacksmith-4vcpu-windows-2025
+        include:
+          - cpu: 4
+            runner: blacksmith-4vcpu-windows-2025
+          - cpu: 8
+            runner: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -52,11 +56,11 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
 
       - name: Instrument identity query
-        run: node .github/diagnostics/instrument-identity.mjs ${{ matrix.mode }}
+        run: node .github/diagnostics/instrument-identity.mjs plain
 
       - name: Lint and test foundation packages
         shell: bash
-        run: pnpm exec turbo run lint test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --continue --concurrency=2 --output-logs=full --summarize --force
+        run: node .github/diagnostics/foundation-load.mjs
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
@@ -65,8 +69,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: identity-${{ matrix.mode }}
+          name: identity-${{ matrix.cpu }}-cpu
           path: |
+            identity-load.json
             packages/config/identity-observations.jsonl
             packages/process-utils/identity-observations.jsonl
             .turbo/runs
