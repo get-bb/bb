@@ -1,10 +1,11 @@
-import { it } from "vitest";
+import { describe, it } from "vitest";
 import { pathological } from "@/test/fixtures/streaming-markdown/pathological";
 import { expectStreamedFixtureMatchesWholeDocument } from "./markdown-incremental-pieces-test-helpers";
 
-it("matches single documents for every streamed chunk of the pathological fixture", () => {
-  expectStreamedFixtureMatchesWholeDocument({
-    name: "pathological",
-    text: pathological,
-  });
-}, 60_000);
+describe("resolveMarkdownPieces", () => {
+  it.each([{ name: "pathological", text: pathological }])(
+    "matches single documents for every streamed chunk of the $name fixture",
+    expectStreamedFixtureMatchesWholeDocument,
+    60_000,
+  );
+});
