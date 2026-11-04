@@ -440,53 +440,6 @@
   opacity: 1;
 }
 
-.rhb .rhb-strip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 0;
-  flex-shrink: 0;
-  overflow: hidden;
-  padding: 0 8px;
-  opacity: 0;
-  border-bottom: 1px solid transparent;
-  transition:
-    height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.3s ease,
-    margin 0.5s ease;
-}
-
-.rhb .rhb-strip-label {
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.rhb .rhb-strip-icons {
-  display: inline-flex;
-  gap: 9px;
-  margin-left: auto;
-}
-
-.rhb .rhb-strip-icons .rhb-ic {
-  width: 15px;
-  height: 15px;
-}
-
-.rhb .rhb-has-strip .rhb-strip {
-  height: 34px;
-  margin-bottom: 6px;
-  opacity: 1;
-  border-bottom-color: var(--border-soft);
-}
-
-.rhb .rhb-has-strip .rail {
-  width: 8px;
-}
-
-.rhb .rhb-has-strip .rail > * {
-  opacity: 0;
-}
-
 .rhb .rhb-chart {
   display: flex;
   flex-direction: column;
@@ -924,7 +877,6 @@
     --rhb-panel-w: 236px;
   }
 
-  .rhb .rhb-strip-label,
   .rhb .rhb-col-panel .plugin-task-key,
   .rhb .rhb-stat:nth-child(2) {
     display: none;
@@ -1897,7 +1849,6 @@
 .rhb .rhb-col-page .rhb-band,
 .rhb .rhb-uses-panel .rhb-col-main .rhb-band,
 .rhb .rhb-rail-new,
-.rhb .rhb-strip,
 .rhb .rhb-title {
   transition: none;
 }
@@ -2023,7 +1974,8 @@
 }
 
 .rhb .rhb-has-rail-sentry .rhb-rail-sentry,
-.rhb .rhb-has-rail-linear .rhb-rail-linear {
+.rhb .rhb-has-rail-linear .rhb-rail-linear,
+.rhb .rhb-has-rail-nav .rhb-rail-nav {
   display: inline-flex;
   height: 28px;
   opacity: 1;
@@ -2037,24 +1989,6 @@
 .rhb .plugin-task {
   opacity: 1;
   animation: none;
-}
-
-.rhb .rhb-has-strip .rail > .rhb-rail-new {
-  opacity: 0;
-}
-
-.rhb .rhb-strip-icons {
-  display: flex;
-  flex: 1;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  margin-left: 4px;
-  overflow: hidden;
-}
-
-.rhb .rhb-strip-icons .rhb-ic {
-  flex-shrink: 0;
 }
 
 .rhb .rhb-feed-layer:not(.is-out) {
@@ -2220,17 +2154,15 @@
 
 .rhb .rhb-feed-layer.is-pre { visibility: hidden; pointer-events: none; }
 .rhb .rhb-feed-layer.is-pre, .rhb .rhb-feed-layer.is-pre * { animation-play-state: paused !important; }
-.rhb .rhb-scene-nav.rhb-has-strip .rhb-strip { animation: rhb-strip-in 0.75s cubic-bezier(0.22, 0.61, 0.36, 1) 1s backwards; }
-.rhb .rhb-scene-nav.rhb-has-strip .rail { overflow: visible; }
-.rhb .rhb-scene-nav.rhb-has-strip .rail > * { animation: rhb-rail-out 0.35s ease backwards; }
-@keyframes rhb-strip-in {
-  from { height: 0; margin-bottom: 0; opacity: 0; border-bottom-color: transparent; }
-  55% { height: 34px; margin-bottom: 6px; opacity: 0; }
+.rhb .rhb-row-top {
+  overflow: hidden;
+  transition:
+    height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s ease;
 }
-@keyframes rhb-rail-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
+.rhb .rhb-has-rail-nav .rhb-row-top { height: 0; opacity: 0; }
+.rhb .rhb-has-rail-nav .rhb-row-top .rhb-ic { visibility: hidden; }
+.rhb .rhb-scene-nav .rail { overflow: visible; }
 
 .rhb .rhb-win > .rhb-band-left {
   position: absolute;
