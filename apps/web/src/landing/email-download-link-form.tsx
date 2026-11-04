@@ -1,6 +1,6 @@
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import type { EmailLinkFailure } from "./analytics";
 import { trackLandingEvent } from "./analytics";
@@ -21,8 +21,10 @@ function failureReason(status: number): EmailLinkFailure {
 
 export function EmailDownloadLinkForm({
   placement,
+  note,
 }: {
   placement: CtaPlacement;
+  note: ReactNode;
 }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -78,10 +80,13 @@ export function EmailDownloadLinkForm({
 
   if (status === "sent") {
     return (
-      <p className="install-email-done touch-only" role="status">
-        <HugeiconsIcon icon={CheckmarkCircle02Icon} className="btn-ic" />
-        Check your inbox on your computer
-      </p>
+      <>
+        <p className="install-email-done touch-only" role="status">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} className="btn-ic" />
+          Check your inbox on your computer
+        </p>
+        <span className="install-note touch-only">{note}</span>
+      </>
     );
   }
 
@@ -97,22 +102,25 @@ export function EmailDownloadLinkForm({
   }
 
   return (
-    <EmailField
-      hero
-      className="touch-only"
-      value={email}
-      onChange={(value) => {
-        setEmail(value);
-        if (status === "invalid") {
-          setStatus("idle");
-        }
-      }}
-      onSubmit={(event) => void submit(event)}
-      invalid={status === "invalid"}
-      disabled={!ready || status === "sending"}
-      placeholder="Your email"
-      submitLabel={status === "sending" ? "Sending…" : "Send link"}
-      error={status === "invalid" ? "Enter a valid email address." : null}
-    />
+    <>
+      <EmailField
+        hero
+        className="touch-only"
+        value={email}
+        onChange={(value) => {
+          setEmail(value);
+          if (status === "invalid") {
+            setStatus("idle");
+          }
+        }}
+        onSubmit={(event) => void submit(event)}
+        invalid={status === "invalid"}
+        disabled={!ready || status === "sending"}
+        placeholder="Your email"
+        submitLabel={status === "sending" ? "Sending…" : "Send link"}
+        error={status === "invalid" ? "Enter a valid email address." : null}
+      />
+      <span className="install-note touch-only">{note}</span>
+    </>
   );
 }
