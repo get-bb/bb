@@ -9,11 +9,12 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
   listStoredEventRowsByParentToolCallIds,
-  listStoredEventRowsInSequenceRange,
+  listAppendedEventRows,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
+  selectAppendedTimelineWindowRows,
   type DbConnection,
   type TimelineWindowHint,
   type StoredEventRow,
@@ -569,7 +570,7 @@ function listAppendableRows(
   ) {
     return null;
   }
-  const appendedRows = listStoredEventRowsInSequenceRange(db, {
+  const appendedRows = listAppendedEventRows(db, {
     afterSequence: entry.maxSeq,
     limit: TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS + 1,
     maxInlineOutputChars: args.maxInlineOutputChars,
@@ -594,12 +595,14 @@ function listAppendableRows(
     },
   };
   const rows =
-    appendedRows.length === 0
-      ? []
-      : listStoredTimelineWindowEventRows(
-          db,
-          windowQueryArgs(args, entry.maxSeq + 1, args.maxSeq + 1),
-        );
+    selectAppendedTimelineWindowRows(appendedRows, {
+      excludeDiagnosticEvents: args.excludeDiagnosticEvents,
+      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    }) ??
+    listStoredTimelineWindowEventRows(
+      db,
+      windowQueryArgs(args, entry.maxSeq + 1, args.maxSeq + 1),
+    );
   if (!rows.every((row) => acceptsAppendedRow(scope, row))) {
     return null;
   }

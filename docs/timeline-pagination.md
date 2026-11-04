@@ -275,6 +275,15 @@ query would need a row the kept selection does not hold. The ordering context
 behind turn grouping keeps its rows and reads only rows after the last read, so
 a turn boundary no longer rescans the thread.
 
+The appended events themselves are not read back: the server remembers each
+committed event row per thread (64 threads, 128 rows each) and the extension
+takes those rows after an id-only query confirms they are exactly the rows in
+the appended range. A row longer than the inline output limit, or a range with
+background task progress or diagnostic events, which the SQL window filters
+decide, is still read from the database. The other queries a push runs are
+prepared once per connection, and app settings and experiments are parsed only
+when their stored rows change.
+
 While a thread is active, the server also keeps the projection of that
 selection: its fold over the events, before the step that finishes pending
 work. A read that only extends the selection folds just the appended events
