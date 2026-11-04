@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 
 const PROCESS_GROUP_POLL_INTERVAL_MS = 10;
-const TASKKILL_TIMEOUT_MS = 2_000;
 
 function delay(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -19,12 +18,13 @@ function waitForProcessExit(childProcess) {
 }
 
 function stopWindowsProcessTree(pid) {
+  const started = performance.now();
   return new Promise((resolvePromise) => {
     execFile(
       "taskkill",
       ["/pid", String(pid), "/T", "/F"],
-      { timeout: TASKKILL_TIMEOUT_MS, windowsHide: true },
-      (error, stdout, stderr) => { console.log("PROBE taskkill", pid, JSON.stringify({error: error?.message, stdout, stderr})); resolvePromise(); },
+      { windowsHide: true },
+      (error, stdout, stderr) => { console.log("PROBE taskkill completion", JSON.stringify({pid, seconds:(performance.now()-started)/1000,error:error?.message,signal:error?.signal,killed:error?.killed,code:error?.code,successes:stdout.split("SUCCESS:").length-1})); resolvePromise(); },
     );
   });
 }
@@ -82,15 +82,18 @@ export function createManagedProcessStop(stopTimeoutMs) {
     }
 
     if (hasExited(processRef.childProcess)) return;
-    const processExit = waitForProcessExit(processRef.childProcess);
     if (process.platform === "win32") {
+      const processClose = new Promise((resolvePromise) => {
+        processRef.childProcess.once("close", resolvePromise);
+      });
       await stopWindowsProcessTree(processRef.childProcess.pid);
       if (!hasExited(processRef.childProcess)) {
         processRef.childProcess.kill("SIGKILL");
       }
-      await processExit;
+      await processClose;
       return;
     }
+    const processExit = waitForProcessExit(processRef.childProcess);
     processRef.childProcess.kill("SIGINT");
     const stopped = await Promise.race([
       processExit.then(() => true),

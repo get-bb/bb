@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: |
           failed=0
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4; do
             echo "PROBE attempt $attempt"
             pnpm exec turbo run smoke:tarball --filter=bb-app --env-mode=loose --output-logs=full --log-order=stream --summarize || failed=1
           done
@@ -165,6 +165,9 @@ jobs:
       - name: Smoke test the packaged desktop app
         shell: bash
         run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=full --log-order=stream --summarize
+
+      - name: Verify retained afterPack catches broken npm and resource mutation
+        run: node scripts/ci-packaging-mutation.mjs
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
