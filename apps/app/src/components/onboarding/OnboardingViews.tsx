@@ -480,7 +480,7 @@ function AgentRow({
     state.status === "checking" ||
     (state.status === "signingIn" && hasQuietSubtitle);
   const busy = agent.busy === true;
-  const signInLabel = setup === "connect" ? "Connect" : "Sign in";
+  const signInLabel = "Sign in";
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
       <div
