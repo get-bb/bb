@@ -266,8 +266,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             <li>
               Paste the prompt from <CopyPromptButton /> and send it. Your agent
               asks which work you want to bring over, then writes a handoff: the
-              goal, what's done, and what's left. Reply to correct it, or say
-              go.
+              goal, what's done, and what's left.
             </li>
             <li>Do the same for each task you want to bring over.</li>
           </Substeps>
