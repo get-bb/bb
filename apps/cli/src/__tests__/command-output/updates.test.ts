@@ -303,6 +303,8 @@ function appUpdateStatus(
 ): SystemAppUpdateStatus {
   return {
     activity: { phase: "idle" },
+    autoUpdate: false,
+    availableSkipped: false,
     available: {
       behindSince: null,
       channel: "latest",
@@ -622,7 +624,7 @@ describe("bb updates app command output", () => {
     expect(apply).not.toHaveBeenCalled();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "bb will update to 0.0.33 when all threads are idle (2 running).",
-      "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
     ]);
   });
 
@@ -641,7 +643,7 @@ describe("bb updates app command output", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "bb-app 0.0.32 -> 0.0.33",
       "bb will update to 0.0.33 when all threads are idle (1 running).",
-      "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
     ]);
   });
 
@@ -670,8 +672,34 @@ describe("bb updates app command output", () => {
 
     expect(cancel).toHaveBeenCalledTimes(2);
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Cancelled the scheduled update.",
+      "Skipped this version until a newer one appears.",
       "No update is scheduled.",
+    ]);
+  });
+
+  it("bb updates app auto turns automatic updates on and off and reports the setting", async () => {
+    const setAuto = vi.fn(async (request: { json: { enabled: boolean } }) =>
+      appUpdateStatus({ autoUpdate: request.json.enabled }),
+    );
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ autoUpdate: true }),
+      ),
+      "v1.system.app-update.auto.$post": setAuto,
+    });
+
+    await runCommand(["updates", "app", "auto", "on"], register);
+    await runCommand(["updates", "app", "auto", "off"], register);
+    await runCommand(["updates", "app", "auto"], register);
+
+    expect(setAuto.mock.calls).toEqual([
+      [{ json: { enabled: true } }],
+      [{ json: { enabled: false } }],
+    ]);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running.",
+      "Automatic updates are off.",
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running.",
     ]);
   });
 
@@ -716,7 +744,7 @@ describe("bb updates app command output", () => {
       "Updating bb to 0.0.33",
       "Downloading bb-app 0.0.33…",
       "bb will update to 0.0.33 when all threads are idle (1 running).",
-      "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
     ]);
   });
 

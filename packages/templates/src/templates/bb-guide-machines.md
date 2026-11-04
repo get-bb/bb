@@ -138,17 +138,27 @@ CLI counterpart of Settings → Updates.
                                           of interrupting them
     --no-wait                             Return once the update starts
     --json                                Print the final status as JSON
-  bb updates app cancel                   Cancel an update scheduled with --when-idle
+  bb updates app cancel                   Skip a waiting update until a newer version
+                                          appears
+  bb updates app auto [on|off]            Show or set automatic updates: check every
+                                          hour and install once threads finish
   bb updates app dismiss                  Mark the last update result as seen
 
-`--when-idle` and `cancel` need the `updateWhenIdle` experiment (on for early
+`--when-idle`, `cancel`, and `auto on|off` need the `updateWhenIdle` experiment (on for early
 adopters; `bb settings experiment updateWhenIdle true`); while it is off they
 fail with a message naming it. `bb updates app apply --when-idle` updates at
 once when no thread is running.
 Otherwise the server schedules the update and the command returns, so an agent
 can run it from its own thread; the server starts the update after every thread
 has stayed finished for a few seconds, and waits again if one starts during the
-download. The schedule lasts until bb restarts. Without `--when-idle` or `--yes`,
+download. The schedule lasts until bb restarts. `bb updates app auto on` (the
+"Restart and update bb automatically" switch on Settings → Updates) makes bb
+check for an update right away, 30 seconds after it starts, and every hour,
+and schedule what it finds the same way, so it restarts into the update once
+threads finish; `off` stops the checks and drops a waiting update. It does not start a
+version whose last update attempt failed, or one you skipped with `cancel`,
+until a newer one appears; you can still update to it by hand. Without
+`--when-idle` or `--yes`,
 apply asks before interrupting running threads and fails without a terminal.
 Updating restarts bb, which interrupts running threads; with the
 `resumeThreadsAfterRestart` experiment on they resume after the update, and

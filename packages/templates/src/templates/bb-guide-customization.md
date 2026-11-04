@@ -211,9 +211,10 @@ the header.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
 request number. It defaults on for early adopters.
-`updateWhenIdle` offers Update when idle on Settings → Updates while
-threads run and enables `bb updates app apply --when-idle`; see
-`bb guide machines`. It defaults on for early adopters.
+`updateWhenIdle` adds a "Restart and update bb automatically" switch to
+Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
+every hour and restart into a new version once no thread is running, and
+enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `timelinePush`, `compactExpiredCache`, `pluginUpdates`,

@@ -28,7 +28,10 @@ import type { LauncherChannel } from "./launcher-channel.js";
 const SOURCE_CHECK_TTL_MS = 60 * 60 * 1000;
 const FIRST_STATUS_WAIT_MS = 1_000;
 
-export type AppUpdateServiceStatus = Omit<SystemAppUpdateStatus, "scheduled">;
+export type AppUpdateServiceStatus = Omit<
+  SystemAppUpdateStatus,
+  "autoUpdate" | "availableSkipped" | "scheduled"
+>;
 
 export type RunningThreadsPolicy =
   | { kind: "refuse" }

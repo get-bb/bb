@@ -433,72 +433,37 @@ describe("notice durability", () => {
 });
 
 describe("coalesced notices", () => {
-  it("merge later outcomes into a row still waiting on the parent", async () => {
+  it("start a new row once the earlier window has expired", async () => {
     await withTestHarness(async (harness) => {
       const { project, thread: parent } = seedRunnableThread(harness, {
-        hostId: "host-waiting-notice",
-        status: "active",
+        hostId: "host-expired-window",
+        status: "idle",
       });
-      const registered =
-        harness.deps.pendingInteractions.registerPendingInteraction({
-          interaction: {
-            threadId: parent.id,
-            turnId: "turn-host-waiting-notice",
-            providerId: "codex",
-            providerThreadId: "provider-host-waiting-notice",
-            providerRequestId: "request-waiting-notice",
-            payload: createUserQuestionPayload(),
-          },
-        });
-      if (registered.outcome === "rejected") {
-        throw new Error(`Expected registration: ${registered.reason}`);
-      }
-      const [first, second] = ["First", "Second"].map((title) =>
-        seedThread(harness.deps, {
-          parentThreadId: parent.id,
-          projectId: project.id,
-          title,
-        }),
-      );
-      const notify = (
-        childThread: NonNullable<typeof first>,
-        turnStatus: "completed" | "failed",
-      ) =>
+      const child = seedThread(harness.deps, {
+        parentThreadId: parent.id,
+        projectId: project.id,
+      });
+      const notify = (turnStatus: "completed" | "failed") =>
         queueChildThreadTurnNotificationBestEffort(harness.deps, {
-          childThread,
+          childThread: child,
           parentThreadId: parent.id,
           turnId: null,
           turnStatus,
         });
-      await notify(first!, "completed");
-      const [scheduled] = listQueuedThreadMessages(harness.db, parent.id);
-      await runQueuedMessageDispatch(harness.deps, {
-        kind: "time-reached",
-        now: scheduled!.sendAt! + 1,
-      });
-      expect(queuedRows(harness, parent.id)).toEqual([
-        expect.objectContaining({ waitingOn: { kind: "interaction" } }),
-      ]);
+      await notify("completed");
+      harness.db.$client
+        .prepare(
+          "UPDATE queued_thread_messages SET send_at = ? WHERE thread_id = ?",
+        )
+        .run(Date.now() - 1_000, parent.id);
 
-      await notify(first!, "failed");
-      await notify(second!, "completed");
+      await notify("failed");
 
-      const rows = listQueuedThreadMessages(harness.db, parent.id);
-      expect(rows).toHaveLength(1);
-      expect(toThreadQueuedMessage(rows[0]!)).toMatchObject({
-        waitingOn: { kind: "interaction" },
-      });
-      expect(JSON.parse(rows[0]!.systemNotice ?? "null")).toMatchObject({
-        kind: "child-outcome-batch",
-        subject: {
-          count: 2,
-          outcomes: [
-            { threadId: first!.id, status: "failed" },
-            { threadId: second!.id, status: "completed" },
-          ],
-        },
-      });
-      expect(turnSubmitTargets(harness, parent.id)).toEqual([]);
+      expect(
+        listQueuedThreadMessages(harness.db, parent.id).map(
+          (row) => JSON.parse(row.systemNotice ?? "null")?.kind,
+        ),
+      ).toEqual(["child-completed", "child-failed"]);
     });
   });
 

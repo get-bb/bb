@@ -54,6 +54,8 @@ function status(
     blocked: null,
     current: { commit: null, version: "1.1.0" },
     lastResult: null,
+    autoUpdate: false,
+    availableSkipped: false,
     runningThreadCount: 0,
     scheduled: null,
     support: { kind: "supported", mode: "npm" },

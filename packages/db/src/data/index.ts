@@ -144,6 +144,10 @@ export {
   setPluginSafeMode,
   isAppUpdateSendHoldSet,
   setAppUpdateSendHold,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
@@ -308,7 +312,6 @@ export {
   findStoredEventRow,
   getActiveStoredTurnId,
   isStoredTurnMainRunIdle,
-  isStoredTurnContextCompactionOnly,
   isStoredTurnProviderCompactionRunning,
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,

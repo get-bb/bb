@@ -1,5 +1,8 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
-import { createScheduledAppUpdateService } from "./services/system/app-update-schedule.js";
+import {
+  AUTO_UPDATE_CHECK_MS,
+  createScheduledAppUpdateService,
+} from "./services/system/app-update-schedule.js";
 import {
   createAppUpdateSendHold,
   releaseSendsHeldAcrossRestart,
@@ -18,6 +21,10 @@ import {
   getAppSettings,
   getDisabledProviderIds,
   getExperiments,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
 } from "@bb/db";
@@ -329,12 +336,21 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           sendHold,
         });
   const appUpdate = createScheduledAppUpdateService({
+    autoCheckMs: AUTO_UPDATE_CHECK_MS,
     countRunningThreads,
     inner: appUpdateService,
     isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),
+    autoUpdate: {
+      get: () => getAutoAppUpdate(db),
+      set: (enabled) => setAutoAppUpdate(db, enabled),
+    },
+    skippedUpdate: {
+      get: () => getSkippedAppUpdate(db),
+      set: (key) => setSkippedAppUpdate(db, key),
+    },
   });
   const cliCommand = createCliCommandService({
     env: process.env,

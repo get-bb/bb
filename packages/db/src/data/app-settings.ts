@@ -28,6 +28,8 @@ const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
 const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
+const SKIPPED_APP_UPDATE_KEY = "skippedAppUpdate";
+const AUTO_APP_UPDATE_KEY = "autoAppUpdate";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -359,4 +361,31 @@ export function setAppUpdateSendHold(
       .where(eq(appSettingsValues.key, APP_UPDATE_SEND_HOLD_KEY))
       .run().changes > 0
   );
+}
+
+export function getSkippedAppUpdate(db: DbQueryConnection): string | null {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, SKIPPED_APP_UPDATE_KEY))
+    .get();
+  const value = row === undefined ? undefined : parseStoredValue(row.value);
+  return typeof value === "string" ? value : null;
+}
+
+export function setSkippedAppUpdate(db: DbQueryConnection, key: string): void {
+  writeValue(db, SKIPPED_APP_UPDATE_KEY, key, Date.now());
+}
+
+export function getAutoAppUpdate(db: DbQueryConnection): boolean {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, AUTO_APP_UPDATE_KEY))
+    .get();
+  return row !== undefined && parseStoredValue(row.value) === true;
+}
+
+export function setAutoAppUpdate(db: DbQueryConnection, enabled: boolean): void {
+  writeValue(db, AUTO_APP_UPDATE_KEY, enabled, Date.now());
 }

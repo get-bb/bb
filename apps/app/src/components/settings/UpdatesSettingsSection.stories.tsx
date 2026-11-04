@@ -78,6 +78,8 @@ const IN_APP_UPDATE: SystemAppUpdateStatus = {
   blocked: null,
   current: { commit: null, version: "0.38.0" },
   lastResult: null,
+  autoUpdate: false,
+  availableSkipped: false,
   runningThreadCount: 0,
   scheduled: null,
   support: { kind: "supported", mode: "npm" },
@@ -453,7 +455,7 @@ export function RowVariations() {
 
         <StoryRow
           label="In-app update while threads run"
-          hint="With the updateWhenIdle experiment on, Update when idle waits for running threads; Update now in its menu asks before interrupting them."
+          hint="Update asks before interrupting running threads. With automatic updates on, the update waits for them instead."
         >
           <div className="w-full">
             <BbUpdatesCard>
@@ -463,7 +465,6 @@ export function RowVariations() {
                 desktopInfo={null}
                 isDesktop={false}
                 onApplyAppUpdate={noop}
-                onScheduleAppUpdate={noop}
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
@@ -474,7 +475,7 @@ export function RowVariations() {
 
         <StoryRow
           label="In-app update waiting for threads"
-          hint="The update was scheduled for when threads finish; the server starts it once none are running."
+          hint="Automatic updates found this version; the server starts it once no threads are running. Skip this version keeps it from installing until a newer one appears."
         >
           <div className="w-full">
             <BbUpdatesCard>
