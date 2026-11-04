@@ -83,6 +83,7 @@ jobs:
         env:
           CLOUDFLARE_ENV: production
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm exec turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
 
       - name: Sync marketing analytics secret
