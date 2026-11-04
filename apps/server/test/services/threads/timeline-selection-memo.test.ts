@@ -794,6 +794,59 @@ describe("latest timeline selection memo", () => {
     });
   });
 
+  it("folds only the appended events while the selection is reused", () => {
+    withTestThread((testThread) => {
+      const args = latestArgs("default");
+      append(testThread, [
+        ...startTurn(initialState()),
+        messageStarted("turn-1", "message-1"),
+      ]);
+      const initial = expectWarmEqualsCold(testThread, args, "initial");
+      expect(initial.profile.foldedEventCount).toBe(
+        initial.profile.compactedEventCount,
+      );
+
+      append(testThread, [
+        messageDelta("turn-1", "message-1", "Hello"),
+        messageDelta("turn-1", "message-1", " world\n"),
+      ]);
+      const delta = expectWarmEqualsCold(testThread, args, "delta");
+      expect(selectionWasReused(delta.profile)).toBe(true);
+      expect(delta.profile.foldedEventCount).toBe(2);
+      const nested = expectWarmEqualsCold(
+        testThread,
+        latestArgs("nested"),
+        "nested at the same sequence",
+      );
+      expect(nested.profile.foldedEventCount).toBe(0);
+
+      append(testThread, [
+        itemRow("item/started", "turn-1", {
+          approvalStatus: null,
+          command: "ls",
+          cwd: "/tmp/memo",
+          id: "command-1",
+          status: "pending",
+          type: "commandExecution",
+        }),
+      ]);
+      const command = expectWarmEqualsCold(testThread, args, "command");
+      expect(command.profile.foldedEventCount).toBe(1);
+
+      append(testThread, [
+        {
+          ...messageDelta("turn-1", "message-1", "nested"),
+          parentToolCallId: "agent-1",
+        },
+      ]);
+      const rebuilt = expectWarmEqualsCold(testThread, args, "rebuilt");
+      expect(selectionWasReused(rebuilt.profile)).toBe(false);
+      expect(rebuilt.profile.foldedEventCount).toBe(
+        rebuilt.profile.compactedEventCount,
+      );
+    });
+  });
+
   it("rebuilds when a root delta arrives for an earlier turn outside the latest window", () => {
     withTestThread((testThread) => {
       const state = initialState();

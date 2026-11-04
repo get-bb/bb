@@ -253,6 +253,21 @@ pushed delta as unusable and refetches. That older client sends
 client reading from a server from before tags treats untagged responses and
 pushes as unusable and reads full windows.
 
+## Latest window projection on push
+
+While a thread is active, the server keeps the latest window's event selection
+between reads and extends it with appended events that cannot change which
+events are selected. It also keeps the projection of that selection: its fold
+over the events, before the step that finishes pending work. A read that only
+extends the selection folds just the appended events into the kept state and
+finishes a copy, so the kept state is never consumed. Any read that selects
+afresh (a request, an acceptance, a turn boundary, an interruption, a moved
+window start, a history rewrite, a write from another connection, or a thread
+that is no longer active) projects the whole selection again, exactly as a
+first read does, and keeps that projection for the next read. The kept state
+lives in memory for at most 16 windows; dropping it only costs a full
+projection.
+
 ## Conversation outline caching
 
 The conversation outline returns the full list of message previews;

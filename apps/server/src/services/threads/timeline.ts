@@ -24,6 +24,7 @@ import {
 } from "./timeline-snapshot.js";
 import {
   buildThreadTimelineFromEvents,
+  startThreadTimelineProjectionFold,
   THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
@@ -114,6 +115,10 @@ import { runEventLoopWorkSync } from "../system/event-loop-work.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { withCompactionOffer } from "./compaction-offer.js";
 import { decodeStoredEventRowCached } from "./stored-event-decode-cache.js";
+import {
+  forgetTimelineProjectionFolds,
+  keepTimelineProjectionFold,
+} from "./timeline-projection-fold.js";
 import {
   selectTimelineWindowStart,
   forgetLatestTimelineSelections,
@@ -262,6 +267,7 @@ interface ThreadTimelineBuildProfileStageTiming {
 
 export interface ThreadTimelineBuildProfile {
   compactedEventCount: number;
+  foldedEventCount: number;
   contextWindowEventDataBytes: number;
   contextWindowEventRowCount: number;
   decodedEventCount: number;
@@ -286,6 +292,7 @@ interface BuildThreadTimelineInternalResult {
 
 interface ThreadTimelineBuildProfileAccumulator {
   compactedEventCount: number;
+  foldedEventCount: number;
   contextWindowEventDataBytes: number;
   contextWindowEventRowCount: number;
   decodedEventCount: number;
@@ -1243,6 +1250,7 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
+    foldedEventCount: 0,
     contextWindowEventDataBytes: 0,
     contextWindowEventRowCount: 0,
     decodedEventCount: 0,
@@ -1280,6 +1288,7 @@ function completeThreadTimelineBuildProfile(
 ): ThreadTimelineBuildProfile {
   return {
     compactedEventCount: accumulator.compactedEventCount,
+    foldedEventCount: accumulator.foldedEventCount,
     contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
     contextWindowEventRowCount: accumulator.contextWindowEventRowCount,
     decodedEventCount: accumulator.decodedEventCount,
@@ -1342,6 +1351,7 @@ function buildThreadTimelineInternal(
   const maxInlineOutputChars = options.maxInlineOutputChars;
   if (thread.status !== "active") {
     forgetLatestTimelineSelections(db, thread.id);
+    forgetTimelineProjectionFolds(db, thread.id);
   }
   const memoArgs: LatestTimelineSelectionMemoArgs | null =
     options.page.kind === "latest" &&
@@ -1452,6 +1462,11 @@ function buildThreadTimelineInternal(
     acceptedClientRequestEvents: [],
     rejectedClientRequestEvents: [],
   };
+  const timelineOptions = {
+    ...commonProjectionOptions,
+    includeNestedRows,
+    providerId: thread.providerId,
+  };
   const timeline = measureThreadTimelineStage(
     profile,
     "thread-view-projection",
@@ -1461,11 +1476,33 @@ function buildThreadTimelineInternal(
         contextWindowEvents,
         headStateEvents,
         events: decodedEvents,
-        options: {
-          ...commonProjectionOptions,
-          includeNestedRows,
-          providerId: thread.providerId,
-        },
+        fold:
+          memoArgs === null
+            ? undefined
+            : keepTimelineProjectionFold(db, profile, {
+                decodedRows: decodedRawEvents,
+                key: JSON.stringify([
+                  thread.id,
+                  memoArgs.epochSequenceStart,
+                  memoArgs.eventBudget,
+                  memoArgs.excludeDiagnosticEvents,
+                  memoArgs.maxInlineOutputChars,
+                  memoArgs.page.segmentLimit,
+                  includeDiagnosticOperations,
+                  options.providerDisplayName ?? null,
+                  snapshot.status,
+                  surface.threadName,
+                ]),
+                rows: rawEventRows,
+                start: () =>
+                  startThreadTimelineProjectionFold({
+                    acceptedClientRequestContext,
+                    events: decodedEvents,
+                    options: timelineOptions,
+                  }),
+                threadId: thread.id,
+              }),
+        options: timelineOptions,
       }),
   );
   const projectedTimelineRows = orderTimelineRowsUsingContext(
@@ -1593,6 +1630,7 @@ export function buildThreadTimelineWithProfile(
         result.profile.eventDataBytes += older.profile.eventDataBytes;
         result.profile.decodedEventCount += older.profile.decodedEventCount;
         result.profile.compactedEventCount += older.profile.compactedEventCount;
+        result.profile.foldedEventCount += older.profile.foldedEventCount;
         result.profile.contextWindowEventRowCount +=
           older.profile.contextWindowEventRowCount;
         result.profile.contextWindowEventDataBytes +=

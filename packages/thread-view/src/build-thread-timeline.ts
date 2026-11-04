@@ -45,6 +45,9 @@ import { getFileChangeDiffStats } from "./file-change-summary.js";
 import { getEventProjectionMessageScopeTurnId } from "./message-scope.js";
 import {
   buildEventProjection,
+  finishEventProjectionFold,
+  startEventProjectionFold,
+  type EventProjectionFold,
   buildEventProjectionEntries,
   type ThreadEventWithMeta,
 } from "./build-event-projection.js";
@@ -95,7 +98,41 @@ interface BuildThreadTimelineFromEventsArgs {
   contextWindowEvents: ThreadEventWithMeta[];
   headStateEvents?: ThreadEventWithMeta[];
   events: ThreadEventWithMeta[];
+  fold?: EventProjectionFold;
   options: ThreadTimelineFromEventsOptions;
+}
+
+type ThreadTimelineProjectionOptions = Parameters<
+  typeof buildEventProjection
+>[1];
+
+function threadTimelineProjectionOptions(
+  acceptedClientRequestContext: AcceptedClientRequestContext,
+  options: ThreadTimelineFromEventsOptions,
+): ThreadTimelineProjectionOptions {
+  return {
+    acceptedClientRequestContext,
+    includeDiagnosticOperations: options.includeDiagnosticOperations,
+    providerDisplayName: options.providerDisplayName,
+    threadStatus: options.threadStatus,
+    threadName: options.threadName,
+    turnMessageDetail: "full",
+  };
+}
+
+export function startThreadTimelineProjectionFold(
+  args: Pick<
+    BuildThreadTimelineFromEventsArgs,
+    "acceptedClientRequestContext" | "events" | "options"
+  >,
+): EventProjectionFold {
+  return startEventProjectionFold(
+    args.events,
+    threadTimelineProjectionOptions(
+      args.acceptedClientRequestContext,
+      args.options,
+    ),
+  );
 }
 
 export interface ThreadTimelineFromEventsResult {
@@ -1165,15 +1202,16 @@ export function buildThreadTimelineFromEvents(
   const stateEvents = args.headStateEvents?.length
     ? getOrderedThreadEvents([...args.events, ...args.headStateEvents])
     : args.events;
-  const projectionOptions = {
-    acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeDiagnosticOperations: args.options.includeDiagnosticOperations,
-    providerDisplayName: args.options.providerDisplayName,
-    threadStatus: args.options.threadStatus,
-    threadName: args.options.threadName,
-    turnMessageDetail: "full",
-  } satisfies Parameters<typeof buildEventProjection>[1];
-  const projection = buildEventProjection(args.events, projectionOptions);
+  const projection =
+    args.fold === undefined
+      ? buildEventProjection(
+          args.events,
+          threadTimelineProjectionOptions(
+            args.acceptedClientRequestContext,
+            args.options,
+          ),
+        )
+      : finishEventProjectionFold(args.fold, args.events);
 
   const rows = [
     ...buildTimelineRows(projection, {
