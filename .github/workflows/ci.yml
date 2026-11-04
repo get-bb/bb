@@ -5,14 +5,14 @@ env:
   PNPM_VERSION: "9.15.0"
 jobs:
   windows-foundation:
-    name: Windows identity passthrough ${{ matrix.mode }}
+    name: Windows identity Turbo mode ${{ matrix.mode }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - mode: plain
             runner: blacksmith-4vcpu-windows-2025
-          - mode: localappdata
+          - mode: loose
             runner: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
@@ -56,11 +56,11 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
 
       - name: Instrument identity query
-        run: node .github/diagnostics/instrument-identity.mjs ${{ matrix.mode }}
+        run: node .github/diagnostics/instrument-identity.mjs plain
 
       - name: Lint and test foundation packages
         shell: bash
-        run: node .github/diagnostics/foundation-load.mjs
+        run: node .github/diagnostics/foundation-load.mjs ${{ matrix.mode }}
 
       - name: Bound saved Turbo cache
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs

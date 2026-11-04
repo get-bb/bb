@@ -21,7 +21,7 @@ let workload;
 try {
  await read('before-hidden');
  await read('before-visible',target.pid,token,false);
- const command='pnpm exec turbo run lint test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir=.turbo/cache --continue --concurrency=2 --output-logs=full --log-order=stream --summarize --force';
+ const command='pnpm exec turbo run lint test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir=.turbo/cache --continue --concurrency=2 --output-logs=full --log-order=stream --summarize --force'+(process.argv[2]==='loose'?' --env-mode=loose':'');
  workload=spawn(process.env.ComSpec??'C:\\Windows\\System32\\cmd.exe',['/d','/s','/c',command],{stdio:['ignore','pipe','pipe']});
  const workloadClosed=once(workload,'close');
  workload.stdout.pipe(process.stdout);workload.stderr.pipe(process.stderr);
