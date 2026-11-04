@@ -385,7 +385,12 @@ function AgentStepContainer({
   const refetchCliStatusOnce = useCallback(() => {
     void refetchCliStatus({ cancelRefetch: false });
   }, [refetchCliStatus]);
-  useRefetchOnUpdateNeeded({ states, refetch: refetchCliStatusOnce });
+  useRefetchOnUpdateNeeded({
+    states,
+    statesUpdatedAt: statesQuery.dataUpdatedAt,
+    cliStatus: cliStatusQuery.data,
+    refetch: refetchCliStatusOnce,
+  });
   const signInTerminals = useMemo<AgentSignInTerminals>(
     () => ({
       closeAbandoned: closeAbandonedSignInTerminals,

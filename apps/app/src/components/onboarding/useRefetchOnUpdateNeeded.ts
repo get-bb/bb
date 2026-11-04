@@ -1,27 +1,29 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { SystemProviderState } from "@bb/server-contract";
 
 export function useRefetchOnUpdateNeeded({
   states,
+  statesUpdatedAt,
+  cliStatus,
   refetch,
 }: {
   states: readonly SystemProviderState[] | undefined;
+  statesUpdatedAt: number;
+  cliStatus: ProviderCliStatusResponse | undefined;
   refetch: () => void;
 }): void {
-  const seenRef = useRef<ReadonlySet<string>>(new Set());
-  const needingUpdate =
-    states === undefined
-      ? null
-      : states
-          .filter((state) => state.status === "unsupported_version")
-          .map((state) => state.providerId)
-          .sort()
-          .join("\n");
+  const cliStatusBehind =
+    cliStatus !== undefined &&
+    (states ?? []).some((state) => {
+      const cli = cliStatus[state.providerId];
+      return (
+        state.status === "unsupported_version" &&
+        cli !== undefined &&
+        !cli.versionUnsupported
+      );
+    });
   useEffect(() => {
-    if (needingUpdate === null) return;
-    const ids = new Set(needingUpdate === "" ? [] : needingUpdate.split("\n"));
-    const seen = seenRef.current;
-    seenRef.current = ids;
-    if ([...ids].some((id) => !seen.has(id))) refetch();
-  }, [needingUpdate, refetch]);
+    if (cliStatusBehind) refetch();
+  }, [cliStatusBehind, statesUpdatedAt, refetch]);
 }
