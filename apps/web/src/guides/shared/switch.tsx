@@ -162,7 +162,7 @@ export const PROJECTS_SHOT: GuideShot = {
   height: 1280,
 };
 
-export const EXISTING_WORKTREE_SHOT: GuideShot = {
+const EXISTING_WORKTREE_SHOT: GuideShot = {
   src: "/guides/switch-to-bb/window-existing-worktree.webp",
   alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
   width: 2048,

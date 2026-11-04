@@ -5,7 +5,6 @@ import { withIntake } from "../prompt-intake";
 import { AGENTS_FAQ, COST_FAQ } from "../shared/faq";
 import {
   CLAUDE_HANDOFF_SHOT,
-  EXISTING_WORKTREE_SHOT,
   THREAD_FAILS_TROUBLESHOOTING,
   missingConversationTroubleshooting,
   whatComesAlongFaq,
@@ -86,7 +85,12 @@ export const guide: Guide = {
           </li>
         </Substeps>
       ),
-      shot: EXISTING_WORKTREE_SHOT,
+      shot: {
+        src: "/guides/switch-from-conductor/window-moved-workspaces.webp",
+        alt: "A bb thread where the agent reports that three Conductor workspaces are in bb, with a table of repo, workspace, branch, uncommitted changes, and each new bb thread, and the new threads listed in the sidebar",
+        width: 2048,
+        height: 1280,
+      },
       options: [],
     },
     {
