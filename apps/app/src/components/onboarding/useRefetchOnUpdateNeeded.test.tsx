@@ -57,14 +57,22 @@ function codexCli(outdated: boolean): ProviderCliStatus {
 
 describe("useRefetchOnUpdateNeeded", () => {
   it("offers Update once a ready agent turns out of date, without a reload", async () => {
-    let outdated = false;
-    const fetchCli = vi.fn(async () => ({ codex: codexCli(outdated) }));
+    const cliResponses = [false, false, true];
+    const fetchCli = vi.fn(async () => ({
+      codex: codexCli(cliResponses.shift() ?? true),
+    }));
     const client = new QueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { result, rerender } = renderHook(
-      ({ health }: { health: SystemProviderState }) => {
+      ({
+        health,
+        polledAt,
+      }: {
+        health: SystemProviderState;
+        polledAt: number;
+      }) => {
         const cli = useQuery({
           queryKey: ["provider-cli-status"],
           queryFn: fetchCli,
@@ -73,6 +81,8 @@ describe("useRefetchOnUpdateNeeded", () => {
         const { refetch } = cli;
         useRefetchOnUpdateNeeded({
           states: [health],
+          statesUpdatedAt: polledAt,
+          cliStatus: cli.data,
           refetch: () => void refetch({ cancelRefetch: false }),
         });
         return resolveAgentSetupState({
@@ -85,13 +95,23 @@ describe("useRefetchOnUpdateNeeded", () => {
           installInfoPending: cli.isPending,
         });
       },
-      { wrapper, initialProps: { health: codexHealth("ready") } },
+      {
+        wrapper,
+        initialProps: { health: codexHealth("ready"), polledAt: 1 },
+      },
     );
     await waitFor(() => expect(result.current.status).toBe("ready"));
+    rerender({ health: codexHealth("ready"), polledAt: 2 });
     expect(fetchCli).toHaveBeenCalledTimes(1);
 
-    outdated = true;
-    rerender({ health: codexHealth("unsupported_version") });
+    rerender({ health: codexHealth("unsupported_version"), polledAt: 3 });
+    await waitFor(() => expect(fetchCli).toHaveBeenCalledTimes(2));
+    expect(result.current).toMatchObject({
+      status: "update",
+      canInstall: false,
+    });
+
+    rerender({ health: codexHealth("unsupported_version"), polledAt: 4 });
     await waitFor(() =>
       expect(result.current).toEqual({
         status: "update",
@@ -99,10 +119,10 @@ describe("useRefetchOnUpdateNeeded", () => {
         canInstall: true,
       }),
     );
-    expect(fetchCli).toHaveBeenCalledTimes(2);
+    expect(fetchCli).toHaveBeenCalledTimes(3);
 
-    rerender({ health: codexHealth("unsupported_version") });
-    expect(fetchCli).toHaveBeenCalledTimes(2);
+    rerender({ health: codexHealth("unsupported_version"), polledAt: 5 });
+    expect(fetchCli).toHaveBeenCalledTimes(3);
     client.clear();
   });
 });
