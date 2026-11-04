@@ -21,14 +21,18 @@ export function usageWindowLabel(
     : `${minutes / 60} hour limit`;
 }
 
-export function usagePlanLabel(
+export function usagePlan(
   account: Pick<AccountSummary, "subscriptionType" | "rateLimitTier">,
-): string | null {
-  const maxMatch = (account.rateLimitTier ?? "").match(/max_(\d+)x/u);
-  if (maxMatch) return `Max (${maxMatch[1]}x)`;
+): { id: string; label: string } | null {
+  const tier = account.rateLimitTier ?? "";
+  if (/max_20x/u.test(tier)) return { id: "ultra", label: "Ultra" };
+  if (/max_\d+x/u.test(tier)) return { id: "max", label: "Max" };
   const subscription = account.subscriptionType;
   return subscription
-    ? subscription.charAt(0).toUpperCase() + subscription.slice(1)
+    ? {
+        id: subscription.toLowerCase(),
+        label: subscription.charAt(0).toUpperCase() + subscription.slice(1),
+      }
     : null;
 }
 
@@ -141,17 +145,11 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
                 family,
               );
           }
+          const plan = usagePlan(account);
           const accountFields = {
-            plan: account.subscriptionType
-              ? {
-                  id: account.subscriptionType.toLowerCase(),
-                  multiplier:
-                    Number(account.rateLimitTier?.match(/max_(\d+)x/u)?.[1]) ||
-                    null,
-                }
-              : null,
+            plan: plan ? { id: plan.id, multiplier: null } : null,
             accountEmail: account.email,
-            planLabel: usagePlanLabel(account),
+            planLabel: plan?.label ?? null,
           };
           const error =
             (account.error === null
