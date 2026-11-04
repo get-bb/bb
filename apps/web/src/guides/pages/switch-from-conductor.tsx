@@ -91,12 +91,14 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            Open bb, choose <strong>New thread</strong>, paste the prompt from{" "}
-            <CopyPromptButton />, and send it.
+            Open bb and choose <strong>New thread</strong>.
           </li>
           <li>
-            It asks which repos and workspaces to bring over and whether to move
-            your scripts, then sums up the plan. Say go.
+            Paste the prompt from <CopyPromptButton /> and send it.
+          </li>
+          <li>
+            Answer the agent's questions about which repos, workspaces, and
+            scripts to move, then confirm the plan.
           </li>
         </Substeps>
       ),
@@ -113,11 +115,16 @@ export const guide: Guide = {
       title: "Pick up each task",
       lead: null,
       body: (
-        <p>
-          Each new thread reads its Conductor conversation and writes you a
-          handoff: the goal, what's done, and what's left. Reply to correct it,
-          or say go.
-        </p>
+        <Substeps>
+          <li>Open one of the new threads.</li>
+          <li>
+            Read the agent's summary of the task: the goal, what's done, and
+            what's left.
+          </li>
+          <li>
+            Correct anything that's wrong, then tell the agent to continue.
+          </li>
+        </Substeps>
       ),
       shot: CLAUDE_HANDOFF_SHOT,
       options: [],
