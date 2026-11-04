@@ -1,79 +1,21 @@
 name: CI
 on: workflow_dispatch
-env:
-  PRIMARY_NODE_VERSION: "22.x"
-  PNPM_VERSION: "9.15.0"
+permissions:
+  contents: read
 jobs:
-  windows-foundation:
-    name: Windows identity module cache ${{ matrix.mode }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - mode: plain
-            runner: blacksmith-4vcpu-windows-2025
-          - mode: pscache
-            runner: blacksmith-4vcpu-windows-2025
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    permissions:
-      contents: read
-
+  identity:
+    name: Windows identity deadline control
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 5
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          node-version: 22.x
           package-manager-cache: false
-
-      - name: Setup pnpm
-        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
-
-      - name: Restore Windows dependency disk
-        timeout-minutes: 2
-        continue-on-error: true
-        uses: ./.github/actions/windows-dependency-cache
-
-      - name: Restore workspace caches
-        id: cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-workspace
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache-prefix: windows-foundation
-          turbo-cache: "true"
-          turbo-cache-max-size-mb: "256"
-
-      - name: Install foundation dependencies
-        timeout-minutes: 5
-        shell: bash
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
-
-      - name: Instrument identity query
-        run: node .github/diagnostics/instrument-identity.mjs ${{ matrix.mode }}
-
-      - name: Lint and test foundation packages
-        shell: bash
-        run: node .github/diagnostics/foundation-load.mjs ${{ matrix.mode }}
-
-      - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
-
-      - name: Upload identity observations
-        if: always()
+      - run: node .github/diagnostics/cache-load.mjs
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: identity-${{ matrix.mode }}
-          path: |
-            identity-load.json
-            .github/diagnostics/identity-controller.json
-            .github/diagnostics/identity-test.json
-            packages/config/identity-observations.jsonl
-            packages/process-utils/identity-observations.jsonl
-            .turbo/runs
+          name: cache-deadline-control
+          path: cache-load.json
