@@ -57,7 +57,7 @@ Reply with a table of each workspace, its branch, and its bb thread ID, then the
 export const guide: Guide = {
   ...meta,
   description:
-    "Conductor is joining Meta. Move your Conductor workspaces to bb with one prompt: each keeps its branch and changes, and its agent picks up where it left off.",
+    "Conductor is joining Meta. Move your Conductor workspaces to bb with one prompt and pick up right where you left off.",
   heroTop: <SwitchConcept tool="conductor" />,
   concept: null,
   agentPrompt: AGENT_PROMPT,
