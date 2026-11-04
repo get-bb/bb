@@ -13,11 +13,6 @@
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",
       "default": "./src/testing.ts"
-    },
-    "./migrate": {
-      "source": "./src/migrate.ts",
-      "types": "./src/migrate.ts",
-      "default": "./src/migrate.ts"
     }
   },
   "scripts": {
@@ -28,15 +23,13 @@
   "dependencies": {
     "@bb/connect-db": "workspace:*",
     "@electric-sql/pglite": "^0.5.15",
+    "drizzle-orm": "^0.38.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
-    "better-sqlite3": "12.10.0",
-    "drizzle-orm": "^0.38.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

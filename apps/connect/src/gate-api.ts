@@ -3,8 +3,9 @@ import {
   mcpResourceForOrigin,
   sha256Hex,
   type ConnectDb,
+  executedRows,
 } from "@bb/connect-db";
-import type { SqlBackend } from "@bb/connect-db/store";
+import { type SQL, sql } from "drizzle-orm";
 import {
   GATE_PRESENCE_BATCH_MAX,
   GATE_RESOLVE_BATCH_MAX,
@@ -34,7 +35,7 @@ import { authorizeMcpToken } from "./mcp-gate.js";
 import { resolveConnectRuntime } from "./cloud-dev.js";
 import { jsonResponse, methodNotAllowed } from "./json-response.js";
 import type { Env } from "./tunnel-do.js";
-import { openGateDb, type WaitUntilContext } from "./connect-db.js";
+import { openGateDb } from "./connect-db.js";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RESOLVE_BATCH_BODY_BYTES = 256 * 1024;
@@ -427,7 +428,7 @@ export async function handleGateResolve(
   if (request.method !== "POST") return methodNotAllowed("POST");
   const parsed = parseGateResolveRequest(await readJsonBody(request));
   if (parsed === null) return invalidRequest();
-  const { db } = openGateDb(env, ctx);
+  const { db } = openGateDb(env);
   return jsonResponse(await resolveOne(parsed, env, db, ctx), 200, NO_STORE);
 }
 
@@ -445,7 +446,7 @@ export async function handleGateResolveBatch(
     parseGateResolveRequest,
   );
   if (requests === null) return invalidRequest();
-  const { db } = openGateDb(env, ctx);
+  const { db } = openGateDb(env);
   const labels = await resolveLabels(
     requests.map((parsed) => parsed.label),
     db,
@@ -466,67 +467,57 @@ export async function handleGateResolveBatch(
   return jsonResponse(body, 200, NO_STORE);
 }
 
-type PresenceDialect = "sqlite" | "pg";
-
-const PRESENCE_ROWS: Record<PresenceDialect, string> = {
-  sqlite: `SELECT json_extract(value, '$.label') AS label,
-  json_extract(value, '$.state') AS state,
-  json_extract(value, '$.region') AS region,
-  json_extract(value, '$.gateMachineId') AS gate,
-  json_extract(value, '$.at') AS at
-  FROM json_each(?1)`,
-  pg: `SELECT label, state, region, "gateMachineId" AS gate, at
-  FROM jsonb_to_recordset($1::jsonb)
-  AS x(label text, state text, region text, "gateMachineId" text, at bigint)`,
-};
-
-const PRESENCE_NOW: Record<PresenceDialect, string> = {
-  sqlite: "min(p.at, ?2)",
-  pg: "LEAST(p.at, $2::bigint)",
-};
-
-const PRESENCE_INTERVAL: Record<PresenceDialect, string> = {
-  sqlite: "?3",
-  pg: "$3::bigint",
-};
-
-const MACHINE_HOLDS_LABEL = `machine.revoked_at IS NULL
+const MACHINE_HOLDS_LABEL = sql.raw(`machine.revoked_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM server WHERE server.subdomain = machine.subdomain)
   AND EXISTS (SELECT 1 FROM label_claim WHERE label_claim.label = machine.subdomain
     AND label_claim.kind = 'machine' AND label_claim.owner_id = machine.id)
-  AND EXISTS (SELECT 1 FROM profile WHERE profile.user_id = machine.user_id)`;
+  AND EXISTS (SELECT 1 FROM profile WHERE profile.user_id = machine.user_id)`);
+
+interface PresenceValues {
+  reports: string;
+  now: number;
+  interval: number;
+}
+
+function presenceRows(values: PresenceValues): SQL {
+  return sql`SELECT label, state, region, "gateMachineId" AS gate, at
+  FROM jsonb_to_recordset(${values.reports}::jsonb)
+  AS x(label text, state text, region text, "gateMachineId" text, at bigint)`;
+}
 
 function connectedUpdate(
-  table: "server" | "machine",
-  dialect: PresenceDialect,
-): string {
-  return `UPDATE ${table} SET next_tunnel_gate = p.gate, next_tunnel_region = p.region,
-  next_tunnel_at = p.at, last_seen_at = ${PRESENCE_NOW[dialect]}
-  FROM (${PRESENCE_ROWS[dialect]}) AS p
+  name: "server" | "machine",
+  values: PresenceValues,
+): SQL {
+  const table = sql.raw(name);
+  return sql`UPDATE ${table} SET next_tunnel_gate = p.gate, next_tunnel_region = p.region,
+  next_tunnel_at = p.at, last_seen_at = LEAST(p.at, ${values.now}::bigint)
+  FROM (${presenceRows(values)}) AS p
   WHERE p.state = 'connected' AND ${table}.subdomain = p.label
-  ${table === "machine" ? `AND ${MACHINE_HOLDS_LABEL}` : ""}
+  ${name === "machine" ? sql`AND ${MACHINE_HOLDS_LABEL}` : sql``}
   AND (${table}.next_tunnel_at IS NULL OR ${table}.next_tunnel_at < p.at)
   AND (${table}.next_tunnel_gate IS NULL OR ${table}.next_tunnel_at IS NULL
     OR ${table}.next_tunnel_gate <> p.gate OR ${table}.next_tunnel_region <> p.region
-    OR ${table}.next_tunnel_at <= p.at - ${PRESENCE_INTERVAL[dialect]})
+    OR ${table}.next_tunnel_at <= p.at - ${values.interval}::bigint)
   RETURNING ${table}.subdomain AS label`;
 }
 
 function disconnectedUpdate(
-  table: "server" | "machine",
-  dialect: PresenceDialect,
-): string {
-  return `UPDATE ${table} SET next_tunnel_gate = NULL, next_tunnel_region = NULL,
-  next_tunnel_at = p.at, last_seen_at = ${PRESENCE_NOW[dialect]}
-  FROM (${PRESENCE_ROWS[dialect]}) AS p
+  name: "server" | "machine",
+  values: PresenceValues,
+): SQL {
+  const table = sql.raw(name);
+  return sql`UPDATE ${table} SET next_tunnel_gate = NULL, next_tunnel_region = NULL,
+  next_tunnel_at = p.at, last_seen_at = LEAST(p.at, ${values.now}::bigint)
+  FROM (${presenceRows(values)}) AS p
   WHERE p.state = 'disconnected' AND ${table}.subdomain = p.label
-  ${table === "machine" ? `AND ${MACHINE_HOLDS_LABEL}` : ""}
+  ${name === "machine" ? sql`AND ${MACHINE_HOLDS_LABEL}` : sql``}
   AND ${table}.next_tunnel_gate = p.gate AND ${table}.next_tunnel_at <= p.at
   RETURNING ${table}.subdomain AS label`;
 }
 
-function knownLabels(dialect: PresenceDialect): string {
-  return `SELECT p.label AS label FROM (${PRESENCE_ROWS[dialect]}) AS p
+function knownLabels(values: PresenceValues): SQL {
+  return sql`SELECT p.label AS label FROM (${presenceRows(values)}) AS p
   WHERE EXISTS (SELECT 1 FROM server WHERE server.subdomain = p.label)
   OR EXISTS (SELECT 1 FROM machine
     JOIN profile ON profile.user_id = machine.user_id
@@ -535,90 +526,45 @@ function knownLabels(dialect: PresenceDialect): string {
     WHERE machine.subdomain = p.label)`;
 }
 
-function presenceStatements(dialect: PresenceDialect): [string, number][] {
+function presenceStatements(values: PresenceValues): SQL[] {
   return [
-    [knownLabels(dialect), 1],
-    [connectedUpdate("server", dialect), 3],
-    [disconnectedUpdate("server", dialect), 2],
-    [connectedUpdate("machine", dialect), 3],
-    [disconnectedUpdate("machine", dialect), 2],
+    knownLabels(values),
+    connectedUpdate("server", values),
+    disconnectedUpdate("server", values),
+    connectedUpdate("machine", values),
+    disconnectedUpdate("machine", values),
   ];
 }
 
-const SQLITE_PRESENCE_STATEMENTS = presenceStatements("sqlite");
-const PG_PRESENCE_STATEMENTS = presenceStatements("pg");
-
-async function presenceLabelsD1(
-  d1: D1Database,
-  values: readonly unknown[],
-): Promise<string[][]> {
-  const results = await d1.batch<{ label: string }>(
-    SQLITE_PRESENCE_STATEMENTS.map(([statement, count]) =>
-      d1.prepare(statement).bind(...values.slice(0, count)),
-    ),
-  );
-  return results.map((result) => result.results.map((row) => row.label));
-}
-
-async function presenceLabelsPg(
-  pg: SqlBackend,
-  values: readonly unknown[],
-): Promise<string[][]> {
-  await pg.execute("BEGIN", [], "run");
-  try {
-    const labels: string[][] = [];
-    for (const [statement, count] of PG_PRESENCE_STATEMENTS) {
-      const { rows } = await pg.execute(
-        statement,
-        values.slice(0, count),
-        "all",
-      );
-      labels.push(rows.map((row) => String(row[0])));
-    }
-    await pg.execute("COMMIT", [], "run");
-    return labels;
-  } catch (error) {
-    await pg.execute("ROLLBACK", [], "run").catch(() => undefined);
-    throw error;
-  }
-}
-
-export type PresenceTarget =
-  | { kind: "d1"; d1: D1Database }
-  | { kind: "pg"; pg: SqlBackend };
-
-async function presenceTarget(
-  env: Env,
-  ctx: WaitUntilContext,
-): Promise<PresenceTarget> {
-  const { primary } = await openGateDb(env, ctx).backends();
-  return primary.kind === "pg"
-    ? { kind: "pg", pg: primary }
-    : { kind: "d1", d1: env.DB };
-}
-
 export async function recordNextTunnelPresence(
-  target: PresenceTarget,
+  db: ConnectDb,
   reports: readonly GatePresenceRequest[],
   now: number,
 ): Promise<GatePresenceResult[]> {
-  const values = [JSON.stringify(reports), now, NEXT_TUNNEL_WRITE_INTERVAL_MS];
-  const [known, ...writes] =
-    target.kind === "pg"
-      ? await presenceLabelsPg(target.pg, values)
-      : await presenceLabelsD1(target.d1, values);
-  const knownLabels = new Set(known ?? []);
+  const values: PresenceValues = {
+    reports: JSON.stringify(reports),
+    now,
+    interval: NEXT_TUNNEL_WRITE_INTERVAL_MS,
+  };
+  const [known, ...writes] = await db.transaction(async (tx) => {
+    const labels: string[][] = [];
+    for (const statement of presenceStatements(values)) {
+      const rows = executedRows(await tx.execute(statement));
+      labels.push(rows.map((row) => String(row.label)));
+    }
+    return labels;
+  });
+  const knownLabelSet = new Set(known ?? []);
   const recorded = new Set(writes.flat());
   return reports.map((report) => {
     if (recorded.has(report.label)) return "recorded";
-    return knownLabels.has(report.label) ? "unchanged" : "unknown_label";
+    return knownLabelSet.has(report.label) ? "unchanged" : "unknown_label";
   });
 }
 
 export async function handleGatePresence(
   request: Request,
   env: Env,
-  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (!(await gateRequestAuthorized(request, env))) return notFound();
   if (request.method !== "POST") return methodNotAllowed("POST");
@@ -627,7 +573,7 @@ export async function handleGatePresence(
   const now = Date.now();
   if (parsed.at > now + PRESENCE_MAX_FUTURE_MS) return invalidRequest();
   const [result] = await recordNextTunnelPresence(
-    await presenceTarget(env, ctx),
+    openGateDb(env).db,
     [parsed],
     now,
   );
@@ -641,7 +587,6 @@ export async function handleGatePresence(
 export async function handleGatePresenceBatch(
   request: Request,
   env: Env,
-  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (!(await gateRequestAuthorized(request, env))) return notFound();
   if (request.method !== "POST") return methodNotAllowed("POST");
@@ -661,11 +606,7 @@ export async function handleGatePresenceBatch(
     return invalidRequest();
   }
   const body: GatePresenceBatchResponse = {
-    results: await recordNextTunnelPresence(
-      await presenceTarget(env, ctx),
-      reports,
-      now,
-    ),
+    results: await recordNextTunnelPresence(openGateDb(env).db, reports, now),
   };
   return jsonResponse(body, 200, NO_STORE);
 }

@@ -440,12 +440,17 @@ pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-m
 ## Local Cloud
 
 Run the Cloud dashboard, the Connect worker, and the AI gateway against one
-local D1 database:
+local Postgres database. The workers' `HYPERDRIVE` binding defaults to
+`postgresql://bb:bb@localhost:5432/bb_connect`; start a Postgres there once:
 
 ```bash
+docker run -d --name bb-connect-pg -p 5432:5432 \
+  -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect \
+  postgres:17
 pnpm cloud:dev
 ```
 
+`BB_CLOUD_DEV_DATABASE_URL` points the three services at another database.
 The command applies migrations and prints the dashboard URL. Create a local
 email/password account, claim a handle, create a pairing code, and run the
 displayed `bb account login --code` command against a bb started with
@@ -470,7 +475,7 @@ For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
 `NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
 worker's `GATE_SECRET` (the account API answers 404 without it),
 `BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
-`BB_CLOUD_DEV_STATE_DIR` moves the local D1 and Durable Object state away from
+`BB_CLOUD_DEV_STATE_DIR` moves the local Durable Object state away from
 `.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
 see [connect-next.md](connect-next.md#local-end-to-end-run).
 
@@ -487,8 +492,8 @@ staging key with `wrangler secret put OPENROUTER_API_KEY --env staging` from
 `apps/ai-gateway`. Use a dedicated OpenRouter key with account-wide zero data
 retention and a daily credit limit.
 
-Ctrl-C stops the local services. Local D1 state is kept under
-`.wrangler/cloud-dev`.
+Ctrl-C stops the local services. Account data stays in the local Postgres;
+Durable Object state is kept under `.wrangler/cloud-dev`.
 
 To test a source bb against the deployed staging Cloud instead, start it with
 `pnpm dev --staging`. bb account and Connect then sign in, redeem codes, open

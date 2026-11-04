@@ -147,7 +147,6 @@ beforeAll(async () => {
     compatibilityDate: "2026-06-11",
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: { TUNNEL_DO: "TunnelDO" },
-    d1Databases: { DB: "fixture-db" },
     bindings: {
       BASE_DOMAIN: "relay.test",
       BETTER_AUTH_SECRET: "fixture-secret",

@@ -30,7 +30,7 @@ export default {
       return unavailableResponse("hosted generation is not configured");
     }
     return routeGatewayRequest(request, {
-      db: openConnectDb(env, (promise) => ctx.waitUntil(promise)).db,
+      db: openConnectDb(env).db,
       credentials,
       config,
       rateLimiter: env.AI_RATE_LIMITER,
@@ -42,12 +42,12 @@ export default {
     });
   },
 
-  async scheduled(
-    controller: ScheduledController,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<void> {
-    const { db } = openConnectDb(env, (promise) => ctx.waitUntil(promise));
-    await pruneAiUsage(db, controller.scheduledTime);
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    const opened = openConnectDb(env);
+    try {
+      await pruneAiUsage(opened.db, controller.scheduledTime);
+    } finally {
+      await opened.close();
+    }
   },
 } satisfies ExportedHandler<Env>;

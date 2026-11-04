@@ -181,7 +181,6 @@ vi.mock("./cache.js", async () => {
 vi.mock("@bb/connect-db-pg", () => ({
   openConnectDb: vi.fn(() => ({
     db: {},
-    backends: async () => ({ mode: "d1", primary: null, secondary: null }),
     close: async () => {},
   })),
 }));
@@ -191,9 +190,6 @@ import { openConnectDb } from "@bb/connect-db-pg";
 function mockConnectDb(db: unknown): void {
   vi.mocked(openConnectDb).mockReturnValue({
     db,
-    backends: async () => {
-      throw new Error("backends are not used by these tests");
-    },
     close: async () => {},
   } as never);
 }
@@ -308,7 +304,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
       },
       get: () => stub,
     },
-    DB: {} as D1Database,
+    HYPERDRIVE: {} as Hyperdrive,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
     GATE_EVENTS: { writeDataPoint: vi.fn() },
@@ -412,11 +408,7 @@ describe("POST /api/connect/disconnect", () => {
     const response = await worker.fetch(request, env as never, ctx);
 
     expect(response.status).toBe(200);
-    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(
-      request,
-      env,
-      expect.anything(),
-    );
+    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -444,11 +436,7 @@ describe("POST /api/connect/machine-label", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ label: "sawyer-air" });
-    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(
-      request,
-      env,
-      expect.anything(),
-    );
+    expect(mockHandleAssignMachineLabel).toHaveBeenCalledWith(request, env);
     expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
@@ -2452,7 +2440,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
 function makeDoEnv() {
   return {
     TUNNEL_DO: {} as DurableObjectNamespace,
-    DB: {} as D1Database,
+    HYPERDRIVE: {} as Hyperdrive,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
     GATE_EVENTS: { writeDataPoint: vi.fn() },
@@ -2486,8 +2474,7 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("bumps machine.lastSeenAt when a machine-label tunnel is connected", async () => {
-    const run = vi.fn(async () => {});
-    const where = vi.fn(() => ({ run }));
+    const where = vi.fn(async () => {});
     const set = vi.fn(() => ({ where }));
     const update = vi.fn(() => ({ set }));
     mockConnectDb({ update });
@@ -2500,13 +2487,13 @@ describe("TunnelDO machine presence", () => {
 
     expect(update).toHaveBeenCalledWith(machine);
     expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 
-  it("schedules the next presence alarm before a slow D1 write settles", async () => {
-    const run = vi.fn(() => new Promise<void>(() => {}));
+  it("schedules the next presence alarm before a slow database write settles", async () => {
+    const write = vi.fn(() => new Promise<void>(() => {}));
     const update = vi.fn(() => ({
-      set: () => ({ where: () => ({ run }) }),
+      set: () => ({ where: write }),
     }));
     mockConnectDb({ update });
     const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
@@ -2518,7 +2505,7 @@ describe("TunnelDO machine presence", () => {
 
     const before = Date.now();
     void dob.alarm();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
 
     expect(setAlarm).toHaveBeenCalledTimes(1);
     const at = setAlarm.mock.calls[0]![0];
@@ -2529,7 +2516,7 @@ describe("TunnelDO machine presence", () => {
   it("spreads presence alarms across the interval instead of a fixed period", async () => {
     mockConnectDb({
       update: () => ({
-        set: () => ({ where: () => ({ run: async () => {} }) }),
+        set: () => ({ where: async () => {} }),
       }),
     });
     const offsets: number[] = [];
@@ -3473,7 +3460,7 @@ describe("gate error response", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveLabel.mockRejectedValue(
-      new Error("D1_ERROR: D1 DB is overloaded. Requests queued for too long."),
+      new Error("Connection terminated unexpectedly"),
     );
   });
 
@@ -3495,8 +3482,7 @@ describe("gate error response", () => {
       expect.objectContaining({
         method: "GET",
         path: "/api/v1/threads/thr_x/child-summary",
-        error:
-          "Error: D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
+        error: "Error: Connection terminated unexpectedly",
       }),
     );
     logged.mockRestore();
@@ -3741,11 +3727,11 @@ describe("TunnelDO worker-held relay", () => {
 
 describe("TunnelDO status and on-change presence", () => {
   function presenceDb() {
-    const run = vi.fn(async () => {});
-    const set = vi.fn(() => ({ where: () => ({ run }) }));
+    const write = vi.fn(async () => {});
+    const set = vi.fn(() => ({ where: write }));
     const update = vi.fn(() => ({ set }));
     mockConnectDb({ update });
-    return { run, set, update };
+    return { write, set, update };
   }
 
   it("reports whether a tunnel socket is connected without touching the tunnel", async () => {
@@ -3800,7 +3786,7 @@ describe("TunnelDO status and on-change presence", () => {
   });
 
   it("writes last-seen when the tunnel closes and spaces the alarm to half an hour in on-change mode", async () => {
-    const { run } = presenceDb();
+    const { write } = presenceDb();
     const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
     const setAlarm = vi.fn(async (_at: number) => {});
     state.api.storage.setAlarm = setAlarm;
@@ -3817,15 +3803,15 @@ describe("TunnelDO status and on-change presence", () => {
     const delayMs = setAlarm.mock.calls[0]![0] - before;
     expect(delayMs).toBeGreaterThanOrEqual(25 * 60_000);
     expect(delayMs).toBeLessThan(35 * 60_000 + 1_000);
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
 
     (tunnel as unknown as { readyState: number }).readyState = 3;
     dob.webSocketClose(tunnel, 1006, "");
-    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
   });
 
   it("leaves last-seen to the periodic alarm when on-change mode is off", async () => {
-    const { run } = presenceDb();
+    const { write } = presenceDb();
     const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
@@ -3835,7 +3821,7 @@ describe("TunnelDO status and on-change presence", () => {
     (tunnel as unknown as { readyState: number }).readyState = 3;
     dob.webSocketClose(tunnel, 1006, "");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(run).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });
 

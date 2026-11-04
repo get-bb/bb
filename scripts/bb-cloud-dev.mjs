@@ -19,6 +19,12 @@ const REPO_ROOT = path.resolve(
 const STATE_DIR =
   process.env.BB_CLOUD_DEV_STATE_DIR?.trim() ||
   path.join(REPO_ROOT, ".wrangler", "cloud-dev");
+const DATABASE_URL =
+  process.env.BB_CLOUD_DEV_DATABASE_URL?.trim() ||
+  "postgresql://bb:bb@localhost:5432/bb_connect";
+const DATABASE_ENV = {
+  CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: DATABASE_URL,
+};
 const DEV_SECRET =
   "6c9e2f41a7d58b30c4e918f267bd5a0c3f1468e2d9a57b04c8f31a6d72e95b40";
 const DEV_BASE_DOMAIN = "bb.localhost";
@@ -43,14 +49,26 @@ function fail(message) {
   process.exit(1);
 }
 
-function run(args) {
+function run(args, env = {}, hint = "") {
   const result = spawnSync("pnpm", args, {
     cwd: REPO_ROOT,
-    env: { ...process.env, CI: "1" },
+    env: { ...process.env, CI: "1", ...env },
     stdio: "inherit",
   });
   if (result.error) fail(result.error.message);
-  if (result.status !== 0) fail(`command failed: pnpm ${args.join(" ")}`);
+  if (result.status !== 0) {
+    fail(`command failed: pnpm ${args.join(" ")}${hint ? `\n${hint}` : ""}`);
+  }
+}
+
+function redactedUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = "***";
+    return parsed.toString();
+  } catch {
+    return "the configured database";
+  }
 }
 
 function spawnService(args, env = {}) {
@@ -82,7 +100,6 @@ function signalService(child, signal) {
       process.kill(-child.pid, signal);
     }
   } catch {
-    // The process may have exited while shutdown was starting.
   }
 }
 
@@ -163,7 +180,6 @@ function routeRequest(request) {
       }
     }
   } catch {
-    // Invalid hosts are rejected below.
   }
   return null;
 }
@@ -181,20 +197,16 @@ try {
 }
 
 await mkdir(STATE_DIR, { recursive: true });
-console.log(`Preparing local Cloud data in ${STATE_DIR}`);
-run([
-  "--filter",
-  "@bb/connect",
-  "exec",
-  "wrangler",
-  "d1",
-  "migrations",
-  "apply",
-  "DB",
-  "--local",
-  "--persist-to",
-  STATE_DIR,
-]);
+console.log(
+  `Preparing local Cloud data in ${STATE_DIR} and ${redactedUrl(DATABASE_URL)}`,
+);
+run(
+  ["--filter", "@bb/connect-db-pg", "run", "db:migrate"],
+  { CONNECT_DB_PG_MIGRATOR_URL: DATABASE_URL },
+  "Start a local Postgres first, for example:\n" +
+    "  docker run -d --name bb-connect-pg -p 5432:5432 -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect postgres:17\n" +
+    "or point BB_CLOUD_DEV_DATABASE_URL at another database.",
+);
 
 const proxy = createCloudDevProxy();
 gateway = createServer((request, response) => {
@@ -227,56 +239,62 @@ try {
   await stop(1);
 }
 
-const worker = spawnService([
-  "--filter",
-  "@bb/connect",
-  "exec",
-  "wrangler",
-  "dev",
-  "--port",
-  String(ports.cloudWorkerPort),
-  "--ip",
-  "127.0.0.1",
-  "--persist-to",
-  STATE_DIR,
-  "--var",
-  `BASE_DOMAIN:${DEV_BASE_DOMAIN}`,
-  "--var",
-  `ACCOUNT_APP_URL:${CLOUD_URL}`,
-  "--var",
-  `BETTER_AUTH_SECRET:${DEV_SECRET}`,
-  "--var",
-  "CLOUD_DEV:true",
-  "--var",
-  `NEXT_BASE_DOMAIN:next.${DEV_BASE_DOMAIN}`,
-  ...(process.env.BB_CLOUD_DEV_GATE_SECRET?.trim()
-    ? ["--var", `GATE_SECRET:${process.env.BB_CLOUD_DEV_GATE_SECRET.trim()}`]
-    : []),
-  "--show-interactive-dev-session=false",
-]);
+const worker = spawnService(
+  [
+    "--filter",
+    "@bb/connect",
+    "exec",
+    "wrangler",
+    "dev",
+    "--port",
+    String(ports.cloudWorkerPort),
+    "--ip",
+    "127.0.0.1",
+    "--persist-to",
+    STATE_DIR,
+    "--var",
+    `BASE_DOMAIN:${DEV_BASE_DOMAIN}`,
+    "--var",
+    `ACCOUNT_APP_URL:${CLOUD_URL}`,
+    "--var",
+    `BETTER_AUTH_SECRET:${DEV_SECRET}`,
+    "--var",
+    "CLOUD_DEV:true",
+    "--var",
+    `NEXT_BASE_DOMAIN:next.${DEV_BASE_DOMAIN}`,
+    ...(process.env.BB_CLOUD_DEV_GATE_SECRET?.trim()
+      ? ["--var", `GATE_SECRET:${process.env.BB_CLOUD_DEV_GATE_SECRET.trim()}`]
+      : []),
+    "--show-interactive-dev-session=false",
+  ],
+  DATABASE_ENV,
+);
 
-const aiGateway = spawnService([
-  "--filter",
-  "@bb/ai-gateway",
-  "exec",
-  "wrangler",
-  "dev",
-  "--port",
-  new URL(aiGatewayUrl).port,
-  "--ip",
-  "127.0.0.1",
-  "--inspector-port",
-  String(aiGatewayInspectorPort),
-  "--persist-to",
-  STATE_DIR,
-  ...(process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL
-    ? [
-        "--var",
-        `AI_UPSTREAM_BASE_URL:${process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL}`,
-      ]
-    : []),
-  "--show-interactive-dev-session=false",
-]);
+const aiGateway = spawnService(
+  [
+    "--filter",
+    "@bb/ai-gateway",
+    "exec",
+    "wrangler",
+    "dev",
+    "--port",
+    new URL(aiGatewayUrl).port,
+    "--ip",
+    "127.0.0.1",
+    "--inspector-port",
+    String(aiGatewayInspectorPort),
+    "--persist-to",
+    STATE_DIR,
+    ...(process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL
+      ? [
+          "--var",
+          `AI_UPSTREAM_BASE_URL:${process.env.BB_CLOUD_DEV_AI_UPSTREAM_BASE_URL}`,
+        ]
+      : []),
+    "--show-interactive-dev-session=false",
+  ],
+  DATABASE_ENV,
+);
 
 const web = spawnService(
   [
@@ -301,6 +319,7 @@ const web = spawnService(
     GITHUB_CLIENT_SECRET: "local-cloud-dev-unused",
     LANDING_POSTHOG_KEY: "local-cloud-dev-unused",
     RESEND_API_KEY: "local-cloud-dev-unused",
+    ...DATABASE_ENV,
   },
 );
 
