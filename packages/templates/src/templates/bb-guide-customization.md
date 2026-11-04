@@ -195,8 +195,9 @@ see `bb guide thread-messaging` for `--compact-first`.
 plugin's own UI, which makes style updates cheaper with many plugins; it
 applies after a reload.
 `resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
-machine restart cut off, a few seconds after the machine's daemon comes back;
-see `bb guide thread-lifecycle`.
+machine restart cut off, and wakes idle threads whose background work it
+stopped, a few seconds after the machine's daemon comes back; see `bb guide
+thread-lifecycle`. It defaults on for early adopters.
 `dismissReadNotifications` removes a thread's push, web, and desktop
 notifications once the thread is read on any client.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and

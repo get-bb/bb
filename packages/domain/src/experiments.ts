@@ -48,7 +48,7 @@ export const earlyAdopterExperiments: Experiments = {
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: true,
-  resumeThreadsAfterRestart: false,
+  resumeThreadsAfterRestart: true,
   skipFocusedThreadNotifications: true,
   threadContextCard: false,
   threadRowMetadata: true,

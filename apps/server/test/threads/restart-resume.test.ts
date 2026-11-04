@@ -41,6 +41,9 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const HOST_ID = "host-restart";
+const RESUMED_WHILE_WORKING = expect.stringContaining(
+  "bb restarted, or the machine running this thread did, while you were working.",
+);
 const WORKSPACE_PATH = "/tmp/restart-resume-project";
 
 afterEach(() => vi.useRealTimers());
@@ -103,6 +106,102 @@ function seedRunningThread(
     data: { providerThreadId, clientRequestId: requestId },
   });
   return { providerThreadId, requestId, thread, turnId };
+}
+
+function seedNextEvent(
+  harness: TestAppHarness,
+  fixture: HostFixture,
+  args: {
+    data: Record<string, unknown>;
+    providerThreadId: string;
+    threadId: string;
+    turnId: string;
+    type: "item/started" | "item/completed";
+  },
+) {
+  seedEvent(harness.deps, {
+    threadId: args.threadId,
+    environmentId: fixture.environment.id,
+    providerThreadId: args.providerThreadId,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    type: args.type,
+    scope: turnScope(args.turnId),
+    data: { providerThreadId: args.providerThreadId, ...args.data },
+  });
+}
+
+function commandItem(args: {
+  command: string;
+  id: string;
+  status: "pending" | "completed";
+}) {
+  return {
+    item: {
+      type: "commandExecution",
+      id: args.id,
+      command: args.command,
+      cwd: "",
+      status: args.status,
+      approvalStatus: null,
+    },
+  };
+}
+
+function seedBackgroundCommand(
+  harness: TestAppHarness,
+  fixture: HostFixture,
+  running: ReturnType<typeof seedRunningThread>,
+  args: { command: string; description: string; id: string },
+) {
+  const toolCallId = `${args.id}-tool`;
+  const base = {
+    providerThreadId: running.providerThreadId,
+    threadId: running.thread.id,
+    turnId: running.turnId,
+  };
+  seedNextEvent(harness, fixture, {
+    ...base,
+    type: "item/started",
+    data: commandItem({
+      command: args.command,
+      id: toolCallId,
+      status: "pending",
+    }),
+  });
+  seedNextEvent(harness, fixture, {
+    ...base,
+    type: "item/started",
+    data: {
+      item: {
+        type: "backgroundTask",
+        id: args.id,
+        taskType: "local_bash",
+        description: args.description,
+        status: "pending",
+        taskStatus: "running",
+        skipTranscript: false,
+        foreground: false,
+        parentToolCallId: toolCallId,
+      },
+    },
+  });
+  seedNextEvent(harness, fixture, {
+    ...base,
+    type: "item/completed",
+    data: commandItem({
+      command: args.command,
+      id: toolCallId,
+      status: "completed",
+    }),
+  });
+}
+
+function finishTurn(harness: TestAppHarness, threadId: string) {
+  applyLoggedThreadLifecycleEvent(harness.deps, {
+    event: { type: "run.succeeded" },
+    threadId,
+  });
 }
 
 let instanceCounter = 0;
@@ -352,7 +451,7 @@ describe("resuming threads after a restart", () => {
         retryAttempt: 2,
         input: [
           expect.objectContaining({
-            text: "Please continue.",
+            text: RESUMED_WHILE_WORKING,
             visibility: "agent-only",
           }),
         ],
@@ -398,7 +497,7 @@ describe("resuming threads after a restart", () => {
 
         expect(requestTexts(harness, thread.id)).toEqual([
           "Do the thing",
-          "Please continue.",
+          RESUMED_WHILE_WORKING,
           "First follow-up",
           "Second follow-up",
         ]);
@@ -468,7 +567,7 @@ describe("resuming threads after a restart", () => {
 
       expect(requestTexts(harness, running.thread.id)).toEqual([
         "Do the thing",
-        "Please continue.",
+        RESUMED_WHILE_WORKING,
       ]);
       for (const other of [stopped, asking, archived]) {
         expect(queue(harness, other.thread.id)).toEqual([]);
@@ -481,6 +580,127 @@ describe("resuming threads after a restart", () => {
       expect(interruptionErrorDetails(harness, asking.thread.id)).toEqual([
         "Please retry the thread to continue.",
       ]);
+    });
+  });
+
+  it("wakes an idle thread whose background command the restart stopped, naming the command", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture, {
+        text: "Run the migration",
+      });
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: "./migrate.sh",
+        description: "Run database migration",
+        id: "task-migrate",
+      });
+      finishTurn(harness, waiting.thread.id);
+      const quiet = seedRunningThread(harness, fixture);
+      finishTurn(harness, quiet.thread.id);
+      const archived = seedRunningThread(harness, fixture);
+      seedBackgroundCommand(harness, fixture, archived, {
+        command: "./archived.sh",
+        description: "Archived job",
+        id: "task-archived",
+      });
+      finishTurn(harness, archived.thread.id);
+      harness.db
+        .update(threads)
+        .set({ archivedAt: Date.now() })
+        .where(eq(threads.id, archived.thread.id))
+        .run();
+      expect(threadStatus(harness, waiting.thread.id)).toBe("idle");
+
+      await restartDaemon(harness, fixture);
+
+      expect(requireRetryPayload(queue(harness, waiting.thread.id)[0])).toEqual(
+        {
+          kind: "retry",
+          retryOfTurnRequestId: waiting.requestId,
+          attempt: 2,
+          reason: "bb restarted",
+        },
+      );
+      expect(interruptionErrors(harness, waiting.thread.id)).toEqual([]);
+
+      await sweepPastResume(harness);
+
+      expect(threadStatus(harness, waiting.thread.id)).toBe("active");
+      expect(lastTurnRequest(harness, waiting.thread.id)).toMatchObject({
+        retryOfRequestId: waiting.requestId,
+        retryAttempt: 2,
+        input: [
+          {
+            type: "text",
+            visibility: "agent-only",
+            text: [
+              "[bb system]",
+              "",
+              "bb restarted, or the machine running this thread did, while this background work was running: `./migrate.sh` (Run database migration). The restart may have stopped it; the user did not, even if your history shows it as stopped or killed. Check whether each is still running and how far it got, and restart one only when that is safe; otherwise explain what needs attention.",
+            ].join("\n"),
+          },
+        ],
+      });
+      for (const other of [quiet, archived]) {
+        expect(queue(harness, other.thread.id)).toEqual([]);
+        expect(turnRequests(harness, other.thread.id)).toHaveLength(1);
+      }
+    });
+  });
+
+  it("leaves an idle thread whose background command the restart stopped alone while the experiment is off", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture);
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: "./migrate.sh",
+        description: "Run database migration",
+        id: "task-migrate",
+      });
+      finishTurn(harness, waiting.thread.id);
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(threadStatus(harness, waiting.thread.id)).toBe("idle");
+      expect(queue(harness, waiting.thread.id)).toEqual([]);
+      expect(turnRequests(harness, waiting.thread.id)).toHaveLength(1);
+    });
+  });
+
+  it("names the command a cut turn was running and the background work the restart stopped", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const running = seedRunningThread(harness, fixture);
+      seedBackgroundCommand(harness, fixture, running, {
+        command: "pnpm dev",
+        description: "Start the dev server",
+        id: "task-dev",
+      });
+      seedNextEvent(harness, fixture, {
+        providerThreadId: running.providerThreadId,
+        threadId: running.thread.id,
+        turnId: running.turnId,
+        type: "item/started",
+        data: commandItem({
+          command: "pnpm db:migrate",
+          id: "foreground-migrate",
+          status: "pending",
+        }),
+      });
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(requestTexts(harness, running.thread.id).at(-1)).toBe(
+        [
+          "[bb system]",
+          "",
+          "bb restarted, or the machine running this thread did, while you were running `pnpm db:migrate`. The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user. It may have completed, partly completed, never run, or still be running, so check its effects, then continue the task, rerunning it only if that is safe. The restart also stopped this background work: `pnpm dev` (Start the dev server). Check how far each got, and restart one only when that is safe.",
+        ].join("\n"),
+      );
     });
   });
 
@@ -535,7 +755,7 @@ describe("resuming threads after a restart", () => {
       expect(requestTexts(harness, first.thread.id)).toEqual(["Do the thing"]);
       expect(requestTexts(harness, second.thread.id)).toEqual([
         "Do the thing",
-        "Please continue.",
+        RESUMED_WHILE_WORKING,
       ]);
     });
   });
