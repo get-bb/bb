@@ -255,13 +255,7 @@ export function SiteNav({
         <a href={DASHBOARD_PATH}>Sign in</a>
         {newHeader ? null : (
           <>
-            <GitHubLink
-              placement="nav"
-              className="nav-icon-button"
-              aria-label="GitHub"
-            >
-              <HugeiconsIcon icon={GithubIcon} />
-            </GitHubLink>
+            <GitHubStarsLink stars={null} />
             <DesktopDownloadButton
               placement="nav"
               platform={platform}
