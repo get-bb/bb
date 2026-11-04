@@ -27,6 +27,7 @@ import {
 import { createSlowThreadTimelineBuildLogger } from "./timeline-build-log.js";
 import {
   buildThreadTimelineCacheKey,
+  buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
 } from "./timeline-cache.js";
 import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
@@ -162,12 +163,16 @@ export function createThreadTimelineWindows(
       thread.id,
       buildThreadTimelineCacheKey({
         threadId: thread.id,
+        page: request.page,
+        summaryOnly: request.summaryOnly,
+        deferContent: request.deferContent,
+        includeNestedRows: request.includeNestedRows,
+      }),
+      buildThreadTimelineCacheRevision({
         maxSeq,
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
-        page: request.page,
-        summaryOnly: request.summaryOnly,
       }),
       () => {
         const { profile, response: built } = buildThreadTimelineWithProfile(
