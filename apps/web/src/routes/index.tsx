@@ -93,7 +93,7 @@ import { ClaudeIcon } from "../landing/icons";
 import {
   AgentRow,
   Band,
-  InstallOptions,
+  HomepageInstallOptions,
   ProviderChips,
   CustomizeBuild,
   DelegationTree,
@@ -1084,7 +1084,7 @@ function Closer({
     <section className="closer" data-reveal data-section="closer">
       <h2 className="sec-title">{title}</h2>
       <p>{lede}</p>
-      <InstallOptions placement="closer" />
+      <HomepageInstallOptions placement="closer" />
       {children}
     </section>
   );
@@ -1255,7 +1255,6 @@ function LandingPage() {
     "homepage-below-fold",
     "desktop",
   );
-  const phoneEmail = useExperiment("homepage-phone-email");
   useExperimentExposure("homepage-phone-email", "touch");
   useScrollReveal();
   useSectionViews((section) => {
@@ -1292,10 +1291,7 @@ function LandingPage() {
           {SUBHEAD_COPY[subhead]}
         </p>
 
-        <InstallOptions
-          placement="hero"
-          touchAction={phoneEmail === "test" ? "email" : "share"}
-        />
+        <HomepageInstallOptions placement="hero" />
 
         {subhead === "test" ? (
           <AgentRow />
