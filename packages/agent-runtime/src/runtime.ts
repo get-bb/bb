@@ -349,7 +349,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
-      backgroundWorkState.clearThread(threadId);
+      const settlements = backgroundWorkState.settleThread(threadId);
+      if (!suppressedThreadEventIds.has(threadId)) {
+        for (const event of settlements) {
+          options.onEvent(event);
+        }
+      }
       threadEventGrammar.clearThread(threadId);
     },
     onStderr: options.onStderr,
@@ -2654,9 +2659,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadOperationCounts.clear();
       threadGoalState.clear();
       turnState.clear();
-      backgroundWorkState.clear();
       threadEventGrammar.clear();
       await providerProcesses.shutdown();
+      for (const event of backgroundWorkState.settleAll()) {
+        options.onEvent(event);
+      }
     },
   };
 
