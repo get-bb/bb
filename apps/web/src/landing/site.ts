@@ -28,7 +28,7 @@ export type DesktopDownload = {
   label: string;
   buttonLabel: string;
   note: string;
-  shortNote: string;
+  shortNote: string | null;
   installerExtension: string;
   versionFeedUrl: string;
   redirectPath: string;
@@ -39,7 +39,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     label: "macOS",
     buttonLabel: "Download for macOS",
     note: "Apple Silicon",
-    shortNote: "Apple Silicon",
+    shortNote: null,
     installerExtension: ".dmg",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version.json`,
     redirectPath: "/download/macos",
