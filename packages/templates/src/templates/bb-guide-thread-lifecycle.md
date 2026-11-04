@@ -57,7 +57,7 @@ Lifecycle:
   `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
-  With the `resumeThreadsAfterRestart` experiment (on for early adopters), a
+  With the `resumeThreadsAfterRestart` experiment, a
   turn cut off because a machine's daemon came back as a new process (bb quit,
   crashed, updated, or the machine restarted) gets a retry with reason "bb
   restarted", sent a few seconds later. So does an idle thread whose

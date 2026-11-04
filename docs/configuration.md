@@ -940,7 +940,7 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
-- `resumeThreadsAfterRestart` (on for early adopters) resumes threads a
+- `resumeThreadsAfterRestart` resumes threads a
   restart cut off. When a machine's daemon comes back as a new process (bb
   quit, crashed, or updated, or the machine restarted), the server marks the
   turns it was running as interrupted (`host-daemon-restarted`) and the
