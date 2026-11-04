@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [cim, wmi]
+        mode: [host, native]
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 15
     permissions:
