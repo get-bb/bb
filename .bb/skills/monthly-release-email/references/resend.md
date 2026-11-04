@@ -42,7 +42,7 @@ Each step below says what must be true when it's done, whichever way it's done.
    From, Reply-To, Subject, Preview text, and the name "What's new in bb ·
    {Month} {Year}". The body has no hidden preheader of its own: Resend builds
    one from the Preview text field, and a second would repeat the line. Review
-   rounds happen on this one draft; the copies for each list come at the send
+   rounds happen on this one draft; the drafts for the other lists come at the send
    (see "Sending").
 6. **Check the build.** Save the draft's HTML as `issues/<yyyy-mm>.resend.html`
    and its header fields as `issues/<yyyy-mm>.resend-fields.json` (`from`,
@@ -76,29 +76,33 @@ section before sharing it.
   addressed to that list directly. A list that grows on its own, such as the
   website signup list, then reaches everyone on it at send time with no extra
   step. Unsubscribes are honored.
-- **One copy per list.** Once the reviewer approves the checked draft, duplicate
-  it once for each other list. Name each copy "What's new in bb · {Month} {Year}
-  · {list}", set its To to that list, and confirm To is still set after a
-  reload. Run the check in step 6 on every copy; it accepts the list suffix in
-  the name.
-- **Remove overlaps before scheduling.** Someone on two lists would get two
-  copies, since a broadcast can't skip contacts on another list. Before
-  scheduling, find every contact on more than one of the lists and remove them
-  from all but one: keep the list they joined most recently, which is usually
-  the signup list. Removing a contact from a list doesn't unsubscribe them; in
-  the dashboard, open the contact, Edit contact, and remove that list's tag.
-  Check each one's lists afterwards.
+- **One draft per list.** Once the reviewer approves the checked draft,
+  duplicate it once for each other list, so there is one draft per list,
+  including the original. Name every draft "What's new in bb · {Month} {Year} ·
+  {list}", set its To to that list, and confirm To is still set after a reload.
+  Run the check in step 6 on every draft; it accepts the list suffix in the
+  name.
+- **Remove overlaps before scheduling and again right before the send.**
+  Someone on two lists would get two copies, since a broadcast can't skip
+  contacts on another list, and people can join a second list between
+  scheduling and the send. Before scheduling, and again within the hour before
+  the send (by hand, or with an automation that has Resend access then), find
+  every contact on more than one of the lists and remove them from all but one:
+  keep the list they joined most recently, which is usually the signup list.
+  Removing a contact from a list doesn't unsubscribe them; in the dashboard,
+  open the contact, Edit contact, and remove that list's tag. Check each one's
+  lists afterwards.
 
   Never re-import contacts by CSV, which can re-subscribe people who
   unsubscribed.
 
 - **Test emails** go out only when the reviewer says, to the recipients they
-  name, from one copy. Check every link in the received email.
-- **Schedule** every copy after the reviewer's go-ahead on the test email, all
+  name, from one draft. Check every link in the received email.
+- **Schedule** every draft after the reviewer's go-ahead on the test email, all
   at the same time: the first Thursday after the month ends, 16:00 UTC, unless
   they pick otherwise.
 - **Changes after scheduling** need the reviewer's go-ahead and go into every
-  copy. Unschedule, edit, carry the edit into the JSON and re-render, then run
-  the check in step 6 on each copy until it passes. Schedule them again, check
-  the contacts, time and links on the way, and confirm every copy shows as
+  draft. Unschedule, edit, carry the edit into the JSON and re-render, then run
+  the check in step 6 on each draft until it passes. Schedule them again, check
+  the contacts, time and links on the way, and confirm every draft shows as
   scheduled. Test emails still work while scheduled.
