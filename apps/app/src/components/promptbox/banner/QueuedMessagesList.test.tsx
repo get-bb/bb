@@ -270,6 +270,10 @@ describe("QueuedMessagesList", () => {
       makeThreadQueuedMessage({
         id: "q_system",
         initiator: "system",
+        systemNotice: {
+          kind: "child-outcome-batch",
+          subject: { kind: "thread-batch", count: 3 },
+        },
         waitingOn: { kind: "provisioning" },
       }),
     ];
@@ -300,10 +304,15 @@ describe("QueuedMessagesList", () => {
       getByText("thr_sender").closest("[data-queued-message-metadata]"),
     ).not.toBeNull();
     expect(
-      getByText("System")
-        .closest("[data-queued-message-metadata]")
-        ?.querySelector("[data-queued-message-wait]"),
-    ).not.toBeNull();
+      container.querySelector(
+        '[data-queued-message-id="q_system"] [data-queued-message-sender]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-queued-message-id="q_system"] [data-queued-message-wait]',
+      )?.textContent,
+    ).toContain("Waiting for workspace");
     expect(
       getByText("thr_sender").closest(".prompt-mention-pill"),
     ).not.toBeNull();
@@ -316,31 +325,50 @@ describe("QueuedMessagesList", () => {
     fireEvent.click(getByRole("button", { name: "Collapse queued messages" }));
     fireEvent.click(getByRole("button", { name: "Toggle queued messages" }));
     expect(getByText("Code review")).toBeTruthy();
-    expect(getByText("System")).toBeTruthy();
+    expect(getByText("3 threads updated")).toBeTruthy();
     queryClient.clear();
   });
 
   it.each([
-    { initiator: "system" as const, senderThreadId: null, height: "118px" },
     {
-      initiator: "agent" as const,
-      senderThreadId: "thr_sender",
+      label: "a system notice with nothing to wait on",
+      message: {
+        initiator: "system" as const,
+        senderThreadId: null,
+        systemNotice: { kind: "child-completed" as const, subject: null },
+        waitingOn: { kind: "thread-busy" as const },
+      },
+      height: "102px",
+    },
+    {
+      label: "a system notice waiting on its host",
+      message: {
+        initiator: "system" as const,
+        senderThreadId: null,
+        systemNotice: { kind: "child-completed" as const, subject: null },
+        waitingOn: { kind: "host-offline" as const, hostName: "M4" },
+      },
+      height: "118px",
+    },
+    {
+      label: "an agent sender",
+      message: {
+        initiator: "agent" as const,
+        senderThreadId: "thr_sender",
+      },
       height: "124px",
     },
-  ])(
-    "reserves the metadata height for $initiator senders",
-    ({ initiator, senderThreadId, height }) => {
-      const { container } = renderQueuedMessages([
-        makeThreadQueuedMessage({ initiator, senderThreadId }),
-      ]);
-      expandQueue();
-      expect(
-        container.querySelector<HTMLElement>(
-          'section[aria-label="Queued messages"]',
-        )?.style.height,
-      ).toBe(height);
-    },
-  );
+  ])("reserves the metadata height for $label", ({ message, height }) => {
+    const { container } = renderQueuedMessages([
+      makeThreadQueuedMessage(message),
+    ]);
+    expandQueue();
+    expect(
+      container.querySelector<HTMLElement>(
+        'section[aria-label="Queued messages"]',
+      )?.style.height,
+    ).toBe(height);
+  });
 
   it("renders as a standalone card when it is not attached to the composer", () => {
     const { container } = renderQueuedMessages(
@@ -1048,7 +1076,7 @@ describe("QueuedMessagesList", () => {
           .querySelector("[data-queued-messages-mode]")
           ?.getAttribute("data-queued-messages-mode"),
       ).toBe("drawer");
-      expect(surface?.style.height).toBe("198px");
+      expect(surface?.style.height).toBe("201px");
     });
   });
 
@@ -2324,5 +2352,70 @@ describe("queued row affordances", () => {
     expandQueue();
     expect(queryByLabelText("Edit queued message 1")).toBeNull();
     expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
+  });
+
+  it("shows a bb notice by its title and offers only send and delete", () => {
+    const { container, getByText, queryByLabelText } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_notice",
+        initiator: "system",
+        content: [
+          {
+            type: "text",
+            text: "[bb system]\n\nChild thread updates:\n\n- @thread:thr_a completed.",
+            mentions: [],
+          },
+        ],
+        systemNotice: {
+          kind: "child-outcome-batch",
+          subject: { kind: "thread-batch", count: 2 },
+        },
+        state: "scheduled",
+        waitingOn: { kind: "plugin", pluginId: "gate", reason: "At capacity" },
+        sendAt: Date.now() + 60_000,
+        editable: false,
+      }),
+      makeQueuedMessage("q_user", "User follow-up"),
+    ]);
+    expandQueue();
+    expect(getByText("2 threads updated")).toBeDefined();
+    expect(container.textContent).not.toContain("[bb system]");
+    expect(container.textContent).not.toContain("From");
+    expect(queryByLabelText("Send queued message 1 now")).not.toBeNull();
+    expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
+    expect(queryByLabelText("Edit queued message 1")).toBeNull();
+    expect(queryByLabelText("Change when queued message 1 sends")).toBeNull();
+    expect(
+      queryByLabelText("Reorder queued message 1")?.hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      queryByLabelText("Reorder queued message 2")?.hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+  it("summarizes bb notices when collapsed and leads with the user's own wait", () => {
+    const { container } = renderQueuedMessages([
+      makeThreadQueuedMessage({
+        id: "q_user_scheduled",
+        createdAt: 1,
+        state: "scheduled",
+        waitingOn: { kind: "time" },
+        sendAt: Date.now() + 45 * 60_000,
+      }),
+      makeThreadQueuedMessage({
+        id: "q_notice",
+        createdAt: 2,
+        initiator: "system",
+        systemNotice: { kind: "child-completed", subject: null },
+        waitingOn: { kind: "host-offline", hostName: "M4" },
+      }),
+    ]);
+    const header = container.querySelector("header");
+    expect(
+      header?.querySelector("[data-queued-messages-system-count]")?.textContent,
+    ).toBe("· 1 from bb");
+    expect(
+      header?.querySelector("[data-queued-message-wait]")?.textContent,
+    ).toMatch(/^Scheduled for /u);
   });
 });

@@ -937,6 +937,28 @@ export function updateCoalescedQueuedThreadMessageInTransaction(
   );
 }
 
+export function deleteCoalescedQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  pending: QueuedThreadMessageRow,
+): QueuedThreadMessageRow | null {
+  const deleted =
+    tx
+      .delete(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.id, pending.id),
+          eq(queuedThreadMessages.threadId, pending.threadId),
+          automaticallyDrainableQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+  if (deleted !== null) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(tx, deleted);
+  }
+  return deleted;
+}
+
 export function createQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
@@ -2063,6 +2085,7 @@ export interface QueuedThreadMessageCounts {
    * whose queued work failed shows the failure instead.
    */
   failedQueuedMessageCount: number;
+  userQueuedMessageCount: number;
 }
 
 /**
@@ -2090,6 +2113,9 @@ export function listQueuedThreadMessageCountsByThreadIds(
           queuedMessageCount: count(queuedThreadMessages.id),
           failedQueuedMessageCount: count(
             sql`CASE WHEN ${inArray(queuedThreadMessages.state, [...QUEUED_MESSAGE_FAILED_STATES])} THEN 1 END`,
+          ),
+          userQueuedMessageCount: count(
+            sql`CASE WHEN ${isNull(queuedThreadMessages.systemNotice)} THEN 1 END`,
           ),
         })
         .from(queuedThreadMessages)

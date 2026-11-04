@@ -1,4 +1,5 @@
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { visibleQueuedMessages } from "@/lib/queued-system-notice";
 import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
@@ -459,6 +460,10 @@ export function ThreadDetailPromptArea({
     enabled: true,
   });
   const queuedMessages = queuedMessagesQuery.data ?? EMPTY_QUEUED_MESSAGES;
+  const drawerQueuedMessages = useMemo(
+    () => visibleQueuedMessages(queuedMessages),
+    [queuedMessages],
+  );
   const queuedMessagesPending =
     queuedMessagesQuery.data === undefined && queuedMessageCount > 0;
   const queuedMessagesRef =
@@ -626,7 +631,8 @@ export function ThreadDetailPromptArea({
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
   const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
     threadId: thread.id,
-    queuedMessages: queuedMessagesQuery.data ?? null,
+    queuedMessages:
+      queuedMessagesQuery.data === undefined ? null : drawerQueuedMessages,
   });
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
@@ -2210,7 +2216,7 @@ export function ThreadDetailPromptArea({
         ) : (
           <LazyQueuedMessagesList
             attachedToComposer={true}
-            queuedMessages={queuedMessages}
+            queuedMessages={drawerQueuedMessages}
             resolveMentionLink={resolveMentionLink}
             inlineEditor={queuedMessageEditor ?? undefined}
             sendAction={shouldSteerWhenReady ? "steer-when-ready" : "send-now"}
@@ -2278,7 +2284,7 @@ export function ThreadDetailPromptArea({
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessageCount,
-      queuedMessages,
+      drawerQueuedMessages,
       queuedMessagesPending,
       resolveMentionLink,
       runtimeDisplayStatus,

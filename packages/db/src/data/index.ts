@@ -471,6 +471,7 @@ export {
   createQueuedThreadMessageInTransaction,
   deleteQueuedRetriesForThreadEventSuffixInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
+  deleteCoalescedQueuedThreadMessageInTransaction,
   deleteQueuedThreadMessage,
   getPendingCoalescedQueuedThreadMessage,
   getQueuedThreadMessage,

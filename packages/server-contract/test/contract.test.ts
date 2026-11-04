@@ -59,6 +59,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes.interruption",
       "threadTimelineResponseSchema.rows.systemMessageSubject.outcomes.interruption.cause",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.systemMessageSubject.outcomes.interruption.cause",
+      "sendQueuedMessageResponseSchema.queuedMessage.systemNotice.subject.outcomes",
+      "sendQueuedMessageResponseSchema.queuedMessage.systemNotice.subject.outcomes.interruption",
+      "sendQueuedMessageResponseSchema.queuedMessage.systemNotice.subject.outcomes.interruption.cause",
     ],
   },
   {

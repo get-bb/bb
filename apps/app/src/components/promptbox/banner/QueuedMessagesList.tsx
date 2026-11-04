@@ -41,7 +41,12 @@ import { QueuedMessageSendTimeDialog } from "@/components/promptbox/banner/Queue
 import {
   getQueuedMessagesDrawerHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
+  useWindowHeight,
 } from "@/components/promptbox/banner/queued-messages-layout";
+import {
+  systemMessageIconName,
+  systemMessageTitleSegments,
+} from "@/components/thread/timeline/GeneratedConversationMessage";
 import {
   DndContext,
   KeyboardSensor,
@@ -68,6 +73,7 @@ import type { Transform } from "@dnd-kit/utilities";
 import type {
   PromptInput,
   PromptTextMention,
+  QueuedMessageSystemNotice,
   ThreadQueuedMessage,
   ThreadStatus,
 } from "@bb/domain";
@@ -482,7 +488,6 @@ function queuedMessageSenderLabel(
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>,
 ): string | null {
   if (queuedMessage.payload.kind === "retry") return null;
-  if (queuedMessage.initiator === "system") return "System";
   if (queuedMessage.initiator !== "agent") return null;
   return (
     senderThreadMetadataById.get(queuedMessage.senderThreadId ?? "")?.title ??
@@ -577,6 +582,36 @@ function QueuedMessageFallbackTitle({
   );
 }
 
+function systemNoticeTitle(notice: QueuedMessageSystemNotice): string {
+  return systemMessageTitleSegments(notice.kind, notice.subject)
+    .map((segment) => segment.plainText ?? segment.text)
+    .join(" ");
+}
+
+function SystemNoticePreview({
+  compact,
+  notice,
+}: {
+  compact: boolean;
+  notice: QueuedMessageSystemNotice;
+}) {
+  const title = systemNoticeTitle(notice);
+  return (
+    <div
+      data-queued-message-system-notice=""
+      className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-foreground"
+      title={title}
+    >
+      <Icon
+        name={systemMessageIconName(notice.kind)}
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+      <span className={queuedMarkdownPreviewClass(compact)}>{title}</span>
+    </div>
+  );
+}
+
 function QueuedMessagePreview({
   compact,
   queuedMessage,
@@ -597,6 +632,15 @@ function QueuedMessagePreview({
     () => buildQueuedMessagePreviewText(queuedMessage.content),
     [queuedMessage.content],
   );
+
+  if (queuedMessage.systemNotice !== null) {
+    return (
+      <SystemNoticePreview
+        compact={compact}
+        notice={queuedMessage.systemNotice}
+      />
+    );
+  }
 
   if (queuedMessage.payload.kind === "retry") {
     return (
@@ -693,6 +737,11 @@ function QueuedMessagesHeaderWait({
   );
   const attentionMessage =
     newestFirst.find((queuedMessage) => queuedMessage.failureReason !== null) ??
+    newestFirst.find(
+      (queuedMessage) =>
+        queuedMessage.systemNotice === null &&
+        queuedMessageHasWaitLine(queuedMessage),
+    ) ??
     newestFirst.find(queuedMessageHasWaitLine);
   const pluginDisplayName = usePluginDisplayName(
     attentionMessage?.waitingOn?.kind === "plugin"
@@ -1008,7 +1057,8 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
-                {queuedMessage.state === "scheduled" ? (
+                {queuedMessage.state === "scheduled" &&
+                queuedMessage.systemNotice === null ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1555,6 +1605,10 @@ export function QueuedMessagesList({
     setExpandedMobileActionsId(null);
     setSendTimeQueuedMessageId(id);
   }, []);
+  const windowHeight = useWindowHeight();
+  const systemNoticeCount = queuedMessages.filter(
+    (queuedMessage) => queuedMessage.systemNotice !== null,
+  ).length;
   const baseSurfaceHeight =
     inlineEditor || mode === "workspace"
       ? getWorkspaceHeight({
@@ -1564,6 +1618,7 @@ export function QueuedMessagesList({
         ? getQueuedMessagesDrawerHeight({
             queuedMessages,
             processingMessageId,
+            windowHeight,
           })
         : QUEUED_MESSAGES_COLLAPSED_HEIGHT;
   const surfaceHeight =
@@ -1623,7 +1678,11 @@ export function QueuedMessagesList({
           index={messageIndex}
           isProcessing={processingMessageId === queuedMessage.id}
           processingLabel={processingLabel}
-          dragDisabled={sortingDisabled || inlineEditor !== undefined}
+          dragDisabled={
+            sortingDisabled ||
+            inlineEditor !== undefined ||
+            queuedMessage.systemNotice !== null
+          }
           sendAction={sendAction}
           sendDisabled={sendDisabled}
           actionDisabled={actionDisabled}
@@ -1680,6 +1739,14 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
+          {isExpanded || systemNoticeCount === 0 ? null : (
+            <span
+              data-queued-messages-system-count=""
+              className="shrink-0 text-2xs text-subtle-foreground"
+            >
+              · {systemNoticeCount} from bb
+            </span>
+          )}
           {isExpanded ? null : (
             <QueuedMessagesHeaderWait
               queuedMessages={queuedMessages}
