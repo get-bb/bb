@@ -77,7 +77,7 @@ describe("nav experiment exposure", () => {
       "an unknown variant",
       {
         distinctID: "id",
-        featureFlags: { "homepage-sticky-header": "holdout-12" },
+        featureFlags: { "homepage-header": "holdout-12" },
         preview: false,
       },
     ],

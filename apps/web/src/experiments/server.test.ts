@@ -161,10 +161,10 @@ describe("PostHog visitor cookie", () => {
     const { calls, config } = setup(async () => flagsResponse({ flags: {} }));
     await resolveExperiments(
       htmlRequest("/download", cookieFor({ distinct_id: EXISTING_ID })),
-      { ...config, siteWideKeys: ["homepage-sticky-header"] },
+      { ...config, siteWideKeys: ["homepage-header"] },
     );
     expect(calls[0]?.body).toMatchObject({
-      flag_keys_to_evaluate: ["homepage-sticky-header"],
+      flag_keys_to_evaluate: ["homepage-header"],
     });
   });
 
