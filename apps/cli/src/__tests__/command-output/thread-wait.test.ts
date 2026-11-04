@@ -37,6 +37,7 @@ function retryRow(
       attempt: 2,
       reason: "Rate limited",
     },
+    systemNotice: null,
     editable: false,
     createdAt: 1,
     updatedAt: 1,

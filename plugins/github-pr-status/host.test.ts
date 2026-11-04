@@ -47,6 +47,8 @@ function pullRequestJson(): string {
 
 let repositoryTemplate: string;
 let trackedForkRepositoryTemplate: string;
+let managedBaseRepositoryTemplate: string;
+let untrackedRepositoryTemplate: string;
 
 beforeAll(async () => {
   repositoryTemplate = await fs.mkdtemp(path.join(tmpdir(), "bb-pr-template-"));
@@ -84,10 +86,36 @@ beforeAll(async () => {
     ],
     { cwd: trackedForkRepositoryTemplate },
   );
+  managedBaseRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-base-template-"),
+  );
+  await fs.cp(repositoryTemplate, managedBaseRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
+    cwd: managedBaseRepositoryTemplate,
+  });
+  await runGit(["branch", "--set-upstream-to", "origin/main", localBranch], {
+    cwd: managedBaseRepositoryTemplate,
+  });
+  untrackedRepositoryTemplate = await fs.mkdtemp(
+    path.join(tmpdir(), "bb-pr-untracked-template-"),
+  );
+  await fs.cp(managedBaseRepositoryTemplate, untrackedRepositoryTemplate, {
+    recursive: true,
+  });
+  await runGit(["branch", "--unset-upstream"], {
+    cwd: untrackedRepositoryTemplate,
+  });
 });
 
 afterAll(async () => {
-  for (const template of [repositoryTemplate, trackedForkRepositoryTemplate]) {
+  for (const template of [
+    repositoryTemplate,
+    trackedForkRepositoryTemplate,
+    managedBaseRepositoryTemplate,
+    untrackedRepositoryTemplate,
+  ]) {
     if (template) await fs.rm(template, { recursive: true, force: true });
   }
 });
@@ -117,16 +145,10 @@ async function createTrackedForkWorkspace(
 }
 
 async function createManagedBaseTrackedWorkspace(): Promise<string> {
-  const workspacePath = await createRepository(
+  return createRepository(
     "bb-pr-base-upstream-workspace-",
+    managedBaseRepositoryTemplate,
   );
-  await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
-    cwd: workspacePath,
-  });
-  await runGit(["branch", "--set-upstream-to", "origin/main", localBranch], {
-    cwd: workspacePath,
-  });
-  return workspacePath;
 }
 
 function branchLookup(
@@ -191,10 +213,13 @@ describe("pull request lookup for differently named upstream branches", () => {
   it.each(["origin-base", "none"])(
     "uses the managed local branch with %s upstream",
     async (upstream) => {
-      const workspacePath = await createManagedBaseTrackedWorkspace();
-      if (upstream === "none") {
-        await runGit(["branch", "--unset-upstream"], { cwd: workspacePath });
-      }
+      const workspacePath =
+        upstream === "none"
+          ? await createRepository(
+              "bb-pr-no-upstream-workspace-",
+              untrackedRepositoryTemplate,
+            )
+          : await createManagedBaseTrackedWorkspace();
       const gh = await installFakeGh(sameRepository);
 
       await expect(

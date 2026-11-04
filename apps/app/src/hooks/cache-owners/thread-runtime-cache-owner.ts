@@ -401,6 +401,7 @@ function buildOptimisticQueuedMessage({
     waitingOn: scheduledSendAt === null ? null : { kind: "time" },
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt,
     updatedAt: createdAt,

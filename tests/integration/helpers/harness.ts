@@ -8,6 +8,10 @@ import { serve } from "@hono/node-server";
 import {
   ensurePersonalProject,
   getExperiments,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
   listRunningThreads,
   type DbConnection,
 } from "@bb/db";
@@ -271,6 +275,7 @@ async function startIntegrationServer(
   const notifyAppUpdateChanged = (): void =>
     hub.notifySystem(["app-update-changed"]);
   const appUpdate = createScheduledAppUpdateService({
+    autoCheckMs: null,
     countRunningThreads,
     inner: createAppUpdateService({
       currentCommit: null,
@@ -304,6 +309,14 @@ async function startIntegrationServer(
     logger: testLogger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),
+    autoUpdate: {
+      get: () => getAutoAppUpdate(db),
+      set: (enabled) => setAutoAppUpdate(db, enabled),
+    },
+    skippedUpdate: {
+      get: () => getSkippedAppUpdate(db),
+      set: (key) => setSkippedAppUpdate(db, key),
+    },
   });
   const serverDeps = {
     appUpdate,

@@ -16,6 +16,7 @@ import { z } from "zod";
 const systemMessageKindValues = [
   "ownership-assigned",
   "ownership-removed",
+  "ownership-batch",
   "child-needs-attention",
   "child-completed",
   "child-failed",

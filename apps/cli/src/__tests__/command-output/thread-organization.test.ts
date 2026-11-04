@@ -33,6 +33,7 @@ function queuedMessage(
     waitingOn: null,
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt: 1,
     updatedAt: 1,
@@ -264,6 +265,62 @@ describe("bb thread organization commands", () => {
     expect(output).toContain("Sender");
     expect(output).toContain("thr_sender");
     expect(output).toContain("System");
+  });
+
+  it("titles a restart resume row as a resume and keeps other retry rows' text", async () => {
+    const list = vi.fn(async () => [
+      queuedMessage({
+        id: "queued-resume",
+        initiator: "system",
+        content: [
+          {
+            type: "text",
+            text: "[bb system] bb restarted while you were working",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ],
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "creq_resume",
+          attempt: 2,
+          reason: "bb restarted",
+        },
+      }),
+      queuedMessage({
+        id: "queued-retry",
+        initiator: "system",
+        content: [
+          {
+            type: "text",
+            text: "Please continue.",
+            mentions: [],
+            visibility: "agent-only",
+          },
+        ],
+        payload: {
+          kind: "retry",
+          retryOfTurnRequestId: "creq_retry",
+          attempt: 2,
+          reason: "Rate limited",
+        },
+      }),
+    ]);
+    stubServerApi({ "v1.queued-messages.$get": list });
+
+    await runCommand(["thread", "queue", "list"], register);
+
+    const lines = vi
+      .mocked(console.log)
+      .mock.calls.map((args) => args.join(" "))
+      .join("\n")
+      .split("\n");
+    const resumeRow = lines.find((line) => line.includes("queued-resume"));
+    expect(resumeRow).toContain("Resume after bb restarted");
+    expect(resumeRow).not.toContain("[bb system]");
+    expect(lines.find((line) => line.includes("queued-retry"))).toContain(
+      "Please continue.",
+    );
   });
 
   it.each([false, true])(

@@ -212,6 +212,7 @@ import {
   type SystemProviderStatesResponse,
   type SystemUsageLimitsQuery,
   type SystemAppUpdateAcknowledgeRequest,
+  type SystemAppUpdateAutoRequest,
   type SystemAppUpdateApplyRequest,
   type SystemAppUpdateQuery,
   type SystemAppUpdateStatus,
@@ -361,6 +362,7 @@ import {
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
   systemAppUpdateAcknowledgeRequestSchema,
+  systemAppUpdateAutoRequestSchema,
   systemAppUpdateApplyRequestSchema,
   systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
@@ -2125,6 +2127,14 @@ export const publicApiRoutes = {
       path: "/system/app-update/schedule/cancel",
       method: "post",
       request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    setAppUpdateAuto: defineRoute({
+      path: "/system/app-update/auto",
+      method: "post",
+      request: jsonRequest<EmptyInput, SystemAppUpdateAutoRequest>(
+        systemAppUpdateAutoRequestSchema,
+      ),
       response: jsonResponse<SystemAppUpdateStatus>(),
     }),
     cliCommand: defineRoute({

@@ -310,6 +310,21 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "sendAt must be in the future; pass null to clear the send time",
       );
     }
+    const existingQueuedMessage = getQueuedThreadMessage(
+      deps.db,
+      context.req.param("queuedMessageId"),
+    );
+    if (
+      payload.input !== undefined &&
+      existingQueuedMessage !== null &&
+      existingQueuedMessage.systemNotice !== null
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "bb system notices cannot be edited",
+      );
+    }
     const content =
       payload.input === undefined
         ? null

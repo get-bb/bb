@@ -554,6 +554,26 @@ describe("electron-builder signing config", () => {
     }
   });
 
+  it("permits computer-use cleanup Apple Events from the signed app", async () => {
+    const config = await readStaticConfig();
+    const entitlements = await readFile(
+      resolve(desktopPackageRoot, config.mac.entitlements),
+      "utf8",
+    );
+
+    expect(entitlements).toMatch(
+      /<key>com\.apple\.security\.automation\.apple-events<\/key>\s*<true\s*\/>/u,
+    );
+  });
+
+  it("includes the usage description required for macOS Automation permission", async () => {
+    const config = await readStaticConfig();
+
+    z.object({ NSAppleEventsUsageDescription: z.string().trim().min(1) }).parse(
+      config.mac.extendInfo,
+    );
+  });
+
   it("keeps the updater provider pointed at desktop-latest release assets", async () => {
     const config = await readStaticConfig();
 

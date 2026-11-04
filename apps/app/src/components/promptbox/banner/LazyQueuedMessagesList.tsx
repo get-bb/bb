@@ -10,6 +10,7 @@ import {
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
 import {
   getQueuedMessagesDrawerHeight,
+  useWindowHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
 } from "@/components/promptbox/banner/queued-messages-layout";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
@@ -110,13 +111,14 @@ function isAttachedToComposer({
 }
 
 function QueuedMessagesListLoading(props: QueuedMessagesListProps) {
+  const windowHeight = useWindowHeight();
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
       expanded={props.expanded}
       height={
         props.expanded
-          ? getQueuedMessagesDrawerHeight(props)
+          ? getQueuedMessagesDrawerHeight({ ...props, windowHeight })
           : QUEUED_MESSAGES_COLLAPSED_HEIGHT
       }
       queuedMessageCount={props.queuedMessages.length}
@@ -145,11 +147,12 @@ function QueuedMessagesListFailure({
   retry,
   ...props
 }: QueuedMessagesListProps & { retry: () => void }) {
+  const windowHeight = useWindowHeight();
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
       expanded
-      height={getQueuedMessagesDrawerHeight(props)}
+      height={getQueuedMessagesDrawerHeight({ ...props, windowHeight })}
       queuedMessageCount={props.queuedMessages.length}
     >
       <SplitLoadFailure retry={retry} />

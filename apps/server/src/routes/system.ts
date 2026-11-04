@@ -758,6 +758,12 @@ export function registerSystemRoutes(
     return context.json(await deps.appUpdate.cancelScheduled());
   });
 
+  post(routes.setAppUpdateAuto, async (context, body) => {
+    assertAppUpdateAllowed(context);
+    assertUpdateWhenIdleEnabled(deps.db);
+    return context.json(await deps.appUpdate.setAutoUpdate(body.enabled));
+  });
+
   post(routes.acknowledgeAppUpdate, async (context, body) => {
     assertAppUpdateAllowed(context);
     return context.json(

@@ -1407,11 +1407,23 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
   let removalGate: Promise<void> | null = null;
   let releaseRemoval = () => {};
   let removalCompleted = (_paths: string[]) => {};
+  let scanMeasured = () => {};
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
     experimental_callHostRpc: async (call) => {
       if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "measure") {
+        const input = hostStorageContract.measure.input.parse(call.input);
+        const result = await worker.experimental_call("measure", input);
+        if (
+          input.targets.some(
+            (target) => target.path === "/missing-home/.bb-dev",
+          )
+        )
+          scanMeasured();
+        return result;
+      }
       if (call.method === "removeGitWorktrees") {
         await removalGate;
         const input = hostStorageContract.removeGitWorktrees.input.parse(
@@ -1425,7 +1437,6 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
         return result;
       }
       for (const method of [
-        "measure",
         "capacity",
         "listGitWorktrees",
         "inspectGitWorktree",
@@ -1651,7 +1662,11 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     expect((await report())!.externalWorktrees).toEqual([]);
     const queuedClean = worktree("queued-clean", "-b", "queued-clean");
     const queuedDirty = worktree("queued-dirty", "-b", "queued-dirty");
+    const rescanned = new Promise<void>((resolve) => {
+      scanMeasured = resolve;
+    });
     await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await rescanned;
     await expect
       .poll(async () => (await report())?.externalWorktrees.length)
       .toBe(2);

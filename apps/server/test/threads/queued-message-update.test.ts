@@ -1,5 +1,6 @@
 import {
   claimQueuedThreadMessageGroup,
+  createQueuedThreadMessage,
   getQueuedThreadMessage,
   getThread,
   listEvents,
@@ -149,10 +150,7 @@ function updateQueuedMessage(
   );
 }
 
-function turnRequestTexts(
-  harness: TestAppHarness,
-  threadId: string,
-): string[] {
+function turnRequestTexts(harness: TestAppHarness, threadId: string): string[] {
   return listEvents(harness.db, { threadId })
     .filter((event) => event.type === "client/turn/requested")
     .map((event): TurnRequestEventData =>
@@ -169,7 +167,12 @@ describe("changing when a queued message sends", () => {
     await withTestHarness(async (harness) => {
       const thread = seedIdleThread(harness, "host-send-time-earlier");
       const now = Date.now();
-      const row = await scheduleMessage(harness, thread.id, "Later", now + HOUR_MS);
+      const row = await scheduleMessage(
+        harness,
+        thread.id,
+        "Later",
+        now + HOUR_MS,
+      );
       const announced = recordQueuedAnnouncements();
       const hookCalls = recordDispatchHookCalls();
       const newSendAt = now + 60_000;
@@ -211,13 +214,21 @@ describe("changing when a queued message sends", () => {
     await withTestHarness(async (harness) => {
       const thread = seedIdleThread(harness, "host-send-time-held");
       const now = Date.now();
-      const row = await scheduleMessage(harness, thread.id, "Held", now + HOUR_MS);
+      const row = await scheduleMessage(
+        harness,
+        thread.id,
+        "Held",
+        now + HOUR_MS,
+      );
       const hold = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${row.id}/edit-hold`,
         { method: "POST" },
       );
       expect(hold.status).toBe(200);
-      const heldUntil = getQueuedThreadMessage(harness.db, row.id)?.editHeldUntil;
+      const heldUntil = getQueuedThreadMessage(
+        harness.db,
+        row.id,
+      )?.editHeldUntil;
       expect(heldUntil).not.toBeNull();
 
       const response = await updateQueuedMessage(harness, row, {
@@ -272,7 +283,12 @@ describe("changing when a queued message sends", () => {
       const thread = seedIdleThread(harness, "host-send-time-refusals");
       const sendAt = Date.now() + HOUR_MS;
       const row = await scheduleMessage(harness, thread.id, "Pinned", sendAt);
-      const claimed = await scheduleMessage(harness, thread.id, "Going", sendAt);
+      const claimed = await scheduleMessage(
+        harness,
+        thread.id,
+        "Going",
+        sendAt,
+      );
 
       const past = await updateQueuedMessage(harness, row, {
         expectedUpdatedAt: row.updatedAt,
@@ -317,6 +333,56 @@ describe("changing when a queued message sends", () => {
   });
 });
 
+describe("a queued bb notice", () => {
+  it("reports its notice, is not editable, and refuses a rewrite", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = seedIdleThread(harness, "host-notice-not-editable");
+      const notice = {
+        kind: "child-outcome-batch" as const,
+        subject: { kind: "thread-batch" as const, count: 2 },
+      };
+      const row = createQueuedThreadMessage(harness.db, harness.hub, {
+        threadId: thread.id,
+        content: textInput("[bb system]\n\nChild thread updates:"),
+        senderThreadId: null,
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        waitingOn: { kind: "plugin", pluginId: "gate", reason: "Held" },
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: notice,
+      });
+
+      const listed = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages`,
+      );
+      const [entry] = threadQueuedMessageSchema
+        .array()
+        .parse(await readJson(listed));
+      expect(entry).toMatchObject({
+        id: row.id,
+        initiator: "system",
+        systemNotice: notice,
+        editable: false,
+      });
+
+      const rewrite = await updateQueuedMessage(harness, row, {
+        expectedUpdatedAt: row.updatedAt,
+        input: textInput("Edited by hand"),
+      });
+      expect(rewrite.status).toBe(409);
+      await expect(readJson(rewrite)).resolves.toMatchObject({
+        message: "bb system notices cannot be edited",
+      });
+      expect(getQueuedThreadMessage(harness.db, row.id)?.content).toBe(
+        row.content,
+      );
+    });
+  });
+});
+
 function turnRequests(
   harness: TestAppHarness,
   threadId: string,
@@ -354,9 +420,10 @@ describe("changing a queued message's execution options", () => {
         kind: "time-reached",
         now: sendAt + 1,
       });
-      expect(turnRequests(harness, thread.id).at(-1)?.execution).toMatchObject(
-        { model: "gpt-5.1-codex", reasoningLevel: "high" },
-      );
+      expect(turnRequests(harness, thread.id).at(-1)?.execution).toMatchObject({
+        model: "gpt-5.1-codex",
+        reasoningLevel: "high",
+      });
     });
   });
 

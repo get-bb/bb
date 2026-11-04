@@ -15,8 +15,17 @@ import {
   type AppSettings,
 } from "@bb/domain";
 import { eq, inArray, sql } from "drizzle-orm";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import {
+  prepareCachedQuery,
+  type DbConnection,
+  type DbQueryConnection,
+} from "../connection.js";
 import { appSettingsValues } from "../schema.js";
+import {
+  deepFreeze,
+  sameStoredSettingRows,
+  type StoredSettingRow,
+} from "./stored-setting-rows.js";
 
 const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
@@ -28,6 +37,8 @@ const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
 const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
+const SKIPPED_APP_UPDATE_KEY = "skippedAppUpdate";
+const AUTO_APP_UPDATE_KEY = "autoAppUpdate";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -53,9 +64,8 @@ function writeValue(
     .run();
 }
 
-export function getAppSettings(db: DbConnection): AppSettings {
-  const values: Record<string, unknown> = { ...defaultAppSettings };
-  const rows = db
+const prepareAppSettingsRows = (db: DbQueryConnection) =>
+  db
     .select({ key: appSettingsValues.key, value: appSettingsValues.value })
     .from(appSettingsValues)
     .where(
@@ -64,8 +74,27 @@ export function getAppSettings(db: DbConnection): AppSettings {
         LEGACY_DIAGNOSTIC_EVENTS_KEY,
       ]),
     )
-    .all();
+    .orderBy(appSettingsValues.key)
+    .prepare();
 
+const parsedAppSettings = new WeakMap<
+  DbConnection,
+  { rows: StoredSettingRow[]; settings: AppSettings }
+>();
+
+export function getAppSettings(db: DbConnection): AppSettings {
+  const rows = prepareCachedQuery(db, prepareAppSettingsRows).all();
+  const cached = parsedAppSettings.get(db);
+  if (cached !== undefined && sameStoredSettingRows(cached.rows, rows)) {
+    return cached.settings;
+  }
+  const settings = deepFreeze(parseAppSettingsRows(rows));
+  parsedAppSettings.set(db, { rows, settings });
+  return settings;
+}
+
+function parseAppSettingsRows(rows: readonly StoredSettingRow[]): AppSettings {
+  const values: Record<string, unknown> = { ...defaultAppSettings };
   const legacyDiagnosticEvents = rows.find(
     (row) => row.key === LEGACY_DIAGNOSTIC_EVENTS_KEY,
   );
@@ -359,4 +388,31 @@ export function setAppUpdateSendHold(
       .where(eq(appSettingsValues.key, APP_UPDATE_SEND_HOLD_KEY))
       .run().changes > 0
   );
+}
+
+export function getSkippedAppUpdate(db: DbQueryConnection): string | null {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, SKIPPED_APP_UPDATE_KEY))
+    .get();
+  const value = row === undefined ? undefined : parseStoredValue(row.value);
+  return typeof value === "string" ? value : null;
+}
+
+export function setSkippedAppUpdate(db: DbQueryConnection, key: string): void {
+  writeValue(db, SKIPPED_APP_UPDATE_KEY, key, Date.now());
+}
+
+export function getAutoAppUpdate(db: DbQueryConnection): boolean {
+  const row = db
+    .select({ value: appSettingsValues.value })
+    .from(appSettingsValues)
+    .where(eq(appSettingsValues.key, AUTO_APP_UPDATE_KEY))
+    .get();
+  return row !== undefined && parseStoredValue(row.value) === true;
+}
+
+export function setAutoAppUpdate(db: DbQueryConnection, enabled: boolean): void {
+  writeValue(db, AUTO_APP_UPDATE_KEY, enabled, Date.now());
 }

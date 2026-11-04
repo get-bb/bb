@@ -1387,7 +1387,8 @@ describe("thread runtime config", () => {
           environmentId: environment.id,
         });
 
-        const longBody = "x".repeat(5000);
+        const globalInstructions = "g".repeat(15_700);
+        const longBody = "x".repeat(40_000);
         stubContributions({
           instructions: [
             {
@@ -1403,6 +1404,10 @@ describe("thread runtime config", () => {
               provider: () => {
                 throw new Error("provider boom");
               },
+            },
+            {
+              pluginId: "global",
+              provider: () => globalInstructions,
             },
             {
               pluginId: "verbose",
@@ -1447,8 +1452,9 @@ describe("thread runtime config", () => {
         );
         expect(instructions).toContain("still contributes");
         expect(instructions).not.toContain(longBody);
-        expect(instructions).toContain("x".repeat(4096));
-        expect(instructions).not.toContain("x".repeat(4097));
+        expect(instructions).toContain(globalInstructions);
+        expect(instructions).toContain("x".repeat(32_768));
+        expect(instructions).not.toContain("x".repeat(32_769));
       });
     });
   });

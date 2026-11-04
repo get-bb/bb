@@ -2,10 +2,15 @@ import type { Profiler } from "node:inspector";
 import { findSourceMap } from "node:module";
 import { roundDurationMs } from "./event-loop-delay.js";
 
-import type { StallWindowBatch } from "./stall-windows.js";
+import { EVENT_LOOP_GAP_INTERVAL_MS } from "./event-loop-gaps.js";
+import {
+  STALL_WINDOW_THRESHOLD_MS,
+  type StallWindowBatch,
+} from "./stall-windows.js";
 type StallWindow = StallWindowBatch["windows"][number];
 
-const MAX_SAMPLE_MS = 10;
+export const PROFILE_SAMPLING_INTERVAL_MS = 10;
+const MAX_SAMPLE_MS = 2 * PROFILE_SAMPLING_INTERVAL_MS;
 
 export function createStallSampleSummarizer(profile: Profiler.Profile) {
   const nodes = new Map(profile.nodes.map((node) => [node.id, node]));
@@ -92,8 +97,8 @@ export function summarizeStallWindows(
     startedAt: new Date(batch.epochOffsetMs + window.startedAt).toISOString(),
     endedAt: new Date(batch.epochOffsetMs + window.endedAt).toISOString(),
     delayMs: roundDurationMs(window.endedAt - window.startedAt),
-    resolutionMs: 20,
-    thresholdMs: 100,
+    resolutionMs: EVENT_LOOP_GAP_INTERVAL_MS,
+    thresholdMs: STALL_WINDOW_THRESHOLD_MS,
     sampleTimeBasis: "elapsed",
     nativeFramesMayIncludeWaiting: true,
     maxSampleWeightMs: MAX_SAMPLE_MS,
