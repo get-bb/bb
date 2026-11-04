@@ -151,7 +151,8 @@ describe("StartAnywhere", () => {
   it("shows bb desktop grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
-      "Hand this off to bb: fix the checkout bug",
+      "Fix CHK-41: checkout hangs on slow networks",
+      "src/pay/client.ts",
       "linux-box",
       ">server<",
       "MacBook",
@@ -215,6 +216,8 @@ describe("PluginMorph", () => {
       "Search in files",
       "README.md",
       "Settled (23)",
+      "Open a PR for it",
+      "src/pay/client.ts",
     ]) {
       expect(html).toContain(text);
     }
@@ -316,7 +319,9 @@ describe("DelegationTree", () => {
     }
     expect(html.match(/Child thread updates/g)).toHaveLength(4);
     expect(html.match(/class="bw-toast"/g)).toHaveLength(1);
-    expect(html).toContain("Review the diff needs your approval");
+    expect(html).toContain("PR #482 is ready for you to merge");
+    expect(html).toContain("finished: no blocking issues");
+    expect(html).not.toContain("approval");
   });
 });
 

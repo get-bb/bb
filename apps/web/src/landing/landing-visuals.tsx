@@ -999,7 +999,7 @@ function MorphThreads() {
         New thread
       </div>
       <div className="side-label">Threads</div>
-      <ThreadRow title={MORPH_THREAD} status="done" active />
+      <ThreadRow title={MORPH_THREAD} status="running" active />
       <ThreadRow title="Signups by plan" status="done" />
       <ThreadRow title="Bump the SDK" status="done" />
       <ThreadRow title="Refactor auth" status="waiting" />
@@ -1066,7 +1066,7 @@ function MorphShelves() {
         <div className="mx-sh-kid">
           <i className="mx-dot is-ok" />
           <span className="mx-sh-kid-title">Plan the fix</span>
-          <span className="mx-sh-badge is-run">Running</span>
+          <span className="mx-sh-badge is-ok">Done</span>
         </div>
         <div className="mx-sh-kid">
           <i className="mx-dot is-red" />
@@ -1107,8 +1107,13 @@ function MorphThread() {
           Explored 4 files, ran 2 commands
         </div>
         <div className="msg-say">
-          Found it: the payment request gives up after 5 seconds. I raised the
-          timeout to 30 seconds, added one retry, and the checkout tests pass.
+          Found it: the payment call gives up after 5 seconds. I raised it to
+          30s with one idempotent retry, and the checkout tests pass.
+        </div>
+        <div className="msg-user">Open a PR for it</div>
+        <div className="msg-step">
+          <ChevronRight className="step-chev" />
+          Ran 2 commands
         </div>
       </div>
       <WindowComposer
@@ -1165,14 +1170,14 @@ const BOARD_LANES: readonly {
     state: "todo",
     cards: [
       {
-        key: "BB-231",
+        key: "CHK-46",
         title: "Add Apple Pay to checkout",
         labels: ["checkout", "feature"],
         updated: "Nov 2",
         who: "MC",
       },
       {
-        key: "BB-229",
+        key: "CHK-44",
         title: "Show order history on the account page",
         labels: ["account"],
         updated: "Oct 31",
@@ -1185,14 +1190,14 @@ const BOARD_LANES: readonly {
     state: "progress",
     cards: [
       {
-        key: "BB-224",
+        key: "CHK-41",
         title: "Checkout times out on slow networks",
         labels: ["bug", "checkout"],
         updated: "Nov 3",
         who: "BB",
       },
       {
-        key: "BB-226",
+        key: "CHK-43",
         title: "Cache plan prices",
         labels: ["billing"],
         updated: "Nov 1",
@@ -1205,7 +1210,7 @@ const BOARD_LANES: readonly {
     state: "review",
     cards: [
       {
-        key: "BB-219",
+        key: "CHK-38",
         title: "Retry failed webhooks",
         labels: ["billing"],
         updated: "Nov 2",
@@ -1218,7 +1223,7 @@ const BOARD_LANES: readonly {
     state: "done",
     cards: [
       {
-        key: "BB-214",
+        key: "CHK-35",
         title: "Bump the SDK",
         labels: ["chore"],
         updated: "Oct 30",
@@ -1435,7 +1440,7 @@ const GRAPH_NODES: readonly {
   },
   {
     kind: "turn",
-    title: "Ship it with a retry",
+    title: "Open a PR for it",
     detail: "5 steps",
     x: 120,
     y: 282,
@@ -1443,7 +1448,7 @@ const GRAPH_NODES: readonly {
   },
   {
     kind: "subagent",
-    title: "Review the diff",
+    title: "Trace the timeout",
     detail: "Subagent · 8 steps",
     x: 258,
     y: 170,
@@ -1461,7 +1466,6 @@ const GRAPH_NODES: readonly {
     detail: "pnpm test checkout",
     x: 258,
     y: 290,
-    running: true,
   },
   {
     kind: "bash",
@@ -1469,14 +1473,15 @@ const GRAPH_NODES: readonly {
     detail: "git push",
     x: 258,
     y: 350,
+    running: true,
   },
 ];
 
 const GRAPH_EDGES: readonly [number, number][] = [
   [0, 1],
   [0, 2],
-  [2, 3],
-  [2, 4],
+  [1, 3],
+  [1, 4],
   [2, 5],
   [2, 6],
 ];
@@ -1552,7 +1557,7 @@ function MorphAgentGraph() {
         <div className="mx-ag-foot">
           <span className="mx-ag-pill">
             <i className="mx-dot is-run" />
-            Running 1
+            Running 2
           </span>
           <span className="mx-ag-pill">
             <span>−</span>
@@ -1699,7 +1704,7 @@ const DELEGATION_CHILDREN = [
     icon: OpenAiIcon,
     title: "Review the diff",
     landsAt: 9,
-    then: [{ status: "waiting", at: 10.4 }],
+    then: [{ status: "done", at: 10.4 }],
   },
 ] as const;
 
@@ -1730,7 +1735,7 @@ function ChildUpdate({
   );
 }
 
-const DELEGATION_PING = "Review the diff needs your approval";
+const DELEGATION_PING = "PR #482 is ready for you to merge";
 
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
@@ -1740,7 +1745,7 @@ export function DelegationTree() {
       ref={ref}
       className="bw bw-lead"
       role="img"
-      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows each Child thread update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
+      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows each Child thread update, and it answers a question from Build it on its own. When Review the diff finds no blocking issues, one notification reaches you: PR #482 is ready for you to merge."
     >
       <div className="mock bw-window">
         <WindowBar title={DELEGATION_LEAD} />
@@ -1755,6 +1760,7 @@ export function DelegationTree() {
               title={DELEGATION_LEAD}
               icon={GrokIcon}
               status="running"
+              then={[{ status: "waiting", at: 11.2 }]}
               active
             />
             <div className="thread-kids bw-kids">
@@ -1784,8 +1790,8 @@ export function DelegationTree() {
           <div className="main">
             <div className="feed bw-feed bw-feed-live">
               <div className="msg-user">
-                Ship the checkout timeout fix. Plan it, build it and get it
-                reviewed.
+                Fix CHK-41. Have Claude Code plan it, Cursor build it and Codex
+                review it.
               </div>
               <Reveal at={0.6}>
                 <SpawnLine title="Plan the fix" provider="Claude Code" />
@@ -1821,7 +1827,7 @@ export function DelegationTree() {
               </Reveal>
               <Reveal at={10.6}>
                 <ChildUpdate icon={OpenAiIcon}>
-                  <strong>Review the diff</strong> is waiting on your approval
+                  <strong>Review the diff</strong> finished: no blocking issues
                 </ChildUpdate>
               </Reveal>
             </div>
@@ -1844,7 +1850,7 @@ export function DelegationTree() {
   );
 }
 
-const START_PROMPT = "Hand this off to bb: fix the checkout bug";
+const START_PROMPT = "Fix CHK-41: checkout hangs on slow networks";
 
 type StartStep =
   | { at: number; say: string }
@@ -1859,10 +1865,10 @@ type StartStep =
 
 const START_STEPS: readonly StartStep[] = [
   { at: 2.4, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
-  { at: 2.9, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
+  { at: 2.9, icon: FileReadIcon, verb: "Read", object: "src/pay/client.ts" },
   {
     at: 3.5,
-    say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
+    say: "The payment call gives up after 5s on slow networks. Raising it to 30s with one idempotent retry.",
   },
   { at: 4.4, icon: EditFileIcon, verb: "Edited", object: "2 files" },
   {
@@ -1917,7 +1923,7 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
+      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix CHK-41, checkout hanging on slow networks, it explores the code, reads src/pay/client.ts, explains that the payment call gives up after 5 seconds and raises it to 30 with one retry, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}

@@ -2642,7 +2642,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
 }
 
-
 .band-link {
   display: inline-block;
   margin-top: 14px;
@@ -2696,7 +2695,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw {
   --mock-width: 924px;
   --mock-visible-width: 560px;
-  --bw-fit-slice: var(--mock-slice, min(var(--mock-width), 100vw - var(--wrap-gutter)));
+  --bw-fit-slice: var(
+    --mock-slice,
+    min(var(--mock-width), 100vw - var(--wrap-gutter))
+  );
   position: relative;
   width: var(--mock-width);
   zoom: var(--mock-scale, 1);
@@ -2814,7 +2816,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-reveal {
   display: grid;
   grid-template-rows: 1fr;
-  animation: bw-reveal var(--dur-slow) var(--ease-out-expo) var(--fw-at, 0s) both;
+  animation: bw-reveal var(--dur-slow) var(--ease-out-expo) var(--fw-at, 0s)
+    both;
 }
 
 .bw-reveal-inner {
@@ -5306,6 +5309,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-sh-badge.is-run {
   color: var(--mx-cyan);
+}
+
+.mx-sh-badge.is-ok {
+  color: var(--mx-ok);
 }
 
 .mx-sh-badge.is-ask {
