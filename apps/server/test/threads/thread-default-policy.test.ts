@@ -194,6 +194,16 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     });
   });
 
+  it("falls back to the product default when the stored provider is no longer registered", () => {
+    expect(
+      resolveCreateThreadExecutionDefaults(registry, {
+        storedDefaults: makeDefaults({ providerId: "acp-removed-plugin" }),
+      }),
+    ).toEqual(
+      resolveCreateThreadExecutionDefaults(registry, { storedDefaults: null }),
+    );
+  });
+
   it("skips unavailable providers when choosing the product default", async () => {
     const degradedRegistry = createProviderRegistryService();
     await registerFirstPartyProviders(degradedRegistry, {

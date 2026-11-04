@@ -184,7 +184,8 @@ export function resolveCreateThreadExecutionDefaults(
   const disabled = registry.disabledProviderIds();
   const storedProviderId =
     args.storedDefaults !== null &&
-    !disabled.has(args.storedDefaults.providerId)
+    !disabled.has(args.storedDefaults.providerId) &&
+    registry.get(args.storedDefaults.providerId) !== null
       ? args.storedDefaults.providerId
       : undefined;
   const isProductDefault =
