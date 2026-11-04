@@ -7,47 +7,185 @@ env:
 permissions:
   contents: read
 jobs:
-  seed:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-workspace-tools
-        with:
-          node-version: 22.x
-          pnpm-version: 9.15.0
-      - name: Restore store archive
-        uses: ./.github/actions/cache-pnpm
-      - name: Install dependencies
-        run: bash .github/actions/setup-workspace/install-dependencies.sh
-          --ignore-scripts --filter '!@bb/mobile'
-  consume:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-workspace-tools
-        with:
-          node-version: 22.x
-          pnpm-version: 9.15.0
-      - name: Restore store archive
-        uses: ./.github/actions/cache-pnpm
-        if: matrix.mode == 'cached'
-      - name: Install dependencies
-        run: bash .github/actions/setup-workspace/install-dependencies.sh
-          --ignore-scripts --filter '!@bb/mobile'
-      - name: Offline verify
-        if: matrix.mode == 'cached'
-        run: pnpm install --frozen-lockfile --offline --ignore-scripts --force --filter
-          '!@bb/mobile'
-    needs: seed
+  windows:
+    name: ${{ matrix.cpus }} CPU concurrency ${{ matrix.concurrency }}
+    runs-on: blacksmith-${{ matrix.cpus }}vcpu-windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        mode:
-          - fresh
-          - cached
-        replica:
-          - 1
-          - 2
-    name: Archive store ${{ matrix.mode }} replica ${{ matrix.replica }}
+        include:
+          - shard: packages-other
+            filter: --filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-*
+              --filter=!@bb/host-daemon --filter=!@bb/cli
+              --filter=!@bb/integration-tests --filter=!@bb/templates
+              --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop
+              --filter=!@bb/plugin-build --filter=!@bb/process-utils
+              --filter=!@bb/host-workspace --filter=!@bb/host-watcher
+              --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol
+              --filter=!@bb/provider-bridge-acp
+              --filter=!@bb/host-daemon-contract --filter=!@bb/config
+              --filter=!@bb/db
+            concurrency: 2
+            vitestShard: ""
+            cpus: 4
+            replica: 1
+          - shard: packages-other
+            filter: --filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-*
+              --filter=!@bb/host-daemon --filter=!@bb/cli
+              --filter=!@bb/integration-tests --filter=!@bb/templates
+              --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop
+              --filter=!@bb/plugin-build --filter=!@bb/process-utils
+              --filter=!@bb/host-workspace --filter=!@bb/host-watcher
+              --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol
+              --filter=!@bb/provider-bridge-acp
+              --filter=!@bb/host-daemon-contract --filter=!@bb/config
+              --filter=!@bb/db
+            concurrency: 4
+            vitestShard: ""
+            cpus: 4
+            replica: 1
+          - shard: packages-other
+            filter: --filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-*
+              --filter=!@bb/host-daemon --filter=!@bb/cli
+              --filter=!@bb/integration-tests --filter=!@bb/templates
+              --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop
+              --filter=!@bb/plugin-build --filter=!@bb/process-utils
+              --filter=!@bb/host-workspace --filter=!@bb/host-watcher
+              --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol
+              --filter=!@bb/provider-bridge-acp
+              --filter=!@bb/host-daemon-contract --filter=!@bb/config
+              --filter=!@bb/db
+            concurrency: 2
+            vitestShard: ""
+            cpus: 8
+            replica: 1
+          - shard: packages-other
+            filter: --filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-*
+              --filter=!@bb/host-daemon --filter=!@bb/cli
+              --filter=!@bb/integration-tests --filter=!@bb/templates
+              --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop
+              --filter=!@bb/plugin-build --filter=!@bb/process-utils
+              --filter=!@bb/host-workspace --filter=!@bb/host-watcher
+              --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol
+              --filter=!@bb/provider-bridge-acp
+              --filter=!@bb/host-daemon-contract --filter=!@bb/config
+              --filter=!@bb/db
+            concurrency: 4
+            vitestShard: ""
+            cpus: 8
+            replica: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+      - name: Restore workload workflow for its own contract tests
+        shell: bash
+        run: git show 3b93a156695f38ea15874737977fc5e1b5f90afe:.github/workflows/ci.yml
+          > .github/workflows/ci.yml
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          package-manager-cache: false
+      - name: Actual runner capacity
+        shell: pwsh
+        run: Get-CimInstance Win32_ComputerSystem | Select-Object
+          NumberOfLogicalProcessors,TotalPhysicalMemory | ConvertTo-Json
+      - name: Setup pnpm
+        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+      - name: Restore Windows dependency disk
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+      - name: Restore React Compiler cache
+        if: ${{ contains(matrix.filter, '--filter=@bb/demo-server') }}
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+      - name: Install dependencies
+        timeout-minutes: 5
+        shell: bash
+        env:
+          APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
+          PLUGIN_SHARD: ${{ matrix.shard == 'plugins-2' }}
+          OTHER_PACKAGES_SHARD: ${{ matrix.shard == 'packages-other' }}
+          TEST_FILTERS: ${{ matrix.filter }}
+          MOBILE_TESTS: ${{ matrix.mobile }}
+        run: >
+          filters=()
+
+          if [[ "$APP_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$SERVER_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
+          elif [[ "$PLUGIN_SHARD" == "true" || "$OTHER_PACKAGES_SHARD" == "true"
+          ]]; then
+            read -r -a selected_filters <<< "$TEST_FILTERS"
+            selection=$(pnpm list "${selected_filters[@]}" --depth -1 --json)
+            packages=$(node -e '
+              const fs = require("node:fs");
+              for (const pkg of JSON.parse(process.argv[1])) {
+                if (process.env.OTHER_PACKAGES_SHARD === "true" && !JSON.parse(fs.readFileSync(`${pkg.path}/package.json`, "utf8")).scripts?.test) continue;
+                console.log(pkg.name);
+              }
+            ' "$selection")
+            filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+            if [[ "$OTHER_PACKAGES_SHARD" == "true" ]]; then
+              filters+=(--filter '@bb/server...' --filter '@bb/cli...' --filter 'bb-plugin-provider-*...')
+            fi
+            while IFS= read -r package; do
+              [[ -z "$package" ]] && continue
+              filters+=(--filter "$package...")
+            done <<< "$packages"
+          elif [[ "$MOBILE_TESTS" != "true" ]]; then
+            filters=(--filter '!@bb/mobile')
+          fi
+
+          bash .github/actions/setup-workspace/install-dependencies.sh
+          --ignore-scripts "${filters[@]}"
+      - name: Setup Bun
+        if: ${{ matrix.shard == 'plugins-1' }}
+        timeout-minutes: 4
+        uses: ./.github/actions/setup-bun
+        with:
+          version: 1.3.14
+      - name: Prepare plugin SDK runtime
+        if: ${{ matrix.shard == 'plugins-2' && contains(matrix.filter,
+          '--filter=bb-plugin-*') }}
+        shell: cmd
+        run: >
+          if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
+
+          pnpm exec turbo run build --filter=@get-bb/plugin-sdk
+          --cache-dir="%TURBO_CACHE_DIR%" --output-logs=new-only --summarize
+          --concurrency=2
+      - name: Test on Windows
+        shell: cmd
+        env:
+          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '4' || '' }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
+        run: >
+          if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
+
+          pnpm exec turbo run test ${{ matrix.filter }}
+          --cache-dir="%TURBO_CACHE_DIR%" --force --continue
+          --output-logs=new-only --summarize --concurrency=${{
+          matrix.concurrency }}
+      - name: Upload test timings
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: test-timings-windows-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: .turbo/runs/*.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
