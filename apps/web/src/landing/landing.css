@@ -38,7 +38,11 @@
   --text-body: 14.5px;
   --text-lead: 16px;
   --icon-sm: 14px;
+  --gap-xs: 4px;
+  --gap-sm: 8px;
   --gap-md: 12px;
+  --text-meta: 13px;
+  --z-site-header: 30;
   --site-header-height: 82px;
   --site-header-offset: 0px;
   /* Display type sits a step darker than the body ink (and a step lighter in
@@ -161,6 +165,7 @@ body {
 .nav-sticky {
   position: sticky;
   top: 0;
+  z-index: var(--z-site-header);
   min-height: var(--site-header-height);
 }
 
@@ -253,7 +258,7 @@ html:has(.nav-sticky) {
 
 .nav-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--gap-sm);
   align-items: center;
   justify-self: end;
 }
@@ -427,16 +432,18 @@ html:has(.nav-sticky) {
   height: 17px;
 }
 
-.nav-github-stars {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--gap-xs);
-  width: auto;
-  padding: 0 8px;
+@media (min-width: 481px) {
+  .nav-github-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    width: auto;
+    padding: 0 var(--gap-sm);
+  }
 }
 
 .nav-star-count {
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3362,12 +3369,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 @media (max-width: 480px) {
-  .nav-github-stars {
-    width: 30px;
-    padding: 0;
-    justify-content: center;
-  }
-
   .nav-star-count {
     display: none;
   }
