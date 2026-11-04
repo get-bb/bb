@@ -4511,6 +4511,107 @@ describe("ComposerBox mention triggers", () => {
     ).not.toBeNull();
   });
 
+  async function mockFixLoginPrefixSearch() {
+    const mentionModule = await import("@/hooks/usePromptMentions");
+    const { orderPromptMentionSuggestions } =
+      await import("@/hooks/promptMentionCandidates");
+    const originalSearch = mentionModule.usePromptMentions;
+    const searchState = { pending: false };
+    const search = vi
+      .spyOn(mentionModule, "usePromptMentions")
+      .mockImplementation((source, mention) => {
+        const result = originalSearch(source, mention);
+        const query = mention?.text.trim().toLowerCase() ?? "";
+        if (!searchState.pending && "fix login bug".startsWith(query))
+          return result;
+        return {
+          ...result,
+          results: orderPromptMentionSuggestions({ query, suggestions: [] }),
+          isLoading: searchState.pending,
+        };
+      });
+    onTestFinished(() => search.mockRestore());
+    return searchState;
+  }
+
+  function deleteBeforeCaret(count: number) {
+    const editor = (getPromptEditorElement() as TiptapEditorHTMLElement).editor;
+    if (!editor) throw new Error("Composer editor is missing");
+    const caret = editor.state.selection.from;
+    act(() => {
+      editor.commands.deleteRange({ from: caret - count, to: caret });
+    });
+  }
+
+  function typeaheadMenu() {
+    return document.querySelector("[data-promptbox-typeahead-menu]");
+  }
+
+  it("reopens an unmatched multiword mention when deleting back to a match", async () => {
+    await mockFixLoginPrefixSearch();
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login now",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(typeaheadMenu()).toBeNull();
+
+    deleteBeforeCaret(4);
+
+    expect(
+      await screen.findByRole("button", { name: /Fix login bug/u }),
+    ).not.toBeNull();
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith("fix login", "@");
+  });
+
+  it("keeps a reopened mention hidden while its search is pending or empty", async () => {
+    const searchState = await mockFixLoginPrefixSearch();
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login now please",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+
+    searchState.pending = true;
+    deleteBeforeCaret(1);
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith(
+      "fix login now pleas",
+      "@",
+    );
+    expect(typeaheadMenu()).toBeNull();
+
+    searchState.pending = false;
+    deleteBeforeCaret(1);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(typeaheadMenu()).toBeNull();
+    expect(screen.queryByText("No matching mentions")).toBeNull();
+  });
+
+  it("keeps an escaped mention closed when deleting back through its query", async () => {
+    const { onMentionQueryChange, promptBoxRef } = renderPromptBox(
+      "Notes @fix login",
+      { mentionSuggestions: [githubIssueSuggestion] },
+    );
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    deleteBeforeCaret(3);
+
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
+    expect(typeaheadMenu()).toBeNull();
+  });
+
   it("offers the draft's file attachments on a bare @ and mentions the picked one", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Read @", {
       upload: async (files) => uploadedAs(files),

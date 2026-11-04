@@ -441,7 +441,7 @@ function recordPastedTextHistory(
 const PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS = "w-6 px-0";
 
 type ComposerMenuState =
-  | { kind: "suggestions"; trigger: ActiveTrigger }
+  | { kind: "suggestions"; trigger: ActiveTrigger; revealOnMatch: boolean }
   | { kind: "plugin"; key: string; open: boolean }
   | null;
 
@@ -449,6 +449,7 @@ interface DismissedTriggerRange {
   start: number;
   end: number;
   hasLeftRange: boolean;
+  reopenBeforeOffset: number | null;
 }
 
 interface PromptEditorValueKey {
@@ -1571,6 +1572,7 @@ export function PromptBoxInternal({
           start: current.trigger.from,
           end: current.trigger.to,
           hasLeftRange: false,
+          reopenBeforeOffset: null,
         };
       }
       setComposerMenu(
@@ -1588,6 +1590,19 @@ export function PromptBoxInternal({
     [setComposerMenu],
   );
 
+  const dismissUnmatchedMention = useCallback(() => {
+    const current = composerMenuRef.current;
+    if (current?.kind !== "suggestions") return;
+    triggerKeyRef.current = "";
+    dismissedTriggerRef.current = {
+      start: current.trigger.from,
+      end: current.trigger.to,
+      hasLeftRange: false,
+      reopenBeforeOffset: current.trigger.to - current.trigger.from,
+    };
+    setComposerMenu(null);
+  }, [setComposerMenu]);
+
   const syncTriggerState = useCallback(
     (editor: Editor) => {
       if (
@@ -1600,6 +1615,18 @@ export function PromptBoxInternal({
       const isRestoringAppliedMention =
         isRestoringAppliedMentionRef.current && dismissedTrigger !== null;
       const detectedTrigger = findActiveTrigger(editor, triggers);
+      const reopensUnmatchedTrigger =
+        dismissedTrigger !== null &&
+        !isRestoringAppliedMention &&
+        !dismissedTrigger.hasLeftRange &&
+        dismissedTrigger.reopenBeforeOffset !== null &&
+        detectedTrigger?.from === dismissedTrigger.start &&
+        caretPosition - dismissedTrigger.start <
+          dismissedTrigger.reopenBeforeOffset;
+      if (reopensUnmatchedTrigger) {
+        dismissedTrigger = null;
+        dismissedTriggerRef.current = null;
+      }
       if (dismissedTrigger && !isRestoringAppliedMention) {
         if (
           !dismissedTrigger.hasLeftRange &&
@@ -1641,11 +1668,20 @@ export function PromptBoxInternal({
         triggerKeyRef.current = nextKey;
         setSelectedSuggestionKey(null);
       }
+      const previousMenu = composerMenuRef.current;
       setComposerMenu(
         nextTrigger
-          ? { kind: "suggestions", trigger: nextTrigger }
-          : composerMenuRef.current?.kind === "plugin"
-            ? composerMenuRef.current
+          ? {
+              kind: "suggestions",
+              trigger: nextTrigger,
+              revealOnMatch:
+                reopensUnmatchedTrigger ||
+                (previousMenu?.kind === "suggestions" &&
+                  previousMenu.revealOnMatch &&
+                  previousMenu.trigger.from === nextTrigger.from),
+            }
+          : previousMenu?.kind === "plugin"
+            ? previousMenu
             : null,
       );
     },
@@ -2332,14 +2368,19 @@ export function PromptBoxInternal({
     activeSuggestions.length === 0;
 
   useEffect(() => {
-    if (isUnmatchedMultiwordMention) dismissComposerMenu();
-  }, [dismissComposerMenu, isUnmatchedMultiwordMention]);
+    if (isUnmatchedMultiwordMention) dismissUnmatchedMention();
+  }, [dismissUnmatchedMention, isUnmatchedMultiwordMention]);
+  const isHiddenUntilMatch =
+    composerMenu?.kind === "suggestions" &&
+    composerMenu.revealOnMatch &&
+    activeSuggestions.length === 0;
 
   const showTypeaheadMenu =
     !showVoiceActionGroup &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
     !isUnmatchedMultiwordMention &&
+    !isHiddenUntilMatch &&
     !isBareNonDefaultMentionTrigger;
 
   useTypeaheadMenuMaxHeight(
@@ -2500,6 +2541,7 @@ export function PromptBoxInternal({
           start: activeTrigger.from,
           end: activeTrigger.from + 2,
           hasLeftRange: false,
+          reopenBeforeOffset: null,
         },
       });
     },
@@ -2533,6 +2575,7 @@ export function PromptBoxInternal({
             trailingText,
           }),
           hasLeftRange: false,
+          reopenBeforeOffset: null,
         },
       });
     },
