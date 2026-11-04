@@ -87,6 +87,7 @@ import {
   ONBOARDING_STEPS,
   STEP_COPY,
   connectAccessUrl,
+  connectFlowFailed,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   featuredPluginEntryIds,
@@ -172,6 +173,7 @@ function AgentSignInContainer({
   alternate,
   onUseAlternate,
   onExit,
+  onFail,
   onViewChange,
 }: {
   redesign: boolean;
@@ -182,6 +184,7 @@ function AgentSignInContainer({
   alternate: { label: string; method: SignInMethod } | null;
   onUseAlternate: (method: SignInMethod) => void;
   onExit: (exitCode: number | null) => void;
+  onFail: () => void;
 }) {
   const outputQuery = useQuery({
     queryKey: terminalOutputTailQueryKey(session.id),
@@ -196,13 +199,21 @@ function AgentSignInContainer({
     retry: false,
   });
   const output = outputQuery.data;
-  const guide = useMemo(
-    () =>
-      output === undefined
-        ? null
-        : parseSignInOutput(decodeTerminalChunks(output.chunks)),
+  const outputText = useMemo(
+    () => (output === undefined ? null : decodeTerminalChunks(output.chunks)),
     [output],
   );
+  const guide = useMemo(
+    () => (outputText === null ? null : parseSignInOutput(outputText)),
+    [outputText],
+  );
+  const connectFailed =
+    connectFlow !== null &&
+    outputText !== null &&
+    connectFlowFailed(connectFlow, outputText);
+  useEffect(() => {
+    if (connectFailed) onFail();
+  }, [connectFailed, onFail]);
   const [code, setCode] = useState("");
   const [codeSubmitted, setCodeSubmitted] = useState(false);
   const [terminalChoice, setTerminalChoice] = useState<boolean | null>(null);
@@ -579,6 +590,7 @@ function AgentStepContainer({
                   onExit={(exitCode) =>
                     signIns.handleExit(health.providerId, exitCode)
                   }
+                  onFail={() => signIns.fail(health.providerId)}
                   onViewChange={(nextView) =>
                     signIns.setView(health.providerId, nextView)
                   }

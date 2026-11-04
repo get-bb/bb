@@ -153,16 +153,24 @@ export function useAgentSignIns({
     [],
   );
 
-  const handleExit = useCallback(
-    (providerId: string, exitCode: number | null) => {
+  const fail = useCallback(
+    (providerId: string) => {
       if (!signInsRef.current.has(providerId)) return;
-      if (exitCode !== 0) {
-        setFailedProviderIds((ids) => withKey(ids, providerId));
-      }
-      if (exitCode === 0) end(providerId, "exited");
-      else end(providerId, "failed", "command_failed");
+      setFailedProviderIds((ids) => withKey(ids, providerId));
+      end(providerId, "failed", "command_failed");
     },
     [end],
+  );
+
+  const handleExit = useCallback(
+    (providerId: string, exitCode: number | null) => {
+      if (exitCode !== 0) {
+        fail(providerId);
+        return;
+      }
+      end(providerId, "exited");
+    },
+    [end, fail],
   );
 
   const setView = useCallback((providerId: string, view: AgentSignInView) => {
@@ -257,6 +265,7 @@ export function useAgentSignIns({
     failedProviderIds,
     start,
     end,
+    fail,
     handleExit,
     setView,
   };

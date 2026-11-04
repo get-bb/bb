@@ -1481,7 +1481,8 @@ export function AgentSignInPanel({
         : { kind: "waiting" };
   if (starting && !connect) return null;
   const pageUrl =
-    url === null || connect || instructionLinksSignInPage(url, view, alternate)
+    url === null ||
+    (!connect && instructionLinksSignInPage(url, view, alternate))
       ? null
       : url;
   return (
