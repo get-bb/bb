@@ -294,6 +294,7 @@ describe("builtin plugin reconciliation", () => {
         provenance: "builtin",
         isOrphanedBuiltin: false,
         sourceDisplay: "builtin · builtin-fixture",
+        sourceNotice: null,
         updateState: {},
         icon: "EditFile",
         enabled: true,

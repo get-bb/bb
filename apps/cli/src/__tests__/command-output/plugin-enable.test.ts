@@ -19,6 +19,7 @@ const enableResponse = (status: string, statusDetail: string | null) =>
       publisherLabel: null,
       isOrphanedBuiltin: false,
       sourceDisplay: "path · /plugins/boom",
+      sourceNotice: null,
       updateState: {},
       enabled: true,
       description: null,

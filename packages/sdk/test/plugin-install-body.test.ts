@@ -16,6 +16,7 @@ const legacyInstalledPlugin = {
   provenance: "direct",
   isOrphanedBuiltin: false,
   sourceDisplay: "path · /tmp/my-plugin",
+  sourceNotice: null,
   updateState: {},
   enabled: true,
   description: null,

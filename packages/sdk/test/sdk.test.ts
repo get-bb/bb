@@ -1855,6 +1855,7 @@ describe("@bb/sdk", () => {
       catalogEntryId: "notes",
       publisherLabel: "BB Community",
       sourceDisplay: "npm · @bb/notes · tracks compatible",
+      sourceNotice: null,
       updateState: {},
       enabled: true,
       description: "Notes",
