@@ -37,7 +37,7 @@ import {
   resolveBuiltinPluginRootPath,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { copyPluginRuntime } from "@bb/plugin-build";
-import { testLogger } from "../../helpers/test-logger.js";
+import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {

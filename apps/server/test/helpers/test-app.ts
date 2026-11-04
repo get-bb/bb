@@ -1,3 +1,4 @@
+export { testLogger } from "./test-logger.js";
 import { createTestLogger } from "./test-logger.js";
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
