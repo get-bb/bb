@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 const root=process.cwd(), output=join(process.env.RUNNER_TEMP,'native-types-results');
 await mkdir(output,{recursive:true});
-async function run(command){const start=performance.now();const child=spawn(process.env.ComSpec,['/d','/s','/c',command],{cwd:root,stdio:'inherit',windowsHide:true});const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve)});assert.equal(code,0,command);return (performance.now()-start)/1000;}
+async function run(command){const start=performance.now();const child=spawn(process.env.ComSpec,['/d','/s','/c',command],{cwd:root,stdio:'inherit',windowsHide:true,windowsVerbatimArguments:true});const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve)});assert.equal(code,0,command);return (performance.now()-start)/1000;}
 await run('pnpm exec turbo run build --filter=bb-app --output-logs=new-only');
 const install=join(process.env.RUNNER_TEMP,'native-typescript');
 await run(`npm install --prefix "${install}" --ignore-scripts --no-audit --no-fund typescript@7.1.0-dev.20260930.4`);
