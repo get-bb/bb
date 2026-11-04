@@ -1449,7 +1449,14 @@ fires after a final unterminated line is emitted.
 
 `experimental_FileLink` and `experimental_openFilePreview` open explicit live
 workspace, host and thread-storage file targets through the current surface's
-shared file-tab controller. `experimental_openFileExternally` opens a target
+shared file-tab controller. `experimental_openFilePreview`'s optional
+`opener` (`ExperimentalFilePreviewOptions`) names one of the calling plugin's
+`fileOpener` registrations to show the file with for that open; it becomes
+the same one-off viewer override the file-link "Open with" menu passes, and an
+unregistered id falls back to BB's preview. A `fileOpener` with
+`extensions: []` is never chosen by extension or listed under "Open with", so
+it shows only files its plugin opens this way; Inline visualizations' expanded
+page is the first caller. `experimental_openFileExternally` opens a target
 in the client's preferred external app. The boolean results report host
 acceptance, and malformed targets stay inert.
 `experimental_useCanOpenFileExternally(target)` is a hook that reports

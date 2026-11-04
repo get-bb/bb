@@ -138,6 +138,7 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalFilePreviewOptions,
   type ExperimentalLiveFileTarget,
   type ExperimentalServers,
   type ExperimentalFixedTabTargetState,
@@ -249,7 +250,7 @@ export type NavigateCall =
   | { method: "openUrl"; url: string }
   | {
       method: "experimental_openFilePreview";
-      options: ExperimentalFileOpenOptions;
+      options: ExperimentalFilePreviewOptions;
     }
   | {
       method: "experimental_openFileExternally";
@@ -2423,7 +2424,7 @@ export interface RenderSlotOptions<
   /** Host acceptance for URL intents from the hook or `UrlLink`. */
   openUrl?: (url: string) => boolean;
   /** Host acceptance for preview intents from the hook or file link. */
-  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  openFilePreview?: (options: ExperimentalFilePreviewOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
   /**

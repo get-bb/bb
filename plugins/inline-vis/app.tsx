@@ -11,10 +11,13 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
+  experimental_SourceCode as SourceCode,
   Markdown,
   useBbNavigate,
   useRpc,
   type ExperimentalCodeFenceRendererProps,
+  type PluginFileOpenerProps,
+  type PluginFileOpenerSource,
   type PluginMessageDirectiveProps,
   type MarkdownProps,
 } from "@get-bb/plugin-sdk/app";
@@ -354,27 +357,25 @@ function OpenPreviewAction({
 
 const rememberedFrameHeights = new Map<string, number>();
 
-function HtmlFrame({
+function ThemedFrame({
   title,
   content,
   baseHref,
-  heightKey,
-  requested,
-  action,
+  onContentHeight,
 }: {
   title: string;
   content: string;
   baseHref: string;
-  heightKey: string;
-  requested: number | null;
-  action: ReactNode;
+  onContentHeight: ((height: number) => void) | null;
 }) {
   const theme = useFrameTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const latestTheme = useRef(theme);
+  const latestOnContentHeight = useRef(onContentHeight);
   useLayoutEffect(() => {
     latestTheme.current = theme;
-  }, [theme]);
+    latestOnContentHeight.current = onContentHeight;
+  }, [theme, onContentHeight]);
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -388,12 +389,6 @@ function HtmlFrame({
     };
   }, [content, baseHref]);
   const [loaded, setLoaded] = useState(false);
-  const [contentHeight, setContentHeight] = useState<number>();
-  const height = frameHeight({
-    requested,
-    contentHeight,
-    remembered: rememberedFrameHeights.get(heightKey),
-  });
 
   const postTheme = () => {
     const message = frameThemeMessage(theme);
@@ -407,13 +402,7 @@ function HtmlFrame({
       if (frame === null || event.source !== frame.contentWindow) return;
       const reported = readFrameContentHeight(event.data);
       if (reported !== undefined) {
-        rememberBounded(
-          rememberedFrameHeights,
-          heightKey,
-          reported,
-          MAX_REMEMBERED_FRAME_HEIGHTS,
-        );
-        setContentHeight(reported);
+        latestOnContentHeight.current?.(reported);
         return;
       }
       const link = readFrameLinkRequest(event.data);
@@ -429,7 +418,46 @@ function HtmlFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [heightKey]);
+  }, []);
+
+  if (srcDoc === null) return null;
+  return (
+    <iframe
+      ref={frameRef}
+      title={title}
+      srcDoc={srcDoc}
+      sandbox="allow-scripts allow-forms"
+      onLoad={() => {
+        setLoaded(true);
+        postTheme();
+      }}
+      className="block size-full border-0"
+      style={{ colorScheme: loaded ? theme.appearance : "light" }}
+    />
+  );
+}
+
+function HtmlFrame({
+  title,
+  content,
+  baseHref,
+  heightKey,
+  requested,
+  action,
+}: {
+  title: string;
+  content: string;
+  baseHref: string;
+  heightKey: string;
+  requested: number | null;
+  action: ReactNode;
+}) {
+  const [contentHeight, setContentHeight] = useState<number>();
+  const height = frameHeight({
+    requested,
+    contentHeight,
+    remembered: rememberedFrameHeights.get(heightKey),
+  });
 
   return (
     <div
@@ -437,20 +465,20 @@ function HtmlFrame({
       className="group/inline-vis relative my-2"
       style={{ height }}
     >
-      {srcDoc === null ? null : (
-        <iframe
-          ref={frameRef}
-          title={title}
-          srcDoc={srcDoc}
-          sandbox="allow-scripts allow-forms"
-          onLoad={() => {
-            setLoaded(true);
-            postTheme();
-          }}
-          className="block size-full border-0"
-          style={{ colorScheme: loaded ? theme.appearance : "light" }}
-        />
-      )}
+      <ThemedFrame
+        title={title}
+        content={content}
+        baseHref={baseHref}
+        onContentHeight={(reported) => {
+          rememberBounded(
+            rememberedFrameHeights,
+            heightKey,
+            reported,
+            MAX_REMEMBERED_FRAME_HEIGHTS,
+          );
+          setContentHeight(reported);
+        }}
+      />
       <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/inline-vis:opacity-100 pointer-coarse:opacity-100">
         {action}
       </div>
@@ -619,6 +647,7 @@ function InlineVisDirective({
     navigate.experimental_openFilePreview({
       target: state.target,
       location: null,
+      ...(state.kind === "html" ? { opener: PAGE_OPENER_ID } : {}),
     });
   };
 
@@ -719,6 +748,120 @@ function InlineVisFence({
   );
 }
 
+const PAGE_OPENER_ID = "page";
+
+function pageFileUrl(
+  path: string,
+  source: PluginFileOpenerSource,
+): string | null {
+  const file = path.split("/").map(encodeURIComponent).join("/");
+  if (source.kind === "workspace" && source.environmentId !== null) {
+    return `/api/v1/environments/${encodeURIComponent(source.environmentId)}/files/${file}`;
+  }
+  if (source.kind === "thread-storage" && source.threadId !== null) {
+    return `/api/v1/threads/${encodeURIComponent(source.threadId)}/thread-storage/files/${file}`;
+  }
+  return null;
+}
+
+type PageState =
+  | { status: "loading" }
+  | { status: "ready"; content: string }
+  | { status: "error"; message: string };
+
+const PAGE_ACTION_CLASS =
+  "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-pressed:text-foreground";
+
+function InlineVisPageOpener({ path, source, Original }: PluginFileOpenerProps) {
+  const url = pageFileUrl(path, source);
+  const [reloads, setReloads] = useState(0);
+  const [state, setState] = useState<PageState>({ status: "loading" });
+  const [sourceShown, setSourceShown] = useState(false);
+
+  useEffect(() => {
+    if (url === null) return;
+    const controller = new AbortController();
+    void fetch(url, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`The file request failed with ${response.status}.`);
+        }
+        return response.text();
+      })
+      .then((content) => setState({ status: "ready", content }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => controller.abort();
+  }, [url, reloads]);
+
+  if (url === null) return <Original />;
+
+  const sourceLabel = sourceShown ? "Show page" : "Show source";
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1">
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {path}
+        </span>
+        <button
+          type="button"
+          aria-label={`Reload ${path}`}
+          title="Reload"
+          className={PAGE_ACTION_CLASS}
+          onClick={() => setReloads(reloads + 1)}
+        >
+          <Icon name="RotateCcw" aria-hidden className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          aria-pressed={sourceShown}
+          aria-label={sourceLabel}
+          title={sourceLabel}
+          className={PAGE_ACTION_CLASS}
+          onClick={() => setSourceShown(!sourceShown)}
+        >
+          <Icon name="Code" aria-hidden className="size-3.5" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        {state.status === "loading" ? (
+          <div
+            role="status"
+            aria-label={`Loading ${path}`}
+            className="flex flex-col gap-2 p-3"
+          >
+            <Skeleton className="h-3 w-4/5" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
+        ) : state.status === "error" ? (
+          <div role="alert" className="p-3 text-sm text-destructive">
+            Failed to load {path}: {state.message}
+          </div>
+        ) : sourceShown ? (
+          <SourceCode content={state.content} path={path} />
+        ) : (
+          <ThemedFrame
+            key={reloads}
+            title={`inline-vis: ${path}`}
+            content={state.content}
+            baseHref={new URL(url, window.location.href).href}
+            onContentHeight={null}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default definePluginApp((app) => {
   const previewCache: PreviewCache = new Map();
   app.slots.messageDirective({
@@ -735,6 +878,12 @@ export default definePluginApp((app) => {
         previewCache={previewCache}
       />
     ),
+  });
+  app.slots.fileOpener({
+    id: PAGE_OPENER_ID,
+    title: "Inline visualization page",
+    extensions: [],
+    component: InlineVisPageOpener,
   });
   app.slots.experimental_codeFenceRenderer({
     id: "inline-vis",

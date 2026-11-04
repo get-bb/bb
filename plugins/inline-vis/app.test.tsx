@@ -310,6 +310,7 @@ describe("InlineVisDirective", () => {
             path: "charts/demo file.html",
           },
           location: null,
+          opener: "page",
         },
       },
     ]);
@@ -376,6 +377,7 @@ describe("InlineVisDirective", () => {
             path: "reports/result file.html",
           },
           location: null,
+          opener: "page",
         },
       },
     ]);
@@ -412,6 +414,7 @@ describe("InlineVisDirective", () => {
             path: "demo.html",
           },
           location: null,
+          opener: "page",
         },
       },
     ]);
@@ -910,5 +913,59 @@ describe("InlineVisFence", () => {
       fenceProps({ messageId: "msg_fence_resize", index: 2 }),
     );
     expect(frameBox(await findFrame(sibling)).style.height).toBe("224px");
+  });
+});
+
+describe("expanded page opener", () => {
+  it("shows the expanded file with the theme the inline frame applies", async () => {
+    document.documentElement.classList.add("dark");
+    const fetch = vi.fn(
+      async () =>
+        new Response("<h1>Report</h1>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const slot = renderSlot(app.fileOpeners[0]!, {
+      path: "reports/result file.html",
+      source: {
+        kind: "thread-storage",
+        threadId: "thr_1",
+        environmentId: null,
+        projectId: null,
+      },
+      Original: () => <div>Built-in preview</div>,
+    });
+
+    const srcDoc = (await findFrame(slot)).getAttribute("srcdoc") ?? "";
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/threads/thr_1/thread-storage/files/reports/result%20file.html",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    expect(srcDoc).toContain('<style id="bb-theme">:root{color-scheme:dark;');
+    expect(srcDoc).toContain(
+      `<base href="${window.location.origin}/api/v1/threads/thr_1/thread-storage/files/reports/result%20file.html">`,
+    );
+    expect(srcDoc).toContain("<h1>Report</h1>");
+    expect(slot.queryByText("Built-in preview")).toBeNull();
+  });
+
+  it("leaves files it cannot address to BB's preview", () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const slot = renderSlot(app.fileOpeners[0]!, {
+      path: "/tmp/report.html",
+      source: {
+        kind: "host",
+        threadId: "thr_1",
+        environmentId: "env_1",
+        projectId: null,
+      },
+      Original: () => <div>Built-in preview</div>,
+    });
+
+    expect(slot.getByText("Built-in preview")).toBeTruthy();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

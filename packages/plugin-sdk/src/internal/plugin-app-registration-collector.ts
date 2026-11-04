@@ -1089,9 +1089,9 @@ export function collectPluginAppRegistrations(
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.fileOpener, id);
         const rawExtensions = registration?.extensions;
-        if (!Array.isArray(rawExtensions) || rawExtensions.length === 0) {
+        if (!Array.isArray(rawExtensions)) {
           throw new Error(
-            `${kind}: "extensions" must be a non-empty array of lowercase extensions without the dot`,
+            `${kind}: "extensions" must be an array of lowercase extensions without the dot`,
           );
         }
         const extensions = rawExtensions.map((extension) => {

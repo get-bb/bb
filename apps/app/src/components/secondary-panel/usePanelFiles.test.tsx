@@ -123,6 +123,19 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
     );
   });
 
+  it.runIf(surface.accepts.ownHost)(
+    "passes a one-off viewer through to the opened tab",
+    () => {
+      const { openTab, panelFiles } = renderSurface(surface);
+      const viewer = { pluginId: "pages", openerId: "page" };
+
+      expect(
+        panelFiles.openFilePreview({ target: OWN_HOST, location: null, viewer }),
+      ).toBe(true);
+      expect(openTab).toHaveBeenCalledWith(expect.anything(), { viewer });
+    },
+  );
+
   it("declines malformed targets and unavailable surfaces", () => {
     const { panelFiles: available } = renderSurface(surface);
     const { panelFiles: unavailable, openTab } = renderSurface(surface, false);

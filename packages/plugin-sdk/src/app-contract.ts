@@ -2611,17 +2611,23 @@ export interface ExperimentalSidebarNavigationRegistration {
  * matching files render the first applicable opener in deterministic slot
  * order. The user can pin BB's preview or a specific opener per extension
  * under Settings → Files. The file tab's "Open with" menu can override that
- * choice for one open. A plugin can also use its own setting and render
- * `Original` conditionally. Applies to working-tree, host, and
- * thread-storage files — never to git-ref snapshots (diff views always use
- * BB's preview).
+ * choice for one open, and so can the plugin by passing the opener's id as
+ * `experimental_openFilePreview`'s `opener`. A plugin can also use its own
+ * setting and render `Original` conditionally. Applies to working-tree, host,
+ * and thread-storage files — never to git-ref snapshots (diff views always
+ * use BB's preview).
  */
 export interface PluginFileOpenerRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** Label in the "Open with" menu (e.g. "Notes editor"). */
   title: string;
-  /** Lowercase alphanumeric extensions without the dot; single underscores or hyphens may separate segments. */
+  /**
+   * Lowercase alphanumeric extensions without the dot; single underscores or
+   * hyphens may separate segments. An empty list registers an opener that no
+   * extension selects and the "Open with" menu does not offer; it shows a file
+   * only when the plugin names it in `experimental_openFilePreview`.
+   */
   extensions: readonly string[];
   component: ComponentType<PluginFileOpenerProps>;
 }
@@ -5052,6 +5058,17 @@ export interface ExperimentalFileOpenOptions {
   location: ExperimentalFileLocation | null;
 }
 
+/** Options for BB's preview file intent. */
+export interface ExperimentalFilePreviewOptions extends ExperimentalFileOpenOptions {
+  /**
+   * Id of one of the calling plugin's `fileOpener` registrations to show the
+   * file with for this open, as the file tab's "Open with" menu does. Omit it
+   * to use the opener the user's Settings → Files choice selects. An opener
+   * that is not registered falls back to BB's preview.
+   */
+  opener?: string;
+}
+
 /**
  * Props for BB's host-rendered semantic file link. Valid targets receive a
  * scheme-safe anchor href; traversal paths, ill-formed Unicode, and other
@@ -5244,7 +5261,7 @@ export interface BbNavigate {
    */
   openUrl(url: string): boolean;
   /** Open a live file in this surface's shared BB preview panel. */
-  experimental_openFilePreview(options: ExperimentalFileOpenOptions): boolean;
+  experimental_openFilePreview(options: ExperimentalFilePreviewOptions): boolean;
   /** Open a live file in this client's preferred external file target. */
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
