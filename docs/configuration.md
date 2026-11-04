@@ -884,19 +884,13 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`threadRowMetadata`, `unreadDividerAtAnswer`, `updateWhenIdle`, and
-`websocketCompression`) turn
-on, and the rest stay off. An experiment you set yourself keeps your value
+(currently `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`)
+turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
-- `applicationLinks` (on for early adopters) enables explicit app links such as
-  `linear://` and `slack://` in rendered Markdown and the plugin
-  `navigate.openUrl` path. The viewing device asks before opening unless the
-  scheme was saved with Always allow. See [App links](#app-links).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -970,21 +964,6 @@ either way.
   plugin releases can go out ahead of a retry scheduled for later (for example
   a provider-retry row waiting hours for a subscription window) and overtake
   it; with it, those rows wait for the retry.
-- `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
-  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
-  open thread), Shift-click selects the visible range from the last clicked row,
-  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
-  clears the selection.
-  Right-clicking a selected row offers Mark read/unread, Pin/Unpin,
-  Notifications, Move to section, Archive (Unarchive when every selected
-  thread is archived), and Delete for the whole selection. Archive and Delete
-  ask once for the whole selection, counting child threads that are not
-  selected, and act on the topmost selected threads; Archive skips the
-  question when the Archive confirmation setting is off. Dragging a selected row moves
-  every selected thread onto a section, under a thread, or into Pinned, or drops
-  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
-  thread in a split. Plugins read it with
-  `experimental_useExperiment("sidebarMultiSelect")`.
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,
@@ -1018,13 +997,6 @@ either way.
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
-- `unreadDividerAtAnswer` (on for early adopters) moves the NEW divider in an unread thread from the
-  first row after your read point to the answer of a turn that finished while
-  you were away: the turn's final assistant message, or the error that ended
-  it. The turn's tool calls and in-between notes stay above the divider. A
-  message that started a new turn keeps the divider above it, a turn that is
-  still running or has no answer keeps the old placement, and the divider never
-  lands on your own message. It applies the next time you open a thread.
 - `updateWhenIdle` (on for early adopters) lets bb update itself once no
   thread is running instead of interrupting them. While threads run, Settings →
   Updates offers a split button, Update when idle, whose menu holds Update now
@@ -1035,14 +1007,6 @@ either way.
   starts before it restarts. While it is off, the schedule routes return 403
   `update_when_idle_experiment_disabled`, the CLI commands print how to turn it
   on, and turning it off drops a waiting update. See `bb guide machines`.
-- `websocketCompression` (on for early adopters) lets the realtime client
-  WebSocket (`/ws`) negotiate `permessage-deflate`, so messages of 1 KB or more,
-  such as timeline pushes, are compressed (about 4x for timeline JSON). It
-  helps clients that reach the server over a network, including bb connect
-  next; the bb connect relay re-frames messages and does not carry it.
-  Terminal, host daemon, and plugin WebSockets are never compressed. The server
-  reads the experiment when a client connects, so a toggle applies when the
-  app reconnects.
 
 ## Thread Timeline Window
 
@@ -1052,6 +1016,13 @@ returns. It is a server-start operator setting, not a hard limit on query
 bytes, events, or CPU: one large turn can need substantially more work. Pages
 target 4 MiB of rendered rows. The API and SDK contract is in
 [timeline-pagination.md](timeline-pagination.md).
+
+When you open a thread whose turn finished while you were away, the NEW
+divider sits above the turn's answer: its final assistant message, or the
+error that ended it. The turn's tool calls and in-between notes stay above the
+divider. A message that started a new turn keeps the divider above it, a turn
+that is still running or has no answer puts it above the first row after your
+read point, and the divider never lands on your own message.
 
 Timeline builds slower than 150 ms log `Thread timeline build blocked the event
 loop`, and event-loop stalls over 500 ms log `Event loop stalled`, both at
@@ -1334,6 +1305,19 @@ or a plugin's `<pluginId>/<actionId>`. Bare legacy ids and `core/<id>` keys
 migrate to current keys. A key whose action is hidden for a row, or whose
 plugin is not installed, is skipped on that row.
 
+Cmd/Ctrl+Shift-click toggles a row in a multi-thread selection (starting from
+the open thread), Shift-click selects the visible range from the last clicked
+row, and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+clears the selection. Right-clicking a selected row offers Mark read/unread,
+Pin/Unpin, Notifications, Move to section, Archive (Unarchive when every
+selected thread is archived), and Delete for the whole selection. Archive and
+Delete ask once for the whole selection, counting child threads that are not
+selected, and act on the topmost selected threads; Archive skips the question
+when the Archive confirmation setting is off. Dragging a selected row moves
+every selected thread onto a section, under a thread, or into Pinned, or drops
+them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+thread in a split.
+
 ### Connect and bb account
 
 Remote access makes this server reachable at `https://<handle>.getbb.app` once
@@ -1373,6 +1357,12 @@ every enrolled machine's daemon also serves the ports shared from it with
 | Connect next setting | Default | Effect                                                                      |
 | -------------------- | ------- | --------------------------------------------------------------------------- |
 | `enabled`            | `true`  | "Reach this bb at its next address (beta)". Also `bb connect-next on\|off`. |
+
+The realtime client WebSocket (`/ws`) negotiates `permessage-deflate`, so
+messages of 1 KB or more, such as timeline pushes, are compressed (about 4x for
+timeline JSON). It helps clients that reach the server over a network,
+including connect next; the bb connect relay re-frames messages and does not
+carry it. Terminal, host daemon, and plugin WebSockets are never compressed.
 
 | Variable                 | Effect                                                                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -1520,13 +1510,9 @@ backup before rolling back to a build predating the tolerant-reader fix #5286.
 
 ## App links
 
-Enable App links in Settings → Experiments or run
-`bb settings experiment applicationLinks true`. The experiment is a server
-setting shared by its clients. Disable it with
-`bb settings experiment applicationLinks false`.
-
 Explicit Markdown links such as `[Review note](reflect://note/Project%20X)`
-become clickable while enabled. Bare custom-scheme text is not auto-linked.
+and links plugins open through `navigate.openUrl` open in their apps, for
+example `linear://` and `slack://`. Bare custom-scheme text is not auto-linked.
 The shared web UI asks before opening an app on the viewing device; choose
 Always allow to remember that URL scheme. All clients save approvals in
 localStorage for this BB site on this device. They do not sync between devices,

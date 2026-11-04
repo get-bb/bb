@@ -1119,11 +1119,6 @@ const EXPERIMENT_DEFINITIONS: Record<
   ExperimentKey,
   { label: string; description: string }
 > = {
-  applicationLinks: {
-    label: "App links",
-    description:
-      "Open links like linear:// or slack:// in their apps on this device. BB asks first unless you choose Always allow. Manage approvals in General → Links → App links.",
-  },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:
@@ -1159,11 +1154,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
-  sidebarMultiSelect: {
-    label: "Select multiple sidebar threads",
-    description:
-      "In the built-in thread list sidebar, Cmd/Ctrl+Shift-click and Shift-click threads to select several, right-click for bulk actions, and drag them together into a section, under a thread, into Pinned, or into a composer as mentions.",
-  },
   skipFocusedThreadNotifications: {
     label: "Skip notifications for the thread you're viewing",
     description:
@@ -1184,20 +1174,10 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
   },
-  unreadDividerAtAnswer: {
-    label: "NEW divider before final assistant message",
-    description:
-      "When you open a thread whose turn finished while you were away, place the NEW divider before the turn's final assistant message, or the error that ended it, instead of before its first tool call. The turn's work stays above the divider.",
-  },
   updateWhenIdle: {
     label: "Update when idle",
     description:
       "While threads are running, the Updates page offers to update bb once they all finish instead of interrupting them, and bb updates app apply --when-idle does the same from the CLI. bb waits again if a thread starts before it restarts.",
-  },
-  websocketCompression: {
-    label: "Compressed live updates",
-    description:
-      "Compress large messages on the live connection, such as timeline updates, which cuts their size about 4x for remote access. Applies when the app reconnects.",
   },
 };
 export function visibleExperimentKeys(

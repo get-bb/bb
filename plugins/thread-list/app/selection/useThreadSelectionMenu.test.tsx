@@ -84,7 +84,6 @@ function renderSelection() {
     { component: Harness },
     {},
     {
-      experiments: ["sidebarMultiSelect"],
       sidebarThreads: {
         threads: [
           makeSidebarThread({ id: "a" }),

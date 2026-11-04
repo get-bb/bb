@@ -17,7 +17,6 @@ import {
   INSTALL_MACHINE_SCRIPT_PATH,
   INSTALL_MACHINE_WINDOWS_SCRIPT_PATH,
 } from "./install-machine-asset.js";
-import { getExperiments } from "@bb/db";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
   declineWebSocketCompression,
@@ -1001,9 +1000,6 @@ export function createApp(
     "/ws",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
-      if (!getExperiments(deps.db).websocketCompression) {
-        declineWebSocketCompression(context);
-      }
       return {
         onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
         onMessage: (event, socket) =>

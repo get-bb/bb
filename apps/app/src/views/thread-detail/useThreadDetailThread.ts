@@ -3,7 +3,6 @@ import {
   useThread,
   useThreadDetailBootstrap,
 } from "@/hooks/queries/thread-queries";
-import type { ThreadTimelineUnreadDividerAnchor } from "@/components/thread/timeline";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
@@ -11,7 +10,6 @@ import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 export function useThreadDetailThread(
   threadId: string,
   trackRead: boolean,
-  unreadDividerAnchor: ThreadTimelineUnreadDividerAnchor,
 ) {
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId);
   const hasThreadDetailBootstrapSettled =
@@ -26,7 +24,6 @@ export function useThreadDetailThread(
   });
   const thread = threadQuery.data;
   const unreadDividerState = useThreadUnreadDividerState({
-    anchor: unreadDividerAnchor,
     hasFreshThread:
       thread !== undefined &&
       !threadQuery.isPlaceholderData &&
