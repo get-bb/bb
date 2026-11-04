@@ -231,6 +231,46 @@ function normalizeCheckName(object: JsonObject): string {
   return "Unnamed check";
 }
 
+interface CheckWorkflowRun {
+  workflow: string;
+  runNumber: number;
+}
+
+const checkWorkflowRuns = new WeakMap<
+  GitHubPullRequestCheck,
+  CheckWorkflowRun
+>();
+
+function normalizeCheckWorkflowRun(
+  object: JsonObject,
+): CheckWorkflowRun | null {
+  const run = asObject(asObject(object.checkSuite)?.workflowRun);
+  if (run === null) return null;
+  const workflowId = getNumber(asObject(run.workflow) ?? {}, "databaseId");
+  const event = getString(run, "event");
+  const runNumber = getNumber(run, "runNumber");
+  if (workflowId === null || event === null || runNumber === null) return null;
+  return { workflow: `${workflowId}:${event}`, runNumber };
+}
+
+function dropSupersededWorkflowRuns(
+  checks: GitHubPullRequestCheck[],
+): GitHubPullRequestCheck[] {
+  const latestRuns = new Map<string, number>();
+  for (const check of checks) {
+    const run = checkWorkflowRuns.get(check);
+    if (run === undefined) continue;
+    latestRuns.set(
+      run.workflow,
+      Math.max(latestRuns.get(run.workflow) ?? 0, run.runNumber),
+    );
+  }
+  return checks.filter((check) => {
+    const run = checkWorkflowRuns.get(check);
+    return run === undefined || run.runNumber === latestRuns.get(run.workflow);
+  });
+}
+
 function normalizeChecks(value: unknown): GitHubPullRequestCheck[] {
   if (!Array.isArray(value)) {
     return [];
@@ -946,7 +986,8 @@ function fields(cursor: string | null, mergeQueue: boolean): string {
     baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: ${REVIEW_REQUESTS_PAGE}) { totalCount }
     mergeStateStatus mergeable isCrossRepository headRepositoryOwner { login }
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: ${CHECK_CONTEXTS_PAGE}${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
-      nodes { ... on CheckRun { name status conclusion detailsUrl startedAt }
+      nodes { ... on CheckRun { name status conclusion detailsUrl startedAt
+          checkSuite { workflowRun { runNumber event workflow { databaseId } } } }
         ... on StatusContext { context state targetUrl createdAt } }
       pageInfo { hasNextPage endCursor }
     } } } } }`;
@@ -1015,15 +1056,25 @@ async function decodeRead(
   const nodes = Array.isArray(commits?.nodes) ? commits.nodes : [];
   const commit = asObject(asObject(nodes[0])?.commit);
   const contexts = asObject(asObject(commit?.statusCheckRollup)?.contexts);
+  const contextNodes = Array.isArray(contexts?.nodes)
+    ? contexts.nodes.flatMap((node): JsonObject[] => {
+        const object = asObject(node);
+        return object === null ? [] : [object];
+      })
+    : [];
   const view = normalizeGitHubPullRequestView({
     ...raw,
-    statusCheckRollup: contexts?.nodes ?? [],
+    statusCheckRollup: contextNodes,
   });
   if (view === null)
     return {
       outcome: "unavailable",
       message: "GitHub returned an invalid pull request",
     };
+  view.checks.forEach((check, index) => {
+    const run = normalizeCheckWorkflowRun(contextNodes[index] ?? {});
+    if (run !== null) checkWorkflowRuns.set(check, run);
+  });
   view.inMergeQueue =
     view.isDraft || view.state !== "OPEN"
       ? false
@@ -1052,6 +1103,7 @@ async function decodeRead(
       };
     view.checks.push(...next.pullRequest.checks);
   }
+  view.checks = dropSupersededWorkflowRuns(view.checks);
   return { outcome: "found", pullRequest: view };
 }
 
