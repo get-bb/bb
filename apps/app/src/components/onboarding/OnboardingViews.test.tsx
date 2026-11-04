@@ -414,7 +414,9 @@ describe("AgentStep progress in the redesign", () => {
     expect(hasSubtitle("codex")).toBe(false);
     expect(hasSubtitle("cursor")).toBe(true);
     expect(hasSubtitle("amp")).toBe(true);
-    screen.getByRole("button", { name: "Connect" });
+    within(
+      document.querySelector<HTMLElement>('[data-agent-id="pi"]')!,
+    ).getByRole("button", { name: "Sign in" });
     expect(screen.getByText("me@example.com · Pro")).toBeTruthy();
     expect(screen.getByText("Update needed")).toBeTruthy();
     expect(
