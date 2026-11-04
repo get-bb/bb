@@ -22,6 +22,7 @@ jobs:
         shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
       - name: Prepare actual test prerequisites
+        shell: cmd
         run: pnpm exec turbo run test --filter=@bb/host-daemon --output-logs=errors-only -- --passWithNoTests hook-probe-prerequisites-no-tests
       - name: Repeat real cancellation coverage
         run: node scripts/windows-hook-cancel-probe.mjs
