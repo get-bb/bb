@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import { JsonRpcRequestTimeoutError } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import {
   createScriptedEchoLaunch,
@@ -110,7 +111,7 @@ describe("createAgentRuntime lifecycle", () => {
           if (timesOut) {
             expect(await constructionOutcome).toEqual({
               status: "rejected",
-              error: new Error(`JSON-RPC request timed out: thread/${method}`),
+              error: new JsonRpcRequestTimeoutError(`thread/${method}`),
             });
             expect(runtime.hasThread("t1")).toBe(false);
             expect(runtime.getProviderSession("t1")).toBeNull();

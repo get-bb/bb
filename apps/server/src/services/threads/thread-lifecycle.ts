@@ -39,7 +39,10 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
-import { COMPETING_TURN_ERROR_CODE } from "@bb/host-daemon-contract";
+import {
+  COMPETING_TURN_ERROR_CODE,
+  STEER_UNCONFIRMED_ERROR_CODE,
+} from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
@@ -117,6 +120,7 @@ import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 import { abortPluginToolCallsForThreads } from "../plugins/plugin-tool-calls.js";
+import { settleUnconfirmedSteerInTransaction } from "./unconfirmed-steers.js";
 
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
@@ -828,6 +832,16 @@ function settleThreadCommandFailure(
     return emptyCommandResultSideEffects();
   }
   if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
+    return emptyCommandResultSideEffects();
+  }
+  if (
+    args.command.type === "turn.submit" &&
+    args.report.errorCode === STEER_UNCONFIRMED_ERROR_CODE
+  ) {
+    settleUnconfirmedSteerInTransaction(args.deps.db, {
+      requestId: args.command.requestId,
+      threadId: thread.id,
+    });
     return emptyCommandResultSideEffects();
   }
   if (args.command.type === "turn.submit") {

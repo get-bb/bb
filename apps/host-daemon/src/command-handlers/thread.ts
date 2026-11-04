@@ -5,6 +5,7 @@ import { flattenPromptInputGroups } from "@bb/domain";
 import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import {
   COMPETING_TURN_ERROR_CODE,
+  STEER_UNCONFIRMED_ERROR_CODE,
   type HostDaemonCommandResult,
 } from "@bb/host-daemon-contract";
 import type { RuntimeEntry } from "../runtime-manager.js";
@@ -369,6 +370,12 @@ async function steerSubmittedTurn(
 
     if (result.status === "steered") {
       return;
+    }
+    if (result.status === "unconfirmed") {
+      throw new CommandDispatchError(
+        STEER_UNCONFIRMED_ERROR_CODE,
+        `The agent did not confirm the steer for turn ${targetTurnId} before the request timed out`,
+      );
     }
     activeTurnId = result.activeTurnId;
     if (attempt === TURN_SUBMIT_STEER_ATTEMPTS - 1) {

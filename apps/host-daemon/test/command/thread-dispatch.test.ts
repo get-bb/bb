@@ -2012,6 +2012,61 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
   });
 
+  it("reports a steer the provider never answered as unconfirmed, without retrying it as a new turn", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    harness.threadControls.setActiveTurn("thread-1", "turn-1");
+    let steerAttempts = 0;
+    harness.runtime.steerTurn = async () => {
+      steerAttempts += 1;
+      return { status: "unconfirmed" };
+    };
+
+    await expect(
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "turn.submit",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          requestId: nextClientRequestId(),
+          input: [textPromptInput("steer a frozen provider")],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+            workspaceContext: {
+              workspacePath: "/tmp/env-1",
+            },
+            projectId: "project-1",
+            providerId: "fake",
+            providerThreadId: "provider-1",
+            instructions: "Be a helpful coding agent.",
+            dynamicTools: [],
+            contributedEnv: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "steer", expectedTurnId: "turn-1" },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).rejects.toMatchObject({ code: "steer_unconfirmed" });
+    expect(steerAttempts).toBe(1);
+    expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
+  });
+
   it("waits for a newer starting turn and re-steers it after a stale target", async () => {
     const harness = createHarness();
     const requestId = nextClientRequestId();
