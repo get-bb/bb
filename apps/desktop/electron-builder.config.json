@@ -39,7 +39,7 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "extendInfo": {
-      "NSAppleEventsUsageDescription": "bb lets agents control other applications and finish computer-use sessions.",
+      "NSAppleEventsUsageDescription": "bb lets agents you run control other apps on this Mac, such as Computer Use.",
       "NSMicrophoneUsageDescription": "bb uses your microphone for voice input and sites you allow in the in-app browser."
     },
     "minimumSystemVersion": "13.0.0",
