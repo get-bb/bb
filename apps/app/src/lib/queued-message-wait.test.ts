@@ -66,7 +66,7 @@ describe("describeQueuedMessageWait", () => {
   it("stops promising a turn start once the thread's run has failed", () => {
     expect(
       describeWait({ kind: "turn-starting" }, { threadStatus: "error" }),
-    ).toBe("Turn didn't start · sends with your next message");
+    ).toBe("Turn didn't start · sends on the next turn");
   });
 
   it("names the absent machine a host-offline row is waiting on", () => {

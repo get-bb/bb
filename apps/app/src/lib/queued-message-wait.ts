@@ -142,7 +142,7 @@ export function describeQueuedMessageWait(
       return null;
     case "turn-starting":
       return args.threadStatus === "error"
-        ? "Turn didn't start · sends with your next message"
+        ? "Turn didn't start · sends on the next turn"
         : "Waiting for turn to start";
     case "stopping":
       return "Sending when the thread stops";
