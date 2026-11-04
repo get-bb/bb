@@ -1354,19 +1354,6 @@ export interface AgentSignInView {
 
 type SignInAlternate = "browser" | "code" | null;
 
-function instructionLinksSignInPage(
-  url: string,
-  view: AgentSignInView,
-  alternate: SignInAlternate,
-): boolean {
-  if (signInSiteName(url) === null) return false;
-  return (
-    view.guide?.userCode != null ||
-    view.guide?.acceptsPastedCode === true ||
-    alternate !== "code"
-  );
-}
-
 export function AgentSignInInstruction({
   agentName,
   view,
@@ -1391,8 +1378,7 @@ export function AgentSignInInstruction({
     );
   }
   const siteName = signInSiteName(url);
-  if (siteName === null) return <>Finish signing in in your browser.</>;
-  const site = (
+  const link = (
     <InlineTextLink
       href={url}
       onOpen={(href) => {
@@ -1400,9 +1386,10 @@ export function AgentSignInInstruction({
         return true;
       }}
     >
-      {siteName}
+      {siteName ?? "your browser"}
     </InlineTextLink>
   );
+  const place = siteName === null ? <>in {link}</> : <>on {link}</>;
   const alternateAction =
     alternate === null ? null : (
       <InlineTextButton onClick={onUseAlternate}>
@@ -1413,20 +1400,24 @@ export function AgentSignInInstruction({
     );
   if (userCode !== null) {
     return alternateAction === null ? (
-      <>Enter this code on {site}.</>
+      <>Enter this code {place}.</>
     ) : (
       <>
-        Enter this code on {site}, or {alternateAction}.
+        Enter this code {place}, or {alternateAction}.
       </>
     );
   }
   if (acceptsPastedCode) {
-    return <>Sign in on {site}, then paste the code it shows you.</>;
+    return <>Sign in {place}, then paste the code it shows you.</>;
   }
   if (alternate === "code") {
-    return <>Sign in with your browser, or {alternateAction}.</>;
+    return (
+      <>
+        Sign in {place}, or {alternateAction}.
+      </>
+    );
   }
-  return <>Finish signing in on {site}.</>;
+  return <>Finish signing in {place}.</>;
 }
 
 interface AgentSignInPanelProps {
@@ -1435,11 +1426,9 @@ interface AgentSignInPanelProps {
   view: AgentSignInView;
   code: string;
   codeSubmitted: boolean;
-  alternate: SignInAlternate;
   terminal: ReactNode;
   onCodeChange: (code: string) => void;
   onSubmitCode: () => void;
-  onOpenUrl: (url: string) => void;
   onCopy: (text: string) => void;
   onToggleTerminal: () => void;
 }
@@ -1450,11 +1439,9 @@ export function AgentSignInPanel({
   view,
   code,
   codeSubmitted,
-  alternate,
   terminal,
   onCodeChange,
   onSubmitCode,
-  onOpenUrl,
   onCopy,
   onToggleTerminal,
 }: AgentSignInPanelProps) {
@@ -1480,11 +1467,6 @@ export function AgentSignInPanel({
           }
         : { kind: "waiting" };
   if (starting && !connect) return null;
-  const pageUrl =
-    url === null ||
-    (!connect && instructionLinksSignInPage(url, view, alternate))
-      ? null
-      : url;
   return (
     <div className="mt-3">
       <SignInPanel
@@ -1493,30 +1475,12 @@ export function AgentSignInPanel({
         status={codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={
-          <>
-            {pageUrl === null ? null : (
-              <>
-                <InlineTextLink
-                  href={pageUrl}
-                  onOpen={(href) => {
-                    onOpenUrl(href);
-                    return true;
-                  }}
-                >
-                  Open sign-in page
-                </InlineTextLink>
-                <InlineTextButton onClick={() => onCopy(pageUrl)}>
-                  Copy link
-                </InlineTextButton>
-              </>
-            )}
-            <DisclosureToggle
-              expanded={view.terminalVisible}
-              onToggle={onToggleTerminal}
-            >
-              {terminalToggleLabel(view.terminalVisible)}
-            </DisclosureToggle>
-          </>
+          <DisclosureToggle
+            expanded={view.terminalVisible}
+            onToggle={onToggleTerminal}
+          >
+            {terminalToggleLabel(view.terminalVisible)}
+          </DisclosureToggle>
         }
         expanded={
           view.terminalVisible ? <div className="h-48">{terminal}</div> : null

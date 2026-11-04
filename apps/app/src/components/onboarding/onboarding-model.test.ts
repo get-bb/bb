@@ -20,6 +20,7 @@ import {
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
+  signInInstructionReady,
   signInSiteName,
   terminalConnectFlow,
 } from "./onboarding-model";
@@ -699,6 +700,36 @@ describe("agentContinueDisabled", () => {
         statesLoading: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("signInInstructionReady", () => {
+  const guide = {
+    url: "https://claude.ai/oauth/authorize",
+    userCode: null,
+    acceptsPastedCode: true,
+  };
+
+  it("shows the instruction once a sign-in has started", () => {
+    expect(signInInstructionReady({ started: false, guide }, false)).toBe(
+      false,
+    );
+    expect(signInInstructionReady({ started: true, guide: null }, false)).toBe(
+      true,
+    );
+  });
+
+  it("shows a connect flow's instruction only once its sign-in page is known", () => {
+    expect(signInInstructionReady({ started: true, guide: null }, true)).toBe(
+      false,
+    );
+    expect(
+      signInInstructionReady(
+        { started: true, guide: { ...guide, url: null } },
+        true,
+      ),
+    ).toBe(false);
+    expect(signInInstructionReady({ started: true, guide }, true)).toBe(true);
   });
 });
 
