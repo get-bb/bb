@@ -1206,6 +1206,7 @@ function LandingPage() {
   const [companyProofInView, setCompanyProofInView] = useState(false);
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
+  const simpleDownloadArea = useExperiment("homepage-download-area") === "test";
   useExperimentExposure("homepage-qa-check", "all");
   useScrollReveal();
   useSectionViews();
@@ -1363,11 +1364,13 @@ function LandingPage() {
         <h2 className="sec-title">Put your agents to work.</h2>
         <p>Free, open source, and local-first. Install in under a minute.</p>
         <InstallOptions placement="closer" />
-        <div className="cta-row cta-row-secondary">
-          <GitHubLink placement="closer" className="btn btn-ghost">
-            View on GitHub
-          </GitHubLink>
-        </div>
+        {simpleDownloadArea ? null : (
+          <div className="cta-row cta-row-secondary">
+            <GitHubLink placement="closer" className="btn btn-ghost">
+              View on GitHub
+            </GitHubLink>
+          </div>
+        )}
       </section>
 
       <SubscribeSection
