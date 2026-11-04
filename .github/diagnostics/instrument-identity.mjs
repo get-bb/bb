@@ -7,9 +7,9 @@ text=text.replace('    const { stdout } = await pending;','    const { stdout } 
 text=text.replace('    return { command: value.command, startedAt: value.startedAt };\n  } catch {','    return { command: value.command, startedAt: value.startedAt };\n  } catch (error) {\nappendFileSync("identity-observations.jsonl", JSON.stringify({pid,ms:Date.now()-started,error:error instanceof Error ? {...error,message:error.message} : error})+"\\n");');
 const start=text.indexOf('          `Get-CimInstance');
 const end=text.indexOf('`,',start)+2;
-const query=process.argv[2]==='qualified' ? 'CimCmdlets\\Get-CimInstance' : 'Get-CimInstance';
-const json=process.argv[2]==='qualified' ? 'Microsoft.PowerShell.Utility\\ConvertTo-Json' : 'ConvertTo-Json';
-text=text.slice(0,start)+'          `$process = '+query.replaceAll('\\','\\\\')+' Win32_Process -Filter \'ProcessId = ${pid}\'; [Console]::Error.WriteLine("bbps-query-done"); $process | ForEach-Object { @{ command = $_.CommandLine; startedAt = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } | '+json.replaceAll('\\','\\\\')+' -Compress }; [Console]::Error.WriteLine("bbps-json-done")`,'+text.slice(end);
+const query=process.argv[2]==='selected' ? 'Get-CimInstance -Property CommandLine,CreationDate' : 'Get-CimInstance';
+const json='ConvertTo-Json';
+text=text.slice(0,start)+'          `[Console]::Error.WriteLine("bbps-query-start"); $process = '+query.replaceAll('\\','\\\\')+' Win32_Process -Filter \'ProcessId = ${pid}\'; [Console]::Error.WriteLine("bbps-query-done"); $process | ForEach-Object { @{ command = $_.CommandLine; startedAt = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } | '+json.replaceAll('\\','\\\\')+' -Compress }; [Console]::Error.WriteLine("bbps-json-done")`,'+text.slice(end);
 text=text.replace('          "$ErrorActionPreference', '          "[Console]::Error.WriteLine(\\\"bbps-start\\\")",\n          "$ErrorActionPreference');
 text=text.replace('    pending.child.stdin?.end();', `    pending.child.on("spawn", () => appendFileSync("identity-observations.jsonl", JSON.stringify({pid,event:"spawn",ms:Date.now()-started})+"\\n"));
     pending.child.stderr?.on("data", (data) => appendFileSync("identity-observations.jsonl", JSON.stringify({pid,event:"stderr",ms:Date.now()-started,data:String(data)})+"\\n"));
