@@ -607,7 +607,7 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
             );
           }}
           onInstall={(id) => {
-            setAgent(id, { status: "installing" });
+            setAgent(id, { status: "installing", update: false });
             later(1800, () => resolveAgent(id, "installing", SIGNED_OUT));
           }}
           onCancelSignIn={(id) => setAgent(id, SIGNED_OUT)}
@@ -804,7 +804,7 @@ export function Step1AgentStates() {
         <StoryWindow>
           <AgentFrame
             states={{
-              "claude-code": { status: "installing" },
+              "claude-code": { status: "installing", update: false },
               codex: {
                 status: "installFailed",
                 message: "Install failed",
@@ -1009,6 +1009,7 @@ function RedesignSignInPanel({
       view={redesignSignInView(agentId)}
       code={code}
       codeSubmitted={false}
+      alternate={codex ? "browser" : null}
       terminal={
         <FakeTerminal
           command={codex ? "codex login --device-auth" : "claude auth login"}
@@ -1016,6 +1017,7 @@ function RedesignSignInPanel({
       }
       onCodeChange={setCode}
       onSubmitCode={noop}
+      onOpenUrl={noop}
       onCopy={noop}
       onToggleTerminal={noop}
     />

@@ -154,7 +154,7 @@ describe("resolveAgentSetupState", () => {
         installing: true,
         installFailure: "Install failed.",
       }),
-    ).toEqual({ status: "installing" });
+    ).toEqual({ status: "installing", update: false });
     expect(
       resolveAgentSetupState({
         ...base,

@@ -65,7 +65,6 @@ import { sdk } from "@/lib/sdk";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
-  AgentInstallErrorDetails,
   AgentSignInInstruction,
   type AgentSignInView,
   AgentSignInGuide,
@@ -120,6 +119,7 @@ import {
 } from "./useOnboardingPluginChange";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
+import { useRefetchOnUpdateNeeded } from "./useRefetchOnUpdateNeeded";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
 import {
   useAgentSignIns,
@@ -280,12 +280,20 @@ function AgentSignInContainer({
         view={view}
         code={code}
         codeSubmitted={codeSubmitted}
+        alternate={
+          alternate === null
+            ? null
+            : alternate.method === "remote"
+              ? "code"
+              : "browser"
+        }
         terminal={terminal}
         onCodeChange={(next) => {
           setCode(next);
           setCodeSubmitted(false);
         }}
         onSubmitCode={submitCode}
+        onOpenUrl={openUrlInExternalBrowser}
         onCopy={(text) => void copyToClipboardWithToast(text)}
         onToggleTerminal={() => setTerminalChoice(!terminalVisible)}
       />
@@ -385,6 +393,11 @@ function AgentStepContainer({
   const refetchProviderStates = useCallback(() => {
     void refetchStates();
   }, [refetchStates]);
+  const { refetch: refetchCliStatus } = cliStatusQuery;
+  const refetchCliStatusOnce = useCallback(() => {
+    void refetchCliStatus({ cancelRefetch: false });
+  }, [refetchCliStatus]);
+  useRefetchOnUpdateNeeded({ states, refetch: refetchCliStatusOnce });
   const signInTerminals = useMemo<AgentSignInTerminals>(
     () => ({
       closeAbandoned: closeAbandonedSignInTerminals,
@@ -484,6 +497,9 @@ function AgentStepContainer({
             provider: info ?? { id: health.providerId, logoUrl: null },
             setup: connectFlow !== null ? "connect" : "signIn",
             installQueued: redesign && installRunner.queuedJobKeys.has(jobKey),
+            ...(redesign && installFailure !== undefined
+              ? { installLog: installFailure.logDialogState.log }
+              : {}),
             busy:
               redesign &&
               (signIns.startingProviderIds.has(health.providerId) ||
@@ -561,10 +577,6 @@ function AgentStepContainer({
                   onViewChange={(nextView) =>
                     signIns.setView(health.providerId, nextView)
                   }
-                />
-              ) : redesign && installFailure !== undefined ? (
-                <AgentInstallErrorDetails
-                  log={installFailure.logDialogState.log}
                 />
               ) : undefined,
           };

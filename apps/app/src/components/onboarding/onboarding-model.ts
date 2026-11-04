@@ -140,7 +140,7 @@ export type AgentSetupState =
   | { status: "signingIn" }
   | { status: "install"; canInstall: boolean }
   | { status: "update"; detail: string | null; canInstall: boolean }
-  | { status: "installing" }
+  | { status: "installing"; update: boolean }
   | { status: "installFailed"; message: string; canInstall: boolean }
   | { status: "unknown"; message: string | null };
 
@@ -169,7 +169,12 @@ export function resolveAgentSetupState({
       .join(" · ");
     return { status: "ready", detail: detail === "" ? null : detail };
   }
-  if (installing) return { status: "installing" };
+  if (installing) {
+    return {
+      status: "installing",
+      update: health.status === "unsupported_version",
+    };
+  }
   const canInstall =
     cliStatus?.installAction !== null && cliStatus?.installAction !== undefined;
   if (installFailure !== null) {
@@ -379,11 +384,15 @@ const SIGN_IN_USER_CODE =
   /(?<![A-Za-z0-9-])[A-Z0-9]{4,5}-[A-Z0-9]{4,5}(?![A-Za-z0-9-])/u;
 const SIGN_IN_PASTE_PROMPT = /paste (?:the |your )?(?:authorization )?code/iu;
 
-export function parseSignInOutput(output: string): SignInGuide {
-  const text = output
+export function stripTerminalSequences(output: string): string {
+  return output
     .replace(TERMINAL_OSC_SEQUENCE, "")
     .replace(TERMINAL_CSI_SEQUENCE, "")
     .replace(/\r/gu, "");
+}
+
+export function parseSignInOutput(output: string): SignInGuide {
+  const text = stripTerminalSequences(output);
   const url =
     TERMINAL_HYPERLINK.exec(output)?.[1] ?? SIGN_IN_URL.exec(text)?.[0] ?? null;
   const withoutUrls = text.replace(new RegExp(SIGN_IN_URL.source, "gu"), " ");

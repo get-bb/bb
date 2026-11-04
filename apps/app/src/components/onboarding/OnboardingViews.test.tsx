@@ -48,7 +48,7 @@ describe("AgentStep", () => {
         message: "Install failed",
         canInstall: true,
       }),
-      agent("pi", { status: "installing" }),
+      agent("pi", { status: "installing", update: false }),
     ]);
 
     fireEvent.click(screen.getByRole("button", { name: "View log" }));
@@ -299,9 +299,11 @@ describe("AgentSignInPanel", () => {
         view={{ guide: null, terminalVisible: false, started: false }}
         code=""
         codeSubmitted={false}
+        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
+        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -318,9 +320,11 @@ describe("AgentSignInPanel", () => {
         view={{ guide: null, terminalVisible: false, started: true }}
         code=""
         codeSubmitted={false}
+        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
+        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -345,9 +349,11 @@ describe("AgentSignInPanel", () => {
         }}
         code=""
         codeSubmitted={false}
+        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
+        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -358,6 +364,45 @@ describe("AgentSignInPanel", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/paste the code it shows you/u)).toBeNull();
     expect(screen.queryByText(/continues automatically/u)).toBeNull();
+  });
+
+  it("links the sign-in page when the browser sign-in line has no link", () => {
+    const url = "https://auth.openai.com/oauth/authorize?state=abc";
+    const onOpenUrl = vi.fn();
+    const onCopy = vi.fn();
+    const panel = (alternate: "browser" | "code" | null) => (
+      <AgentSignInPanel
+        connect={false}
+        agentName="Codex"
+        view={{
+          guide: { url, userCode: null, acceptsPastedCode: false },
+          terminalVisible: false,
+          started: true,
+        }}
+        code=""
+        codeSubmitted={false}
+        alternate={alternate}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onOpenUrl={onOpenUrl}
+        onCopy={onCopy}
+        onToggleTerminal={vi.fn()}
+      />
+    );
+    const { rerender } = render(panel("code"));
+
+    const link = screen.getByRole("link", { name: "Open sign-in page" });
+    expect(link.getAttribute("href")).toBe(url);
+    fireEvent.click(link);
+    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(url);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith(url);
+
+    rerender(panel(null));
+    expect(
+      screen.queryByRole("link", { name: "Open sign-in page" }),
+    ).toBeNull();
   });
 });
 
@@ -435,7 +480,7 @@ describe("AgentStep progress in the redesign", () => {
         <AgentStep
           quiet
           machineName="bee"
-          agents={[agent("codex", { status: "installing" })]}
+          agents={[agent("codex", { status: "installing", update: false })]}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onViewInstallLog={vi.fn()}
@@ -448,6 +493,12 @@ describe("AgentStep progress in the redesign", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
     expect(busy.querySelector('[data-icon="Spinner"]')).not.toBeNull();
     expect(busy.textContent).toBe("Installing…");
+  });
+
+  it("shows Updating… while an update installs", () => {
+    renderQuiet([agent("codex", { status: "installing", update: true })]);
+    const busy = screen.getByRole("button", { name: "Updating…" });
+    expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows Starting… in the button until the sign-in instruction is ready", () => {
@@ -514,7 +565,7 @@ describe("AgentStep progress in the redesign", () => {
         reason: "signedOut",
         canSignIn: true,
       }),
-      agent("pi", { status: "installing" }),
+      agent("pi", { status: "installing", update: false }),
     ]);
     expect(screen.getByText("Installed · not signed in")).toBeTruthy();
     expect(screen.getByText("Installing…")).toBeTruthy();
@@ -536,13 +587,62 @@ describe("Agent step header and install details in the redesign", () => {
     fireEvent.click(screen.getByRole("button", { name: /Hide details/u }));
     expect(screen.queryByText("npm ERR! code ECONNRESET")).toBeNull();
   });
+
+  it("shows the install output without terminal escape codes and wraps long lines", () => {
+    render(
+      <AgentInstallErrorDetails
+        log={"\u001b[31mnpm error\u001b[39m code ECONNREFUSED\r\n"}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Show details/u }));
+    const output = screen.getByText(/npm error code ECONNREFUSED/u);
+    expect(output.textContent).toBe("npm error code ECONNREFUSED\n");
+    expect(output.className).toContain("wrap-anywhere");
+  });
+
+  it("hides the old failure details while a retry waits", () => {
+    const failed = {
+      ...agent("codex", {
+        status: "installFailed",
+        message: "Couldn't install.",
+        canInstall: true,
+      }),
+      installLog: "npm error code ECONNREFUSED",
+    };
+    const { rerender, handlers } = renderQuiet([failed]);
+    within(rowOf("codex")).getByRole("button", { name: /Show details/u });
+
+    rerender(
+      <TooltipProvider>
+        <AgentStep
+          quiet
+          machineName="bee"
+          agents={[
+            {
+              ...failed,
+              state: { status: "installing", update: false },
+              installQueued: true,
+            },
+          ]}
+          {...handlers}
+        />
+      </TooltipProvider>,
+    );
+    within(rowOf("codex")).getByRole("button", { name: "Waiting…" });
+    expect(
+      within(rowOf("codex")).queryByRole("button", { name: /Show details/u }),
+    ).toBeNull();
+  });
 });
 
 describe("Agent rows active at once in the redesign", () => {
   it("shows a queued install as Waiting… behind the running one", () => {
     renderQuiet([
-      agent("pi", { status: "installing" }),
-      { ...agent("codex", { status: "installing" }), installQueued: true },
+      agent("pi", { status: "installing", update: false }),
+      {
+        ...agent("codex", { status: "installing", update: false }),
+        installQueued: true,
+      },
     ]);
 
     within(rowOf("pi")).getByRole("button", { name: "Installing…" });
