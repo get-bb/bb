@@ -33,3 +33,9 @@ test=test.replace('  const args = {', `  const controller = JSON.parse(readFileS
   onTestFinished(async () => { await controllerRead; });
   const args = {`);
 writeFileSync(testFile,test);
+if(process.argv[2]==='localappdata') {
+  const config=readFileSync('turbo.json','utf8');
+  const next=config.replace('"globalPassThroughEnv": ["npm_config_store_dir", "pnpm_config_store_dir"]', '"globalPassThroughEnv": ["npm_config_store_dir", "pnpm_config_store_dir", "LOCALAPPDATA"]');
+  if(next===config)throw new Error('Expected global passthrough list');
+  writeFileSync('turbo.json',next);
+}
