@@ -500,7 +500,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -559,7 +559,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -661,7 +661,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -777,7 +777,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -851,7 +851,7 @@ jobs:
           turbo-cache: "true"
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -936,7 +936,7 @@ jobs:
           turbo-cache-max-size-mb: ${{ runner.os == 'macOS' && '256' || '1024' }}
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
@@ -1015,7 +1015,7 @@ jobs:
           turbo-cache-max-size-mb: ${{ runner.os == 'macOS' && '256' || '1024' }}
 
       - name: Restore pnpm cache
-        if: runner.os == 'macOS'
+        if: runner.os != 'Windows'
         id: pnpm-cache
         timeout-minutes: 1
         continue-on-error: true
