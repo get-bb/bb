@@ -107,7 +107,8 @@ export default async function plugin(bb: BbPluginApi) {
     retryConsentContract,
     {
       [retryConsentMethod]: async ({ threadId }): Promise<RetryConsent> =>
-        (await bb.sdk.threads.get({ threadId })).originPluginId === bb.pluginId
+        (await bb.sdk.threads.get({ threadId })).originPluginId ===
+          bb.pluginId && service.discussionConfiguration(threadId) === null
           ? { kind: "decline", reason: "Workflows owns worker retries" }
           : { kind: "allow" },
     },
@@ -127,6 +128,14 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(workflowUiRpcContract, {
+    async workflowFinishDiscussion({ threadId, value }) {
+      const result = await service.submitDiscussionResult(
+        threadId,
+        toJsonValue(value, "value"),
+      );
+      if (!result.ok) throw new Error(result.error);
+      return { accepted: true as const };
+    },
     workflowActiveRuns({ threadId }) {
       return {
         runs: service
@@ -210,7 +219,54 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  bb.agents.registerTool({
+    name: "bb_workflow_discussion_result",
+    description:
+      "Finish this workflow discussion only after the owner explicitly says it is complete. Return the agreed outcome matching its schema. Never finish from the initial workflow brief.",
+    parameters: resultInputSchema,
+    async execute({ value }, ctx) {
+      try {
+        const result = await service.submitDiscussionResult(
+          ctx.threadId,
+          toJsonValue(value, "value"),
+        );
+        return result.ok
+          ? jsonResult({ accepted: true })
+          : errorResult(result.error);
+      } catch (error) {
+        return errorResult(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    },
+  });
+
   bb.agents.configure((context) => {
+    const discussion = service.discussionConfiguration(context.thread.id);
+    if (discussion !== null) {
+      return {
+        tools: discussion.active
+          ? [
+              {
+                name: "bb_workflow_discussion_result",
+                parameters: discussion.resultParameters,
+              },
+            ]
+          : [],
+        skills: [],
+        instructions: discussion.active
+          ? `This is a user-facing workflow discussion. Use normal conversation and GenUI, in batches where helpful. Wait for the owner to explicitly finish, then use bb_workflow_discussion_result. Do not submit the initial brief as a decision. Result schema: ${JSON.stringify(discussion.schema)}`
+          : "This workflow discussion has ended. Its saved outcome cannot be changed by further conversation.",
+      };
+    }
+    if (context.pluginMetadata.workflowDiscussion === 1) {
+      return {
+        tools: [],
+        skills: [],
+        instructions:
+          "This is a user-facing workflow discussion starting up. Present the brief and evidence with GenUI where useful, in manageable batches, and use normal conversation. Wait for an explicit owner instruction to finish. The initial workflow seed is context, not a decision; do not submit a result yet.",
+      };
+    }
     const worker = service.agentConfiguration(context.thread.id);
     if (worker !== null) {
       return {

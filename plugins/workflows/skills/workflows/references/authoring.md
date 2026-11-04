@@ -163,3 +163,54 @@ tool exactly once at the end of its response with `{ value: ... }` to provide
 the structured output. BB validates the value with Ajv. The initial invalid
 attempt gets at most two corrective retries; a third invalid submission fails
 the call. There is no hidden normalization-agent pass.
+
+## Human discussion boundaries
+
+Use `discussion({ title, brief, context?, schema, phase?, provider?, model?, reasoningLevel? })`
+when the owner needs to explore or decide something before work continues.
+`schema` (or `outputSchema`) is required and uses the same safe subset as agent
+results. Model selection inherits the origin unless all three selection fields
+are supplied. Context is JSON, limited to 256 KiB including options; reference
+larger evidence by path rather than embedding it. Use immutable artifact paths
+or include their versions in context: replay hashes the context, not the
+contents of referenced files.
+
+```js
+const reviews = await parallel([
+  () => agent("Review navigation"),
+  () => agent("Review readability"),
+]);
+const direction = await discussion({
+  title: "Choose the design direction",
+  brief:
+    "Compare the reviews with the owner using GenUI. Work in small batches.",
+  context: { reviews },
+  schema: {
+    type: "object",
+    required: ["direction"],
+    properties: { direction: { type: "string" } },
+  },
+});
+return await agent(
+  "Implement the agreed direction: " + JSON.stringify(direction),
+);
+```
+
+This first version only permits discussion boundaries in the root workflow.
+Await every earlier worker and nested workflow first. Earlier worker calls must
+have succeeded durably; a caught worker failure is not a safe checkpoint in
+this version. Represent a negative review as data, rather than a thrown error. Do not start workers,
+other discussions, or nested workflows concurrently with a discussion. The
+runtime rejects overlapping calls instead of silently cancelling their work.
+
+A discussion counts against the agent-call budget, but does not reserve an
+agent concurrency slot while waiting.
+
+The step opens a visible BB thread in the origin workspace. It is a normal
+conversation, with GenUI supplied by installed plugins. The discussion agent
+can present context in batches, investigate questions, and refine options.
+Going idle does not finish the step. Only after the owner explicitly finishes
+the discussion should that agent call `bb_workflow_discussion_result` with the
+agreed value. The service validates the result and requires a subsequent user
+turn; the initial workflow seed cannot approve itself. The agent interprets
+the owner's intent, rather than matching a keyword such as “done”.

@@ -4,6 +4,7 @@ import { z } from "zod";
 const workflowRunStatusSchema = z.enum([
   "queued",
   "running",
+  "waiting",
   "succeeded",
   "failed",
   "cancelled",
@@ -67,6 +68,12 @@ const threadLookupInputSchema = z
   .strict();
 
 export const workflowUiRpcContract = defineRpcContract({
+  workflowFinishDiscussion: {
+    input: z
+      .object({ threadId: z.string().min(1), value: z.unknown() })
+      .strict(),
+    output: z.object({ accepted: z.literal(true) }).strict(),
+  },
   workflowActiveRuns: {
     tags: ({ threadId }) => [`runs:${threadId}`],
     input: threadLookupInputSchema,

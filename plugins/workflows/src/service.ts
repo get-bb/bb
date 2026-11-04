@@ -3,11 +3,18 @@ import Ajv from "ajv";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
+  canonicalizeJson,
   WORKFLOW_CALL_CACHE_VERSION,
   computeWorkflowCallCacheKey,
   reusableSuccessfulResult,
 } from "./cache.js";
 import {
+  discussionSealsCall,
+  hasSuccessfulDiscussionPrefix,
+  attachDiscussionThread,
+  completeDiscussion,
+  pendingDiscussionForRun,
+  suspendRun,
   abandonOriginNotifications,
   hasWorker,
   ownWorker,
@@ -66,6 +73,7 @@ import type {
   JsonSchema,
   JsonValue,
   NestedWorkflowContext,
+  WorkflowDiscussionOptions,
   WorkflowAgentOptions,
   WorkflowCapabilities,
   WorkflowReference,
@@ -355,6 +363,15 @@ export interface WorkflowService {
   onThreadArchived(threadId: string): void;
   onThreadDeleted(threadId: string): void;
   onOriginUnavailable(threadId: string): Promise<void>;
+  submitDiscussionResult(
+    threadId: string,
+    value: JsonValue,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  discussionConfiguration(threadId: string): {
+    schema: JsonSchema;
+    resultParameters: Record<string, unknown>;
+    active: boolean;
+  } | null;
   submitStructuredResult(
     threadId: string,
     value: JsonValue,
@@ -385,6 +402,7 @@ export interface WorkflowRunInspectionPage {
   run: WorkflowRunRow;
   calls: WorkflowCallInspection[];
   callCounts: WorkflowCallCounts;
+  waitingDiscussion?: { threadId: string | null; title: string | null };
 }
 
 export function createWorkflowService(
@@ -509,9 +527,21 @@ export function createWorkflowService(
       for (const thread of threads) {
         if (hasWorker(db, thread.id)) continue;
         try {
-          const metadata = ownershipSchema.safeParse(
-            await bb.sdk.threads.getPluginMetadata({ threadId: thread.id }),
-          );
+          const storedMetadata = await bb.sdk.threads.getPluginMetadata({
+            threadId: thread.id,
+          });
+          const discussion = z
+            .object({
+              workflowDiscussion: z.literal(1),
+              runId: z.string(),
+              callId: z.string(),
+            })
+            .safeParse(storedMetadata);
+          if (discussion.success) {
+            attachDiscussionThread(db, discussion.data.callId, thread.id);
+            continue;
+          }
+          const metadata = ownershipSchema.safeParse(storedMetadata);
           if (!metadata.success) continue;
           const owner = metadata.data;
           ownWorker(
@@ -617,7 +647,11 @@ export function createWorkflowService(
           `Cannot resume unknown workflow run ${input.resumedFromRunId}`,
         );
       }
-      if (previous.status === "queued" || previous.status === "running") {
+      if (
+        previous.status === "queued" ||
+        previous.status === "running" ||
+        previous.status === "waiting"
+      ) {
         throw new Error(
           `Cannot resume workflow run ${input.resumedFromRunId} before it is terminal`,
         );
@@ -700,6 +734,21 @@ export function createWorkflowService(
         limit,
       }).map(inspectCall),
       callCounts: countCallsForRun(db, runId),
+      ...(run.status === "waiting"
+        ? {
+            waitingDiscussion: (() => {
+              const call = pendingDiscussionForRun(db, runId);
+              return {
+                threadId: call?.childThreadId ?? null,
+                title:
+                  call === null
+                    ? null
+                    : parseStoredAgentOptions(JSON.parse(call.optionsJson))
+                        .title,
+              };
+            })(),
+          }
+        : {}),
     };
   }
 
@@ -836,7 +885,7 @@ export function createWorkflowService(
     });
   }
 
-  async function runAgentCall(
+  async function runCall(
     run: WorkflowRunRow,
     callIndex: number,
     prompt: string,
@@ -848,6 +897,8 @@ export function createWorkflowService(
     }>,
     replayDecision: { previous: Promise<void>; release: () => void },
     signal: AbortSignal,
+    kind: "agent" | "discussion" = "agent",
+    suspend: () => void = () => undefined,
   ): Promise<JsonValue> {
     await replayDecision.previous;
     let call: WorkflowCallRow;
@@ -865,6 +916,23 @@ export function createWorkflowService(
       const cacheKey = resolvedIdentity.cacheKey;
       selection = resolvedIdentity.selection;
       const sameRunCall = getCall(db, run.id, callIndex);
+      if (
+        replay.prefix &&
+        kind === "discussion" &&
+        sameRunCall?.kind === "discussion" &&
+        sameRunCall.cacheKey === cacheKey &&
+        (sameRunCall.status === "running" || sameRunCall.status === "queued")
+      ) {
+        call = sameRunCall;
+        return await runDiscussionCall(
+          run,
+          call,
+          options,
+          selection,
+          signal,
+          suspend,
+        );
+      }
       if (replay.prefix) {
         if (sameRunCall !== null) {
           const sourceRun = getRunRequired(db, run.id);
@@ -876,10 +944,17 @@ export function createWorkflowService(
               sameRunCall.resultJson === null
                 ? null
                 : parseJson(sameRunCall.resultJson, "workflow call result");
-            const reuse = reusableSuccessfulResult({
-              status: sameRunCall.status,
-              result,
-            });
+            const reuse =
+              (kind === "discussion" ||
+                (result === null &&
+                  discussionSealsCall(db, run.id, callIndex))) &&
+              sameRunCall.status === "succeeded" &&
+              sameRunCall.resultJson !== null
+                ? { reusable: true as const, result }
+                : reusableSuccessfulResult({
+                    status: sameRunCall.status,
+                    result,
+                  });
             if (sameRunCall.cacheKey === cacheKey && reuse.reusable) {
               markCallReplayedSameRun(db, sameRunCall.id);
               publishRunsChanged(run.originThreadId);
@@ -902,11 +977,21 @@ export function createWorkflowService(
                     candidate.resultJson,
                     "resumed workflow call result",
                   );
-            const reuse = reusableSuccessfulResult(
-              candidate === null ? null : { status: candidate.status, result },
-            );
+            const reuse =
+              (kind === "discussion" ||
+                (result === null &&
+                  discussionSealsCall(db, run.resumedFromRunId, callIndex))) &&
+              candidate?.status === "succeeded" &&
+              candidate.resultJson !== null
+                ? { reusable: true as const, result }
+                : reusableSuccessfulResult(
+                    candidate === null
+                      ? null
+                      : { status: candidate.status, result },
+                  );
             if (candidate?.cacheKey === cacheKey && reuse.reusable) {
               startCall(db, {
+                kind,
                 runId: run.id,
                 callIndex,
                 cacheKey,
@@ -924,6 +1009,7 @@ export function createWorkflowService(
       }
 
       call = startCall(db, {
+        kind,
         runId: run.id,
         callIndex,
         cacheKey,
@@ -936,6 +1022,8 @@ export function createWorkflowService(
     } finally {
       replayDecision.release();
     }
+    if (kind === "discussion")
+      return runDiscussionCall(run, call, options, selection, signal, suspend);
     while (true) {
       try {
         throwIfCancelled(signal);
@@ -1044,12 +1132,148 @@ export function createWorkflowService(
     waiter.reject(new Error(latest?.error ?? "Workflow call failed"));
   }
 
+  async function runDiscussionCall(
+    run: WorkflowRunRow,
+    call: WorkflowCallRow,
+    options: WorkflowAgentOptions,
+    selection: ResolvedSelection,
+    signal: AbortSignal,
+    suspend: () => void,
+  ): Promise<JsonValue> {
+    throwIfCancelled(signal);
+    if (!hasSuccessfulDiscussionPrefix(db, run.id, call.callIndex)) {
+      throw new Error(
+        "discussion() requires a durably successful earlier call prefix; resolve failed workers before opening a discussion",
+      );
+    }
+    if (await waitForOrigin(run.originThreadId, signal))
+      throw new Error("Workflow origin is archived or deleted");
+    if (call.childThreadId === null) {
+      const thread = await bb.sdk.threads.spawn({
+        lifecycleOwnerThreadId: run.originThreadId,
+        pluginMetadata: {
+          workflowDiscussion: 1,
+          runId: run.id,
+          callId: call.id,
+          originThreadId: run.originThreadId,
+        },
+        projectId: run.projectId,
+        environment: { type: "reuse", environmentId: run.environmentId },
+        title: options.title ?? "Workflow discussion",
+        providerId: selection.providerId,
+        model: selection.model,
+        reasoningLevel: selection.reasoningLevel,
+        permissionMode: selection.permissionMode,
+        visibility: "visible",
+        prompt: `Workflow discussion: ${run.name}\n\n${call.prompt}`,
+      });
+      if (!attachDiscussionThread(db, call.id, thread.id)) {
+        await stopChild(thread.id);
+        throw new Error("Discussion is no longer active");
+      }
+      call = getCall(db, run.id, call.callIndex)!;
+    }
+    throwIfCancelled(signal);
+    const latest = getCall(db, run.id, call.callIndex);
+    if (latest?.status === "succeeded" && latest.resultJson !== null)
+      return parseJson(latest.resultJson, "discussion result");
+    suspendRun(db, run.id);
+    publishRunsChanged(run.originThreadId);
+    suspend();
+    throw new Error("Workflow suspended for discussion");
+  }
+
+  function discussionConfiguration(threadId: string) {
+    const call = getCallByChildThread(db, threadId);
+    if (call?.kind !== "discussion") return null;
+    const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
+    const run = getRunRequired(db, call.runId);
+    return {
+      schema: options.outputSchema!,
+      resultParameters: resultToolParameters(options.outputSchema!),
+      active:
+        call.status === "running" &&
+        (run.status === "waiting" ||
+          run.status === "running" ||
+          run.status === "queued"),
+    };
+  }
+
+  async function submitDiscussionResult(
+    threadId: string,
+    value: JsonValue,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    assertBoundedJson(value, "Discussion result", VALUE_LIMITS);
+    const call = getCallByChildThread(db, threadId);
+    if (call?.kind !== "discussion")
+      return { ok: false, error: "This is not a workflow discussion" };
+    const run = getRunRequired(db, call.runId);
+    if (call.status === "succeeded" && call.resultJson !== null) {
+      return canonicalizeJson(
+        parseJson(call.resultJson, "discussion result"),
+      ) === canonicalizeJson(value)
+        ? { ok: true }
+        : {
+            ok: false,
+            error: "A different discussion result was already accepted",
+          };
+    }
+    if (
+      call.status !== "running" ||
+      (run.status !== "waiting" &&
+        run.status !== "running" &&
+        run.status !== "queued")
+    ) {
+      return { ok: false, error: "This discussion is no longer active" };
+    }
+    if (await originUnavailable(run.originThreadId)) {
+      await onOriginUnavailable(run.originThreadId);
+      return { ok: false, error: "Workflow origin is archived or deleted" };
+    }
+    const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
+    assertBoundedJson(value, "Discussion result", VALUE_LIMITS);
+    const validation = validateValue(options.outputSchema!, value);
+    if (!validation.valid) return { ok: false, error: validation.error };
+    const events = await bb.sdk.threads.events.list({
+      threadId,
+      types: ["client/turn/requested"],
+      order: "desc",
+      limit: "1",
+    });
+    const latest = events[0];
+    if (
+      latest?.type !== "client/turn/requested" ||
+      latest.data.initiator !== "user" ||
+      latest.data.source !== "tell"
+    ) {
+      return {
+        ok: false,
+        error:
+          "Wait for an explicit owner instruction to finish; the workflow seed cannot approve a discussion",
+      };
+    }
+    const accepted = completeDiscussion(db, call, value, latest.seq);
+    if (!accepted)
+      return {
+        ok: false,
+        error: "Discussion was completed or cancelled while submitting",
+      };
+    publishRunsChanged(run.originThreadId);
+    wakeWorker();
+    return { ok: true };
+  }
+
   async function handleThreadIdle(
     threadId: string,
     output: string | null,
   ): Promise<void> {
     const call = getCallByChildThread(db, threadId);
-    if (call === null || call.status !== "running") return;
+    if (
+      call === null ||
+      call.status !== "running" ||
+      call.kind === "discussion"
+    )
+      return;
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     if (options.outputSchema !== null) {
       if (call.resultJson !== null) {
@@ -1183,6 +1407,22 @@ export function createWorkflowService(
   function failThreadCall(threadId: string, error: string): void {
     const call = getCallByChildThread(db, threadId);
     if (call === null || call.status !== "running") return;
+    if (call.kind === "discussion") {
+      const task = settleRunAndStopOutstanding({
+        id: call.runId,
+        status: "failed",
+        result: null,
+        error,
+      });
+      handlerTasks.add(task);
+      void task
+        .finally(() => {
+          handlerTasks.delete(task);
+          wakeWorker();
+        })
+        .catch((error) => bb.log.warn(message(error)));
+      return;
+    }
     settleCall(db, { id: call.id, status: "failed", result: null, error });
     wakeCall(call);
   }
@@ -1199,6 +1439,13 @@ export function createWorkflowService(
         error: "This thread is not an active workflow worker",
       };
     }
+    if (call.kind === "discussion")
+      return {
+        ok: false,
+        terminal: false,
+        error:
+          "Use bb_workflow_discussion_result after the owner finishes the discussion",
+      };
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     if (options.outputSchema === null) {
       return {
@@ -1268,7 +1515,7 @@ export function createWorkflowService(
 
   function agentConfiguration(threadId: string) {
     const call = getCallByChildThread(db, threadId);
-    if (call === null) return null;
+    if (call === null || call.kind === "discussion") return null;
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     return {
       resultParameters:
@@ -1376,60 +1623,93 @@ export function createWorkflowService(
     let previousCacheKey = Promise.resolve<string | null>(null);
     let previousReplayDecision = Promise.resolve();
     let nestedLaunchQueue = Promise.resolve();
-    const capabilities: WorkflowCapabilities = {
-      agent(prompt, options, callSignal) {
-        const index = callIndex;
-        callIndex += 1;
-        const computeIdentity = async (previousKey: string | null) => {
-          const selection = await validateSelection(run, options, callSignal);
-          const cacheKey = computeWorkflowCallCacheKey({
-            version: WORKFLOW_CALL_CACHE_VERSION,
-            previousCacheKey: previousKey,
-            prompt,
-            selection,
-            outputSchema: options.outputSchema,
-            executionSemantics: {
-              workerPromptVersion: WORKER_PROMPT_VERSION,
-              resultProtocolVersion: RESULT_PROTOCOL_VERSION,
-              maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
-            },
-          });
-          return { cacheKey, selection };
-        };
-        const identity = previousCacheKey.then(computeIdentity, async () => {
-          replay.prefix = false;
-          return computeIdentity(null);
-        });
-        previousCacheKey = identity.then(
-          (value) => value.cacheKey,
-          () => {
-            replay.prefix = false;
-            return null;
-          },
-        );
-        const priorDecision = previousReplayDecision;
-        let releaseDecision = (): void => undefined;
-        previousReplayDecision = new Promise<void>((resolve) => {
-          releaseDecision = resolve;
-        });
-        const call = runAgentCall(
-          run,
-          index,
+    let suspended = false;
+    let discussionPrefixSafe = true;
+    const suspend = () => {
+      suspended = true;
+      controllers.get(run.id)?.abort();
+    };
+    function launchCall(
+      prompt: string,
+      options: WorkflowAgentOptions,
+      callSignal: AbortSignal,
+      kind: "agent" | "discussion",
+    ) {
+      const index = callIndex;
+      callIndex += 1;
+      const computeIdentity = async (previousKey: string | null) => {
+        const selection = await validateSelection(run, options, callSignal);
+        const cacheKey = computeWorkflowCallCacheKey({
+          version: WORKFLOW_CALL_CACHE_VERSION,
+          previousCacheKey: previousKey,
           prompt,
-          options,
-          replay,
-          identity,
-          { previous: priorDecision, release: releaseDecision },
-          callSignal,
+          selection,
+          outputSchema: options.outputSchema,
+          executionSemantics: {
+            workerPromptVersion:
+              kind === "discussion"
+                ? "workflow-discussion-v1"
+                : WORKER_PROMPT_VERSION,
+            resultProtocolVersion: RESULT_PROTOCOL_VERSION,
+            maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
+          },
+        });
+        return { cacheKey, selection };
+      };
+      const identity = previousCacheKey.then(computeIdentity, async () => {
+        replay.prefix = false;
+        return computeIdentity(null);
+      });
+      previousCacheKey = identity.then(
+        (value) => value.cacheKey,
+        () => {
+          replay.prefix = false;
+          return null;
+        },
+      );
+      const priorDecision = previousReplayDecision;
+      let releaseDecision = (): void => undefined;
+      previousReplayDecision = new Promise<void>((resolve) => {
+        releaseDecision = resolve;
+      });
+      const call = runCall(
+        run,
+        index,
+        prompt,
+        options,
+        replay,
+        identity,
+        { previous: priorDecision, release: releaseDecision },
+        callSignal,
+        kind,
+        suspend,
+      );
+      inFlightCalls.add(call);
+      void call.catch(() => {
+        discussionPrefixSafe = false;
+      });
+      void call
+        .finally(() => {
+          inFlightCalls.delete(call);
+        })
+        .catch(() => undefined);
+      return call;
+    }
+    const capabilities: WorkflowCapabilities = {
+      agent(prompt, options, signal) {
+        return launchCall(prompt, options, signal, "agent");
+      },
+      discussion(options: WorkflowDiscussionOptions, signal) {
+        if (!discussionPrefixSafe)
+          throw new Error(
+            "discussion() cannot follow a failed worker call; resolve the failure before opening a discussion",
+          );
+        return launchCall(
+          `${options.brief}\n\nSupporting context (JSON):\n${JSON.stringify(options.context)}`,
+          options.agent,
+          signal,
+          "discussion",
         );
-        inFlightCalls.add(call);
-        void call.catch(() => undefined);
-        void call
-          .finally(() => {
-            inFlightCalls.delete(call);
-          })
-          .catch(() => undefined);
-        return call;
       },
       async workflow(
         reference: WorkflowReference,
@@ -1527,6 +1807,7 @@ export function createWorkflowService(
       });
     } catch (error) {
       const latest = getRunRequired(db, run.id);
+      if (suspended) return;
       if (shuttingDown && signal.aborted && latest.status === "running") {
         return;
       }
@@ -1657,7 +1938,9 @@ export function createWorkflowService(
       const shouldClaim = claimRequested;
       claimRequested = false;
       while (shouldClaim && active.size < currentSettings.maxActiveRuns) {
-        const run = claimQueuedRun(db, currentSettings.maxActiveRuns);
+        const run = claimQueuedRun(db, currentSettings.maxActiveRuns, [
+          ...controllers.keys(),
+        ]);
         if (run === null) break;
         publishRunsChanged(run.originThreadId);
         const controller = new AbortController();
@@ -1723,12 +2006,16 @@ export function createWorkflowService(
     runWorker,
     onThreadIdle,
     onOriginUnavailable,
-    onThreadFailed: (threadId, error) =>
-      failThreadCall(threadId, error ?? "Workflow worker failed"),
+    onThreadFailed: (threadId, error) => {
+      if (getCallByChildThread(db, threadId)?.kind !== "discussion")
+        failThreadCall(threadId, error ?? "Workflow worker failed");
+    },
     onThreadArchived: (threadId) =>
       failThreadCall(threadId, "Workflow worker was archived"),
     onThreadDeleted: (threadId) =>
       failThreadCall(threadId, "Workflow worker was deleted"),
+    submitDiscussionResult,
+    discussionConfiguration,
     submitStructuredResult,
     agentConfiguration,
   };

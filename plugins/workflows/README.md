@@ -8,7 +8,8 @@ The author-facing native surface is intentionally one tool:
 `bb_workflow_run`. Validation, inspection, listing, and cancellation use the
 `bb workflows` CLI documented below. Provider and model discovery uses BB's
 built-in `bb provider` commands. Structured workers separately
-receive only `bb_workflow_result`; ordinary authoring agents never receive that
+receive `bb_workflow_result`; discussion agents receive
+`bb_workflow_discussion_result`; ordinary authoring agents never receive that
 worker tool.
 
 ## Progress UI
@@ -284,3 +285,29 @@ requires a separate evidence-based audit of historical records; this migration
 does not guess ownership from titles or modify those threads. Discovery and
 cleanup require a running plugin and available thread APIs; unavailable hosts
 leave durable cleanup pending.
+
+## Persistent discussions
+
+`discussion()` is a root-workflow boundary after all earlier work has finished.
+It opens a visible conversation with the brief, JSON context, result schema,
+and an inherited or explicit model selection. The owner and agent can discuss
+options over multiple turns with the installed GenUI tools. An idle turn is not
+a result. After an explicit owner instruction to finish, the discussion agent
+submits the agreed result through `bb_workflow_discussion_result`.
+
+A waiting run releases its interpreter and active-run slot. Its execution
+timeout excludes human waiting. Restart recovery retains the pending thread;
+completion queues the same saved script, replaying completed calls and the
+saved decision. Discussion calls share the ordered call journal, but their
+visible threads are excluded from hidden-worker cleanup. A result records the
+user turn's event sequence and cannot be replaced by a conflicting submission.
+The completion guard verifies a subsequent user turn, not the semantics of
+that instruction; the discussion agent is responsible for recognizing intent.
+
+The run card and inspector link to the discussion. CLI status includes its
+thread ID. `bb workflows finish-discussion --value '<json>'`, run inside the
+discussion thread, and the `workflowFinishDiscussion` plugin RPC share result
+validation and completion policy. Discussion, context/schema/model changes,
+restart, cancellation, and late-result behavior are described in the shipped
+workflows skill. Concurrent discussions and discussions inside child workflows
+are deliberately unsupported in this version.

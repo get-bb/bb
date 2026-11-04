@@ -13,6 +13,13 @@ interface ExplicitModelSelection {
   reasoningLevel: string;
 }
 
+export interface WorkflowDiscussionOptions {
+  title: string;
+  brief: string;
+  context: JsonValue;
+  agent: WorkflowAgentOptions;
+}
+
 export interface WorkflowAgentOptions {
   selection: ExplicitModelSelection | null;
   outputSchema: JsonSchema | null;
@@ -77,6 +84,10 @@ export interface NestedWorkflowContext {
 }
 
 export interface WorkflowCapabilities {
+  discussion?(
+    options: WorkflowDiscussionOptions,
+    signal: AbortSignal,
+  ): Promise<JsonValue>;
   agent(
     prompt: string,
     options: WorkflowAgentOptions,

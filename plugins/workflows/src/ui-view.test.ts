@@ -7,6 +7,8 @@ import { buildWorkflowRunView } from "./ui-view.js";
 
 function call(index: number, phase: string | null): WorkflowCallInspection {
   return {
+    kind: "agent",
+    completionSeq: null,
     id: `wfc_${index}`,
     runId: "wfr_test",
     callIndex: index,

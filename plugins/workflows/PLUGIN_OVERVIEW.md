@@ -5,6 +5,7 @@ Run a script that fans work out to many agent threads, pipelines their results, 
 - A live run card in chat that shows the state, phases, active workers, and elapsed time.
 - A status card above the composer for each active run in the thread, with a stop control.
 - A **Workflow run** panel that lists every phase and worker call and links each worker to its thread.
+- Persistent discussion steps that open a normal conversation and wait for your decision without using an active-run slot.
 - A completion message delivered to the thread that started the run.
 - Settings for active runs, agent concurrency, call budget, run timeout, retention days, and notification size.
 

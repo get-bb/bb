@@ -188,6 +188,9 @@ function statusSummary(page: WorkflowRunInspectionPage) {
     error: error.value,
     errorTruncated: error.truncated,
     calls: callCounts,
+    ...(page.waitingDiscussion === undefined
+      ? {}
+      : { waitingDiscussion: page.waitingDiscussion }),
     notification: {
       outcome: run.notificationOutcome,
       attemptCount: run.notificationAttemptCount,
@@ -483,6 +486,28 @@ export function registerWorkflowCli(
                   .list(context.projectId, input.options.limit)
                   .map(listRunSummary),
               );
+            });
+          },
+        }),
+        "finish-discussion": cliCommand({
+          summary:
+            "Submit the agreed outcome from the current discussion thread after an owner instruction",
+          options: {
+            value: {
+              type: "string",
+              description: "Agreed result as JSON",
+              required: true,
+            },
+          },
+          run(input, ctx) {
+            return guarded(async () => {
+              const { threadId } = requireContext(ctx);
+              const result = await service.submitDiscussionResult(
+                threadId,
+                parseJsonOption(input.options.value),
+              );
+              if (!result.ok) throw new Error(result.error);
+              return success({ accepted: true });
             });
           },
         }),

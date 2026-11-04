@@ -9,6 +9,7 @@ import {
   workerOrigins,
   ownWorker,
   cancelRun,
+  claimQueuedRun,
   countCallsForRun,
   createRun,
   deleteTerminalRuns,
@@ -25,6 +26,10 @@ import {
   startCall,
   storeStructuredResult,
 } from "./data.js";
+
+const workerMigrationIndex = migrations.findIndex((sql) =>
+  sql.includes("CREATE TABLE workflow_workers"),
+);
 
 describe("workflow durable data", () => {
   let db: Database.Database;
@@ -107,31 +112,38 @@ describe("workflow durable data", () => {
     expect(workerOrigins(db, 1_000)).toEqual([]);
   });
 
+  it("does not reclaim a continuation while its previous interpreter is settling", () => {
+    const settling = newRun();
+    const other = newRun();
+    expect(claimQueuedRun(db, 4, [settling.id])?.id).toBe(other.id);
+    expect(getRunRequired(db, settling.id).status).toBe("queued");
+  });
+
   it("backfills worker ownership from the pre-upgrade call pointers", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
+    db.exec(migrations.slice(0, workerMigrationIndex).join("\n"));
     const run = newRun();
     markRunning(run.id);
-    const call = startCall(db, {
-      runId: run.id,
-      callIndex: 0,
-      cacheKey: "migration",
-      prompt: "work",
-      options: {
-        title: null,
-        phase: null,
-        outputSchema: null,
-        selection: null,
-      },
-      selection: resolvedSelection,
-      replay: null,
-    });
+    const call = { id: "legacy-call" };
+    db.prepare(`INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
+      options_json, resolved_provider, resolved_model, resolved_reasoning_level,
+      resolved_permission_mode, status, created_at)
+      VALUES (?, ?, 0, 'migration', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full', 'queued', 0)`).run(
+      call.id,
+      run.id,
+    );
     db.prepare(
       `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
     ).run(call.id);
-    db.exec(migrations.slice(-3).join("\n"));
+    db.exec(migrations.slice(workerMigrationIndex).join("\n"));
+    expect(getCall(db, run.id, 0)).toMatchObject({
+      kind: "agent",
+      completionSeq: null,
+      status: "failed",
+      childThreadId: "legacy-worker",
+    });
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "legacy-worker", callId: call.id },
     ]);
@@ -144,7 +156,7 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
+    db.exec(migrations.slice(0, workerMigrationIndex).join("\n"));
     const run = newRun();
     const insertCall = db.prepare(
       `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
@@ -161,7 +173,7 @@ describe("workflow durable data", () => {
         `worker-${String(index).padStart(3, "0")}`,
       );
     const migratedAt = Date.now();
-    db.exec(migrations.slice(-3).join("\n"));
+    db.exec(migrations.slice(workerMigrationIndex).join("\n"));
 
     const buckets = db
       .prepare(

@@ -6,6 +6,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
 import plugin from "./server.js";
+import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 import { createWorkflowService } from "./service.js";
 
 async function eventually(
@@ -905,6 +906,310 @@ describe("workflow resume cache integration", () => {
       },
     };
   }
+
+  const discussionSource = (suffix = `return answer;`) =>
+    workflowSource(`
+    await agent("prepare");
+    const answer = await discussion({ title: "Choose direction", brief: "Compare A and B with the owner", context: { options: ["A", "B"] }, schema: { type: "string" } });
+    ${suffix}
+  `);
+
+  function allowOwnerCompletion(test: ReturnType<typeof setup>) {
+    test.harness.sdk.stub("threads.events.list", async () => [
+      {
+        seq: 12,
+        type: "client/turn/requested",
+        data: { initiator: "user", source: "tell" },
+      },
+    ]);
+  }
+
+  it("keeps a multi-turn discussion through restart, releases capacity, and resumes once", async () => {
+    const test = setup();
+    test.service.updateSettings({
+      ...DEFAULT_WORKFLOW_SETTINGS,
+      maxActiveRuns: 1,
+    });
+    test.harness.sdk.stub("threads.events.list", async () => []);
+    const firstController = new AbortController();
+    const firstWorker = test.service.runWorker(firstController.signal);
+    try {
+      const run = await test.start(
+        discussionSource(`return await agent("implement " + answer);`),
+        null,
+      );
+      await eventually(() => expect(test.childCount()).toBe(1));
+      await test.finish("cache-child-1", "prepared");
+      await eventually(() =>
+        expect(test.service.get(run.id)?.status).toBe("waiting"),
+      );
+      expect(test.harness.sdk.callsTo("threads.spawn")[1]?.[0]).toMatchObject({
+        visibility: "visible",
+      });
+      test.service.onThreadIdle("cache-child-2", "Which option do you prefer?");
+      test.service.onThreadFailed("cache-child-2", "Transient model error");
+      await expect(
+        test.service.submitDiscussionResult("cache-child-2", "A"),
+      ).resolves.toMatchObject({ ok: false });
+      expect(test.service.get(run.id)?.status).toBe("waiting");
+      const other = await test.start(
+        workflowSource(`return "other run";`),
+        null,
+      );
+      await eventually(() =>
+        expect(test.service.get(other.id)?.status).toBe("succeeded"),
+      );
+      firstController.abort();
+      await firstWorker;
+      const restarted = createWorkflowService(test.bb, test.db);
+      const secondController = new AbortController();
+      const secondWorker = restarted.runWorker(secondController.signal);
+      try {
+        expect(restarted.get(run.id)?.status).toBe("waiting");
+        expect(test.childCount()).toBe(2);
+        expect(
+          restarted.discussionConfiguration("cache-child-2"),
+        ).toMatchObject({ active: true });
+        allowOwnerCompletion(test);
+        await expect(
+          restarted.submitDiscussionResult("cache-child-2", 42),
+        ).resolves.toMatchObject({ ok: false });
+        await expect(
+          restarted.submitDiscussionResult("cache-child-2", "B"),
+        ).resolves.toEqual({ ok: true });
+        await expect(
+          restarted.submitDiscussionResult("cache-child-2", "B"),
+        ).resolves.toEqual({ ok: true });
+        await expect(
+          restarted.submitDiscussionResult("cache-child-2", "A"),
+        ).resolves.toMatchObject({ ok: false });
+        await eventually(() => expect(test.childCount()).toBe(3));
+        restarted.onThreadIdle("cache-child-3", "implemented");
+        await eventually(() =>
+          expect(restarted.get(run.id)).toMatchObject({
+            status: "succeeded",
+            resultJson: '"implemented"',
+          }),
+        );
+        expect(getCall(test.db, run.id, 0)?.replaySource).toBe("same-run");
+        expect(
+          test.harness.sdk
+            .callsTo("threads.archive")
+            .some((call) => JSON.stringify(call[0]).includes("cache-child-2")),
+        ).toBe(false);
+      } finally {
+        secondController.abort();
+        await secondWorker;
+      }
+    } finally {
+      firstController.abort();
+      await firstWorker;
+    }
+  });
+
+  it("reuses a null decision on resume and opens a new discussion when its context changes", async () => {
+    const test = setup();
+    allowOwnerCompletion(test);
+    const source = workflowSource(
+      `return await discussion({ title: "Optional choice", brief: "Decide whether a choice is needed", context: { version: 1 }, schema: { type: "null" } });`,
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      const first = await test.start(source, null);
+      await eventually(() =>
+        expect(test.service.get(first.id)?.status).toBe("waiting"),
+      );
+      await expect(
+        test.service.submitDiscussionResult("cache-child-1", null),
+      ).resolves.toEqual({ ok: true });
+      await eventually(() =>
+        expect(test.service.get(first.id)?.status).toBe("succeeded"),
+      );
+      const resumed = await test.start(source, first.id);
+      await eventually(() =>
+        expect(test.service.get(resumed.id)).toMatchObject({
+          status: "succeeded",
+          resultJson: "null",
+        }),
+      );
+      expect(test.childCount()).toBe(1);
+      const changed = await test.start(
+        source.replace("version: 1", "version: 2"),
+        resumed.id,
+      );
+      await eventually(() =>
+        expect(test.service.get(changed.id)?.status).toBe("waiting"),
+      );
+      expect(test.childCount()).toBe(2);
+      await test.service.stop(changed.id);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("does not repeat successful null workers across a discussion continuation or resume", async () => {
+    const test = setup();
+    allowOwnerCompletion(test);
+    const source = workflowSource(
+      `await agent("successful-null", { schema: { type: "null" } }); return await discussion({ title: "Choose", brief: "Discuss", schema: { type: "string" } });`,
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      const run = await test.start(source, null);
+      await eventually(() => expect(test.childCount()).toBe(1));
+      await test.finish("cache-child-1", "null");
+      await eventually(() =>
+        expect(test.service.get(run.id)?.status).toBe("waiting"),
+      );
+      await expect(
+        test.service.submitDiscussionResult("cache-child-2", "A"),
+      ).resolves.toEqual({ ok: true });
+      await eventually(() =>
+        expect(test.service.get(run.id)?.status).toBe("succeeded"),
+      );
+      const resumed = await test.start(source, run.id);
+      await eventually(() =>
+        expect(test.service.get(resumed.id)).toMatchObject({
+          status: "succeeded",
+          resultJson: '\"A\"',
+        }),
+      );
+      expect(test.childCount()).toBe(2);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("rejects a discussion after a caught worker failure instead of retrying side effects on continuation", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      const run = await test.start(
+        workflowSource(
+          `await parallel([() => agent("failed-worker")]); return await discussion({ title: "Choose", brief: "Discuss", schema: true });`,
+        ),
+        null,
+      );
+      await eventually(() => expect(test.childCount()).toBe(1));
+      test.service.onThreadFailed(
+        "cache-child-1",
+        "Invalid task configuration",
+      );
+      await eventually(() =>
+        expect(test.service.get(run.id)).toMatchObject({
+          status: "failed",
+          error: expect.stringContaining("failed worker"),
+        }),
+      );
+      expect(test.childCount()).toBe(1);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("rejects a discussion after an unjournaled selection failure", async () => {
+    const test = setup();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      const run = await test.start(
+        workflowSource(
+          `try { await agent("invalid selection", { provider: "missing", model: "missing", reasoningLevel: "low" }); } catch {} return await discussion({ title: "Choose", brief: "Discuss", schema: true });`,
+        ),
+        null,
+      );
+      await eventually(() =>
+        expect(test.service.get(run.id)).toMatchObject({
+          status: "failed",
+          error: expect.stringContaining("failed worker"),
+        }),
+      );
+      expect(test.childCount()).toBe(0);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("excludes a long human wait from the execution timeout", async () => {
+    const test = setup();
+    allowOwnerCompletion(test);
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      const run = await test.start(
+        workflowSource(
+          `return await discussion({ title: "Choose", brief: "Discuss", schema: { type: "string" } });`,
+        ),
+        null,
+      );
+      await eventually(() =>
+        expect(test.service.get(run.id)?.status).toBe("waiting"),
+      );
+      const old = Date.now() - 3 * 86400000;
+      test.db
+        .prepare(
+          "UPDATE workflow_runs SET started_at = ?, waiting_since = ? WHERE id = ?",
+        )
+        .run(old, old, run.id);
+      await expect(
+        test.service.submitDiscussionResult("cache-child-1", "A"),
+      ).resolves.toEqual({ ok: true });
+      await eventually(() =>
+        expect(test.service.get(run.id)?.status).toBe("succeeded"),
+      );
+      expect(
+        test.db
+          .prepare("SELECT waiting_ms FROM workflow_runs WHERE id = ?")
+          .get(run.id),
+      ).toMatchObject({ waiting_ms: expect.any(Number) });
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it.each(["stop", "archive", "delete"])(
+    "handles %s while waiting without accepting a late result",
+    async (action) => {
+      const test = setup();
+      allowOwnerCompletion(test);
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        const run = await test.start(discussionSource(), null);
+        await eventually(() => expect(test.childCount()).toBe(1));
+        await test.finish("cache-child-1", "prepared");
+        await eventually(() =>
+          expect(test.service.get(run.id)?.status).toBe("waiting"),
+        );
+        if (action === "stop") await test.service.stop(run.id);
+        else if (action === "archive")
+          test.service.onThreadArchived("cache-child-2");
+        else test.service.onThreadDeleted("cache-child-2");
+        await eventually(() =>
+          expect(["cancelled", "failed"]).toContain(
+            test.service.get(run.id)?.status,
+          ),
+        );
+        await expect(
+          test.service.submitDiscussionResult("cache-child-2", "B"),
+        ).resolves.toMatchObject({ ok: false });
+        expect(
+          test.service.discussionConfiguration("cache-child-2"),
+        ).toMatchObject({ active: false });
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
 
   it("retries a transient provider failure before settling the call", async () => {
     const test = setup();

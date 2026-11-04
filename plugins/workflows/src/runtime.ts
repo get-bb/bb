@@ -16,7 +16,7 @@ import type {
   WorkflowReference,
   WorkflowRuntimeLimits,
 } from "./types.js";
-import { parseAgentOptions } from "./validation.js";
+import { parseAgentOptions, parseDiscussionOptions } from "./validation.js";
 
 const DEFAULT_LIMITS: WorkflowRuntimeLimits = {
   memoryLimitBytes: 32 * 1024 * 1024,
@@ -180,6 +180,40 @@ class SharedWorkflowScheduler implements WorkflowExecutionScheduler {
   private readonly queue: ScheduledAgentCall[] = [];
   private activeAgents = 0;
   private agentCalls = 0;
+  private discussing = false;
+  private nestedWorkflows = 0;
+  beginNestedWorkflow(): void {
+    if (this.discussing)
+      throw new Error("Await discussion() before starting a nested workflow");
+    this.nestedWorkflows += 1;
+  }
+  endNestedWorkflow(): void {
+    this.nestedWorkflows -= 1;
+  }
+
+  beginDiscussion(): void {
+    if (
+      this.discussing ||
+      this.nestedWorkflows !== 0 ||
+      this.activeAgents !== 0 ||
+      this.queue.length !== 0
+    ) {
+      throw new Error(
+        "discussion() requires a boundary: await all earlier workers first",
+      );
+    }
+    this.agentCalls += 1;
+    if (this.agentCalls > this.limits.maxAgentCalls) {
+      throw new Error(
+        `Workflow exceeded the ${this.limits.maxAgentCalls} agent-call limit`,
+      );
+    }
+    this.discussing = true;
+  }
+
+  endDiscussion(): void {
+    this.discussing = false;
+  }
 
   constructor(limits: Readonly<WorkflowRuntimeLimits>) {
     this.limits = limits;
@@ -189,6 +223,10 @@ class SharedWorkflowScheduler implements WorkflowExecutionScheduler {
     run: () => Promise<JsonValue>,
     signal: AbortSignal,
   ): Promise<JsonValue> {
+    if (this.discussing)
+      return Promise.reject(
+        new Error("Await discussion() before starting more workers"),
+      );
     this.agentCalls += 1;
     if (this.agentCalls > this.limits.maxAgentCalls) {
       return Promise.reject(
@@ -434,16 +472,19 @@ function installWorkflowFunction(
     const childArgs = handles[1]
       ? dumpJson(vm, handles[1], "workflow args")
       : null;
-    return bridge.launch("nested workflow result", (callSignal) =>
-      Promise.resolve().then(() =>
-        capabilities.workflow!(reference, childArgs, {
+    scheduler.beginNestedWorkflow();
+    return bridge.launch("nested workflow result", async (callSignal) => {
+      try {
+        return await capabilities.workflow!(reference, childArgs, {
           signal: callSignal,
           limits,
           scheduler,
           depth: 1,
-        }),
-      ),
-    );
+        });
+      } finally {
+        scheduler.endNestedWorkflow();
+      }
+    });
   });
   vm.setProp(vm.global, "__bbWorkflow", fn);
   fn.dispose();
@@ -626,10 +667,37 @@ export async function executeWorkflowScript({
   const vm = runtime.newContext();
   let agentBridge: { close(reason?: string): void } | undefined;
   let workflowBridge: { close: (reason?: string) => void } | undefined;
+  let discussionBridge: { close: (reason?: string) => void } | undefined;
   let currentPhase: string | null = null;
 
   try {
     installJsonGlobal(vm, "args", args);
+    const bridge = createHostCallBridge(vm, runtime, enterVm, signal);
+    discussionBridge = bridge;
+    const discussionFunction = vm.newFunction("discussion", (...handles) => {
+      if (bridge.isClosed())
+        return bridge.rejectImmediately("Workflow is no longer running");
+      if (depth !== 0)
+        return bridge.rejectImmediately(
+          "discussion() is supported only in the root workflow",
+        );
+      if (capabilities.discussion === undefined)
+        return bridge.rejectImmediately("discussion() is unavailable");
+      const options = parseDiscussionOptions(
+        handles[0] ? dumpJson(vm, handles[0], "discussion options") : null,
+      );
+      options.agent.phase ??= currentPhase;
+      scheduler.beginDiscussion();
+      return bridge.launch("discussion result", async (callSignal) => {
+        try {
+          return await capabilities.discussion!(options, callSignal);
+        } finally {
+          scheduler.endDiscussion();
+        }
+      });
+    });
+    vm.setProp(vm.global, "discussion", discussionFunction);
+    discussionFunction.dispose();
     agentBridge = installAgentFunction(
       vm,
       runtime,
@@ -693,6 +761,7 @@ export async function executeWorkflowScript({
     }
     throw error;
   } finally {
+    discussionBridge?.close();
     workflowBridge?.close();
     agentBridge?.close();
     vm.dispose();

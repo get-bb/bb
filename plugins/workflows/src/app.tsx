@@ -100,7 +100,11 @@ function panelRunId(params: unknown): string | null | undefined {
 }
 
 function isRunActive(run: WorkflowRunView): boolean {
-  return run.status === "queued" || run.status === "running";
+  return (
+    run.status === "queued" ||
+    run.status === "running" ||
+    run.status === "waiting"
+  );
 }
 
 function runTerminalState(
@@ -113,6 +117,7 @@ function runTerminalState(
       return "failed";
     case "cancelled":
       return "cancelled";
+    case "waiting":
     case "queued":
     case "running":
       return undefined;
@@ -135,6 +140,7 @@ function runPillState(
   switch (status) {
     case "queued":
       return "queued";
+    case "waiting":
     case "running":
       return null;
     case "succeeded":
@@ -148,6 +154,8 @@ function runPillState(
 
 function runActivityState(run: WorkflowRunView): ActivityRowState {
   switch (run.status) {
+    case "waiting":
+      return "muted";
     case "queued":
     case "running":
       return "active";
@@ -286,6 +294,8 @@ function workflowAgentState(
   switch (status) {
     case "queued":
       return "queued";
+    case "waiting":
+      return "queued";
     case "running":
       return "running";
     case "succeeded":
@@ -320,7 +330,10 @@ function buildSharedWorkflowView(run: WorkflowRunView): SharedWorkflowView {
     actionable: call.childThreadId !== null,
     index: call.index + 1,
     label: call.label,
-    state: workflowAgentState(call.status),
+    state:
+      run.status === "waiting" && call.status === "running"
+        ? "queued"
+        : workflowAgentState(call.status),
     model: call.model,
     attempt: call.providerRetryAttempts + call.repairAttempts + 1,
     cached: call.cached,
@@ -450,14 +463,14 @@ function WorkflowComposerSummary({ run }: { run: WorkflowRunView }) {
           className="min-w-0 truncate font-medium text-foreground"
           title={run.name}
         >
-          {run.name}
+          {run.status === "waiting" ? "Waiting for you" : run.name}
         </span>
-        {agentCount === 0 ? null : (
+        {agentCount === 0 || run.status === "waiting" ? null : (
           <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
             {settledAgents}/{agentCount} agents
           </span>
         )}
-        {run.startedAt === null ? null : (
+        {run.startedAt === null || run.status === "waiting" ? null : (
           <span className="shrink-0 text-2xs tabular-nums text-subtle-foreground">
             <WorkflowDuration startedAt={run.startedAt} />
           </span>
@@ -530,6 +543,7 @@ function WorkflowComposerCard({ run }: { run: WorkflowRunView }) {
           <Icon name="ArrowRight" className="size-3.5" aria-hidden />
         </button>
       </div>
+      <DiscussionAction run={run} />
       <section
         id={bodyId}
         role="region"
@@ -724,7 +738,7 @@ function WorkflowPreviewLoaded({
           >
             {run.name}
           </span>
-          {shared.progress.agents.length > 0 ? (
+          {shared.progress.agents.length > 0 && run.status !== "waiting" ? (
             <span
               className={activityMetaClass(
                 activityState,
@@ -734,7 +748,7 @@ function WorkflowPreviewLoaded({
               {settledAgents}/{shared.progress.agents.length} agents
             </span>
           ) : null}
-          {run.startedAt === null ? null : (
+          {run.startedAt === null || run.status === "waiting" ? null : (
             <span
               className={activityMetaClass(
                 activityState,
@@ -749,6 +763,11 @@ function WorkflowPreviewLoaded({
           )}
         </span>
         {pillState === null ? null : <WorkflowStatusPill state={pillState} />}
+        {run.status === "waiting" ? (
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            Waiting for you
+          </span>
+        ) : null}
         <Icon
           name="ChevronDown"
           className={cn(
@@ -759,6 +778,7 @@ function WorkflowPreviewLoaded({
           aria-hidden
         />
       </button>
+      <DiscussionAction run={run} />
       <WorkflowPhaseStrip
         progress={shared.progress}
         currentPhaseIndex={shared.currentPhaseIndex}
@@ -931,6 +951,7 @@ function WorkflowRunPanelLoaded({
           </div>
           {pillState === null ? null : <WorkflowStatusPill state={pillState} />}
         </div>
+        <DiscussionAction run={run} />
         <div className="mt-2 flex items-center gap-2 text-2xs tabular-nums text-subtle-foreground">
           <span>
             {shared.progress.agents.length > 0
@@ -1051,3 +1072,26 @@ export default definePluginApp((app) => {
     layout: "flush",
   });
 });
+
+function DiscussionAction({ run }: { run: WorkflowRunView }) {
+  const navigate = useBbNavigate();
+  if (run.status !== "waiting") return null;
+  const call = [
+    ...run.unphasedCalls,
+    ...run.phases.flatMap((phase) => phase.calls),
+  ].find((call) => call.status === "running" && call.childThreadId !== null);
+  if (call?.childThreadId == null)
+    return (
+      <p className="px-3 text-xs text-muted-foreground">Waiting for you</p>
+    );
+  const threadId = call.childThreadId;
+  return (
+    <Button
+      variant="ghost"
+      className="min-h-11 w-full min-w-0 justify-start px-3 text-xs"
+      onClick={() => navigate.toThread(threadId)}
+    >
+      <span className="truncate">Open discussion: {call.label}</span>
+    </Button>
+  );
+}

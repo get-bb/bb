@@ -6,6 +6,7 @@ import type {
   JsonSchema,
   JsonValue,
   WorkflowAgentOptions,
+  WorkflowDiscussionOptions,
 } from "./types.js";
 
 export const MAX_WORKFLOW_SOURCE_BYTES = 512 * 1024;
@@ -430,4 +431,25 @@ export function parseAgentOptions(
     title: title ?? label,
     phase: optionalNonEmptyString(value, "phase"),
   };
+}
+
+export function parseDiscussionOptions(
+  value: JsonValue,
+): WorkflowDiscussionOptions {
+  if (!isObject(value)) throw new Error("discussion options must be an object");
+  const { brief, context = null, ...options } = value;
+  if (typeof brief !== "string" || brief.trim() === "") {
+    throw new Error("discussion brief must be a non-empty string");
+  }
+  const agent = parseAgentOptions(options);
+  if (agent.title === null) throw new Error("discussion requires a title");
+  if (agent.outputSchema === null)
+    throw new Error("discussion requires a result schema");
+  const encoded = JSON.stringify(value);
+  if (new TextEncoder().encode(encoded).byteLength > 256 * 1024) {
+    throw new Error(
+      "Discussion context exceeds 256 KiB; pass references to larger evidence",
+    );
+  }
+  return { title: agent.title, brief, context, agent };
 }

@@ -118,6 +118,7 @@ function propertyName(
 function inspectAgentOptions(
   node: ObjectExpression,
   selections: LiteralAgentSelection[],
+  discussion = false,
 ): void {
   const properties = new Map<string, Expression>();
   for (const property of node.properties) {
@@ -131,6 +132,7 @@ function inspectAgentOptions(
     }
     const key = propertyName(property);
     if (key === null) throw new Error("agent options contain an invalid key");
+    if (discussion && (key === "brief" || key === "context")) continue;
     if (!AGENT_OPTION_KEYS.has(key)) {
       throw new Error(`Unknown agent option ${JSON.stringify(key)}`);
     }
@@ -379,6 +381,13 @@ function rejectUnsafeSyntax(
         throw new Error(
           `${node.callee.name} is unavailable in workflows${locationSuffix(node)}`,
         );
+      }
+      if (
+        node.callee.type === "Identifier" &&
+        node.callee.name === "discussion" &&
+        node.arguments[0]?.type === "ObjectExpression"
+      ) {
+        inspectAgentOptions(node.arguments[0], selections, true);
       }
       if (
         node.callee.type === "Identifier" &&

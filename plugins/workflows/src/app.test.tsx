@@ -817,3 +817,30 @@ describe("workflow thread panel", () => {
     expect(slot.rpcCalls).toEqual([]);
   });
 });
+
+describe("waiting workflow discussion", () => {
+  it("opens the discussion from a waiting preview", async () => {
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { run: run.id },
+        source: `::workflow-preview{run="${run.id}"}`,
+        message,
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          workflowRunView: () => ({ run: { ...run, status: "waiting" } }),
+        },
+      },
+    );
+    const open = await slot.findByRole("button", {
+      name: "Open discussion: Adversarial review",
+    });
+    expect(slot.queryByText("1/2 agents")).toBeNull();
+    fireEvent.click(open);
+    expect(slot.inspection.navigateCalls).toContainEqual(
+      expect.objectContaining({ method: "toThread", threadId: "thr_worker_2" }),
+    );
+  });
+});

@@ -135,3 +135,35 @@ retained history. Completion notification becomes `abandoned` for an archived
 or deleted origin; unrelated send conflicts and transient failures retry.
 Upgrades recover existing call references; older attempts already missing from
 those references require a separate historical audit.
+
+## Waiting for a discussion
+
+`discussion()` saves a `waiting` run with an attached visible discussion thread.
+The interpreter is disposed and the active-run slot is released. Waiting time
+is excluded from the execution timeout. The thread's conversation stays in
+BB; workflow storage holds the call, context, result, and completion user-event
+sequence. No conversation polling is added.
+
+After completion, the same run is queued and its saved script is replayed.
+Successful earlier calls and the discussion result are reused, including
+successful JSON-null worker results sealed by that discussion. A boundary after
+a failed or unjournaled worker call is rejected before opening a conversation. A restart keeps
+a pending discussion attached to its original thread. Completed decisions,
+including a JSON null result, follow the same unchanged-prefix rule on resume.
+A changed brief, context, schema, model selection, or preceding call starts a
+new discussion instead of reusing the old answer.
+
+`bb workflows status <run-id>` reports `waitingDiscussion` with its title and
+thread ID. The run card and inspector offer **Open discussion**. Inside that
+thread, `bb workflows finish-discussion --value '<json>'` submits the agreed
+outcome through the same validation as the agent tool. SDK clients can call
+`plugins.callRpc` for plugin `workflows`, method `workflowFinishDiscussion`,
+with `{ threadId, value }`. These completion paths require a user follow-up;
+the discussion agent must use them only after an explicit instruction to finish.
+
+Stopping a run or archiving/deleting its origin cancels its waiting step.
+Archiving/deleting the discussion fails the run with a reason. A failed model
+turn leaves the discussion available for the owner to retry. Completed and
+cancelled discussion threads stay visible and are not worker cleanup targets.
+Late results cannot restart cancelled runs; identical repeated submissions do
+not queue another continuation.

@@ -11,6 +11,8 @@ Ordinary tasks do not authorize a workflow run.
 A workflow puts deterministic control flow around normal BB worker threads. The
 script can fan out work, pipeline stages, verify results, and return structured
 data. Worker threads retain normal workspace tools and permissions.
+Use `discussion()` at a completed-work boundary for a persistent conversation
+with the owner; see references/authoring.md and references/runs.md.
 
 The plugin is disabled on fresh installations; `bb plugin enable workflows`
 turns it on. `bb workflows` commands must run from a BB project thread.

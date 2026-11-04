@@ -920,3 +920,76 @@ describe("workflow QuickJS runtime", () => {
     expect(fireAndForgetAborted).toBe(true);
   });
 });
+
+describe("discussion boundaries", () => {
+  const options = `{ title: "Choose", brief: "Discuss the options", context: { options: ["A", "B"] }, schema: { type: "string" } }`;
+  it("passes a completed discussion value to later workers", async () => {
+    const calls: string[] = [];
+    expect(
+      await executeWorkflowScript({
+        args: null,
+        body: `await agent("before"); const choice = await discussion(${options}); return await agent(choice);`,
+        capabilities: {
+          agent: async (prompt) => {
+            calls.push(prompt);
+            return prompt;
+          },
+          discussion: async (request) => {
+            expect(request.context).toEqual({ options: ["A", "B"] });
+            return "B";
+          },
+          phase() {},
+          log() {},
+        },
+      }),
+    ).toBe("B");
+    expect(calls).toEqual(["before", "B"]);
+  });
+
+  it.each([
+    `const pending = agent("unfinished"); return await discussion(${options});`,
+    `const pending = discussion(${options}); return await agent("too early");`,
+    `const pending = discussion(${options}); return await discussion(${options});`,
+    `const pending = workflow("child"); return await discussion(${options});`,
+    `const pending = discussion(${options}); return await workflow("child");`,
+  ])("rejects overlapping work: %s", async (body) => {
+    const controller = new AbortController();
+    const wait = (signal: AbortSignal) =>
+      new Promise<string>((resolve) => {
+        signal.addEventListener("abort", () => resolve("aborted"), {
+          once: true,
+        });
+      });
+    await expect(
+      executeWorkflowScript({
+        args: null,
+        body,
+        signal: controller.signal,
+        capabilities: {
+          agent: async (_p, _o, signal) => wait(signal),
+          discussion: async (_o, signal) => wait(signal),
+          workflow: async (_r, _a, context) => wait(context.signal),
+          phase() {},
+          log() {},
+        },
+      }),
+    ).rejects.toThrow(/boundary|Await discussion/);
+    controller.abort();
+  });
+
+  it("rejects a discussion in a child workflow", async () => {
+    await expect(
+      executeWorkflowScript({
+        args: null,
+        depth: 1,
+        body: `return await discussion(${options});`,
+        capabilities: {
+          agent: async () => null,
+          discussion: async () => "A",
+          phase() {},
+          log() {},
+        },
+      }),
+    ).rejects.toThrow("root workflow");
+  });
+});

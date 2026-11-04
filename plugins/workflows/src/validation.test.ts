@@ -1,3 +1,5 @@
+import type { JsonValue } from "./types.js";
+import { parseDiscussionOptions } from "./validation.js";
 import { describe, expect, it } from "vitest";
 import {
   assertValidJsonSchema,
@@ -216,4 +218,26 @@ describe("workflow agent option validation", () => {
       }),
     ).toThrow("stored agent outputSchema.pattern");
   });
+});
+
+describe("discussion option validation", () => {
+  const invalid: JsonValue[] = [
+    { title: "Choose", brief: "Discuss" },
+    { brief: "Discuss", schema: { type: "string" } },
+    { title: "Choose", brief: "", schema: true },
+    { title: "Choose", brief: "Discuss", schema: true, model: "partial" },
+    { title: "Choose", brief: "Discuss", schema: { pattern: "unsafe" } },
+    {
+      title: "Choose",
+      brief: "Discuss",
+      schema: true,
+      context: "x".repeat(262144),
+    },
+  ];
+  it.each(invalid)(
+    "rejects missing or unsafe discussion options",
+    (options) => {
+      expect(() => parseDiscussionOptions(options)).toThrow();
+    },
+  );
 });
