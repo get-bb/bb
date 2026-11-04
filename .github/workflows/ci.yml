@@ -338,7 +338,7 @@ jobs:
     name: Windows tests (${{ matrix.shard }}, Node 22.x)
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.selection)['windows-tests'].include[0] != null }}
-    runs-on: blacksmith-4vcpu-windows-2025
+    runs-on: ${{ (startsWith(matrix.shard, 'app-') || matrix.shard == 'plugins-2' || matrix.shard == 'packages-other') && 'blacksmith-8vcpu-windows-2025' || 'blacksmith-4vcpu-windows-2025' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -447,7 +447,7 @@ jobs:
       - name: Test on Windows
         shell: cmd
         env:
-          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '4' || '' }}
+          VITEST_MAX_WORKERS: ${{ startsWith(matrix.shard, 'app-') && '8' || '' }}
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
