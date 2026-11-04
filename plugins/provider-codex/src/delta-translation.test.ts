@@ -1651,11 +1651,16 @@ describe("codex error and warning translation", () => {
   });
 
   it.each([
-    ["sessionBudgetExceeded", "budget-exceeded"],
-    ["misalignmentPolicyViolation", "policy"],
+    ["sessionBudgetExceeded", "budget-exceeded", "sessionBudgetExceeded"],
+    ["misalignmentPolicyViolation", "policy", "misalignmentPolicyViolation"],
+    ["modelNotFound", "bad-request", "modelNotFound"],
+    ["rateLimitExceeded", "rate-limit", "rateLimitExceeded"],
+    ["flexUnavailable", "overloaded", "flexUnavailable"],
+    ["someFutureCode", "unknown", "someFutureCode"],
+    [{ someFutureVariant: { detail: 1 } }, "unknown", "someFutureVariant"],
   ] as const)(
-    "normalizes %s errors and failed turn completion",
-    (codexErrorInfo, category) => {
+    "normalizes %j errors and failed turn completion",
+    (codexErrorInfo, category, providerCode) => {
       const harness = createHarness();
 
       expect(
@@ -1677,7 +1682,7 @@ describe("codex error and warning translation", () => {
           scope: turnScope(harness.turnId("turn-1")),
           errorInfo: {
             category,
-            providerCode: codexErrorInfo,
+            providerCode,
             httpStatusCode: null,
           },
         }),
