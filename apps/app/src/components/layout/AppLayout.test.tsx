@@ -32,6 +32,7 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { AppLayout } from "./AppLayout";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+import { beginSplitDrag } from "@/lib/split-drag";
 
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
@@ -368,6 +369,55 @@ describe("mobile workspace sidebar access", () => {
 });
 
 describe("AppLayout Back to app", () => {
+  it.each([...SECONDARY_ROUTES, "/plugins/drag-test/panel"])(
+    "keeps %s open when a split drag cancels sidebar reordering",
+    (route) => {
+      setPluginSlotRegistrations(
+        "drag-test",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "panel",
+              title: "Drag test",
+              path: "panel",
+              icon: "House",
+              component: () => null,
+              experimental_sidebar: () => null,
+            },
+          ],
+        }),
+      );
+      renderLayout(route);
+      const originalElementsFromPoint = document.elementsFromPoint;
+      document.elementsFromPoint = () => [];
+      const onEnd = vi.fn();
+      try {
+        beginSplitDrag({
+          ghostLabel: "Panel tab",
+          cancelSidebarReorderOnEngage: true,
+          shouldEngage: () => true,
+          decide: () => null,
+          onDrop: vi.fn(),
+          onEnd,
+        });
+        fireEvent.pointerMove(window, { clientX: 500, clientY: 300 });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+        expect(document.body.style.cursor).toBe("grabbing");
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(screen.getByTestId("location").textContent).toBe("/");
+      } finally {
+        fireEvent.pointerCancel(window);
+        fireEvent.click(document.body);
+        document.elementsFromPoint = originalElementsFromPoint;
+      }
+    },
+  );
+
   it.each(SECONDARY_ROUTES)(
     "returns from %s with the remembered query and hash, then releases Escape",
     (route) => {
