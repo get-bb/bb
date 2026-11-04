@@ -275,22 +275,16 @@ describe("ownership notices", () => {
       const [a, b] = fixture.parents;
       const [child] = fixture.children;
       await fixture.move(child!, b!);
-      fixture.expireWindows();
+      await runQueuedMessageDispatch(fixture.harness.deps, {
+        kind: "time-reached",
+        now: Date.now() + 5_000,
+      });
+      expect(pendingNotices(fixture)).toEqual([]);
       await fixture.move(child!, a!);
 
       expect(pendingNotices(fixture)).toEqual([
         {
           parent: a,
-          kind: "ownership-removed",
-          children: [`removed:${child}`],
-        },
-        {
-          parent: a,
-          kind: "ownership-assigned",
-          children: [`assigned:${child}`],
-        },
-        {
-          parent: b,
           kind: "ownership-assigned",
           children: [`assigned:${child}`],
         },
@@ -300,6 +294,18 @@ describe("ownership notices", () => {
           children: [`removed:${child}`],
         },
       ]);
+    });
+  });
+
+  it("withdraw a move undone after its window but before delivery", async () => {
+    await withOwnershipFixture(async (fixture) => {
+      const [a, b] = fixture.parents;
+      const [child] = fixture.children;
+      await fixture.move(child!, b!);
+      fixture.expireWindows();
+      await fixture.move(child!, a!);
+
+      expect(pendingNotices(fixture)).toEqual([]);
     });
   });
 
