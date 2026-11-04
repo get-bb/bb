@@ -22,6 +22,7 @@ import type { ThreadTimelinePageRequest } from "../../../src/services/threads/ti
 import {
   countTimelineSelectionMemoEntries,
   TIMELINE_SELECTION_MEMO_MAX_ENTRIES,
+  TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES,
 } from "../../../src/services/threads/timeline-selection-memo.js";
 import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
 import {
@@ -63,7 +64,9 @@ interface SessionState {
   openCommandId: string | null;
   openMessage: { id: string; text: string } | null;
   openReasoningId: string | null;
+  openSubTurnId: string | null;
   openTaskId: string | null;
+  openTaskParentId: string | null;
   openToolCallId: string | null;
   openTurnId: string | null;
   requestCounter: number;
@@ -201,11 +204,16 @@ function workflowTask(id: string, completed: boolean) {
   } as const;
 }
 
-function workflowTaskUpdate(id: string, completed: boolean): RowSpec {
+function workflowTaskUpdate(
+  id: string,
+  completed: boolean,
+  parentToolCallId: string | null = null,
+): RowSpec {
   return {
     data: { item: workflowTask(id, completed) },
     itemId: id,
     itemKind: "backgroundTask",
+    parentToolCallId,
     providerThreadId,
     type: completed
       ? "item/backgroundTask/completed"
@@ -250,6 +258,7 @@ function startTurn(state: SessionState): RowSpec[] {
   state.openReasoningId = null;
   state.openCommandId = null;
   state.openToolCallId = null;
+  state.openSubTurnId = null;
   state.lastCommandId = null;
   state.lastMessageId = null;
   return [
@@ -455,11 +464,42 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
         },
       ];
     }
-    if (roll < 0.75) {
-      return [childCommand(turnId, nextItemId(state, "child"), toolCallId)];
+    if (roll < 0.5 && state.openSubTurnId === null) {
+      state.openSubTurnId = nextItemId(state, "sub-turn");
+      return [
+        {
+          data: {},
+          parentToolCallId: toolCallId,
+          turnId: state.openSubTurnId,
+          type: "turn/started",
+        },
+      ];
     }
+    if (roll < 0.75) {
+      return [
+        childCommand(
+          state.openSubTurnId ?? turnId,
+          nextItemId(state, "child"),
+          toolCallId,
+        ),
+      ];
+    }
+    const subTurnId = state.openSubTurnId;
     state.openToolCallId = null;
-    return [agentToolCall("item/completed", turnId, toolCallId)];
+    state.openSubTurnId = null;
+    return [
+      ...(subTurnId === null
+        ? []
+        : [
+            {
+              data: { status: "completed" },
+              parentToolCallId: toolCallId,
+              turnId: subTurnId,
+              type: "turn/completed",
+            } satisfies RowSpec,
+          ]),
+      agentToolCall("item/completed", turnId, toolCallId),
+    ];
   }
   if (choice < 0.7) {
     state.requestCounter += 1;
@@ -506,14 +546,26 @@ function randomSessionRows(state: SessionState, random: Random): RowSpec[] {
   if (choice < 0.86) {
     if (state.openTaskId === null) {
       state.openTaskId = `task:${nextItemId(state, "wf")}`;
+      const parentRoll = random();
+      state.openTaskParentId =
+        parentRoll < 0.3
+          ? state.lastCommandId
+          : parentRoll < 0.5
+            ? state.openToolCallId
+            : null;
       return [
-        itemRow("item/started", turnId, workflowTask(state.openTaskId, false)),
+        itemRow(
+          "item/started",
+          turnId,
+          workflowTask(state.openTaskId, false),
+          state.openTaskParentId,
+        ),
       ];
     }
     const taskId = state.openTaskId;
     const completed = random() < 0.4;
     if (completed) state.openTaskId = null;
-    return [workflowTaskUpdate(taskId, completed)];
+    return [workflowTaskUpdate(taskId, completed, state.openTaskParentId)];
   }
   if (choice < 0.93) {
     return [completeTurn(state, turnId)];
@@ -588,7 +640,9 @@ function initialState(): SessionState {
     openCommandId: null,
     openMessage: null,
     openReasoningId: null,
+    openSubTurnId: null,
     openTaskId: null,
+    openTaskParentId: null,
     openToolCallId: null,
     openTurnId: null,
     requestCounter: 0,
@@ -722,7 +776,7 @@ describe("latest timeline selection memo", () => {
     expect(rebuilt).toBeGreaterThan(SEEDS * 15);
   }, 120_000);
 
-  it("reuses the selection for rows of fetched turns and rebuilds for unknown parents", () => {
+  it("reuses the selection for fetched turns, parents without rows and childless tool calls", () => {
     withTestThread((testThread) => {
       const args = latestArgs("default");
       append(testThread, [
@@ -777,11 +831,19 @@ describe("latest timeline selection memo", () => {
         },
       ]);
       const parented = expectWarmEqualsCold(testThread, args, "parented");
-      expect(selectionWasReused(parented.profile)).toBe(false);
+      expect(selectionWasReused(parented.profile)).toBe(true);
+
+      append(testThread, [agentToolCall("item/started", "turn-1", "agent-1")]);
+      const parentArrived = expectWarmEqualsCold(
+        testThread,
+        args,
+        "parent of an earlier child",
+      );
+      expect(selectionWasReused(parentArrived.profile)).toBe(false);
 
       append(testThread, [agentToolCall("item/started", "turn-1", "agent-2")]);
       const delegating = expectWarmEqualsCold(testThread, args, "delegating");
-      expect(selectionWasReused(delegating.profile)).toBe(false);
+      expect(selectionWasReused(delegating.profile)).toBe(true);
 
       append(testThread, [childCommand("turn-1", "child-1", "agent-2")]);
       const child = expectWarmEqualsCold(testThread, args, "child");
@@ -834,10 +896,7 @@ describe("latest timeline selection memo", () => {
       expect(command.profile.foldedEventCount).toBe(1);
 
       append(testThread, [
-        {
-          ...messageDelta("turn-1", "message-1", "nested"),
-          parentToolCallId: "agent-1",
-        },
+        { data: { reason: "manual-stop" }, type: "system/thread/interrupted" },
       ]);
       const rebuilt = expectWarmEqualsCold(testThread, args, "rebuilt");
       expect(selectionWasReused(rebuilt.profile)).toBe(false);
@@ -1030,10 +1089,10 @@ describe("latest timeline selection memo", () => {
   });
 
   it.each([
-    { itemId: "task:wf-1", itemKind: "backgroundTask" },
-    { itemId: "agent-1", itemKind: "toolCall" },
+    { itemId: "task:wf-1", itemKind: "backgroundTask", reused: false },
+    { itemId: "agent-1", itemKind: "toolCall", reused: true },
   ] as const)(
-    "rebuilds for a delta row whose item kind is $itemKind",
+    "handles a delta row whose item kind is $itemKind",
     (testCase) => {
       withTestThread((testThread) => {
         const args = latestArgs("default");
@@ -1052,7 +1111,7 @@ describe("latest timeline selection memo", () => {
           },
         ]);
         const after = expectWarmEqualsCold(testThread, args, "after");
-        expect(selectionWasReused(after.profile)).toBe(false);
+        expect(selectionWasReused(after.profile)).toBe(testCase.reused);
       });
     },
   );
@@ -1124,23 +1183,62 @@ describe("latest timeline selection memo", () => {
     });
   });
 
-  it("builds cold for idle threads and forgets a thread once it stops being active", () => {
+  it("reuses the selection across status changes and caps idle entries", () => {
     withTestThread((testThread) => {
+      const state = initialState();
       append(testThread, [
-        ...startTurn(initialState()),
+        ...startTurn(state),
         messageStarted("turn-1", "message-1"),
       ]);
       expectWarmEqualsCold(testThread, latestArgs("default"), "active");
-      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(1);
-
       const idle: TestThread = {
         ...testThread,
         thread: { ...testThread.thread, status: "idle" },
       };
-      append(idle, [messageDelta("turn-1", "message-1", "word")]);
-      const page = expectWarmEqualsCold(idle, latestArgs("default"), "idle");
-      expect(selectionWasReused(page.profile)).toBe(false);
-      expect(countTimelineSelectionMemoEntries(idle.db)).toBe(0);
+      append(idle, [
+        messageDelta("turn-1", "message-1", "word"),
+        completeTurn(state, "turn-1"),
+      ]);
+      const completed = expectWarmEqualsCold(
+        idle,
+        latestArgs("default"),
+        "idle",
+      );
+      expect(selectionWasReused(completed.profile)).toBe(true);
+
+      const idleThreads = Array.from(
+        { length: TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES + 2 },
+        () =>
+          createThread(testThread.db, noopNotifier, {
+            projectId: testThread.projectId,
+            providerId: "codex",
+            status: "idle",
+          }),
+      );
+      for (const thread of idleThreads) {
+        append({ db: testThread.db, thread }, startTurn(initialState()));
+        buildRouteTimelinePage({
+          ...latestArgs("default"),
+          db: testThread.db,
+          registry,
+          thread,
+        });
+      }
+      const active = createThread(testThread.db, noopNotifier, {
+        projectId: testThread.projectId,
+        providerId: "codex",
+        status: "active",
+      });
+      append({ db: testThread.db, thread: active }, startTurn(initialState()));
+      buildRouteTimelinePage({
+        ...latestArgs("default"),
+        db: testThread.db,
+        registry,
+        thread: active,
+      });
+      expect(countTimelineSelectionMemoEntries(testThread.db)).toBe(
+        TIMELINE_SELECTION_MEMO_MAX_IDLE_ENTRIES + 1,
+      );
     });
   });
 

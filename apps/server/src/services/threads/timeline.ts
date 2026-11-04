@@ -121,7 +121,6 @@ import {
 } from "./timeline-projection-fold.js";
 import {
   selectTimelineWindowStart,
-  forgetLatestTimelineSelections,
   lookupLatestTimelineSelection,
   rememberLatestTimelineSelection,
   type LatestTimelineSelectionMemoArgs,
@@ -1349,16 +1348,14 @@ function buildThreadTimelineInternal(
       profile,
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
-  if (thread.status !== "active") {
-    forgetLatestTimelineSelections(db, thread.id);
-    forgetTimelineProjectionFolds(db, thread.id);
-  }
+  const active = thread.status === "active";
+  if (!active) forgetTimelineProjectionFolds(db, thread.id);
   const memoArgs: LatestTimelineSelectionMemoArgs | null =
     options.page.kind === "latest" &&
     contentCursor === undefined &&
-    maxInlineOutputChars !== null &&
-    thread.status === "active"
+    maxInlineOutputChars !== null
       ? {
+          active,
           epochSequenceStart: historySequenceStart,
           eventBudget: options.eventBudget,
           excludeDiagnosticEvents: !includeDiagnosticOperations,
@@ -1477,7 +1474,7 @@ function buildThreadTimelineInternal(
         headStateEvents,
         events: decodedEvents,
         fold:
-          memoArgs === null
+          memoArgs === null || !active
             ? undefined
             : keepTimelineProjectionFold(db, profile, {
                 decodedRows: decodedRawEvents,
