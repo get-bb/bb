@@ -52,7 +52,7 @@ Part 1: do these steps for each repo.
    - If .bb-env-setup.sh or .bb-env-teardown.sh already exists, show me the current file next to your version and ask before changing it.
    - file_include_globs goes in .worktreeinclude. Keep an existing .worktreeinclude as it is; bb reads the same file. If neither is set, Conductor copied .env* files, so write .env* there.
    - Replace $CONDUCTOR_WORKSPACE_PATH with $PWD, $CONDUCTOR_WORKSPACE_NAME with $(basename "$PWD"), $CONDUCTOR_ROOT_PATH with $(git worktree list --porcelain | sed -n '1s/^worktree //p'), and $CONDUCTOR_DEFAULT_BRANCH with the default branch name.
-   - bb doesn't assign ports, so drop --port $CONDUCTOR_PORT and let the server pick a free port.
+   - bb doesn't assign ports, so drop port flags like --port $CONDUCTOR_PORT. If a server then falls back to a fixed port, tell me, since two workspaces running it at once would collide.
    - Don't write run scripts anywhere. List them for me.
    - List the names in [environment_variables] for me to add in Settings → Environment variables, without their values.
    - These scripts get committed and shared with everyone on the repo. Never copy tokens, passwords, or other secrets into them, and tell me which lines came from settings.local.toml, which is personal, before you write them.
@@ -63,17 +63,17 @@ Part 2: Conductor Cloud. Ask me whether I used it. If I did:
 7. Ask where I want work that ran in the cloud to run in bb, with one line on each option:
    - This computer, reachable from my phone and any browser with bb connect. Free, but it stops when the computer sleeps. Setup: https://getbb.app/guides/work-from-anywhere
    - An always-on computer or server I add in Settings → Machines.
-   - A cloud sandbox plugin. List what bb plugin search sandbox shows, such as Modal Sandbox, and say that each runs threads in my own account with that provider.
+   - A sandbox plugin. List the ones bb plugin search sandbox shows, such as Modal Sandbox, with one line each from its own description, and say whether it bills an account of mine.
    Set up only what I pick, after I say yes. For a plugin, install it with bb plugin install and tell me where in Settings to connect my account.
 
-Part 3: a Run button. If any repo had run scripts, ask me whether I want a Run button in bb for them. If I do:
+Part 3: a Run button. If any repo had run scripts, ask me whether I want a Run button in bb for them, and suggest yes. If I do:
 8. Build a small bb plugin. Use the bb-plugin-authoring skill that ships with bb and bb plugin new --help, and scaffold it with bb plugin new run-button in a folder I approve.
    - It adds a Run button to the thread header that opens a terminal in the thread's folder and starts that repo's run command there.
    - Keep each repo's commands in the plugin's settings, filled in from the Conductor run scripts without their port flags.
    - Build it with bb plugin build and install it with bb plugin install <folder>.
-   Check: open one of the moved threads, press Run, and confirm the dev server starts. Tell me how to change a command later.
+   Check: start a terminal in one of the moved threads the same way the button does, and confirm the dev server responds. Then ask me to press Run once to try it, and tell me how to change a command later.
 
-Reply with a table of each repo, workspace, branch, and bb thread ID, then the files you wrote, what you set up for Cloud and the Run button, what's left for me, and anything you skipped and why.`,
+Reply with a table of each repo, workspace, branch, uncommitted changes, and bb thread, without project IDs or folder paths, then the files you wrote, what you set up for Cloud and the Run button, what's left for me, and anything you skipped and why.`,
 );
 
 export const guide: Guide = {
@@ -160,8 +160,9 @@ export const guide: Guide = {
       answer: (
         <ol>
           <li>
-            bb doesn't assign ports. Drop the port flag and let the server pick
-            a free one, or ask your agent to start it on one.
+            bb doesn't assign ports, so drop the port flag. Many dev servers
+            then pick a free port on their own. If yours always uses the same
+            one, ask your agent to start it on a free port.
           </li>
           <li>
             To open it from another device, see{" "}
