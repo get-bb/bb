@@ -109,7 +109,8 @@ a `[bb] warning:` line. A later `bb` call then fails normally.
 - Startup settles runs left open by a crash or forced quit. Script runs without
   a process become skipped.
 - Agent runs without a thread become skipped. Other agent runs follow their
-  thread state.
+  thread state. A run whose thread is idle becomes succeeded with an
+  `interrupted` reason, because bb did not see the turn finish.
 
 An exit-zero run with no output is a silent skipped tick. A final non-empty
 line of `{"wakeAgent": false}` has the same result.
