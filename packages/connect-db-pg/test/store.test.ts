@@ -318,7 +318,7 @@ describe("mirrored writes", () => {
 describe("shadow reads", () => {
   it("serves the primary's rows and reports reads that differ on the secondary", async () => {
     const sqlite = sqliteBackend(migratedSqlite());
-    const { backend: pg } = await pglite();
+    const { backend: pg } = pglite;
     const both = mirrorPair(sqlite, pg);
     await both.db.insert(user).values(userRow("u1")).run();
     await both.db.insert(user).values(userRow("u2")).run();
