@@ -4243,6 +4243,28 @@ export function isStoredTurnProviderCompactionRunning(
   return !acceptedInput;
 }
 
+export function isStoredTurnContextCompactionOnly(
+  db: DbQueryConnection,
+  args: ThreadTurnKey,
+): boolean {
+  const kinds = db
+    .selectDistinct({ itemKind: events.itemKind })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.turnId, args.turnId),
+        eq(events.type, "item/completed"),
+        isNull(events.parentToolCallId),
+      ),
+    )
+    .all();
+  return (
+    kinds.length > 0 &&
+    kinds.every((row) => row.itemKind === "contextCompaction")
+  );
+}
+
 export function getLatestCompletedThreadContextClearSequence(
   db: DbQueryConnection,
   args: GetLatestCompletedThreadContextClearSequenceArgs,

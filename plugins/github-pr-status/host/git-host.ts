@@ -30,24 +30,6 @@ const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const GH_PR_ACTION_TIMEOUT_MS = 60_000;
 const GH_PR_ACTION_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 
-const GH_PR_VIEW_JSON_FIELDS = [
-  "number",
-  "title",
-  "state",
-  "url",
-  "isDraft",
-  "autoMergeRequest",
-  "baseRefName",
-  "headRefName",
-  "headRefOid",
-  "updatedAt",
-  "statusCheckRollup",
-  "reviewDecision",
-  "reviewRequests",
-  "mergeStateStatus",
-  "mergeable",
-].join(",");
-
 interface GetPullRequestForCurrentBranchArgs {
   cwd: string;
   localBranch: string;
@@ -226,9 +208,47 @@ function normalizeCheckName(object: JsonObject): string {
   if (explicitName && explicitName.trim()) return explicitName.trim();
   const context = getString(object, "context");
   if (context && context.trim()) return context.trim();
-  const workflowName = getString(object, "workflowName");
-  if (workflowName && workflowName.trim()) return workflowName.trim();
   return "Unnamed check";
+}
+
+interface CheckWorkflowRun {
+  workflow: string;
+  runNumber: number;
+}
+
+const checkWorkflowRuns = new WeakMap<
+  GitHubPullRequestCheck,
+  CheckWorkflowRun
+>();
+
+function normalizeCheckWorkflowRun(
+  object: JsonObject,
+): CheckWorkflowRun | null {
+  const run = asObject(asObject(object.checkSuite)?.workflowRun);
+  if (run === null) return null;
+  const workflowId = getNumber(asObject(run.workflow) ?? {}, "databaseId");
+  const event = getString(run, "event");
+  const runNumber = getNumber(run, "runNumber");
+  if (workflowId === null || event === null || runNumber === null) return null;
+  return { workflow: `${workflowId}:${event}`, runNumber };
+}
+
+function dropSupersededWorkflowRuns(
+  checks: GitHubPullRequestCheck[],
+): GitHubPullRequestCheck[] {
+  const latestRuns = new Map<string, number>();
+  for (const check of checks) {
+    const run = checkWorkflowRuns.get(check);
+    if (run === undefined) continue;
+    latestRuns.set(
+      run.workflow,
+      Math.max(latestRuns.get(run.workflow) ?? 0, run.runNumber),
+    );
+  }
+  return checks.filter((check) => {
+    const run = checkWorkflowRuns.get(check);
+    return run === undefined || run.runNumber === latestRuns.get(run.workflow);
+  });
 }
 
 function normalizeChecks(value: unknown): GitHubPullRequestCheck[] {
@@ -279,9 +299,8 @@ function normalizeGitHubPullRequestView(
     updatedAt: getString(object, "updatedAt"),
     checks: normalizeChecks(object.statusCheckRollup),
     reviewDecision: normalizeReviewDecision(object.reviewDecision),
-    reviewRequestCount: Array.isArray(object.reviewRequests)
-      ? object.reviewRequests.length
-      : (getNumber(asObject(object.reviewRequests) ?? {}, "totalCount") ?? 0),
+    reviewRequestCount:
+      getNumber(asObject(object.reviewRequests) ?? {}, "totalCount") ?? 0,
     mergeStateStatus: normalizeMergeStateStatus(object.mergeStateStatus),
     mergeable: normalizeMergeable(object.mergeable),
   };
@@ -450,20 +469,13 @@ function runGh(
   );
 }
 
-export function parseGitHubPullRequestView(
-  stdout: string,
-): GitHubPullRequestView | null {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return null;
-  }
-  let json: unknown;
+function parsePullRequestViewUrl(stdout: string): string | null {
   try {
-    json = JSON.parse(trimmed);
+    const url = getString(asObject(JSON.parse(stdout)) ?? {}, "url");
+    return url === null ? null : new URL(url).toString();
   } catch {
     return null;
   }
-  return normalizeGitHubPullRequestView(json);
 }
 
 const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
@@ -791,7 +803,7 @@ export async function prepareCurrentBranchRead(
     "view",
     ...(target.outcome === "upstream-branch" ? [target.selector] : []),
     "--json",
-    GH_PR_VIEW_JSON_FIELDS,
+    "url",
   ];
   return {
     kind: "direct",
@@ -803,21 +815,13 @@ export async function prepareCurrentBranchRead(
           timeoutMs: GH_PR_VIEW_TIMEOUT_MS,
           maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
         });
-        const pr = parseGitHubPullRequestView(stdout);
-        if (pr === null)
+        const url = parsePullRequestViewUrl(stdout);
+        if (url === null)
           return {
             outcome: "unavailable",
             message: "gh pr view returned unparseable output",
           };
-        if (pr.isDraft || pr.state !== "OPEN")
-          return {
-            outcome: "found",
-            pullRequest: { ...pr, inMergeQueue: false },
-          };
-        const full = await getPullRequestByUrl(pr.url, args.cwd);
-        return full.outcome === "found"
-          ? full
-          : { outcome: "found", pullRequest: pr };
+        return await getPullRequestByUrl(url, args.cwd);
       } catch (error) {
         return classifyPullRequestViewError(error);
       }
@@ -946,7 +950,8 @@ function fields(cursor: string | null, mergeQueue: boolean): string {
     baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: ${REVIEW_REQUESTS_PAGE}) { totalCount }
     mergeStateStatus mergeable isCrossRepository headRepositoryOwner { login }
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: ${CHECK_CONTEXTS_PAGE}${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
-      nodes { ... on CheckRun { name status conclusion detailsUrl startedAt }
+      nodes { ... on CheckRun { name status conclusion detailsUrl startedAt
+          checkSuite { workflowRun { runNumber event workflow { databaseId } } } }
         ... on StatusContext { context state targetUrl createdAt } }
       pageInfo { hasNextPage endCursor }
     } } } } }`;
@@ -1015,15 +1020,25 @@ async function decodeRead(
   const nodes = Array.isArray(commits?.nodes) ? commits.nodes : [];
   const commit = asObject(asObject(nodes[0])?.commit);
   const contexts = asObject(asObject(commit?.statusCheckRollup)?.contexts);
+  const contextNodes = Array.isArray(contexts?.nodes)
+    ? contexts.nodes.flatMap((node): JsonObject[] => {
+        const object = asObject(node);
+        return object === null ? [] : [object];
+      })
+    : [];
   const view = normalizeGitHubPullRequestView({
     ...raw,
-    statusCheckRollup: contexts?.nodes ?? [],
+    statusCheckRollup: contextNodes,
   });
   if (view === null)
     return {
       outcome: "unavailable",
       message: "GitHub returned an invalid pull request",
     };
+  view.checks.forEach((check, index) => {
+    const run = normalizeCheckWorkflowRun(contextNodes[index] ?? {});
+    if (run !== null) checkWorkflowRuns.set(check, run);
+  });
   view.inMergeQueue =
     view.isDraft || view.state !== "OPEN"
       ? false
@@ -1052,6 +1067,7 @@ async function decodeRead(
       };
     view.checks.push(...next.pullRequest.checks);
   }
+  view.checks = dropSupersededWorkflowRuns(view.checks);
   return { outcome: "found", pullRequest: view };
 }
 

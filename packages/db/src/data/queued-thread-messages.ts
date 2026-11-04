@@ -6,7 +6,6 @@ import {
   desc,
   eq,
   exists,
-  gt,
   inArray,
   isNotNull,
   isNull,
@@ -104,9 +103,9 @@ export interface UpdateCoalescedQueuedThreadMessageInput {
   coalesceState: string;
   content: PromptInput[];
   id: string;
-  sendAt: number;
   systemNotice: QueuedMessageSystemNotice;
   threadId: string;
+  windowEndsAt: number;
 }
 
 export interface QueuedThreadMessageExecution {
@@ -885,7 +884,7 @@ export function createQueuedThreadMessageInTransaction(
 
 export function getPendingCoalescedQueuedThreadMessage(
   db: DbQueryConnection,
-  args: { coalesceKey: string; now: number; threadId: string },
+  args: { coalesceKey: string; threadId: string },
 ): QueuedThreadMessageRow | null {
   return (
     db
@@ -895,9 +894,7 @@ export function getPendingCoalescedQueuedThreadMessage(
         and(
           eq(queuedThreadMessages.threadId, args.threadId),
           eq(queuedThreadMessages.coalesceKey, args.coalesceKey),
-          eq(queuedThreadMessages.state, "scheduled"),
-          gt(queuedThreadMessages.sendAt, args.now),
-          sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'time'`,
+          automaticallyDrainableQueuedThreadMessage(),
         ),
       )
       .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
@@ -910,6 +907,7 @@ export function updateCoalescedQueuedThreadMessageInTransaction(
   tx: DbTransaction,
   input: UpdateCoalescedQueuedThreadMessageInput,
 ): QueuedThreadMessageRow | null {
+  const now = Date.now();
   acquireProjectAttachmentOwnership(
     tx,
     input.threadId,
@@ -922,14 +920,14 @@ export function updateCoalescedQueuedThreadMessageInTransaction(
         content: JSON.stringify(input.content),
         systemNotice: JSON.stringify(input.systemNotice),
         coalesceState: input.coalesceState,
-        sendAt: input.sendAt,
-        updatedAt: Date.now(),
+        sendAt: sql`CASE WHEN ${queuedThreadMessages.state} = 'scheduled' AND ${queuedThreadMessages.sendAt} > ${now} AND json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'time' THEN ${input.windowEndsAt} ELSE ${queuedThreadMessages.sendAt} END`,
+        updatedAt: now,
       })
       .where(
         and(
           eq(queuedThreadMessages.id, input.id),
           eq(queuedThreadMessages.threadId, input.threadId),
-          eq(queuedThreadMessages.state, "scheduled"),
+          automaticallyDrainableQueuedThreadMessage(),
         ),
       )
       .returning()
