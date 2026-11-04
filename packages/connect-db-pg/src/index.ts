@@ -5,7 +5,7 @@ import {
   type ConnectDbMode,
   connectDbBackends,
   createConnectDb,
-  resolveConnectDbMode,
+  resolveConnectDbFlags,
 } from "@bb/connect-db/store";
 import { type PgConnection, connectPg } from "./pg-client.js";
 
@@ -36,8 +36,14 @@ export function openConnectDb(
     null;
   const backends = () => {
     resolved ??= (async () => {
-      const mode = fixedMode ?? (await resolveConnectDbMode(env));
-      return { mode, ...connectDbBackends(env, mode, connection) };
+      const flags =
+        fixedMode === undefined
+          ? await resolveConnectDbFlags(env)
+          : { mode: fixedMode, shadowReads: 0 };
+      return {
+        mode: flags.mode,
+        ...connectDbBackends(env, flags, connection),
+      };
     })().catch((error: unknown) => {
       resolved = null;
       throw error;

@@ -28,6 +28,15 @@ How the copy works:
 - `last_seen_at`-only updates, gate presence writes and `ai_request_log` inserts
   are not copied. They refresh themselves.
 
+## Shadow reads
+
+In `d1+pg`, the `connect-db-shadow-reads` key (a rate from `0` to `1`) also
+runs that share of reads on Postgres after the response and compares the rows
+with D1's. Users always get D1's rows. Failures and differences are logged as
+`connect-db shadow read` with stage `shadow_read` or `shadow_mismatch`, the
+table and the row counts. Reads racing a write from another request can show
+up as occasional mismatches. Other modes ignore the key.
+
 Flip with:
 
 ```sh

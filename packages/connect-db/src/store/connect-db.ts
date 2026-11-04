@@ -4,7 +4,11 @@ import { schema } from "../schema.js";
 import type { QueryMethod, SqlBackend } from "./backends.js";
 import { type StatementShape, statementShape } from "./sqlite-to-pg.js";
 
-export type MirrorFailureStage = "replay" | "label_claim_sync";
+export type MirrorFailureStage =
+  | "replay"
+  | "label_claim_sync"
+  | "shadow_read"
+  | "shadow_mismatch";
 
 export interface MirrorFailure {
   stage: MirrorFailureStage;
@@ -17,6 +21,7 @@ export interface MirrorFailure {
 export interface ConnectDbBackends {
   primary: SqlBackend;
   secondary: SqlBackend | null;
+  shadowReads: number;
 }
 
 export interface ConnectDbOptions {
@@ -36,6 +41,32 @@ const LABEL_COLUMNS = ['"subdomain"', '"handle"', '"user_id"'];
 const LAST_SEEN_ONLY_UPDATE =
   /^\s*update\s+"(server|machine)"\s+set\s+"last_seen_at"\s*=\s*\?\s+where\b/iu;
 const RETURNING_CLAUSE = /\sreturning\s/iu;
+const ORDER_BY = /\sorder\s+by\s/iu;
+const LIMIT = /\slimit\s/iu;
+const READ_TABLE = /\sfrom\s+"([^"]+)"/iu;
+
+function normalizedRow(row: unknown[]): string {
+  return JSON.stringify(
+    row.map((value) => (typeof value === "boolean" ? Number(value) : value)),
+  );
+}
+
+export function shadowRowsMatch(
+  sql: string,
+  primary: unknown[][],
+  secondary: unknown[][],
+): boolean {
+  if (primary.length !== secondary.length) return false;
+  const ordered = ORDER_BY.test(sql);
+  if (!ordered && LIMIT.test(sql)) return true;
+  const left = primary.map(normalizedRow);
+  const right = secondary.map(normalizedRow);
+  if (!ordered) {
+    left.sort();
+    right.sort();
+  }
+  return left.every((row, index) => row === right[index]);
+}
 
 export function mirrorSkipped(sql: string, shape: StatementShape): boolean {
   if (shape.kind === "read") return true;
@@ -127,7 +158,9 @@ export function createConnectDb(options: ConnectDbOptions): ConnectDbHandle {
       error: errorMessage(error),
     };
     if (onMirrorFailure) onMirrorFailure(failure);
-    else console.error("connect-db mirror failed", failure);
+    else if (stage === "shadow_read" || stage === "shadow_mismatch") {
+      console.warn("connect-db shadow read", failure);
+    } else console.error("connect-db mirror failed", failure);
   };
 
   const enqueue = (job: () => Promise<void>) => {
@@ -160,6 +193,35 @@ export function createConnectDb(options: ConnectDbOptions): ConnectDbHandle {
     });
   };
 
+  const shadow = (
+    pair: ConnectDbBackends,
+    sql: string,
+    params: readonly unknown[],
+    method: QueryMethod,
+    primaryRows: unknown[][],
+  ) => {
+    const { secondary } = pair;
+    if (secondary === null) return;
+    const table = READ_TABLE.exec(sql)?.[1] ?? null;
+    enqueue(async () => {
+      let rows: unknown[][];
+      try {
+        rows = (await secondary.execute(sql, params, method)).rows;
+      } catch (error) {
+        report(pair, "shadow_read", table, error);
+        return;
+      }
+      if (!shadowRowsMatch(sql, primaryRows, rows)) {
+        report(
+          pair,
+          "shadow_mismatch",
+          table,
+          `rows differ (primary ${primaryRows.length}, secondary ${rows.length})`,
+        );
+      }
+    });
+  };
+
   const execute = async (
     sql: string,
     params: unknown[],
@@ -168,6 +230,16 @@ export function createConnectDb(options: ConnectDbOptions): ConnectDbHandle {
     const pair = await backends();
     const { primary, secondary } = pair;
     const shape = statementShape(sql);
+    if (
+      shape.kind === "read" &&
+      secondary !== null &&
+      pair.shadowReads > 0 &&
+      Math.random() < pair.shadowReads
+    ) {
+      const result = await primary.execute(sql, params, method);
+      shadow(pair, sql, params, method, result.rows);
+      return result;
+    }
     if (secondary === null || mirrorSkipped(sql, shape)) {
       return primary.execute(sql, params, method);
     }
