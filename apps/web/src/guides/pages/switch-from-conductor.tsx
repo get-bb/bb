@@ -84,12 +84,6 @@ export const guide: Guide = {
             It asks which repos and workspaces to bring over and whether to move
             your scripts, then sums up the plan. Say go.
           </li>
-          <li>
-            Rather do it by hand? Add the repo in{" "}
-            <Ui icon="settings">Settings → Projects</Ui>, then choose{" "}
-            <strong>New thread</strong>, <strong>Worktree</strong>, and{" "}
-            <strong>Existing worktree</strong>, and pick the workspace.
-          </li>
         </Substeps>
       ),
       shot: EXISTING_WORKTREE_SHOT,
