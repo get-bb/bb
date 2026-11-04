@@ -21,8 +21,8 @@ import {
   Ellipsis,
   FileCodeGlyph as FileIcon,
   FileEditGlyph as EditIcon,
-  FolderGitIcon,
   GitBranchIcon as BranchIcon,
+  LaptopGlyph,
   MessageIcon,
   MicIcon,
   NavRail,
@@ -96,7 +96,6 @@ type Scene = {
   post?: Post[];
   worked: string;
 
-  running?: boolean;
   flags: Flag[];
   sideView?: boolean;
 
@@ -127,19 +126,24 @@ const SCENES: Scene[] = [
     title: "Sentry errors",
     prompt: "Chart my Sentry errors for checkout-web next to this thread",
     steps: [
-      { kind: "work", verb: "Explored", em: "4 files, 1 search" },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new sentry-charts",
-        dur: "0.4s",
+        dur: "8.1s",
       },
-      { kind: "file", verb: "Created", file: "page.tsx", diff: [142, 0] },
+      { kind: "file", verb: "Edited", file: "app.tsx", diff: [142, 61] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin install ./bb-plugin-sentry-charts",
+        em: "bb plugin install ./bb-plugin-sentry-charts --yes",
         dur: "2.2s",
+      },
+      {
+        kind: "cmd",
+        verb: "Ran",
+        em: 'bb plugin config sentry-charts set token "$SENTRY_AUTH_TOKEN"',
+        dur: "0.3s",
       },
     ],
     post: [
@@ -155,37 +159,41 @@ const SCENES: Scene[] = [
           <>
             It&rsquo;s open beside this thread. Errors jump at <b>v2.14.0</b>:{" "}
             <code>Cannot read properties of null</code> in the cart summary, 642
-            events. Fixing it now.
+            events. Want me to fix it?
           </>
         ),
       },
     ],
     worked: "1m 12s",
-    running: true,
     flags: ["sentry", "split"],
   },
   {
     id: "spawn",
     hold: 2.5,
     title: "CSV export",
-    prompt: "Add CSV export to the reports page, then have Codex review it.",
+    prompt:
+      "Add CSV export to reports. You do the button, have Codex build the export API.",
     steps: [
-      { kind: "work", verb: "Explored", em: "5 files, 1 search" },
-      { kind: "file", verb: "Edited", file: "ReportsPage.tsx", diff: [18, 2] },
-      { kind: "file", verb: "Edited", file: "exportCsv.ts", diff: [41, 0] },
+      { kind: "work", verb: "Explored", em: "3 files" },
       {
         kind: "cmd",
         verb: "Ran",
-        em: 'bb thread spawn --provider codex --prompt "Review the CSV export change on the reports page"',
+        em: 'bb thread spawn --project shop --parent-self --provider codex --prompt "Build GET /api/reports/export.csv with the page\'s filters"',
         dur: "0.8s",
       },
+      { kind: "file", verb: "Edited", file: "ExportButton.tsx", diff: [41, 3] },
+      { kind: "file", verb: "Edited", file: "ReportsPage.tsx", diff: [18, 2] },
     ],
     worked: "52s",
     flags: ["spawn"],
     then: {
       id: "messages",
       worked: "52s",
-      reply: <>CSV export is in. Codex is reviewing it in its own thread.</>,
+      reply: (
+        <>
+          The export button is in. Codex is building the API in its own thread.
+        </>
+      ),
     },
   },
   {
@@ -198,15 +206,21 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new linear-issues",
-        dur: "0.4s",
+        dur: "7.6s",
       },
-      { kind: "file", verb: "Created", file: "panel.tsx", diff: [96, 0] },
-      { kind: "file", verb: "Created", file: "server.ts", diff: [54, 0] },
+      { kind: "file", verb: "Edited", file: "app.tsx", diff: [96, 61] },
+      { kind: "file", verb: "Edited", file: "server.ts", diff: [54, 48] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin install ./bb-plugin-linear-issues",
+        em: "bb plugin install ./bb-plugin-linear-issues --yes",
         dur: "2.1s",
+      },
+      {
+        kind: "cmd",
+        verb: "Ran",
+        em: 'bb plugin config linear-issues set token "$LINEAR_API_KEY"',
+        dur: "0.3s",
       },
     ],
     post: [
@@ -228,7 +242,12 @@ const SCENES: Scene[] = [
     title: "Chart flaky tests",
     prompt: "Chart flaky tests by package",
     steps: [
-      { kind: "work", verb: "Explored", em: "38 files" },
+      {
+        kind: "cmd",
+        verb: "Ran",
+        em: "gh run list --workflow ci --limit 200",
+        dur: "2.4s",
+      },
       {
         kind: "plugin",
         plugin: "Generative UI",
@@ -240,7 +259,7 @@ const SCENES: Scene[] = [
       {
         reply: (
           <>
-            checkout has 9 of the 22 flaky runs this week, most of them timeouts
+            checkout has 9 of the 22 flaky runs this week, all of them timeouts
             on CI.
           </>
         ),
@@ -283,26 +302,16 @@ const SCENES: Scene[] = [
     id: "composer",
     replyFirst: true,
     hold: 2,
-    title: "Mention GitHub issues",
-    prompt: "Let me type # to mention GitHub issues from this repo",
+    title: "Mention Linear issues",
+    prompt: "Let me type # to mention my Linear issues",
     steps: [
+      { kind: "work", verb: "Explored", em: "3 files" },
+      { kind: "file", verb: "Edited", file: "server.ts", diff: [74, 2] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin new github-issues",
-        dur: "0.4s",
-      },
-      {
-        kind: "file",
-        verb: "Created",
-        file: "issue-mentions.ts",
-        diff: [74, 0],
-      },
-      {
-        kind: "cmd",
-        verb: "Ran",
-        em: "bb plugin install ./bb-plugin-github-issues",
-        dur: "1.9s",
+        em: "bb plugin reload linear-issues",
+        dur: "0.6s",
       },
     ],
     post: [
@@ -310,7 +319,7 @@ const SCENES: Scene[] = [
         step: {
           kind: "plugin",
           verb: "Loaded open issues from",
-          em: "get-bb/bb",
+          em: "Linear",
         },
       },
       {
@@ -331,7 +340,7 @@ const SCENES: Scene[] = [
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin install rail-shortcuts",
+        em: "bb plugin install nav-rail --yes",
         dur: "2.4s",
       },
     ],
@@ -350,13 +359,13 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new status-sidebar",
-        dur: "0.4s",
+        dur: "7.9s",
       },
-      { kind: "file", verb: "Created", file: "sidebar.tsx", diff: [88, 0] },
+      { kind: "file", verb: "Edited", file: "app.tsx", diff: [88, 61] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin install ./bb-plugin-status-sidebar",
+        em: "bb plugin install ./bb-plugin-status-sidebar --yes",
         dur: "2.0s",
       },
     ],
@@ -384,7 +393,7 @@ const RAIL: Record<string, string> = {
 };
 const CLOSES = new Set<string>(["sentry", "linear"]);
 
-const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
+const FINAL_STATUS: Record<string, Status> = { sentry: "waiting" };
 
 const USER_AT = 0.35;
 const ROW_GAP = 0.65;
@@ -462,11 +471,7 @@ function timing(scene: Scene, tablet = false) {
   const lastAt = replyFirst ? changeAt : Math.max(changeAt, postAt.at(-1) ?? 0);
 
   const replyIdx = posts.findIndex((p) => "reply" in p);
-  let doneAt: number | null = scene.running
-    ? null
-    : replyIdx >= 0
-      ? postAt[replyIdx]
-      : changeAt;
+  let doneAt: number | null = replyIdx >= 0 ? postAt[replyIdx] : changeAt;
   let end = lastAt + scene.hold;
   if (scene.id === "composer") end = Math.max(end, changeAt + 5.1);
 
@@ -540,46 +545,46 @@ function timing(scene: Scene, tablet = false) {
 }
 
 const THREADS: { title: string; status: Status }[] = [
-  { title: "Triage the Sentry spike", status: "running" },
+  { title: "Bump React to 19", status: "running" },
   { title: "Nightly changelog", status: "done" },
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
 
-const CHILD = { icon: OpenAiIcon, title: "Review CSV export" };
+const CHILD = { icon: OpenAiIcon, title: "CSV export API" };
 
 const LINEAR_TASKS = [
   {
-    key: "APP-1",
+    key: "APP-412",
     title: "Fix the login redirect loop",
     status: "in_progress",
     priority: "high",
   },
   {
-    key: "APP-2",
+    key: "APP-409",
     title: "Rate-limit file uploads",
     status: "todo",
     priority: "medium",
   },
   {
-    key: "APP-3",
+    key: "APP-398",
     title: "Add filters to search",
     status: "todo",
     priority: "low",
   },
   {
-    key: "APP-4",
+    key: "APP-391",
     title: "Draft the release notes",
     status: "in_progress",
     priority: "medium",
   },
   {
-    key: "APP-5",
+    key: "APP-377",
     title: "Triage flaky checkout tests",
     status: "backlog",
     priority: "high",
   },
   {
-    key: "APP-6",
+    key: "APP-362",
     title: "Port the billing page",
     status: "backlog",
     priority: "low",
@@ -1668,7 +1673,7 @@ const LinearPanel = memo(function LinearPanel() {
       </div>
       <div className="rhb-card rhb-card-panel">
         <div className="plugin-panel rhb-side-panel">
-          <PanelBar name="Linear issues" meta="bb · 6 open" />
+          <PanelBar name="Linear issues" meta="shop · 6 open" />
           <div className="plugin-panel-rows">
             {LINEAR_TASKS.map((task) => (
               <div className="plugin-task" key={task.key}>
@@ -2049,7 +2054,7 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-gen-verb">finished</span>
               </span>
               <span className="rhb-gen-body">
-                1 issue: commas in a name split the column.
+                GET /api/reports/export.csv is in, with filters.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[1])}>
@@ -2059,7 +2064,7 @@ const FeedBody = memo(function FeedBody({
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
               <span className="rhb-gen-body">
-                Fixed. Every field is quoted now.
+                The button sends the same filters as the table.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[2])}>
@@ -2068,7 +2073,9 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-gen-verb">Message from</span>
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
-              <span className="rhb-gen-body">Looks good. Approved.</span>
+              <span className="rhb-gen-body">
+                Checked it end to end. Both sides match.
+              </span>
             </div>
           </div>
         </>
@@ -2212,7 +2219,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
             <i className="rhb-caret" />
           </span>
           <div className="rhb-issue-picker">
-            <div className="rhb-issue-head">GitHub issues</div>
+            <div className="rhb-issue-head">Linear issues</div>
             <div className="rhb-issue-list">
               {ISSUES.map((x, i) => (
                 <div
@@ -2227,9 +2234,9 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
                     .join(" ")}
                 >
                   <IssueGlyph className="rhb-issue-ic" />
-                  <span className="rhb-issue-num">#{x.n}</span>
+                  <span className="rhb-issue-num">APP-{x.n}</span>
                   <span className="rhb-issue-title">{x.title}</span>
-                  <span className="rhb-issue-meta">open</span>
+                  <span className="rhb-issue-meta">todo</span>
                 </div>
               ))}
             </div>
@@ -2238,7 +2245,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
             <span className="rhb-issue-chip">
               <IssueGlyph className="rhb-issue-chip-ic" />
               <span className="rhb-issue-chip-text">
-                #491 CSV export times out
+                APP-491 CSV export times out
               </span>
             </span>
             <span className="rhb-issue-rest">fix this</span>
@@ -2395,8 +2402,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
       name: "Needs my input",
       rows: [
         {
+          title: "Sentry errors",
+          sub: "shop · main",
+          age: "9m",
+          status: "waiting",
+        },
+        {
           title: "Refactor the timeline cache",
-          sub: "bb · main",
+          sub: "shop · main",
           age: "5m",
           status: "waiting",
         },
@@ -2410,7 +2423,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
           : [
               {
                 title: scene.title,
-                sub: "bb · main",
+                sub: "shop · main",
                 age: "now",
                 status: "running" as Status,
                 active: true,
@@ -2419,17 +2432,11 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         ...(chartF
           ? chartF.clicks.map((fi) => ({
               title: chartF.fixes[fi].title,
-              sub: "bb · ci",
+              sub: "shop · main",
               age: "3m",
               status: "running" as Status,
             }))
           : []),
-        {
-          title: "Sentry errors",
-          sub: "checkout-web",
-          age: "9m",
-          status: "running",
-        },
       ],
     },
     {
@@ -2450,7 +2457,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         .reverse()
         .map((sc) => ({
           title: sc.title,
-          sub: "bb · main",
+          sub: "shop · main",
           age: "8m",
           status: "done" as Status,
         })),
@@ -2523,15 +2530,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         {k === idx && !reduced ? (
                           (() => {
                             const tk = timing(sc, tablet);
-                            return tk.doneAt == null ||
-                              FINAL_STATUS[sc.id] === "running" ? (
+                            return tk.doneAt == null ? (
                               <ThreadStatus status="running" />
                             ) : (
                               <Swap
                                 className="rhb-status-swap"
                                 at={tk.doneAt}
                                 a={<ThreadStatus status="running" />}
-                                b={<ThreadStatus status="done" />}
+                                b={<ThreadStatus status={statusOf(k)} />}
                               />
                             );
                           })()
@@ -2558,10 +2564,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             {k === idx && then && !reduced ? (
                               <Swap
                                 className="rhb-status-swap"
-                                at={
-                                  then.notes[0] -
-                                  ((t.stepAt[spawnStep] ?? t.changeAt) + 0.35)
-                                }
+                                at={then.notes[0]}
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status="done" />}
                               />
@@ -2707,8 +2710,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                 />
               </ComposerBox>
               <ContextRow
-                project="bb"
-                place={{ icon: FolderGitIcon, label: "Worktree" }}
+                project="shop"
+                place={{ icon: LaptopGlyph, label: "Local" }}
                 branch="main"
               />
             </div>
