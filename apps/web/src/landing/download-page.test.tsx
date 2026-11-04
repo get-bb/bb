@@ -41,6 +41,8 @@ describe("/download page", () => {
       'href="/download/linux?placement=download_page"',
     );
     expect(computers).toContain(CLI_COMMAND);
+    expect(computers).toMatch(/<div class="dl-row">[^]*npx bb-app@latest/);
+    expect(computers).toContain('class="dl-row dl-row-installer"');
     const phones = html.slice(html.indexOf('class="dl-h2"'));
     expect(phones).toContain("testflight.apple.com");
     expect(phones).toContain("bb-android.apk");
