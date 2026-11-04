@@ -4,27 +4,35 @@ permissions:
   contents: read
 jobs:
   identity:
-    name: Windows identity shell ${{ matrix.shell }}
+    name: Windows identity dependency disk
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shell: [bash, pwsh]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22.x
           package-manager-cache: false
-      - if: matrix.shell == 'bash'
-        shell: bash
-        run: node .github/diagnostics/process-identity.mjs
-      - if: matrix.shell == 'pwsh'
-        shell: pwsh
-        run: node .github/diagnostics/process-identity.mjs
+      - name: Measure before mounting dependency disk
+        run: |
+          node .github/diagnostics/process-identity.mjs
+          Move-Item process-identity.json identity-before.json
+      - name: Restore Windows dependency disk
+        id: disk
+        uses: ./.github/actions/windows-dependency-cache
+      - name: Measure after mounting dependency disk
+        run: |
+          node .github/diagnostics/process-identity.mjs
+          Move-Item process-identity.json identity-after.json
+      - name: Detach dependency disk
+        if: steps.disk.outputs.active == 'true'
+        run: ./.github/actions/windows-dependency-cache/disk.ps1 detach
+      - name: Measure after unmounting dependency disk
+        run: |
+          node .github/diagnostics/process-identity.mjs
+          Move-Item process-identity.json identity-unmounted.json
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: shell-${{ matrix.shell }}
-          path: process-identity.json
+          name: dependency-disk-observations
+          path: identity-*.json
