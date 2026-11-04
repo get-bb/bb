@@ -5,6 +5,7 @@ import { useState } from "react";
 import { copyPlainText } from "../lib/copy-plain-text";
 import type { SendToComputerOutcome } from "./analytics";
 import { trackLandingEvent } from "./analytics";
+import { addSavedUtmParams, readSessionUtm } from "./download-utm";
 import type { CtaPlacement } from "./site";
 import {
   CAMPAIGN_PARAM_NAMES,
@@ -13,11 +14,15 @@ import {
   SITE_TITLE,
 } from "./site";
 
-export function sendLinkUrl(pageHref: string): string {
+export function sendLinkUrl(
+  pageHref: string,
+  savedUtm: URLSearchParams = new URLSearchParams(),
+): string {
   const page = new URL(pageHref);
   const link = new URL(DOWNLOAD_PAGE_PATH, page.origin);
   const campaignParams: ReadonlyArray<string> = CAMPAIGN_PARAM_NAMES;
-  for (const [name, value] of page.searchParams) {
+  const search = new URLSearchParams(addSavedUtmParams(page.search, savedUtm));
+  for (const [name, value] of search) {
     if (campaignParams.includes(name)) {
       link.searchParams.append(name, value);
     }
@@ -68,7 +73,7 @@ export function SendToComputerButton({
       properties: { placement },
     });
     const outcome = await sendDownloadLink({
-      url: sendLinkUrl(window.location.href),
+      url: sendLinkUrl(window.location.href, readSessionUtm()),
       share:
         typeof navigator.share === "function"
           ? (data) => navigator.share(data)

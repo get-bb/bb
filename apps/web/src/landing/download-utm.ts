@@ -49,6 +49,14 @@ export function readSavedUtm(storage: UtmStorage): URLSearchParams {
   return pickUtmParams(storage.getItem(SAVED_UTM_KEY) ?? "");
 }
 
+export function readSessionUtm(): URLSearchParams {
+  try {
+    return readSavedUtm(window.sessionStorage);
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
 function rememberFirstTouch(storage: UtmStorage): void {
   if (storage.getItem(FIRST_TOUCH_KEY) !== null) {
     return;

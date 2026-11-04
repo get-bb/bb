@@ -41,6 +41,16 @@ describe("send download link URL", () => {
     );
   });
 
+  it("carries the ad parameters saved from the landing page on later pages", () => {
+    const saved = new URLSearchParams("utm_source=google&utm_campaign=c1");
+    expect(sendLinkUrl("https://getbb.app/changelog", saved)).toBe(
+      "https://getbb.app/download?utm_source=google&utm_campaign=c1&via=share",
+    );
+    expect(sendLinkUrl("https://getbb.app/?utm_source=x", saved)).toBe(
+      "https://getbb.app/download?utm_source=x&via=share",
+    );
+  });
+
   it("leaves out click IDs already removed for Global Privacy Control", () => {
     vi.stubGlobal("navigator", { globalPrivacyControl: true });
     history.replaceState(null, "", "/?utm_source=google&gclid=abc&wbraid=wb");
