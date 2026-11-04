@@ -657,6 +657,31 @@ export interface SourceCodeProps {
   className?: string;
 }
 
+/** The loaded file `ExperimentalFilePreviewProps.renderPreview` draws. */
+export interface ExperimentalFilePreviewFile {
+  /** The file's text as BB loaded it; a refresh passes the new text. */
+  content: string;
+  /** Absolute URL of the raw file, usable as a base URL for sibling assets. */
+  url: string;
+}
+
+/**
+ * Props of the host-owned `experimental_FilePreview` component — BB's file
+ * preview for one live file: the header with the file path, Preview/Raw
+ * toggle, open in browser, Open in editor, download and the file menu, and
+ * BB's loading, refresh, empty, missing and error states.
+ */
+export interface ExperimentalFilePreviewProps {
+  /** The live file to preview. A malformed target renders nothing. */
+  target: ExperimentalLiveFileTarget;
+  /**
+   * Draws the body of Preview mode for a file BB previews (HTML, Markdown
+   * and CSV), in place of BB's own. Raw mode and every other file type keep
+   * BB's rendering. The body fills the space below the header.
+   */
+  renderPreview: (file: ExperimentalFilePreviewFile) => ReactNode;
+}
+
 /**
  * Props of the host-owned `experimental_Diff` component — BB's diff viewer.
  * The host owns patch normalization (a patch without a `diff --git` header is
@@ -5966,6 +5991,12 @@ export interface PluginSdkApp {
    * replacement. Experimental: see docs/api_to_audit.md.
    */
   experimental_SourceCode: ComponentType<SourceCodeProps>;
+  /**
+   * The host-owned file preview (see {@link ExperimentalFilePreviewProps}):
+   * the preview bb shows for a file in the side panel, with the plugin
+   * drawing the Preview body. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_FilePreview: ComponentType<ExperimentalFilePreviewProps>;
   /**
    * The host-owned diff viewer (see {@link DiffProps}). Renders supplied patch
    * content with BB's normalization, optional full-file context expansion,

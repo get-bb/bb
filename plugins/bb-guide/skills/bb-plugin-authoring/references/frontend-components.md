@@ -121,6 +121,15 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,
   and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
   null). bb owns syntax highlighting, gutters, and the live code theme.
+- `experimental_FilePreview` — bb's side-panel preview of one live file:
+  its header (path, Preview/Raw, open in browser, Open in editor, download,
+  file menu with refresh) and its loading, empty, missing and error states.
+  Props: `{ target, renderPreview }` — `target` is an
+  `ExperimentalLiveFileTarget`; `renderPreview({ content, url })` draws the
+  Preview body of an HTML, Markdown or CSV file instead of bb's, with `url`
+  the absolute raw-file URL for sibling assets. Raw mode and other file types
+  stay bb's. A malformed target renders nothing. Reference: the Inline
+  visualizations `page` file opener (`plugins/inline-vis/app.tsx`).
 - `experimental_Diff` — bb's diff viewer. Props:
   `{ patch, path, view?, overflow?, showLineNumbers?, experimental_fullFileContents?,
 className? }` —

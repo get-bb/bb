@@ -138,7 +138,9 @@ import {
   type UrlLinkProps,
   type ExperimentalFileLinkProps,
   type ExperimentalFileOpenOptions,
+  type ExperimentalFilePreviewFile,
   type ExperimentalFilePreviewOptions,
+  type ExperimentalFilePreviewProps,
   type ExperimentalLiveFileTarget,
   type ExperimentalServers,
   type ExperimentalFixedTabTargetState,
@@ -384,6 +386,9 @@ interface SlotEnv {
   providers: PluginProvidersState;
   codeTheme: PluginCodeThemeState;
   canOpenFileExternally: (target: ExperimentalLiveFileTarget) => boolean;
+  filePreview: (
+    target: ExperimentalLiveFileTarget,
+  ) => ExperimentalFilePreviewFile | null;
   tabVisible: boolean;
   servers: ExperimentalServers | null;
   branchesState: BranchesState;
@@ -1445,6 +1450,20 @@ function TestVoiceInputTextarea({
 }
 
 /**
+ * Stand-in for the host-owned file preview: a recognizable wrapper carrying
+ * the target path, with the plugin's Preview body drawn from the file the
+ * `filePreview` option returns for the target (nothing when it returns null).
+ */
+function TestFilePreview({ target, renderPreview }: ExperimentalFilePreviewProps) {
+  const file = useSlotEnv("experimental_FilePreview").filePreview(target);
+  return (
+    <div data-testid="bb-file-preview" data-path={target.path}>
+      {file === null ? null : renderPreview(file)}
+    </div>
+  );
+}
+
+/**
  * Stand-in for the host-owned source viewer: emits the raw source in a
  * recognizable wrapper carrying the resolved presentation, so plugin tests can
  * assert what they asked the host to render without the real highlighter.
@@ -1831,6 +1850,7 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useCheckoutState").checkoutState;
   },
   experimental_SourceCode: TestSourceCode,
+  experimental_FilePreview: TestFilePreview,
   experimental_Diff: TestDiff,
   experimental_InfoSection: TestInfoSection,
   experimental_DetailRow: TestDetailRow,
@@ -2432,6 +2452,13 @@ export interface RenderSlotOptions<
    * false for every target.
    */
   canOpenFileExternally?: (target: ExperimentalLiveFileTarget) => boolean;
+  /**
+   * The loaded file `experimental_FilePreview` hands its `renderPreview` for a
+   * target. Omitted or null → the stand-in draws no Preview body.
+   */
+  filePreview?: (
+    target: ExperimentalLiveFileTarget,
+  ) => ExperimentalFilePreviewFile | null;
   /**
    * Answer for `experimental_useTabVisible()`. Omitted → true, as for a tab
    * that is selected in an open panel.
@@ -3372,6 +3399,7 @@ export function renderSlot<
     providers,
     codeTheme,
     canOpenFileExternally: options.canOpenFileExternally ?? (() => false),
+    filePreview: options.filePreview ?? (() => null),
     tabVisible: options.tabVisible ?? true,
     servers: options.servers ?? null,
     branchesState: {

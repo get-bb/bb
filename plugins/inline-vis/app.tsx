@@ -11,11 +11,12 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
-  experimental_SourceCode as SourceCode,
+  experimental_FilePreview as FilePreview,
   Markdown,
   useBbNavigate,
   useRpc,
   type ExperimentalCodeFenceRendererProps,
+  type ExperimentalLiveFileTarget,
   type PluginFileOpenerProps,
   type PluginFileOpenerSource,
   type PluginMessageDirectiveProps,
@@ -750,115 +751,34 @@ function InlineVisFence({
 
 const PAGE_OPENER_ID = "page";
 
-function pageFileUrl(
+function pageTarget(
   path: string,
   source: PluginFileOpenerSource,
-): string | null {
-  const file = path.split("/").map(encodeURIComponent).join("/");
+): ExperimentalLiveFileTarget | null {
   if (source.kind === "workspace" && source.environmentId !== null) {
-    return `/api/v1/environments/${encodeURIComponent(source.environmentId)}/files/${file}`;
+    return { kind: "workspace", environmentId: source.environmentId, path };
   }
   if (source.kind === "thread-storage" && source.threadId !== null) {
-    return `/api/v1/threads/${encodeURIComponent(source.threadId)}/thread-storage/files/${file}`;
+    return { kind: "thread-storage", threadId: source.threadId, path };
   }
   return null;
 }
 
-type PageState =
-  | { status: "loading" }
-  | { status: "ready"; content: string }
-  | { status: "error"; message: string };
-
-const PAGE_ACTION_CLASS =
-  "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-pressed:text-foreground";
-
 function InlineVisPageOpener({ path, source, Original }: PluginFileOpenerProps) {
-  const url = pageFileUrl(path, source);
-  const [reloads, setReloads] = useState(0);
-  const [state, setState] = useState<PageState>({ status: "loading" });
-  const [sourceShown, setSourceShown] = useState(false);
-
-  useEffect(() => {
-    if (url === null) return;
-    const controller = new AbortController();
-    void fetch(url, {
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`The file request failed with ${response.status}.`);
-        }
-        return response.text();
-      })
-      .then((content) => setState({ status: "ready", content }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({
-          status: "error",
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-    return () => controller.abort();
-  }, [url, reloads]);
-
-  if (url === null) return <Original />;
-
-  const sourceLabel = sourceShown ? "Show page" : "Show source";
+  const target = pageTarget(path, source);
+  if (target === null) return <Original />;
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border pl-3 pr-1">
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {path}
-        </span>
-        <button
-          type="button"
-          aria-label={`Reload ${path}`}
-          title="Reload"
-          className={PAGE_ACTION_CLASS}
-          onClick={() => setReloads(reloads + 1)}
-        >
-          <Icon name="RotateCcw" aria-hidden className="size-3.5" />
-        </button>
-        <button
-          type="button"
-          aria-pressed={sourceShown}
-          aria-label={sourceLabel}
-          title={sourceLabel}
-          className={PAGE_ACTION_CLASS}
-          onClick={() => setSourceShown(!sourceShown)}
-        >
-          <Icon name="Code" aria-hidden className="size-3.5" />
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {state.status === "loading" ? (
-          <div
-            role="status"
-            aria-label={`Loading ${path}`}
-            className="flex flex-col gap-2 p-3"
-          >
-            <Skeleton className="h-3 w-4/5" />
-            <Skeleton className="h-3 w-3/5" />
-          </div>
-        ) : state.status === "error" ? (
-          <div role="alert" className="p-3 text-sm text-destructive">
-            Failed to load {path}: {state.message}
-          </div>
-        ) : sourceShown ? (
-          <SourceCode content={state.content} path={path} />
-        ) : (
-          <ThemedFrame
-            key={reloads}
-            title={`inline-vis: ${path}`}
-            content={state.content}
-            baseHref={new URL(url, window.location.href).href}
-            onContentHeight={null}
-          />
-        )}
-      </div>
-    </div>
+    <FilePreview
+      target={target}
+      renderPreview={(file) => (
+        <ThemedFrame
+          title={`inline-vis: ${path}`}
+          content={file.content}
+          baseHref={file.url}
+          onContentHeight={null}
+        />
+      )}
+    />
   );
 }
 

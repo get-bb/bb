@@ -68,11 +68,11 @@ bb replaces the directive with this plugin's React component, which:
    and shows an error.
 4. Renders HTML files in the frame described below, with the served file's URL
    as the base URL so relative sibling assets load. A button that appears on
-   hover opens the file in a sidebar tab that renders it in the same themed
-   frame at the tab's full height, from the workspace or the thread's storage
-   directory, with Reload and Show source buttons. The tab is the plugin's
-   `page` file opener, which no extension selects, so other HTML files keep
-   bb's own preview. The button is a link to the rendered page:
+   hover opens the file in a sidebar tab: bb's file preview (header, Raw view,
+   menu and refresh) with the page drawn in the same themed frame at the
+   tab's full height, from the workspace or the thread's storage directory.
+   The tab is the plugin's `page` file opener, which no extension selects, so
+   other HTML files keep bb's own preview. The button is a link to the rendered page:
    Cmd-click, Ctrl-click, or middle-click opens it in a browser tab (the
    default browser in desktop bb).
 5. Renders Markdown files with bb's Markdown renderer inside a card. HTML is
