@@ -15,6 +15,9 @@ text=text.replace('    pending.child.stdin?.end();', `    pending.child.on("spaw
     pending.child.stderr?.on("data", (data) => appendFileSync("identity-observations.jsonl", JSON.stringify({pid,event:"stderr",ms:Date.now()-started,data:String(data)})+"\\n"));
     pending.child.stdout?.on("data", (data) => appendFileSync("identity-observations.jsonl", JSON.stringify({pid,event:"stdout",ms:Date.now()-started,data:String(data)})+"\\n"));
     pending.child.stdin?.end();`);
+if(process.argv[2]==='withouttmpdir') {
+  text=text.replace('        encoding: "utf8",', '        env: { ...process.env, TMPDIR: undefined },\n        encoding: "utf8",');
+}
 if(process.argv[2]==='minimalpath') {
   const pathScript = '$env:PATH = "$env:SystemRoot\\System32;$env:SystemRoot\\System32\\Wbem;$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0"';
   text=text.replace('          "$ErrorActionPreference', `          ${JSON.stringify(pathScript)},\n          "$ErrorActionPreference`);

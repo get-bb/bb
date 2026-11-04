@@ -5,12 +5,14 @@ env:
   PNPM_VERSION: "9.15.0"
 jobs:
   windows-foundation:
-    name: Windows foundation ${{ matrix.cpu }} CPU
+    name: Windows identity TMPDIR ${{ matrix.mode }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - cpu: 4
+          - mode: plain
+            runner: blacksmith-4vcpu-windows-2025
+          - mode: withouttmpdir
             runner: blacksmith-4vcpu-windows-2025
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
@@ -54,7 +56,7 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
 
       - name: Instrument identity query
-        run: node .github/diagnostics/instrument-identity.mjs plain
+        run: node .github/diagnostics/instrument-identity.mjs ${{ matrix.mode }}
 
       - name: Lint and test foundation packages
         shell: bash
@@ -67,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: identity-${{ matrix.cpu }}-cpu
+          name: identity-${{ matrix.mode }}
           path: |
             identity-load.json
             .github/diagnostics/identity-controller.json
