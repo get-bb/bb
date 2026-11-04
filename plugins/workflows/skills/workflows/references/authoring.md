@@ -209,6 +209,9 @@ agent concurrency slot while waiting.
 The step opens a visible BB thread in the origin workspace. It is a normal
 conversation, with GenUI supplied by installed plugins. The discussion agent
 can present context in batches, investigate questions, and refine options.
+GenUI v0.3.1 hides its agent tools and instructions from workflow-owned
+threads; include rendering guidance in the brief when using that version.
+Its renderer still displays valid `ui` blocks in the conversation.
 Going idle does not finish the step. Only after the owner explicitly finishes
 the discussion should that agent call `bb_workflow_discussion_result` with the
 agreed value. The service validates the result and requires a subsequent user

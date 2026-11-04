@@ -311,3 +311,9 @@ validation and completion policy. Discussion, context/schema/model changes,
 restart, cancellation, and late-result behavior are described in the shipped
 workflows skill. Concurrent discussions and discussions inside child workflows
 are deliberately unsupported in this version.
+
+GenUI rendering is optional. GenUI v0.3.1 excludes workflow-owned threads from
+its automatic tool and instruction contributions, even when the thread is
+visible. With that version, include the `ui` rendering syntax in the discussion
+brief or context. UI fences still render through the installed plugin. The
+runner does not override another plugin's audience policy.

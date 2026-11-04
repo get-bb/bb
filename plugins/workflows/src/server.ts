@@ -221,6 +221,13 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.agents.registerTool({
     name: "bb_workflow_discussion_result",
+    presentation: {
+      label: {
+        pending: "Finishing discussion",
+        completed: "Finished discussion",
+      },
+      icon: { glyph: "Workflow" },
+    },
     description:
       "Finish this workflow discussion only after the owner explicitly says it is complete. Return the agreed outcome matching its schema. Never finish from the initial workflow brief.",
     parameters: resultInputSchema,
