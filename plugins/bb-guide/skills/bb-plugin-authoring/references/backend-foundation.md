@@ -144,6 +144,15 @@ bb.storage.migrate(db, [
 ]);
 ```
 
+**Never open `bb.db` yourself**, not even read-only, and not with
+`node:sqlite`, a second better-sqlite3 copy, or any other SQLite build.
+Plugins run inside the server process, which already holds `bb.db`. Two
+SQLite libraries on one file in one process lose each other's locks, which
+can lose writes or corrupt the database
+([SQLite: multiple copies of SQLite in one application](https://www.sqlite.org/howtocorrupt.html#multiple_copies_of_sqlite_linked_into_the_same_application)).
+Keep plugin data in `bb.storage.kv` or `bb.storage.database()`, and read bb's
+own data through `bb.sdk`.
+
 ### bb.server
 
 Read-only facts about the running server. `bb.server.loopbackBaseUrl` is the

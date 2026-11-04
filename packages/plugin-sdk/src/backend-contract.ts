@@ -1958,6 +1958,11 @@ export interface PluginServerApi {
    * For reading bb-managed files a plugin is migrating away from. A plugin's
    * OWN storage is `bb.storage`, which is scoped for it; this is deliberately
    * not a place to write.
+   *
+   * Never open `bb.db` from plugin code, not even read-only. The server already
+   * holds it, and a second SQLite library in the same process (`node:sqlite`,
+   * another better-sqlite3 copy) can lose its locks and corrupt it. See
+   * https://www.sqlite.org/howtocorrupt.html#multiple_copies_of_sqlite_linked_into_the_same_application
    */
   readonly experimental_dataDir: string;
 
