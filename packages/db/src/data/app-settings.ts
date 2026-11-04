@@ -15,8 +15,17 @@ import {
   type AppSettings,
 } from "@bb/domain";
 import { eq, inArray, sql } from "drizzle-orm";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import {
+  prepareCachedQuery,
+  type DbConnection,
+  type DbQueryConnection,
+} from "../connection.js";
 import { appSettingsValues } from "../schema.js";
+import {
+  deepFreeze,
+  sameStoredSettingRows,
+  type StoredSettingRow,
+} from "./stored-setting-rows.js";
 
 const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
@@ -52,9 +61,8 @@ function writeValue(
     .run();
 }
 
-export function getAppSettings(db: DbConnection): AppSettings {
-  const values: Record<string, unknown> = { ...defaultAppSettings };
-  const rows = db
+const prepareAppSettingsRows = (db: DbQueryConnection) =>
+  db
     .select({ key: appSettingsValues.key, value: appSettingsValues.value })
     .from(appSettingsValues)
     .where(
@@ -63,8 +71,27 @@ export function getAppSettings(db: DbConnection): AppSettings {
         LEGACY_DIAGNOSTIC_EVENTS_KEY,
       ]),
     )
-    .all();
+    .orderBy(appSettingsValues.key)
+    .prepare();
 
+const parsedAppSettings = new WeakMap<
+  DbConnection,
+  { rows: StoredSettingRow[]; settings: AppSettings }
+>();
+
+export function getAppSettings(db: DbConnection): AppSettings {
+  const rows = prepareCachedQuery(db, prepareAppSettingsRows).all();
+  const cached = parsedAppSettings.get(db);
+  if (cached !== undefined && sameStoredSettingRows(cached.rows, rows)) {
+    return cached.settings;
+  }
+  const settings = deepFreeze(parseAppSettingsRows(rows));
+  parsedAppSettings.set(db, { rows, settings });
+  return settings;
+}
+
+function parseAppSettingsRows(rows: readonly StoredSettingRow[]): AppSettings {
+  const values: Record<string, unknown> = { ...defaultAppSettings };
   const legacyDiagnosticEvents = rows.find(
     (row) => row.key === LEGACY_DIAGNOSTIC_EVENTS_KEY,
   );
