@@ -21,7 +21,7 @@ export interface TimelineClientRequestContext {
 export interface TimelineGroupingContext {
   orderingBoundarySequence: number | null;
   acceptedTurnIds: ReadonlyMap<string, string>;
-  acceptedRequestIdsBySequence: ReadonlyMap<number, string>;
+  clientRequestIdsBySequence: ReadonlyMap<number, string>;
   clientRequests: ReadonlyMap<string, TimelineClientRequestContext>;
 }
 
@@ -33,7 +33,7 @@ interface TimelineGroupingContextArgs {
 
 interface TimelineOrderingContext {
   acceptedTurnIds: ReadonlyMap<string, string>;
-  acceptedRequestIdsBySequence: ReadonlyMap<number, string>;
+  clientRequestIdsBySequence: ReadonlyMap<number, string>;
   boundarySequence: number | null;
   boundaryScanThroughSequence: number;
   clientRequests: ReadonlyMap<string, TimelineClientRequestContext>;
@@ -212,7 +212,7 @@ export function getTimelineGroupingContext(
     );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, args);
   const context: TimelineGroupingContext = {
-    acceptedRequestIdsBySequence: orderingContext.acceptedRequestIdsBySequence,
+    clientRequestIdsBySequence: orderingContext.clientRequestIdsBySequence,
     acceptedTurnIds: orderingContext.acceptedTurnIds,
     clientRequests: orderingContext.clientRequests,
     orderingBoundarySequence:
@@ -251,7 +251,7 @@ function computeTimelineOrderingContext(
 ): TimelineOrderingContext {
   const spans = new Map<string, ExternalUserBoundaryTurnSpan>();
   const accepted = new Map<string, { sequence: number; turnId: string }>();
-  const acceptedRequestIdsBySequence = new Map<number, string>();
+  const clientRequestIdsBySequence = new Map<number, string>();
   const clientRequests = new Map<
     string,
     { acceptedSequences: number[]; requestedSequences: number[] }
@@ -262,6 +262,7 @@ function computeTimelineOrderingContext(
         clientRequests,
         row.requestId,
       ).requestedSequences.push(row.sequence);
+      clientRequestIdsBySequence.set(row.sequence, row.requestId);
     }
     if (row.turnId === null) continue;
     if (row.type === "turn/input/accepted" && row.clientRequestId !== null) {
@@ -269,7 +270,7 @@ function computeTimelineOrderingContext(
         sequence: row.sequence,
         turnId: row.turnId,
       });
-      acceptedRequestIdsBySequence.set(row.sequence, row.clientRequestId);
+      clientRequestIdsBySequence.set(row.sequence, row.clientRequestId);
       clientRequestContext(
         clientRequests,
         row.clientRequestId,
@@ -357,7 +358,7 @@ function computeTimelineOrderingContext(
     }
   }
   return {
-    acceptedRequestIdsBySequence,
+    clientRequestIdsBySequence,
     boundarySequence: boundary,
     boundaryScanThroughSequence,
     clientRequests,

@@ -12,6 +12,7 @@ import {
   listStoredEventRowsInSequenceRange,
   listStoredTimelineTurnEventRows,
   listStoredTimelineWindowEventRows,
+  listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   type DbConnection,
   type TimelineWindowHint,
@@ -59,11 +60,38 @@ export interface LatestTimelineSelectionMemoArgs {
   threadId: string;
 }
 
+export interface TimelineSelectionRowSource {
+  listChildRows(
+    args: Parameters<typeof listStoredEventRowsByParentToolCallIds>[1],
+  ): StoredEventRow[];
+  listContextRows(args: {
+    afterSequence: number;
+    beforeSequence: number;
+    threadId: string;
+    types: readonly ThreadEventType[];
+  }): StoredEventRow[];
+  listParentRows(
+    args: Parameters<typeof listStoredDelegatingItemRowsByItemIds>[1],
+  ): StoredEventRow[];
+  listRootWindowTurnIds(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): string[];
+  listThreadWindowRows(
+    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
+  ): StoredEventRow[];
+  listTurnRows(
+    args: Parameters<typeof listStoredTimelineTurnEventRows>[1],
+  ): StoredEventRow[];
+}
+
+export class TimelineSelectionTrimFallback extends Error {}
+
 export interface LatestTimelineSelectionLookup {
   budgetFloor: TimelineBudgetFloor | null;
   dataVersion: number;
   generation: number;
   selection: TimelineEventRowSelection | null;
+  trimSource: TimelineSelectionRowSource | null;
 }
 
 interface TimelineSelectionMemoEntry {
@@ -93,7 +121,6 @@ const TIMELINE_SELECTION_MEMO_MAX_DATA_CHARS = 16_000_000;
 const TIMELINE_SELECTION_MEMO_MAX_APPENDED_ROWS = 512;
 
 const SELECTION_CHANGING_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
-  "client/turn/requested",
   "client/turn/rejected",
   "turn/plan/updated",
   "system/thread/interrupted",
@@ -378,7 +405,7 @@ function isAcceptedInputForWindowRequest(
 ): boolean {
   if (row.type !== "turn/input/accepted") return false;
   const context = groupingContextOf(scope);
-  const requestId = context.acceptedRequestIdsBySequence.get(row.sequence);
+  const requestId = context.clientRequestIdsBySequence.get(row.sequence);
   const request =
     requestId === undefined ? undefined : context.clientRequests.get(requestId);
   return (
@@ -435,7 +462,7 @@ function acceptsAcceptedInput(
 ): boolean {
   if (row.type !== "turn/input/accepted") return true;
   const context = groupingContextOf(scope);
-  const requestId = context.acceptedRequestIdsBySequence.get(row.sequence);
+  const requestId = context.clientRequestIdsBySequence.get(row.sequence);
   const request =
     requestId === undefined ? undefined : context.clientRequests.get(requestId);
   const { rows } = scope.entry.selection;
@@ -447,6 +474,28 @@ function acceptsAcceptedInput(
         sequence > scope.entry.maxSeq ||
         selectionIndexOfSequence(rows, sequence) >= 0,
     )
+  );
+}
+
+function acceptsClientRequest(
+  scope: SelectionExtensionScope,
+  row: StoredEventRow,
+): boolean {
+  if (row.type !== "client/turn/requested") return true;
+  const context = groupingContextOf(scope);
+  const requestId = context.clientRequestIdsBySequence.get(row.sequence);
+  if (requestId === undefined) return false;
+  const request = context.clientRequests.get(requestId)!;
+  return (
+    request.requestedSequences.length === 1 &&
+    request.acceptedSequences.every(
+      (sequence) => sequence > scope.entry.maxSeq,
+    ) &&
+    listStoredTurnRejectedRowsByClientRequestIds(scope.db, {
+      afterSequence: -1,
+      clientRequestIds: [requestId],
+      threadId: scope.args.threadId,
+    }).every((rejected) => rejected.sequence > scope.entry.maxSeq)
   );
 }
 
@@ -497,6 +546,7 @@ function acceptsAppendedRow(
     acceptsDelegatingItem(scope, row) &&
     acceptsTurn(scope, row) &&
     acceptsAcceptedInput(scope, row) &&
+    acceptsClientRequest(scope, row) &&
     acceptsBackgroundTask(scope, row)
   );
 }
@@ -564,6 +614,115 @@ function listAppendableRows(
   };
 }
 
+function trimFallback(reason: string): never {
+  throw new TimelineSelectionTrimFallback(reason);
+}
+
+function createTrimmedSelectionRowSource(
+  db: DbConnection,
+  args: LatestTimelineSelectionMemoArgs,
+  extension: SelectionExtension,
+  rows: readonly StoredEventRow[],
+): TimelineSelectionRowSource {
+  let rowsById: Map<string, StoredEventRow> | null = null;
+  const expectLatestBounds = (bounds: {
+    beforeSequence?: number;
+    sequenceStart?: number;
+  }) => {
+    if (bounds.beforeSequence !== args.maxSeq + 1) {
+      trimFallback("before-sequence");
+    }
+    return bounds.sequenceStart ?? 0;
+  };
+  const expectEpochBounds = (bounds: {
+    beforeSequence?: number;
+    sequenceStart?: number;
+  }) => {
+    if (expectLatestBounds(bounds) !== args.epochSequenceStart) {
+      trimFallback("sequence-start");
+    }
+  };
+  return {
+    listChildRows(query) {
+      expectEpochBounds(query);
+      const parents = new Set(query.parentToolCallIds);
+      for (const parent of parents) {
+        if (!extension.delegatingItemIds.has(parent)) {
+          trimFallback("unfetched-children");
+        }
+      }
+      return rows.filter(
+        (row) =>
+          row.parentToolCallId !== null &&
+          parents.has(row.parentToolCallId) &&
+          row.sequence >= args.epochSequenceStart,
+      );
+    },
+    listContextRows(query) {
+      const types = new Set(query.types);
+      return rows.filter(
+        (row) =>
+          types.has(row.type) &&
+          row.sequence > query.afterSequence &&
+          row.sequence < query.beforeSequence,
+      );
+    },
+    listParentRows(query) {
+      rowsById ??= new Map(rows.map((row) => [row.id, row]));
+      return listStoredDelegatingItemRowsByItemIds(db, query).map((row) => {
+        if (row.sequence > args.maxSeq) return row;
+        return rowsById!.get(row.id) ?? trimFallback("unselected-parent");
+      });
+    },
+    listRootWindowTurnIds(query) {
+      const sequenceStart = expectLatestBounds(query);
+      const rootStartedTurnIds = new Set<string>();
+      for (const row of rows) {
+        if (
+          row.type === "turn/started" &&
+          row.turnId !== null &&
+          row.parentToolCallId === null
+        ) {
+          rootStartedTurnIds.add(row.turnId);
+        }
+      }
+      const turnIds = new Set<string>();
+      for (const row of rows) {
+        if (
+          row.turnId !== null &&
+          row.parentToolCallId === null &&
+          row.sequence >= sequenceStart &&
+          rootStartedTurnIds.has(row.turnId)
+        ) {
+          turnIds.add(row.turnId);
+        }
+      }
+      return [...turnIds];
+    },
+    listThreadWindowRows(query) {
+      const sequenceStart = expectLatestBounds(query);
+      return rows.filter(
+        (row) => row.turnId === null && row.sequence >= sequenceStart,
+      );
+    },
+    listTurnRows(query) {
+      expectEpochBounds(query);
+      const turnIds = new Set(query.turnIds);
+      for (const turnId of turnIds) {
+        if (!extension.appendableTurnIds.has(turnId)) {
+          trimFallback("unfetched-turn");
+        }
+      }
+      return rows.filter(
+        (row) =>
+          row.turnId !== null &&
+          turnIds.has(row.turnId) &&
+          row.sequence >= args.epochSequenceStart,
+      );
+    },
+  };
+}
+
 export function forgetLatestTimelineSelections(
   db: DbConnection,
   threadId: string,
@@ -584,6 +743,7 @@ export function lookupLatestTimelineSelection(
     dataVersion,
     generation,
     selection: null,
+    trimSource: null,
   };
   const memo = selectionMemos.get(db);
   const key = selectionMemoKey(args);
@@ -619,14 +779,34 @@ export function lookupLatestTimelineSelection(
             threadId: args.threadId,
           }),
   };
+  const appendedHints = appended.rows
+    .filter((row) => row.type === "client/turn/requested")
+    .map((row) => ({ sequence: row.sequence }))
+    .reverse();
+  const hints =
+    appendedHints.length === 0
+      ? entry.hints
+      : [...appendedHints, ...entry.hints].slice(0, args.page.segmentLimit + 1);
   const sequenceStart = selectTimelineWindowStart(
-    entry.hints,
+    hints,
     budgetFloor.sequence,
     args.page.segmentLimit,
     args.epochSequenceStart,
   );
-  if (sequenceStart !== entry.selection.ownedSequenceStart) {
+  if (sequenceStart < entry.selection.ownedSequenceStart) {
     return { ...miss, budgetFloor };
+  }
+  if (sequenceStart > entry.selection.ownedSequenceStart) {
+    return {
+      ...miss,
+      budgetFloor,
+      trimSource: createTrimmedSelectionRowSource(
+        db,
+        args,
+        appended.extension,
+        entry.selection.rows.concat(appended.rows),
+      ),
+    };
   }
   const selection: TimelineEventRowSelection = {
     ...entry.selection,
@@ -652,6 +832,7 @@ export function lookupLatestTimelineSelection(
     delegatingItemIds: appended.extension.delegatingItemIds,
     missingParentToolCallIds: appended.extension.missingParentToolCallIds,
     dataChars: entry.dataChars + dataCharsOfRows(appended.rows),
+    hints,
     maxSeq: args.maxSeq,
     selection,
   });

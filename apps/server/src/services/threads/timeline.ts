@@ -123,7 +123,9 @@ import {
   selectTimelineWindowStart,
   lookupLatestTimelineSelection,
   rememberLatestTimelineSelection,
+  TimelineSelectionTrimFallback,
   type LatestTimelineSelectionMemoArgs,
+  type TimelineSelectionRowSource,
   type StandardTimelineEventRowSelection,
   type ThreadTimelineEventSelectionStrategy,
   type TimelineBudgetFloor,
@@ -311,6 +313,7 @@ interface TimelineWindowRowsArgs {
 
 interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
   excludeDiagnosticEvents: boolean;
+  source: TimelineSelectionRowSource;
   maxInlineOutputChars: InlineOutputCharLimit;
   sequenceBounds: {
     beforeSequence: number | undefined;
@@ -544,6 +547,21 @@ function collectStoredParentToolCallIds(
   return [...parentToolCallIds];
 }
 
+function databaseTimelineRowSource(
+  db: DbConnection,
+): TimelineSelectionRowSource {
+  return {
+    listChildRows: (args) => listStoredEventRowsByParentToolCallIds(db, args),
+    listContextRows: (args) =>
+      listStoredEventRows(db, { ...args, types: [...args.types] }),
+    listParentRows: (args) => listStoredDelegatingItemRowsByItemIds(db, args),
+    listRootWindowTurnIds: (args) => listTimelineRootWindowTurnIds(db, args),
+    listThreadWindowRows: (args) =>
+      listStoredTimelineThreadWindowEventRows(db, args),
+    listTurnRows: (args) => listStoredTimelineTurnEventRows(db, args),
+  };
+}
+
 function ensureTimelineWindowParentedRows(
   db: DbConnection,
   args: TimelineWindowParentedRowsArgs,
@@ -565,7 +583,7 @@ function ensureTimelineWindowParentedRows(
     }
 
     const childSequenceBounds = args.sequenceBounds;
-    const childRows = listStoredEventRowsByParentToolCallIds(db, {
+    const childRows = args.source.listChildRows({
       beforeSequence: childSequenceBounds?.beforeSequence,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       excludeDiagnosticEvents: args.excludeDiagnosticEvents,
@@ -590,7 +608,7 @@ function ensureTimelineWindowParentedRows(
   const missingParentToolCallIds = collectStoredParentToolCallIds(rows).filter(
     (parentToolCallId) => !visibleToolCallIds.has(parentToolCallId),
   );
-  const parentRows = listStoredDelegatingItemRowsByItemIds(db, {
+  const parentRows = args.source.listParentRows({
     itemIds: missingParentToolCallIds,
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
@@ -973,6 +991,7 @@ function selectStandardTimelineEventRows(
   contentCursor: TimelineContentCursor | undefined,
   knownBudgetFloor: TimelineBudgetFloor | null,
   profile: ThreadTimelineBuildProfileAccumulator,
+  source: TimelineSelectionRowSource,
 ): StandardTimelineEventRowSelection {
   const decode: StoredEventDecoder = (row) =>
     decodeStoredEventRowCached(db, row);
@@ -1047,9 +1066,9 @@ function selectStandardTimelineEventRows(
         maxSeq,
       }),
   );
-  let rows = listStoredTimelineThreadWindowEventRows(db, windowArgs);
+  let rows = source.listThreadWindowRows(windowArgs);
   const initialTurnIds = [
-    ...listTimelineRootWindowTurnIds(db, windowArgs),
+    ...source.listRootWindowTurnIds(windowArgs),
     ...rows.flatMap((row) => {
       if (row.type !== "client/turn/requested") return [];
       const requestId = tryReadClientTurnRequestedRequestId(row, decode);
@@ -1076,7 +1095,7 @@ function selectStandardTimelineEventRows(
       for (const turnId of turnIds) fetchedTurns.add(turnId);
       selectedRows = mergeStoredEventRowsById([
         ...selectedRows,
-        ...listStoredTimelineTurnEventRows(db, {
+        ...source.listTurnRows({
           ...windowArgs,
           sequenceStart: epochSequenceStart,
           beforeSequence: maxSeq + 1,
@@ -1086,6 +1105,7 @@ function selectStandardTimelineEventRows(
       selectedRows = ensureTimelineWindowParentedRows(db, {
         threadId: thread.id,
         rows: selectedRows,
+        source,
         maxInlineOutputChars,
         excludeDiagnosticEvents,
         sequenceBounds: {
@@ -1118,7 +1138,7 @@ function selectStandardTimelineEventRows(
     profile,
     "group-context-query",
     () =>
-      listStoredEventRows(db, {
+      source.listContextRows({
         threadId: thread.id,
         afterSequence: contextStart - 1,
         beforeSequence: contextEnd + 1,
@@ -1309,6 +1329,21 @@ function completeThreadTimelineBuildProfile(
   };
 }
 
+function selectTrimmedOrFreshRows(
+  trimSource: TimelineSelectionRowSource | null,
+  select: (
+    source?: TimelineSelectionRowSource,
+  ) => StandardTimelineEventRowSelection,
+): StandardTimelineEventRowSelection {
+  if (trimSource === null) return select();
+  try {
+    return select(trimSource);
+  } catch (error) {
+    if (!(error instanceof TimelineSelectionTrimFallback)) throw error;
+    return select();
+  }
+}
+
 function buildThreadTimelineInternal(
   db: DbConnection,
   thread: Thread,
@@ -1333,7 +1368,10 @@ function buildThreadTimelineInternal(
   const historySequenceStart = options.includeClearedContextHistory
     ? 0
     : (contextBoundarySeq ?? 0);
-  const selectRows = (knownBudgetFloor: TimelineBudgetFloor | null) =>
+  const selectRows = (
+    knownBudgetFloor: TimelineBudgetFloor | null,
+    source: TimelineSelectionRowSource = databaseTimelineRowSource(db),
+  ) =>
     selectStandardTimelineEventRows(
       db,
       thread,
@@ -1346,6 +1384,7 @@ function buildThreadTimelineInternal(
       contentCursor,
       knownBudgetFloor,
       profile,
+      source,
     );
   const maxInlineOutputChars = options.maxInlineOutputChars;
   const active = thread.status === "active";
@@ -1380,7 +1419,9 @@ function buildThreadTimelineInternal(
       if (lookup.selection !== null) {
         return lookup.selection;
       }
-      const result = selectRows(lookup.budgetFloor);
+      const result = selectTrimmedOrFreshRows(lookup.trimSource, (source) =>
+        selectRows(lookup.budgetFloor, source),
+      );
       rememberLatestTimelineSelection(db, memoArgs, lookup, result);
       return result.selection;
     },
@@ -2266,6 +2307,7 @@ function buildTimelineTurnSummaryDetailsPage(
   });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     excludeDiagnosticEvents: !includeDiagnosticOperations,
+    source: databaseTimelineRowSource(db),
     maxInlineOutputChars: detailsInlineOutputLimit,
     sequenceBounds: {
       beforeSequence: snapshot.maxSeq + 1,
