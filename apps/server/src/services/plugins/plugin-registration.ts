@@ -1,6 +1,12 @@
-import { findProviderEnvironmentContainingPath } from "@bb/db";
+import {
+  findProviderEnvironmentContainingPath,
+  listPathInstalledPluginSources,
+} from "@bb/db";
+import { isHostPathWithin } from "@bb/domain";
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { cp, rename, rm, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import { isBbManagedWorkspacePath } from "../threads/workspace-paths.js";
 import {
   getInstalledPlugin,
@@ -26,6 +32,7 @@ import { BUNDLED_MARKETPLACE_NAME } from "../plugin-catalog/marketplace-manifest
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   type InstalledPlugin,
+  ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginRuntimeStatus,
   type PluginSourceSelection,
 } from "@bb/server-contract";
@@ -57,6 +64,8 @@ import {
   type NpmSourceIntentForResolution,
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
+
+const PRESERVED_SOURCE_DIRECTORY_NAME = "preserved-source";
 
 export function isPublicPluginProvenance(
   kind: PluginProvenance["kind"],
@@ -485,6 +494,53 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
+  async function preservePathPluginsInside(directory: string): Promise<void> {
+    for (const plugin of listPathInstalledPluginSources(deps.db)) {
+      if (
+        !isHostPathWithin({
+          rootPath: directory,
+          candidatePath: plugin.sourcePath,
+        })
+      ) {
+        continue;
+      }
+      const exists = await stat(plugin.sourcePath).then(
+        () => true,
+        (error: unknown) => {
+          if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+            return false;
+          }
+          throw error;
+        },
+      );
+      if (!exists) continue;
+      const preservedPath = join(
+        deps.dataDir,
+        "plugins",
+        plugin.id,
+        PRESERVED_SOURCE_DIRECTORY_NAME,
+      );
+      const stagingPath = `${preservedPath}.partial`;
+      await rm(stagingPath, { recursive: true, force: true });
+      await cp(plugin.sourcePath, stagingPath, {
+        recursive: true,
+        verbatimSymlinks: true,
+      });
+      await rm(preservedPath, { recursive: true, force: true });
+      await rename(stagingPath, preservedPath);
+      try {
+        await installPathSource(preservedPath, ROOT_PLUGIN_SOURCE_SELECTION);
+        logger.info(
+          `plugin ${plugin.id} was installed from ${plugin.sourcePath}, which bb is deleting; it now runs from a copy at ${preservedPath}`,
+        );
+      } catch (error) {
+        logger.warn(
+          `plugin ${plugin.id} was installed from ${plugin.sourcePath}, which bb is deleting; its files were copied to ${preservedPath}, but moving the plugin there failed: ${error instanceof Error ? error.message : String(error)}. Run \`bb plugin install ${preservedPath}\` to run it from the copy.`,
+        );
+      }
+    }
+  }
+
   function npmIntentForRow(
     row: InstalledPluginRow,
   ): NpmSourceIntentForResolution {
@@ -828,6 +884,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     installPathSource,
     installedUpdateVersion,
     npmIntentForRow,
+    preservePathPluginsInside,
     provenanceForRow,
     reconcileBundled,
     registerInstalled,

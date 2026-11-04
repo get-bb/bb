@@ -288,7 +288,10 @@ plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 updates. Change a pinned git:/npm: source with `bb plugin remove` (which
 deletes settings, secrets, and schedules) and a fresh install. Edit a local
 path plugin in place and `bb plugin reload <id>`, or move it with
-`bb plugin install path:<new dir>`; both keep its configuration.
+`bb plugin install path:<new dir>`; both keep its configuration. Before bb
+deletes a thread's storage folder, it copies any path plugin installed from
+inside it to <dataDir>/plugins/<id>/preserved-source and moves the plugin
+there, keeping its configuration.
 
 Managed git:/npm: installs refuse engines.bb and engines.bbPluginSdk
 mismatches, manifest and artifact identity mismatches, and ids reserved by

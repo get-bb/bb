@@ -1422,6 +1422,79 @@ describe("plugin service", () => {
     });
   });
 
+  it("copies a path plugin out of a directory bb is deleting and keeps running it from the copy", async () => {
+    const storage = join(workDir, "data", "thread-storage", "thr_kept");
+    const inside = await writePlugin(storage, {
+      name: "bb-plugin-kept",
+      serverSource: `
+        export default function plugin(bb) {
+          bb.settings.define({
+            token: { type: "string", label: "Token", secret: true },
+          });
+        }`,
+    });
+    await mkdir(join(inside, "lib"), { recursive: true });
+    await writeFile(join(inside, "lib", "helper.js"), "export {};\n");
+    const outside = await writePlugin(join(workDir, "elsewhere"), {
+      name: "bb-plugin-elsewhere",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(inside);
+    await service.installPath(outside);
+    await service.updateSettings("kept", { token: "s3cret" });
+
+    await service.preservePathPluginsInside(storage);
+    await rm(storage, { recursive: true, force: true });
+    await service.reload("kept");
+
+    const preserved = join(
+      workDir,
+      "data",
+      "plugins",
+      "kept",
+      "preserved-source",
+    );
+    expect(service.list().find((p) => p.id === "kept")).toMatchObject({
+      source: `path:${preserved}`,
+      status: "running",
+    });
+    expect(await readFile(join(preserved, "lib", "helper.js"), "utf8")).toBe(
+      "export {};\n",
+    );
+    expect((await service.getSettings("kept"))?.values).toEqual({
+      token: { set: true },
+    });
+    expect(getInstalledPlugin(db, "elsewhere")?.sourcePath).toBe(outside);
+  });
+
+  it("keeps the copied files when the plugin cannot move to them", async () => {
+    const storage = join(workDir, "data", "thread-storage", "thr_brittle");
+    const inside = await writePlugin(storage, {
+      name: "bb-plugin-brittle-copy",
+      serverSource: `
+        export default function plugin() {
+          if (!import.meta.url.includes("thread-storage")) {
+            throw new Error("boom outside storage");
+          }
+        }`,
+    });
+    await service.installPath(inside);
+
+    await service.preservePathPluginsInside(storage);
+
+    const preserved = join(
+      workDir,
+      "data",
+      "plugins",
+      "brittle-copy",
+      "preserved-source",
+    );
+    expect(getInstalledPlugin(db, "brittle-copy")?.sourcePath).toBe(inside);
+    expect(await readFile(join(preserved, "server.ts"), "utf8")).toContain(
+      "boom outside storage",
+    );
+  });
+
   it("keeps a moved path plugin disabled instead of starting it", async () => {
     const serverSource = (marker: string) => `
       export default function plugin() {

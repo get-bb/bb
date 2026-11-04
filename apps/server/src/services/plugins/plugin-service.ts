@@ -299,6 +299,7 @@ export interface PluginService {
     | { outcome: "unavailable"; detail: string }
   >;
   installPath(path: string): Promise<InstalledPlugin>;
+  preservePathPluginsInside(directory: string): Promise<void>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   startPeriodicUpdateChecks(): void;
   stopPeriodicUpdateChecks(): Promise<void>;
@@ -726,6 +727,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     installPathSource,
     installedUpdateVersion,
     npmIntentForRow,
+    preservePathPluginsInside,
     provenanceForRow,
     reconcileBundled,
     registerInstalled,
@@ -1738,6 +1740,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
         installPathSource(path, ROOT_PLUGIN_SOURCE_SELECTION),
+      ),
+
+    preservePathPluginsInside: (directory) =>
+      withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        preservePathPluginsInside(directory),
       ),
 
     ...pluginUpdates,
