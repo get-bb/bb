@@ -562,8 +562,15 @@ describe("Docs nav panel", () => {
         });
       },
     });
+    await waitFor(
+      () => expect(editor.querySelector("p")?.textContent).toBe("A passage"),
+      { timeout: 5_000 },
+    );
     await waitFor(() =>
-      expect(editor.querySelector("p")?.textContent).toBe("A passage"),
+      expect(slot.rpcCalls).toContainEqual({
+        method: "listAnnotations",
+        input: { vaultId: "personal", path: "annotated.md" },
+      }),
     );
     const text = editor.querySelector("p")?.firstChild;
     if (!text) throw new Error("The document passage was not rendered");
@@ -575,9 +582,11 @@ describe("Docs nav panel", () => {
     window.getSelection()?.addRange(range);
     fireEvent.pointerUp(editor);
 
-    const addToChat = await screen.findByRole("button", {
-      name: "Add to chat",
-    });
+    const addToChat = await screen.findByRole(
+      "button",
+      { name: "Add to chat" },
+      { timeout: 5_000 },
+    );
     expect(screen.queryByRole("textbox", { name: "Comment" })).toBeNull();
     fireEvent.mouseDown(addToChat);
     fireEvent.click(addToChat);
@@ -1821,6 +1830,107 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("adds annotations to the vault path of a file opened with Docs", async () => {
+    const source = {
+      kind: "host",
+      threadId: "thr_1",
+      environmentId: null,
+      projectId: "project_1",
+    } as const;
+    const addAnnotation = vi.fn((rawInput: unknown) => ({
+      ...(rawInput as {
+        vaultId: string;
+        path: string;
+        quote: string;
+        comment: string;
+      }),
+      id: "doc-annotation-1",
+      createdAt: 1,
+    }));
+    const slot = renderSlot(
+      app.fileOpeners[0]!,
+      { path: "/Users/shared/notes/plan.md", source, Original: () => null },
+      {
+        composer: { text: "Please review this." },
+        rpc: {
+          openFile: () => ({
+            file: { content: "# Plan\n\nA passage", sha256: "sha" },
+            preview,
+            previewPath: "plan.md",
+            vault: { id: "personal", path: "projects/plan.md" },
+          }),
+          listAnnotations: () => ({ annotations: [] }),
+          addAnnotation,
+        },
+      },
+    );
+
+    const editor = await slot.findByRole("textbox", {
+      name: "Document content",
+    });
+    await waitFor(
+      () => expect(editor.querySelector("p")?.textContent).toBe("A passage"),
+      { timeout: 5_000 },
+    );
+    await waitFor(() =>
+      expect(slot.rpcCalls).toContainEqual({
+        method: "listAnnotations",
+        input: { vaultId: "personal", path: "projects/plan.md" },
+      }),
+    );
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => {
+        const rect = new DOMRect(0, 0, 50, 20);
+        return Object.assign([rect], {
+          item: (index: number) => (index === 0 ? rect : null),
+        });
+      },
+    });
+    const text = editor.querySelector("p")?.firstChild;
+    if (!text) throw new Error("The document passage was not rendered");
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, text.textContent?.length ?? 0);
+    editor.focus();
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.pointerUp(editor);
+
+    const addToChat = await screen.findByRole("button", {
+      name: "Add to chat",
+    });
+    fireEvent.mouseDown(addToChat);
+    fireEvent.click(addToChat);
+    fireEvent.change(await screen.findByRole("textbox", { name: "Comment" }), {
+      target: { value: "Please explain this section." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addAnnotation).toHaveBeenCalledWith({
+        vaultId: "personal",
+        path: "projects/plan.md",
+        quote: "A passage",
+        comment: "Please explain this section.",
+      }),
+    );
+    expect(slot.rpcCalls).toContainEqual({
+      method: "listAnnotations",
+      input: { vaultId: "personal", path: "projects/plan.md" },
+    });
+    await waitFor(() =>
+      expect(slot.inspection.composer.draft.mentions).toMatchObject([
+        {
+          kind: "plugin",
+          provider: "document-annotation",
+          id: "doc-annotation-1",
+          label: "Docs: A passage",
+        },
+      ]),
+    );
+  });
+
   it("preserves the file opener host through autosave and resolves a conflict in place", async () => {
     const source = {
       kind: "host",
@@ -1847,6 +1957,7 @@ describe("Docs nav panel", () => {
             file: { ...file },
             preview,
             previewPath: "notes/plan.mdx",
+            vault: null,
           }),
           saveOpenedFile,
         },

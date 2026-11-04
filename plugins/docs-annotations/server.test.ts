@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -71,6 +71,14 @@ async function loadNotebook(
         }),
       },
       hosts: { list: async () => [] },
+      environments: {
+        get: async ({ environmentId }) => ({
+          id: environmentId,
+          hostId: "host_primary",
+          path: directory,
+        }),
+      },
+      system: { config: async () => ({ primaryHostId: "host_primary" }) },
     },
   });
   const watchedReads = new Map<
@@ -1323,6 +1331,81 @@ describe("Docs vault operations", () => {
     ]);
   });
 
+  it("reports the vault a file-opener target lives in", async () => {
+    const { harness, directory } = await loadNotebook({
+      "plan.md": "# Plan",
+      ".hidden.md": "# Hidden",
+    });
+    const source = {
+      kind: "host",
+      threadId: "thread_1",
+      environmentId: null,
+      projectId: "project_1",
+    };
+
+    await expect(
+      harness.callRpc("openFile", {
+        source,
+        path: path.join(directory, "plan.md"),
+      }),
+    ).resolves.toMatchObject({ vault: { id: "personal", path: "plan.md" } });
+
+    const outside = await mkdtemp(path.join(os.tmpdir(), "bb-outside-"));
+    temporaryDirectories.push(outside);
+    await writeFile(path.join(outside, "plan.md"), "# Outside");
+    await expect(
+      harness.callRpc("openFile", {
+        source,
+        path: path.join(outside, "plan.md"),
+      }),
+    ).resolves.toMatchObject({ vault: null });
+    await expect(
+      harness.callRpc("openFile", {
+        source,
+        path: path.join(directory, ".hidden.md"),
+      }),
+    ).resolves.toMatchObject({ vault: null });
+  });
+
+  it("treats a vault on the primary host as covering an environment workspace file", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+
+    await expect(
+      harness.callRpc("openFile", {
+        source: {
+          kind: "workspace",
+          threadId: "thread_1",
+          environmentId: "env_local",
+          projectId: null,
+        },
+        path: "plan.md",
+      }),
+    ).resolves.toMatchObject({ vault: { id: "personal", path: "plan.md" } });
+  });
+
+  it("prefers the most specific vault root for a file-opener target", async () => {
+    const { harness, directory } = await loadNotebook({ "plan.md": "# Plan" });
+    const nestedRoot = path.join(directory, "nested");
+    await mkdir(nestedRoot);
+    await writeFile(path.join(nestedRoot, "plan.md"), "# Nested plan");
+    await harness.callRpc("createVault", {
+      name: "Nested",
+      rootPath: nestedRoot,
+    });
+
+    await expect(
+      harness.callRpc("openFile", {
+        source: {
+          kind: "host",
+          threadId: "thread_1",
+          environmentId: null,
+          projectId: "project_1",
+        },
+        path: path.join(nestedRoot, "plan.md"),
+      }),
+    ).resolves.toMatchObject({ vault: { id: "nested", path: "plan.md" } });
+  });
+
   it.each([
     {
       name: "an explicit host",
@@ -1405,6 +1488,7 @@ describe("Docs vault operations", () => {
         },
         preview: expect.objectContaining({ baseUrl: "/remote-preview" }),
         previewPath: "plan.md",
+        vault: null,
       });
       await expect(
         host.harness.callRpc("saveOpenedFile", {
@@ -1537,7 +1621,9 @@ describe("Docs vault operations", () => {
       [{ projectId: "project_1" }],
       [{ projectId: "project_1" }],
     ]);
-    expect(host.harness.sdk.callsTo("system.config")).toEqual([[]]);
+    // One resolution for the project source, plus one per successful openFile:
+    // a vault stored without a host id counts as living on the primary host.
+    expect(host.harness.sdk.callsTo("system.config")).toEqual([[], [], []]);
     expect(host.harness.sdk.callsTo("files.read")).toEqual([
       [
         {

@@ -24,8 +24,9 @@ do not guess an absolute host path or inspect the vault outside `bb docs`.
 
 ## Passage annotations
 
-In the Docs editor or an in-thread Docs preview, selecting a Markdown passage
-shows BB's anchored **Add to chat** action. Choosing it opens a comment card beside the selection. Saved
+In the Docs editor, a Docs file-opener view for a file inside a configured
+vault, or an in-thread Docs preview, selecting a Markdown passage shows BB's
+anchored **Add to chat** action. Choosing it opens a comment card beside the selection. Saved
 comments highlight their passage; clicking a highlight opens the comment for
 editing or deletion. Comments are stored separately from Markdown,
 so editing the document never inserts annotation markup into the file.

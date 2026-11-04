@@ -878,6 +878,44 @@ export default async function plugin(
     );
   }
 
+  async function primaryHostId(): Promise<string | null> {
+    try {
+      const config = await bb.sdk.system.config();
+      return config.primaryHostId ?? null;
+    } catch (error) {
+      bb.log.warn(`could not resolve the primary host: ${errorMessage(error)}`);
+      return null;
+    }
+  }
+
+  function vaultContaining(
+    target: ResolvedOpenerFile,
+    primaryHost: string | null,
+  ): { id: string; path: string } | null {
+    const targetHost = target.hostId ?? primaryHost;
+    let match: { id: string; path: string; rootLength: number } | null = null;
+    for (const vault of listVaults()) {
+      if ((vault.hostId ?? primaryHost) !== targetHost) continue;
+      const pathApi = hostPathApi(vault.rootPath);
+      const rootPath = normalizeHostRoot(vault.rootPath);
+      const relative = pathApi.relative(
+        rootPath,
+        normalizeHostRoot(target.path),
+      );
+      if (!relative || pathApi.isAbsolute(relative)) continue;
+      if (relative.split(pathApi.sep).includes("..")) continue;
+      const vaultPath = relative.replace(/\\/g, "/");
+      if (!vaultPathSchema.safeParse(vaultPath).success) continue;
+      if (match && rootPath.length <= match.rootLength) continue;
+      match = {
+        id: vault.id,
+        path: vaultPath,
+        rootLength: rootPath.length,
+      };
+    }
+    return match ? { id: match.id, path: match.path } : null;
+  }
+
   async function createNote(
     vaultId: string | undefined,
     input: Record<string, unknown>,
@@ -1863,6 +1901,7 @@ export default async function plugin(
         file,
         preview,
         previewPath,
+        vault: vaultContaining(target, await primaryHostId()),
       };
     },
     async saveOpenedFile(input) {

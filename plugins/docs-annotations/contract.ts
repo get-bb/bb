@@ -501,6 +501,10 @@ export const docsRpcContract = defineRpcContract({
         file: fileReadSchema,
         preview: previewSchema,
         previewPath: z.string(),
+        vault: z
+          .object({ id: z.string().min(1), path: vaultPathSchema })
+          .strict()
+          .nullable(),
       })
       .strict(),
     tags: (input) => [openedFileTag(input.source, input.path)],

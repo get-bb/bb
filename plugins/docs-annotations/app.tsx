@@ -1558,6 +1558,7 @@ function DocumentAnnotationEditor({
   baseMarkdown = null,
   inline = false,
   disabled = false,
+  annotationPath,
 }: {
   state: DocumentState;
   session: DocumentSession;
@@ -1567,11 +1568,13 @@ function DocumentAnnotationEditor({
   baseMarkdown?: string | null;
   inline?: boolean;
   disabled?: boolean;
+  annotationPath?: string;
 }) {
+  const notePath = annotationPath ?? state.path;
   const query = useRpcQuery({
     contract: docsRpcContract,
     method: "listAnnotations",
-    input: { vaultId, path: state.path },
+    input: { vaultId, path: notePath },
   });
   const add = useRpcMutation({
     contract: docsRpcContract,
@@ -1617,7 +1620,7 @@ function DocumentAnnotationEditor({
       if (request.mode === "create") {
         const created = await add.mutate({
           vaultId,
-          path: state.path,
+          path: notePath,
           quote: request.quote,
           comment,
         });
@@ -1647,7 +1650,7 @@ function DocumentAnnotationEditor({
       } else {
         await update.mutate({
           vaultId,
-          path: state.path,
+          path: notePath,
           id: request.id,
           comment,
         });
@@ -1665,7 +1668,7 @@ function DocumentAnnotationEditor({
   const deleteAnnotation = async (id: string) => {
     setBusy(true);
     try {
-      await remove.mutate({ vaultId, path: state.path, id });
+      await remove.mutate({ vaultId, path: notePath, id });
       for (const current of composers) removeAnnotationMention(current, id);
       setRequest(null);
       await query.refetch();
@@ -1759,6 +1762,7 @@ function SavedDocumentEditor({
   errorHint = "",
   active = true,
   vaultId,
+  annotationPath,
 }: {
   state: DocumentState;
   session: DocumentSession;
@@ -1767,6 +1771,7 @@ function SavedDocumentEditor({
   errorHint?: string;
   active?: boolean;
   vaultId?: string;
+  annotationPath?: string;
 }) {
   if (!state.loaded)
     return state.missing ? (
@@ -1795,6 +1800,7 @@ function SavedDocumentEditor({
           onUpload={onUpload}
           active={active}
           vaultId={vaultId}
+          annotationPath={annotationPath}
         />
       ) : (
         <TiptapEditor
@@ -1975,6 +1981,7 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
     filePath,
     { showsProposals: false, delay: 700 },
   );
+  const rpc = useRpc<typeof docsRpcContract>();
   const query = useRpcQuery({
     contract: docsRpcContract,
     method: "openFile",
@@ -2042,10 +2049,22 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
         state={state}
         session={session}
         errorHint=" — use the tab's Open with menu to choose another viewer."
-        onUpload={async () => {
-          throw new Error(
-            "Add this file to a Docs vault before uploading images",
-          );
+        vaultId={query.data?.vault?.id}
+        annotationPath={query.data?.vault?.path}
+        onUpload={async (file) => {
+          const vault = query.data?.vault;
+          if (!vault) {
+            throw new Error(
+              "Add this file to a Docs vault before uploading images",
+            );
+          }
+          const result = await rpc.call("uploadAttachment", {
+            vaultId: vault.id,
+            notePath: vault.path,
+            name: file.name,
+            content: await fileToBase64(file),
+          });
+          return { markdownPath: result.markdownPath };
         }}
       />
     </div>
