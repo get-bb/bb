@@ -1,0 +1,56 @@
+name: Temporary Windows smoke overlap comparison
+on:
+  push:
+    branches: [ci/windows-smoke-overlap-probe]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [ABBA, BAAB]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 3
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 2
+        continue-on-error: true
+      - uses: ./.github/actions/cache-react-compiler
+        timeout-minutes: 1
+        continue-on-error: true
+      - uses: ./.github/actions/cache-workspace
+        timeout-minutes: 1
+        continue-on-error: true
+        with:
+          node-version: '22.x'
+          cache-prefix: windows-app-smoke
+          turbo-cache: 'true'
+          turbo-cache-max-size-mb: '256'
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Build real bb-app and boot prerequisites
+        shell: bash
+        run: pnpm exec turbo run smoke:boot --filter=bb-app --output-logs=errors-only
+      - uses: ./.github/actions/cache-npm-downloads
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Compare full tarball smoke and failure cleanup
+        env:
+          SMOKE_PROBE_ORDER: ${{ matrix.order }}
+        run: node scripts/windows-smoke-overlap-probe.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: windows-smoke-${{ matrix.order }}
+          path: ${{ runner.temp }}/windows-smoke-results
+          retention-days: 7
