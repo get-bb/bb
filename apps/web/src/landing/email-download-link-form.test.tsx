@@ -12,6 +12,8 @@ import { CLI_COMMAND } from "./site";
 
 vi.mock("./analytics", () => ({ trackLandingEvent: vi.fn() }));
 
+const NOTE = "We’ll email a link to open on your computer";
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -20,7 +22,7 @@ function render() {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(<EmailDownloadLinkForm placement="hero" />);
+    root.render(<EmailDownloadLinkForm placement="hero" note={NOTE} />);
   });
 }
 
@@ -73,6 +75,7 @@ describe("email download link form", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render();
+    expect(container.querySelector(".install-note")?.textContent).toBe(NOTE);
     type("not-an-email");
     await submit();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -145,6 +148,7 @@ describe("email download link form", () => {
       expect(container.querySelector("button")?.textContent).toContain(
         "Send download link",
       );
+      expect(container.textContent).not.toContain(NOTE);
       expect(vi.mocked(trackLandingEvent)).toHaveBeenCalledWith({
         name: "landing_email_link_failed",
         properties: { placement: "hero", reason },
@@ -213,7 +217,7 @@ describe("email download link form", () => {
 describe("email download link form before hydration", () => {
   it("posts and keeps the button disabled so a native submit can't put the address in a URL", () => {
     const html = renderToStaticMarkup(
-      <EmailDownloadLinkForm placement="hero" />,
+      <EmailDownloadLinkForm placement="hero" note={NOTE} />,
     );
     expect(html).toContain('method="post"');
     expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""/);

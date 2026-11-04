@@ -30,12 +30,17 @@ export function DesktopInstallChoice({
         className="btn btn-primary btn-install desktop-only"
       />
       {touchAction === "email" ? (
-        <EmailDownloadLinkForm placement={placement} />
+        <>
+          <EmailDownloadLinkForm placement={placement} note={touchNote} />
+          <span className="install-note desktop-only">{note}</span>
+        </>
       ) : (
-        <SendToComputerButton placement={placement} />
+        <>
+          <SendToComputerButton placement={placement} />
+          <span className="install-note desktop-only">{note}</span>
+          <span className="install-note touch-only">{touchNote}</span>
+        </>
       )}
-      <span className="install-note desktop-only">{note}</span>
-      <span className="install-note touch-only">{touchNote}</span>
     </span>
   );
 }
