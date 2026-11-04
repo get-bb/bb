@@ -255,7 +255,10 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   seeds the draft only while it is still empty; `layout` is `"contained"`
   (default) or `"document"` like `ThreadChat`; `focusRequest` is a
   change-detected nonce that focuses the editor; `draftKey` picks where the
-  draft persists (default: a key scoped to your plugin).
+  draft persists (default: a key scoped to your plugin). The project selector
+  offers the same "New project" entry as bb's main new-thread view; the
+  project it creates becomes this composer's selection without navigating
+  away.
 
   This component has no plugin composer-host binding. Composer customizations
   and `useComposer()` writes do not reach this composer instance.
