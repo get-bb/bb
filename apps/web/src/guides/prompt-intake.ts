@@ -4,7 +4,7 @@ export interface IntakeField {
 }
 
 const AFTER_QUESTIONS = [
-  "Skip any I've answered. Then sum up the plan in three bullets and wait for my go. My answers override the steps below.",
+  "Skip any I've answered. Then sum up the plan in three bullets and wait for me to confirm it. My answers override the steps below.",
   "If a wait times out, wait again, up to three times.",
 ].join("\n");
 
