@@ -7,6 +7,10 @@
     "PSModuleAnalysisCachePath"
   ],
   "tasks": {
+    "@bb/server#validate:marketplace": {
+      "dependsOn": ["topo"],
+      "cache": false
+    },
     "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
       "cache": false,
