@@ -5280,8 +5280,8 @@ export interface BbNavigate {
   }): void;
   /**
    * Open an HTTP(S) URL using this client's BB browser preference, or request
-   * an application link on this device with confirmation unless its scheme is approved when
-   * the applicationLinks experiment is enabled. Returns false
+   * an application link on this device with confirmation unless its scheme is
+   * approved. Returns false
    * for blocked or unsupported schemes. True means handled, not launched. See
    * docs/api_to_audit.md.
    */

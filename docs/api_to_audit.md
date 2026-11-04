@@ -1074,8 +1074,9 @@ Docs: `backend-sdk.md`.
 `experimental_useExperiment(key)` returns whether the bb experiment `key` is
 on, from the same live system config core reads (Settings → Experiments,
 `bb settings experiment`). It is false while config loads and for unknown
-keys. First caller: the built-in thread list, which gates multi-row selection
-on `sidebarMultiSelect`.
+keys. Callers: the built-in thread list, which gates row metadata on
+`threadRowMetadata`, and push notifications, which reads
+`skipFocusedThreadNotifications`.
 
 **Audit before stabilizing.**
 

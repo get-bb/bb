@@ -1,8 +1,5 @@
 import { useState } from "react";
-import type {
-  ThreadTimelineUnreadDividerAnchor,
-  ThreadTimelineUnreadDividerPlacement,
-} from "@/components/thread/timeline";
+import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/timeline";
 
 interface ThreadUnreadDividerThreadState {
   id: string;
@@ -29,7 +26,6 @@ interface ShouldTrackThreadUnreadDividerArgs {
 }
 
 interface UseThreadUnreadDividerStateArgs {
-  anchor: ThreadTimelineUnreadDividerAnchor;
   hasFreshThread: boolean;
   routeThreadId: string | undefined;
   thread: ThreadUnreadDividerThreadState | undefined;
@@ -54,7 +50,6 @@ function shouldTrackThreadUnreadDivider({
 
 function buildUnreadDividerPlacement(
   thread: ThreadUnreadDividerThreadState,
-  anchor: ThreadTimelineUnreadDividerAnchor,
 ): ThreadTimelineUnreadDividerPlacement | null {
   if (
     thread.lastReadAt === null ||
@@ -62,14 +57,13 @@ function buildUnreadDividerPlacement(
   ) {
     return null;
   }
-  return { anchor, cutoffAt: thread.lastReadAt };
+  return { cutoffAt: thread.lastReadAt };
 }
 
 function nextThreadUnreadDividerSnapshot(
   currentSnapshot: ThreadUnreadDividerSnapshot | null,
   thread: ThreadUnreadDividerThreadState,
   hasFreshThread: boolean,
-  anchor: ThreadTimelineUnreadDividerAnchor,
 ): ThreadUnreadDividerSnapshot | null {
   const isOpening = currentSnapshot?.threadId !== thread.id;
   if (isOpening && !hasFreshThread) {
@@ -82,7 +76,7 @@ function nextThreadUnreadDividerSnapshot(
     return currentSnapshot;
   }
 
-  const placement = buildUnreadDividerPlacement(thread, anchor);
+  const placement = buildUnreadDividerPlacement(thread);
   return {
     attentionAt: thread.latestAttentionAt,
     autoScroll: isOpening && placement !== null,
@@ -92,7 +86,6 @@ function nextThreadUnreadDividerSnapshot(
 }
 
 export function useThreadUnreadDividerState({
-  anchor,
   hasFreshThread,
   routeThreadId,
   thread,
@@ -121,7 +114,6 @@ export function useThreadUnreadDividerState({
           snapshot,
           trackedThread,
           hasFreshThread,
-          anchor,
         );
   if (currentSnapshot !== snapshot) {
     setSnapshot(currentSnapshot);
