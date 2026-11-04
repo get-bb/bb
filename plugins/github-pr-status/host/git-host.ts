@@ -30,24 +30,6 @@ const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const GH_PR_ACTION_TIMEOUT_MS = 60_000;
 const GH_PR_ACTION_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 
-const GH_PR_VIEW_JSON_FIELDS = [
-  "number",
-  "title",
-  "state",
-  "url",
-  "isDraft",
-  "autoMergeRequest",
-  "baseRefName",
-  "headRefName",
-  "headRefOid",
-  "updatedAt",
-  "statusCheckRollup",
-  "reviewDecision",
-  "reviewRequests",
-  "mergeStateStatus",
-  "mergeable",
-].join(",");
-
 interface GetPullRequestForCurrentBranchArgs {
   cwd: string;
   localBranch: string;
@@ -226,8 +208,6 @@ function normalizeCheckName(object: JsonObject): string {
   if (explicitName && explicitName.trim()) return explicitName.trim();
   const context = getString(object, "context");
   if (context && context.trim()) return context.trim();
-  const workflowName = getString(object, "workflowName");
-  if (workflowName && workflowName.trim()) return workflowName.trim();
   return "Unnamed check";
 }
 
@@ -319,9 +299,8 @@ function normalizeGitHubPullRequestView(
     updatedAt: getString(object, "updatedAt"),
     checks: normalizeChecks(object.statusCheckRollup),
     reviewDecision: normalizeReviewDecision(object.reviewDecision),
-    reviewRequestCount: Array.isArray(object.reviewRequests)
-      ? object.reviewRequests.length
-      : (getNumber(asObject(object.reviewRequests) ?? {}, "totalCount") ?? 0),
+    reviewRequestCount:
+      getNumber(asObject(object.reviewRequests) ?? {}, "totalCount") ?? 0,
     mergeStateStatus: normalizeMergeStateStatus(object.mergeStateStatus),
     mergeable: normalizeMergeable(object.mergeable),
   };
@@ -490,20 +469,13 @@ function runGh(
   );
 }
 
-export function parseGitHubPullRequestView(
-  stdout: string,
-): GitHubPullRequestView | null {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return null;
-  }
-  let json: unknown;
+function parsePullRequestViewUrl(stdout: string): string | null {
   try {
-    json = JSON.parse(trimmed);
+    const url = getString(asObject(JSON.parse(stdout)) ?? {}, "url");
+    return url === null ? null : new URL(url).toString();
   } catch {
     return null;
   }
-  return normalizeGitHubPullRequestView(json);
 }
 
 const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
@@ -831,7 +803,7 @@ export async function prepareCurrentBranchRead(
     "view",
     ...(target.outcome === "upstream-branch" ? [target.selector] : []),
     "--json",
-    GH_PR_VIEW_JSON_FIELDS,
+    "url",
   ];
   return {
     kind: "direct",
@@ -843,21 +815,13 @@ export async function prepareCurrentBranchRead(
           timeoutMs: GH_PR_VIEW_TIMEOUT_MS,
           maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
         });
-        const pr = parseGitHubPullRequestView(stdout);
-        if (pr === null)
+        const url = parsePullRequestViewUrl(stdout);
+        if (url === null)
           return {
             outcome: "unavailable",
             message: "gh pr view returned unparseable output",
           };
-        if (pr.isDraft || pr.state !== "OPEN")
-          return {
-            outcome: "found",
-            pullRequest: { ...pr, inMergeQueue: false },
-          };
-        const full = await getPullRequestByUrl(pr.url, args.cwd);
-        return full.outcome === "found"
-          ? full
-          : { outcome: "found", pullRequest: pr };
+        return await getPullRequestByUrl(url, args.cwd);
       } catch (error) {
         return classifyPullRequestViewError(error);
       }
