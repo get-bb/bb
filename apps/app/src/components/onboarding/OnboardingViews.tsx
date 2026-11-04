@@ -37,6 +37,7 @@ import {
 import {
   ONBOARDING_STEPS,
   signInSiteName,
+  stripTerminalSequences,
   type AgentSetupState,
   type OnboardingStepId,
   type SignInGuide,
@@ -293,6 +294,7 @@ export interface OnboardingAgent {
   setup?: "signIn" | "connect";
   busy?: boolean;
   installQueued?: boolean;
+  installLog?: string;
   subline?: ReactNode;
   expanded?: ReactNode;
 }
@@ -594,7 +596,11 @@ function AgentRow({
               agent={agent}
               label={installActionLabel(state)}
               busyLabel={
-                agent.installQueued === true ? "Waiting…" : "Installing…"
+                agent.installQueued === true
+                  ? "Waiting…"
+                  : state.status === "installing" && state.update
+                    ? "Updating…"
+                    : "Installing…"
               }
               busy={state.status === "installing"}
               onClick={() => onInstall(agent.id)}
@@ -634,6 +640,11 @@ function AgentRow({
         </div>
       </div>
       {agent.expanded}
+      {quiet &&
+      state.status === "installFailed" &&
+      agent.installLog !== undefined ? (
+        <AgentInstallErrorDetails log={agent.installLog} />
+      ) : null}
     </li>
   );
 }
@@ -1308,7 +1319,8 @@ export function DevicesStep({
 
 export function AgentInstallErrorDetails({ log }: { log: string }) {
   const [open, setOpen] = useState(false);
-  if (log.trim().length === 0) return null;
+  const text = stripTerminalSequences(log);
+  if (text.trim().length === 0) return null;
   return (
     <div className="mt-3">
       <InlinePanel
@@ -1322,8 +1334,8 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
         }
         expanded={
           open ? (
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap px-3 pb-3 pt-1 font-mono text-xs text-muted-foreground">
-              {log}
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap wrap-anywhere px-3 pb-3 pt-1 font-mono text-xs text-muted-foreground">
+              {text}
             </pre>
           ) : null
         }
@@ -1340,6 +1352,21 @@ export interface AgentSignInView {
   started: boolean;
 }
 
+type SignInAlternate = "browser" | "code" | null;
+
+function instructionLinksSignInPage(
+  url: string,
+  view: AgentSignInView,
+  alternate: SignInAlternate,
+): boolean {
+  if (signInSiteName(url) === null) return false;
+  return (
+    view.guide?.userCode != null ||
+    view.guide?.acceptsPastedCode === true ||
+    alternate !== "code"
+  );
+}
+
 export function AgentSignInInstruction({
   agentName,
   view,
@@ -1349,7 +1376,7 @@ export function AgentSignInInstruction({
 }: {
   agentName: string;
   view: AgentSignInView;
-  alternate: "browser" | "code" | null;
+  alternate: SignInAlternate;
   onOpenUrl: (url: string) => void;
   onUseAlternate: () => void;
 }) {
@@ -1408,9 +1435,11 @@ interface AgentSignInPanelProps {
   view: AgentSignInView;
   code: string;
   codeSubmitted: boolean;
+  alternate: SignInAlternate;
   terminal: ReactNode;
   onCodeChange: (code: string) => void;
   onSubmitCode: () => void;
+  onOpenUrl: (url: string) => void;
   onCopy: (text: string) => void;
   onToggleTerminal: () => void;
 }
@@ -1421,9 +1450,11 @@ export function AgentSignInPanel({
   view,
   code,
   codeSubmitted,
+  alternate,
   terminal,
   onCodeChange,
   onSubmitCode,
+  onOpenUrl,
   onCopy,
   onToggleTerminal,
 }: AgentSignInPanelProps) {
@@ -1449,6 +1480,10 @@ export function AgentSignInPanel({
           }
         : { kind: "waiting" };
   if (starting && !connect) return null;
+  const pageUrl =
+    url === null || connect || instructionLinksSignInPage(url, view, alternate)
+      ? null
+      : url;
   return (
     <div className="mt-3">
       <SignInPanel
@@ -1457,12 +1492,30 @@ export function AgentSignInPanel({
         status={codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={
-          <DisclosureToggle
-            expanded={view.terminalVisible}
-            onToggle={onToggleTerminal}
-          >
-            {terminalToggleLabel(view.terminalVisible)}
-          </DisclosureToggle>
+          <>
+            {pageUrl === null ? null : (
+              <>
+                <InlineTextLink
+                  href={pageUrl}
+                  onOpen={(href) => {
+                    onOpenUrl(href);
+                    return true;
+                  }}
+                >
+                  Open sign-in page
+                </InlineTextLink>
+                <InlineTextButton onClick={() => onCopy(pageUrl)}>
+                  Copy link
+                </InlineTextButton>
+              </>
+            )}
+            <DisclosureToggle
+              expanded={view.terminalVisible}
+              onToggle={onToggleTerminal}
+            >
+              {terminalToggleLabel(view.terminalVisible)}
+            </DisclosureToggle>
+          </>
         }
         expanded={
           view.terminalVisible ? <div className="h-48">{terminal}</div> : null
