@@ -35,7 +35,7 @@ Guide: https://getbb.app/guides/switch-from-conductor
 
 Defaults: every repo, all workspaces, Scripts yes. Don't move, delete, or archive any workspace, don't open Conductor's app data in ~/Library/Application Support/com.conductor.app, and don't commit or push. Folder and branch names can contain spaces and quotes, so pass every value to a command as a quoted shell variable. If a command fails, stop and tell me the command, the error, and what you'd try next.
 
-Do these steps for each repo:
+Part 1: do these steps for each repo.
 1. Find the repo's main checkout: run git -C "$workspace" worktree list --porcelain in any of its Conductor workspaces; the first entry is the main checkout. Older repos keep their workspaces in .conductor/ inside the repo, so if ~/conductor/workspaces/ has nothing for a repo I named, ask me where it is.
 2. Find its bb project: in bb project list --json, a project whose sources[].path is the main checkout. If there isn't one, add it with bb project create --name "$repo" --root "$checkout" --machine "$host" --json, where $host is environment.hostId from bb thread get --self --json.
    Check: bb project list --json now shows the main checkout.
@@ -57,7 +57,22 @@ Do these steps for each repo:
    - These scripts get committed and shared with everyone on the repo. Never copy tokens, passwords, or other secrets into them, and tell me which lines came from settings.local.toml, which is personal, before you write them.
    Check: bash -n passes on each script. Show me the diff, and remind me that new worktrees pick these files up once I commit them to the base branch.
 
-Reply with a table of each repo, workspace, branch, and bb thread ID, then the files you wrote, the run scripts and variables left for me, and anything you skipped and why.`,
+Part 2: Conductor Cloud. Ask me whether I used it. If I did:
+6. Cloud workspaces live on Conductor's servers, not this computer, and Conductor Cloud goes read-only on November 13, 2026 and starts deleting data on November 20, so this can't wait. Ask me to right-click each one in Conductor and choose Transfer to local, wait until I say they're done, then do steps 3 and 4 for them.
+7. Ask where I want work that ran in the cloud to run in bb, with one line on each option:
+   - This computer, reachable from my phone and any browser with bb connect. Free, but it stops when the computer sleeps. Setup: https://getbb.app/guides/work-from-anywhere
+   - An always-on computer or server I add in Settings → Machines.
+   - A cloud sandbox plugin. List what bb plugin search sandbox shows, such as Modal Sandbox, and say that each runs threads in my own account with that provider.
+   Set up only what I pick, after I say yes. For a plugin, install it with bb plugin install and tell me where in Settings to connect my account.
+
+Part 3: a Run button. If any repo had run scripts, ask me whether I want a Run button in bb for them. If I do:
+8. Build a small bb plugin. Read bb plugin new --help and the plugin guide it points to, and scaffold it with bb plugin new run-button in a folder I approve.
+   - It adds a Run button to the thread header that opens a terminal in the thread's folder and starts that repo's run command there.
+   - Keep each repo's commands in the plugin's settings, filled in from the Conductor run scripts without their port flags.
+   - Build it with bb plugin build and install it with bb plugin install <folder>.
+   Check: open one of the moved threads, press Run, and confirm the dev server starts. Tell me how to change a command later.
+
+Reply with a table of each repo, workspace, branch, and bb thread ID, then the files you wrote, what you set up for Cloud and the Run button, what's left for me, and anything you skipped and why.`,
 );
 
 export const guide: Guide = {
@@ -169,10 +184,11 @@ export const guide: Guide = {
       question: "What about my Conductor Cloud workspaces?",
       answer: (
         <p>
-          Before November 13, right-click each one in Conductor and choose{" "}
-          <strong>Transfer to local</strong>, then run the prompt. To keep a
-          copy of everything, choose{" "}
-          <strong>Settings → Account → Export data</strong> in Conductor.
+          The prompt walks you through them. Before November 13, right-click
+          each one in Conductor and choose <strong>Transfer to local</strong>,
+          and your agent brings it into bb. Then it helps you pick where that
+          work runs: your own computer, reachable from your phone, an always-on
+          machine, or a cloud sandbox like Modal Sandbox.
         </p>
       ),
     },
@@ -201,8 +217,8 @@ export const guide: Guide = {
             <code>.worktreeinclude</code>.
           </li>
           <li>
-            bb has no Run button. Ask your agent to start your dev server; it
-            runs in the thread's folder.
+            For run scripts, the prompt offers to build you a Run button: a
+            small bb plugin that starts each repo's dev server from the thread.
           </li>
         </ul>
       ),
