@@ -202,6 +202,32 @@ describe("parseOperationMessage operation titles", () => {
     });
   });
 
+  it("projects a provider switch as a dedicated timeline divider", () => {
+    const row = factory().systemOperation({
+      operation: "context_clear",
+      status: "completed",
+      message: "Provider changed",
+      metadata: {
+        providerSwitch: {
+          fromProviderId: "codex",
+          fromModel: "gpt-6-astra",
+          toProviderId: "claude-code",
+          toModel: "sonnet",
+        },
+      },
+    });
+    const { event, meta } = decodeThreadEventRow(row);
+
+    expect(
+      parseOperationMessage(event, meta, { threadName: THREAD_NAME }),
+    ).toMatchObject({
+      kind: "operation",
+      opType: "provider-switch",
+      title:
+        "Provider and model changed: codex · gpt-6-astra → claude-code · sonnet",
+    });
+  });
+
   describe("ownership-change", () => {
     it("links the thread to its new/previous parent by action", () => {
       expect(
@@ -281,5 +307,7 @@ describe("parseOperationMessage operation titles", () => {
 });
 
 it("explains an intentional machine removal without suggesting a daemon failure", () => {
-  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe(
+    "Stopped because the machine was removed",
+  );
 });

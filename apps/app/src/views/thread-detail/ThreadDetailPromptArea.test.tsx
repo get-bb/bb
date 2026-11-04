@@ -1961,6 +1961,7 @@ describe("ThreadDetailPromptArea", () => {
       projectId: "proj_1",
     });
     renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Same provider handoff" }),
     );
@@ -2055,7 +2056,7 @@ describe("ThreadDetailPromptArea", () => {
     );
   });
 
-  it.each(["Switch provider", "Complete handoff flow"])(
+  it.each(["Switch provider"])(
     "%s prepares a handoff and restores the draft on return",
     (entryAction) => {
       mocks.promptDraft.text = "Keep going";
@@ -2094,6 +2095,27 @@ describe("ThreadDetailPromptArea", () => {
       expect(screen.getByTestId("submit-title").textContent).toBe("Submit");
     },
   );
+
+  it("switches the provider in the current thread when a model is chosen", () => {
+    mocks.promptDraft.text = "Keep going";
+    renderPromptArea();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete handoff flow" }),
+    );
+
+    expect(mocks.updateThreadMutate).toHaveBeenCalledWith(
+      {
+        id: "thr_1",
+        providerId: "claude-code",
+        model: "claude-opus-5",
+        reasoningLevel: "medium",
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.promptDraft.getCurrent().text).toBe("Keep going");
+  });
 
   it("shows destination permissions instead of the source active Plan mode", async () => {
     mocks.defaultExecutionOptions = {

@@ -52,6 +52,7 @@ interface ThreadUpdateCommandOptions {
   section?: string;
   clearSection?: boolean;
   model?: string;
+  provider?: string;
   reasoningLevel?: string;
   visibility?: string;
   parentNotifications?: string;
@@ -155,6 +156,7 @@ interface ThreadUpdateBody {
   title?: string;
   sectionId?: string | null;
   parentThreadId?: string | null;
+  providerId?: string;
   model?: string;
   reasoningLevel?: ReasoningLevel;
   visibility?: ThreadVisibility;
@@ -179,6 +181,7 @@ export function registerActionsCommands(
       "--model <model>",
       "Set the sticky model applied on the thread's next turn",
     )
+    .option("--provider <id>", "Continue this thread with another provider")
     .option(
       "--reasoning-level <level>",
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
@@ -211,12 +214,13 @@ export function registerActionsCommands(
             !opts.clearSection &&
             !opts.title &&
             !opts.model &&
+            !opts.provider &&
             !reasoningLevel &&
             !visibility &&
             !parentNotifications
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --provider, --model, --reasoning-level, --visibility, or --parent-notifications.",
             );
           }
 
@@ -244,6 +248,9 @@ export function registerActionsCommands(
           }
           if (opts.model) {
             body.model = opts.model;
+          }
+          if (opts.provider) {
+            body.providerId = opts.provider;
           }
           if (reasoningLevel) {
             body.reasoningLevel = reasoningLevel;
@@ -276,6 +283,9 @@ export function registerActionsCommands(
           }
           if (opts.model) {
             console.log(`Model: ${opts.model}`);
+          }
+          if (opts.provider) {
+            console.log(`Provider: ${thread.providerId}`);
           }
           if (reasoningLevel) {
             console.log(`Reasoning level: ${reasoningLevel}`);

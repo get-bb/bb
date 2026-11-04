@@ -185,6 +185,7 @@ function operationKindForMessage(
     case "reasoning":
     case "compaction":
     case "context-clear":
+    case "provider-switch":
     case "thread-provisioning":
     case "thread-interrupted":
     case "provider-unhandled":

@@ -13,6 +13,7 @@ import { appendThreadEvent } from "./thread-events.js";
 import { stopThreadForCurrentState } from "./thread-lifecycle.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import { resolveVisibleThreadHistoryStart } from "./thread-visible-history.js";
 
 export async function clearThreadContext(
   deps: LoggedPendingInteractionWorkSessionDeps,
@@ -20,6 +21,12 @@ export async function clearThreadContext(
     beforeCommitInTransaction?: (args: { tx: DbTransaction }) => void;
     environment: Pick<Environment, "hostId" | "id">;
     thread: Thread;
+    providerSwitch?: {
+      fromProviderId: string;
+      fromModel: string;
+      toProviderId: string;
+      toModel: string;
+    };
   },
 ): Promise<void> {
   await withThreadContextClearGuard(args.thread.id, async () => {
@@ -71,7 +78,20 @@ export async function clearThreadContext(
           operation: THREAD_CONTEXT_CLEAR_OPERATION,
           operationId: createEventId(),
           status: "completed",
-          message: THREAD_CONTEXT_CLEARED_DETAIL,
+          message: args.providerSwitch
+            ? `${args.providerSwitch.fromProviderId} · ${args.providerSwitch.fromModel} → ${args.providerSwitch.toProviderId} · ${args.providerSwitch.toModel}`
+            : THREAD_CONTEXT_CLEARED_DETAIL,
+          ...(args.providerSwitch
+            ? {
+                metadata: {
+                  providerSwitch: args.providerSwitch,
+                  visibleHistoryStartSequence: resolveVisibleThreadHistoryStart(
+                    deps.db,
+                    { threadId: releasedThread.id },
+                  ),
+                },
+              }
+            : {}),
         },
       },
       args.beforeCommitInTransaction,

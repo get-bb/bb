@@ -102,6 +102,7 @@ import {
   scopedItemRefKey,
   upsertThreadConversationOutlineRecord,
 } from "@bb/db";
+import { resolveVisibleThreadHistoryStart } from "./thread-visible-history.js";
 import type {
   DbConnection,
   InlineOutputCharLimit,
@@ -1324,7 +1325,10 @@ function buildThreadTimelineInternal(
   });
   const historySequenceStart = options.includeClearedContextHistory
     ? 0
-    : (contextBoundarySeq ?? 0);
+    : resolveVisibleThreadHistoryStart(db, {
+        atOrBeforeSequence: snapshot.maxSeq,
+        threadId: thread.id,
+      });
   const selectRows = (knownBudgetFloor: TimelineBudgetFloor | null) =>
     selectStandardTimelineEventRows(
       db,
@@ -1686,12 +1690,10 @@ function resolveConversationHistorySequenceStart(
   options: BuildThreadConversationOutlineOptions,
 ): number {
   if (options.includeClearedContextHistory) return 0;
-  return (
-    getLatestCompletedThreadContextClearSequence(db, {
-      atOrBeforeSequence: options.maxSeq,
-      threadId: thread.id,
-    }) ?? 0
-  );
+  return resolveVisibleThreadHistoryStart(db, {
+    atOrBeforeSequence: options.maxSeq,
+    threadId: thread.id,
+  });
 }
 
 function buildThreadConversationRows(

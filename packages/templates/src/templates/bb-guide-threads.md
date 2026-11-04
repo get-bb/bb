@@ -128,6 +128,10 @@ Spawning:
   Worktree, and Personal workspace.
 
 Handoff:
+  Selecting another provider in the follow-up model picker continues in the
+  current chat. The timeline marks the change, and the new provider receives
+  recent conversation text as context. Use bb thread update --provider <id>
+  [--model <model>] to do the same from the CLI.
   The app's Handoff to new thread (in the follow-up model picker) starts a new
   thread that references the source. From the CLI, run bb thread spawn with
   --provider, --model, --environment and --prompt 'Continue from

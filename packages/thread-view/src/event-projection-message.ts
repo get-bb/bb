@@ -321,6 +321,7 @@ const eventProjectionOperationTypeValues = [
   "operation",
   "compaction",
   "context-clear",
+  "provider-switch",
 ] as const;
 type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];

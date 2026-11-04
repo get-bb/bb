@@ -69,6 +69,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { switchThreadProvider } from "../../services/threads/thread-provider-switch.js";
 import { applyThreadSessionOptionPatch } from "../../services/threads/thread-session-options.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
@@ -445,7 +446,16 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       });
     }
 
-    if ("model" in payload || "reasoningLevel" in payload) {
+    if (payload.providerId && payload.providerId !== thread.providerId) {
+      await switchThreadProvider(deps, {
+        thread,
+        providerId: payload.providerId,
+        ...(payload.model ? { model: payload.model } : {}),
+        ...(payload.reasoningLevel
+          ? { reasoningLevel: payload.reasoningLevel }
+          : {}),
+      });
+    } else if ("model" in payload || "reasoningLevel" in payload) {
       await applyThreadExecutionOverride(deps, {
         thread,
         patch: {

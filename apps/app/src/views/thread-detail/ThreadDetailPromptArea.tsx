@@ -114,6 +114,7 @@ import {
 import {
   useRestoreThreadEnvironment,
   useUnarchiveThread,
+  useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import { orderPendingInteractions } from "@/hooks/queries/thread-queries";
 import {
@@ -503,6 +504,9 @@ export function ThreadDetailPromptArea({
   const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
   const restoreThreadEnvironment = useRestoreThreadEnvironment();
+  const updateThread = useUpdateThread({
+    errorMessage: "Failed to change provider.",
+  });
   const createThread = useCreateThread();
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
@@ -707,7 +711,7 @@ export function ThreadDetailPromptArea({
     environmentId: thread.environmentId ?? undefined,
     environmentHostId,
     scope: "component-local",
-    resetKey: thread.id,
+    resetKey: `${thread.id}:${thread.providerId}`,
     sessionOptionSelections: liveSessionOptionSelections,
     initialProviderId: thread.providerId,
     initialModel:
@@ -841,13 +845,42 @@ export function ThreadDetailPromptArea({
   );
   const handleHandoffSelect = useCallback(
     (selection: ModelReasoningPickerHandoffSelection) => {
+      if (!isHandoffSelection) {
+        if (selection.providerId === thread.providerId) {
+          handleModelChange(selection.model);
+          setReasoningLevel(selection.reasoningLevel);
+          return;
+        }
+        updateThread.mutate(
+          {
+            id: thread.id,
+            providerId: selection.providerId,
+            model: selection.model,
+            reasoningLevel: selection.reasoningLevel,
+          },
+          {
+            onSuccess: () => setProviderModelReasoning(selection),
+          },
+        );
+        return;
+      }
       if (fallbackIdentity !== null) {
         setOverriddenFallbackIdentity(fallbackIdentity);
       }
       beginHandoff();
       setProviderModelReasoning(selection);
     },
-    [beginHandoff, fallbackIdentity, setProviderModelReasoning],
+    [
+      beginHandoff,
+      fallbackIdentity,
+      handleModelChange,
+      isHandoffSelection,
+      setProviderModelReasoning,
+      setReasoningLevel,
+      thread.id,
+      thread.providerId,
+      updateThread,
+    ],
   );
   useEffect(() => {
     if (isHandoffSelection) {

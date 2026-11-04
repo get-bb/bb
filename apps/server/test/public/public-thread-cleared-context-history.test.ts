@@ -12,6 +12,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { resolveVisibleThreadHistoryStart } from "../../src/services/threads/thread-visible-history.js";
 
 it("follows keepHistoryAfterContextClear across cached timeline, outline, and message reads", async () => {
   await withTestHarness(async (harness) => {
@@ -110,5 +111,67 @@ it("follows keepHistoryAfterContextClear across cached timeline, outline, and me
 
     expect((await put(defaultAppSettings)).status).toBe(200);
     expect(await read()).toEqual(hidden);
+  });
+});
+
+it("keeps visible history across a provider switch without restoring earlier cleared context", async () => {
+  await withTestHarness(async (harness) => {
+    const { thread } = seedThreadFixture(harness);
+    const common = { threadId: thread.id, scope: threadScope() };
+    seedEvent(harness.deps, {
+      ...common,
+      sequence: 1,
+      type: "system/manager/user_message",
+      data: { text: "Hidden before clear" },
+    });
+    seedEvent(harness.deps, {
+      ...common,
+      sequence: 2,
+      type: "system/operation",
+      data: {
+        operation: THREAD_CONTEXT_CLEAR_OPERATION,
+        operationId: "clear",
+        status: "completed",
+        message: "Fresh context",
+      },
+    });
+    seedEvent(harness.deps, {
+      ...common,
+      sequence: 3,
+      type: "system/manager/user_message",
+      data: { text: "Visible before switch" },
+    });
+    seedEvent(harness.deps, {
+      ...common,
+      sequence: 4,
+      type: "system/operation",
+      data: {
+        operation: THREAD_CONTEXT_CLEAR_OPERATION,
+        operationId: "switch",
+        status: "completed",
+        message: "Provider changed",
+        metadata: {
+          providerSwitch: {
+            fromProviderId: "codex",
+            fromModel: "old",
+            toProviderId: "claude-code",
+            toModel: "new",
+          },
+          visibleHistoryStartSequence: 2,
+        },
+      },
+    });
+    expect(
+      resolveVisibleThreadHistoryStart(harness.db, { threadId: thread.id }),
+    ).toBe(2);
+    const timeline = threadTimelineResponseSchema.parse(
+      await readJson(
+        await harness.app.request(`/api/v1/threads/${thread.id}/timeline`),
+      ),
+    );
+    const content = JSON.stringify(timeline.rows);
+    expect(content).toContain("Visible before switch");
+    expect(content).toContain("provider-switch");
+    expect(content).not.toContain("Hidden before clear");
   });
 });

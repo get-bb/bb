@@ -590,6 +590,11 @@ export function ModelReasoningPicker({
             reasoningValue,
         });
         setMoreModelsOpen(false);
+        if (!handoff.active && activeProviderId !== handoff.sourceProviderId) {
+          setOpen(false);
+          setHandoffMode(false);
+          setPreviewProviderId(null);
+        }
         return;
       }
       onModelChange(model);
@@ -1028,7 +1033,13 @@ export function ModelReasoningPicker({
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align={align}
-        mobileTitle={handoffMode ? "Handoff to new thread" : "Model"}
+        mobileTitle={
+          handoffMode
+            ? handoff?.active
+              ? "Handoff to new thread"
+              : "Switch provider in this chat"
+            : "Model"
+        }
         mobileClassName={cn(
           "h-[min(32rem,80dvh)]",
           handoffMode && HANDOFF_DRAWER_TOP_CLASS_NAME,
@@ -1045,7 +1056,16 @@ export function ModelReasoningPicker({
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
-        {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
+        {handoffMode ? (
+          <HandoffModeHeader
+            onBack={exitHandoffMode}
+            title={
+              handoff?.active
+                ? "Handoff to new thread"
+                : "Switch provider in this chat"
+            }
+          />
+        ) : null}
         {showProviderTabs ? (
           <div className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1">
             {providerOptions.map((provider) => {
@@ -1159,7 +1179,13 @@ export function ModelReasoningPicker({
   );
 }
 
-function HandoffModeHeader({ onBack }: { onBack: () => void }) {
+function HandoffModeHeader({
+  onBack,
+  title,
+}: {
+  onBack: () => void;
+  title: string;
+}) {
   return (
     <div className="flex shrink-0 items-center gap-1 bg-background px-2 pb-1 pt-1.5">
       <button
@@ -1174,7 +1200,7 @@ function HandoffModeHeader({ onBack }: { onBack: () => void }) {
         <Icon name="X" className="size-3.5" aria-hidden />
       </button>
       <span className="min-w-0 truncate text-xs font-normal text-subtle-foreground">
-        Handoff to new thread
+        {title}
       </span>
     </div>
   );

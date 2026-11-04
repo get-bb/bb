@@ -117,6 +117,7 @@ import { scheduleThreadProvisioningAdvance } from "./thread-provisioning.js";
 import { isPreStartThreadStatus } from "./thread-status.js";
 import { settleDanglingBackgroundTasksForStoppedThreadInTransaction } from "./background-task-reconciliation.js";
 import { abortPluginToolCallsForThreads } from "../plugins/plugin-tool-calls.js";
+import { providerHandoffContextInput } from "./thread-provider-handoff-context.js";
 
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
@@ -1020,6 +1021,13 @@ export async function prepareReadyThreadTurnCommand(
   return {
     command: await buildThreadStartCommand(deps, {
       ...args,
+      input: [
+        ...providerHandoffContextInput(deps, {
+          threadId: args.thread.id,
+          providerId: args.thread.providerId,
+        }),
+        ...args.input,
+      ],
       fork: readDispatchedThreadStartFork(deps.db, args.thread.id),
     }),
     mode: "thread.start",

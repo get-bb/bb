@@ -57,6 +57,7 @@ Ownership:
     --clear-parent-thread                  Remove parent assignment
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
+    --provider <id>                        Continue this chat with another provider
     --model <model>                        Set the sticky model for the next and later turns
     --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
     --visibility <visibility>              Set visible or hidden
@@ -66,9 +67,12 @@ Ownership:
   --clear-section is also supplied. Children released by environment archiving
   also inherit their former parent's section.
 
-  Model and reasoning updates stay within the thread's current provider. BB
-  validates them against that provider's current model catalog, applies them on
-  the next turn, and keeps using them on later turns until changed.
+  Model and reasoning updates use the thread's current provider. A provider
+  change stops the old session, keeps the same thread and timeline, and starts
+  a new provider session on the next message. BB passes recent conversation
+  text as agent-only context. The provider change appears in the timeline.
+  Choose a model and reasoning level with --model and --reasoning-level; when
+  omitted, BB uses the target provider's default model and reasoning level.
 
   bb thread regenerate-title [id]          Replace the title with a generated one
     --self                                 Target current thread

@@ -42,6 +42,16 @@ import type {
   EventProjectionPluginFormLifecycleMessage,
 } from "./event-projection-types.js";
 import { getProviderModelFallbackData } from "./model-fallback-extraction.js";
+import { z } from "zod";
+
+const providerSwitchMetadataSchema = z.object({
+  providerSwitch: z.object({
+    fromProviderId: z.string(),
+    fromModel: z.string(),
+    toProviderId: z.string(),
+    toModel: z.string(),
+  }),
+});
 
 type ParseOperationMessageOptions = Pick<
   BuildEventProjectionMessagesOptions,
@@ -670,6 +680,24 @@ export function parseOperationMessage(
       decoded.operation === "edit_message"
     ) {
       return null;
+    }
+
+    if (
+      decoded.operation === THREAD_CONTEXT_CLEAR_OPERATION &&
+      decoded.status === "completed"
+    ) {
+      const switchMetadata = providerSwitchMetadataSchema.safeParse(
+        decoded.metadata,
+      );
+      if (switchMetadata.success) {
+        const { fromProviderId, fromModel, toProviderId, toModel } =
+          switchMetadata.data.providerSwitch;
+        return op(decoded, meta, "provider-switch", {
+          opType: "provider-switch",
+          title: `Provider and model changed: ${fromProviderId} · ${fromModel} → ${toProviderId} · ${toModel}`,
+          status: "completed",
+        });
+      }
     }
 
     const threadOperation = createThreadOperationMetadata(decoded);

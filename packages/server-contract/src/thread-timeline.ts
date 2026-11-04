@@ -153,6 +153,7 @@ export const timelineSystemOperationKindValues = [
   "reasoning",
   "compaction",
   "context-clear",
+  "provider-switch",
   "parent-change",
   "thread-provisioning",
   "thread-interrupted",

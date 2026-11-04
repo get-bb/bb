@@ -811,6 +811,7 @@ export const updateThreadRequestSchema = z
     title: z.string().min(1).nullable(),
     sectionId: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
+    providerId: z.string().min(1),
     model: z.string().min(1).nullable(),
     reasoningLevel: reasoningLevelSchema.nullable(),
     sessionOptions: z.record(
@@ -827,6 +828,7 @@ export const updateThreadRequestSchema = z
       value.title !== undefined ||
       value.sectionId !== undefined ||
       value.parentThreadId !== undefined ||
+      value.providerId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined ||
       value.sessionOptions !== undefined ||

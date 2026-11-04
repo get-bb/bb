@@ -1595,6 +1595,8 @@ function systemOperationLeadingIcon(
       return "CircleArrowShrink";
     case "context-clear":
       return "Clean";
+    case "provider-switch":
+      return undefined;
     case "generic":
     case "warning":
     case "deprecation":
@@ -1725,6 +1727,26 @@ function TimelineRowView({
         message={sentThreadMessage}
         sentAt={row.startedAt}
       />
+    );
+  }
+
+  if (
+    row.kind === "system" &&
+    row.systemKind === "operation" &&
+    row.operationKind === "provider-switch"
+  ) {
+    return (
+      <div
+        role="separator"
+        aria-label={row.title}
+        className="flex items-center gap-3 px-2 py-4 text-xs text-muted-foreground"
+      >
+        <span className="h-px min-w-0 flex-1 bg-border" aria-hidden />
+        <span className="min-w-0 max-w-full truncate rounded-full border border-border px-3 py-1.5">
+          {row.title}
+        </span>
+        <span className="h-px min-w-0 flex-1 bg-border" aria-hidden />
+      </div>
     );
   }
 
