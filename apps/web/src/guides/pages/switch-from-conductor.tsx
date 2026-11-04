@@ -94,8 +94,8 @@ export const guide: Guide = {
             from <CopyPromptButton />, and send it.
           </li>
           <li>
-            It lists your workspaces with their branches and pull requests. Pick
-            which to bring over, then say go.
+            It asks which workspaces to bring over and whether to move your
+            scripts, then sums up the plan. Say go.
           </li>
           <li>
             To open one yourself, choose <strong>New thread</strong>, then{" "}
