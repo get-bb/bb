@@ -4412,6 +4412,105 @@ describe("ComposerBox mention triggers", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("ends an unmatched multiword mention occurrence without changing prose", async () => {
+    const text = "Notes @unlisted topic";
+    const { changes, onMentionQueryChange, promptBoxRef } =
+      renderPromptBox(text);
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null),
+    );
+    expect(screen.queryByText("No matching mentions")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Close suggestions" }),
+    ).toBeNull();
+    expect(getPromptEditorElement().textContent).toBe(text);
+
+    onMentionQueryChange.mockClear();
+    await act(async () =>
+      promptBoxRef.current?.voice?.deliverTranscript("continues", "insert"),
+    );
+
+    await waitFor(() => expect(latestValue(changes)).toBe(`${text} continues`));
+    expect(
+      onMentionQueryChange.mock.calls.every(([query]) => query === null),
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Close suggestions" }),
+    ).toBeNull();
+    expect(latestChange(changes)?.mentions).toEqual([]);
+  });
+
+  it("keeps unmatched single-word mention queries open", async () => {
+    const { onMentionQueryChange, promptBoxRef } =
+      renderPromptBox("Notes @unlisted");
+
+    await focusPromptEnd(promptBoxRef);
+
+    expect(await screen.findByText("No matching mentions")).not.toBeNull();
+    expect(onMentionQueryChange).toHaveBeenLastCalledWith("unlisted", "@");
+  });
+
+  it.each(["loading", "refreshing", "error"] as const)(
+    "does not end a multiword mention while search is %s",
+    async (initialState) => {
+      const mentionModule = await import("@/hooks/usePromptMentions");
+      const originalSearch = mentionModule.usePromptMentions;
+      let settled = false;
+      const search = vi
+        .spyOn(mentionModule, "usePromptMentions")
+        .mockImplementation((...args) => ({
+          ...originalSearch(...args),
+          isLoading: !settled && initialState === "loading",
+          isRefreshing: !settled && initialState === "refreshing",
+          isError: !settled && initialState === "error",
+        }));
+      onTestFinished(() => search.mockRestore());
+      const { onMentionQueryChange, promptBoxRef } =
+        renderPromptBox("Notes @fix login");
+
+      await focusPromptEnd(promptBoxRef);
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith("fix login", "@");
+      expect(
+        document.querySelector("[data-promptbox-typeahead-menu]"),
+      ).not.toBeNull();
+
+      settled = true;
+      setComposerSearchResults({ mentionSuggestions: [githubIssueSuggestion] });
+      await act(async () =>
+        promptBoxRef.current?.voice?.deliverTranscript("bug", "insert"),
+      );
+
+      expect(
+        await screen.findByRole("button", { name: /Fix login bug/u }),
+      ).not.toBeNull();
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(
+        "fix login bug",
+        "@",
+      );
+    },
+  );
+
+  it("keeps a multiword attachment match when remote mention results are empty", async () => {
+    const { promptBoxRef } = renderPromptBox("Read @Design notes", {
+      upload: async (files) => uploadedAs(files),
+      initialAttachments: [
+        {
+          type: "localFile",
+          path: "uploads/Design notes.txt",
+          name: "Design notes.txt",
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+
+    expect(
+      await screen.findByTitle("Attachment: Design notes.txt"),
+    ).not.toBeNull();
+  });
+
   it("offers the draft's file attachments on a bare @ and mentions the picked one", async () => {
     const { changes, promptBoxRef } = renderPromptBox("Read @", {
       upload: async (files) => uploadedAs(files),

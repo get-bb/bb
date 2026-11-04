@@ -2324,10 +2324,22 @@ export function PromptBoxInternal({
     activeTrigger?.kind === "mention" &&
     activeTrigger.char !== DEFAULT_MENTION_TRIGGER &&
     activeMentionQuery.length === 0;
+  const isUnmatchedMultiwordMention =
+    activeTriggerKind === "mention" &&
+    activeMentionQuery.includes(" ") &&
+    mentionSearch.status === "ready" &&
+    !mentionRefreshing &&
+    activeSuggestions.length === 0;
+
+  useEffect(() => {
+    if (isUnmatchedMultiwordMention) dismissComposerMenu();
+  }, [dismissComposerMenu, isUnmatchedMultiwordMention]);
+
   const showTypeaheadMenu =
     !showVoiceActionGroup &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
+    !isUnmatchedMultiwordMention &&
     !isBareNonDefaultMentionTrigger;
 
   useTypeaheadMenuMaxHeight(
