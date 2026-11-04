@@ -88,6 +88,7 @@ describe("usePluginFrontendBoot", () => {
               sdkVersion: "0.0.0",
               compatible: true,
               runtimeSlots: [],
+              onDemandSurfaces: [],
             },
           },
         }),

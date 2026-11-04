@@ -6,6 +6,7 @@ import {
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   REGISTRY_SKILLS_ROUTE_PATH,
   ROUTE_PATTERNS,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   SKILL_DETAIL_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
@@ -78,6 +79,14 @@ export type { ThreadRoutePathArgs } from "@bb/client-core";
 
 export function getPluginPanelRoutePluginId(pathname: string): string | null {
   return matchPath(PLUGIN_PANEL_ROUTE_PATH, pathname)?.params.pluginId ?? null;
+}
+
+export function getPluginSettingsRoutePluginId(
+  pathname: string,
+): string | null {
+  return (
+    matchPath(SETTINGS_PLUGIN_ROUTE_PATH, pathname)?.params.pluginId ?? null
+  );
 }
 
 interface IsRoutePathArgs {

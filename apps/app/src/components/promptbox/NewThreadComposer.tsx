@@ -53,6 +53,7 @@ import {
 } from "@/components/pickers/environment-picker-value";
 import { providerInputsControlRequired } from "@/components/pickers/environment-provider-inputs";
 import { useMachineProviderInputs } from "@/components/pickers/machine-provider-inputs";
+import { usePluginSurfaceDemand } from "@/lib/plugin-surface-demand";
 import { formatModelLoadErrorText } from "@/components/pickers/model-load-error-message";
 import {
   buildSessionOptionMenuSections,
@@ -1259,6 +1260,7 @@ export function NewThreadComposer({
     inputEnvironmentProvider !== undefined &&
     inputEnvironmentProvider.inputs !== null;
   const pluginSlots = usePluginSlots();
+  usePluginSurfaceDemand("environment-provider-inputs");
   const environmentProviderInputsSlots = pluginSlots.environmentProviderInputs;
   const inputsControlProviderIds = useMemo(() => {
     const pluginIdByProviderId = new Map(

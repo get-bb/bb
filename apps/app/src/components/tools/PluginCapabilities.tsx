@@ -1,3 +1,4 @@
+import { pluginHasSettingsSections } from "@/lib/plugin-settings-availability";
 import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { pluginCliCall } from "@bb/domain/plugin-cli";
@@ -182,11 +183,9 @@ function pluginAppSurfaceItems(
   configurationPath: string | undefined,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
-  const settingsSections = slots.settingsSections.filter(
-    (section) => section.pluginId === pluginId,
-  );
   return [
-    ...(plugin.hasSettings || settingsSections.length > 0
+    ...(plugin.hasSettings ||
+    pluginHasSettingsSections(plugin, slots.settingsSections)
       ? [
           namedSurface(
             "settings",
@@ -401,7 +400,9 @@ function pluginAppSurfaceItems(
         ),
         detail:
           slot.extensions.length === 0 ? (
-            <span>Opens files the plugin shows in a plugin-provided viewer.</span>
+            <span>
+              Opens files the plugin shows in a plugin-provided viewer.
+            </span>
           ) : (
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
               <span>Opens these files in a plugin-provided viewer:</span>
@@ -586,8 +587,7 @@ function PluginRuntimeStatusAlert({
 }) {
   const { settingsSections } = usePluginSlots();
   const hasSettingsPage =
-    plugin.hasSettings ||
-    settingsSections.some((section) => section.pluginId === plugin.id);
+    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
   const canOpenSettings =
     plugin.status === "needs-configuration" && hasSettingsPage;
   const canReload =

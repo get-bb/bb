@@ -92,6 +92,7 @@ for (const id of ["navigation", "thread-list"]) {
         sdkVersion: meta.sdkVersion,
         compatible: true,
         runtimeSlots: meta.runtimeSlots,
+        onDemandSurfaces: [],
       },
     },
     logoUrl: null,

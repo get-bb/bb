@@ -103,6 +103,23 @@ Activation still waits for system config. Pages without expected providers or a 
 retain deferred boot after route paint and browser idle, with a 1.5-second
 fallback. Plugin activation does not wait for the toaster to mount; startup
 notifications queue until it attaches, including custom plugin toasts.
+
+Activation has two phases. The priority plugins (expected surface providers,
+the plugin of an open plugin panel, or the plugin whose settings page is open)
+load together first. Every other plugin frontend then loads in one batch once
+route content has painted and the reads started by the first render have
+finished, with the same 1.5-second fallback. Later reconciles do not wait. The server reads
+each built `app.js` and reports `app.bundle.onDemandSurfaces` in the plugin
+list: the surfaces a frontend registers when it registers nothing else
+(`settings-section`, `environment-provider-inputs`,
+`machine-provider-inputs`). Those frontends skip boot and load the first time
+the app shows one of those surfaces: a plugin settings page, the mobile
+settings page, or the new-thread composer's environment or machine inputs.
+Once loaded they stay loaded and update like any other frontend. Settings
+navigation, the command palette, and plugin details list their settings
+before they load. The analysis is conservative: any other `app` member, or a
+`slots` reference that is not a direct `slots.<name>(` call, makes the
+frontend load at boot.
 SDK Markdown, source-code, and diff wrappers use preload-tier splits. After
 plugin registration settles, the app also queues the selected built-in source
 and diff implementations on the same idle queue. A plugin replacement leaves

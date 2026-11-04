@@ -2,10 +2,12 @@ import {
   usePluginSlots,
   type PluginSettingsSectionSlot,
 } from "@/lib/plugin-slots";
+import { usePluginSurfaceDemand } from "@/lib/plugin-surface-demand";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
+  usePluginSurfaceDemand("settings-section");
   const sections = settingsSections.filter(
     (section) =>
       section.pluginId === pluginId && section.experimental_page === undefined,
@@ -20,6 +22,7 @@ export function PluginMobileSettingsSections({
   pluginId: string | null;
 }) {
   const { settingsSections } = usePluginSlots();
+  usePluginSurfaceDemand("settings-section");
   const sections = settingsSections.filter(
     (section) =>
       section.experimental_page === "mobile" && section.pluginId === pluginId,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PluginAppOnDemandSurface } from "@bb/domain";
 import { definePluginApp } from "./plugin-app-definition";
 import {
   createPluginFrontendReconcileState,
@@ -8,7 +9,11 @@ import {
   type PluginFrontendReconcileDeps,
 } from "./plugin-frontend";
 
-function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
+function candidate(
+  pluginId: string,
+  jsBytes: number,
+  onDemandSurfaces: PluginAppOnDemandSurface[] = [],
+): PluginFrontendCandidate {
   return {
     pluginId,
     bundle: {
@@ -20,6 +25,7 @@ function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      onDemandSurfaces,
     },
   };
 }
@@ -67,6 +73,8 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    isSurfaceDemanded: () => false,
+    whenPageSettled: async () => {},
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
     ...overrides,
@@ -101,8 +109,12 @@ describe("orderPluginFrontendCandidates", () => {
 });
 
 describe("reconcilePluginFrontends load scheduling", () => {
-  it("imports at most PLUGIN_FRONTEND_LOAD_CONCURRENCY bundles at once, in priority order", async () => {
+  it("imports priority plugins first, then every other bundle at once after the page settles", async () => {
     const imports = makeDeferredImports();
+    let settle = () => {};
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps(
       [
@@ -111,10 +123,12 @@ describe("reconcilePluginFrontends load scheduling", () => {
         candidate("small", 100),
         candidate("tiny", 10),
         candidate("panel", 700),
+        candidate("thread-list", 800),
       ],
       {
         importModule: imports.importModule,
-        priorityPluginIds: () => ["panel"],
+        priorityPluginIds: () => ["panel", "thread-list"],
+        whenPageSettled: () => settled,
       },
     );
     const done = reconcilePluginFrontends(state, deps);
@@ -122,30 +136,33 @@ describe("reconcilePluginFrontends load scheduling", () => {
 
     expect(imports.started).toEqual([
       "/api/v1/plugins/panel/assets/app.js?h=h",
-      "/api/v1/plugins/tiny/assets/app.js?h=h",
-      "/api/v1/plugins/small/assets/app.js?h=h",
+      "/api/v1/plugins/thread-list/assets/app.js?h=h",
     ]);
 
     await imports.resolveNext();
-    expect(imports.started).toHaveLength(4);
-    expect(imports.started[3]).toBe("/api/v1/plugins/mid/assets/app.js?h=h");
+    await imports.resolveNext();
+    expect(imports.started).toHaveLength(2);
 
-    await imports.resolveNext();
-    expect(imports.started).toHaveLength(5);
-    expect(imports.started[4]).toBe("/api/v1/plugins/big/assets/app.js?h=h");
+    settle();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(imports.started.slice(2)).toEqual([
+      "/api/v1/plugins/tiny/assets/app.js?h=h",
+      "/api/v1/plugins/small/assets/app.js?h=h",
+      "/api/v1/plugins/mid/assets/app.js?h=h",
+      "/api/v1/plugins/big/assets/app.js?h=h",
+    ]);
 
-    await imports.resolveNext();
-    await imports.resolveNext();
-    await imports.resolveNext();
+    while (imports.pending() > 0) await imports.resolveNext();
     await done;
     expect([...state.records.keys()].sort()).toEqual([
       "big",
       "mid",
       "panel",
       "small",
+      "thread-list",
       "tiny",
     ]);
-    expect(deps.setRegistrations).toHaveBeenCalledTimes(5);
+    expect(deps.setRegistrations).toHaveBeenCalledTimes(6);
   });
 
   it("publishes priority plugins while the remaining imports are still pending", async () => {
@@ -192,41 +209,69 @@ describe("reconcilePluginFrontends load scheduling", () => {
     ]);
   });
 
-  it("downloads the next bundles ahead of the import lanes once priority plugins load", async () => {
-    const imports = makeDeferredImports();
-    const prefetchModule = vi.fn();
-    const done = reconcilePluginFrontends(
-      createPluginFrontendReconcileState(),
-      makeDeps(
-        [
-          candidate("thread-list", 900),
-          candidate("a", 10),
-          candidate("b", 20),
-          candidate("c", 30),
-          candidate("d", 40),
-          candidate("e", 50),
-          candidate("f", 60),
-        ],
-        {
-          importModule: imports.importModule,
-          priorityPluginIds: () => ["thread-list"],
-          prefetchModule,
-        },
-      ),
+  it("leaves on-demand frontends unloaded until one of their surfaces is demanded", async () => {
+    const demanded = new Set<PluginAppOnDemandSurface>();
+    const importModule = vi.fn(async () => pluginModule());
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps(
+      [
+        candidate("eager", 1),
+        candidate("keep-awake", 2, ["settings-section"]),
+        candidate("worktree", 3, ["environment-provider-inputs"]),
+      ],
+      {
+        importModule,
+        isSurfaceDemanded: (surface) => demanded.has(surface),
+      },
     );
-    for (let i = 0; i < 10; i += 1) await Promise.resolve();
-    expect(prefetchModule).not.toHaveBeenCalled();
 
-    await imports.resolveNext();
-    const prefetchedIds = () =>
-      prefetchModule.mock.calls.map(([url]) => String(url).split("/")[4]);
-    expect(prefetchedIds()).toEqual(["d", "e", "f"]);
+    await reconcilePluginFrontends(state, deps);
+    expect([...state.records.keys()]).toEqual(["eager"]);
 
-    while (imports.started.length < 7 || imports.pending() > 0) {
-      await imports.resolveNext();
-    }
-    await done;
-    expect(prefetchedIds()).toEqual(["d", "e", "f"]);
+    demanded.add("settings-section");
+    await reconcilePluginFrontends(state, deps);
+    expect([...state.records.keys()].sort()).toEqual(["eager", "keep-awake"]);
+    expect(importModule).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads an on-demand frontend the current route needs without a demand", async () => {
+    const state = createPluginFrontendReconcileState();
+    await reconcilePluginFrontends(
+      state,
+      makeDeps([candidate("keep-awake", 2, ["settings-section"])], {
+        priorityPluginIds: () => ["keep-awake"],
+      }),
+    );
+    expect(state.records.get("keep-awake")?.status).toBe("loaded");
+  });
+
+  it("keeps a loaded on-demand frontend and reloads it when its bundle changes", async () => {
+    let demanded = true;
+    let hash = "h1";
+    const importModule = vi.fn(async () => pluginModule());
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([], {
+      fetchCandidates: async () => [
+        {
+          pluginId: "keep-awake",
+          bundle: {
+            ...candidate("keep-awake", 2, ["settings-section"]).bundle,
+            hash,
+          },
+        },
+      ],
+      importModule,
+      isSurfaceDemanded: () => demanded,
+    });
+
+    await reconcilePluginFrontends(state, deps);
+    demanded = false;
+    hash = "h2";
+    await reconcilePluginFrontends(state, deps);
+
+    expect(importModule).toHaveBeenCalledTimes(2);
+    expect(state.appliedHashes.get("keep-awake")).toBe("h2");
+    expect(deps.removeRegistrations).not.toHaveBeenCalled();
   });
 
   it("a rejected import in one lane does not stall the remaining candidates", async () => {

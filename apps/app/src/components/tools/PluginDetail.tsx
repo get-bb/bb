@@ -1,3 +1,4 @@
+import { pluginHasSettingsSections } from "@/lib/plugin-settings-availability";
 import { PluginNameTag } from "@/components/plugin/management/PluginNameTag";
 import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
@@ -440,8 +441,7 @@ export function PluginDetail({
       plugin.updateState.blockedVersion !== null ||
       plugin.updateState.lastFailure !== null);
   const hasConfiguration =
-    plugin.hasSettings ||
-    settingsSections.some((section) => section.pluginId === plugin.id);
+    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
 
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);

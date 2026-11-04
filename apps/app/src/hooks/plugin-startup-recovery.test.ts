@@ -43,6 +43,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
             sdkVersion: "0.1.0",
             compatible: true,
             runtimeSlots: [],
+            onDemandSurfaces: [],
           },
         },
       }),
@@ -74,6 +75,8 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       flushSlotBatch: () => {},
       warn: () => {},
       priorityPluginIds: () => [],
+      isSurfaceDemanded: () => false,
+      whenPageSettled: async () => {},
     };
     const effects = createRealtimeCacheEffects({ queryClient });
     let reconcile = Promise.resolve();

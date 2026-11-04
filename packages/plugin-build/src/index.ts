@@ -32,6 +32,7 @@ export {
 } from "./plugin-manifest.js";
 
 export { copyPluginRuntime } from "./prepare-plugin-runtime.js";
+export { findOnDemandPluginAppSurfaces } from "./plugin-app-on-demand-surfaces.js";
 export {
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,

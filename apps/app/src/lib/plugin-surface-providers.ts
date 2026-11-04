@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { z } from "zod";
 import { createLastKnownCache } from "@/lib/last-known-cache";
 import { usePluginFrontendBootComplete } from "@/lib/plugin-frontend-boot-state";
-import { getPluginPanelRoutePluginId } from "@/lib/route-paths";
+import {
+  getPluginPanelRoutePluginId,
+  getPluginSettingsRoutePluginId,
+} from "@/lib/route-paths";
 
 const PLUGIN_SURFACES = [
   "composer",
@@ -41,7 +44,9 @@ export function expectedSurfaceProviderIds(): string[] {
 }
 
 export function frontendPriorityPluginIds(pathname: string): string[] {
-  const routePluginId = getPluginPanelRoutePluginId(pathname);
+  const routePluginId =
+    getPluginPanelRoutePluginId(pathname) ??
+    getPluginSettingsRoutePluginId(pathname);
   return [
     ...new Set([
       ...(routePluginId === null ? [] : [routePluginId]),

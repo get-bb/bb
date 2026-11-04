@@ -34,7 +34,10 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { arePluginSettingsAvailable } from "@/lib/plugin-settings-availability";
+import {
+  arePluginSettingsAvailable,
+  pluginHasSettingsSections,
+} from "@/lib/plugin-settings-availability";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PluginMachineServerAccessNotice } from "@/components/machines/MachineServerAccessNotice";
 import { invalidateMachineProviders } from "@/hooks/cache-owners/system-cache-effects";
@@ -593,8 +596,7 @@ function PluginSettingsContent({
     invalidateMachineProviders({ queryClient }),
   );
   const hasAvailableSettings =
-    plugin.hasSettings ||
-    settingsSections.some((section) => section.pluginId === plugin.id);
+    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
   return (
     <div className="mx-auto w-full max-w-5xl">
       <PluginSettingsDetailsLink
@@ -645,8 +647,9 @@ function PluginSettingsContent({
 
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
-  const hasSettingsSections = settingsSections.some(
-    (section) => section.pluginId === plugin.id,
+  const hasSettingsSections = pluginHasSettingsSections(
+    plugin,
+    settingsSections,
   );
   const settingsAvailable = arePluginSettingsAvailable(plugin);
   if (!plugin.hasSettings && !hasSettingsSections) return null;

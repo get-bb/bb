@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
-import { PLUGIN_SDK_MAJOR } from "@bb/domain";
+import { PLUGIN_SDK_MAJOR, type PluginAppOnDemandSurface } from "@bb/domain";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
   RUNTIME_SLOT_BY_SPECIFIER,
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
+  findOnDemandPluginAppSurfaces,
   findUnnamedPluginRoots,
 } from "@bb/plugin-build";
 
@@ -39,6 +40,7 @@ interface PluginAppBundleInfo {
   sdkVersion: string;
   compatible: boolean;
   runtimeSlots: string[];
+  onDemandSurfaces: PluginAppOnDemandSurface[];
 }
 
 interface PluginAppState {
@@ -379,8 +381,9 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
+  const jsSource = js.toString("utf8");
   const ownedRootCss: PluginCssBytes | null =
-    css !== null && findUnnamedPluginRoots(js.toString("utf8")).length === 0
+    css !== null && findUnnamedPluginRoots(jsSource).length === 0
       ? {
           original: Buffer.from(
             dropAnonymousPluginRootScope(css.original.toString("utf8")),
@@ -418,6 +421,7 @@ export async function loadPluginAppBundle(
         sdkVersion: meta.sdkVersion,
         compatible: meta.sdkMajor === PLUGIN_SDK_MAJOR,
         runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
+        onDemandSurfaces: findOnDemandPluginAppSurfaces(jsSource),
       },
     },
     assets: { jsPath, css, ownedRootCss, hash },

@@ -1,13 +1,35 @@
 import { describe, expect, it } from "vitest";
+import type { PluginAppOnDemandSurface } from "@bb/domain";
 import {
   buildPluginSettingsEntries,
   type PluginSettingsCandidate,
 } from "./plugin-settings-entries";
 
+function deferredApp(
+  onDemandSurfaces: PluginAppOnDemandSurface[],
+  compatible = true,
+): PluginSettingsCandidate["app"] {
+  return {
+    hasApp: true,
+    bundle: {
+      jsUrl: "/app.js",
+      cssUrl: null,
+      jsBytes: 1,
+      hash: "h",
+      sdkMajor: 0,
+      sdkVersion: "0.1.0",
+      compatible,
+      runtimeSlots: [],
+      onDemandSurfaces,
+    },
+  };
+}
+
 function candidate(
   overrides: Partial<PluginSettingsCandidate> & { id: string },
 ): PluginSettingsCandidate {
   return {
+    app: { hasApp: false, bundle: null },
     enabled: true,
     hasSettings: false,
     icon: null,
@@ -69,5 +91,29 @@ describe("buildPluginSettingsEntries", () => {
       ["ready", true],
       ["unconfigured", true],
     ]);
+  });
+
+  it("lists a frontend that loads with its settings page before it has loaded", () => {
+    const entries = buildPluginSettingsEntries({
+      installedPlugins: [
+        candidate({ app: deferredApp(["settings-section"]), id: "keep-awake" }),
+        candidate({
+          app: deferredApp(["settings-section"]),
+          id: "stopped",
+          status: "error",
+        }),
+        candidate({
+          app: deferredApp(["settings-section"], false),
+          id: "outdated",
+        }),
+        candidate({
+          app: deferredApp(["environment-provider-inputs"]),
+          id: "worktree",
+        }),
+      ],
+      settingsSections: [],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["keep-awake"]);
   });
 });

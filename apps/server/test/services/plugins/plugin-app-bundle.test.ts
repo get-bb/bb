@@ -444,6 +444,53 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(bundled).toContain("typed rpc");
   }, 60_000);
 
+  it("reports which built frontends register only on-demand surfaces", async () => {
+    const settingsOnlyDir = join(
+      harness.config.dataDir,
+      "fixtures",
+      "bb-plugin-settings-only",
+    );
+    await writeAppPluginFixture(settingsOnlyDir, {
+      name: "bb-plugin-settings-only",
+      appSource: `
+        import { definePluginApp } from "@get-bb/plugin-sdk/app";
+        function Settings() {
+          return <div>Shows up in the composer once saved</div>;
+        }
+        export default definePluginApp((app) => {
+          app.slots.settingsSection({ id: "configuration", component: Settings });
+        });
+      `,
+    });
+    const eagerDir = join(
+      harness.config.dataDir,
+      "fixtures",
+      "bb-plugin-eager",
+    );
+    await writeAppPluginFixture(eagerDir, {
+      name: "bb-plugin-eager",
+      appSource: `
+        import { definePluginApp } from "@get-bb/plugin-sdk/app";
+        function Section() {
+          return <div>eager</div>;
+        }
+        export default definePluginApp((app) => {
+          app.slots.settingsSection({ id: "configuration", component: Section });
+          app.slots.homepageSection({ id: "home", title: "Home", component: Section });
+        });
+      `,
+    });
+
+    const settingsOnly =
+      await harness.pluginService.installPath(settingsOnlyDir);
+    const eager = await harness.pluginService.installPath(eagerDir);
+
+    expect(settingsOnly.app.bundle?.onDemandSurfaces).toEqual([
+      "settings-section",
+    ]);
+    expect(eager.app.bundle?.onDemandSurfaces).toEqual([]);
+  }, 60_000);
+
   it("fails the install when the frontend build fails", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-bad");
     await writeAppPluginFixture(rootDir, {

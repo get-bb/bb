@@ -30,6 +30,7 @@ function candidate(
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      onDemandSurfaces: [],
       ...overrides,
     },
   };

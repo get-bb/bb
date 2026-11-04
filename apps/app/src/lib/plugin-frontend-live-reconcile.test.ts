@@ -19,6 +19,7 @@ function candidate(pluginId: string, hash: string): PluginFrontendCandidate {
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      onDemandSurfaces: [],
     },
   };
 }
@@ -41,6 +42,8 @@ function deps(
     flushSlotBatch: () => {},
     warn: () => {},
     priorityPluginIds: () => [],
+    isSurfaceDemanded: () => false,
+    whenPageSettled: async () => {},
   };
 }
 

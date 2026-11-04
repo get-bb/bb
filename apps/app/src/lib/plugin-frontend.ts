@@ -21,7 +21,10 @@ import * as clsx from "clsx";
 import * as tailwindMerge from "tailwind-merge";
 import * as classVarianceAuthority from "class-variance-authority";
 import * as sharedUiIcon from "@bb/shared-ui/icon";
-import { createDebouncedCallbackScheduler } from "@bb/domain";
+import {
+  createDebouncedCallbackScheduler,
+  type PluginAppOnDemandSurface,
+} from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -47,6 +50,12 @@ import {
   retainPluginCss,
 } from "./plugin-css";
 import { frontendPriorityPluginIds } from "./plugin-surface-providers";
+import { PLUGIN_FRONTEND_BOOT_TIMEOUT_MS } from "./plugin-frontend-boot-schedule";
+import { whenRouteContentPainted } from "./route-content-paint";
+import {
+  isPluginSurfaceDemanded,
+  onPluginSurfaceDemand,
+} from "./plugin-surface-demand";
 import { prefetchPluginModule } from "./plugin-module-preload";
 import {
   collectPluginAppRegistrations,
@@ -82,6 +91,7 @@ interface PluginFrontendBundle {
   sdkVersion: string;
   compatible: boolean;
   runtimeSlots: string[];
+  onDemandSurfaces: PluginAppOnDemandSurface[];
 }
 
 export interface PluginFrontendCandidate {
@@ -347,9 +357,6 @@ export async function fetchFrontendCandidates(
 
 export { applyPluginCss } from "./plugin-css";
 
-const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
-const PLUGIN_FRONTEND_DOWNLOAD_AHEAD = 3;
-
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
   priorityPluginIds: readonly string[],
@@ -363,25 +370,6 @@ export function orderPluginFrontendCandidates(
       rank(left.pluginId) - rank(right.pluginId) ||
       left.bundle.jsBytes - right.bundle.jsBytes,
   );
-}
-
-async function runWithConcurrencyLimit<T>(
-  items: readonly T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const lane = async (): Promise<void> => {
-    while (next < items.length) {
-      const index = next++;
-      await worker(items[index]!, index);
-    }
-  };
-  const lanes = Array.from(
-    { length: Math.max(1, Math.min(limit, items.length)) },
-    () => lane(),
-  );
-  await Promise.all(lanes);
 }
 
 function appendPluginImportRetry(url: string, retryCount: number): string {
@@ -432,6 +420,8 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
+  isSurfaceDemanded: (surface: PluginAppOnDemandSurface) => boolean;
+  whenPageSettled: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -724,7 +714,11 @@ export async function reconcilePluginFrontends(
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
   if (
     [...state.records.keys()].some((pluginId) => !candidateIds.has(pluginId)) ||
-    candidates.some((candidate) => !isCandidateApplied(candidate, state))
+    candidates.some(
+      (candidate) =>
+        isCandidateWanted(candidate, state, deps, deps.priorityPluginIds()) &&
+        !isCandidateApplied(candidate, state),
+    )
   ) {
     onChanges?.();
   }
@@ -749,6 +743,21 @@ export async function reconcilePluginFrontends(
   }
 }
 
+function isCandidateWanted(
+  candidate: PluginFrontendCandidate,
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+  priorityPluginIds: readonly string[],
+): boolean {
+  const surfaces = candidate.bundle.onDemandSurfaces;
+  return (
+    surfaces.length === 0 ||
+    priorityPluginIds.includes(candidate.pluginId) ||
+    state.records.has(candidate.pluginId) ||
+    surfaces.some(deps.isSurfaceDemanded)
+  );
+}
+
 async function reconcileCandidates(
   candidates: readonly PluginFrontendCandidate[],
   state: PluginFrontendReconcileState,
@@ -757,44 +766,24 @@ async function reconcileCandidates(
 ): Promise<void> {
   const priorityPluginIds = deps.priorityPluginIds();
   const ordered = orderPluginFrontendCandidates(candidates, priorityPluginIds);
-  let pendingPriority = ordered.filter((candidate) =>
-    priorityPluginIds.includes(candidate.pluginId),
-  ).length;
-  let untaken = 0;
-  const prefetched = new Set<string>();
-  const prefetchAhead = () => {
-    if (pendingPriority > 0) return;
-    for (const candidate of ordered.slice(
-      untaken,
-      untaken + PLUGIN_FRONTEND_DOWNLOAD_AHEAD,
-    )) {
-      if (
-        prefetched.has(candidate.pluginId) ||
-        !candidate.bundle.compatible ||
-        isCandidateApplied(candidate, state)
-      ) {
-        continue;
-      }
-      prefetched.add(candidate.pluginId);
-      deps.prefetchModule(candidate.bundle.jsUrl);
-    }
-  };
-  if (pendingPriority === 0) priorityLoaded();
-  await runWithConcurrencyLimit(
-    ordered,
-    PLUGIN_FRONTEND_LOAD_CONCURRENCY,
-    async (candidate, index) => {
-      untaken = index + 1;
-      prefetchAhead();
-      try {
-        await reconcileCandidate(candidate, state, deps);
-      } finally {
-        if (priorityPluginIds.includes(candidate.pluginId)) {
-          pendingPriority -= 1;
-          if (pendingPriority === 0) priorityLoaded();
-        }
-      }
-    },
+  const isPriority = (candidate: PluginFrontendCandidate) =>
+    priorityPluginIds.includes(candidate.pluginId);
+  await Promise.all(
+    ordered
+      .filter(isPriority)
+      .map((candidate) => reconcileCandidate(candidate, state, deps)),
+  );
+  priorityLoaded();
+  const rest = ordered.filter((candidate) => !isPriority(candidate));
+  if (rest.length === 0) return;
+  await deps.whenPageSettled();
+  if (state.tornDown) return;
+  await Promise.all(
+    rest
+      .filter((candidate) =>
+        isCandidateWanted(candidate, state, deps, priorityPluginIds),
+      )
+      .map((candidate) => reconcileCandidate(candidate, state, deps)),
   );
 }
 
@@ -1029,7 +1018,7 @@ export async function disposePluginFrontends(
 export function createPluginFrontendReconcileScheduler(args: {
   run: () => Promise<void>;
   debounceMs?: number;
-}): { schedule: () => void } {
+}): { schedule: () => void; flush: () => void } {
   const debounceMs = args.debounceMs ?? 250;
   let inFlight = false;
   let queued = false;
@@ -1054,7 +1043,10 @@ export function createPluginFrontendReconcileScheduler(args: {
     maxWaitMs: debounceMs * 4,
     onFlush: () => void execute(),
   });
-  return { schedule: () => scheduler.schedule() };
+  return {
+    schedule: () => scheduler.schedule(),
+    flush: () => scheduler.flush(),
+  };
 }
 
 const state = createPluginFrontendReconcileState();
@@ -1077,6 +1069,40 @@ function publishBrowserDiagnostics(): void {
 
 const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 
+function afterTwoFrames(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+function whenQueriesIdle(queryClient: QueryClient): Promise<void> {
+  return new Promise((resolve) => {
+    if (queryClient.isFetching() === 0) {
+      resolve();
+      return;
+    }
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      if (queryClient.isFetching() > 0) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
+let pageSettled: Promise<void> | null = null;
+
+function whenPageSettled(): Promise<void> {
+  pageSettled ??= Promise.race([
+    whenRouteContentPainted()
+      .then(afterTwoFrames)
+      .then(() => whenQueriesIdle(appQueryClient)),
+    new Promise<void>((resolve) =>
+      window.setTimeout(resolve, PLUGIN_FRONTEND_BOOT_TIMEOUT_MS),
+    ),
+  ]);
+  return pageSettled;
+}
+
 const PLUGIN_FRONTEND_IMPORT_RETRY_DELAYS_MS = [500, 2_000];
 
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
@@ -1088,6 +1114,8 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
   priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
+  isSurfaceDemanded: isPluginSurfaceDemanded,
+  whenPageSettled,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
@@ -1168,10 +1196,15 @@ export function bootPluginFrontends(): Promise<void> {
   return bootPromise;
 }
 
+let pluginListStale = false;
+
 async function runLiveReconcile(): Promise<void> {
   try {
     await bootPromise;
-    await markEnabledPluginListStale({ queryClient: appQueryClient });
+    if (pluginListStale) {
+      pluginListStale = false;
+      await markEnabledPluginListStale({ queryClient: appQueryClient });
+    }
     if (state.tornDown) {
       setPluginFrontendReconcilePending(true);
       state.tornDown = false;
@@ -1192,12 +1225,24 @@ async function runLiveReconcile(): Promise<void> {
   }
 }
 
-let liveScheduler: { schedule: () => void } | null = null;
+let liveScheduler: { schedule: () => void; flush: () => void } | null = null;
 
-export function schedulePluginFrontendReconcile(): void {
-  if (bootPromise === null) return;
+function liveReconcileScheduler(): { schedule: () => void; flush: () => void } {
   liveScheduler ??= createPluginFrontendReconcileScheduler({
     run: runLiveReconcile,
   });
-  liveScheduler.schedule();
+  return liveScheduler;
 }
+
+export function schedulePluginFrontendReconcile(): void {
+  if (bootPromise === null) return;
+  pluginListStale = true;
+  liveReconcileScheduler().schedule();
+}
+
+function loadDemandedPluginFrontends(): void {
+  if (bootPromise === null) return;
+  liveReconcileScheduler().flush();
+}
+
+onPluginSurfaceDemand(loadDemandedPluginFrontends);

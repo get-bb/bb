@@ -72,6 +72,7 @@ function candidate(
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      onDemandSurfaces: [],
       ...overrides,
     },
   };
@@ -275,6 +276,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    isSurfaceDemanded: () => false,
+    whenPageSettled: async () => {},
   };
 }
 

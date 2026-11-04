@@ -1,5 +1,6 @@
 import {
   jsonValueSchema,
+  PLUGIN_APP_ON_DEMAND_SURFACES,
   pluginCatalogCategoryIdSchema,
   pluginMarketplaceCategorySchema,
   pluginMarketplaceCollectionIdSchema,
@@ -188,6 +189,7 @@ export const pluginAppStateSchema = z.object({
       sdkVersion: z.string(),
       compatible: z.boolean(),
       runtimeSlots: z.array(z.string()),
+      onDemandSurfaces: z.array(z.enum(PLUGIN_APP_ON_DEMAND_SURFACES)),
     })
     .nullable(),
 });

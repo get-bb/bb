@@ -1,3 +1,4 @@
+import { usePluginSurfaceDemand } from "@/lib/plugin-surface-demand";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
   usePluginSlots,
@@ -49,6 +50,7 @@ export function useMachineProviderInputs({
   control: ReactNode;
 } {
   const slots = usePluginSlots().machineProviderInputs;
+  usePluginSurfaceDemand("machine-provider-inputs");
   const registration = findRegistration(provider, slots);
   const scopeKey =
     provider === null
