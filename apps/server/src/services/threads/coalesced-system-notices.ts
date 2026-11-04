@@ -31,13 +31,12 @@ export interface PostCoalescedSystemNoticeArgs<State> {
 export function postCoalescedSystemNotice<State>(
   deps: Pick<AppDeps, "db" | "hub">,
   args: PostCoalescedSystemNoticeArgs<State>,
-): QueuedThreadMessageRow & { sendAt: number } {
+): QueuedThreadMessageRow {
   const sendAt = Date.now() + args.windowMs;
   const { created, row } = deps.db.transaction(
     (tx) => {
       const pending = getPendingCoalescedQueuedThreadMessage(tx, {
         coalesceKey: args.coalesceKey,
-        now: Date.now(),
         threadId: args.threadId,
       });
       const next = args.merge(
@@ -52,9 +51,9 @@ export function postCoalescedSystemNotice<State>(
               coalesceState: JSON.stringify(next.state),
               content: next.input,
               id: pending.id,
-              sendAt,
               systemNotice: next.notice,
               threadId: args.threadId,
+              windowEndsAt: sendAt,
             });
       if (merged !== null) return { created: false, row: merged };
       return {
@@ -83,5 +82,5 @@ export function postCoalescedSystemNotice<State>(
   );
   if (created) emitPluginMessageQueued(toThreadQueuedMessage(row));
   deps.hub.notifyThread(args.threadId, ["queue-changed"]);
-  return { ...row, sendAt };
+  return row;
 }

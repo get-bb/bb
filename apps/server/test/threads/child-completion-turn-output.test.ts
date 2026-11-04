@@ -89,14 +89,16 @@ async function runChildTurns(
       .filter((row) => row.type === "client/turn/requested")
       .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
       .filter((data) => data.initiator === "system")
-      .map((data) => JSON.stringify(data.input));
+      .map((data) => ({ text: JSON.stringify(data.input), version: "sent" }));
     const queued = listQueuedThreadMessages(harness.db, parent.id).map(
-      (row) => row.content,
+      (row) => ({ text: row.content, version: `${row.id}@${row.updatedAt}` }),
     );
     return [...delivered, ...queued];
   };
+  const latestNotices: string[] = [];
   vi.useFakeTimers();
-  for (const [index, turn] of turns.entries()) {
+  for (const turn of turns) {
+    const before = JSON.stringify(readNotices());
     seedTurnStarted(harness.deps, {
       environmentId: environment.id,
       threadId: child.id,
@@ -113,9 +115,12 @@ async function runChildTurns(
     });
     expect(response.status, await response.clone().text()).toBe(200);
     await vi.advanceTimersByTimeAsync(2_000);
-    await vi.waitFor(() => expect(readNotices()).toHaveLength(index + 1));
+    await vi.waitFor(() =>
+      expect(JSON.stringify(readNotices())).not.toBe(before),
+    );
+    latestNotices.push(readNotices().at(-1)!.text);
   }
-  return readNotices();
+  return latestNotices;
 }
 
 afterEach(() => vi.useRealTimers());
