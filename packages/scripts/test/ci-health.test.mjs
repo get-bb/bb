@@ -184,7 +184,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
         return { jobs: [job(101, "build", 1, "success", 10, 50)] };
       if (path.endsWith("page=2")) throw new Error("upstream unavailable");
       return {
-        jobs: Array.from({ length: 100 }, (_, index) =>
+        jobs: Array.from({ length: 50 }, (_, index) =>
           job(index + 1, `test-${index}`, 1, "success", 10, 20),
         ),
       };
@@ -199,7 +199,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
   expect(evidence.errors).toEqual([
     { scope: "run 1", message: "upstream unavailable" },
   ]);
-  expect(evidence.runs[0].jobs).toHaveLength(100);
+  expect(evidence.runs[0].jobs).toHaveLength(50);
   const report = summarizeCiHealth(evidence.runs);
   expect(report.incompleteRuns).toBe(1);
   expect(report.durationSeconds).toEqual({ count: 1, median: 50, p90: 50 });
