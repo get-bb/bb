@@ -1,9 +1,11 @@
 import { parseApplicationUrl } from "@bb/domain/application-url";
 import { openApplicationUrl, applicationLinksEnabled } from "./application-url";
+import { atom, useAtomValue, useSetAtom } from "jotai";
 import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -17,6 +19,21 @@ import {
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 
 type OpenInAppBrowserUrl = (url: string) => void;
+
+const focusedBrowserAtom = atom<{ open: OpenInAppBrowserUrl } | null>(null);
+
+export function useFocusedBrowserRegistration(
+  open: OpenInAppBrowserUrl | null,
+) {
+  const setFocusedBrowser = useSetAtom(focusedBrowserAtom);
+  useEffect(() => {
+    if (open === null) return;
+    setFocusedBrowser({ open });
+    return () => {
+      setFocusedBrowser((current) => (current?.open === open ? null : current));
+    };
+  }, [open, setFocusedBrowser]);
+}
 
 interface UrlOpenRoutingProviderProps {
   children: ReactNode;
@@ -72,7 +89,10 @@ export function AppNavigationUrlHost({ children }: { children: ReactNode }) {
 }
 
 function useOpenUrlByPreference(): (url: string) => boolean {
-  const openInAppBrowser = useContext(InAppBrowserUrlOpenContext);
+  const scopedOpenInAppBrowser = useContext(InAppBrowserUrlOpenContext);
+  const focusedBrowser = useAtomValue(focusedBrowserAtom);
+  const openInAppBrowser =
+    scopedOpenInAppBrowser ?? focusedBrowser?.open ?? null;
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   const desktopBrowserAvailable =
     openInAppBrowser !== null && isDesktopBrowserAvailable();
