@@ -349,10 +349,14 @@ function buildClientTurnRequestById(
 
 function buildRejectedClientRequestIds(
   events: ThreadEventWithMeta[],
+  acceptedClientRequestById: ReadonlyMap<string, unknown>,
 ): ReadonlySet<string> {
   const requestIds = new Set<string>();
   for (const { event } of events) {
-    if (event.type === "client/turn/rejected") {
+    if (
+      event.type === "client/turn/rejected" &&
+      !acceptedClientRequestById.has(event.requestId)
+    ) {
       requestIds.add(event.requestId);
     }
   }
@@ -589,17 +593,21 @@ function createProjectionFoldLookups(
   orderedEvents: ThreadEventWithMeta[],
 ): ProjectionFoldLookups {
   const clientRequestById = buildClientTurnRequestById(orderedEvents);
+  const acceptedClientRequestById = buildAcceptedClientRequestById({
+    context,
+    events: orderedEvents,
+  });
   return {
-    acceptedClientRequestById: buildAcceptedClientRequestById({
-      context,
-      events: orderedEvents,
-    }),
+    acceptedClientRequestById,
     acceptedRootClientTurnIds: buildAcceptedRootClientTurnIds(
       orderedEvents,
       clientRequestById,
     ),
     clientRequestById,
-    rejectedClientRequestIds: buildRejectedClientRequestIds(orderedEvents),
+    rejectedClientRequestIds: buildRejectedClientRequestIds(
+      orderedEvents,
+      acceptedClientRequestById,
+    ),
     selectedStartedTurnIds: buildSelectedStartedTurnIds(orderedEvents),
   };
 }
@@ -743,7 +751,7 @@ function foldProjectionEvent(
 
   if (decoded.type === "client/turn/rejected") {
     const clientRequest = clientRequestById.get(decoded.requestId);
-    if (clientRequest) {
+    if (clientRequest && rejectedClientRequestIds.has(decoded.requestId)) {
       for (const rejectedMessage of parseRejectedUsersFromClientRequest({
         decoded: clientRequest.event,
         requestMeta: clientRequest.meta,

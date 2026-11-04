@@ -18,6 +18,7 @@ import {
   threadIdentityResultSchema,
 } from "@bb/provider-bridge-protocol";
 import {
+  JsonRpcRequestTimeoutError,
   JsonRpcResponseError,
   PROVIDER_TOOL_CALL_CANCELLED_METHOD,
   providerToolCallCancellationSchema,
@@ -2200,6 +2201,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             ) {
               turnState.clearThread(threadId);
               return { status: "stale", activeTurnId: null };
+            }
+            if (error instanceof JsonRpcRequestTimeoutError) {
+              options.onStderr?.(
+                `Steer for thread "${threadId}" on turn "${expectedTurnId}" timed out; its delivery is unconfirmed.`,
+                threadId,
+              );
+              return { status: "unconfirmed" };
             }
             throw error;
           }

@@ -58,6 +58,16 @@ export class JsonRpcResponseError extends Error {
   }
 }
 
+export class JsonRpcRequestTimeoutError extends Error {
+  readonly method: string;
+
+  constructor(method: string) {
+    super(`JSON-RPC request timed out: ${method}`);
+    this.name = "JsonRpcRequestTimeoutError";
+    this.method = method;
+  }
+}
+
 export interface PendingJsonRpcRequest {
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
@@ -294,7 +304,7 @@ export function sendJsonRpcRequest<TResult>(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       args.pending.delete(id);
-      reject(new Error(`JSON-RPC request timed out: ${message.method}`));
+      reject(new JsonRpcRequestTimeoutError(message.method));
     }, args.timeoutMs ?? 30_000);
     args.pending.set(id, {
       resolve: (result) => {

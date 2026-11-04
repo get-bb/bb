@@ -1325,6 +1325,147 @@ describe("turn submit failure settlement", () => {
   });
 });
 
+describe("unconfirmed steers", () => {
+  async function steerIntoActiveTurn(harness: TestAppHarness, value: number) {
+    const fixture = seedProviderThreadFixture({
+      harness,
+      status: "active",
+      value,
+    });
+    seedTurnStarted(harness.deps, {
+      environmentId: fixture.environment.id,
+      providerThreadId: `provider-send-dispatch-${value}`,
+      sequence: 3,
+      threadId: fixture.thread.id,
+      turnId: "turn-active",
+    });
+    const activeThread = getThread(harness.db, fixture.thread.id);
+    if (!activeThread) throw new Error("Expected an active thread");
+    await sendThreadMessage(harness.deps, {
+      originPluginId: null,
+      environment: fixture.environment,
+      payload: {
+        input: textInput("steer while the provider is unresponsive"),
+        mode: "steer",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: activeThread,
+      trigger: "user",
+    });
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "turn.submit" &&
+        candidate.command.threadId === fixture.thread.id,
+    );
+    if (queued.command.type !== "turn.submit") {
+      throw new Error("Expected a turn.submit command");
+    }
+    await reportQueuedCommandError(harness, queued, {
+      errorCode: "steer_unconfirmed",
+      errorMessage:
+        "The agent did not confirm the steer for turn turn-active before the request timed out",
+    });
+    return { ...fixture, requestId: queued.command.requestId };
+  }
+
+  async function postProviderEvents(
+    harness: TestAppHarness,
+    sessionId: string,
+    events: ThreadEvent[],
+  ) {
+    const response = await harness.app.request("/internal/session/events", {
+      method: "POST",
+      headers: internalAuthHeaders(harness),
+      body: JSON.stringify({
+        sessionId,
+        eventGroups: groupHostDaemonEvents(
+          events.map((event) => ({ threadId: event.threadId, event })),
+        ),
+      }),
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+
+  it("keeps the turn running and accepts the steer when the provider confirms it late", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, sessionId, thread } = await steerIntoActiveTurn(
+        harness,
+        71,
+      );
+
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).map(
+          (event) => event.type,
+        ),
+      ).not.toEqual(
+        expect.arrayContaining(["client/turn/rejected", "system/error"]),
+      );
+
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/input/accepted",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-71",
+          scope: turnScope("turn-active"),
+          clientRequestId: requestId,
+        },
+        {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-71",
+          scope: turnScope("turn-active"),
+          status: "completed",
+        },
+      ]);
+
+      const eventTypes = listEvents(harness.db, { threadId: thread.id }).map(
+        (event) => event.type,
+      );
+      expect(eventTypes).not.toContain("client/turn/rejected");
+      expect(eventTypes).not.toContain("system/error");
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it("marks the steer failed without failing the thread when its turn ends unconfirmed", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, sessionId, thread } = await steerIntoActiveTurn(
+        harness,
+        72,
+      );
+
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-72",
+          scope: turnScope("turn-active"),
+          status: "completed",
+        },
+      ]);
+
+      const events = listEvents(harness.db, { threadId: thread.id });
+      const rejections = events.filter(
+        (event) => event.type === "client/turn/rejected",
+      );
+      expect(rejections.map((event) => JSON.parse(event.data))).toEqual([
+        {
+          requestId,
+          reason: "steer_unconfirmed",
+          message: "The turn ended before the agent confirmed this steer",
+        },
+      ]);
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+});
+
 describe("idle cold-start activation", () => {
   it("activates an idle thread immediately when it does a cold thread.start", async () => {
     await withTestHarness(async (harness) => {

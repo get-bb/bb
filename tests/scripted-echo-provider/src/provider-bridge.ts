@@ -54,6 +54,7 @@ export const scriptedEchoOptionsSchema = z
   .object({
     startDelayMs: z.number().int().nonnegative().optional(),
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    steerResponseDelayMs: z.number().int().nonnegative().optional(),
     answerStartWithoutIdentity: z.boolean().optional(),
     identityAfterResponse: z.boolean().optional(),
     identityNotificationsBeforeTurn: z
@@ -1121,14 +1122,22 @@ const handlers: Record<string, RequestHandler> = {
       });
       return;
     }
-    emitDeltas(session.threadId, [
-      {
-        kind: "input.accepted",
-        clientRequestId: parsed.data.clientRequestId,
-        providerTurnId: session.activeTurn.providerTurnId,
-      },
-    ]);
-    io.sendResult(id, {});
+    const providerTurnId = session.activeTurn.providerTurnId;
+    const acceptSteer = (): void => {
+      emitDeltas(session.threadId, [
+        {
+          kind: "input.accepted",
+          clientRequestId: parsed.data.clientRequestId,
+          providerTurnId,
+        },
+      ]);
+      io.sendResult(id, {});
+    };
+    if (options.steerResponseDelayMs === undefined) {
+      acceptSteer();
+      return;
+    }
+    setTimeout(acceptSteer, options.steerResponseDelayMs);
   },
 
   [BRIDGE_REQUEST_METHODS.threadStop]: (id, params) => {

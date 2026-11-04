@@ -218,7 +218,14 @@ interface SteerTurnStaleResult {
   activeTurnId: string | null;
 }
 
-export type SteerTurnResult = SteerTurnAppliedResult | SteerTurnStaleResult;
+interface SteerTurnUnconfirmedResult {
+  status: "unconfirmed";
+}
+
+export type SteerTurnResult =
+  | SteerTurnAppliedResult
+  | SteerTurnStaleResult
+  | SteerTurnUnconfirmedResult;
 
 export interface StopThreadArgs {
   threadId: string;

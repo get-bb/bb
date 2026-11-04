@@ -2191,7 +2191,6 @@ async function handleTurnSteer(
         input: await resolveCodexSkillInput(session, params.input),
       },
       resultSchema: ignoredChildResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
     sendThreadDeltas(session, [
       {
