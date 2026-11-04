@@ -168,27 +168,24 @@ const SCENES: Scene[] = [
     id: "spawn",
     hold: 2.5,
     title: "CSV export",
-    prompt:
-      "Add CSV export to the reports page. Have Codex write the tests in parallel.",
+    prompt: "Add CSV export to the reports page, then have Codex review it.",
     steps: [
       { kind: "work", verb: "Explored", em: "5 files, 1 search" },
+      { kind: "file", verb: "Edited", file: "ReportsPage.tsx", diff: [18, 2] },
+      { kind: "file", verb: "Edited", file: "exportCsv.ts", diff: [41, 0] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: 'bb thread spawn --provider codex --prompt "Write tests for CSV export on the reports page"',
+        em: 'bb thread spawn --provider codex --prompt "Review the CSV export change on the reports page"',
         dur: "0.8s",
       },
-      { kind: "file", verb: "Edited", file: "ReportsPage.tsx", diff: [18, 2] },
-      { kind: "file", verb: "Edited", file: "exportCsv.ts", diff: [41, 0] },
     ],
     worked: "52s",
     flags: ["spawn"],
     then: {
       id: "messages",
       worked: "52s",
-      reply: (
-        <>CSV export is in. Codex is writing the tests in its own thread.</>
-      ),
+      reply: <>CSV export is in. Codex is reviewing it in its own thread.</>,
     },
   },
   {
@@ -548,7 +545,7 @@ const THREADS: { title: string; status: Status }[] = [
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
 
-const CHILD = { icon: OpenAiIcon, title: "CSV export tests" };
+const CHILD = { icon: OpenAiIcon, title: "Review CSV export" };
 
 const LINEAR_TASKS = [
   {
@@ -2052,7 +2049,7 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-gen-verb">finished</span>
               </span>
               <span className="rhb-gen-body">
-                Tests are in. 2 fail on the old build.
+                1 issue: commas in a name split the column.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[1])}>
@@ -2062,7 +2059,7 @@ const FeedBody = memo(function FeedBody({
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
               <span className="rhb-gen-body">
-                Export is in. Run the suite again.
+                Fixed. Every field is quoted now.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[2])}>
@@ -2071,7 +2068,7 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-gen-verb">Message from</span>
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
-              <span className="rhb-gen-body">All 8 pass.</span>
+              <span className="rhb-gen-body">Looks good. Approved.</span>
             </div>
           </div>
         </>
@@ -2292,6 +2289,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     hasSet.add("panel-collapsed");
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
+  const spawnStep = SCENES[spawnIdx].steps.findIndex((x) =>
+    x.em?.startsWith("bb thread spawn"),
+  );
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
   const chart = SCENES[chartIdx];
   const chartF =
@@ -2546,7 +2546,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                           }
                           style={
                             k === idx
-                              ? delay((t.stepAt[1] ?? t.changeAt) + 0.35)
+                              ? delay(
+                                  (t.stepAt[spawnStep] ?? t.changeAt) + 0.35,
+                                )
                               : undefined
                           }
                         >
@@ -2558,7 +2560,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                 className="rhb-status-swap"
                                 at={
                                   then.notes[0] -
-                                  ((t.stepAt[1] ?? t.changeAt) + 0.35)
+                                  ((t.stepAt[spawnStep] ?? t.changeAt) + 0.35)
                                 }
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status="done" />}
