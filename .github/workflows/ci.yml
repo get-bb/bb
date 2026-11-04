@@ -4,15 +4,13 @@ on:
 permissions:
   contents: read
 jobs:
-  wire-fixture-benchmark:
+  combined-server-benchmark:
     strategy:
       fail-fast: false
       matrix:
         include:
           - replica: 1
-            order: A B B A
-          - replica: 2
-            order: B A A B
+            order: A B
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 30
     steps:
@@ -45,6 +43,8 @@ jobs:
           mkdir perf
           git show b4b1e4a85ead342dae3e4a74159381f8737d96c3:apps/server/test/services/plugins/plugin-wire.test.ts > perf\baseline.ts
           copy /Y apps\server\test\services\plugins\plugin-wire.test.ts perf\candidate.ts > nul
+          git show b4b1e4a85ead342dae3e4a74159381f8737d96c3:apps/server/test/app/bb-app-artifact.test.ts > perf\artifact-baseline.ts
+          copy /Y apps\server\test\app\bb-app-artifact.test.ts perf\artifact-candidate.ts > nul
           node shard-probe.mjs
           if errorlevel 1 exit /b 1
           set /p UPDATE_SHARD=<affected-shard.txt
@@ -55,6 +55,7 @@ jobs:
           for %%V in (${{ matrix.order }}) do (
             set /a sample+=1
             if %%V==A (copy /Y perf\baseline.ts apps\server\test\services\plugins\plugin-wire.test.ts > nul) else (copy /Y perf\candidate.ts apps\server\test\services\plugins\plugin-wire.test.ts > nul)
+            if %%V==A (copy /Y perf\artifact-baseline.ts apps\server\test\app\bb-app-artifact.test.ts > nul) else (copy /Y perf\artifact-candidate.ts apps\server\test\app\bb-app-artifact.test.ts > nul)
             call pnpm exec turbo run test --filter=@bb/server --only --force --concurrency=2 --output-logs=new-only --summarize > perf\sample-!sample!-%%V.log 2>&1
             if errorlevel 1 set /a failures+=1
           )
@@ -64,5 +65,5 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: wire-fixture-perf-${{ matrix.replica }}
+          name: combined-server-perf-${{ matrix.replica }}
           path: perf
