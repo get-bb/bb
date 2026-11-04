@@ -1,174 +1,18 @@
 name: CI
 on:
   workflow_dispatch:
-env:
-  PRIMARY_NODE_VERSION: "22.x"
-  PNPM_VERSION: "9.15.0"
 jobs:
-  windows-app-smoke:
-    name: Windows app smoke (Node 22.x)
+  cleanup-boundary:
     runs-on: blacksmith-4vcpu-windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 5
     permissions:
       contents: read
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          fetch-depth: 8
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.x"
           package-manager-cache: false
-
-      - name: Setup pnpm
-        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
-
-      - name: Restore Windows dependency disk
-        timeout-minutes: 2
-        continue-on-error: true
-        uses: ./.github/actions/windows-dependency-cache
-
-      - name: Restore React Compiler cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-react-compiler
-
-      - name: Restore workspace caches
-        id: cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-workspace
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache-prefix: windows-app-smoke
-          turbo-cache: "true"
-          turbo-cache-max-size-mb: "256"
-
-      - name: Restore pnpm cache
-        if: runner.os == 'macOS'
-        id: pnpm-cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-pnpm
-
-      - name: Install dependencies
-        timeout-minutes: 5
-        shell: bash
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
-
-      - name: Build bb-app and boot it
-        shell: bash
-        run: pnpm exec turbo run smoke:boot --filter=bb-app --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=full --log-order=stream --summarize
-
-      - name: Restore npm package downloads
-        id: npm-downloads
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-npm-downloads
-
-      - name: Prepare handle diagnostics
-        shell: pwsh
-        run: |
-          Invoke-WebRequest https://download.sysinternals.com/files/Handle.zip -OutFile "$env:RUNNER_TEMP/handle.zip"
-          Expand-Archive "$env:RUNNER_TEMP/handle.zip" "$env:RUNNER_TEMP/handle"
-      - name: Smoke test the bb-app tarball
-        shell: bash
-        run: |
-          failed=0
-          for attempt in 1 2 3 4; do
-            echo "PROBE attempt $attempt"
-            pnpm exec turbo run smoke:tarball --filter=bb-app --env-mode=loose --output-logs=full --log-order=stream --summarize || failed=1
-          done
-          exit "$failed"
-
-      - name: Save newly populated npm downloads
-        if: steps.npm-downloads.outcome == 'success' && steps.npm-downloads.outputs.cache-hit != 'true'
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: |
-            ${{ steps.npm-downloads.outputs.path }}/_cacache
-            ${{ steps.npm-downloads.outputs.path }}/_prebuilds
-          key: ${{ steps.npm-downloads.outputs.key }}
-
-      - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
-
-  windows-desktop-smoke:
-    name: Windows desktop smoke (Node 22.x)
-    runs-on: blacksmith-4vcpu-windows-2025
-    timeout-minutes: 40
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          package-manager-cache: false
-
-      - name: Setup pnpm
-        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
-
-      - name: Restore Windows dependency disk
-        timeout-minutes: 2
-        continue-on-error: true
-        uses: ./.github/actions/windows-dependency-cache
-
-      - name: Restore React Compiler cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-react-compiler
-
-      - name: Restore workspace caches
-        id: cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-workspace
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          cache-prefix: windows-desktop-smoke
-          turbo-cache: "true"
-          turbo-cache-max-size-mb: "256"
-
-      - name: Restore pnpm cache
-        if: runner.os == 'macOS'
-        id: pnpm-cache
-        timeout-minutes: 1
-        continue-on-error: true
-        uses: ./.github/actions/cache-pnpm
-
-      - name: Install dependencies
-        timeout-minutes: 5
-        shell: bash
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
-
-      - name: Package the desktop app
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        shell: bash
-        run: pnpm exec turbo run package:win --filter=@bb/desktop --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=full --log-order=stream --summarize
-
-      - name: Smoke test the packaged desktop app
-        shell: bash
-        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=full --log-order=stream --summarize
-
-      - name: Verify retained afterPack catches broken npm and resource mutation
-        run: node scripts/ci-packaging-mutation.mjs
-
-      - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
-
+      - run: node scripts/ci-cleanup-boundary.mjs
