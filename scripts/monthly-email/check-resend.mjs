@@ -55,6 +55,14 @@ function attributeValues(html, pattern) {
   return [...html.matchAll(pattern)].map((match) => match[1]);
 }
 
+export function draftNameMatches(name, month) {
+  const base = `What's new in bb · ${month}`;
+  return (
+    name === base ||
+    (name.startsWith(`${base} · `) && name.length > base.length + 3)
+  );
+}
+
 export function compareResend(ours, theirs, spec, fields, hosted) {
   const checks = [
     ["visible text", visibleText(ours) === visibleText(theirs)],
@@ -79,7 +87,7 @@ export function compareResend(ours, theirs, spec, fields, hosted) {
       ["Reply-To", fields.replyTo === spec.reply_to],
       ["Subject", fields.subject === spec.subject],
       ["Preview text", fields.preview === spec.preview],
-      ["draft name", fields.name === `What's new in bb · ${spec.month}`],
+      ["draft name", draftNameMatches(fields.name, spec.month)],
     );
   }
   return checks;

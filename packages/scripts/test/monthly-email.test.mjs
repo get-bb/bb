@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   compareResend,
+  draftNameMatches,
   firstDifference,
   visibleText,
 } from "../../../scripts/monthly-email/check-resend.mjs";
@@ -132,6 +133,24 @@ describe("compareResend", () => {
     expect(
       firstDifference(visibleText(ours), visibleText(edited))?.theirs,
     ).toContain("another");
+  });
+
+  it("accepts one draft per list, named after the list", () => {
+    expect(
+      draftNameMatches("What's new in bb · November 2026", "November 2026"),
+    ).toBe(true);
+    expect(
+      draftNameMatches(
+        "What's new in bb · November 2026 · bb users",
+        "November 2026",
+      ),
+    ).toBe(true);
+    expect(
+      draftNameMatches("What's new in bb · November 2026 · ", "November 2026"),
+    ).toBe(false);
+    expect(
+      draftNameMatches("What's new in bb · October 2026", "November 2026"),
+    ).toBe(false);
   });
 
   it("fails when the spec changed after the send HTML was rendered", () => {
