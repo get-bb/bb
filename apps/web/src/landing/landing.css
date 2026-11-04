@@ -667,6 +667,10 @@ html:has(.nav-sticky) {
   white-space: nowrap;
 }
 
+.install-options-simple .btn {
+  font-family: var(--font-sans);
+}
+
 .oss-ic {
   width: var(--icon-sm);
   height: var(--icon-sm);

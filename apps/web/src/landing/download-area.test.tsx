@@ -37,6 +37,8 @@ describe("homepage-download-area install block", () => {
     );
     expect(html).toContain(`href="${GITHUB_URL}"`);
     expect(html).toContain('href="/download">Other platforms</a>');
+    expect(html).toContain('class="install-options install-options-simple"');
+    expect(renderArm("control")).toContain('class="install-options"');
   });
 
   it("gives phones the computers' line without the chip note in the test arm", () => {
