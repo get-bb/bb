@@ -47,6 +47,7 @@ export function postCoalescedSystemNotice<State>(
     (tx): CoalescedNoticeWrite => {
       const pending = getPendingCoalescedQueuedThreadMessage(tx, {
         coalesceKey: args.coalesceKey,
+        now: Date.now(),
         threadId: args.threadId,
       });
       const next = args.merge(
@@ -70,9 +71,9 @@ export function postCoalescedSystemNotice<State>(
               coalesceState: JSON.stringify(next.state),
               content: next.input,
               id: pending.id,
+              sendAt,
               systemNotice: next.notice,
               threadId: args.threadId,
-              windowEndsAt: sendAt,
             });
       if (merged !== null) return { kind: "merged", row: merged };
       return {
