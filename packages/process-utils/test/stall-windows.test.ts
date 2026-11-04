@@ -17,7 +17,7 @@ it("bounds queued stall windows and drains their overflow count with the batch",
   try {
     for (let i = 0; i < 130; i++) {
       time += 200_000_000n;
-      vi.advanceTimersByTime(20);
+      vi.advanceTimersByTime(50);
     }
     const batch = parseStallWindowBatch(collector.take());
     expect(batch.windows).toHaveLength(128);
@@ -25,7 +25,7 @@ it("bounds queued stall windows and drains their overflow count with the batch",
     expect(batch.windows[0]).toEqual({ startedAt: 0, endedAt: 200 });
     expect(collector.take()).toMatchObject({ windows: [], droppedWindows: 0 });
     time += 60_000_000_000n;
-    vi.advanceTimersByTime(20);
+    vi.advanceTimersByTime(50);
     expect(collector.take().windows).toEqual([]);
   } finally {
     collector.stop();

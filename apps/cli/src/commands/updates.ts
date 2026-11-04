@@ -237,7 +237,7 @@ function isWaitingForThreads(status: SystemAppUpdateStatus): boolean {
 function printScheduledUpdate(status: SystemAppUpdateStatus): void {
   console.log(describeScheduledUpdate(status));
   console.log(
-    "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
+    "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
   );
 }
 
@@ -375,6 +375,11 @@ function printAppUpdateStatus(status: SystemAppUpdateStatus): void {
     Math.min(subjects.length, INCOMING_SUBJECTS_SHOWN);
   if (hiddenCount > 0) {
     console.log(`  … ${String(hiddenCount)} more`);
+  }
+  if (status.autoUpdate && status.availableSkipped) {
+    console.log(
+      "Skipped: automatic updates wait for a newer version. bb updates app apply still installs this one.",
+    );
   }
   if (status.blocked !== null) {
     console.log(`Blocked: ${status.blocked.message}`);
@@ -571,7 +576,9 @@ function registerAppUpdateCommands(
 
   app
     .command("cancel")
-    .description("Cancel an update scheduled with apply --when-idle")
+    .description(
+      "Skip a waiting update until a newer version appears",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppUpdateStatusOptions) => {
@@ -583,8 +590,41 @@ function registerAppUpdateCommands(
         if (outputJson(opts, status)) return;
         console.log(
           hasScheduledUpdate(before)
-            ? "Cancelled the scheduled update."
+            ? "Skipped this version until a newer one appears."
             : "No update is scheduled.",
+        );
+      }),
+    );
+
+  app
+    .command("auto [state]")
+    .description(
+      "Show whether bb updates itself automatically, or turn it on or off. `on` checks every hour and restarts bb into a new version once no threads are running; `off` stops checking and drops a waiting update",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (state: string | undefined, opts: AppUpdateStatusOptions) => {
+        if (state !== undefined && state !== "on" && state !== "off") {
+          throw new CliUsageError({
+            code: "invalid_value",
+            hint: "Use bb updates app auto on or bb updates app auto off.",
+            message: `Expected "on" or "off", got "${state}".`,
+          });
+        }
+        const sdk = createCliBbSdk(getUrl());
+        const status =
+          state === undefined
+            ? await sdk.system.appUpdate()
+            : await callUpdateWhenIdleRoute(() =>
+                sdk.system.experimental_setAppUpdateAuto({
+                  enabled: state === "on",
+                }),
+              );
+        if (outputJson(opts, status)) return;
+        console.log(
+          status.autoUpdate
+            ? "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running."
+            : "Automatic updates are off.",
         );
       }),
     );

@@ -72,6 +72,32 @@ export function prepareCachedQuery<TQuery>(
   return query;
 }
 
+const queryVariantBuilders = new Map<
+  string,
+  (db: DbQueryConnection) => unknown
+>();
+
+export function prepareCachedQueryVariant<TQuery>(
+  db: DbQueryConnection,
+  key: string,
+  build: (db: DbQueryConnection) => TQuery,
+): TQuery {
+  let builder = queryVariantBuilders.get(key);
+  if (builder === undefined) {
+    builder = build;
+    queryVariantBuilders.set(key, builder);
+  }
+  return prepareCachedQuery(db, builder) as TQuery;
+}
+
+const rootConnections = new WeakMap<DbQueryConnection, DbConnection>();
+
+export function rootConnectionOf(
+  db: DbQueryConnection,
+): DbConnection | undefined {
+  return rootConnections.get(db);
+}
+
 interface SlowDbQueryConfig {
   logger: SlowDbQueryLogger;
   thresholdMs: number | (() => number);
@@ -303,11 +329,13 @@ export function createConnection(
   const db = drizzle({ client: sqlite, schema });
   const queries = new Map<(db: DbQueryConnection) => unknown, unknown>();
   compiledQueries.set(db, queries);
+  rootConnections.set(db, db);
   const originalTransaction = db.transaction.bind(db);
   const commitContext: CommitContext = { pending: undefined };
   commitContexts.set(db, commitContext);
   function prepareTransaction(tx: DbTransaction): void {
     compiledQueries.set(tx, queries);
+    rootConnections.set(tx, db);
     commitContexts.set(tx, commitContext);
     const nestedTransaction = tx.transaction.bind(tx);
     tx.transaction = (work) =>

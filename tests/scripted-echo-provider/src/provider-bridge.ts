@@ -54,6 +54,7 @@ export const scriptedEchoOptionsSchema = z
   .object({
     startDelayMs: z.number().int().nonnegative().optional(),
     turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    turnStartErrorAfterMs: z.number().int().nonnegative().optional(),
     steerResponseDelayMs: z.number().int().nonnegative().optional(),
     answerStartWithoutIdentity: z.boolean().optional(),
     identityAfterResponse: z.boolean().optional(),
@@ -1080,6 +1081,14 @@ const handlers: Record<string, RequestHandler> = {
     logProcessStep(
       `turn/start:${process.pid}:${parsed.data.threadId}:${promptText(parsed.data.input)}`,
     );
+    const errorAfterMs = session.options.turnStartErrorAfterMs;
+    if (errorAfterMs !== undefined) {
+      setTimeout(
+        () => io.sendError(id, -32000, "The provider lost the turn start"),
+        errorAfterMs,
+      );
+      return;
+    }
     const responseDelayMs = session.options.turnStartResponseDelayMs;
     if (responseDelayMs === undefined) {
       io.sendResult(id, {});

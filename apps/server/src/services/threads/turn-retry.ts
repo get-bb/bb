@@ -114,14 +114,14 @@ const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
  */
 function retryInput(
   deps: Pick<TurnRetryDeps, "db">,
-  args: { threadId: string; failed: FailedTurnRecord },
+  args: { continuation: string; threadId: string; failed: FailedTurnRecord },
 ): { input: PromptInput[]; inputGroups?: PromptInput[][] } {
   if (wasFailedTurnInputAccepted(deps.db, args)) {
     return {
       input: [
         {
           type: "text",
-          text: CONTINUE_ACCEPTED_TURN_TEXT,
+          text: args.continuation,
           mentions: [],
           visibility: "agent-only",
         },
@@ -243,11 +243,49 @@ export async function retryFailedTurn(
   deps: TurnRetryDeps,
   args: RetryFailedTurnArgs,
 ): Promise<RetryTurnResponse> {
-  const { request, thread } = args;
   const failed = requireFailedTurn(deps, {
-    thread,
-    turnRequestId: request.turnRequestId,
+    thread: args.thread,
+    turnRequestId: args.request.turnRequestId,
   });
+  return dispatchRetry(deps, {
+    ...args,
+    continuation: CONTINUE_ACCEPTED_TURN_TEXT,
+    failed,
+  });
+}
+
+export async function retryTurnAfterRestart(
+  deps: TurnRetryDeps,
+  args: RetryFailedTurnArgs & { continuation: string },
+): Promise<RetryTurnResponse> {
+  if (args.thread.status === "idle") {
+    const latest = loadFailedTurn(deps.db, args.thread.id);
+    if (latest === null) {
+      throw new ApiError(
+        409,
+        "no_failed_turn",
+        `Thread ${args.thread.id} has no turn to resume.`,
+      );
+    }
+    return dispatchRetry(deps, { ...args, failed: latest });
+  }
+  return dispatchRetry(deps, {
+    ...args,
+    failed: requireFailedTurn(deps, {
+      thread: args.thread,
+      turnRequestId: args.request.turnRequestId,
+    }),
+  });
+}
+
+async function dispatchRetry(
+  deps: TurnRetryDeps,
+  args: RetryFailedTurnArgs & {
+    continuation: string;
+    failed: FailedTurnRecord;
+  },
+): Promise<RetryTurnResponse> {
+  const { continuation, failed, request, thread } = args;
   const chain = retryChain(failed.request);
   const originalRequestId = chain.originalRequestId;
   const inFlightKey = `${thread.id}:${originalRequestId}`;
@@ -282,7 +320,7 @@ export async function retryFailedTurn(
         // A retry never steers: it re-runs a turn, so a thread that is busy
         // again is something to wait behind rather than to interrupt.
         mode: "queue-if-active",
-        ...retryInput(deps, { threadId: thread.id, failed }),
+        ...retryInput(deps, { continuation, threadId: thread.id, failed }),
         ...retryExecution(failed),
         ...(request.sendAt === null ? {} : { sendAt: request.sendAt }),
       },

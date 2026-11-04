@@ -1270,7 +1270,10 @@ describe("workflow service policy integration", () => {
   });
 
   it("keeps quiet workers alive until the total run timeout", async () => {
-    const test = setup();
+    const test = setup({
+      ...DEFAULT_WORKFLOW_SETTINGS,
+      totalRunTimeoutMs: 90_000,
+    });
     harnesses.push(test.harness);
     const run = await test.start(source(`return await agent("quiet");`));
     const controller = new AbortController();
@@ -1295,18 +1298,14 @@ describe("workflow service policy integration", () => {
         error: null,
       });
 
-      test.db
-        .prepare(`UPDATE workflow_runs SET started_at = ? WHERE id = ?`)
-        .run(Date.now() - 90_000_000, run.id);
-      await vi.waitFor(
-        () => {
-          const timedOutRun = getRunRequired(test.db, run.id);
-          expect(timedOutRun.status).toBe("failed");
-          expect(timedOutRun.error).toContain("run timed out");
-          expect(timedOutRun.error).not.toContain("Cancelled");
-        },
-        { timeout: 4_000 },
-      );
+      const startedAt = getRunRequired(test.db, run.id).startedAt!;
+      await vi.advanceTimersByTimeAsync(startedAt + 89_000 - Date.now());
+      expect(getRunRequired(test.db, run.id).status).toBe("running");
+      await vi.advanceTimersByTimeAsync(1_500);
+      const timedOutRun = getRunRequired(test.db, run.id);
+      expect(timedOutRun.status).toBe("failed");
+      expect(timedOutRun.error).toContain("run timed out");
+      expect(timedOutRun.error).not.toContain("Cancelled");
     } finally {
       controller.abort();
       try {
@@ -1540,6 +1539,27 @@ describe("workflow service policy integration", () => {
       controller.abort();
       await worker;
       transactions.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("finds unannounced maintenance work on the slow safety tick, not every second", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const controller = new AbortController();
+    vi.useFakeTimers();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expiredRunWithWorkers(test.db, "unannounced", ["worker-unannounced"]);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(test.archived).toEqual([]);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(test.archived).toEqual(["worker-unannounced"]);
+      expect(getRun(test.db, "unannounced")).toBeNull();
+    } finally {
+      controller.abort();
+      await worker;
       vi.useRealTimers();
     }
   });

@@ -1,10 +1,15 @@
 import {
+  findLastCompletedRootStoredTurn,
   getThread,
   hasStoredTerminalClientTurnRequestEvent,
+  findLatestUnresolvedClientTurnRequestIdAfterSequence,
   type DbTransaction,
 } from "@bb/db";
 import { threadScope, type ClientTurnRequestId } from "@bb/domain";
-import { STEER_UNCONFIRMED_ERROR_CODE } from "@bb/host-daemon-contract";
+import {
+  STEER_UNCONFIRMED_ERROR_CODE,
+  TURN_START_UNCONFIRMED_ERROR_CODE,
+} from "@bb/host-daemon-contract";
 import type { AppDeps } from "../../types.js";
 import {
   appendThreadEvent,
@@ -14,19 +19,25 @@ import {
 
 const UNCONFIRMED_STEER_MESSAGE =
   "The turn ended before the agent confirmed this steer";
+const UNSTARTED_TURN_MESSAGE = "The agent did not start a turn for this message";
+
+type UnconfirmedRejectionReason =
+  | typeof STEER_UNCONFIRMED_ERROR_CODE
+  | typeof TURN_START_UNCONFIRMED_ERROR_CODE;
 
 const unconfirmedSteerRequestIdsByThreadId = new Map<
   string,
   Set<ClientTurnRequestId>
 >();
 
-interface SettleUnconfirmedSteerArgs {
+interface SettleUnconfirmedRequestArgs {
   requestId: ClientTurnRequestId;
   threadId: string;
 }
 
-function unconfirmedSteerRejection(args: {
+function unconfirmedRejection(args: {
   environmentId: string | null;
+  reason: UnconfirmedRejectionReason;
   requestId: ClientTurnRequestId;
   threadId: string;
 }) {
@@ -37,15 +48,18 @@ function unconfirmedSteerRejection(args: {
     scope: threadScope(),
     data: {
       requestId: args.requestId,
-      reason: STEER_UNCONFIRMED_ERROR_CODE,
-      message: UNCONFIRMED_STEER_MESSAGE,
+      reason: args.reason,
+      message:
+        args.reason === STEER_UNCONFIRMED_ERROR_CODE
+          ? UNCONFIRMED_STEER_MESSAGE
+          : UNSTARTED_TURN_MESSAGE,
     },
   };
 }
 
 export function settleUnconfirmedSteerInTransaction(
   db: DbTransaction,
-  args: SettleUnconfirmedSteerArgs,
+  args: SettleUnconfirmedRequestArgs,
 ): void {
   const thread = getThread(db, args.threadId);
   if (!thread) {
@@ -60,8 +74,9 @@ export function settleUnconfirmedSteerInTransaction(
   }
   appendThreadEventInTransaction(
     db,
-    unconfirmedSteerRejection({
+    unconfirmedRejection({
       environmentId: thread.environmentId,
+      reason: STEER_UNCONFIRMED_ERROR_CODE,
       requestId: args.requestId,
       threadId: thread.id,
     }),
@@ -89,11 +104,63 @@ export function rejectUnconfirmedSteersAfterTurnCompleted(
     }
     appendThreadEvent(
       deps,
-      unconfirmedSteerRejection({
+      unconfirmedRejection({
         environmentId: thread.environmentId,
+        reason: STEER_UNCONFIRMED_ERROR_CODE,
         requestId,
         threadId,
       }),
     );
   }
+}
+
+export function settleUnconfirmedTurnStartInTransaction(
+  db: DbTransaction,
+  args: SettleUnconfirmedRequestArgs,
+): void {
+  const thread = getThread(db, args.threadId);
+  if (!thread || thread.status === "active") {
+    return;
+  }
+  appendThreadEventInTransaction(
+    db,
+    unconfirmedRejection({
+      environmentId: thread.environmentId,
+      reason: TURN_START_UNCONFIRMED_ERROR_CODE,
+      requestId: args.requestId,
+      threadId: thread.id,
+    }),
+  );
+}
+
+export function rejectUnstartedTurnRequest(
+  deps: Pick<AppDeps, "db" | "hub">,
+  threadId: string,
+): void {
+  const thread = getThread(deps.db, threadId);
+  if (!thread) {
+    return;
+  }
+  const lastCompletedTurn = findLastCompletedRootStoredTurn(deps.db, {
+    threadId,
+  });
+  const requestId = findLatestUnresolvedClientTurnRequestIdAfterSequence(
+    deps.db,
+    {
+      afterSequence: lastCompletedTurn?.completedSequence ?? 0,
+      threadId,
+    },
+  );
+  if (requestId === null) {
+    return;
+  }
+  appendThreadEvent(
+    deps,
+    unconfirmedRejection({
+      environmentId: thread.environmentId,
+      reason: TURN_START_UNCONFIRMED_ERROR_CODE,
+      requestId,
+      threadId,
+    }),
+  );
 }

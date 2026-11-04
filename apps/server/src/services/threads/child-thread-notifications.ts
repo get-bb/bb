@@ -474,7 +474,7 @@ async function queueChildThreadTurnNotificationBatchItem(
       windowMs: CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS,
     },
   );
-  if (row.state === "scheduled" && row.sendAt !== null) {
+  if (row !== null && row.state === "scheduled" && row.sendAt !== null) {
     requestQueuedMessageDispatchAt(deps, row.sendAt);
   }
 }

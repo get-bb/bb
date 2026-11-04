@@ -4,6 +4,7 @@ import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import {
   queuedMessageFailureReasonSchema,
   queuedMessagePayloadSchema,
+  queuedMessageSystemNoticeSchema,
   queuedMessageWaitingOnSchema,
 } from "./queued-message.js";
 import { queuedMessageStateSchema } from "./queued-message-lifecycle.js";
@@ -50,7 +51,6 @@ export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
 export type ThreadActivityState = z.infer<typeof threadActivityStateSchema>;
 
-
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
   origin: threadCreateOriginSchema.nullable(),
@@ -94,6 +94,7 @@ export const threadQueuedMessageSchema = z.object({
    */
   failureReason: queuedMessageFailureReasonSchema.nullable(),
   payload: queuedMessagePayloadSchema,
+  systemNotice: queuedMessageSystemNoticeSchema.nullable(),
   /**
    * Whether the sender may still rewrite this row's input. Not derivable from
    * `payload` alone: a `retry` row is never editable, and an `inline` row

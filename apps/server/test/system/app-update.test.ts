@@ -9,7 +9,10 @@ import type {
 import type { SystemVersionResponse } from "@bb/server-contract";
 import { ApiError } from "../../src/errors.js";
 import { createAppUpdateService } from "../../src/services/system/app-update.js";
-import { createScheduledAppUpdateService } from "../../src/services/system/app-update-schedule.js";
+import {
+  AUTO_UPDATE_CHECK_MS,
+  createScheduledAppUpdateService,
+} from "../../src/services/system/app-update-schedule.js";
 import type { ServerChangedMessage } from "../../src/ws/hub.js";
 import type { AppVersionService } from "../../src/services/system/app-version.js";
 import {
@@ -623,16 +626,28 @@ const PREPARING_STATUS = {
   },
 } satisfies Partial<LauncherAppUpdateStatus>;
 
-function createScheduledService(args: { runningThreads: number }) {
+function createScheduledService(args: {
+  autoCheck?: boolean;
+  runningThreads: number;
+}) {
   const running = { count: args.runningThreads };
   const experiment = { enabled: true };
+  const latest = { version: "1.1.0" };
+  const skipped = { key: null as string | null };
+  const auto = { enabled: args.autoCheck === true };
   const countRunningThreads = vi.fn(() => running.count);
   const listeners = new Set<(message: ServerChangedMessage) => void>();
   const launcher = new FakeLauncher();
   const inner = createAppUpdateService({
     currentCommit: null,
     appSurface: "web",
-    appVersion: appVersion({}),
+    appVersion: {
+      getSystemVersion: async () =>
+        (await appVersion({
+          latestVersion: latest.version,
+          updateAvailable: latest.version !== "1.0.0",
+        }).getSystemVersion({ forceRefresh: true })),
+    },
     config: { appVersion: "1.0.0", isDevelopment: false },
     countRunningThreads: () => running.count,
     launcher,
@@ -645,6 +660,13 @@ function createScheduledService(args: { runningThreads: number }) {
   launcher.push({});
   const notifyChanged = vi.fn();
   const service = createScheduledAppUpdateService({
+    autoCheckMs: args.autoCheck === true ? AUTO_UPDATE_CHECK_MS : null,
+    autoUpdate: {
+      get: () => auto.enabled,
+      set: (enabled) => {
+        auto.enabled = enabled;
+      },
+    },
     countRunningThreads,
     inner,
     isEnabled: () => experiment.enabled,
@@ -656,6 +678,12 @@ function createScheduledService(args: { runningThreads: number }) {
       return () => listeners.delete(listener);
     },
     settleMs: 5_000,
+    skippedUpdate: {
+      get: () => skipped.key,
+      set: (key) => {
+        skipped.key = key;
+      },
+    },
   });
   const emitThreadChange = (): void => {
     for (const listener of listeners) {
@@ -692,15 +720,144 @@ function createScheduledService(args: { runningThreads: number }) {
     launcher.requests.filter((request) => request.type === "apply");
   return {
     applyRequests,
+    auto,
     countRunningThreads,
     emitThreadChange,
+    latest,
     launcher,
     notifyChanged,
     service,
     setExperimentEnabled,
     setRunningThreads,
+    skipped,
   };
 }
+
+function failedResult(version: string): Partial<LauncherAppUpdateStatus> {
+  return {
+    lastResult: {
+      acknowledged: true,
+      finishedAt: "2026-10-23T00:00:00.000Z",
+      from: { kind: "npm", packageRoot: "/pkg/1.0.0", version: "1.0.0" },
+      id: "result-1",
+      logTail: [],
+      message: "npm install failed",
+      outcome: "failed",
+      phase: "prepare",
+      to: { kind: "npm", packageRoot: `/pkg/${version}`, version },
+    },
+  };
+}
+
+describe("checking for bb updates automatically", () => {
+  const { first, interval } = AUTO_UPDATE_CHECK_MS;
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const scheduledAt = async (
+    service: ReturnType<typeof createScheduledService>["service"],
+  ) => (await service.getStatus({ forceRefresh: false })).scheduled;
+
+  it("checks 30 seconds after boot and every hour, and updates once threads finish", async () => {
+    const { applyRequests, latest, launcher, service, setRunningThreads } =
+      createScheduledService({ autoCheck: true, runningThreads: 1 });
+    latest.version = "1.0.0";
+
+    await vi.advanceTimersByTimeAsync(first);
+    expect(await scheduledAt(service)).toBeNull();
+
+    latest.version = "1.1.0";
+    await vi.advanceTimersByTimeAsync(interval - first - 1_000);
+    expect(await scheduledAt(service)).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await scheduledAt(service)).not.toBeNull();
+    expect(applyRequests()).toEqual([]);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toEqual([
+      {
+        target: { kind: "npm", version: "1.1.0" },
+        targetVersion: "1.1.0",
+        type: "apply",
+      },
+    ]);
+    launcher.push(READY_STATUS);
+    expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+  });
+
+  it("does not check while the experiment is off", async () => {
+    const { applyRequests, service, setExperimentEnabled } =
+      createScheduledService({ autoCheck: true, runningThreads: 0 });
+    setExperimentEnabled(false);
+
+    await vi.advanceTimersByTimeAsync(first + interval);
+
+    expect(applyRequests()).toEqual([]);
+    expect(await scheduledAt(service)).toBeNull();
+  });
+
+  it("checks only while automatic updates are on, and turning them off drops the waiting update", async () => {
+    const { applyRequests, auto, service, setRunningThreads } =
+      createScheduledService({ autoCheck: true, runningThreads: 1 });
+    auto.enabled = false;
+
+    await vi.advanceTimersByTimeAsync(first + interval);
+    expect(await scheduledAt(service)).toBeNull();
+
+    expect((await service.setAutoUpdate(true)).autoUpdate).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await scheduledAt(service)).not.toBeNull();
+
+    await service.setAutoUpdate(false);
+    expect(await scheduledAt(service)).toBeNull();
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(first + interval);
+    expect(await scheduledAt(service)).toBeNull();
+    expect(applyRequests()).toEqual([]);
+  });
+
+  it("skips a version whose update failed until a newer one appears", async () => {
+    const { applyRequests, latest, launcher } = createScheduledService({
+      autoCheck: true,
+      runningThreads: 0,
+    });
+    launcher.push(failedResult("1.1.0"));
+
+    await vi.advanceTimersByTimeAsync(first + interval);
+    expect(applyRequests()).toEqual([]);
+
+    latest.version = "1.2.0";
+    await vi.advanceTimersByTimeAsync(interval);
+    expect(applyRequests()).toEqual([
+      expect.objectContaining({ targetVersion: "1.2.0" }),
+    ]);
+  });
+
+  it("skips a cancelled version until a newer one appears", async () => {
+    const { applyRequests, latest, service, skipped } =
+      createScheduledService({ autoCheck: true, runningThreads: 1 });
+
+    await vi.advanceTimersByTimeAsync(first);
+    expect(await scheduledAt(service)).not.toBeNull();
+    await service.cancelScheduled();
+    expect(skipped.key).toBe("1.1.0");
+
+    await vi.advanceTimersByTimeAsync(2 * interval);
+    expect(await scheduledAt(service)).toBeNull();
+
+    latest.version = "1.2.0";
+    await vi.advanceTimersByTimeAsync(interval);
+    expect(await scheduledAt(service)).not.toBeNull();
+    expect(applyRequests()).toEqual([]);
+  });
+});
 
 describe("app update scheduled for when threads finish", () => {
   beforeEach(() => {

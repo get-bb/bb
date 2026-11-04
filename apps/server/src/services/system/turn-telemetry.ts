@@ -30,6 +30,7 @@ type TurnTelemetryDeps = Pick<
 
 const SYSTEM_ERROR_CATEGORIES: Readonly<Record<string, TurnErrorCategory>> = {
   provider_process_exited: "process_exited",
+  provider_turn_start_failed: "start_failed",
   thread_command_failed: "start_failed",
   thread_provisioning_failed: "start_failed",
   provider_cli_unsupported_version: "start_failed",

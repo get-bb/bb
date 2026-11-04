@@ -1,7 +1,8 @@
-import type {
-  QueuedMessagePayload,
-  QueuedMessageWaitingOn,
-  ThreadStatus,
+import {
+  RESTART_RESUME_RETRY_REASON,
+  type QueuedMessagePayload,
+  type QueuedMessageWaitingOn,
+  type ThreadStatus,
 } from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
 import { formatScheduledTime } from "@/lib/relative-time";
@@ -110,6 +111,9 @@ export function queuedMessageFallbackTitle(args: {
   payload: QueuedMessagePayload;
 }): string {
   if (args.payload.kind !== "retry") return "Queued message";
+  if (args.payload.reason === RESTART_RESUME_RETRY_REASON) {
+    return `Resume after ${RESTART_RESUME_RETRY_REASON}`;
+  }
   return `Retry failed turn from ${formatScheduledTime({
     now: args.now,
     timestamp: args.createdAt,
@@ -123,7 +127,8 @@ export function describeQueuedMessageWait(
   if (args.waitingOn?.kind === "superseded") return SUPERSEDED_WAIT_LINE;
 
   if (args.payload.kind === "retry") {
-    const parts: string[] = [args.payload.reason];
+    const resume = args.payload.reason === RESTART_RESUME_RETRY_REASON;
+    const parts: string[] = resume ? [] : [args.payload.reason];
     if (args.waitingOn?.kind === "plugin") {
       parts.push(
         `held by ${args.pluginDisplayName ?? args.waitingOn.pluginId} · ${args.waitingOn.reason}`,
@@ -131,7 +136,7 @@ export function describeQueuedMessageWait(
     }
     if (args.sendAt !== null) {
       parts.push(
-        `retrying at ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`,
+        `${resume ? "resuming" : "retrying"} at ${formatScheduledTime({ now: args.now, timestamp: args.sendAt })}`,
       );
     }
     parts.push(`attempt ${args.payload.attempt}`);
