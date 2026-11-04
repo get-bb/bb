@@ -16,6 +16,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 interface ChildTurn {
   turnId: string;
+  compacted?: boolean;
   messages: { text: string; parentToolCallId?: string }[];
 }
 
@@ -48,7 +49,25 @@ function childTurnEvents(
 ): HostDaemonEventEnvelope[] {
   const scope = turnScope(turn.turnId);
   const providerThreadId = "provider-child";
+  const compaction: HostDaemonEventEnvelope[] = turn.compacted
+    ? [
+        {
+          threadId: childId,
+          event: {
+            type: "item/completed",
+            threadId: childId,
+            providerThreadId,
+            scope,
+            item: {
+              id: `${turn.turnId}-compaction`,
+              type: "contextCompaction",
+            },
+          },
+        },
+      ]
+    : [];
   return [
+    ...compaction,
     ...turn.messages.map((message, index) => ({
       threadId: childId,
       event: {
@@ -79,48 +98,59 @@ function childTurnEvents(
   ];
 }
 
+function readParentNotices(harness: TestAppHarness, parentId: string) {
+  const delivered = listEvents(harness.db, { threadId: parentId })
+    .filter((row) => row.type === "client/turn/requested")
+    .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+    .filter((data) => data.initiator === "system")
+    .map((data) => ({ text: JSON.stringify(data.input), version: "sent" }));
+  const queued = listQueuedThreadMessages(harness.db, parentId).map((row) => ({
+    text: row.content,
+    version: `${row.id}@${row.updatedAt}`,
+  }));
+  return [...delivered, ...queued];
+}
+
 async function runChildTurns(
   harness: TestAppHarness,
   turns: ChildTurn[],
 ): Promise<string[]> {
-  const { parent, child, environment, session } = seedParentAndChild(harness);
-  const readNotices = () => {
-    const delivered = listEvents(harness.db, { threadId: parent.id })
-      .filter((row) => row.type === "client/turn/requested")
-      .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
-      .filter((data) => data.initiator === "system")
-      .map((data) => ({ text: JSON.stringify(data.input), version: "sent" }));
-    const queued = listQueuedThreadMessages(harness.db, parent.id).map(
-      (row) => ({ text: row.content, version: `${row.id}@${row.updatedAt}` }),
-    );
-    return [...delivered, ...queued];
-  };
+  const seeded = seedParentAndChild(harness);
+  const readNotices = () => readParentNotices(harness, seeded.parent.id);
   const latestNotices: string[] = [];
   vi.useFakeTimers();
   for (const turn of turns) {
     const before = JSON.stringify(readNotices());
-    seedTurnStarted(harness.deps, {
-      environmentId: environment.id,
-      threadId: child.id,
-      turnId: turn.turnId,
-      providerThreadId: "provider-child",
-    });
-    const response = await harness.app.request("/internal/session/events", {
-      method: "POST",
-      headers: internalAuthHeaders(harness),
-      body: JSON.stringify({
-        sessionId: session.id,
-        eventGroups: groupHostDaemonEvents(childTurnEvents(child.id, turn)),
-      }),
-    });
-    expect(response.status, await response.clone().text()).toBe(200);
-    await vi.advanceTimersByTimeAsync(2_000);
+    await postChildTurn(harness, { ...seeded, turn });
     await vi.waitFor(() =>
       expect(JSON.stringify(readNotices())).not.toBe(before),
     );
     latestNotices.push(readNotices().at(-1)!.text);
   }
   return latestNotices;
+}
+
+async function postChildTurn(
+  harness: TestAppHarness,
+  args: ReturnType<typeof seedParentAndChild> & { turn: ChildTurn },
+): Promise<void> {
+  const { child, environment, session, turn } = args;
+  seedTurnStarted(harness.deps, {
+    environmentId: environment.id,
+    threadId: child.id,
+    turnId: turn.turnId,
+    providerThreadId: "provider-child",
+  });
+  const response = await harness.app.request("/internal/session/events", {
+    method: "POST",
+    headers: internalAuthHeaders(harness),
+    body: JSON.stringify({
+      sessionId: session.id,
+      eventGroups: groupHostDaemonEvents(childTurnEvents(child.id, turn)),
+    }),
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+  await vi.advanceTimersByTimeAsync(2_000);
 }
 
 afterEach(() => vi.useRealTimers());
@@ -144,6 +174,35 @@ describe("child completion output is scoped to the completed root turn", () => {
         expect(notice).toContain("No final output was recorded.");
         expect(notice).not.toContain("This slot is already counted.");
       }
+    });
+  });
+
+  it("does not notify the parent for a turn that only compacted context", async () => {
+    await withTestHarness(async (harness) => {
+      const seeded = seedParentAndChild(harness);
+      vi.useFakeTimers();
+      await postChildTurn(harness, {
+        ...seeded,
+        turn: { turnId: "turn-compact", compacted: true, messages: [] },
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(readParentNotices(harness, seeded.parent.id)).toEqual([]);
+
+      await postChildTurn(harness, {
+        ...seeded,
+        turn: {
+          turnId: "turn-compacted-mid-turn",
+          compacted: true,
+          messages: [{ text: "Result after compaction." }],
+        },
+      });
+      await vi.waitFor(() =>
+        expect(readParentNotices(harness, seeded.parent.id)).toEqual([
+          expect.objectContaining({
+            text: expect.stringContaining("Result after compaction."),
+          }),
+        ]),
+      );
     });
   });
 
