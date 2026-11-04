@@ -855,7 +855,9 @@ While on, the server logs database operations of at least 25 ms, API requests
 of at least 100 ms, and event-loop stalls of at least 100 ms. Every five
 seconds `Server performance sample` records process and main-thread CPU, loop
 utilization and delay, GC, and memory; CPU values are interval totals, not
-per-request attribution. A 1 ms V8 CPU profile is saved every 30 seconds to
+per-request attribution. Its `maxDelayMs` and `p99DelayMs` are gaps of the
+shared 50 ms event-loop timer (`delayResolutionMs`), so an idle loop reports
+about 50 ms. A V8 CPU profile sampled every 10 ms is saved every 30 seconds to
 `$BB_DATA_DIR/logs/performance/` (`Server CPU profile saved` logs its path,
 PID, and UTC window). Profiles are kept for up to 12 hours and 1 GB total,
 oldest first, so copy the ones you need. They use private permissions and
@@ -925,16 +927,17 @@ applied chunk.
    `longestSynchronousWork` and its wall/CPU times with the profile instead.
    `stallAttribution` is `candidate`, with the operation in
    `stallCauseCandidate`, when a measured synchronous operation is long enough
-   (within one 20 ms sample) to explain the maximum delay, and `unattributed`
+   (within one 50 ms timer interval) to explain the maximum delay, and `unattributed`
    otherwise. A candidate is not a confirmed cause: both fall somewhere in the
    five-second window. Profile processing runs in a worker and no longer emits
    the historical `cpu-profile:*` synchronous-work labels.
 2. With performance diagnostics enabled, look for `Event loop stall attribution`
    records for the same PID and UTC window. They are emitted at the next CPU
    profile rotation (normally within 30 seconds), or on diagnostics shutdown,
-   even if the profile file is discarded for exceeding its size limit. A
-   separate 20 ms timer records individual gaps of at least 100 ms; the
-   five-second histogram's observation time is not the stall's end time.
+   even if the profile file is discarded for exceeding its size limit. The
+   same 50 ms timer that feeds the stall monitor records individual gaps of at
+   least 100 ms, so every stall of 100 ms or more is caught; the five-second
+   histogram's observation time is not the stall's end time.
    `stacks` ranks the top five sampled leaf stacks in each gap, with up to 12
    caller frames, including GC, plugin functions, native writes, and database
    callers. Frame coordinates are one-based; cached Node source maps are used
@@ -942,7 +945,7 @@ applied chunk.
    generated code. Profile scanning and stack formatting run in that worker;
    the main thread only collects and transfers bounded timing windows.
    `sampledMs` is elapsed sampling coverage, not CPU time; native frames can
-   include waiting. Each sample contributes at most 10 ms so a long sampling
+   include waiting. Each sample contributes at most 20 ms so a long sampling
    gap cannot be blamed on one frame. `unobservedMs` reports missing coverage,
    including profile boundaries. The window includes up to one timer interval
    of ordinary work; ranked stacks are evidence, not proof of a single cause.
