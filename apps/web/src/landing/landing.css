@@ -2757,7 +2757,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw .rail {
   width: 44px;
   padding: 8px 0 10px;
-  background: color-mix(in oklab, var(--ink) 4%, var(--surface));
+  background: color-mix(in oklch, var(--ink) 4%, var(--surface));
 }
 
 .bw .rail-btn {
@@ -3207,7 +3207,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 48px;
   padding: 0 20px;
   border-bottom: 1px solid
-    color-mix(in oklab, var(--border-soft) 60%, var(--bg));
+    color-mix(in oklch, var(--border-soft) 60%, var(--bg));
   font-size: var(--mock-text-lg);
   color: var(--ink);
 }
@@ -4752,7 +4752,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-morph.mx-files {
   --mx-canvas: #1a1b26;
   --mx-ink: #c0caf5;
-  --mx-side: color-mix(in oklab, #c0caf5 4.3%, #1a1b26);
+  --mx-side: color-mix(in oklch, #c0caf5 4.3%, #1a1b26);
   --mx-accent: #7aa2f7;
   --mx-ok: #9ece6a;
   --mx-warn: #e0af68;
@@ -4813,7 +4813,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --ink-strong: var(--mx-ink);
   --dim: color-mix(in oklch, var(--mx-ink) 84%, var(--mx-canvas));
   --subtle: color-mix(in oklch, var(--mx-ink) 64%, var(--mx-canvas));
-  --border: color-mix(in oklab, var(--mx-ink) var(--mx-line), var(--mx-canvas));
+  --border: color-mix(in oklch, var(--mx-ink) var(--mx-line), var(--mx-canvas));
   --border-soft: color-mix(
     in oklab,
     var(--mx-ink) calc(var(--mx-line) * 0.57),
@@ -4999,7 +4999,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 18px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: color-mix(in oklab, var(--mx-accent) 22%, var(--bg));
+  background: color-mix(in oklch, var(--mx-accent) 22%, var(--bg));
   color: var(--ink);
   font-size: 8.5px;
   font-weight: 600;
@@ -5433,7 +5433,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-sh-card.is-active {
-  background: color-mix(in oklab, var(--ink) 7%, var(--mx-side));
+  background: color-mix(in oklch, var(--ink) 7%, var(--mx-side));
 }
 
 .mx-sh-proj {
@@ -5627,7 +5627,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 20px;
   flex-shrink: 0;
   border-radius: var(--radius-xs);
-  background: color-mix(in oklab, var(--mx-node) 16%, var(--bg));
+  background: color-mix(in oklch, var(--mx-node) 16%, var(--bg));
   color: var(--mx-node);
 }
 
