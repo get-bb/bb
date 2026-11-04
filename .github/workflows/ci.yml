@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   windows:
-    name: ${{ matrix.shard }} ${{ matrix.cpus }} CPU
+    name: Consolidated ${{ matrix.shard }} ${{ matrix.vitestShard }} on 8 CPU
     runs-on: blacksmith-${{ matrix.cpus }}vcpu-windows-2025
     timeout-minutes: 30
     permissions:
@@ -17,39 +17,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - shard: server-2
-            filter: --filter=@bb/server
-            concurrency: 4
-            vitestShard: 2/3
-            cpus: 4
-          - shard: server-2
-            filter: --filter=@bb/server
-            concurrency: 4
-            vitestShard: 2/3
+          - shard: app-1
+            filter: --filter=@bb/app
+            concurrency: 2
+            vitestShard: 1/2
             cpus: 8
           - shard: app-2
             filter: --filter=@bb/app
             concurrency: 2
-            vitestShard: 2/4
-            cpus: 4
-          - shard: app-2
-            filter: --filter=@bb/app
-            concurrency: 2
-            vitestShard: 2/4
-            cpus: 8
-          - shard: plugins-2
-            filter: --filter=bb-plugin-* --filter=!bb-plugin-provider-*
-              --filter=!bb-plugin-tasks --filter=!bb-plugin-connect
-              --filter=!bb-plugin-thread-list
-            concurrency: 2
-            vitestShard: ""
-            cpus: 4
-          - shard: plugins-2
-            filter: --filter=bb-plugin-* --filter=!bb-plugin-provider-*
-              --filter=!bb-plugin-tasks --filter=!bb-plugin-connect
-              --filter=!bb-plugin-thread-list
-            concurrency: 4
-            vitestShard: ""
+            vitestShard: 2/2
             cpus: 8
     steps:
       - name: Checkout repository
