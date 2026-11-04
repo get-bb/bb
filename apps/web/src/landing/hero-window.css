@@ -1990,6 +1990,9 @@
   opacity: 1;
   animation: none;
 }
+.rhb .plugin-task-key {
+  width: 50px;
+}
 
 .rhb .rhb-feed-layer:not(.is-out) {
   z-index: 1;
@@ -2327,6 +2330,7 @@
 }
 
 .rhb .rhb-turn-fold > .rhb-turn-body {
+  min-width: 0;
   min-height: 0;
   margin-top: 0;
 }
