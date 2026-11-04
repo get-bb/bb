@@ -1,14 +1,14 @@
 import {
-  type ConnectDbPgMigration,
-  connectDbPgMigrations,
-} from "@bb/connect-db/pg-migrations";
-import type { PgQueryable } from "@bb/connect-db/store";
+  type ConnectDbMigration,
+  connectDbMigrations,
+} from "@bb/connect-db/migrations";
+import type { PgQueryable } from "./pg-client.js";
 
 const MIGRATION_LOCK_KEY = 7_204_311;
 
-export async function applyConnectDbPgMigrations(
+export async function applyConnectDbMigrations(
   pg: PgQueryable,
-  migrations: readonly ConnectDbPgMigration[] = connectDbPgMigrations(),
+  migrations: readonly ConnectDbMigration[] = connectDbMigrations(),
 ): Promise<string[]> {
   await pg.queryArrays(
     `CREATE TABLE IF NOT EXISTS "connect_db_migrations" ("tag" text PRIMARY KEY, "applied_at" bigint NOT NULL)`,

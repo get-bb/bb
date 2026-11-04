@@ -492,27 +492,27 @@ const gate = {
         return handleGateResolve(request, env, ctx);
       }
       if (url.pathname === GATE_PRESENCE_PATH) {
-        return handleGatePresence(request, env, ctx);
+        return handleGatePresence(request, env);
       }
       if (url.pathname === GATE_RESOLVE_BATCH_PATH) {
         return handleGateResolveBatch(request, env, ctx);
       }
       if (url.pathname === GATE_PRESENCE_BATCH_PATH) {
-        return handleGatePresenceBatch(request, env, ctx);
+        return handleGatePresenceBatch(request, env);
       }
     }
     if (parsed === null || parsed.target === null) {
       if (url.pathname === "/api/connect/servers") {
-        return handleListAccountServers(request, env, ctx);
+        return handleListAccountServers(request, env);
       }
       if (url.pathname === "/api/connect/disconnect") {
-        return handleDisconnectServer(request, env, ctx);
+        return handleDisconnectServer(request, env);
       }
       if (url.pathname === "/api/connect/desktop-session") {
-        return handleCreateDesktopSession(request, env, ctx);
+        return handleCreateDesktopSession(request, env);
       }
       if (url.pathname === "/api/connect/machine-label") {
-        return handleAssignMachineLabel(request, env, ctx);
+        return handleAssignMachineLabel(request, env);
       }
     }
     if (!parsed) return text("bb connect: unknown host\n", 404);
@@ -531,7 +531,7 @@ const gate = {
       );
     }
 
-    const { db } = openGateDb(env, ctx);
+    const { db } = openGateDb(env);
     const isTunnelDial = url.pathname === "/__tunnel";
     const resolved = await resolveLabel(
       label,

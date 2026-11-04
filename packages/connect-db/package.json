@@ -9,29 +9,17 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./store": {
-      "source": "./src/store/index.ts",
-      "types": "./src/store/index.ts",
-      "default": "./src/store/index.ts"
-    },
-    "./pg-migrations": {
-      "source": "./src/pg-migrations.ts",
-      "types": "./src/pg-migrations.ts",
-      "default": "./src/pg-migrations.ts"
-    },
-    "./testing": {
-      "source": "./src/testing.ts",
-      "types": "./src/testing.ts",
-      "default": "./src/testing.ts"
+    "./migrations": {
+      "source": "./src/migrations.ts",
+      "types": "./src/migrations.ts",
+      "default": "./src/migrations.ts"
     }
   },
   "files": [
-    "migrations",
-    "migrations-pg"
+    "migrations"
   ],
   "scripts": {
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "db:generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
@@ -40,9 +28,7 @@
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
-    "better-sqlite3": "12.10.0",
     "drizzle-kit": "^0.30.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

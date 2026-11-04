@@ -1,5 +1,5 @@
 import { connectPg } from "../src/pg-client.js";
-import { applyConnectDbPgMigrations } from "../src/migrate.js";
+import { applyConnectDbMigrations } from "../src/migrate.js";
 
 const url = process.env.CONNECT_DB_PG_MIGRATOR_URL?.trim() ?? "";
 if (url === "") {
@@ -7,7 +7,7 @@ if (url === "") {
 }
 const pg = connectPg(url);
 try {
-  const applied = await applyConnectDbPgMigrations(pg);
+  const applied = await applyConnectDbMigrations(pg);
   console.log(JSON.stringify({ applied }));
 } finally {
   await pg.close();

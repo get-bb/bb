@@ -10,8 +10,9 @@ import {
   tunnelConnectedLookup,
   type ConnectDb,
   type TunnelConnectedLookup,
+  first,
 } from "@bb/connect-db";
-import { openGateDb, type WaitUntilContext } from "./connect-db.js";
+import { openGateDb } from "./connect-db.js";
 import {
   parseCookie,
   verifyMachineCredential,
@@ -46,14 +47,18 @@ export async function revokeServerCredential(
   if (!presented) return null;
 
   const credentialHash = await sha256Hex(presented);
-  const revoked = await db
-    .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
-    .where(
-      and(eq(server.credentialHash, credentialHash), isNull(server.revokedAt)),
-    )
-    .returning({ subdomain: server.subdomain })
-    .get();
+  const revoked = await first(
+    db
+      .update(server)
+      .set({ credentialHash: null, revokedAt: new Date() })
+      .where(
+        and(
+          eq(server.credentialHash, credentialHash),
+          isNull(server.revokedAt),
+        ),
+      )
+      .returning({ subdomain: server.subdomain }),
+  );
   serverCredentials.forget(presented);
   invalidateDesktopSessionGrant({ kind: "server", credentialHash });
   return revoked ?? null;
@@ -117,8 +122,7 @@ export async function listAccountServers(
       nextTunnelAt: server.nextTunnelAt,
     })
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
 
   return Promise.all(
     rows.map(async (row) => {
@@ -141,12 +145,8 @@ export async function listAccountServers(
   );
 }
 
-async function resolveRequestAccount(
-  request: Request,
-  env: Env,
-  ctx: WaitUntilContext,
-) {
-  const { db } = openGateDb(env, ctx);
+async function resolveRequestAccount(request: Request, env: Env) {
+  const { db } = openGateDb(env);
   const runtime = resolveConnectRuntime(env);
   const account = await resolveAccount(
     request,
@@ -160,13 +160,12 @@ async function resolveRequestAccount(
 export async function handleListAccountServers(
   request: Request,
   env: Env,
-  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return methodNotAllowed("GET");
   }
 
-  const { account, db } = await resolveRequestAccount(request, env, ctx);
+  const { account, db } = await resolveRequestAccount(request, env);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
@@ -183,13 +182,12 @@ export async function handleListAccountServers(
 export async function handleDisconnectServer(
   request: Request,
   env: Env,
-  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
 
-  const { db } = openGateDb(env, ctx);
+  const { db } = openGateDb(env);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const revoked = await revokeServerCredential(credential, db);
   if (!revoked) {
@@ -206,12 +204,11 @@ export async function handleDisconnectServer(
 export async function handleCreateDesktopSession(
   request: Request,
   env: Env,
-  ctx: WaitUntilContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
-  const { account, runtime } = await resolveRequestAccount(request, env, ctx);
+  const { account, runtime } = await resolveRequestAccount(request, env);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }

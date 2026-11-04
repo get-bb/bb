@@ -25,7 +25,7 @@ export function createAuth(env: Env) {
     baseURL: env.APP_URL,
     trustedOrigins: [env.APP_URL, subdomainOrigin],
     database: drizzleAdapter(db, {
-      provider: "sqlite",
+      provider: "pg",
       schema: { user, session, account, verification },
     }) as unknown as Parameters<typeof betterAuth>[0]["database"],
     session: {

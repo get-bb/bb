@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NEXT_TUNNEL_WRITE_INTERVAL_MS } from "@bb/connect-db";
 import {
-  type PgliteConnectDb,
-  createMigratedPglite,
+  type TestConnectDb,
+  createTestConnectDb,
 } from "@bb/connect-db-pg/testing";
 import type { GatePresenceRequest } from "@bb/tunnel-contract/next";
 import { recordNextTunnelPresence } from "./gate-api.js";
 
 const NOW = 1_790_000_000_000;
-let pg: PgliteConnectDb;
+let pg: TestConnectDb;
 
 async function run(text: string, params: unknown[] = []): Promise<void> {
   await pg.queryable.queryArrays(text, params);
@@ -35,7 +35,7 @@ function presence(over: Partial<GatePresenceRequest>): GatePresenceRequest {
 }
 
 beforeEach(async () => {
-  pg = await createMigratedPglite();
+  pg = await createTestConnectDb();
   await run(
     `INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ('owner', 'Owner', 'o@example.com', true, $1, $1)`,
     [NOW],
@@ -59,8 +59,8 @@ afterEach(async () => {
 });
 
 describe("next tunnel presence on Postgres", () => {
-  it("applies the D1 batch's write rules", async () => {
-    const target = { kind: "pg", pg: pg.backend } as const;
+  it("applies the presence write rules", async () => {
+    const target = pg.db;
     const at = NOW + 1;
     expect(
       await recordNextTunnelPresence(
@@ -150,7 +150,7 @@ describe("next tunnel presence on Postgres", () => {
     await run(`UPDATE machine SET revoked_at = $1 WHERE id = 'mch-box'`, [NOW]);
     expect(
       await recordNextTunnelPresence(
-        { kind: "pg", pg: pg.backend },
+        pg.db,
         [presence({ label: "box", at: NOW + 1 })],
         NOW + 1,
       ),

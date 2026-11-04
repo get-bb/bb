@@ -1,6 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { workerNodeBuiltinsPlugin } from "@bb/connect-db-pg/testing";
+import {
+  type ServedTestConnectDb,
+  serveTestConnectDb,
+  workerNodeBuiltinsPlugin,
+} from "@bb/connect-db-pg/testing";
 import {
   Miniflare,
   type Request as MiniflareRequest,
@@ -8,7 +12,6 @@ import {
 } from "miniflare";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { sha256Hex } from "@bb/connect-db";
-import { applyConnectDbMigrationsToD1 } from "@bb/connect-db/testing";
 
 const CREDENTIAL = "bbcred_miniflare_server";
 const NOW = Date.now();
@@ -37,13 +40,17 @@ const VARS = {
 
 let upstreamGate: Promise<void> = Promise.resolve();
 
-function gateway(script: string, bindings: Record<string, string>) {
+function gateway(
+  script: string,
+  bindings: Record<string, string>,
+  connectionString: string,
+) {
   return new Miniflare({
     modules: true,
     script,
     compatibilityDate: "2026-06-11",
     compatibilityFlags: ["nodejs_compat"],
-    d1Databases: { DB: "ai-gateway-test" },
+    hyperdrives: { HYPERDRIVE: connectionString },
     ratelimits: { AI_RATE_LIMITER: { simple: { limit: 60, period: 60 } } },
     bindings,
     outboundService: async (request: MiniflareRequest) => {
@@ -72,21 +79,43 @@ function gateway(script: string, bindings: Record<string, string>) {
 
 let script: string;
 const gateways: Miniflare[] = [];
+const databases = new Map<Miniflare, ServedTestConnectDb>();
 
-async function seed(db: D1Database): Promise<void> {
-  await applyConnectDbMigrationsToD1(db);
-  await db
-    .prepare(
-      "INSERT INTO user (id, name, email, email_verified, created_at, updated_at) VALUES ('u1', 'Sawyer', 'u1@example.com', 1, ?1, ?1)",
-    )
-    .bind(NOW)
-    .run();
-  await db
-    .prepare(
-      "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('s1', 'u1', 'default', 'sawyer', ?1, ?2)",
-    )
-    .bind(await sha256Hex(CREDENTIAL), NOW)
-    .run();
+function databaseOf(instance: Miniflare): ServedTestConnectDb {
+  const database = databases.get(instance);
+  if (!database) throw new Error("gateway has no database");
+  return database;
+}
+
+async function query(
+  db: ServedTestConnectDb,
+  sql: string,
+  values: unknown[] = [],
+): Promise<Record<string, unknown>[]> {
+  const { rows } = await db.pglite.query<Record<string, unknown>>(sql, values, {
+    parsers: { 20: (value: string) => Number(value) },
+  });
+  return rows;
+}
+
+async function firstRow(
+  db: ServedTestConnectDb,
+  sql: string,
+): Promise<Record<string, unknown> | null> {
+  return (await query(db, sql))[0] ?? null;
+}
+
+async function seed(db: ServedTestConnectDb): Promise<void> {
+  await query(
+    db,
+    `INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES ('u1', 'Sawyer', 'u1@example.com', true, $1, $1)`,
+    [NOW],
+  );
+  await query(
+    db,
+    "INSERT INTO server (id, user_id, name, subdomain, credential_hash, created_at) VALUES ('s1', 'u1', 'default', 'sawyer', $1, $2)",
+    [await sha256Hex(CREDENTIAL), NOW],
+  );
 }
 
 beforeAll(async () => {
@@ -99,14 +128,20 @@ async function seededGateway(
     OPENROUTER_API_KEY: "sk-or-test",
   },
 ): Promise<Miniflare> {
-  const instance = gateway(script, bindings);
+  const database = await serveTestConnectDb();
+  const instance = gateway(script, bindings, database.connectionString);
   gateways.push(instance);
-  await seed((await instance.getD1Database("DB")) as unknown as D1Database);
+  databases.set(instance, database);
+  await seed(database);
   return instance;
 }
 
 afterEach(async () => {
   await Promise.all(gateways.splice(0).map((instance) => instance.dispose()));
+  await Promise.all(
+    [...databases.values()].map((database) => database.close()),
+  );
+  databases.clear();
   upstreamBodies.length = 0;
   upstreamGate = Promise.resolve();
 });
@@ -123,8 +158,8 @@ function complete(instance: Miniflare, prompt = "title please") {
   });
 }
 
-describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
-  it("completes, meters in D1, and reports usage", async () => {
+describe("bb-ai-gateway worker on Postgres", { timeout: 30_000 }, () => {
+  it("completes, meters in Postgres, and reports usage", async () => {
     const mf = await seededGateway();
     const response = await complete(mf);
     expect(response.status).toBe(200);
@@ -139,13 +174,12 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     });
     expect(upstreamBodies.at(-1)).not.toHaveProperty("models");
 
-    const db = (await mf.getD1Database("DB")) as unknown as D1Database;
+    const db = databaseOf(mf);
     await vi.waitFor(async () => {
-      const row = await db
-        .prepare(
-          "SELECT spent_micros, reserved_micros, requests FROM ai_usage_day WHERE user_id = 'u1'",
-        )
-        .first();
+      const row = await firstRow(
+        db,
+        "SELECT spent_micros, reserved_micros, requests FROM ai_usage_day WHERE user_id = 'u1'",
+      );
       expect(row).toEqual({
         spent_micros: 10,
         reserved_micros: 0,
@@ -206,20 +240,19 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     expect(await limited.json()).toMatchObject({
       error: { code: "rate_limited" },
     });
-    const db = (await mf.getD1Database("DB")) as unknown as D1Database;
+    const db = databaseOf(mf);
     await vi.waitFor(async () => {
-      const logged = await db
-        .prepare(
-          "SELECT COUNT(*) AS refused FROM ai_request_log WHERE outcome = 'rate_limited' AND cost_micros = 0",
-        )
-        .first<{ refused: number }>();
+      const logged = await firstRow(
+        db,
+        "SELECT COUNT(*) AS refused FROM ai_request_log WHERE outcome = 'rate_limited' AND cost_micros = 0",
+      );
       expect(logged?.refused).toBe(
         statuses.filter((status) => status === 429).length + 1,
       );
     });
   });
 
-  it("holds concurrent D1 reservations to the daily limit", async () => {
+  it("holds concurrent reservations to the daily limit", async () => {
     const tight = await seededGateway({
       ...VARS,
       AI_DAILY_BUDGET_MICROS: "25000",
@@ -249,14 +282,13 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     }
     await Promise.all(pending);
     expect(statuses.filter((status) => status === 200)).toHaveLength(5);
-    const db = (await tight.getD1Database("DB")) as unknown as D1Database;
+    const db = databaseOf(tight);
     await vi.waitFor(async () => {
       expect(
-        await db
-          .prepare(
-            "SELECT spent_micros, reserved_micros FROM ai_usage_day WHERE user_id = 'u1'",
-          )
-          .first(),
+        await firstRow(
+          db,
+          "SELECT spent_micros, reserved_micros FROM ai_usage_day WHERE user_id = 'u1'",
+        ),
       ).toEqual({ spent_micros: 50, reserved_micros: 0 });
     });
   });
@@ -272,23 +304,21 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
 
   it("prunes month-old metadata on the daily cron", async () => {
     const mf = await seededGateway();
-    const db = (await mf.getD1Database("DB")) as unknown as D1Database;
+    const db = databaseOf(mf);
     const old = NOW - 40 * 24 * 60 * 60 * 1000;
-    await db
-      .prepare(
-        "INSERT INTO ai_request_log (id, user_id, server_id, latency_ms, outcome, created_at) VALUES ('old', 'u1', 's1', 5, 'ok', ?1)",
-      )
-      .bind(old)
-      .run();
-    await db
-      .prepare(
-        "INSERT INTO ai_usage_day (user_id, day) VALUES ('u1', ?1), ('u1', ?2)",
-      )
-      .bind(
+    await query(
+      db,
+      "INSERT INTO ai_request_log (id, user_id, server_id, latency_ms, outcome, created_at) VALUES ('old', 'u1', 's1', 5, 'ok', $1)",
+      [old],
+    );
+    await query(
+      db,
+      "INSERT INTO ai_usage_day (user_id, day) VALUES ('u1', $1), ('u1', $2)",
+      [
         new Date(NOW).toISOString().slice(0, 10),
         new Date(old).toISOString().slice(0, 10),
-      )
-      .run();
+      ],
+    );
 
     const worker = await mf.getWorker();
     await worker.scheduled({
@@ -297,16 +327,10 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     });
 
     expect(
-      await db
-        .prepare("SELECT id FROM ai_request_log WHERE id = 'old'")
-        .first(),
+      await firstRow(db, "SELECT id FROM ai_request_log WHERE id = 'old'"),
     ).toBeNull();
     expect(
-      (
-        await db
-          .prepare("SELECT COUNT(*) AS days FROM ai_usage_day")
-          .first<{ days: number }>()
-      )?.days,
+      (await firstRow(db, "SELECT COUNT(*) AS days FROM ai_usage_day"))?.days,
     ).toBe(1);
   });
 });

@@ -33,9 +33,7 @@ import {
 
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
-  DB: D1Database;
-  HYPERDRIVE?: Hyperdrive;
-  CONNECT_DB_FLAGS?: KVNamespace;
+  HYPERDRIVE: Hyperdrive;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
   GATE_EVENTS: AnalyticsEngineDataset;
@@ -283,22 +281,18 @@ export class TunnelDO {
     if (!serverId && !machineId) return;
     let opened: OpenConnectDb | null = null;
     try {
-      opened = openConnectDb(this.env, (promise) =>
-        this.state.waitUntil(promise),
-      );
+      opened = openConnectDb(this.env);
       const { db } = opened;
       if (machineId) {
         await db
           .update(machine)
           .set({ lastSeenAt: new Date() })
-          .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)))
-          .run();
+          .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)));
       } else if (serverId) {
         await db
           .update(server)
           .set({ lastSeenAt: new Date() })
-          .where(eq(server.id, serverId))
-          .run();
+          .where(eq(server.id, serverId));
       }
     } catch {
     } finally {

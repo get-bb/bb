@@ -1,5 +1,4 @@
 import { Client, types } from "pg";
-import type { PgQueryable } from "@bb/connect-db/store";
 
 const INT8_OID = 20;
 
@@ -10,7 +9,17 @@ const pgTypes = {
   },
 };
 
+export interface PgQueryResult {
+  rows: unknown[][];
+  rowCount: number | null;
+}
+
+export interface PgQueryable {
+  queryArrays(text: string, params: readonly unknown[]): Promise<PgQueryResult>;
+}
+
 export interface PgConnection extends PgQueryable {
+  client(): Promise<Client>;
   close(): Promise<void>;
 }
 
@@ -30,6 +39,7 @@ export function connectPg(connectionString: string): PgConnection {
     return client;
   };
   return {
+    client: connected,
     async queryArrays(text, params) {
       const result = await (
         await connected()
