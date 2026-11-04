@@ -47,8 +47,8 @@ const TESTIMONIALS: readonly Testimonial[] = [
     byline: "CEO, Shopify",
     avatar: lutkeAvatar,
     source: "x",
-    url: "https://x.com/tobi/status/2104898204135297252",
-    quote: "I think it’s really really good… Use it daily.",
+    url: "https://x.com/tobi/status/2111930824035836020",
+    quote: "bb is really great",
   },
   {
     author: "David Ondrej",
@@ -56,7 +56,8 @@ const TESTIMONIALS: readonly Testimonial[] = [
     avatar: ondrejAvatar,
     source: "x",
     url: "https://x.com/DavidOndrej1/status/2090488406228840865",
-    quote: "bb has the best GUI for Agentic Engineering right now\n\nchange my mind",
+    quote:
+      "bb has the best GUI for Agentic Engineering right now\n\nchange my mind",
   },
   {
     author: "Chris Banes",
@@ -82,7 +83,8 @@ const TESTIMONIALS: readonly Testimonial[] = [
     avatar: durukAvatar,
     source: "x",
     url: "https://x.com/can/status/2085579967833002246",
-    quote: "this is the most interesting agentic dev environment ive used so far.",
+    quote:
+      "this is the most interesting agentic dev environment ive used so far.",
   },
   {
     author: "Timi Ajiboye",
