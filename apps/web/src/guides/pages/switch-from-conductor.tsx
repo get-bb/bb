@@ -244,14 +244,40 @@ export const guide: Guide = {
     {
       question: "Why is bb the best Conductor alternative?",
       answer: (
-        <p>
-          bb does what you used Conductor for: agents working in parallel, each
-          in its own worktree, with setup and archive scripts, diffs, and pull
-          requests. It's also free and open source, runs on Mac, Windows, and
-          Linux, follows you to your phone, and lets your agents start each
-          other and hear back. Your workspaces move over with one prompt.{" "}
-          <a href="/compare/conductor-alternatives">See how bb compares</a>.
-        </p>
+        <>
+          <p>
+            Everything you used Conductor for works in bb: agents in parallel,
+            each in its own worktree, with setup and archive scripts, diffs, and
+            pull requests. Then bb goes further:
+          </p>
+          <ul>
+            <li>
+              Agents can use bb just like you can. They start threads, message
+              each other, and hear back when work finishes.
+            </li>
+            <li>
+              Every agent works: Claude Code, Codex, Pi, and any ACP agent from
+              the registry.
+            </li>
+            <li>
+              It runs on Mac, Windows, and Linux, on any computer you own, from
+              a laptop to an always-on server.
+            </li>
+            <li>You can check in from your phone or any browser, free.</li>
+            <li>
+              Plugins add what you need, from the marketplace or built by your
+              agent.
+            </li>
+            <li>
+              It's free and open source, so your setup never depends on one
+              company's plans.
+            </li>
+          </ul>
+          <p>
+            Your workspaces move over with one prompt.{" "}
+            <a href="/compare/conductor-alternatives">See how bb compares</a>.
+          </p>
+        </>
       ),
     },
     COST_FAQ,
