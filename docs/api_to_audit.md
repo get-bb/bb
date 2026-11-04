@@ -2668,7 +2668,9 @@ Open in editor, download, and the file menu with copy and refresh) and its
 loading, empty, missing and error states. `renderPreview({ content, url })`
 draws the Preview body of an HTML, Markdown or CSV file in place of bb's;
 `url` is the absolute raw-file URL. Raw mode and every other file type keep
-bb's rendering, and a refresh passes the new text.
+bb's rendering, and a refresh passes the new text. Inside a panel tab it
+loads only while the tab is showing, the visibility `experimental_useTabVisible`
+reports; elsewhere it loads at once.
 
 **Core callers.** It renders the same workspace, thread-storage and host file
 tab contents the side panel renders, so the header, loading and refresh are
@@ -2684,13 +2686,11 @@ Docs: `frontend-components.md`.
 
 1. Decide whether the body override should also cover files without a
    Preview mode (plain text, images), and what the toggle shows for them.
-2. The component always loads the file; confirm whether it should follow the
-   tab's visibility like core's panel tabs (`isPanelOpen`).
-3. Confirm surface-specific header behaviour: core's thread view passes its
+2. Confirm surface-specific header behaviour: core's thread view passes its
    own Open in editor handlers and a line number for host files; the
    component passes none, and Add to chat comes only from the surrounding
    `SelectionAddToChatContext`.
-4. Decide whether `renderPreview` should receive the line range a file open
+3. Decide whether `renderPreview` should receive the line range a file open
    requested.
 
 ## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)

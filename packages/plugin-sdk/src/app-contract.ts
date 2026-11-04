@@ -669,7 +669,8 @@ export interface ExperimentalFilePreviewFile {
  * Props of the host-owned `experimental_FilePreview` component — BB's file
  * preview for one live file: the header with the file path, Preview/Raw
  * toggle, open in browser, Open in editor, download and the file menu, and
- * BB's loading, refresh, empty, missing and error states.
+ * BB's loading, refresh, empty, missing and error states. Inside a panel tab
+ * it loads the file only while the tab is showing, as BB's own file tabs do.
  */
 export interface ExperimentalFilePreviewProps {
   /** The live file to preview. A malformed target renders nothing. */

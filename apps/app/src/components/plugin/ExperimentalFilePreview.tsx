@@ -10,6 +10,7 @@ import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import { resolveLiveFilePath } from "@/hooks/useResolvedLiveFileTarget";
 import { useSelectionAddToChat } from "@/components/thread/SelectionAddToChatContext";
 import { FilePreviewRenderPreviewContext } from "@/components/secondary-panel/filePreviewRenderPreviewContext";
+import { useShownOutsideHiddenTab } from "@/components/secondary-panel/tab-visibility";
 import {
   LazyHostScopedFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
@@ -37,6 +38,7 @@ export function ExperimentalFilePreview({
   );
   const navigation = useAppNavigationHost();
   const onSelectionAddToChat = useSelectionAddToChat();
+  const shown = useShownOutsideHiddenTab();
   const openTargets = useLiveFileOpenTargets(
     normalized === null ? null : liveFileRoot(normalized),
   );
@@ -59,7 +61,7 @@ export function ExperimentalFilePreview({
           activePath={normalized.path}
           copyPath={copyPath}
           environmentId={normalized.environmentId}
-          isPanelOpen
+          isPanelOpen={shown}
           lineRange={null}
           onOpenInEditor={onOpenInEditor}
           onSelectionAddToChat={onSelectionAddToChat}
@@ -71,7 +73,7 @@ export function ExperimentalFilePreview({
         <LazyThreadStorageFilePreviewTabContent
           activePath={normalized.path}
           copyPath={copyPath}
-          isPanelOpen
+          isPanelOpen={shown}
           lineRange={null}
           onOpenInEditor={onOpenInEditor}
           onSelectionAddToChat={onSelectionAddToChat}
@@ -81,7 +83,7 @@ export function ExperimentalFilePreview({
         <LazyHostScopedFilePreviewTabContent
           activePath={normalized.path}
           hostId={normalized.hostId}
-          isPanelOpen
+          isPanelOpen={shown}
           lineRange={null}
           onOpenInEditor={onOpenInEditor}
         />
