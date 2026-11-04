@@ -153,6 +153,29 @@ describe("email download link form", () => {
     },
   );
 
+  it("sends the ad parameters saved from the landing page when the page has none", async () => {
+    history.replaceState(null, "", "/");
+    sessionStorage.setItem(
+      "bb:landing-utm",
+      "utm_source=google&utm_campaign=c1",
+    );
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}'));
+    vi.stubGlobal("fetch", fetchMock);
+    render();
+    type("me@example.com");
+    await submit();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/email-download-link",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "me@example.com",
+          search: "?utm_source=google&utm_campaign=c1",
+        }),
+      }),
+    );
+    sessionStorage.removeItem("bb:landing-utm");
+  });
+
   it("records a network failure and offers the share fallback", async () => {
     vi.stubGlobal(
       "fetch",

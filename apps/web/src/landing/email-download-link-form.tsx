@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { EmailLinkFailure } from "./analytics";
 import { trackLandingEvent } from "./analytics";
 import { EmailField } from "./cta";
+import { addSavedUtmParams, readSessionUtm } from "./download-utm";
 import { SendToComputerButton } from "./send-to-computer-button";
 import type { CtaPlacement } from "./site";
 import { EMAIL_DOWNLOAD_LINK_PATH, isPlausibleEmail } from "./site";
@@ -55,7 +56,7 @@ export function EmailDownloadLinkForm({
       response = await fetch(EMAIL_DOWNLOAD_LINK_PATH, {
         body: JSON.stringify({
           email: email.trim(),
-          search: window.location.search,
+          search: addSavedUtmParams(window.location.search, readSessionUtm()),
         }),
         headers: { "content-type": "application/json" },
         method: "POST",
