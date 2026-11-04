@@ -1439,14 +1439,6 @@ describe("plugin service", () => {
       name: "bb-plugin-elsewhere",
       serverSource: `export default function plugin() {}`,
     });
-    await service.installPath(inside);
-    await service.installPath(outside);
-    await service.updateSettings("kept", { token: "s3cret" });
-
-    await service.preservePathPluginsInside(storage);
-    await rm(storage, { recursive: true, force: true });
-    await service.reload("kept");
-
     const preserved = join(
       workDir,
       "data",
@@ -1454,9 +1446,20 @@ describe("plugin service", () => {
       "kept",
       "preserved-source",
     );
+    expect((await service.installPath(inside)).sourceNotice).toBe(
+      `Installed from a thread's storage folder. When bb deletes that thread, it copies this plugin to ${preserved} and runs it from there.`,
+    );
+    expect((await service.installPath(outside)).sourceNotice).toBeNull();
+    await service.updateSettings("kept", { token: "s3cret" });
+
+    await service.preservePathPluginsInside(storage);
+    await rm(storage, { recursive: true, force: true });
+    await service.reload("kept");
+
     expect(service.list().find((p) => p.id === "kept")).toMatchObject({
       source: `path:${preserved}`,
       status: "running",
+      sourceNotice: null,
     });
     expect(await readFile(join(preserved, "lib", "helper.js"), "utf8")).toBe(
       "export {};\n",
@@ -1586,8 +1589,7 @@ describe("plugin service", () => {
     });
   });
 
-  it("warns when a path plugin is installed from inside a managed workspace", async () => {
-    const warnSpy = vi.spyOn(logger, "warn");
+  it("tells the user to reinstall a path plugin installed from bb's data folder", async () => {
     const managedRoot = join(
       workDir,
       "data",
@@ -1602,15 +1604,12 @@ describe("plugin service", () => {
     await mkdir(dirname(managedRoot), { recursive: true });
     await rename(written, managedRoot);
 
-    await service.installPath(managedRoot);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("bb-managed workspace"),
+    expect((await service.installPath(managedRoot)).sourceNotice).toBe(
+      `Installed from inside bb's data folder, where bb can delete it. Reinstall it from a folder outside ${join(workDir, "data")} to keep it.`,
     );
   });
 
-  it("does not warn for a plugin installed from a directory a provider only attached to", async () => {
-    const warnSpy = vi.spyOn(logger, "warn");
-    warnSpy.mockClear();
+  it("adds no notice for a plugin installed from a directory a provider only attached to", async () => {
     const checkoutRoot = await writePlugin(join(workDir, "checkout"), {
       name: "bb-plugin-attached",
       serverSource: `export default function plugin() {}`,
@@ -1621,10 +1620,7 @@ describe("plugin service", () => {
       providerOwnsPath: false,
     });
 
-    await service.installPath(checkoutRoot);
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("bb-managed workspace"),
-    );
+    expect((await service.installPath(checkoutRoot)).sourceNotice).toBeNull();
   });
 
   it("warns for a plugin installed inside a directory a provider owns", async () => {

@@ -15,9 +15,11 @@ version, and warns when that SDK version is not on npm yet. When npm leaves a
 package out, it prints the manual `npm install --include=dev` step to run
 before `bb plugin build`.
 
-A plugin installed from `$BB_THREAD_STORAGE` keeps working after that thread
-is deleted: bb first copies it to `<dataDir>/plugins/<id>/preserved-source`
-and moves the install there. Later edits belong in that copy.
+A plugin installed from `$BB_THREAD_STORAGE` or from a bb-managed workspace
+(such as a thread's worktree) keeps working after bb deletes that folder: bb
+first copies it to `<dataDir>/plugins/<id>/preserved-source` and moves the
+install there. `bb plugin install` prints a `note:` line when this applies.
+Later edits belong in that copy.
 
 ## Manifest
 

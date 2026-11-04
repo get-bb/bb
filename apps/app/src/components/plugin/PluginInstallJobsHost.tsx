@@ -74,11 +74,20 @@ export function reportPluginInstallJobs({
       applyInstalledPlugin({ queryClient, plugin: job.plugin });
       void invalidatePluginList({ queryClient });
       invalidatePluginCatalogSearch({ queryClient });
-      appToast.success("Plugin installed", {
-        id,
-        description: job.plugin.name ?? job.plugin.id,
-        action: action(job.plugin.id, "app"),
-      });
+      const name = job.plugin.name ?? job.plugin.id;
+      if (job.plugin.sourceNotice === null) {
+        appToast.success("Plugin installed", {
+          id,
+          description: name,
+          action: action(job.plugin.id, "app"),
+        });
+      } else {
+        appToast.warning(`${name} installed`, {
+          id,
+          description: job.plugin.sourceNotice,
+          action: action(job.plugin.id, "app"),
+        });
+      }
     } else if (job.state === "failed") {
       appToast.error("Plugin installation failed", {
         id,

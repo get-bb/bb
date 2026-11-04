@@ -7,7 +7,10 @@ import { realpathSync } from "node:fs";
 import { cp, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isFsErrorWithCode } from "../lib/fs-errors.js";
-import { isBbManagedWorkspacePath } from "../threads/workspace-paths.js";
+import {
+  isBbManagedWorkspacePath,
+  isThreadStoragePath,
+} from "../threads/workspace-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
@@ -473,17 +476,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
             pluginRootDir(checkoutDir, subdirectory),
             "plugin subdirectory",
           );
-    if (
-      isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: rootDir }) ||
-      findProviderEnvironmentContainingPath(deps.db, rootDir) !== null
-    ) {
-      logger.warn(
-        `plugin "${rootDir}" is installed from inside a bb-managed workspace; ` +
-          "its source will be deleted when that environment is destroyed (e.g. when the owning thread is archived). " +
-          "Reinstall from a stable path outside the managed workspace to avoid losing it.",
-      );
-    }
-    return registerInstalled({
+    const installed = await registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
       provenance: { kind: "direct" },
@@ -492,6 +485,40 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
       refuseEngineMismatch: false,
       validated: false,
     });
+    if (installed.sourceNotice !== null) {
+      logger.warn(`plugin ${installed.id}: ${installed.sourceNotice}`);
+    }
+    return installed;
+  }
+
+  function preservedSourcePath(pluginId: string): string {
+    return join(
+      deps.dataDir,
+      "plugins",
+      pluginId,
+      PRESERVED_SOURCE_DIRECTORY_NAME,
+    );
+  }
+
+  function pathSourceNotice(plugin: {
+    id: string;
+    rootDir: string;
+  }): string | null {
+    const copy = preservedSourcePath(plugin.id);
+    if (isThreadStoragePath({ dataDir: deps.dataDir, path: plugin.rootDir })) {
+      return `Installed from a thread's storage folder. When bb deletes that thread, it copies this plugin to ${copy} and runs it from there.`;
+    }
+    if (
+      findProviderEnvironmentContainingPath(deps.db, plugin.rootDir) !== null
+    ) {
+      return `Installed from a bb-managed workspace. When bb removes that workspace, it copies this plugin to ${copy} and runs it from there.`;
+    }
+    if (
+      isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: plugin.rootDir })
+    ) {
+      return `Installed from inside bb's data folder, where bb can delete it. Reinstall it from a folder outside ${deps.dataDir} to keep it.`;
+    }
+    return null;
   }
 
   async function preservePathPluginsInside(directory: string): Promise<void> {
@@ -514,12 +541,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         },
       );
       if (!exists) continue;
-      const preservedPath = join(
-        deps.dataDir,
-        "plugins",
-        plugin.id,
-        PRESERVED_SOURCE_DIRECTORY_NAME,
-      );
+      const preservedPath = preservedSourcePath(plugin.id);
       const stagingPath = `${preservedPath}.partial`;
       await rm(stagingPath, { recursive: true, force: true });
       await cp(plugin.sourcePath, stagingPath, {
@@ -884,6 +906,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     installPathSource,
     installedUpdateVersion,
     npmIntentForRow,
+    pathSourceNotice,
     preservePathPluginsInside,
     provenanceForRow,
     reconcileBundled,

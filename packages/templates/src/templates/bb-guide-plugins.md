@@ -289,9 +289,12 @@ updates. Change a pinned git:/npm: source with `bb plugin remove` (which
 deletes settings, secrets, and schedules) and a fresh install. Edit a local
 path plugin in place and `bb plugin reload <id>`, or move it with
 `bb plugin install path:<new dir>`; both keep its configuration. Before bb
-deletes a thread's storage folder, it copies any path plugin installed from
-inside it to <dataDir>/plugins/<id>/preserved-source and moves the plugin
-there, keeping its configuration.
+deletes a thread's storage folder or removes a bb-managed workspace (such as
+a worktree), it copies any path plugin installed from inside it to
+<dataDir>/plugins/<id>/preserved-source and moves the plugin there, keeping
+its configuration. Such a plugin carries a `sourceNotice` that says so;
+`bb plugin install` and `bb plugin list` print it as `note:`, and the app shows
+it in the install toast and on Plugin details.
 
 Managed git:/npm: installs refuse engines.bb and engines.bbPluginSdk
 mismatches, manifest and artifact identity mismatches, and ids reserved by
