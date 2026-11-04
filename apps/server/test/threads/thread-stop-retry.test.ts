@@ -11,6 +11,7 @@ import {
   stopThreadForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
 import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
+import { setPathPluginPreserver } from "../../src/services/plugins/path-plugin-preservation.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -119,6 +120,44 @@ describe("thread stop dispatch", () => {
       });
 
       expect(getThread(harness.db, thread.id)).toBeNull();
+    });
+  });
+
+  it("copies plugins out of thread storage before deleting it and keeps storage when that fails", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedActiveThreadStopFixture({
+        harness,
+        value: 7,
+      });
+      markThreadDeleted(harness.db, harness.hub, { threadId: thread.id });
+      const preserved: string[] = [];
+      setPathPluginPreserver(harness.db, async (directory) => {
+        preserved.push(directory);
+        throw new Error("disk full");
+      });
+
+      requestThreadStorageDeletion(harness.deps, thread, environment);
+      await vi.waitFor(() => expect(preserved).toHaveLength(1));
+      await sleep(10);
+
+      expect(preserved).toEqual([
+        `/tmp/bb-host-data/host-thread-stop-retry-7/thread-storage/${thread.id}`,
+      ]);
+      expect(
+        listQueuedThreadCommands(harness, "thread.storage.delete", thread.id),
+      ).toHaveLength(0);
+
+      setPathPluginPreserver(harness.db, async (directory) => {
+        preserved.push(directory);
+      });
+      requestThreadStorageDeletion(harness.deps, thread, environment);
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.storage.delete" &&
+          command.threadId === thread.id,
+      );
+      expect(preserved).toHaveLength(2);
     });
   });
 

@@ -27,6 +27,10 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { handleUpdateEnvironmentDirectoryToolCall } from "../../../src/services/threads/thread-environment-directory.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setPathPluginPreserver } from "../../../src/services/plugins/path-plugin-preservation.js";
 import { eq } from "drizzle-orm";
 import {
   listEvents,
@@ -508,6 +512,104 @@ describe("core environment orchestration", () => {
         expect.objectContaining({ error: "teardown unavailable" }),
         "Environment teardown hook failed; continuing removal",
       );
+    }));
+
+  it("copies a path plugin out of a workspace before removing it", async () =>
+    withTestHarness(async (harness) => {
+      const workspace = await mkdtemp(join(tmpdir(), "bb-env-plugin-"));
+      try {
+        const pluginDir = join(workspace, "bb-plugin-inworkspace");
+        await mkdir(pluginDir);
+        await writeFile(
+          join(pluginDir, "package.json"),
+          JSON.stringify({
+            name: "bb-plugin-inworkspace",
+            version: "0.1.0",
+            bb: {
+              name: "In workspace",
+              description: "Installed from a workspace.",
+              branding: { icon: "Zap" },
+              server: "./server.ts",
+            },
+          }),
+        );
+        await writeFile(
+          join(pluginDir, "server.ts"),
+          "export default function plugin() {}\n",
+        );
+        const remove = vi.fn(async () => {
+          await rm(workspace, { recursive: true, force: true });
+          return { status: "removed" as const };
+        });
+        const fixture = setup(harness, {
+          policy: { retireGraceMs: 0 },
+          create: async () => ({
+            status: "created",
+            path: workspace,
+            ownsPath: true,
+          }),
+          remove,
+        });
+        registerTestHostRpcCapture(harness.deps, {
+          hostId: fixture.host.id,
+          sessionId: fixture.session.id,
+          onEnvironmentHook: async () => {},
+        });
+        fixture.ask();
+        await fixture.settled();
+        const environmentId = fixture.attach();
+        const preserved = join(
+          harness.deps.config.dataDir,
+          "plugins",
+          "inworkspace",
+          "preserved-source",
+        );
+        const installed = await harness.pluginService.installPath(pluginDir);
+        expect(installed.sourceNotice).toBe(
+          `Installed from a bb-managed workspace. When bb removes that workspace, it copies this plugin to ${preserved} and runs it from there.`,
+        );
+
+        await sweepProviderEnvironment(harness.deps, environmentId);
+
+        expect(remove).toHaveBeenCalledOnce();
+        expect(
+          harness.pluginService.list().find((p) => p.id === "inworkspace"),
+        ).toMatchObject({
+          source: `path:${preserved}`,
+          status: "running",
+          sourceNotice: null,
+        });
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    }));
+
+  it("keeps a workspace when plugins inside it cannot be copied out", async () =>
+    withTestHarness(async (harness) => {
+      const remove = vi.fn(async () => ({ status: "removed" as const }));
+      const fixture = setup(harness, { policy: { retireGraceMs: 0 }, remove });
+      registerTestHostRpcCapture(harness.deps, {
+        hostId: fixture.host.id,
+        sessionId: fixture.session.id,
+        onEnvironmentHook: async () => {},
+      });
+      const preserved: string[] = [];
+      setPathPluginPreserver(harness.db, async (directory) => {
+        preserved.push(directory);
+        throw new Error("disk full");
+      });
+      fixture.ask();
+      await fixture.settled();
+      const environmentId = fixture.attach();
+
+      await sweepProviderEnvironment(harness.deps, environmentId);
+
+      expect(preserved).toEqual([`/tmp/${fixture.thread.id}`]);
+      expect(remove).not.toHaveBeenCalled();
+      expect(getEnvironment(harness.db, environmentId)).toMatchObject({
+        teardownStatus: "failed",
+        teardownMessage: "disk full",
+      });
     }));
 
   it("forwards teardown hook output only from the hook host while the hook runs", async () =>

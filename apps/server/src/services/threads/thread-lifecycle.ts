@@ -125,6 +125,8 @@ import {
   settleUnconfirmedSteerInTransaction,
   settleUnconfirmedTurnStartInTransaction,
 } from "./unconfirmed-turn-requests.js";
+import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
+import { joinHostPathSegments } from "../lib/host-path.js";
 
 type ThreadStartCommand = Awaited<ReturnType<typeof buildThreadStartCommand>>;
 type ThreadStopCommand = ReturnType<typeof buildThreadStopCommand>;
@@ -1178,23 +1180,48 @@ export function requestThreadStorageDeletion(
   if (!inFlightThreadRpcGuard.claim(thread.id, "thread.storage.delete")) {
     return;
   }
-  void runLiveHostCommand(deps, {
-    command: buildThreadStorageDeleteCommand({
-      environmentId: environment.id,
-      threadId: thread.id,
-    }),
-    hostId: environment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-  })
-    .catch((error) => {
-      deps.logger.warn(
-        { err: error, threadId: thread.id },
-        "Thread storage deletion command failed",
+  void deleteThreadStorageKeepingPlugins(deps, {
+    environment,
+    threadId: thread.id,
+  }).finally(() => {
+    inFlightThreadRpcGuard.release(thread.id, "thread.storage.delete");
+  });
+}
+
+async function deleteThreadStorageKeepingPlugins(
+  deps: CommandResultSideEffectsDeps,
+  args: { environment: { hostId: string; id: string }; threadId: string },
+): Promise<void> {
+  const session = getLatestSessionForHost(deps.db, {
+    hostId: args.environment.hostId,
+  });
+  try {
+    if (session !== null) {
+      await preservePathPluginsInside(
+        deps.db,
+        joinHostPathSegments(session.dataDir, "thread-storage", args.threadId),
       );
-    })
-    .finally(() => {
-      inFlightThreadRpcGuard.release(thread.id, "thread.storage.delete");
-    });
+    }
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, threadId: args.threadId },
+      "Thread storage deletion skipped: plugins installed from it could not be kept",
+    );
+    return;
+  }
+  await runLiveHostCommand(deps, {
+    command: buildThreadStorageDeleteCommand({
+      environmentId: args.environment.id,
+      threadId: args.threadId,
+    }),
+    hostId: args.environment.hostId,
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  }).catch((error) => {
+    deps.logger.warn(
+      { err: error, threadId: args.threadId },
+      "Thread storage deletion command failed",
+    );
+  });
 }
 
 /**

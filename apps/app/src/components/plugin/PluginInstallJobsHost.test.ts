@@ -102,3 +102,30 @@ it("reports each failure and cancellation once", () => {
   expect(message).toHaveBeenCalledTimes(1);
   expect(message.mock.calls[0]?.[0]).toBe("Plugin install cancelled");
 });
+
+it("warns with the server's notice when the installed plugin's folder can be deleted", () => {
+  vi.spyOn(appToast, "loading").mockReturnValue("toast");
+  const success = vi.spyOn(appToast, "success").mockReturnValue("toast");
+  const warning = vi.spyOn(appToast, "warning").mockReturnValue("toast");
+  const { publish } = createReporter();
+  const notice =
+    "Installed from a thread's storage folder. When bb deletes that thread, it copies this plugin to /data/plugins/notes/preserved-source and runs it from there.";
+  publish([{ ...BASE, state: "running" }]);
+
+  publish([
+    {
+      ...BASE,
+      state: "succeeded",
+      plugin: { ...PLUGIN, sourceNotice: notice },
+    },
+  ]);
+
+  expect(success).not.toHaveBeenCalled();
+  expect(warning).toHaveBeenCalledWith(
+    "Notes installed",
+    expect.objectContaining({
+      id: "plugin-install:job-1",
+      description: notice,
+    }),
+  );
+});
