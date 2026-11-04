@@ -1,4 +1,5 @@
 export { afterCommit, createConnection } from "./connection.js";
+export { cacheSqliteStatements } from "./statement-cache.js";
 export type {
   DbConnection,
   DbQueryConnection,

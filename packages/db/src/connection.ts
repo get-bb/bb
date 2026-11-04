@@ -10,6 +10,7 @@ import {
   type QueryDiagnosticsLogFields,
 } from "./query-diagnostics.js";
 import * as schema from "./schema.js";
+import { cacheSqliteStatements } from "./statement-cache.js";
 
 export interface SlowDbQueryLogFields {
   bindingArgumentCount: number;
@@ -299,6 +300,7 @@ export function createConnection(
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   registerHostPathSqlFunctions(sqlite);
   instrumentSqliteClient(sqlite, options);
+  cacheSqliteStatements(sqlite);
 
   const db = drizzle({ client: sqlite, schema });
   const queries = new Map<(db: DbQueryConnection) => unknown, unknown>();

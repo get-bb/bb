@@ -184,6 +184,17 @@ export function getSessionById(
   );
 }
 
+const prepareHeartbeatSession = (db: DbQueryConnection) =>
+  db
+    .update(hostDaemonSessions)
+    .set({
+      leaseExpiresAt: sql`${placeholder("leaseExpiresAt")}`,
+      updatedAt: sql`${placeholder("now")}`,
+    })
+    .where(eq(hostDaemonSessions.id, placeholder("id")))
+    .returning()
+    .prepare();
+
 export function heartbeatSession(
   db: DbConnection,
   sessionId: string,
@@ -192,15 +203,11 @@ export function heartbeatSession(
   return db.transaction((tx) => {
     const now = Date.now();
     const updated =
-      tx
-        .update(hostDaemonSessions)
-        .set({
-          leaseExpiresAt,
-          updatedAt: now,
-        })
-        .where(eq(hostDaemonSessions.id, sessionId))
-        .returning()
-        .get() ?? null;
+      prepareCachedQuery(tx, prepareHeartbeatSession).get({
+        id: sessionId,
+        leaseExpiresAt,
+        now,
+      }) ?? null;
     if (updated) {
       markHostSeen(tx, updated.hostId, now);
     }

@@ -18,6 +18,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import {
+  cacheSqliteStatements,
   deletePluginKvValue,
   getPluginKvValue,
   getHost,
@@ -762,6 +763,7 @@ export function createPluginApi(options: {
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));
+      cacheSqliteStatements(database);
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
       databaseHandle = database;

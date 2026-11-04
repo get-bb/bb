@@ -1,5 +1,5 @@
 import { prepareCachedQuery } from "../connection.js";
-import { and, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
+import { and, eq, inArray, isNull, placeholder, sql } from "drizzle-orm";
 import {
   resolveEnvironmentHostLifecycle,
   type HostChangeKind,
@@ -163,15 +163,22 @@ export function upsertHost(
   }
 }
 
+const prepareMarkHostSeen = (db: DbQueryConnection) =>
+  db
+    .update(hosts)
+    .set({
+      lastSeenAt: sql`${placeholder("at")}`,
+      updatedAt: sql`${placeholder("at")}`,
+    })
+    .where(eq(hosts.id, placeholder("id")))
+    .prepare();
+
 export function markHostSeen(
   db: HostWriteConnection,
   hostId: string,
   at: number = Date.now(),
 ): void {
-  db.update(hosts)
-    .set({ lastSeenAt: at, updatedAt: at })
-    .where(eq(hosts.id, hostId))
-    .run();
+  prepareCachedQuery(db, prepareMarkHostSeen).run({ at, id: hostId });
 }
 
 const prepareGetHost = (db: DbQueryConnection) =>
@@ -212,21 +219,27 @@ export function listHosts(db: DbConnection) {
   return db.select().from(hosts).all();
 }
 
-export function listPublicHosts(
-  db: DbConnection,
-  options?: { includeCreating?: boolean; type?: HostType },
-) {
-  return db
+const prepareListPublicHosts = (db: DbQueryConnection) =>
+  db
     .select()
     .from(hosts)
     .where(
       and(
         isNull(hosts.destroyedAt),
-        ...(options?.includeCreating ? [] : [ne(hosts.phase, "creating")]),
-        ...(options?.type ? [eq(hosts.type, options.type)] : []),
+        sql`(${placeholder("includeCreating")} OR ${hosts.phase} <> 'creating')`,
+        sql`(${placeholder("type")} IS NULL OR ${hosts.type} = ${placeholder("type")})`,
       ),
     )
-    .all();
+    .prepare();
+
+export function listPublicHosts(
+  db: DbConnection,
+  options?: { includeCreating?: boolean; type?: HostType },
+) {
+  return prepareCachedQuery(db, prepareListPublicHosts).all({
+    includeCreating: options?.includeCreating ? 1 : 0,
+    type: options?.type ?? null,
+  });
 }
 
 export function listHostsByIds(db: DbConnection, hostIds: readonly string[]) {

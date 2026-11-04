@@ -190,7 +190,10 @@ export interface PluginStorage {
    * open handle for the whole plugin load, so calling it per request is
    * cheap; a new handle is opened only on the first call or after the
    * plugin closed the previous one. The host closes handles on
-   * dispose/reload; a closed handle throws on use.
+   * dispose/reload; a closed handle throws on use. `prepare()` reuses one
+   * statement per SQL text (the 512 most recent): calling bind, pluck,
+   * expand or safeIntegers gives you a statement of your own, and a reused
+   * statement starts with raw mode off.
    */
   database(): Database.Database;
   /**

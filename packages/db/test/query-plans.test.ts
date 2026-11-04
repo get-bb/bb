@@ -198,6 +198,9 @@ interface CapturedStatement {
   sql: string;
 }
 
+const capturingStatements = new WeakSet<object>();
+let activeCapture: CapturedStatement[] | null = null;
+
 function captureStatements(
   db: DbConnection,
   run: () => void,
@@ -210,22 +213,32 @@ function captureStatements(
     writable: true,
     value: (source: string) => {
       const statement = originalPrepare(source);
+      if (capturingStatements.has(statement)) return statement;
+      capturingStatements.add(statement);
       const originalAll = statement.all.bind(statement);
       const originalGet = statement.get.bind(statement);
       statement.all = (...params: unknown[]) => {
-        captured.push({ params: params as SqliteParameter[], sql: source });
+        activeCapture?.push({
+          params: params as SqliteParameter[],
+          sql: source,
+        });
         return originalAll(...params);
       };
       statement.get = (...params: unknown[]) => {
-        captured.push({ params: params as SqliteParameter[], sql: source });
+        activeCapture?.push({
+          params: params as SqliteParameter[],
+          sql: source,
+        });
         return originalGet(...params);
       };
       return statement;
     },
   });
+  activeCapture = captured;
   try {
     run();
   } finally {
+    activeCapture = null;
     Object.defineProperty(raw, "prepare", {
       configurable: true,
       writable: true,
