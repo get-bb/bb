@@ -242,6 +242,28 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
+  it.runIf(process.platform === "linux")(
+    "ranks provider processes ahead of bb for the out-of-memory killer",
+    async () => {
+      const manager = createProviderProcessManager({
+        onProcessExit: vi.fn(),
+        workspacePath: tmpDir,
+      });
+      onTestFinished(() => manager.shutdown());
+
+      await manager.ensureProvider(MANAGER_PROVIDER);
+      const providerPid = manager.requireProviderProcess(MANAGER_PROVIDER)
+        .child.pid;
+
+      const ownScore = Number(
+        readFileSync("/proc/self/oom_score_adj", "utf8"),
+      );
+      expect(
+        Number(readFileSync(`/proc/${providerPid}/oom_score_adj`, "utf8")),
+      ).toBe(Math.min(1_000, ownScore + 500));
+    },
+  );
+
   it("retires a threadless bridge process superseded by a new artifact hash", async () => {
     const manager = createProviderProcessManager({
       onProcessExit: vi.fn(),
