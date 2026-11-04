@@ -32,6 +32,7 @@ import {
   BRANCH_LIST_QUERY_MAX_LENGTH,
   gitBranchNameSchema,
   gitBranchOptionsSchema,
+  gitCheckoutRefSchema,
   gitSourceInspectionSchema,
 } from "@bb/domain";
 import { z } from "zod";
@@ -890,6 +891,17 @@ const hostInspectGitSourceCommandSchema = z
     remoteRefresh: z.enum(["background", "blocking"]),
   })
   .strict();
+
+const hostInspectGitCheckoutCommandSchema = z
+  .object({
+    type: z.literal("host.inspect_git_checkout"),
+    path: z.string().min(1),
+  })
+  .strict();
+
+const gitCheckoutInspectionSchema = z.object({
+  checkout: gitCheckoutRefSchema,
+});
 
 const hostListBranchOptionsCommandSchema = z
   .object({
@@ -1775,6 +1787,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.inspect_git_source",
     schema: hostInspectGitSourceCommandSchema,
     resultSchema: gitSourceInspectionSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.inspect_git_checkout": defineHostDaemonCommandDescriptor({
+    type: "host.inspect_git_checkout",
+    schema: hostInspectGitCheckoutCommandSchema,
+    resultSchema: gitCheckoutInspectionSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

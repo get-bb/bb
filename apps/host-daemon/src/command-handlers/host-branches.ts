@@ -36,6 +36,26 @@ export async function listHostBranchOptions(
   });
 }
 
+export async function inspectHostGitCheckout(
+  command: CommandOf<"host.inspect_git_checkout">,
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
+): Promise<HostDaemonOnlineRpcResult<"host.inspect_git_checkout">> {
+  if (!path.isAbsolute(command.path)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+
+  const gitProcessOptions = userExecutableProcessOptions(
+    options?.runtimeManager.getShellEnv() ?? {},
+  );
+  const repoKind = await detectGitRepoKind(command.path, gitProcessOptions);
+  if (repoKind === "none") {
+    return {
+      checkout: { kind: "unknown", reason: "Path is not a git repository" },
+    };
+  }
+  return { checkout: await getCheckoutRef(command.path, gitProcessOptions) };
+}
+
 export async function inspectHostGitSource(
   command: CommandOf<"host.inspect_git_source">,
   options?: Pick<CommandDispatchOptions, "runtimeManager">,

@@ -283,6 +283,29 @@ async function resolveProjectDefaultHostId(
   return requireConnectedPrimaryHostId(deps);
 }
 
+async function projectSourceHasWorktreeBase(
+  deps: WorkSessionDeps,
+  hostId: string,
+  path: string,
+): Promise<boolean> {
+  const { checkout } = await callHostRetryableOnlineRpc(deps, {
+    hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: { type: "host.inspect_git_checkout", path },
+  });
+  if (checkout.kind === "branch") return true;
+  const inspection = await callHostRetryableOnlineRpc(deps, {
+    hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "host.inspect_git_source",
+      path,
+      remoteRefresh: "background",
+    },
+  });
+  return resolveDefaultWorktreeBaseBranch(inspection) !== null;
+}
+
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
   args: { projectId: string },
@@ -306,17 +329,7 @@ export async function resolveProjectDefaultThreadEnvironment(
     hostId,
     projectId: args.projectId,
   });
-  const checkout = await callHostRetryableOnlineRpc(deps, {
-    hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "host.inspect_git_source",
-      path: source.path,
-      remoteRefresh: "background",
-    },
-  });
-  const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);
-  if (baseBranch === null) {
+  if (!(await projectSourceHasWorktreeBase(deps, hostId, source.path))) {
     return {
       type: "provider",
       environmentProviderId: requireDefaultEnvironmentProvider(
@@ -333,7 +346,7 @@ export async function resolveProjectDefaultThreadEnvironment(
       DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
     ),
     machine: { type: "existing", hostId },
-    inputs: worktreeProviderInputs({ kind: "named", name: baseBranch }),
+    inputs: worktreeProviderInputs({ kind: "default" }),
   };
 }
 
