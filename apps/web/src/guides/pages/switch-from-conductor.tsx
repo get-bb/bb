@@ -1,5 +1,253 @@
+import { SwitchConcept } from "../concepts";
+import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import type { Guide } from "../guide-types";
-import { SWITCH_TOOLS, switchGuide } from "../shared/switch";
+import { withIntake } from "../prompt-intake";
+import { AGENTS_FAQ, COST_FAQ } from "../shared/faq";
+import {
+  CLAUDE_HANDOFF_SHOT,
+  EXISTING_WORKTREE_SHOT,
+  PROJECTS_SHOT,
+  THREAD_FAILS_TROUBLESHOOTING,
+  missingConversationTroubleshooting,
+  whatComesAlongFaq,
+} from "../shared/switch";
 import { meta } from "./switch-from-conductor.meta";
 
-export const guide: Guide = switchGuide(meta, SWITCH_TOOLS.conductor);
+const ANNOUNCEMENT_URL = "https://www.conductor.build/announcement";
+
+const HANDOFF_PROMPT = `Pick up the work Conductor was doing in this folder and keep going here. 1. Read git log, git status, and git diff against the base branch, and the pull request for this branch if there is one (gh pr view --comments; skip it if gh can't find one). 2. Find the latest Claude Code or Codex conversation for this folder in ~/.claude/projects/ or ~/.codex/sessions/, and only read it. 3. Write me a short handoff: the goal, what's done, the decisions made, and what's left. Wait for my OK before changing anything, and don't push.`;
+
+const AGENT_PROMPT = withIntake(
+  [
+    {
+      label: "Workspaces",
+      hint: "all of this repo's Conductor workspaces, or only the ones I name",
+    },
+    {
+      label: "Scripts",
+      hint: "move Conductor's setup and archive scripts into bb: yes or no",
+    },
+  ],
+  `Move my Conductor workspaces for this repo into bb. Each workspace keeps its folder, branch, and uncommitted changes, and gets its own bb thread that picks up where Conductor left off.
+Guide: https://getbb.app/guides/switch-from-conductor
+
+Default Workspaces: all. Default Scripts: yes. Pass --project $BB_PROJECT_ID to bb thread spawn and bb environment list. Don't move, delete, or archive any workspace, don't open Conductor's app data in ~/Library/Application Support/com.conductor.app, and don't commit or push. If a command fails, stop and tell me the command, the error, and what you'd try next.
+
+1. Find the workspaces with git worktree list --porcelain. Conductor keeps them in ~/conductor/workspaces/<repo>/, or in .conductor/ inside the repo for older repos. Show each folder with its branch, whether it has uncommitted changes, and its pull request if any (gh pr list --head <branch> --state all; if gh can't look it up, say so and carry on). Leave out folders bb already has: bb environment list --json lists their paths.
+   Check: if no Conductor workspaces are listed, tell me this bb project may be a different clone than the one Conductor used, and stop.
+2. For each workspace I chose, write this prompt to a file in $BB_THREAD_STORAGE:
+   "${HANDOFF_PROMPT}"
+   Then start a thread in that folder:
+   bb thread spawn --project $BB_PROJECT_ID --environment-provider git-worktree --environment-inputs '{"kind":"existing","path":"<absolute folder>"}' --provider <providerId> --title '<branch>' --prompt-file <file> --json
+   where <providerId> is this thread's agent, from bb thread get --self --json.
+   Check: bb environment list --json shows that folder's path.
+3. If Scripts is yes, read .conductor/settings.toml, then .conductor/settings.local.toml from the main checkout, or conductor.json if neither exists. Write the results in this thread's folder:
+   - setup goes in .bb-env-setup.sh, which bb runs in each new worktree.
+   - archive goes in .bb-env-teardown.sh, which bb runs before it removes a worktree it made.
+   - file_include_globs goes in .worktreeinclude. Keep an existing .worktreeinclude as it is; bb reads the same file. If neither is set, Conductor copied .env* files, so write .env* there.
+   - Replace $CONDUCTOR_WORKSPACE_PATH with $PWD, $CONDUCTOR_WORKSPACE_NAME with $(basename "$PWD"), $CONDUCTOR_ROOT_PATH with $(git worktree list --porcelain | sed -n '1s/^worktree //p'), and $CONDUCTOR_DEFAULT_BRANCH with the default branch name.
+   - bb doesn't assign ports, so drop --port $CONDUCTOR_PORT and let the server pick a free port.
+   - Don't write run scripts anywhere. List them for me.
+   - List the names in [environment_variables] for me to add in Settings → Environment variables, without their values.
+   Check: bash -n passes on each script. Show me the diff, and remind me that new worktrees only pick these files up once they're committed to the base branch.
+
+Reply with a table of each workspace, its branch, and its bb thread ID, then the files you wrote, the run scripts and variables left for me, and anything you skipped and why.`,
+);
+
+export const guide: Guide = {
+  ...meta,
+  description:
+    "Conductor is joining Meta. Move your Conductor workspaces to bb with one prompt: each keeps its branch and changes, and its agent picks up where it left off.",
+  heroTop: <SwitchConcept tool="conductor" />,
+  concept: null,
+  agentPrompt: AGENT_PROMPT,
+  requirement: null,
+  steps: [
+    {
+      id: "project",
+      title: "Add the repo Conductor uses",
+      lead: "Conductor's workspaces are Git worktrees of that folder, so bb finds them there.",
+      body: (
+        <Substeps>
+          <li>
+            Open bb. In setup's <strong>Projects</strong> step, check the repo,
+            or choose <strong>Add a folder that isn't listed</strong>.
+          </li>
+          <li>
+            Already set up? Open <Ui icon="settings">Settings → Projects</Ui>{" "}
+            and choose <strong>Add a project</strong>.
+          </li>
+          <li>Pick the same folder you added to Conductor, not a new clone.</li>
+        </Substeps>
+      ),
+      shot: PROJECTS_SHOT,
+      options: [],
+    },
+    {
+      id: "prompt",
+      title: "Paste the prompt",
+      lead: "Your agent opens every Conductor workspace in its own bb thread and moves your scripts.",
+      body: (
+        <Substeps>
+          <li>
+            Choose <strong>New thread</strong> on that repo, paste the prompt
+            from <CopyPromptButton />, and send it.
+          </li>
+          <li>
+            It lists your workspaces with their branches and pull requests. Pick
+            which to bring over, then say go.
+          </li>
+          <li>
+            To open one yourself, choose <strong>New thread</strong>, then{" "}
+            <strong>Worktree</strong> and <strong>Existing worktree</strong>,
+            and pick the workspace.
+          </li>
+        </Substeps>
+      ),
+      shot: EXISTING_WORKTREE_SHOT,
+      options: [],
+    },
+    {
+      id: "pick-up",
+      title: "Pick up each task",
+      lead: null,
+      body: (
+        <p>
+          Each new thread reads its Conductor conversation and writes you a
+          handoff: the goal, what's done, and what's left. Reply to correct it,
+          or say go.
+        </p>
+      ),
+      shot: CLAUDE_HANDOFF_SHOT,
+      options: [],
+    },
+  ],
+  troubleshooting: [
+    {
+      question: "My Conductor workspaces aren't listed",
+      answer: (
+        <ol>
+          <li>
+            bb finds them through the folder Conductor uses for the repo. In{" "}
+            <Ui icon="settings">Settings → Projects</Ui>, check that the project
+            points at that folder, not another clone.
+          </li>
+          <li>
+            Conductor keeps workspaces in{" "}
+            <code>~/conductor/workspaces/&lt;repo&gt;/</code>, or in{" "}
+            <code>.conductor/</code> inside older repos.
+          </li>
+          <li>
+            Cloud workspaces aren't on your Mac. In Conductor, right-click one
+            and choose <strong>Transfer to local</strong> first.
+          </li>
+        </ol>
+      ),
+    },
+    missingConversationTroubleshooting("Conductor"),
+    THREAD_FAILS_TROUBLESHOOTING,
+    {
+      question: "My dev server needs CONDUCTOR_PORT",
+      answer: (
+        <ol>
+          <li>
+            bb doesn't assign ports. Drop the port flag and let the server pick
+            a free one, or ask your agent to start it on one.
+          </li>
+          <li>
+            To open it from another device, see{" "}
+            <a href="/guides/remote-dev-servers">remote dev servers</a>.
+          </li>
+        </ol>
+      ),
+    },
+  ],
+  faq: [
+    {
+      question: "Is Conductor shutting down?",
+      answer: (
+        <p>
+          Conductor{" "}
+          <a href={ANNOUNCEMENT_URL} rel="noreferrer" target="_blank">
+            announced
+          </a>{" "}
+          on November 4, 2026 that it's joining Meta. New downloads and sign-ups
+          are closed. The Mac app keeps working until it winds down in early
+          2027. Conductor Cloud goes read-only on November 13 and starts
+          deleting data on November 20.
+        </p>
+      ),
+    },
+    {
+      question: "What about my Conductor Cloud workspaces?",
+      answer: (
+        <p>
+          Before November 13, right-click each one in Conductor and choose{" "}
+          <strong>Transfer to local</strong>, then run the prompt. To keep a
+          copy of everything, choose{" "}
+          <strong>Settings → Account → Export data</strong> in Conductor.
+        </p>
+      ),
+    },
+    {
+      question: "Will bb change anything in Conductor?",
+      answer: (
+        <p>
+          No. bb works in your workspaces where they are and doesn't move
+          anything, and archiving a bb thread never deletes a folder bb didn't
+          create. Once a workspace is in bb, finish it there and don't archive
+          it in Conductor, since both use the same folder.
+        </p>
+      ),
+    },
+    whatComesAlongFaq("Conductor"),
+    {
+      question: "Do my setup, run, and archive scripts come along?",
+      answer: (
+        <ul>
+          <li>
+            Setup moves to a <code>.bb-env-setup.sh</code> at the repo root, and
+            archive to a <code>.bb-env-teardown.sh</code>. The prompt does both.
+          </li>
+          <li>
+            Files to copy carry over as they are: bb reads the same{" "}
+            <code>.worktreeinclude</code>.
+          </li>
+          <li>
+            bb has no Run button. Ask your agent to start your dev server; it
+            runs in the thread's folder.
+          </li>
+        </ul>
+      ),
+    },
+    {
+      question: "What replaces the CONDUCTOR_ environment variables?",
+      answer: (
+        <p>
+          Scripts run in the workspace folder, so <code>$PWD</code> is the
+          workspace path. The prompt rewrites the others for you. Add your own
+          variables in <Ui icon="settings">Settings → Environment variables</Ui>
+          , for every project or just this one.
+        </p>
+      ),
+    },
+    {
+      question: "What's the best Conductor alternative?",
+      answer: (
+        <p>
+          bb runs the same agents in parallel worktrees, on your Mac, Windows,
+          or Linux, and lets you check in from your phone. It's free and open
+          source. See{" "}
+          <a href="/compare/conductor-alternatives">bb and Conductor</a> side by
+          side.
+        </p>
+      ),
+    },
+    COST_FAQ,
+    AGENTS_FAQ,
+  ],
+  closer: {
+    title: "Keep every workspace going",
+    body: "Run more agents at once, see which one needs you, and let them hand work to each other. Free and open source, on the subscriptions you already have.",
+  },
+};

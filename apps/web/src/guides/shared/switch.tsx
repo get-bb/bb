@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
-import type { Guide, GuideMeta, GuideShot } from "../guide-types";
+import type { Guide, GuideFaq, GuideMeta, GuideShot } from "../guide-types";
 import { AGENTS_FAQ, COST_FAQ } from "./faq";
 
-const CLAUDE_HANDOFF_SHOT: GuideShot = {
+export const CLAUDE_HANDOFF_SHOT: GuideShot = {
   src: "/guides/switch-to-bb/window-handoff.webp",
   alt: "A bb thread where the agent found the latest Claude Code conversation for the folder and wrote a handoff: finish the 5 MB upload limit, with the goal, what's done, decisions, and the tests left, then asks for an OK to continue",
   width: 2048,
@@ -64,23 +64,6 @@ export const SWITCH_TOOLS = {
       "window-handoff-codex.webp",
       "the latest prior conversation",
     ),
-  },
-  conductor: {
-    id: "conductor",
-    slug: "switch-from-conductor",
-    name: "Conductor",
-    conversations:
-      "Conductor runs Claude Code or Codex in its workspaces, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
-    keepsWorking: "Conductor keeps working while you try bb.",
-    setupStep: (
-      <>
-        Move Conductor's setup script into a <code>.bb-env-setup.sh</code> at
-        the repo root, and its Files to copy list into a{" "}
-        <code>.worktreeinclude</code>.
-      </>
-    ),
-
-    handoffShot: CLAUDE_HANDOFF_SHOT,
   },
   cursor: {
     id: "cursor",
@@ -172,6 +155,65 @@ Guide: ${url}
 4. Continue with what's left. Don't change anything outside this folder, and don't push.`;
 }
 
+export const PROJECTS_SHOT: GuideShot = {
+  src: "/guides/switch-to-bb/window-projects.webp",
+  alt: "bb's Settings → Projects page listing the acme-web project, with an Add a project button",
+  width: 2048,
+  height: 1280,
+};
+
+export const EXISTING_WORKTREE_SHOT: GuideShot = {
+  src: "/guides/switch-to-bb/window-existing-worktree.webp",
+  alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
+  width: 2048,
+  height: 1280,
+};
+
+export function missingConversationTroubleshooting(oldTool: string): GuideFaq {
+  return {
+    question: "The agent couldn't find the old conversation",
+    answer: (
+      <ol>
+        <li>
+          Your agent looks for {oldTool}'s conversations on this computer. If
+          they were deleted or ran elsewhere, there's nothing to read.
+        </li>
+        <li>
+          It then works from the branch or pull request. Tell it what was left
+          to do.
+        </li>
+      </ol>
+    ),
+  };
+}
+
+export const THREAD_FAILS_TROUBLESHOOTING: GuideFaq = {
+  question: "A thread fails right away",
+  answer: (
+    <ol>
+      <li>Its agent probably isn't signed in on this computer.</li>
+      <li>
+        Sign in to that agent once, then send the thread a message to start it
+        again.
+      </li>
+    </ol>
+  ),
+};
+
+export function whatComesAlongFaq(oldTool: string): GuideFaq {
+  return {
+    question: "What comes along?",
+    answer: (
+      <p>
+        Your repos, branches, uncommitted changes, and open pull requests.
+        Claude Code and Codex in bb use the same CLAUDE.md, AGENTS.md, skills,
+        MCP servers, and sign-ins they use now. Your old chats stay in {oldTool}
+        ; each bb thread reads the one it continues.
+      </p>
+    ),
+  };
+}
+
 export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
   const oldTool = tool.name;
   return {
@@ -199,12 +241,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             </li>
           </Substeps>
         ),
-        shot: {
-          src: "/guides/switch-to-bb/window-projects.webp",
-          alt: "bb's Settings → Projects page listing the acme-web project, with an Add a project button",
-          width: 2048,
-          height: 1280,
-        },
+        shot: PROJECTS_SHOT,
         options: [],
       },
       {
@@ -217,12 +254,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             folder {oldTool} worked in.
           </p>
         ),
-        shot: {
-          src: "/guides/switch-to-bb/window-existing-worktree.webp",
-          alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
-          width: 2048,
-          height: 1280,
-        },
+        shot: EXISTING_WORKTREE_SHOT,
         options: [],
       },
       {
@@ -261,33 +293,8 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
           </ol>
         ),
       },
-      {
-        question: "The agent couldn't find the old conversation",
-        answer: (
-          <ol>
-            <li>
-              Your agent looks for {oldTool}'s conversations on this computer.
-              If they were deleted or ran elsewhere, there's nothing to read.
-            </li>
-            <li>
-              It then works from the branch or pull request. Tell it what was
-              left to do.
-            </li>
-          </ol>
-        ),
-      },
-      {
-        question: "A thread fails right away",
-        answer: (
-          <ol>
-            <li>Its agent probably isn't signed in on this computer.</li>
-            <li>
-              Sign in to that agent once, then send the thread a message to
-              start it again.
-            </li>
-          </ol>
-        ),
-      },
+      missingConversationTroubleshooting(oldTool),
+      THREAD_FAILS_TROUBLESHOOTING,
     ],
     faq: [
       {
@@ -301,17 +308,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
           </p>
         ),
       },
-      {
-        question: "What comes along?",
-        answer: (
-          <p>
-            Your repos, branches, uncommitted changes, and open pull requests.
-            Claude Code and Codex in bb use the same CLAUDE.md, AGENTS.md,
-            skills, MCP servers, and sign-ins they use now. Your old chats stay
-            in {oldTool}; each bb thread reads the one it continues.
-          </p>
-        ),
-      },
+      whatComesAlongFaq(oldTool),
       {
         question: "Do my setup scripts come along?",
         answer: <p>{tool.setupStep}</p>,
