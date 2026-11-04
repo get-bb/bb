@@ -2841,6 +2841,46 @@ export function hasStoredTerminalClientTurnRequestEvent(
   );
 }
 
+export function findLatestUnresolvedClientTurnRequestIdAfterSequence(
+  db: DbQueryConnection,
+  args: { afterSequence: number; threadId: string },
+): ClientTurnRequestId | null {
+  const row = db
+    .select({
+      requestId: sql<
+        string | null
+      >`json_extract(${events.data}, '$.requestId')`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/requested"),
+        gt(events.sequence, args.afterSequence),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM events AS terminal
+          WHERE terminal.thread_id = ${events.threadId}
+            AND (
+              (
+                terminal.type = 'turn/input/accepted'
+                AND json_extract(terminal.data, '$.clientRequestId') = json_extract(${events.data}, '$.requestId')
+              )
+              OR (
+                terminal.type = 'client/turn/rejected'
+                AND json_extract(terminal.data, '$.requestId') = json_extract(${events.data}, '$.requestId')
+              )
+            )
+        )`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+
+  return row ? clientTurnRequestIdSchema.parse(row.requestId) : null;
+}
+
 export function hasRootStoredTurnStarted(
   db: DbQueryConnection,
   args: HasStoredTurnStartedArgs,

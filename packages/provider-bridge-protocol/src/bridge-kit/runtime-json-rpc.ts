@@ -116,6 +116,7 @@ export interface SendJsonRpcRequestArgs<TResult> {
   pending: Map<string | number, PendingJsonRpcRequest>;
   resultSchema: z.ZodType<TResult>;
   timeoutMs?: number;
+  afterTimeout?: PendingJsonRpcRequest;
 }
 
 interface SendJsonRpcResultArgs {
@@ -303,7 +304,11 @@ export function sendJsonRpcRequest<TResult>(
   const withId: JsonRpcMessage = { ...message, id };
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      args.pending.delete(id);
+      if (args.afterTimeout === undefined) {
+        args.pending.delete(id);
+      } else {
+        args.pending.set(id, args.afterTimeout);
+      }
       reject(new JsonRpcRequestTimeoutError(message.method));
     }, args.timeoutMs ?? 30_000);
     args.pending.set(id, {

@@ -62,6 +62,7 @@ import {
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { dropSettledThreadSessionOptionSelections } from "../services/threads/thread-session-options.js";
+import { rejectUnstartedTurnRequest } from "../services/threads/unconfirmed-turn-requests.js";
 import { rememberSessionModelCatalog } from "../services/providers/session-model-catalog.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
 import {
@@ -578,17 +579,23 @@ async function applyEventEffects(
 
       if (
         event.type === "system/error" &&
-        event.code === "provider_process_exited"
+        (event.code === "provider_process_exited" ||
+          event.code === "provider_turn_start_failed")
       ) {
         const thread = getThread(deps.db, entry.threadId);
         if (!thread) {
           continue;
         }
-        deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
-          threadIds: [entry.threadId],
-          reason:
-            "Provider process exited while awaiting user interaction; retry the thread to continue",
-        });
+        if (event.code === "provider_process_exited") {
+          deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
+            threadIds: [entry.threadId],
+            reason:
+              "Provider process exited while awaiting user interaction; retry the thread to continue",
+          });
+        }
+        if (event.scope.kind === "thread") {
+          rejectUnstartedTurnRequest(deps, entry.threadId);
+        }
         const outcome = applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.failed" },
           threadId: entry.threadId,
