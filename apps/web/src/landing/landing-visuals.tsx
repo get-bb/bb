@@ -23,7 +23,9 @@ import { useDesktopPlatform } from "./desktop-platform";
 import { DesktopInstallChoice } from "./install-choice";
 import {
   ClaudeIcon,
+  CopilotIcon,
   CursorIcon,
+  GeminiIcon,
   GrokIcon,
   HermesAgentIcon,
   OmpIcon,
@@ -184,6 +186,62 @@ export function ProviderChips() {
         </span>
       ) : null}
     </>
+  );
+}
+
+declare const __ACP_AGENT_IDS__: string[] | null | undefined;
+
+const AGENT_ROW = [
+  { Icon: ClaudeIcon, registry: ["claude-acp"] },
+  { Icon: OpenAiIcon, registry: ["codex-acp"] },
+  { Icon: GeminiIcon, registry: ["gemini"] },
+  { Icon: CursorIcon, registry: ["cursor"] },
+  { Icon: CopilotIcon, registry: ["github-copilot-cli"] },
+  { Icon: PiIcon, registry: ["pi-acp"] },
+  { Icon: OpencodeIcon, registry: ["opencode", "opencode-v2"] },
+  { Icon: GrokIcon, registry: ["grok-build"] },
+  { Icon: OmpIcon, registry: [] },
+  { Icon: HermesAgentIcon, registry: [] },
+] as const;
+
+export function moreRegistryAgents(
+  ids: readonly string[] | null | undefined,
+): number | null {
+  if (!ids) return null;
+  const shown = new Set<string>(AGENT_ROW.flatMap((agent) => agent.registry));
+  return ids.filter((id) => !shown.has(id)).length;
+}
+
+export function AgentRow({
+  registryIds = typeof __ACP_AGENT_IDS__ === "undefined"
+    ? null
+    : __ACP_AGENT_IDS__,
+}: {
+  registryIds?: readonly string[] | null;
+}) {
+  const more = moreRegistryAgents(registryIds);
+  const mobileMore =
+    AGENT_ROW.length - PROVIDER_ICONS_MOBILE_VISIBLE + (more ?? 0);
+  return (
+    <div className="providers agent-row">
+      <span className="label">Bring your own subscription</span>
+      {AGENT_ROW.map(({ Icon }, i) => (
+        <Icon
+          key={i}
+          className={
+            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+          }
+        />
+      ))}
+      {more ? (
+        <span className="agent-more" aria-label={`${more} more agents`}>
+          +{more} more
+        </span>
+      ) : null}
+      <span className="pmore" aria-label={`${mobileMore} more agents`}>
+        +{mobileMore} more
+      </span>
+    </div>
   );
 }
 

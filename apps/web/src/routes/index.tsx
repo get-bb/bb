@@ -76,6 +76,7 @@ import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { ClaudeIcon } from "../landing/icons";
 import {
+  AgentRow,
   Band,
   InstallOptions,
   ProviderChips,
@@ -1252,10 +1253,14 @@ function LandingPage() {
 
         <InstallOptions placement="hero" />
 
-        <div className="providers">
-          <span className="label">Works with</span>
-          <ProviderChips />
-        </div>
+        {subhead === "test" ? (
+          <AgentRow />
+        ) : (
+          <div className="providers">
+            <span className="label">Works with</span>
+            <ProviderChips />
+          </div>
+        )}
       </header>
 
       <HeroAppMock />
