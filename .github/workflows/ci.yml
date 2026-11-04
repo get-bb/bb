@@ -12,8 +12,6 @@ jobs:
         include:
           - cpu: 4
             runner: blacksmith-4vcpu-windows-2025
-          - cpu: 8
-            runner: blacksmith-8vcpu-windows-2025
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     permissions:
@@ -72,6 +70,8 @@ jobs:
           name: identity-${{ matrix.cpu }}-cpu
           path: |
             identity-load.json
+            .github/diagnostics/identity-controller.json
+            .github/diagnostics/identity-test.json
             packages/config/identity-observations.jsonl
             packages/process-utils/identity-observations.jsonl
             .turbo/runs

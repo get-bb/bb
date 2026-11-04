@@ -20,3 +20,13 @@ if(process.argv[2]==='minimalpath') {
   text=text.replace('          "$ErrorActionPreference', `          ${JSON.stringify(pathScript)},\n          "$ErrorActionPreference`);
 }
 writeFileSync(file,text);
+
+const testFile='packages/config/test/verified-process-stop.test.ts';
+let test=readFileSync(testFile,'utf8');
+test='import { readFileSync, writeFileSync } from "node:fs";\nimport { readProcessIdentity } from "@bb/process-utils";\n'+test;
+test=test.replace('  const args = {', `  const controller = JSON.parse(readFileSync(new URL("../../../.github/diagnostics/identity-controller.json", import.meta.url), "utf8"));
+  writeFileSync(new URL("../../../.github/diagnostics/identity-test.json", import.meta.url), JSON.stringify({pid:child.pid,token,startedAt,execPath:process.execPath}));
+  const controllerRead = readProcessIdentity(controller.pid);
+  onTestFinished(async () => { await controllerRead; });
+  const args = {`);
+writeFileSync(testFile,test);
