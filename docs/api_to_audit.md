@@ -3947,7 +3947,7 @@ machine through the host daemon (enrolled machines get `~/.local/bin/bb` from
 `install-machine.sh` today), and after exercising real Windows and macOS
 installs.
 
-## `PluginBbSdk.system.experimental_scheduleAppUpdate` and `experimental_cancelScheduledAppUpdate`
+## `PluginBbSdk.system.experimental_scheduleAppUpdate`, `experimental_cancelScheduledAppUpdate`, and `experimental_setAppUpdateAuto`
 
 `experimental_scheduleAppUpdate()` updates bb once no thread is running
 (`starting` or `active`). With none running it starts the update at once, like
@@ -3966,13 +3966,23 @@ While it is on, the server sends `app-update-changed` whenever the running
 thread count changes, so `runningThreadCount` stays current for clients.
 `experimental_cancelScheduledAppUpdate()` clears the schedule, and a scheduled
 update that is already downloading defers instead of restarting; it is a no-op
-without one. Applying by hand also clears it, and schedule, apply, and the
+without one. Cancelling also records the available version as skipped
+(`availableSkipped: true` in the status), so the server's automatic check does
+not schedule it again until a newer one appears; that check also skips a
+version whose last update attempt failed.
+`experimental_setAppUpdateAuto({ enabled })` saves the automatic update setting
+(`autoUpdate` in the status) and returns the status. While it and the
+experiment are on, the server checks right away, 30 s after boot, and every
+hour, and schedules what it finds; turning it off stops the checks and
+drops a waiting update. It returns 403 like the schedule routes. Applying by
+hand also clears a schedule, and schedule, apply, and the
 scheduled start run one at a time. A scheduled start the server refuses ends the
 schedule with only a log line; the status's `blocked`, `support`, or `activity`
 shows why. The schedule lives in server memory and is lost when the server
-restarts. Core callers: Settings → Updates (the row's "Update when idle" split
-button while threads run, and the waiting row's Cancel) and
-`bb updates app apply --when-idle` / `bb updates app cancel`.
+restarts. Core callers: Settings → Updates (the "Restart and update bb
+automatically" switch, and Skip this version on a waiting update) and
+`bb updates app apply --when-idle` / `bb updates app cancel` /
+`bb updates app auto`.
 
 Stabilize after deciding whether the schedule should persist across server
 restarts, whether threads waiting on a user decision should count as running,

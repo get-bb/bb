@@ -63,6 +63,33 @@ describe("/api/v1/system/app-update", () => {
       }
     }));
 
+  it("saves the automatic update setting only while the updateWhenIdle experiment is on", () =>
+    withTestHarness({ isDevelopment: false }, async (harness) => {
+      const setAuto = (enabled: boolean) =>
+        harness.app.request(`${API}/auto`, {
+          body: JSON.stringify({ enabled }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+
+      const refused = await setAuto(true);
+      expect(refused.status).toBe(403);
+      expect(await readJson(refused)).toMatchObject({
+        code: "update_when_idle_experiment_disabled",
+      });
+
+      setExperiments(harness.db, { updateWhenIdle: true });
+      const turnedOn = await setAuto(true);
+      expect(turnedOn.status).toBe(200);
+      expect(
+        ((await readJson(turnedOn)) as SystemAppUpdateStatus).autoUpdate,
+      ).toBe(true);
+      const status = (await readJson(
+        await harness.app.request(API),
+      )) as SystemAppUpdateStatus;
+      expect(status.autoUpdate).toBe(true);
+    }));
+
   it("refuses to schedule an update the launcher cannot perform", () =>
     withTestHarness({ isDevelopment: false }, async (harness) => {
       setExperiments(harness.db, { updateWhenIdle: true });
@@ -95,6 +122,11 @@ describe("/api/v1/system/app-update", () => {
         }),
         harness.app.request(`${API}/schedule/cancel`, {
           headers: MACHINE_HEADERS,
+          method: "POST",
+        }),
+        harness.app.request(`${API}/auto`, {
+          body: JSON.stringify({ enabled: true }),
+          headers: { ...MACHINE_HEADERS, "content-type": "application/json" },
           method: "POST",
         }),
       ]);

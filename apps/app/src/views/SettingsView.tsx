@@ -1177,7 +1177,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   updateWhenIdle: {
     label: "Update when idle",
     description:
-      "While threads are running, the Updates page offers to update bb once they all finish instead of interrupting them, and bb updates app apply --when-idle does the same from the CLI. bb waits again if a thread starts before it restarts.",
+      "Adds a Restart and update bb automatically switch to the Updates page. While it is on, bb checks for updates every hour and restarts into a new version once no thread is running, waiting again if a thread starts before it restarts. Skip this version keeps a version from installing until a newer one appears. bb updates app apply --when-idle waits for threads once from the CLI.",
   },
 };
 export function visibleExperimentKeys(

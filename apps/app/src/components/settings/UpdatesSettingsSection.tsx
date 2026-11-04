@@ -71,14 +71,18 @@ import {
 import { SplitButton } from "@/components/ui/split-button";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
-import { SettingsSection } from "@/components/ui/settings-section";
+import {
+  SettingsSection,
+  SettingsWithControl,
+} from "@/components/ui/settings-section";
+import { Switch } from "@bb/shared-ui/switch";
 import { refreshHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateAppUpdateStatus } from "@/hooks/cache-owners/app-update-cache-owner";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
 import {
   useApplyAppUpdate,
   useCancelScheduledAppUpdate,
-  useScheduleAppUpdate,
+  useSetAutoAppUpdate,
 } from "@/hooks/mutations/app-update-mutations";
 import { useAppUpdateStatus } from "@/hooks/queries/app-update-queries";
 import { useRetryHostUpdate } from "@/hooks/mutations/host-mutations";
@@ -463,12 +467,10 @@ interface BbAppUpdateRowsProps {
   appUpdate?: SystemAppUpdateStatus | undefined;
   applyPending?: boolean;
   cancelScheduledPending?: boolean;
-  schedulePending?: boolean;
   desktopInfo: BbDesktopInfo | null;
   isDesktop: boolean;
   onApplyAppUpdate?: (() => void) | null;
   onCancelScheduledAppUpdate?: (() => void) | null;
-  onScheduleAppUpdate?: (() => void) | null;
   onRetryAppCheck?: (() => void) | null;
   onRelaunchDesktop: (() => void) | null;
   onRetryDesktop: (() => void) | null;
@@ -515,12 +517,10 @@ export function BbAppUpdateRows({
   appUpdate,
   applyPending = false,
   cancelScheduledPending = false,
-  schedulePending = false,
   desktopInfo,
   isDesktop,
   onApplyAppUpdate = null,
   onCancelScheduledAppUpdate = null,
-  onScheduleAppUpdate = null,
   onRetryAppCheck = null,
   onRelaunchDesktop,
   onRetryDesktop,
@@ -670,14 +670,12 @@ export function BbAppUpdateRows({
         status={appUpdate}
         applyPending={applyPending}
         cancelScheduledPending={cancelScheduledPending}
-        schedulePending={schedulePending}
         settledStatus={settledStatus}
         unavailableCheckControl={unavailableCheckControl}
         row={row}
         trailing={notesLink}
         onApply={onApplyAppUpdate}
         onCancelScheduled={onCancelScheduledAppUpdate}
-        onSchedule={onScheduleAppUpdate}
         onShowResult={onShowAppUpdateResult}
       />
     );
@@ -771,35 +769,31 @@ export function BbAppUpdateRows({
   return row(name, settledStatus);
 }
 
-function UpdateSplitButton({
-  label,
-  tooltip,
-  pending,
-  onSelect,
+function ScheduledUpdateSplitButton({
   updateNowPending,
   onUpdateNow,
+  skipPending,
+  onSkip,
 }: {
-  label: string;
-  tooltip: string;
-  pending: boolean;
-  onSelect: () => void;
   updateNowPending: boolean;
-  onUpdateNow: (() => void) | null;
+  onUpdateNow: () => void;
+  skipPending: boolean;
+  onSkip: () => void;
 }) {
   return (
     <SplitButton
       className="h-6 px-2 text-xs"
-      disabled={pending}
-      primaryAction={{ label, onSelect }}
-      primaryTooltip={tooltip}
-      triggerLabel="More ways to update bb"
+      disabled={updateNowPending}
+      primaryAction={{ label: "Update now", onSelect: onUpdateNow }}
+      primaryTooltip="Restart into the update without waiting for threads"
+      triggerLabel="More update options"
       mobileTitle="Update bb"
       secondaryActions={[
         {
-          id: "update-now",
-          label: "Update now",
-          disabled: updateNowPending || onUpdateNow === null,
-          onSelect: () => onUpdateNow?.(),
+          id: "skip-version",
+          label: "Skip this version",
+          disabled: skipPending,
+          onSelect: onSkip,
         },
       ]}
     />
@@ -819,14 +813,12 @@ function InAppUpdateRow({
   installKind,
   applyPending,
   cancelScheduledPending,
-  schedulePending,
   settledStatus,
   unavailableCheckControl,
   row,
   trailing,
   onApply,
   onCancelScheduled,
-  onSchedule,
   onShowResult,
 }: {
   name: string;
@@ -834,14 +826,12 @@ function InAppUpdateRow({
   installKind: SystemVersionResponse["installKind"];
   applyPending: boolean;
   cancelScheduledPending: boolean;
-  schedulePending: boolean;
   settledStatus: ReactNode;
   unavailableCheckControl: ReactNode;
   row: BbAppRowRenderer;
   trailing: ReactNode;
   onApply: (() => void) | null;
   onCancelScheduled: (() => void) | null;
-  onSchedule: (() => void) | null;
   onShowResult: ((result: SystemAppUpdateResult) => void) | null;
 }) {
   const available = status.available;
@@ -878,14 +868,12 @@ function InAppUpdateRow({
   if (status.scheduled !== null) {
     return row(
       name,
-      onCancelScheduled === null ? null : (
-        <UpdateSplitButton
-          label="Cancel"
-          tooltip="Keep the current version"
-          pending={cancelScheduledPending}
-          onSelect={onCancelScheduled}
+      onCancelScheduled === null || onApply === null ? null : (
+        <ScheduledUpdateSplitButton
           updateNowPending={applyPending}
           onUpdateNow={onApply}
+          skipPending={cancelScheduledPending}
+          onSkip={onCancelScheduled}
         />
       ),
       <RowStateCaption state="update-available">
@@ -937,28 +925,24 @@ function InAppUpdateRow({
       status.blocked.message,
     );
   }
-  if (
-    updateButton !== null &&
-    onSchedule !== null &&
-    status.runningThreadCount > 0
-  ) {
+  if (updateButton !== null) {
+    const captions = [
+      status.autoUpdate && status.availableSkipped
+        ? "Skipped until a newer version"
+        : null,
+      status.runningThreadCount > 0
+        ? runningThreadsCaption(status.runningThreadCount)
+        : null,
+    ].filter((caption) => caption !== null);
     return row(
       name,
-      <UpdateSplitButton
-        label="Update when idle"
-        tooltip="Restart into the update once every thread finishes"
-        pending={schedulePending}
-        onSelect={onSchedule}
-        updateNowPending={applyPending}
-        onUpdateNow={onApply}
-      />,
-      <RowStateCaption state="update-available">
-        {runningThreadsCaption(status.runningThreadCount)}
-      </RowStateCaption>,
+      updateButton,
+      captions.length === 0 ? undefined : (
+        <RowStateCaption state="update-available">
+          {captions.join(" · ")}
+        </RowStateCaption>
+      ),
     );
-  }
-  if (updateButton !== null) {
-    return row(name, updateButton);
   }
   return row(
     name,
@@ -1544,6 +1528,31 @@ export function MachineUpdateRow({
   );
 }
 
+function AutoAppUpdateSetting({
+  label,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="py-3.5 pr-4 pl-13">
+      <SettingsWithControl
+        label={label}
+        description="Checks every hour and restarts bb into a new version once no threads are running."
+      >
+        <Switch
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          aria-label={label}
+        />
+      </SettingsWithControl>
+    </div>
+  );
+}
+
 export function BbUpdatesCard({ children }: { children: ReactNode }) {
   return (
     <section aria-label="bb" data-updates-domain="bb">
@@ -2054,7 +2063,7 @@ export function UpdatesSettingsSection() {
     useProviderCliInstallRunner();
   const appUpdateStatus = useAppUpdateStatus();
   const applyAppUpdate = useApplyAppUpdate();
-  const scheduleAppUpdate = useScheduleAppUpdate();
+  const setAutoAppUpdate = useSetAutoAppUpdate();
   const cancelScheduledAppUpdate = useCancelScheduledAppUpdate();
   const [confirmingAppUpdateThreads, setConfirmingAppUpdateThreads] = useState<
     number | null
@@ -2262,15 +2271,11 @@ export function UpdatesSettingsSection() {
       }
       applyPending={applyAppUpdate.isPending}
       cancelScheduledPending={cancelScheduledAppUpdate.isPending}
-      schedulePending={scheduleAppUpdate.isPending}
       desktopInfo={useServerUpdate ? null : desktopInfo}
       isDesktop={!useServerUpdate && isDesktop}
       isChecking={isChecking}
       onApplyAppUpdate={startAppUpdate}
       onCancelScheduledAppUpdate={() => cancelScheduledAppUpdate.mutate()}
-      onScheduleAppUpdate={
-        updateWhenIdleEnabled ? () => scheduleAppUpdate.mutate() : null
-      }
       onRetryAppCheck={handleCheckForUpdates}
       onShowAppUpdateResult={openAppUpdateResultDetails}
       onRelaunchDesktop={useServerUpdate ? null : relaunchDesktop}
@@ -2315,13 +2320,31 @@ export function UpdatesSettingsSection() {
   return (
     <div className="space-y-6">
       <BbUpdatesCard>
-        {serverAppRow}
-        {releaseNotesPanel("server")}
         {serverRunsSeparately && desktopRowNeedsAttention(desktopInfo) ? (
           <>
             {desktopClientRow}
             {releaseNotesPanel("desktop")}
           </>
+        ) : null}
+        {serverAppRow}
+        {releaseNotesPanel("server")}
+        {updateWhenIdleEnabled &&
+        appUpdate !== undefined &&
+        (appUpdate.support.kind === "supported" ||
+          appUpdate.desktopUpdateSupported === true) ? (
+          <AutoAppUpdateSetting
+            label={
+              serverRunsSeparately
+                ? "Restart and update the server automatically"
+                : "Restart and update bb automatically"
+            }
+            checked={
+              setAutoAppUpdate.isPending
+                ? (setAutoAppUpdate.variables ?? appUpdate.autoUpdate)
+                : appUpdate.autoUpdate
+            }
+            onCheckedChange={(enabled) => setAutoAppUpdate.mutate(enabled)}
+          />
         ) : null}
       </BbUpdatesCard>
 

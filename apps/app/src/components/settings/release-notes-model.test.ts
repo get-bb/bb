@@ -34,6 +34,8 @@ function appUpdate(
     blocked: null,
     current: { commit: null, version: current },
     lastResult: null,
+    autoUpdate: false,
+    availableSkipped: false,
     runningThreadCount: 0,
     scheduled: null,
     support: { kind: "supported", mode: "npm" },

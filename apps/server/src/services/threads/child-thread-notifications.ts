@@ -474,9 +474,7 @@ async function queueChildThreadTurnNotificationBatchItem(
       windowMs: CHILD_THREAD_TURN_NOTIFICATION_BATCH_DELAY_MS,
     },
   );
-  if (row.state === "scheduled" && row.sendAt !== null) {
-    requestQueuedMessageDispatchAt(deps, row.sendAt);
-  }
+  requestQueuedMessageDispatchAt(deps, row.sendAt);
 }
 
 export async function queueChildThreadTurnNotificationBestEffort(

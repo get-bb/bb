@@ -12,6 +12,10 @@ import {
   getAppSettings,
   getDisabledProviderIds,
   getExperiments,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
   type DbConnection,
@@ -295,6 +299,7 @@ export async function createTestAppHarness(
   const notifyAppUpdateChanged = (): void =>
     hub.notifySystem(["app-update-changed"]);
   const appUpdate = createScheduledAppUpdateService({
+    autoCheckMs: null,
     countRunningThreads,
     inner:
       appUpdateService ??
@@ -330,6 +335,14 @@ export async function createTestAppHarness(
     logger,
     notifyChanged: notifyAppUpdateChanged,
     onChangedMessage: (listener) => hub.onChangedMessage(listener),
+    autoUpdate: {
+      get: () => getAutoAppUpdate(db),
+      set: (enabled) => setAutoAppUpdate(db, enabled),
+    },
+    skippedUpdate: {
+      get: () => getSkippedAppUpdate(db),
+      set: (key) => setSkippedAppUpdate(db, key),
+    },
   });
   const deps: ServerAppDeps = {
     appUpdate,

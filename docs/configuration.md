@@ -1003,20 +1003,32 @@ either way.
   back to the delta request used when it is off. Open views follow a toggle
   live.
 - `updateWhenIdle` (on for early adopters) lets bb update itself once no
-  thread is running instead of interrupting them. While threads run, Settings →
-  Updates offers a split button, Update when idle, whose menu holds Update now
-  (which still asks before interrupting). Once scheduled, the same control reads
-  Cancel, keeps Update now in its menu, and the row shows the running count. `bb updates app apply --when-idle` and
-  `bb updates app cancel` do the same from the CLI. bb starts the update after
-  running threads stay at zero for five seconds and waits again if a thread
-  starts before it restarts. From the moment bb decides to restart into an
-  update (Update now, Update when idle, or `bb updates app apply`) until it
+  thread is running instead of interrupting them. Settings → Updates gains an
+  "Restart and update bb automatically" switch ("Restart and update the server
+  automatically" when the desktop app talks to a separate server), saved as the `autoAppUpdate` app
+  setting and off until you turn it on; `bb updates app auto on|off` does the
+  same. While it is on, bb checks for an update right away, 30 seconds after the
+  server starts, and every hour (a `git fetch` of origin/main in source
+  mode, the npm registry, or the desktop updater) and installs what it finds
+  once no thread is running; turning it off stops the checks and drops a
+  waiting update. The Server row then reads "Updates when all threads are
+  idle", with Update now (which still asks before interrupting) and Skip this
+  version in its menu. Skip this version (or `bb updates app cancel`) skips that
+  version (stored as the `skippedAppUpdate` app setting) until a newer one
+  appears, and the automatic check also skips a version whose last update
+  attempt failed; Update still installs a skipped version.
+  `bb updates app apply --when-idle` waits for threads once, without the
+  switch, so an agent can update bb from its own thread. bb starts a waiting
+  update after running threads stay at zero for five seconds and waits again if
+  a thread starts before it restarts. From the moment bb decides to restart
+  into an update (Update, Update now, a waiting update, or
+  `bb updates app apply`) until it
   stops, new sends, including Send now and retries, wait in the thread's queue
   as "Sending after bb restarts to update" (`app-update` in `bb thread queue`)
   instead of starting turns the restart would cut. bb sends them when it starts
   again, after any resume `resumeThreadsAfterRestart` queues, in order; if the
-  update is deferred, cancelled, or fails, it sends them at once. While it is
-  off, the schedule routes return 403
+  update is deferred, cancelled, or fails, it sends them at once. While the
+  experiment is off, the schedule and automatic update routes return 403
   `update_when_idle_experiment_disabled`, the CLI commands print how to turn it
   on, and turning it off drops a waiting update. See `bb guide machines`.
 
