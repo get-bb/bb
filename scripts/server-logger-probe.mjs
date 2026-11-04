@@ -16,7 +16,7 @@ for (const [index, variant] of [...'ABBA'].entries()) {
   const log = join(output, `${index + 1}-${variant}.log`);
   const fd = openSync(log, 'w');
   const start = performance.now();
-  const run = spawnSync('cmd.exe', ['/d', '/s', '/c', 'pnpm exec vitest run --config vitest.config.ts --reporter=default --reporter=json --outputFile.json=' + JSON.stringify(join(output, `${index + 1}-${variant}.json`))], { cwd: join(root, 'apps/server'), env: { ...process.env, VITEST_MAX_WORKERS: '' }, stdio: ['ignore', fd, fd] });
+  const run = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.config.ts', '--reporter=default', '--reporter=json', `--outputFile.json=${join(output, `${index + 1}-${variant}.json`)}`], { cwd: join(root, 'apps/server'), env: { ...process.env, VITEST_MAX_WORKERS: '' }, stdio: ['ignore', fd, fd] });
   closeSync(fd);
   const elapsedSeconds = (performance.now() - start) / 1000;
   const result = { index: index + 1, variant, sha, exitCode: run.status, elapsedSeconds, shard: process.env.BB_CI_TEST_SHARD, cpus: availableParallelism(), defaultWorkers: Math.max(availableParallelism()-1, 1) };
