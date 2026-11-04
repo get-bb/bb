@@ -34,10 +34,11 @@ export const CONNECT_PLUGIN_ID = "connect";
 
 export interface TerminalConnectFlow {
   input: string;
+  failure: RegExp;
 }
 
 const TERMINAL_CONNECT_FLOWS: Readonly<Record<string, TerminalConnectFlow>> = {
-  pi: { input: "/login\r" },
+  pi: { input: "/login\r", failure: /Error: Failed to login to /u },
 };
 
 export function terminalConnectFlow(
@@ -304,7 +305,7 @@ export interface SignInGuide {
 const TERMINAL_OSC_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu;
 const TERMINAL_CSI_SEQUENCE = /\u001b\[[0-9;?]*[ -/]*[@-~]/gu;
 const TERMINAL_HYPERLINK =
-  /\u001b\]8;[^;\u0007\u001b]*;(https:\/\/[^\u0007\u001b]+)(?:\u0007|\u001b\\)/u;
+  /\u001b\]8;[^;\u0007\u001b]*;(https:\/\/[^\u0007\u001b]+)(?:\u0007|\u001b\\)/gu;
 const SIGN_IN_URL = /https:\/\/[^\s\u0007\u001b"'<>]+/u;
 const SIGN_IN_USER_CODE =
   /(?<![A-Za-z0-9-])[A-Z0-9]{4,5}-[A-Z0-9]{4,5}(?![A-Za-z0-9-])/u;
@@ -317,10 +318,19 @@ export function stripTerminalSequences(output: string): string {
     .replace(/\r/gu, "");
 }
 
+export function connectFlowFailed(
+  flow: TerminalConnectFlow,
+  output: string,
+): boolean {
+  return flow.failure.test(stripTerminalSequences(output));
+}
+
 export function parseSignInOutput(output: string): SignInGuide {
   const text = stripTerminalSequences(output);
   const url =
-    TERMINAL_HYPERLINK.exec(output)?.[1] ?? SIGN_IN_URL.exec(text)?.[0] ?? null;
+    [...output.matchAll(TERMINAL_HYPERLINK)].at(-1)?.[1] ??
+    SIGN_IN_URL.exec(text)?.[0] ??
+    null;
   const withoutUrls = text.replace(new RegExp(SIGN_IN_URL.source, "gu"), " ");
   return {
     url,

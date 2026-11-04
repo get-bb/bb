@@ -404,6 +404,42 @@ describe("AgentSignInPanel", () => {
       screen.queryByRole("link", { name: "Open sign-in page" }),
     ).toBeNull();
   });
+
+  it("links the sign-in page next to the paste box when signing in in the agent's terminal", () => {
+    const url = "https://claude.ai/oauth/authorize?code=true&state=abc";
+    const onOpenUrl = vi.fn();
+    const onCopy = vi.fn();
+    render(
+      <AgentSignInPanel
+        connect
+        agentName="Pi"
+        view={{
+          guide: { url, userCode: null, acceptsPastedCode: true },
+          terminalVisible: true,
+          started: true,
+        }}
+        code=""
+        codeSubmitted={false}
+        alternate={null}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onOpenUrl={onOpenUrl}
+        onCopy={onCopy}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("textbox", { name: "Pi authorization code" }),
+    ).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Open sign-in page" });
+    expect(link.getAttribute("href")).toBe(url);
+    fireEvent.click(link);
+    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(url);
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith(url);
+  });
 });
 
 function renderQuiet(agents: OnboardingAgent[]) {

@@ -134,6 +134,19 @@ describe("useAgentSignIns", () => {
     expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
   });
 
+  it("ends a sign-in whose agent reported a failure while still running", async () => {
+    const { result, terminals } = renderSignIns(true, [provider("pi")]);
+    await act(async () => {
+      await result.current.start("pi");
+    });
+
+    act(() => result.current.fail("pi"));
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(result.current.failedProviderIds.has("pi")).toBe(true);
+    expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
+  });
+
   it("keeps today's one-at-a-time sign-in in the control guide", async () => {
     const { result, terminals } = renderSignIns(false);
 

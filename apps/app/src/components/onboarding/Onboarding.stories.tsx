@@ -1024,11 +1024,44 @@ function RedesignSignInPanel({
   );
 }
 
+const PI_SIGN_IN_URL =
+  "https://claude.ai/oauth/authorize?code=true&client_id=example&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback";
+
+type PiStage = "code" | "finishing" | "failed";
+
+function RedesignPiSignInPanel({ stage }: { stage: "code" | "finishing" }) {
+  const [code, setCode] = useState(
+    stage === "finishing" ? "pi-example-code" : "",
+  );
+  return (
+    <AgentSignInPanel
+      connect
+      agentName="Pi"
+      view={{
+        guide: { url: PI_SIGN_IN_URL, userCode: null, acceptsPastedCode: true },
+        terminalVisible: true,
+        started: true,
+      }}
+      code={code}
+      codeSubmitted={stage === "finishing"}
+      alternate={null}
+      terminal={<FakeTerminal command="pi" />}
+      onCodeChange={setCode}
+      onSubmitCode={noop}
+      onOpenUrl={noop}
+      onCopy={noop}
+      onToggleTerminal={noop}
+    />
+  );
+}
+
 function RedesignAgentFrame({
   signingIn,
+  pi = null,
   installError = false,
 }: {
   signingIn: "claude-code" | "codex" | null;
+  pi?: PiStage | null;
   installError?: boolean;
 }) {
   const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
@@ -1042,12 +1075,17 @@ function RedesignAgentFrame({
               canInstall: true,
             }
           : agent.id === "pi"
-            ? INSTALL
+            ? pi === null
+              ? INSTALL
+              : pi === "failed"
+                ? { status: "signIn", reason: "failed", canSignIn: true }
+                : { status: "signingIn" }
             : SIGNED_OUT;
     return {
       id: agent.id,
       name: agent.name,
       provider: { id: agent.id, logoUrl: agent.logoUrl },
+      setup: agent.id === "pi" ? "connect" : "signIn",
       state,
       subline:
         agent.id === signingIn &&
@@ -1064,6 +1102,8 @@ function RedesignAgentFrame({
         agent.id === signingIn &&
         (agent.id === "claude-code" || agent.id === "codex") ? (
           <RedesignSignInPanel agentId={agent.id} />
+        ) : agent.id === "pi" && (pi === "code" || pi === "finishing") ? (
+          <RedesignPiSignInPanel stage={pi} />
         ) : state.status === "installFailed" ? (
           <AgentInstallErrorDetails
             log={
@@ -1111,6 +1151,30 @@ export function RedesignAgentCodexSignIn() {
   return (
     <div className="flex h-screen flex-col">
       <RedesignAgentFrame signingIn="codex" />
+    </div>
+  );
+}
+
+export function RedesignAgentPiSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn={null} pi="code" />
+    </div>
+  );
+}
+
+export function RedesignAgentPiFinishingSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn={null} pi="finishing" />
+    </div>
+  );
+}
+
+export function RedesignAgentPiSignInFailed() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn={null} pi="failed" />
     </div>
   );
 }
