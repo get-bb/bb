@@ -1,6 +1,15 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import WebSocket, { type ClientOptions, type RawData } from "ws";
 import {
   createTestAppHarness,
@@ -181,6 +190,37 @@ async function writePlugin(
   return rootDir;
 }
 
+let wireFixture: TestAppHarness;
+let wireRoot: string;
+
+beforeAll(async () => {
+  wireFixture = await createTestAppHarness({ devAppPort: 5173 });
+  wireRoot = await writePlugin(join(wireFixture.config.dataDir, "fixtures"), {
+    name: "bb-plugin-wire",
+    serverSource: WIRE_SOURCE,
+  });
+  const entry = await wireFixture.pluginService.installPath(wireRoot);
+  expect(entry.status).toBe("running");
+  await wireFixture.pluginService.stop();
+});
+
+afterAll(async () => {
+  await wireFixture.cleanup();
+});
+
+async function installWireFixture(harness: TestAppHarness): Promise<string> {
+  await writeFile(join(wireRoot, "server.ts"), WIRE_SOURCE);
+  await mkdir(join(harness.config.dataDir, "plugins", "runtime"), {
+    recursive: true,
+  });
+  await cp(
+    join(wireFixture.config.dataDir, "plugins", "runtime", "server"),
+    join(harness.config.dataDir, "plugins", "runtime", "server"),
+    { recursive: true },
+  );
+  return wireRoot;
+}
+
 async function rpc(
   harness: TestAppHarness,
   method: string,
@@ -208,10 +248,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
 
   beforeEach(async () => {
     harness = await createTestAppHarness({ devAppPort: 5173 });
-    rootDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
-      name: "bb-plugin-wire",
-      serverSource: WIRE_SOURCE,
-    });
+    rootDir = await installWireFixture(harness);
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
   });
@@ -893,10 +930,7 @@ describe("plugin WebSocket routes", () => {
 
   beforeEach(async () => {
     server = await startTestServer({ devAppPort: 5173 });
-    rootDir = await writePlugin(join(server.config.dataDir, "fixtures"), {
-      name: "bb-plugin-wire",
-      serverSource: WIRE_SOURCE,
-    });
+    rootDir = await installWireFixture(server);
     const entry = await server.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
   });
