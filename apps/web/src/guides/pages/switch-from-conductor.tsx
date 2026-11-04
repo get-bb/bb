@@ -6,7 +6,6 @@ import { AGENTS_FAQ, COST_FAQ } from "../shared/faq";
 import {
   CLAUDE_HANDOFF_SHOT,
   EXISTING_WORKTREE_SHOT,
-  PROJECTS_SHOT,
   THREAD_FAILS_TROUBLESHOOTING,
   missingConversationTroubleshooting,
   whatComesAlongFaq,
@@ -20,28 +19,35 @@ const HANDOFF_PROMPT = `Pick up the work Conductor was doing in this folder and 
 const AGENT_PROMPT = withIntake(
   [
     {
+      label: "Repos",
+      hint: "every repo with workspaces in ~/conductor/workspaces/, or only the ones I name",
+    },
+    {
       label: "Workspaces",
-      hint: "all of this repo's Conductor workspaces, or only the ones I name",
+      hint: "all of each repo's Conductor workspaces, or only the ones I name",
     },
     {
       label: "Scripts",
       hint: "move Conductor's setup and archive scripts into bb: yes or no",
     },
   ],
-  `Move my Conductor workspaces for this repo into bb. Each workspace keeps its folder, branch, and uncommitted changes, and gets its own bb thread that picks up where Conductor left off.
+  `Move my Conductor workspaces into bb. Each workspace keeps its folder, branch, and uncommitted changes, and gets its own bb thread that picks up where Conductor left off.
 Guide: https://getbb.app/guides/switch-from-conductor
 
-Default Workspaces: all. Default Scripts: yes. Pass --project $BB_PROJECT_ID to bb thread spawn and bb environment list. Don't move, delete, or archive any workspace, don't open Conductor's app data in ~/Library/Application Support/com.conductor.app, and don't commit or push. If a command fails, stop and tell me the command, the error, and what you'd try next.
+Defaults: every repo, all workspaces, Scripts yes. Don't move, delete, or archive any workspace, don't open Conductor's app data in ~/Library/Application Support/com.conductor.app, and don't commit or push. Folder and branch names can contain spaces and quotes, so pass every value to a command as a quoted shell variable. If a command fails, stop and tell me the command, the error, and what you'd try next.
 
-1. Find the workspaces with git worktree list --porcelain. Conductor keeps them in ~/conductor/workspaces/<repo>/, or in .conductor/ inside the repo for older repos. Show each folder with its branch, whether it has uncommitted changes, and its pull request if any (gh pr list --head <branch> --state all; if gh can't look it up, say so and carry on). Leave out folders bb already has: bb environment list --json lists their paths.
-   Check: if no Conductor workspaces are listed, tell me this bb project may be a different clone than the one Conductor used, and stop.
-2. For each workspace I chose, write this prompt to a file in $BB_THREAD_STORAGE:
+Do these steps for each repo:
+1. Find the repo's main checkout: run git -C "$workspace" worktree list --porcelain in any of its Conductor workspaces; the first entry is the main checkout. Older repos keep their workspaces in .conductor/ inside the repo, so if ~/conductor/workspaces/ has nothing for a repo I named, ask me where it is.
+2. Find its bb project: in bb project list --json, a project whose sources[].path is the main checkout. If there isn't one, add it with bb project create --name "$repo" --root "$checkout" --machine "$host" --json, where $host is environment.hostId from bb thread get --self --json.
+   Check: bb project list --json now shows the main checkout.
+3. List its Conductor workspaces from git worktree list --porcelain, leaving out the main checkout and folders bb already has (bb environment list --project "$project" --json lists their paths). Show each folder with its branch, whether it has uncommitted changes, and its pull request if any (gh pr list --head "$branch" --state all; if gh can't look it up, say so and carry on).
+4. For each workspace I chose, write this prompt to a file in $BB_THREAD_STORAGE:
    "${HANDOFF_PROMPT}"
-   Then start a thread in that folder:
-   bb thread spawn --project $BB_PROJECT_ID --environment-provider git-worktree --environment-inputs '{"kind":"existing","path":"<absolute folder>"}' --provider <providerId> --title '<branch>' --prompt-file <file> --json
-   where <providerId> is this thread's agent, from bb thread get --self --json.
-   Check: bb environment list --json shows that folder's path.
-3. If Scripts is yes, read .conductor/settings.toml, then .conductor/settings.local.toml from the main checkout, or conductor.json if neither exists. Write the results in this thread's folder:
+   Build the inputs JSON with a JSON tool, for example inputs=$(jq -n --arg path "$folder" '{kind:"existing",path:$path}'), then start a thread in that folder:
+   bb thread spawn --project "$project" --environment-provider git-worktree --environment-inputs "$inputs" --provider "$provider" --title "$branch" --prompt-file "$file" --json
+   where $provider is thread.providerId from bb thread get --self --json.
+   Check: bb environment list --project "$project" --json shows that folder.
+5. If Scripts is yes, read .conductor/settings.toml and .conductor/settings.local.toml in the main checkout, or conductor.json if neither exists, and write the results in the main checkout:
    - setup goes in .bb-env-setup.sh, which bb runs in each new worktree.
    - archive goes in .bb-env-teardown.sh, which bb runs before it removes a worktree it made.
    - file_include_globs goes in .worktreeinclude. Keep an existing .worktreeinclude as it is; bb reads the same file. If neither is set, Conductor copied .env* files, so write .env* there.
@@ -49,9 +55,10 @@ Default Workspaces: all. Default Scripts: yes. Pass --project $BB_PROJECT_ID to 
    - bb doesn't assign ports, so drop --port $CONDUCTOR_PORT and let the server pick a free port.
    - Don't write run scripts anywhere. List them for me.
    - List the names in [environment_variables] for me to add in Settings → Environment variables, without their values.
-   Check: bash -n passes on each script. Show me the diff, and remind me that new worktrees only pick these files up once they're committed to the base branch.
+   - These scripts get committed and shared with everyone on the repo. Never copy tokens, passwords, or other secrets into them, and tell me which lines came from settings.local.toml, which is personal, before you write them.
+   Check: bash -n passes on each script. Show me the diff, and remind me that new worktrees pick these files up once I commit them to the base branch.
 
-Reply with a table of each workspace, its branch, and its bb thread ID, then the files you wrote, the run scripts and variables left for me, and anything you skipped and why.`,
+Reply with a table of each repo, workspace, branch, and bb thread ID, then the files you wrote, the run scripts and variables left for me, and anything you skipped and why.`,
 );
 
 export const guide: Guide = {
@@ -64,43 +71,24 @@ export const guide: Guide = {
   requirement: null,
   steps: [
     {
-      id: "project",
-      title: "Add the repo Conductor uses",
-      lead: "Conductor's workspaces are Git worktrees of that folder, so bb finds them there.",
-      body: (
-        <Substeps>
-          <li>
-            Open bb. In setup's <strong>Projects</strong> step, check the repo,
-            or choose <strong>Add a folder that isn't listed</strong>.
-          </li>
-          <li>
-            Already set up? Open <Ui icon="settings">Settings → Projects</Ui>{" "}
-            and choose <strong>Add a project</strong>.
-          </li>
-          <li>Pick the same folder you added to Conductor, not a new clone.</li>
-        </Substeps>
-      ),
-      shot: PROJECTS_SHOT,
-      options: [],
-    },
-    {
       id: "prompt",
       title: "Paste the prompt",
-      lead: "Your agent opens every Conductor workspace in its own bb thread and moves your scripts.",
+      lead: "Your agent finds your Conductor workspaces, opens each one in its own bb thread, and moves your scripts.",
       body: (
         <Substeps>
           <li>
-            Choose <strong>New thread</strong> on that repo, paste the prompt
-            from <CopyPromptButton />, and send it.
+            Open bb, choose <strong>New thread</strong>, paste the prompt from{" "}
+            <CopyPromptButton />, and send it.
           </li>
           <li>
-            It asks which workspaces to bring over and whether to move your
-            scripts, then sums up the plan. Say go.
+            It asks which repos and workspaces to bring over and whether to move
+            your scripts, then sums up the plan. Say go.
           </li>
           <li>
-            To open one yourself, choose <strong>New thread</strong>, then{" "}
-            <strong>Worktree</strong> and <strong>Existing worktree</strong>,
-            and pick the workspace.
+            Rather do it by hand? Add the repo in{" "}
+            <Ui icon="settings">Settings → Projects</Ui>, then choose{" "}
+            <strong>New thread</strong>, <strong>Worktree</strong>, and{" "}
+            <strong>Existing worktree</strong>, and pick the workspace.
           </li>
         </Substeps>
       ),
@@ -174,7 +162,8 @@ export const guide: Guide = {
           on November 4, 2026 that it's joining Meta. New downloads and sign-ups
           are closed. The Mac app keeps working until it winds down in early
           2027. Conductor Cloud goes read-only on November 13 and starts
-          deleting data on November 20.
+          deleting data on November 20. Your workspaces can move to bb today
+          with one prompt, and bb is open source, so it stays yours.
         </p>
       ),
     },
@@ -232,14 +221,15 @@ export const guide: Guide = {
       ),
     },
     {
-      question: "What's the best Conductor alternative?",
+      question: "Why is bb the best Conductor alternative?",
       answer: (
         <p>
-          bb runs the same agents in parallel worktrees, on your Mac, Windows,
-          or Linux, and lets you check in from your phone. It's free and open
-          source. See{" "}
-          <a href="/compare/conductor-alternatives">bb and Conductor</a> side by
-          side.
+          bb does what you used Conductor for: agents working in parallel, each
+          in its own worktree, with setup and archive scripts, diffs, and pull
+          requests. It's also free and open source, runs on Mac, Windows, and
+          Linux, follows you to your phone, and lets your agents start each
+          other and hear back. Your workspaces move over with one prompt.{" "}
+          <a href="/compare/conductor-alternatives">See how bb compares</a>.
         </p>
       ),
     },
