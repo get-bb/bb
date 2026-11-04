@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
   connectAccessUrl,
+  connectFlowFailed,
   defaultSelectedRepoPaths,
   featuredPluginEntryIds,
   skippedStepIds,
@@ -18,6 +19,7 @@ import {
   resolveSignInCommand,
   shortRemoteName,
   signInSiteName,
+  terminalConnectFlow,
 } from "./onboarding-model";
 
 function health(
@@ -512,6 +514,38 @@ describe("parseSignInOutput", () => {
       userCode: null,
       acceptsPastedCode: false,
     });
+  });
+});
+
+const PI_AUTH_URL =
+  "https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=MXdVe-PfEWSN";
+const PI_CHANGELOG_URL = "https://pi.dev/changelog";
+const PI_LOGIN_OUTPUT = [
+  `${ESC}[90mNew version 1.6.0 is available. Changelog: ${ESC}]8;;${PI_CHANGELOG_URL}${BEL}${PI_CHANGELOG_URL}${ESC}]8;;${BEL}\r\n`,
+  `${ESC}[2K Login to Anthropic\r\n`,
+  `${ESC}[2K ${ESC}[38;5;6m${ESC}]8;;${PI_AUTH_URL}${BEL}${PI_AUTH_URL.slice(0, 88)}${ESC}]8;;${BEL}\r\n`,
+  `${ESC}[2K ${ESC}]8;;${PI_AUTH_URL}${BEL}${PI_AUTH_URL.slice(88)}${ESC}]8;;${BEL}${ESC}[39m\r\n`,
+  `${ESC}[2K ${ESC}[2m${ESC}]8;;${PI_AUTH_URL}${BEL}Ctrl+click to open${ESC}]8;;${BEL}${ESC}[22m • ctrl+x to copy\r\n`,
+  `${ESC}[2K Paste the code Anthropic shows after you sign in:\r\n`,
+  `${ESC}[2K > `,
+].join("");
+const PI_LOGIN_FAILED_OUTPUT = `${PI_LOGIN_OUTPUT}\r\n${ESC}[7;1H${ESC}[2K${ESC}[0m${ESC}]8;;${BEL}${ESC}[8;1H${ESC}[2K ${ESC}[38;5;1mError: Failed to login to Anthropic: OAuth state mismatch${ESC}[39m     `;
+
+describe("Pi's sign-in", () => {
+  it("takes the sign-in link Pi shows last, not an earlier link", () => {
+    expect(parseSignInOutput(PI_LOGIN_OUTPUT)).toEqual({
+      url: PI_AUTH_URL,
+      userCode: null,
+      acceptsPastedCode: true,
+    });
+  });
+
+  it("sees a failed sign-in although Pi keeps running at its prompt", () => {
+    const flow = terminalConnectFlow("pi");
+    if (flow === null) throw new Error("Pi has no connect flow");
+
+    expect(connectFlowFailed(flow, PI_LOGIN_OUTPUT)).toBe(false);
+    expect(connectFlowFailed(flow, PI_LOGIN_FAILED_OUTPUT)).toBe(true);
   });
 });
 
