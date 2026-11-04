@@ -8,8 +8,8 @@ import {
   type OpenBackgroundTaskItemRow,
 } from "@bb/db";
 import {
-  backgroundTaskItemStatus,
-  isSettledBackgroundTaskStatus,
+  convertLegacyStoredThreadEvent,
+  stoppedBackgroundTaskItem,
   threadEventBackgroundTaskItemSchema,
   threadScope,
 } from "@bb/domain";
@@ -19,6 +19,11 @@ import { appendThreadEventsInTransaction } from "./thread-events.js";
 
 interface SettleDanglingBackgroundTasksArgs {
   hostId: string;
+  reason:
+    | "host-connection-lost"
+    | "host-daemon-restarted"
+    | "host-removed"
+    | "machine-suspended";
 }
 
 type SettleDanglingBackgroundTasksDeps = Pick<AppDeps, "db" | "hub" | "logger">;
@@ -28,6 +33,8 @@ type SettleDanglingBackgroundTasksTransactionDeps = {
   logger: AppDeps["logger"];
 };
 
+const storedEventDataSchema = z.record(z.string(), z.unknown());
+
 const storedBackgroundTaskEventDataSchema = z.object({
   item: threadEventBackgroundTaskItemSchema,
 });
@@ -36,9 +43,15 @@ function parseStoredBackgroundTaskItem(
   row: OpenBackgroundTaskItemRow,
 ): ThreadEventBackgroundTaskItem | null {
   try {
-    const parsed = storedBackgroundTaskEventDataSchema.safeParse(
-      JSON.parse(row.data),
-    );
+    const data = storedEventDataSchema.safeParse(JSON.parse(row.data));
+    if (!data.success) {
+      return null;
+    }
+    const stored = convertLegacyStoredThreadEvent({
+      type: row.type,
+      data: data.data,
+    });
+    const parsed = storedBackgroundTaskEventDataSchema.safeParse(stored.data);
     return parsed.success ? parsed.data.item : null;
   } catch {
     return null;
@@ -96,6 +109,17 @@ function settleBackgroundTaskRows(
     { behavior: "immediate" },
   );
 
+  if (settledThreadIds.size === 0) {
+    return;
+  }
+  deps.logger.info(
+    {
+      hostId: args.hostId,
+      reason: args.reason,
+      threadIds: [...settledThreadIds],
+    },
+    "Settled background tasks left open on the host",
+  );
   for (const threadId of settledThreadIds) {
     deps.hub.notifyThread(threadId, ["events-appended"], {
       timelineSequence: getLatestThreadSequence(deps.db, {
@@ -137,9 +161,6 @@ function appendDanglingBackgroundTaskCompletions(
       continue;
     }
     const providerThreadId = row.providerThreadId ?? "";
-    const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
-      ? item.taskStatus
-      : "stopped";
     appendThreadEventsInTransaction(deps.db, [
       {
         threadId: row.threadId,
@@ -149,11 +170,7 @@ function appendDanglingBackgroundTaskCompletions(
         scope: threadScope(),
         data: {
           providerThreadId,
-          item: {
-            ...item,
-            status: backgroundTaskItemStatus(taskStatus),
-            taskStatus,
-          },
+          item: stoppedBackgroundTaskItem(item),
         },
       },
     ]);

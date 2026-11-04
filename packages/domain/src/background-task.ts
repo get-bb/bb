@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ThreadEventBackgroundTaskItem } from "./provider-event.js";
 
 export const LOCAL_WORKFLOW_TASK_TYPE = "local_workflow";
 export const LOCAL_BASH_TASK_TYPE = "local_bash";
@@ -120,4 +121,13 @@ export function isSettledBackgroundTaskStatus(
   taskStatus: BackgroundTaskStatus,
 ): boolean {
   return backgroundTaskItemStatus(taskStatus) !== "pending";
+}
+
+export function stoppedBackgroundTaskItem(
+  item: ThreadEventBackgroundTaskItem,
+): ThreadEventBackgroundTaskItem {
+  const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
+    ? item.taskStatus
+    : "stopped";
+  return { ...item, status: backgroundTaskItemStatus(taskStatus), taskStatus };
 }

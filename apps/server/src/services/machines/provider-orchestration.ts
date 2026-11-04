@@ -9,6 +9,7 @@ import {
   environments as environmentRows,
 } from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
+import { settleDanglingBackgroundTasks } from "../threads/background-task-reconciliation.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { maintainMachine } from "./lifecycle.js";
 import { serverAccess } from "./server-access.js";
@@ -705,6 +706,8 @@ async function suspendMachine(
             daemonSessionId,
             daemonShutdownTimeoutMs,
           );
+          const shutdownAcknowledged =
+            deps.hub.takeDaemonShutdownAck(daemonSessionId);
           if (!closed || deps.hub.hasDaemonForHost(hostId)) {
             if (!coordinateMaintenance) {
               updateHost(deps.db, deps.hub, hostId, {
@@ -715,6 +718,12 @@ async function suspendMachine(
             throw new Error(
               `Machine "${hostId}" daemon did not shut down cleanly within ${daemonShutdownTimeoutMs}ms; suspend was cancelled`,
             );
+          }
+          if (shutdownAcknowledged) {
+            settleDanglingBackgroundTasks(deps, {
+              hostId,
+              reason: "machine-suspended",
+            });
           }
         }
         updateHost(deps.db, deps.hub, hostId, { suspendedAt: Date.now() });

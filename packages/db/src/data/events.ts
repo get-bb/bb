@@ -1419,6 +1419,7 @@ export interface OpenBackgroundTaskItemRow {
   itemId: string;
   providerThreadId: string | null;
   threadId: string;
+  type: ThreadEventType;
 }
 
 export function listEvents(db: DbConnection, options: ListEventsOptions) {
@@ -4677,6 +4678,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
       itemId: events.itemId,
       providerThreadId: events.providerThreadId,
       threadId: events.threadId,
+      type: events.type,
     })
     .from(events)
     .innerJoin(threads, eq(events.threadId, threads.id))
@@ -4734,6 +4736,7 @@ export function listOpenBackgroundTaskItemRowsForThread(
       itemId: sql<string | null>`${events.itemId}`,
       providerThreadId: sql<string | null>`${events.providerThreadId}`,
       threadId: sql<string>`${events.threadId}`,
+      type: sql<ThreadEventType>`${events.type}`,
     })
     .from(
       sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
