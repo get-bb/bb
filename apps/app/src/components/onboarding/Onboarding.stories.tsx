@@ -982,42 +982,67 @@ export function HomeAfterSkipping() {
   );
 }
 
-function redesignSignInView(agentId: "claude-code" | "codex") {
-  const codex = agentId === "codex";
+type RedesignSignInStory = "claude-code" | "codex" | "codex-browser";
+
+const CODEX_BROWSER_SIGN_IN_URL =
+  "https://auth.openai.com/oauth/authorize?response_type=code&client_id=example&state=example";
+
+function redesignSignInView(story: RedesignSignInStory) {
   return {
-    guide: {
-      url: codex ? CODEX_SIGN_IN_URL : CLAUDE_SIGN_IN_URL,
-      userCode: codex ? "JWMS-GLRCB" : null,
-      acceptsPastedCode: !codex,
-    },
+    guide:
+      story === "codex"
+        ? {
+            url: CODEX_SIGN_IN_URL,
+            userCode: "JWMS-GLRCB",
+            acceptsPastedCode: false,
+          }
+        : story === "codex-browser"
+          ? {
+              url: CODEX_BROWSER_SIGN_IN_URL,
+              userCode: null,
+              acceptsPastedCode: false,
+            }
+          : {
+              url: CLAUDE_SIGN_IN_URL,
+              userCode: null,
+              acceptsPastedCode: true,
+            },
     terminalVisible: false,
     started: true,
   };
 }
 
-function RedesignSignInPanel({
-  agentId,
-}: {
-  agentId: "claude-code" | "codex";
-}) {
+function redesignSignInAlternate(
+  story: RedesignSignInStory,
+): "browser" | "code" | null {
+  if (story === "codex") return "browser";
+  if (story === "codex-browser") return "code";
+  return null;
+}
+
+function RedesignSignInPanel({ story }: { story: RedesignSignInStory }) {
   const [code, setCode] = useState("");
-  const codex = agentId === "codex";
+  const codex = story !== "claude-code";
   return (
     <AgentSignInPanel
       connect={false}
       agentName={codex ? "Codex" : "Claude Code"}
-      view={redesignSignInView(agentId)}
+      view={redesignSignInView(story)}
       code={code}
       codeSubmitted={false}
-      alternate={codex ? "browser" : null}
       terminal={
         <FakeTerminal
-          command={codex ? "codex login --device-auth" : "claude auth login"}
+          command={
+            story === "codex"
+              ? "codex login --device-auth"
+              : codex
+                ? "codex login"
+                : "claude auth login"
+          }
         />
       }
       onCodeChange={setCode}
       onSubmitCode={noop}
-      onOpenUrl={noop}
       onCopy={noop}
       onToggleTerminal={noop}
     />
@@ -1029,6 +1054,12 @@ const PI_SIGN_IN_URL =
 
 type PiStage = "code" | "finishing" | "failed";
 
+const PI_SIGN_IN_VIEW = {
+  guide: { url: PI_SIGN_IN_URL, userCode: null, acceptsPastedCode: true },
+  terminalVisible: true,
+  started: true,
+};
+
 function RedesignPiSignInPanel({ stage }: { stage: "code" | "finishing" }) {
   const [code, setCode] = useState(
     stage === "finishing" ? "pi-example-code" : "",
@@ -1037,18 +1068,12 @@ function RedesignPiSignInPanel({ stage }: { stage: "code" | "finishing" }) {
     <AgentSignInPanel
       connect
       agentName="Pi"
-      view={{
-        guide: { url: PI_SIGN_IN_URL, userCode: null, acceptsPastedCode: true },
-        terminalVisible: true,
-        started: true,
-      }}
+      view={PI_SIGN_IN_VIEW}
       code={code}
       codeSubmitted={stage === "finishing"}
-      alternate={null}
       terminal={<FakeTerminal command="pi" />}
       onCodeChange={setCode}
       onSubmitCode={noop}
-      onOpenUrl={noop}
       onCopy={noop}
       onToggleTerminal={noop}
     />
@@ -1060,27 +1085,28 @@ function RedesignAgentFrame({
   pi = null,
   installError = false,
 }: {
-  signingIn: "claude-code" | "codex" | null;
+  signingIn: RedesignSignInStory | null;
   pi?: PiStage | null;
   installError?: boolean;
 }) {
+  const signInAgentId = signingIn === "codex-browser" ? "codex" : signingIn;
   const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
-    const state: AgentSetupState =
-      agent.id === signingIn
-        ? { status: "signingIn" }
-        : installError && agent.id === "claude-code"
-          ? {
-              status: "installFailed",
-              message: "Couldn't install. Check your connection and retry.",
-              canInstall: true,
-            }
-          : agent.id === "pi"
-            ? pi === null
-              ? INSTALL
-              : pi === "failed"
-                ? { status: "signIn", reason: "failed", canSignIn: true }
-                : { status: "signingIn" }
-            : SIGNED_OUT;
+    const signingInHere = signingIn !== null && agent.id === signInAgentId;
+    const state: AgentSetupState = signingInHere
+      ? { status: "signingIn" }
+      : installError && agent.id === "claude-code"
+        ? {
+            status: "installFailed",
+            message: "Couldn't install. Check your connection and retry.",
+            canInstall: true,
+          }
+        : agent.id === "pi"
+          ? pi === null
+            ? INSTALL
+            : pi === "failed"
+              ? { status: "signIn", reason: "failed", canSignIn: true }
+              : { status: "signingIn" }
+          : SIGNED_OUT;
     return {
       id: agent.id,
       name: agent.name,
@@ -1088,20 +1114,26 @@ function RedesignAgentFrame({
       setup: agent.id === "pi" ? "connect" : "signIn",
       state,
       subline:
-        agent.id === signingIn &&
-        (agent.id === "claude-code" || agent.id === "codex") ? (
+        signingInHere && signingIn !== null ? (
           <AgentSignInInstruction
             agentName={agent.name}
-            view={redesignSignInView(agent.id)}
-            alternate={agent.id === "codex" ? "browser" : null}
+            view={redesignSignInView(signingIn)}
+            alternate={redesignSignInAlternate(signingIn)}
+            onOpenUrl={noop}
+            onUseAlternate={noop}
+          />
+        ) : agent.id === "pi" && (pi === "code" || pi === "finishing") ? (
+          <AgentSignInInstruction
+            agentName={agent.name}
+            view={PI_SIGN_IN_VIEW}
+            alternate={null}
             onOpenUrl={noop}
             onUseAlternate={noop}
           />
         ) : undefined,
       expanded:
-        agent.id === signingIn &&
-        (agent.id === "claude-code" || agent.id === "codex") ? (
-          <RedesignSignInPanel agentId={agent.id} />
+        signingInHere && signingIn !== null ? (
+          <RedesignSignInPanel story={signingIn} />
         ) : agent.id === "pi" && (pi === "code" || pi === "finishing") ? (
           <RedesignPiSignInPanel stage={pi} />
         ) : state.status === "installFailed" ? (
@@ -1151,6 +1183,14 @@ export function RedesignAgentCodexSignIn() {
   return (
     <div className="flex h-screen flex-col">
       <RedesignAgentFrame signingIn="codex" />
+    </div>
+  );
+}
+
+export function RedesignAgentCodexBrowserSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame signingIn="codex-browser" />
     </div>
   );
 }

@@ -302,6 +302,13 @@ export interface SignInGuide {
   acceptsPastedCode: boolean;
 }
 
+export function signInInstructionReady(
+  view: { started: boolean; guide: SignInGuide | null },
+  connect: boolean,
+): boolean {
+  return view.started && (!connect || view.guide?.url != null);
+}
+
 const TERMINAL_OSC_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu;
 const TERMINAL_CSI_SEQUENCE = /\u001b\[[0-9;?]*[ -/]*[@-~]/gu;
 const TERMINAL_HYPERLINK =
