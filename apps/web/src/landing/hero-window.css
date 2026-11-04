@@ -6,9 +6,9 @@
 }
 
 .rhb .rhb-win {
-  --rhb-frame: color-mix(in oklab, var(--ink) 7%, var(--bg));
-  --rhb-sidebar: color-mix(in oklab, var(--ink) 2.5%, var(--bg));
-  --rhb-seam: color-mix(in oklab, var(--ink) 9.5%, var(--bg));
+  --rhb-frame: color-mix(in oklch, var(--ink) 7%, var(--bg));
+  --rhb-sidebar: color-mix(in oklch, var(--ink) 2.5%, var(--bg));
+  --rhb-seam: color-mix(in oklch, var(--ink) 9.5%, var(--bg));
   position: relative;
   height: var(--rhb-win-h);
   background: var(--rhb-frame);
@@ -340,7 +340,7 @@
 
 .rhb .send-btn {
   flex-shrink: 0;
-  background: color-mix(in oklab, var(--ink) 35%, var(--bg));
+  background: color-mix(in oklch, var(--ink) 35%, var(--bg));
 }
 
 .rhb .context-row {
@@ -559,7 +559,7 @@
 }
 
 .rhb .trun {
-  color: color-mix(in oklab, var(--accent) 75%, var(--subtle));
+  color: color-mix(in oklch, var(--accent) 75%, var(--subtle));
 }
 
 .rhb .tdone {
@@ -1003,7 +1003,7 @@
 }
 
 .rhb .rhb-chart-bar {
-  background: color-mix(in oklab, var(--accent) 65%, var(--bg));
+  background: color-mix(in oklch, var(--accent) 65%, var(--bg));
 }
 
 .rhb .rhb-step-ic.is-plugin {
@@ -1104,13 +1104,13 @@
 
 .rhb .rhb-line {
   fill: none;
-  stroke: color-mix(in oklab, var(--ink) 45%, var(--bg));
+  stroke: color-mix(in oklch, var(--ink) 45%, var(--bg));
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
 
 .rhb .rhb-line.is-after {
-  stroke: color-mix(in oklab, var(--del) 55%, var(--bg));
+  stroke: color-mix(in oklch, var(--del) 55%, var(--bg));
 }
 
 .rhb .rhb-release {
@@ -1157,13 +1157,13 @@
 
 .rhb .rhb-spark path {
   fill: none;
-  stroke: color-mix(in oklab, var(--ink) 40%, var(--bg));
+  stroke: color-mix(in oklch, var(--ink) 40%, var(--bg));
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
 }
 
 .rhb .rhb-issue.is-top .rhb-spark path {
-  stroke: color-mix(in oklab, var(--del) 55%, var(--bg));
+  stroke: color-mix(in oklch, var(--del) 55%, var(--bg));
 }
 
 .rhb .rhb-say code {
@@ -1324,7 +1324,7 @@
 
 .rhb .rhb-em {
   font-weight: 500;
-  color: color-mix(in oklab, var(--ink) 78%, var(--bg));
+  color: color-mix(in oklch, var(--ink) 78%, var(--bg));
 }
 
 .rhb .rhb-file {
@@ -2325,7 +2325,7 @@
 }
 
 .rhb {
-  --rhb-muted: color-mix(in oklab, var(--subtle) 50%, var(--bg));
+  --rhb-muted: color-mix(in oklch, var(--subtle) 50%, var(--bg));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting > * {
@@ -2340,31 +2340,31 @@
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic,
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-verb {
-  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--dim));
+  color: color-mix(in oklch, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--dim));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-step-ic.is-plugin {
-  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
+  color: color-mix(in oklch, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-em {
   color: color-mix(
     in oklab,
     var(--rhb-muted) calc(var(--rhb-m) * 100%),
-    color-mix(in oklab, var(--ink) 78%, var(--bg))
+    color-mix(in oklch, var(--ink) 78%, var(--bg))
   );
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-file {
-  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
+  color: color-mix(in oklch, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--accent));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-add {
-  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--add));
+  color: color-mix(in oklch, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--add));
 }
 
 .rhb .rhb-turn-body > .rhb-work.is-muting .rhb-diff .is-del {
-  color: color-mix(in oklab, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--del));
+  color: color-mix(in oklch, var(--rhb-muted) calc(var(--rhb-m) * 100%), var(--del));
 }
 
 @media (prefers-reduced-motion: reduce) {
