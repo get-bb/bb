@@ -22,6 +22,8 @@ interface EventProjectionState {
 
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
+  foreignBackgroundTaskSeqs?: ReadonlySet<number>;
+  threadInterruptedAt?: number | null;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 

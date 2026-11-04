@@ -27,8 +27,8 @@ import {
 import type { ThreadTimelinePageRequest } from "../../src/services/threads/timeline-pagination.js";
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
-import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
+import { clearLatestTimelineWindowInputs } from "../../src/services/threads/timeline-latest-window-memo.js";
+import { clearThreadTimelineProjections } from "../../src/services/threads/timeline-projector.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -199,19 +199,14 @@ export function buildRouteTimelinePage(
 }
 
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {
-  clearStoredEventDecodeCache(db);
-  clearTimelineSelectionMemo(db);
+  clearLatestTimelineWindowInputs(db);
+  clearThreadTimelineProjections(db);
 }
 
-export function selectionWasReused(
+export function projectionWasReused(
   profile: ThreadTimelineBuildProfile,
 ): boolean {
-  const stages = new Set(profile.stageTimings.map((timing) => timing.stage));
-  return (
-    stages.has("selection-memo-lookup") &&
-    !stages.has("group-context-query") &&
-    !stages.has("ordering-context-query")
-  );
+  return profile.reusedUnitCount > 0;
 }
 
 export function latestTimelinePage(): ThreadTimelinePageRequest {

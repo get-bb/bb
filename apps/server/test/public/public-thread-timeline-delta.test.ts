@@ -15,7 +15,7 @@ import {
   type ThreadTimelineResponse,
   type TimelineRow,
 } from "@bb/server-contract";
-import { countTimelineSelectionMemoEntries } from "../../src/services/threads/timeline-selection-memo.js";
+import { countThreadTimelineProjectionLogs } from "../../src/services/threads/timeline-projector.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
@@ -404,7 +404,7 @@ describe("GET /threads/:id/timeline?afterTag (row-patch delta)", () => {
         before = tick.applied;
       }
       expect(
-        countTimelineSelectionMemoEntries(harness.deps.db),
+        countThreadTimelineProjectionLogs(harness.deps.db),
       ).toBeGreaterThan(0);
     });
   });

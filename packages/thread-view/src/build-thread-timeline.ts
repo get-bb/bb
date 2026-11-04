@@ -69,7 +69,10 @@ import {
   extractThreadProviderCommands,
   extractThreadSessionOptions,
 } from "./provider-state-extraction.js";
-import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
+import {
+  scanThreadTimelineModelFallback,
+  type ThreadTimelineModelFallbackScan,
+} from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
@@ -1140,7 +1143,7 @@ function materializeTimelinePlan(
   ];
 }
 
-function buildTimelineRows(
+function foldTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
 ): TimelineRow[] {
@@ -1152,38 +1155,74 @@ function buildTimelineRows(
   )) {
     appendRows(rows, materializeTimelinePlan(item, options));
   }
+  return rows;
+}
 
+function buildTimelineRows(
+  projection: EventProjection,
+  options: BuildTimelineRowsOptions,
+): TimelineRow[] {
   return orderRowsAfterExternalUserBoundary(
-    rows,
+    foldTimelineRows(projection, options),
     collectExternalUserBoundarySeqs(projection),
   );
 }
 
-export function buildThreadTimelineFromEvents(
-  args: BuildThreadTimelineFromEventsArgs,
-): ThreadTimelineFromEventsResult {
-  const stateEvents = args.headStateEvents?.length
-    ? getOrderedThreadEvents([...args.events, ...args.headStateEvents])
-    : args.events;
-  const projectionOptions = {
+export interface ThreadTimelineUnitProjection {
+  activeBackgroundCommands: TimelineWorkflowWorkRow[];
+  activeThinking: ActiveThinking | null;
+  activeWorkflows: TimelineWorkflowWorkRow[];
+  externalUserBoundarySeqs: number[];
+  modelFallback: ThreadTimelineModelFallbackScan;
+  rows: TimelineRow[];
+  steerRows: TimelineRow[];
+}
+
+interface ProjectThreadTimelineUnitArgs {
+  acceptedClientRequestContext: AcceptedClientRequestContext;
+  events: ThreadEventWithMeta[];
+  foreignBackgroundTaskSeqs?: ReadonlySet<number>;
+  threadInterruptedAt?: number | null;
+  options: Omit<
+    ThreadTimelineFromEventsOptions,
+    "isLatestPage" | "planCommand" | "providerId"
+  >;
+}
+
+export function projectThreadTimelineUnit(
+  args: ProjectThreadTimelineUnitArgs,
+): ThreadTimelineUnitProjection {
+  const projection = buildEventProjection(args.events, {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
+    foreignBackgroundTaskSeqs: args.foreignBackgroundTaskSeqs,
+    threadInterruptedAt: args.threadInterruptedAt,
     includeDiagnosticOperations: args.options.includeDiagnosticOperations,
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: "full",
-  } satisfies Parameters<typeof buildEventProjection>[1];
-  const projection = buildEventProjection(args.events, projectionOptions);
-
-  const rows = [
-    ...buildTimelineRows(projection, {
+  });
+  const toWorkflowRows = (messages: readonly TimelineWorkflowMessage[]) =>
+    messages.flatMap((message) => {
+      const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
+      return row ? [row] : [];
+    });
+  return {
+    activeBackgroundCommands: toWorkflowRows(
+      projection.state.activeBackgroundCommands,
+    ),
+    activeThinking: projection.state.activeThinking,
+    activeWorkflows: toWorkflowRows(projection.state.activeWorkflows),
+    externalUserBoundarySeqs: collectExternalUserBoundarySeqs(projection),
+    modelFallback: scanThreadTimelineModelFallback(args.events),
+    rows: foldTimelineRows(projection, {
       completedTurnDisplay: args.options.completedTurnDisplay,
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       summarizeShellCommands: args.options.summarizeShellCommands,
       workspaceRoot: args.options.workspaceRoot,
     }),
-    ...buildPendingSteerMessagesFromEvents(
+    steerRows: buildPendingSteerMessagesFromEvents(
       args.acceptedClientRequestContext,
       args.events,
       args.options,
@@ -1192,27 +1231,86 @@ export function buildThreadTimelineFromEvents(
       .map((message) =>
         convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
       ),
-  ];
+  };
+}
+
+export function stitchThreadTimelineUnits(
+  units: readonly Pick<
+    ThreadTimelineUnitProjection,
+    "externalUserBoundarySeqs" | "rows" | "steerRows"
+  >[],
+): TimelineRow[] {
+  const rows: TimelineRow[] = [];
+  const boundarySeqs: number[] = [];
+  for (const unit of units) {
+    appendRows(rows, unit.rows);
+    boundarySeqs.push(...unit.externalUserBoundarySeqs);
+  }
+  const ordered = orderRowsAfterExternalUserBoundary(
+    rows,
+    boundarySeqs.sort((left, right) => left - right),
+  );
+  for (const unit of units) {
+    ordered.push(...unit.steerRows);
+  }
+  return ordered;
+}
+
+interface BuildThreadTimelineFromUnitsArgs {
+  contextWindowEvents: ThreadEventWithMeta[];
+  headStateEvents?: ThreadEventWithMeta[];
+  openEvents: ThreadEventWithMeta[];
+  options: ThreadTimelineFromEventsOptions;
+  pendingBackgroundUnits?: readonly ThreadTimelineUnitProjection[];
+  units: readonly ThreadTimelineUnitProjection[];
+}
+
+function mergeActiveWorkRows(
+  units: readonly ThreadTimelineUnitProjection[],
+  select: (unit: ThreadTimelineUnitProjection) => TimelineWorkflowWorkRow[],
+): TimelineWorkflowWorkRow[] {
+  return units
+    .flatMap(select)
+    .sort((left, right) => right.startedAt - left.startedAt);
+}
+
+export function buildThreadTimelineFromUnits(
+  args: BuildThreadTimelineFromUnitsArgs,
+): ThreadTimelineFromEventsResult {
+  const stateEvents = args.headStateEvents?.length
+    ? getOrderedThreadEvents([...args.openEvents, ...args.headStateEvents])
+    : args.openEvents;
+  const lastUnit = args.units.at(-1);
+  const headUnits = [...(args.pendingBackgroundUnits ?? []), ...args.units];
+  let modelFallback: ThreadTimelineModelFallbackScan = {
+    fallback: null,
+    latestRelevantSeq: -1,
+  };
+  for (const unit of args.units) {
+    if (
+      unit.modelFallback.latestRelevantSeq > modelFallback.latestRelevantSeq
+    ) {
+      modelFallback = unit.modelFallback;
+    }
+  }
 
   return {
     activePromptMode: !args.options.isLatestPage
       ? null
       : extractThreadTimelineActivePromptMode({
-          events: args.events,
+          events: args.openEvents,
           planCommand: args.options.planCommand,
           providerId: args.options.providerId,
           threadStatus: args.options.threadStatus,
         }),
-    activeThinking: projection.state.activeThinking,
-    activeWorkflows: projection.state.activeWorkflows.flatMap((message) => {
-      const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
-      return row ? [row] : [];
-    }),
-    activeBackgroundCommands: projection.state.activeBackgroundCommands.flatMap(
-      (message) => {
-        const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
-        return row ? [row] : [];
-      },
+    activeThinking: lastUnit?.activeThinking ?? null,
+    activeWorkflows: mergeActiveWorkRows(
+      headUnits,
+      (unit) => unit.activeWorkflows,
+    ),
+    activeBackgroundCommands: mergeActiveWorkRows(
+      headUnits,
+      (unit) => unit.activeBackgroundCommands,
     ),
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
@@ -1226,17 +1324,27 @@ export function buildThreadTimelineFromEvents(
     sessionOptions: !args.options.isLatestPage
       ? null
       : extractThreadSessionOptions(stateEvents),
-    modelFallback: !args.options.isLatestPage
-      ? null
-      : extractThreadTimelineModelFallback(args.events),
+    modelFallback: !args.options.isLatestPage ? null : modelFallback.fallback,
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(
           args.options.threadStatus,
           stateEvents,
         ),
-    rows,
+    rows: stitchThreadTimelineUnits(args.units),
   };
+}
+
+export function buildThreadTimelineFromEvents(
+  args: BuildThreadTimelineFromEventsArgs,
+): ThreadTimelineFromEventsResult {
+  return buildThreadTimelineFromUnits({
+    contextWindowEvents: args.contextWindowEvents,
+    headStateEvents: args.headStateEvents,
+    openEvents: args.events,
+    options: args.options,
+    units: [projectThreadTimelineUnit(args)],
+  });
 }
 
 function findTurnSummaryStartingAt(

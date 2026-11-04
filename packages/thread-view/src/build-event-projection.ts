@@ -109,8 +109,10 @@ type ClientTurnRequestedEvent = Extract<
 interface BuildFlatProjectionDataArgs {
   acceptedClientRequestContext: AcceptedClientRequestContext;
   events: ThreadEventWithMeta[];
+  foreignBackgroundTaskSeqs: ReadonlySet<number>;
   includeActiveThinking: boolean;
   options?: BuildEventProjectionMessagesOptions;
+  threadInterruptedAt?: number | null;
 }
 
 interface BuildFlatProjectionDataResult {
@@ -789,7 +791,9 @@ function buildFlatProjectionData(
 
     if (parseBackgroundTaskLifecycleEvent(decoded)) {
       flushToolActivityBeforeNonToolMessage(state);
-      upsertBackgroundTaskMessage(state, meta, decoded);
+      if (!args.foreignBackgroundTaskSeqs.has(meta.seq)) {
+        upsertBackgroundTaskMessage(state, meta, decoded);
+      }
       continue;
     }
 
@@ -981,6 +985,9 @@ function buildFlatProjectionData(
     }
   }
 
+  if (args.threadInterruptedAt !== undefined) {
+    state.threadInterruptedAt = args.threadInterruptedAt;
+  }
   finalizeProjectionState({ state, options: args.options });
   const messages = sortEventProjectionMessagesBySource(
     normalizeProvisioningFailures(orderedEvents, state.messages),
@@ -999,6 +1006,8 @@ function buildFlatProjectionData(
     messages,
   };
 }
+
+const NO_FOREIGN_BACKGROUND_TASK_SEQS: ReadonlySet<number> = new Set();
 
 function buildDetailedProjection(
   args: BuildDetailedProjectionArgs,
@@ -1029,9 +1038,12 @@ function buildFullEventProjection(
     acceptedClientRequestContext:
       options.acceptedClientRequestContext ??
       EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    foreignBackgroundTaskSeqs:
+      options.foreignBackgroundTaskSeqs ?? NO_FOREIGN_BACKGROUND_TASK_SEQS,
     events,
     includeActiveThinking: true,
     options,
+    threadInterruptedAt: options.threadInterruptedAt,
   });
   return buildDetailedProjection({
     activeThinking: flatProjection.activeThinking,
@@ -1063,6 +1075,8 @@ export function buildEventProjectionEntries(
     acceptedClientRequestContext:
       options.acceptedClientRequestContext ??
       EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    foreignBackgroundTaskSeqs:
+      options.foreignBackgroundTaskSeqs ?? NO_FOREIGN_BACKGROUND_TASK_SEQS,
     events: orderedEvents,
     includeActiveThinking: false,
     options,

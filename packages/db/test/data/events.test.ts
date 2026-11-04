@@ -56,6 +56,7 @@ import {
   listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   listLatestOpenBackgroundTaskStateRowsForThread,
+  listUnfinishedTimelineBackgroundTasks,
 } from "../../src/data/events.js";
 import type { ListStoredEventRowsArgs } from "../../src/data/events.js";
 import {
@@ -3996,7 +3997,7 @@ describe("events", () => {
     ).toEqual([]);
   });
 
-  it("returns latest non-terminal open backgroundTask state rows for a thread", () => {
+  it("lists unfinished and open background tasks for a thread", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -4174,6 +4175,16 @@ describe("events", () => {
         }),
       },
     ]);
+
+    const unfinished = (throughSequence: number) =>
+      listUnfinishedTimelineBackgroundTasks(db, {
+        sequenceStart: 0,
+        threadId: thread.id,
+        throughSequence,
+      }).map((span) => span.startedSequence);
+
+    expect(unfinished(100)).toEqual([1, 2, 4, 8]);
+    expect(unfinished(6)).toEqual([1, 2, 4, 6]);
 
     const rows = listLatestOpenBackgroundTaskStateRowsForThread(db, {
       threadId: thread.id,

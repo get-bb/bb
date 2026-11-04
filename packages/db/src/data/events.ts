@@ -3161,7 +3161,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineLifecycleWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineLifecycleWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const completedConversationRows = db
@@ -3170,7 +3173,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineCompletedWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineCompletedWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const structuralRows = db
@@ -3316,23 +3322,64 @@ export function advanceTimelineWindowBudgetFloorSequence(
   return row?.sequence;
 }
 
-export function listTimelineInterruptionRows(
+export interface TimelineAppendedEventSummary {
+  backgroundTaskState: boolean;
+  budgetEventCount: number;
+  headState: boolean;
+  ordering: boolean;
+  parented: boolean;
+}
+
+export function summarizeTimelineAppendedEvents(
   db: DbConnection,
-  args: { threadId: string; sequenceStart: number; maxSeq: number },
-): StoredEventRow[] {
-  return db
-    .select(storedEventRowSqlFields(null))
-    .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+  args: {
+    afterSequence: number;
+    excludeDiagnosticEvents: boolean;
+    excludedTypes: readonly ThreadEventType[];
+    threadId: string;
+    throughSequence: number;
+  },
+): TimelineAppendedEventSummary {
+  const flag = (condition: SQL | undefined) =>
+    sql<number>`COALESCE(MAX(CASE WHEN ${condition} THEN 1 ELSE 0 END), 0)`;
+  const row = db
+    .select({
+      backgroundTaskState: flag(
+        and(
+          sql`${events.itemKind} = 'backgroundTask'`,
+          inArray(events.type, [
+            "item/backgroundTask/progress",
+            "item/backgroundTask/completed",
+          ]),
+        ),
+      ),
+      budgetEventCount: sql<number>`COALESCE(SUM(CASE WHEN ${and(
+        ...timelineWindowBudgetConditions(args),
+      )} THEN 1 ELSE 0 END), 0)`,
+      headState: flag(
+        sql`(${events.type} ${THREAD_STATE_TYPES_PREDICATE} OR ${events.type} = 'turn/plan/updated' OR (${events.itemKind} = 'planSteps' AND ${events.type} = 'item/completed'))`,
+      ),
+      ordering: flag(
+        inArray(events.type, [...TIMELINE_ORDERING_CONTEXT_EVENT_TYPES]),
+      ),
+      parented: flag(sql`${events.parentToolCallId} is not null`),
+    })
+    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
     .where(
       and(
         eq(events.threadId, args.threadId),
-        eq(events.type, "system/thread/interrupted"),
-        gte(events.sequence, args.sequenceStart),
-        lte(events.sequence, args.maxSeq),
+        gt(events.sequence, args.afterSequence),
+        lte(events.sequence, args.throughSequence),
       ),
     )
-    .orderBy(events.sequence)
-    .all();
+    .get();
+  return {
+    backgroundTaskState: row?.backgroundTaskState === 1,
+    budgetEventCount: row?.budgetEventCount ?? 0,
+    headState: row?.headState === 1,
+    ordering: row?.ordering === 1,
+    parented: row?.parented === 1,
+  };
 }
 
 const TIMELINE_ORDERING_CONTEXT_EVENT_TYPES = [
@@ -3400,31 +3447,6 @@ export function getTimelineGroupingContextChangesInRange(
     )
     .get();
   return { ordering: row?.ordering === 1, parented: row?.parented === 1 };
-}
-
-export function listStoredEventRowsInSequenceRange(
-  db: DbConnection,
-  args: {
-    afterSequence: number;
-    limit: number;
-    maxInlineOutputChars: InlineOutputCharLimit;
-    threadId: string;
-    throughSequence: number;
-  },
-): StoredEventRow[] {
-  return db
-    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
-    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
-    .where(
-      and(
-        eq(events.threadId, args.threadId),
-        gt(events.sequence, args.afterSequence),
-        lte(events.sequence, args.throughSequence),
-      ),
-    )
-    .orderBy(events.sequence)
-    .limit(args.limit)
-    .all();
 }
 
 export function getFirstParentedTimelineBoundarySequence(
@@ -3600,69 +3622,6 @@ export function findStoredTimelineWindowByteBudgetFloor(
   return { eventDataBytes: includedDataBytes, kind: "fits" };
 }
 
-export function listStoredTimelineTurnEventRows(
-  db: DbConnection,
-  args: ListStoredTimelineWindowEventRowsArgs & { turnIds: readonly string[] },
-): StoredEventRow[] {
-  if (args.turnIds.length === 0) return [];
-  return queryInSqliteVariableBatches({
-    values: args.turnIds,
-    variableCountPerValue: 1,
-    dedupeKey: (turnId) => turnId,
-    fixedVariableCount: 32,
-    queryBatch: (turnIds) =>
-      db
-        .select(storedEventRowSqlFields(args.maxInlineOutputChars))
-        .from(
-          sql`${events} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-        )
-        .where(
-          and(
-            ...storedTimelineWindowConditions(args),
-            inArray(events.turnId, [...turnIds]),
-          ),
-        )
-        .all(),
-  }).sort((left, right) => left.sequence - right.sequence);
-}
-
-export function listTimelineRootWindowTurnIds(
-  db: DbConnection,
-  args: ListStoredTimelineWindowEventRowsArgs,
-): string[] {
-  return db
-    .selectDistinct({ turnId: sql<string>`${events.turnId}` })
-    .from(events)
-    .where(
-      and(
-        ...storedTimelineWindowConditions(args),
-        isNotNull(events.turnId),
-        isNull(events.parentToolCallId),
-        sql`EXISTS (SELECT 1 FROM events AS root_start
-      WHERE root_start.thread_id = ${events.threadId}
-        AND root_start.turn_id = ${events.turnId}
-        AND root_start.type = 'turn/started'
-        AND root_start.parent_tool_call_id IS NULL)`,
-      ),
-    )
-    .all()
-    .map((row) => row.turnId);
-}
-
-export function listStoredTimelineThreadWindowEventRows(
-  db: DbConnection,
-  args: ListStoredTimelineWindowEventRowsArgs,
-): StoredEventRow[] {
-  return db
-    .select(
-      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
-    )
-    .from(events)
-    .where(and(...storedTimelineWindowConditions(args), isNull(events.turnId)))
-    .orderBy(events.sequence)
-    .all();
-}
-
 export function listStoredTimelineWindowEventRows(
   db: DbConnection,
   args: ListStoredTimelineWindowEventRowsArgs,
@@ -3675,6 +3634,437 @@ export function listStoredTimelineWindowEventRows(
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
     .all();
+}
+
+export interface ListStoredTimelineRangeEventRowsArgs {
+  afterSequence: number;
+  excludeDiagnosticEvents: boolean;
+  excludedTypes: readonly ThreadEventType[];
+  maxInlineOutputChars: InlineOutputCharLimit;
+  threadId: string;
+  throughSequence: number;
+}
+
+export function listStoredTimelineRangeEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineRangeEventRowsArgs,
+): StoredEventRow[] {
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    gt(events.sequence, args.afterSequence),
+    lte(events.sequence, args.throughSequence),
+    isNotSupersededBackgroundTaskProgressBefore(args.throughSequence + 1),
+  ];
+  if (args.excludeDiagnosticEvents) conditions.push(isNotDiagnosticEvent);
+  if (args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+  return db
+    .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+    .from(sql`${events} INDEXED BY events_thread_sequence_idx`)
+    .where(and(...conditions))
+    .orderBy(events.sequence)
+    .all();
+}
+
+export interface TimelineReferenceKeys {
+  interactionIds: readonly string[];
+  itemIds: readonly string[];
+  operationIds: readonly string[];
+  provisioningIds: readonly string[];
+  providerThreadIds: readonly string[];
+  requestIds: readonly string[];
+  turnIds: readonly string[];
+}
+
+export interface FindEarliestTimelineReferenceArgs {
+  beforeSequence: number;
+  keys: TimelineReferenceKeys;
+  sequenceStart: number;
+  threadId: string;
+}
+
+function minSequenceForValues(
+  db: DbConnection,
+  values: readonly string[],
+  variableCountPerValue: number,
+  query: (batch: readonly string[]) => SQL,
+): number | null {
+  const rows = queryInSqliteVariableBatches({
+    values,
+    variableCountPerValue,
+    dedupeKey: (value) => value,
+    fixedVariableCount: 8,
+    queryBatch: (batch) => [
+      db.get<{ sequence: number | null }>(query(batch))?.sequence ?? null,
+    ],
+  });
+  let min: number | null = null;
+  for (const sequence of rows) {
+    if (sequence !== null && (min === null || sequence < min)) min = sequence;
+  }
+  return min;
+}
+
+interface DescendingJsonKeyScan {
+  path: string;
+  type: ThreadEventType;
+  values: readonly string[];
+}
+
+function earliestSequenceByDescendingJsonScan(
+  db: DbConnection,
+  args: FindEarliestTimelineReferenceArgs,
+  scan: DescendingJsonKeyScan,
+): number | null {
+  if (scan.values.length === 0) return null;
+  const remaining = new Set(scan.values);
+  const statement = db.$client.prepare<
+    [string, string, string, number, number],
+    { sequence: number; value: unknown }
+  >(
+    `SELECT sequence, json_extract(data, ?) AS value
+      FROM events INDEXED BY events_thread_type_sequence_idx
+      WHERE thread_id = ? AND type = ? AND sequence >= ? AND sequence < ?
+      ORDER BY sequence DESC`,
+  );
+  let earliest: number | null = null;
+  for (const row of statement.iterate(
+    scan.path,
+    args.threadId,
+    scan.type,
+    args.sequenceStart,
+    args.beforeSequence,
+  )) {
+    if (typeof row.value !== "string" || !remaining.has(row.value)) continue;
+    earliest = row.sequence;
+    remaining.delete(row.value);
+    if (remaining.size === 0) break;
+  }
+  return earliest;
+}
+
+export function findEarliestTimelineReferenceSequence(
+  db: DbConnection,
+  args: FindEarliestTimelineReferenceArgs,
+): number | null {
+  const range = sql`thread_id = ${args.threadId}
+    AND sequence >= ${args.sequenceStart}
+    AND sequence < ${args.beforeSequence}`;
+  const list = (batch: readonly string[]) =>
+    sql.join(
+      batch.map((value) => sql`${value}`),
+      sql`, `,
+    );
+  const candidates = [
+    minSequenceForValues(
+      db,
+      args.keys.turnIds,
+      1,
+      (batch) => sql`SELECT min(sequence) AS sequence
+        FROM events INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE ${range} AND turn_id IN (${list(batch)})`,
+    ),
+    minSequenceForValues(
+      db,
+      args.keys.itemIds,
+      2,
+      (batch) => sql`SELECT min(sequence) AS sequence FROM (
+        SELECT min(sequence) AS sequence
+        FROM events INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+        WHERE ${range} AND item_id IN (${list(batch)})
+          AND type IN ('item/started', 'item/completed', 'item/backgroundTask/completed')
+        UNION ALL
+        SELECT min(sequence) AS sequence
+        FROM events INDEXED BY events_delegating_item_lookup_idx
+        WHERE ${range} AND item_id IN (${list(batch)})
+          AND item_kind IN ('toolCall', 'delegation')
+      )`,
+    ),
+    minSequenceForValues(
+      db,
+      args.keys.providerThreadIds,
+      1,
+      (batch) => sql`SELECT min(sequence) AS sequence
+        FROM events INDEXED BY events_thread_type_item_kind_sequence_idx
+        WHERE ${range}
+          AND type IN ('item/started', 'item/completed', 'item/delegation/progress', 'item/delegation/completed')
+          AND item_kind = 'delegation'
+          AND provider_thread_id IN (${list(batch)})
+          AND json_extract(data, '$.item.childRef') = provider_thread_id`,
+    ),
+    ...(
+      [
+        {
+          path: "$.requestId",
+          type: "client/turn/requested",
+          values: args.keys.requestIds,
+        },
+        {
+          path: "$.operationId",
+          type: "system/operation",
+          values: args.keys.operationIds,
+        },
+        {
+          path: "$.provisioningId",
+          type: "system/thread-provisioning",
+          values: args.keys.provisioningIds,
+        },
+        {
+          path: "$.interaction.id",
+          type: "system/interaction/lifecycle",
+          values: args.keys.interactionIds,
+        },
+        {
+          path: "$.interactionId",
+          type: "system/permissionGrant/lifecycle",
+          values: args.keys.interactionIds,
+        },
+        {
+          path: "$.interactionId",
+          type: "system/userQuestion/lifecycle",
+          values: args.keys.interactionIds,
+        },
+      ] satisfies DescendingJsonKeyScan[]
+    ).map((scan) => earliestSequenceByDescendingJsonScan(db, args, scan)),
+  ];
+  let min: number | null = null;
+  for (const sequence of candidates) {
+    if (sequence !== null && (min === null || sequence < min)) min = sequence;
+  }
+  return min;
+}
+
+export interface UnfinishedTimelineSpan {
+  interruptedSequence: number | null;
+  startedSequence: number;
+}
+
+export function listUnfinishedTimelineBackgroundTasks(
+  db: DbConnection,
+  args: { sequenceStart: number; threadId: string; throughSequence: number },
+): Array<UnfinishedTimelineSpan & { itemId: string }> {
+  return db.all<UnfinishedTimelineSpan & { itemId: string }>(sql`
+    SELECT
+      started.item_id AS itemId,
+      started.sequence AS startedSequence,
+      NULL AS interruptedSequence
+    FROM events AS started INDEXED BY events_background_task_thread_type_item_sequence_idx
+    WHERE started.thread_id = ${args.threadId}
+      AND started.type = 'item/started'
+      AND started.item_kind = 'backgroundTask'
+      AND started.sequence >= ${args.sequenceStart}
+      AND started.sequence <= ${args.throughSequence}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM events AS completed INDEXED BY events_background_task_thread_type_item_sequence_idx
+        WHERE completed.thread_id = started.thread_id
+          AND completed.type IN ('item/completed', 'item/backgroundTask/completed')
+          AND completed.item_id = started.item_id
+          AND completed.item_kind = 'backgroundTask'
+          AND completed.sequence > started.sequence
+          AND completed.sequence <= ${args.throughSequence}
+      )
+    ORDER BY started.sequence
+  `);
+}
+
+const BACKGROUND_TASK_COMPLETION_TYPES = [
+  "item/completed",
+  "item/backgroundTask/completed",
+] as const;
+
+export function listTimelineProgressedBackgroundTaskItemIds(
+  db: DbConnection,
+  args: { sequenceStart: number; threadId: string; throughSequence: number },
+): string[] {
+  return db
+    .all<{ itemId: string }>(
+      sql`
+        SELECT DISTINCT item_id AS itemId
+        FROM events INDEXED BY events_background_task_thread_type_item_sequence_idx
+        WHERE thread_id = ${args.threadId}
+          AND type = 'item/backgroundTask/progress'
+          AND item_kind = 'backgroundTask'
+          AND item_id IS NOT NULL
+          AND sequence >= ${args.sequenceStart}
+          AND sequence <= ${args.throughSequence}
+      `,
+    )
+    .map((row) => row.itemId);
+}
+
+export function listTimelineBackgroundTaskOrigins(
+  db: DbConnection,
+  args: {
+    beforeSequence: number;
+    itemIds: readonly string[];
+    sequenceStart: number;
+    threadId: string;
+  },
+): Map<string, number> {
+  const rows = queryInSqliteVariableBatches({
+    values: args.itemIds,
+    variableCountPerValue: 1,
+    dedupeKey: (itemId) => itemId,
+    fixedVariableCount: 16,
+    queryBatch: (itemIds) =>
+      db
+        .select({
+          itemId: sql<string>`${events.itemId}`,
+          sequence: sql<number>`min(${events.sequence})`,
+        })
+        .from(
+          sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+        )
+        .where(
+          and(
+            eq(events.threadId, args.threadId),
+            inArray(events.type, [
+              "item/started",
+              ...BACKGROUND_TASK_COMPLETION_TYPES,
+            ]),
+            sql`${events.itemKind} = 'backgroundTask'`,
+            inArray(events.itemId, [...itemIds]),
+            gte(events.sequence, args.sequenceStart),
+            lt(events.sequence, args.beforeSequence),
+          ),
+        )
+        .groupBy(events.itemId)
+        .all(),
+  });
+  const origins = new Map<string, number>();
+  for (const row of rows) {
+    const known = origins.get(row.itemId);
+    if (known === undefined || row.sequence < known) {
+      origins.set(row.itemId, row.sequence);
+    }
+  }
+  return origins;
+}
+
+interface TimelineBackgroundTaskCompletionArgs {
+  afterSequence: number;
+  itemIds: readonly string[];
+  threadId: string;
+  throughSequence: number;
+}
+
+function backgroundTaskCompletionConditions(
+  args: TimelineBackgroundTaskCompletionArgs,
+  itemIds: readonly string[],
+): SQL | undefined {
+  return and(
+    eq(events.threadId, args.threadId),
+    inArray(events.type, [...BACKGROUND_TASK_COMPLETION_TYPES]),
+    sql`${events.itemKind} = 'backgroundTask'`,
+    inArray(events.itemId, [...itemIds]),
+    gt(events.sequence, args.afterSequence),
+    lte(events.sequence, args.throughSequence),
+  );
+}
+
+export function listTimelineBackgroundTaskCompletions(
+  db: DbConnection,
+  args: TimelineBackgroundTaskCompletionArgs,
+): Array<{ itemId: string; sequence: number }> {
+  if (args.throughSequence <= args.afterSequence) return [];
+  return queryInSqliteVariableBatches({
+    values: args.itemIds,
+    variableCountPerValue: 1,
+    dedupeKey: (itemId) => itemId,
+    fixedVariableCount: 16,
+    queryBatch: (itemIds) =>
+      db
+        .select({
+          itemId: sql<string | null>`${events.itemId}`,
+          sequence: sql<number>`${events.sequence}`,
+        })
+        .from(
+          sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+        )
+        .where(backgroundTaskCompletionConditions(args, itemIds))
+        .all(),
+  }).flatMap((row) =>
+    row.itemId === null ? [] : [{ itemId: row.itemId, sequence: row.sequence }],
+  );
+}
+
+export function listTimelineBackgroundTaskCompletionRows(
+  db: DbConnection,
+  args: TimelineBackgroundTaskCompletionArgs & {
+    maxInlineOutputChars: InlineOutputCharLimit;
+  },
+): StoredEventRow[] {
+  if (args.throughSequence <= args.afterSequence) return [];
+  return queryInSqliteVariableBatches({
+    values: args.itemIds,
+    variableCountPerValue: 1,
+    dedupeKey: (itemId) => itemId,
+    fixedVariableCount: 16,
+    queryBatch: (itemIds) =>
+      db
+        .select(storedEventRowSqlFields(args.maxInlineOutputChars))
+        .from(
+          sql`${events} INDEXED BY events_background_task_thread_type_item_sequence_idx`,
+        )
+        .where(backgroundTaskCompletionConditions(args, itemIds))
+        .all(),
+  }).sort((left, right) => left.sequence - right.sequence);
+}
+
+export function getLatestTimelineInterruptionCreatedAt(
+  db: DbConnection,
+  args: { sequenceStart: number; threadId: string; throughSequence: number },
+): number | null {
+  return (
+    db
+      .select({ createdAt: sql<number>`${events.createdAt}` })
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "system/thread/interrupted"),
+          gte(events.sequence, args.sequenceStart),
+          lte(events.sequence, args.throughSequence),
+        ),
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get()?.createdAt ?? null
+  );
+}
+
+export function listUnfinishedTimelineTurns(
+  db: DbConnection,
+  args: { sequenceStart: number; threadId: string; throughSequence: number },
+): UnfinishedTimelineSpan[] {
+  return db.all<UnfinishedTimelineSpan>(sql`
+    SELECT
+      started.sequence AS startedSequence,
+      (
+        SELECT min(interrupted.sequence)
+        FROM events AS interrupted INDEXED BY events_thread_type_sequence_idx
+        WHERE interrupted.thread_id = started.thread_id
+          AND interrupted.type = 'system/thread/interrupted'
+          AND interrupted.sequence > started.sequence
+          AND interrupted.sequence <= ${args.throughSequence}
+      ) AS interruptedSequence
+    FROM events AS started INDEXED BY events_thread_type_sequence_idx
+    WHERE started.thread_id = ${args.threadId}
+      AND started.type = 'turn/started'
+      AND started.sequence >= ${args.sequenceStart}
+      AND started.sequence <= ${args.throughSequence}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM events AS completed INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE completed.thread_id = started.thread_id
+          AND completed.turn_id = started.turn_id
+          AND completed.type = 'turn/completed'
+          AND completed.sequence <= ${args.throughSequence}
+      )
+    ORDER BY started.sequence
+  `);
 }
 
 function getLatestContextWindowBoundary(

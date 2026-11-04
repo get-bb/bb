@@ -52,6 +52,7 @@ function seedThreadWithEarlyHeadState(
   itemsPerTurn: number,
   runningWorkflow: boolean,
   pendingCommand = false,
+  completeTurns = false,
 ): void {
   const events: Parameters<typeof insertEvents>[2] = [];
   let sequence = 0;
@@ -212,6 +213,19 @@ function seedThreadWithEarlyHeadState(
         }),
       });
     }
+    if (completeTurns && turn < turns) {
+      events.push({
+        threadId: thread.id,
+        sequence: (sequence += 1),
+        type: "turn/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed" }),
+      });
+    }
   }
   insertEvents(db, noopNotifier, events);
 }
@@ -263,7 +277,7 @@ describe("timeline head state under a budgeted window", () => {
 
   it("keeps historical plan state without loading intervening conversation markers", () => {
     const { db, thread } = setup();
-    seedThreadWithEarlyHeadState(db, thread, 100, 1, false);
+    seedThreadWithEarlyHeadState(db, thread, 100, 1, false, false, true);
     const latest = buildThreadTimelineWithProfile(db, thread, {
       ...baseOptions,
       completedTurnDisplay: "collapse",
@@ -274,9 +288,11 @@ describe("timeline head state under a budgeted window", () => {
       latest.response.pendingTodos?.items.map((item) => item.text),
     ).toEqual(["Shipping the thing", "Write the docs"]);
     expect(latest.response.goal?.objective).toBe("Land the timeline fix");
-    expect(latest.response.rows.some((row) => row.sourceSeqStart < 390)).toBe(
-      false,
-    );
+    expect(
+      latest.response.rows.some(
+        (row) => row.sourceSeqStart < latest.response.maxSeq - 10,
+      ),
+    ).toBe(false);
     expect(latest.profile.eventRowCount).toBeLessThan(20);
     db.$client.close();
   });

@@ -4,8 +4,7 @@ import { threadCpuUsage } from "node:process";
 import { events } from "@bb/db";
 import { eq, sql } from "drizzle-orm";
 import { buildThreadTimelineWithProfile } from "../../src/services/threads/timeline.js";
-import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
-import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
+import { clearThreadTimelineProjections } from "../../src/services/threads/timeline-projector.js";
 import { createSyntheticThread } from "./synthetic-thread.js";
 
 const WARMUPS = 5;
@@ -60,8 +59,7 @@ const results = cases.map(({ name, command }) => {
   const responseHashes = [];
   for (let sample = -WARMUPS; sample < SAMPLES; sample += 1) {
     const maxSeq = fixture.eventCount - 20 + ((sample + WARMUPS) % 21);
-    clearStoredEventDecodeCache(db);
-    clearTimelineSelectionMemo(db);
+    clearThreadTimelineProjections(db);
     const cpuStart = threadCpuUsage();
     const start = performance.now();
     const result = buildThreadTimelineWithProfile(db, thread, {
@@ -107,7 +105,7 @@ const results = cases.map(({ name, command }) => {
     projectionMs: summary(
       samples.map((sample) =>
         sample.profile.stageTimings
-          .filter((stage) => stage.stage === "thread-view-projection")
+          .filter((stage) => stage.stage === "unit-projection")
           .reduce((sum, stage) => sum + stage.durationMs, 0),
       ),
     ),

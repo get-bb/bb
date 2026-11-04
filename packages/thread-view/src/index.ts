@@ -51,7 +51,10 @@ export {
 export type { FileChangeAction } from "./file-change-summary.js";
 export {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineFromUnits,
   buildThreadTimelineTurnDetailsFromEvents,
+  projectThreadTimelineUnit,
+  type ThreadTimelineUnitProjection,
 } from "./build-thread-timeline.js";
 export { extractThreadTimelineActivePlanTurn } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";

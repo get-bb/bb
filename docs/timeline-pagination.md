@@ -30,8 +30,8 @@ request and its acceptance can fall on different pages without losing their
 rendered row. Empty windows still advance the cursor. Each build skips up to
 eight empty windows looking for visible content; if more remain, it returns an
 empty page with a usable older cursor. Latest-page head state is retained while
-skipping. Context loading and complete-group reconstruction can exceed the
-initial event budget.
+skipping. Rows are projected from whole closed units (see below), so the events
+projected for a page can exceed the initial event budget.
 
 Content cuts continue inside the same window bounds, reconstructing the same
 group so leaf offsets remain meaningful. The current cursor format is v3;
@@ -44,16 +44,17 @@ after that message everything is ordered by source sequence. A turn spans from
 its first event or accepted request to its `turn/completed` event, or stays
 open while it is running; events that arrive after completion, such as a
 background command finishing, do not extend it. The projection applies this
-rule to the events it loaded, and the server evaluates the same rule over the
+rule to the units it projected, and the server evaluates the same rule over the
 whole thread so a budgeted page orders rows the way the full history does.
 
 `timelinePage.historySnapshot` identifies the history tip, grouping version,
 and display surface. A walk excludes subsequent appends. Earlier events can
 change grouping even after a turn completed. `timelinePage.olderRowsSourceSeqEnd`
-is the greatest `sourceSeqEnd` among rows the snapshot projected before the
-page's returned rows but did not return: older conversation groups, and the
-leaves a content cut omitted from the page's oldest group. It is `null` when the
-snapshot projected no such rows. When a new latest snapshot's window reaches
+is the greatest `sourceSeqEnd` among rows that start before the page's returned
+rows, reach into its window and were not returned, and among the leaves a content
+cut omitted from the page's oldest group. Rows that end before the window start
+do not count: they cannot have changed inside the window. It is `null` when there
+are no such rows. When a new latest snapshot's window reaches
 the loaded tip and this value does not exceed it, `mergeLoadedTimelineWithLatest`
 keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the
@@ -252,6 +253,43 @@ pushed delta as unusable and refetches. That older client sends
 `afterSequence`, which servers no longer read, so it receives full windows. A
 client reading from a server from before tags treats untagged responses and
 pushes as unusable and reads full windows.
+
+## Projection units
+
+The server projects a thread's events in closed units instead of rebuilding a
+page from the events it selected. A unit is a contiguous sequence range that
+nothing outside it refers to and that leaves nothing open: no running turn,
+open item or pending request at its end, and no later event with its turn, item,
+parent tool call, request, operation, provisioning, interaction or delegated
+provider thread. In practice a unit is one request and its turn. Projecting each
+unit on its own and joining the results gives the same rows as projecting the
+whole history.
+
+A background task belongs to the unit that started it. When it finishes without
+having reported progress, that unit projects its completion after its own
+events, and the unit where the completion arrives only closes its open tool
+group there, so a long-running task does not join the turns it outlives. A task
+that reports progress keeps its units joined until it finishes. The latest
+page's running commands and workflows come from the window's units plus, for
+tasks started before the window, each task's latest state and its turn's start
+and completion, the same rows earlier servers read for them.
+
+For each thread the server keeps, in memory, the projected rows of completed
+units and the decoded events of the open tail. A latest-page read decodes only
+events appended since the previous read, projects only the tail, and reuses the
+rows of every completed unit in the window. A later event that refers into a
+completed unit merges it back into the tail. The first read of a thread walks
+back from the window start to the nearest closed boundary. Rows of an idle
+thread's unfinished tool calls take the time of the thread's latest
+interruption, so those units are projected again after a new interruption.
+History rewrites and compaction drop the thread's units. Up to 64 threads and
+about 96 million characters of event data are kept; eviction only affects
+performance.
+
+At the head of the thread, the latest page also keeps its window inputs between
+reads: the event-budget floor moves forward by the appended events, and head
+state and the display-order boundary are reread only when an appended event can
+change them.
 
 ## Conversation outline caching
 

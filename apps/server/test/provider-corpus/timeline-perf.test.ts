@@ -45,16 +45,12 @@ type ThreadTimelineBuildProfileStage =
   ThreadTimelineBuildProfile["stageTimings"][number]["stage"];
 
 const STAGES: readonly ThreadTimelineBuildProfileStage[] = [
-  "event-query",
-  "selection-memo-lookup",
-  "group-context-query",
-  "ordering-context-query",
-  "accepted-client-request-context-query",
-  "event-json-decode",
-  "summary-compaction",
+  "window-query",
+  "unit-projection",
+  "head-state-query",
   "context-window-query",
-  "context-window-json-decode",
-  "thread-view-projection",
+  "unit-stitch",
+  "ordering-context-query",
   "pagination-segmentation",
 ];
 

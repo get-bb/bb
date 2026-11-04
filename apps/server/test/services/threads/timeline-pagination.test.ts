@@ -180,7 +180,7 @@ describe("paginateTimelineRows", () => {
     });
 
     expect(page.rows.map((row) => row.id)).toEqual(["thread-1:user-seed:20"]);
-    expect(page.olderRowsSourceSeqEnd).toBe(1);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
     expect(page.olderRowUpdates).toEqual([lateOlderRow]);
   });
 
@@ -274,7 +274,7 @@ describe("paginateTimelineRows", () => {
     });
 
     expect(page.rows.map((row) => row.id)).toEqual(["thread-1:user-seed:20"]);
-    expect(page.olderRowsSourceSeqEnd).toBe(10);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
     expect(page.olderRowUpdates).toEqual([
       {
         ...running,
@@ -507,7 +507,7 @@ describe("paginateTimelineRows", () => {
       anchorId: "timeline-window:15",
       anchorSeq: 15,
     });
-    expect(page.olderRowsSourceSeqEnd).toBe(10);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
   });
 
   it("keeps an in-window row that displays before an accepted steer projected at its acceptance", () => {
@@ -590,7 +590,7 @@ describe("paginateTimelineRows", () => {
       anchorId: "timeline-window:100",
       anchorSeq: 100,
     });
-    expect(page.olderRowsSourceSeqEnd).toBe(5);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
 
     const last = paginateTimelineRows({
       hasOlderSegments: false,

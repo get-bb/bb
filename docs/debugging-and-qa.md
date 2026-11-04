@@ -590,7 +590,7 @@ Gates under `apps/server/test/provider-corpus/`:
   provider (latest page and full page walk) and compares with
   `snapshots/perf-baseline.json`. The CI micro-benchmark in the same file needs
   no corpus.
-- `timeline-streaming-memo.test.ts` appends streaming rows to each thread's
+- `timeline-streaming-projection.test.ts` appends streaming rows to each thread's
   latest turn and requires every latest-page build to equal a build on a fresh
   connection with empty caches.
 

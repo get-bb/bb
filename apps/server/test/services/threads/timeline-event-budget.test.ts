@@ -142,6 +142,7 @@ function insertTurns(
   thread: Thread,
   turnCount: number,
   itemsPerTurn: readonly number[] | number,
+  completeTurns = false,
 ): void {
   const events: Parameters<typeof insertEvents>[2] = [];
   let sequence = 0;
@@ -215,6 +216,20 @@ function insertTurns(
             text: `Turn ${turn} item ${item}`,
           },
         }),
+      });
+    }
+    if (completeTurns) {
+      sequence += 1;
+      events.push({
+        threadId: thread.id,
+        sequence,
+        type: "turn/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed" }),
       });
     }
   }
@@ -1594,7 +1609,7 @@ describe("timeline event budget", () => {
 
 it("does not decode unrelated turn history for a one-group page", () => {
   const { db, thread } = setup();
-  insertTurns(db, thread, 200, 3);
+  insertTurns(db, thread, 200, 3, true);
   const { response, profile } = buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
     eventBudget: 1500,

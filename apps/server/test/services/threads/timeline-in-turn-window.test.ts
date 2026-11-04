@@ -28,6 +28,7 @@ import {
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
   TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
 } from "../../../src/services/threads/timeline.js";
+import { clearThreadTimelineProjections } from "../../../src/services/threads/timeline-projector.js";
 import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-shortening.js";
 
 const LARGE_BUDGET = 1_000_000;
@@ -879,6 +880,7 @@ describe("in-turn timeline windows", () => {
     expect(unbudgeted.profile.eventRowCount).toBeGreaterThan(600);
     expect(unbudgeted.response.timelinePage.olderCursor).toBeNull();
 
+    clearThreadTimelineProjections(db);
     const budgeted = buildPage(db, thread, 100, null);
     expect(budgeted.profile.eventRowCount).toBe(
       unbudgeted.profile.eventRowCount,
@@ -1398,6 +1400,7 @@ describe("in-turn timeline windows", () => {
     });
 
     const unbudgeted = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    clearThreadTimelineProjections(db);
     const budgeted = buildNestedPage(db, thread, 100, null);
 
     expect(budgeted.response.timelinePage.olderCursor).not.toBeNull();
@@ -1981,6 +1984,7 @@ describe("timeline window event exclusions", () => {
       },
     ]);
 
+    clearThreadTimelineProjections(db);
     const withDiffs = buildPage(db, thread, LARGE_BUDGET, null);
     expect(withDiffs.profile.eventRowCount).toBe(
       withoutDiffs.profile.eventRowCount,

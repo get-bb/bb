@@ -30,6 +30,8 @@ import {
   createThreadTimelineCache,
 } from "./timeline-cache.js";
 import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
+import { forgetLatestTimelineWindowInputs } from "./timeline-latest-window-memo.js";
+import { forgetThreadTimelineProjection } from "./timeline-projector.js";
 import { createTimelineServedWindowsCache } from "./timeline-served-windows-cache.js";
 import { timelineRowHash, timelineWindowTag } from "./timeline-window-tag.js";
 import { isCompactionOfferEnabled } from "./compaction-offer.js";
@@ -346,6 +348,8 @@ export function createThreadTimelineWindows(
       return;
     }
     if (message.changes.includes("thread-deleted")) {
+      forgetThreadTimelineProjection(deps.db, message.id);
+      forgetLatestTimelineWindowInputs(deps.db, message.id);
       servedWindows.invalidateThread(message.id);
       const schedule = pushSchedulesByThreadId.get(message.id);
       if (schedule?.timer) {
@@ -369,6 +373,8 @@ export function createThreadTimelineWindows(
     if (rewritten) {
       clearTimelineOrderingContextCache(deps.db);
     }
+    forgetThreadTimelineProjection(deps.db, message.id);
+    forgetLatestTimelineWindowInputs(deps.db, message.id);
     timelineCache.invalidateThread(message.id);
   });
 

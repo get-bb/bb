@@ -66,9 +66,14 @@ export function getProviderModelFallbackData(
   };
 }
 
-export function extractThreadTimelineModelFallback(
+export interface ThreadTimelineModelFallbackScan {
+  fallback: ThreadTimelineModelFallback | null;
+  latestRelevantSeq: number;
+}
+
+export function scanThreadTimelineModelFallback(
   events: readonly ThreadEventWithMeta[],
-): ThreadTimelineModelFallback | null {
+): ThreadTimelineModelFallbackScan {
   let latestRelevantSeq = -1;
   let fallback: ThreadTimelineModelFallback | null = null;
 
@@ -93,5 +98,5 @@ export function extractThreadTimelineModelFallback(
     };
   }
 
-  return fallback;
+  return { fallback, latestRelevantSeq };
 }

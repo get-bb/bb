@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractThreadTimelineModelFallback } from "../src/model-fallback-extraction.js";
+import { scanThreadTimelineModelFallback } from "../src/model-fallback-extraction.js";
 import type { ThreadEventWithMeta } from "../src/group-event-projection-turns.js";
 
 function event(
@@ -12,10 +12,10 @@ function event(
   };
 }
 
-describe("extractThreadTimelineModelFallback", () => {
+describe("scanThreadTimelineModelFallback", () => {
   it("returns the latest active fallback", () => {
     expect(
-      extractThreadTimelineModelFallback([
+      scanThreadTimelineModelFallback([
         event(2, {
           type: "provider/modelFallback",
           threadId: "thread-1",
@@ -26,7 +26,7 @@ describe("extractThreadTimelineModelFallback", () => {
           reason: "refusal",
           message: "Switched to Opus.",
         }),
-      ]),
+      ]).fallback,
     ).toEqual({
       sourceSeq: 2,
       detectedAt: 20,
@@ -39,7 +39,7 @@ describe("extractThreadTimelineModelFallback", () => {
 
   it("clears the fallback after a later explicit turn request", () => {
     expect(
-      extractThreadTimelineModelFallback([
+      scanThreadTimelineModelFallback([
         event(2, {
           type: "provider/modelFallback",
           threadId: "thread-1",
@@ -70,7 +70,7 @@ describe("extractThreadTimelineModelFallback", () => {
             source: "client/turn/requested",
           },
         }),
-      ]),
+      ]).fallback,
     ).toBeNull();
   });
 
@@ -78,7 +78,7 @@ describe("extractThreadTimelineModelFallback", () => {
     "recognizes persisted fallback event shape from %s",
     (providerId) => {
       expect(
-        extractThreadTimelineModelFallback([
+        scanThreadTimelineModelFallback([
           event(7, {
             type: "provider/unhandled",
             threadId: "thread-1",
@@ -101,7 +101,7 @@ describe("extractThreadTimelineModelFallback", () => {
               },
             },
           }),
-        ]),
+        ]).fallback,
       ).toEqual({
         sourceSeq: 7,
         detectedAt: 70,

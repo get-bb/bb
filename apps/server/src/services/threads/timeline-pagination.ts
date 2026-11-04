@@ -151,12 +151,11 @@ export function paginateTimelineRows(
   > => {
     const omitted = rows.filter(
       (row) =>
-        row.sourceSeqStart < args.ownedSequenceEnd && !returnedRows.has(row.id),
+        row.sourceSeqStart < args.ownedSequenceEnd &&
+        row.sourceSeqEnd >= windowStart &&
+        !returnedRows.has(row.id),
     );
-    const changed =
-      page.kind === "latest"
-        ? omitted.filter((row) => row.sourceSeqEnd >= windowStart)
-        : [];
+    const changed = page.kind === "latest" ? omitted : [];
     const updates = changed.map((row) =>
       timelineRowChangesFrom(row, windowStart),
     );
@@ -167,9 +166,10 @@ export function paginateTimelineRows(
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
-        .reduce<
-          number | null
-        >((sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd), omittedContentSourceSeqEnd),
+        .reduce<number | null>(
+          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
+          omittedContentSourceSeqEnd,
+        ),
       ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
     };
   };

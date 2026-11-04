@@ -28,7 +28,17 @@ import {
   getTimelineGroupingContextChangesInRange,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
-  listStoredEventRowsInSequenceRange,
+  listStoredTimelineRangeEventRows,
+  findEarliestTimelineReferenceSequence,
+  listUnfinishedTimelineTurns,
+  listUnfinishedTimelineBackgroundTasks,
+  listLatestOpenBackgroundTaskStateRowsForThread,
+  getLatestTimelineInterruptionCreatedAt,
+  listTimelineBackgroundTaskCompletionRows,
+  listTimelineBackgroundTaskCompletions,
+  listTimelineBackgroundTaskOrigins,
+  listTimelineProgressedBackgroundTaskItemIds,
+  summarizeTimelineAppendedEvents,
   getLastStoredProviderThreadId,
   insertEvents,
   isStoredTurnProviderCompactionRunning,
@@ -37,7 +47,6 @@ import {
   listLatestBackgroundTaskStateRowsByItemIds,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listLatestThreadStateEventRowsByThreadIds,
-  listLatestOpenBackgroundTaskStateRowsForThread,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
   listStoredConversationOutlineEventRows,
@@ -275,9 +284,11 @@ describe("slow query index plans", () => {
         "USING INDEX events_delegating_item_lookup_idx (thread_id=?)",
       );
       db.$client
-        .prepare(`INSERT INTO events
+        .prepare(
+          `INSERT INTO events
         (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
-        VALUES (?, ?, 'thread', ?, 'item/started', ?, ?, 0)`)
+        VALUES (?, ?, 'thread', ?, 'item/started', ?, ?, 0)`,
+        )
         .run(
           "ordinary-tool",
           thread.id,
@@ -287,9 +298,11 @@ describe("slow query index plans", () => {
         );
       expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
       db.$client
-        .prepare(`INSERT INTO events
+        .prepare(
+          `INSERT INTO events
         (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
-        VALUES (?, ?, 'thread', 3, 'item/completed', 'delegation', ?, 0)`)
+        VALUES (?, ?, 'thread', 3, 'item/completed', 'delegation', ?, 0)`,
+        )
         .run(
           "delegation",
           thread.id,
@@ -297,9 +310,11 @@ describe("slow query index plans", () => {
         );
       expect(hasStoredSpawnAgentToolCall(db, thread.id)).toBe(false);
       db.$client
-        .prepare(`INSERT INTO events
+        .prepare(
+          `INSERT INTO events
         (id, thread_id, scope_kind, sequence, type, item_kind, data, created_at)
-        VALUES (?, ?, 'thread', ?, 'item/completed', ?, ?, 0)`)
+        VALUES (?, ?, 'thread', ?, 'item/completed', ?, ?, 0)`,
+        )
         .run(
           "spawn-tool",
           thread.id,
@@ -727,17 +742,6 @@ describe("slow query index plans", () => {
           throughSequence: 30,
         }),
     },
-    {
-      name: "lists rows in a sequence range",
-      run: (db: DbConnection, threadId: string) =>
-        listStoredEventRowsInSequenceRange(db, {
-          afterSequence: 10,
-          limit: 513,
-          maxInlineOutputChars: 32_000,
-          threadId,
-          throughSequence: 30,
-        }),
-    },
   ])("$name through the thread sequence index", ({ run }) => {
     const { db, thread } = setup();
 
@@ -800,9 +804,10 @@ describe("slow query index plans", () => {
         data: JSON.stringify({ item: { id: itemId, type: itemKind } }),
       })),
     );
-    const delegatingRows = listStoredEventRowsInSequenceRange(db, {
+    const delegatingRows = listStoredTimelineRangeEventRows(db, {
       afterSequence: 0,
-      limit: lifecycle.length,
+      excludeDiagnosticEvents: false,
+      excludedTypes: [],
       maxInlineOutputChars: 32_000,
       threadId: thread.id,
       throughSequence: lifecycle.length,
@@ -1181,6 +1186,91 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("reads a timeline unit range through the thread sequence index", () => {
+    const { db, thread } = setup();
+
+    const [query] = captureStatements(db, () =>
+      listStoredTimelineRangeEventRows(db, {
+        afterSequence: 10,
+        excludeDiagnosticEvents: true,
+        excludedTypes: ["turn/diff/updated"],
+        maxInlineOutputChars: 32_000,
+        threadId: thread.id,
+        throughSequence: 30,
+      }),
+    );
+    if (!query) {
+      throw new Error("Expected the unit range SQL");
+    }
+    expect(queryPlanDetails({ db, ...query }).split("\n")[0]).toBe(
+      "SEARCH events USING INDEX events_thread_sequence_idx (thread_id=? AND sequence>? AND sequence<?)",
+    );
+
+    db.$client.close();
+  });
+
+  it("seeks timeline references by turn and item through their indexes", () => {
+    const { db, thread } = setup();
+
+    const statements = captureStatements(db, () =>
+      findEarliestTimelineReferenceSequence(db, {
+        beforeSequence: 100,
+        keys: {
+          interactionIds: [],
+          itemIds: ["item-a"],
+          operationIds: [],
+          provisioningIds: [],
+          providerThreadIds: [],
+          requestIds: [],
+          turnIds: ["turn-a"],
+        },
+        sequenceStart: 0,
+        threadId: thread.id,
+      }),
+    );
+    const details = statements
+      .map((statement) => queryPlanDetails({ db, ...statement }))
+      .join("\n");
+    expect(details).toContain(
+      "INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=?)",
+    );
+    expect(details).toContain(
+      "INDEX events_item_lifecycle_thread_item_sequence_idx (thread_id=? AND item_id=?",
+    );
+    expect(details).toContain(
+      "INDEX events_delegating_item_lookup_idx (thread_id=? AND item_id=?",
+    );
+    expectNoThreadOnlyEventSeek(details);
+
+    db.$client.close();
+  });
+
+  it("lists unfinished turns and background tasks without scanning payloads", () => {
+    const { db, thread } = setup();
+    const range = {
+      sequenceStart: 0,
+      threadId: thread.id,
+      throughSequence: 50,
+    };
+
+    const statements = captureStatements(db, () => {
+      listUnfinishedTimelineTurns(db, range);
+      listUnfinishedTimelineBackgroundTasks(db, range);
+    });
+    const details = statements
+      .map((statement) => queryPlanDetails({ db, ...statement }))
+      .join("\n");
+    expect(details).toContain(
+      "INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+    );
+    expect(details).toContain(
+      "INDEX events_background_task_thread_type_item_sequence_idx (thread_id=? AND type=?)",
+    );
+    expect(details).not.toContain("SCAN events");
+
+    db.$client.close();
+  });
+
   it("resolves open background-task state without per-row subqueries", () => {
     const { db, logger, thread } = setup();
 
@@ -1213,6 +1303,66 @@ describe("slow query index plans", () => {
     const details = queryPlanDetails({ db, params, sql: debugLog.fields.sql });
     expect(details).not.toMatch(/CORRELATED/);
     expectNoThreadOnlyEventSeek(details);
+
+    db.$client.close();
+  });
+
+  it("reads background-task ownership, the latest interruption and appended events through their indexes", () => {
+    const { db, thread } = setup();
+    const range = {
+      sequenceStart: 0,
+      threadId: thread.id,
+      throughSequence: 50,
+    };
+    const completions = {
+      afterSequence: 10,
+      itemIds: ["task-a", "task-b"],
+      threadId: thread.id,
+      throughSequence: 50,
+    };
+
+    const statements = captureStatements(db, () => {
+      listTimelineProgressedBackgroundTaskItemIds(db, range);
+      listTimelineBackgroundTaskOrigins(db, {
+        beforeSequence: 50,
+        itemIds: ["task-a"],
+        sequenceStart: 0,
+        threadId: thread.id,
+      });
+      listTimelineBackgroundTaskCompletions(db, completions);
+      listTimelineBackgroundTaskCompletionRows(db, {
+        ...completions,
+        maxInlineOutputChars: 32_000,
+      });
+    });
+    expect(statements).toHaveLength(4);
+    for (const statement of statements) {
+      expect(queryPlanDetails({ db, ...statement })).toContain(
+        "INDEX events_background_task_thread_type_item_sequence_idx (thread_id=? AND type=?",
+      );
+    }
+
+    const [interruption] = captureStatements(db, () =>
+      getLatestTimelineInterruptionCreatedAt(db, range),
+    );
+    const [appended] = captureStatements(db, () =>
+      summarizeTimelineAppendedEvents(db, {
+        afterSequence: 40,
+        excludeDiagnosticEvents: true,
+        excludedTypes: ["turn/diff/updated"],
+        threadId: thread.id,
+        throughSequence: 50,
+      }),
+    );
+    if (!interruption || !appended) {
+      throw new Error("Expected the interruption and appended-event SQL");
+    }
+    expect(queryPlanDetails({ db, ...interruption }).split("\n")[0]).toBe(
+      "SEARCH events USING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+    );
+    expect(queryPlanDetails({ db, ...appended }).split("\n")[0]).toBe(
+      "SEARCH events USING INDEX events_thread_sequence_idx (thread_id=? AND sequence>? AND sequence<?)",
+    );
 
     db.$client.close();
   });
