@@ -255,7 +255,8 @@ export type {
 
 /**
  * A bridge that supervises child processes builds their environment with this
- * one allowlist function rather than handing them the daemon's own env
+ * function rather than handing them its own env unchanged. It removes
+ * `NODE_ENV`, every `BB_*` variable, and undefined values, and keeps the rest
  * (incident rule: ambient env leaks).
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
