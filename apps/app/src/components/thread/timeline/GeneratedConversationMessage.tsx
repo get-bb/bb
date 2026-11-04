@@ -223,7 +223,7 @@ function threadSubjectTitleSegments(
   ];
 }
 
-function systemMessageTitleSegments(
+export function systemMessageTitleSegments(
   systemMessageKind: SystemMessageKind,
   subject: SystemMessageSubject | null,
 ): TimelineTitleSegment[] {
@@ -330,7 +330,9 @@ function generatedConversationEmptyText(
   }
 }
 
-function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
+export function systemMessageIconName(
+  systemMessageKind: SystemMessageKind,
+): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "ChildThread";

@@ -33,6 +33,7 @@ function queuedMessage(
     waitingOn: null,
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt: 1,
     updatedAt: 1,

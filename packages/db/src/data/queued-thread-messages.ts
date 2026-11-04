@@ -2085,6 +2085,7 @@ export interface QueuedThreadMessageCounts {
    * whose queued work failed shows the failure instead.
    */
   failedQueuedMessageCount: number;
+  userQueuedMessageCount: number;
 }
 
 /**
@@ -2112,6 +2113,9 @@ export function listQueuedThreadMessageCountsByThreadIds(
           queuedMessageCount: count(queuedThreadMessages.id),
           failedQueuedMessageCount: count(
             sql`CASE WHEN ${inArray(queuedThreadMessages.state, [...QUEUED_MESSAGE_FAILED_STATES])} THEN 1 END`,
+          ),
+          userQueuedMessageCount: count(
+            sql`CASE WHEN ${isNull(queuedThreadMessages.systemNotice)} THEN 1 END`,
           ),
         })
         .from(queuedThreadMessages)
