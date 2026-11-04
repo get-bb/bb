@@ -84,8 +84,9 @@ jobs:
           fetch-depth: 2
       - name: Restore workload workflow for its own contract tests
         shell: bash
-        run: git show 3b93a156695f38ea15874737977fc5e1b5f90afe:.github/workflows/ci.yml
-          > .github/workflows/ci.yml
+        run: |
+          git fetch --no-tags --depth=1 origin 3b93a156695f38ea15874737977fc5e1b5f90afe
+          git show 3b93a156695f38ea15874737977fc5e1b5f90afe:.github/workflows/ci.yml > .github/workflows/ci.yml
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
