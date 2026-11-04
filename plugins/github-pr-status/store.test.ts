@@ -587,18 +587,30 @@ describe("read freshness", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it("re-reads a fresh row from GitHub on request and resolves once it is current", async () => {
-    vi.useFakeTimers();
-    const { store, load } = setup([available(pullRequest())]);
-    await store.read("a", { viewer: true });
-    load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
-    await store.reread("a");
-    expect(load).toHaveBeenCalledTimes(2);
-    await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
-      pullRequest: { title: "Renamed" },
-    });
-    expect(load).toHaveBeenCalledTimes(2);
-  });
+  it.each([
+    ["an open PR", available(pullRequest())],
+    ["a merged PR", available(pullRequest({ state: "merged" }))],
+    ["no PR", { outcome: "absent" } as const],
+  ])(
+    "re-reads %s from GitHub on request once it is 30 seconds old and resolves once it is current",
+    async (_, value) => {
+      vi.useFakeTimers();
+      const { store, load } = setup([value]);
+      await store.read("a", { viewer: true });
+      load.mockClear();
+      await vi.advanceTimersByTimeAsync(29_000);
+      await store.reread("a");
+      expect(load).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2_000);
+      load.mockResolvedValue(available(pullRequest({ title: "Renamed" })));
+      await store.reread("a");
+      expect(load).toHaveBeenCalledTimes(1);
+      await expect(store.read("a", { viewer: true })).resolves.toMatchObject({
+        pullRequest: { title: "Renamed" },
+      });
+      expect(load).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("makes a one-shot read wait for a row older than ten seconds", async () => {
     vi.useFakeTimers();

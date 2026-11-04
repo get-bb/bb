@@ -223,7 +223,7 @@ export const githubPrStatusRpcContract = defineRpcContract({
   },
   refresh: {
     experimental_description:
-      "Re-check the environment's pull request on GitHub now, whatever the age of the saved row, and resolve once the row is current.",
+      "Re-check the environment's pull request on GitHub unless the saved row was checked in the last 30 seconds, and resolve once the row is current.",
     input: environmentActionInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },

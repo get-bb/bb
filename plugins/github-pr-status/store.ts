@@ -2,6 +2,7 @@ import type { EnvironmentPullRequest, PullRequest } from "./contract.js";
 import type { PullRequestPersistence } from "./persistence.js";
 
 const READ_FRESH_MS = 10_000;
+const REREAD_FRESH_MS = 30_000;
 const OPEN_STALE_MS = 30_000;
 const SETTLED_STALE_MS = 60 * 60_000;
 const ABSENT_STALE_MS = 5 * 60_000;
@@ -305,6 +306,7 @@ export function createPullRequestStore(options: {
     },
     async reread(environmentId: string) {
       const cached = lookups.get(environmentId);
+      if (cached && Date.now() - cached.fetchedAt < REREAD_FRESH_MS) return;
       if (cached) cached.fetchedAt = Number.NEGATIVE_INFINITY;
       await read(environmentId, { viewer: false });
     },
