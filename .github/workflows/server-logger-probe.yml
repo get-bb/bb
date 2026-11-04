@@ -1,0 +1,46 @@
+name: Temporary server logger Windows comparison
+on:
+  push:
+    branches: [ci/server-logger-windows-probe]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 4
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: '22.x'
+          pnpm-version: '9.15.0'
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 1
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Prepare prerequisites
+        shell: cmd
+        run: pnpm exec turbo run test --filter=@bb/server --output-logs=errors-only -- --passWithNoTests bb-logger-probe-prerequisites-no-tests
+      - name: Compare full server shard
+        shell: pwsh
+        env:
+          BB_CI_TEST_SHARD: ${{ matrix.shard }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: |
+          Copy-Item scripts/server-logger-probe.mjs "$env:RUNNER_TEMP/server-logger-probe.mjs"
+          node "$env:RUNNER_TEMP/server-logger-probe.mjs"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: server-logger-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/server-logger-results
+          retention-days: 7
