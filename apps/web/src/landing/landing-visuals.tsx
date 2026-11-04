@@ -53,12 +53,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
     </>
   );
   return (
-    <div
-      ref={ref}
-      className={
-        simple ? "install-options install-options-simple" : "install-options"
-      }
-    >
+    <div ref={ref} className="install-options">
       <div className="install-actions">
         <DesktopInstallChoice
           placement={placement}
