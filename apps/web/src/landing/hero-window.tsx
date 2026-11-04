@@ -69,7 +69,7 @@ export function HeroWindow({
         ref={winRef}
         className="mock rhb-win"
         role="img"
-        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, a Codex child thread started to write tests for a CSV export and the two threads messaging each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
+        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, a Codex child thread started to review a CSV export and the two threads messaging each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, New thread and Search moved into the left rail, and a sidebar grouped by status, ending on the fully customized app"
       >
         <div className="rhb-band rhb-band-left" aria-hidden>
           <WindowControls />
