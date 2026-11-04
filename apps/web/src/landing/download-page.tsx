@@ -83,7 +83,12 @@ function DownloadRows({
   return (
     <div className={className}>
       {kinds.map((kind) => (
-        <div className="dl-row" key={kind}>
+        <div
+          className={
+            kind in DESKTOP_DOWNLOADS ? "dl-row dl-row-installer" : "dl-row"
+          }
+          key={kind}
+        >
           <span className="dl-row-name">{ROWS[kind].name}</span>
           <span className="dl-row-tag">{ROWS[kind].tag}</span>
           <span className="dl-row-action">
