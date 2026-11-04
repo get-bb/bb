@@ -213,13 +213,17 @@ request number. It defaults on for early adopters.
 `unreadDividerAtAnswer` places the NEW divider of an unread thread before the
 final assistant message of a turn that finished while you were away, instead of
 before its first tool call. It defaults on for early adopters.
+`updateWhenIdle` offers Update when idle on Settings → Updates while
+threads run and enables `bb updates app apply --when-idle`; see
+`bb guide machines`. It defaults on for early adopters.
 `websocketCompression` compresses large realtime messages (such as timeline
 pushes) on the app's live connection; it applies when the app reconnects.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
 `applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
 `sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadRowMetadata`,
-`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
+`unreadDividerAtAnswer`, `updateWhenIdle`, and `websocketCompression`; an
+experiment you set
 yourself keeps your value.
 
 Launcher settings

@@ -35,6 +35,7 @@ function appUpdate(
     current: { commit: null, version: current },
     lastResult: null,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
   };
 }

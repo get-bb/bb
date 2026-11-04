@@ -197,6 +197,7 @@ describe("resolveAppUpdateAvailable", () => {
       current: { commit: null, version: "1.0.0" },
       lastResult: null,
       runningThreadCount: 0,
+      scheduled: null,
       support: { kind: "supported", mode: "npm" },
       ...overrides,
     };
@@ -264,6 +265,7 @@ describe("sourceUpdateBadgeDueAt", () => {
       },
       lastResult: null,
       runningThreadCount: 0,
+      scheduled: null,
       support: { kind: "supported", mode: "source" },
     };
   }

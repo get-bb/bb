@@ -14,6 +14,7 @@ export const experimentKeys = [
   "threadRowMetadata",
   "timelinePush",
   "unreadDividerAtAnswer",
+  "updateWhenIdle",
   "websocketCompression",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -42,6 +43,7 @@ export const defaultExperiments: Experiments = {
   threadRowMetadata: false,
   timelinePush: false,
   unreadDividerAtAnswer: false,
+  updateWhenIdle: false,
   websocketCompression: false,
 };
 
@@ -59,5 +61,6 @@ export const earlyAdopterExperiments: Experiments = {
   threadRowMetadata: true,
   timelinePush: true,
   unreadDividerAtAnswer: true,
+  updateWhenIdle: true,
   websocketCompression: true,
 };

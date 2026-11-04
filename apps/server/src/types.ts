@@ -4,7 +4,7 @@ import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
-import type { AppUpdateService } from "./services/system/app-update.js";
+import type { ScheduledAppUpdateService } from "./services/system/app-update-schedule.js";
 import type { CliCommandService } from "./services/system/cli-command.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
@@ -63,7 +63,7 @@ export interface AppDeps {
 }
 
 export interface ServerAppDeps extends AppDeps {
-  appUpdate: AppUpdateService;
+  appUpdate: ScheduledAppUpdateService;
   appVersion: AppVersionService;
   bbAppManagedConfig: BbAppManagedConfigReloader;
   cliCommand: CliCommandService;

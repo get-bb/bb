@@ -4,6 +4,7 @@ import {
   UPDATE_STATE_PRESENTATION,
   type UpdateState,
 } from "@bb/domain/update-state";
+import { BbHttpError } from "@bb/sdk";
 import type {
   HostProviderCliStatusResponse,
   SystemAppUpdateResult,
@@ -11,7 +12,9 @@ import type {
   SystemAppUpdateStatus,
   SystemVersionResponse,
 } from "@bb/server-contract";
+import { z } from "zod";
 import { action, CliExitError } from "../action.js";
+import { CliUsageError } from "../cli-usage-error.js";
 import { createCliBbSdk } from "../client.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
@@ -37,6 +40,7 @@ interface AppUpdateStatusOptions {
 interface AppUpdateApplyOptions {
   json?: boolean;
   wait: boolean;
+  whenIdle?: boolean;
   yes?: boolean;
 }
 
@@ -196,6 +200,61 @@ function unsupportedAppUpdateMessage(status: SystemAppUpdateStatus): string {
   }
 }
 
+const UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_ERROR_CODE =
+  "update_when_idle_experiment_disabled";
+const errorMessageBodySchema = z.object({ message: z.string().min(1) });
+
+async function callUpdateWhenIdleRoute<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (
+      error instanceof BbHttpError &&
+      error.code === UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_ERROR_CODE
+    ) {
+      const body = errorMessageBodySchema.safeParse(error.body);
+      throw new CliExitError(
+        body.success ? body.data.message : error.message,
+        1,
+      );
+    }
+    throw error;
+  }
+}
+
+function threadCountLabel(count: number): string {
+  return `${String(count)} running thread${count === 1 ? "" : "s"}`;
+}
+
+function hasScheduledUpdate(status: SystemAppUpdateStatus): boolean {
+  return (status.scheduled ?? null) !== null;
+}
+
+function isWaitingForThreads(status: SystemAppUpdateStatus): boolean {
+  return hasScheduledUpdate(status) && status.activity.phase === "idle";
+}
+
+function printScheduledUpdate(status: SystemAppUpdateStatus): void {
+  console.log(describeScheduledUpdate(status));
+  console.log(
+    "Run bb updates app apply --yes to update now, or bb updates app cancel to keep the current version.",
+  );
+}
+
+function describeScheduledUpdate(status: SystemAppUpdateStatus): string {
+  const available = status.available;
+  const target =
+    available === null
+      ? "the latest version"
+      : available.commit === null
+        ? available.version
+        : available.commit.slice(0, 10);
+  const count = status.runningThreadCount;
+  return count === 0
+    ? `All threads are idle; bb will update to ${target} shortly.`
+    : `bb will update to ${target} when all threads are idle (${String(count)} running).`;
+}
+
 function describeAppUpdateResult(result: SystemAppUpdateResult): string {
   const target = formatRevision(result.to);
   switch (result.outcome) {
@@ -232,19 +291,21 @@ function appRowFromStatus(args: {
     const state =
       appUpdate.activity.phase !== "idle"
         ? `Updating to ${appUpdate.activity.targetVersion}`
-        : target === null
-          ? appUpdate.blocked?.reason === "fetch-failed"
-            ? `${UPDATE_STATE_PRESENTATION["latest-unknown"].label} (${appUpdate.blocked.message})`
+        : isWaitingForThreads(appUpdate)
+          ? `Scheduled (waiting for ${threadCountLabel(appUpdate.runningThreadCount)})`
+          : target === null
+            ? appUpdate.blocked?.reason === "fetch-failed"
+              ? `${UPDATE_STATE_PRESENTATION["latest-unknown"].label} (${appUpdate.blocked.message})`
+              : appUpdate.blocked !== null
+                ? `${UPDATE_STATE_PRESENTATION["update-manually"].label} (${appUpdate.blocked.message})`
+                : appUpdate.support.kind === "supported" &&
+                    appUpdate.support.mode === "npm" &&
+                    version.latestVersion === null
+                  ? UPDATE_STATE_PRESENTATION["latest-unknown"].label
+                  : UPDATE_STATE_PRESENTATION["up-to-date"].label
             : appUpdate.blocked !== null
-              ? `${UPDATE_STATE_PRESENTATION["update-manually"].label} (${appUpdate.blocked.message})`
-              : appUpdate.support.kind === "supported" &&
-                  appUpdate.support.mode === "npm" &&
-                  version.latestVersion === null
-                ? UPDATE_STATE_PRESENTATION["latest-unknown"].label
-                : UPDATE_STATE_PRESENTATION["up-to-date"].label
-          : appUpdate.blocked !== null
-            ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (blocked: ${appUpdate.blocked.message})`
-            : `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: bb updates app apply)`;
+              ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (blocked: ${appUpdate.blocked.message})`
+              : `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: bb updates app apply)`;
     return [
       "bb-app",
       target === null ? current : `${current} -> ${target}`,
@@ -317,6 +378,8 @@ function printAppUpdateStatus(status: SystemAppUpdateStatus): void {
   }
   if (status.blocked !== null) {
     console.log(`Blocked: ${status.blocked.message}`);
+  } else if (isWaitingForThreads(status)) {
+    printScheduledUpdate(status);
   } else if (target !== null && status.activity.phase === "idle") {
     console.log("Run bb updates app apply to update and restart bb.");
   }
@@ -352,6 +415,7 @@ async function waitForAppUpdate(args: {
     if (result !== null && result.id !== args.previousResultId) {
       return status;
     }
+    if (isWaitingForThreads(status)) return status;
     if (status.activity.phase === "preparing") {
       report(`${status.activity.step}…`);
     } else if (status.activity.phase === "restarting") {
@@ -390,12 +454,23 @@ function registerAppUpdateCommands(
     .description("Download the available bb update and restart bb into it")
     .option("--yes", "Interrupt running threads without asking")
     .option(
+      "--when-idle",
+      "Update once no thread is running instead of interrupting running threads",
+    )
+    .option(
       "--no-wait",
       "Return once the update starts instead of following it",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppUpdateApplyOptions) => {
+        if (opts.whenIdle === true && opts.yes === true) {
+          throw new CliUsageError({
+            code: "invalid_value",
+            hint: null,
+            message: "Use either --when-idle or --yes, not both.",
+          });
+        }
         const sdk = createCliBbSdk(getUrl());
         const status = await sdk.system.appUpdate({ force: true });
         if (
@@ -414,21 +489,49 @@ function registerAppUpdateCommands(
           );
           return;
         }
-        let confirmInterruptingThreads = opts.yes === true;
-        if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
-          const count = status.runningThreadCount;
-          confirmInterruptingThreads = await confirmDestructiveAction(
-            `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}. Continue?`,
+        const previousResultId = status.lastResult?.id ?? null;
+        let started: SystemAppUpdateStatus;
+        if (opts.whenIdle === true) {
+          started = await callUpdateWhenIdleRoute(() =>
+            sdk.system.experimental_scheduleAppUpdate(),
           );
-          if (!confirmInterruptingThreads) {
-            console.log("Update cancelled.");
+          if (isWaitingForThreads(started)) {
+            if (outputJson(opts, started)) return;
+            printScheduledUpdate(started);
             return;
           }
+        } else {
+          let confirmInterruptingThreads = opts.yes === true;
+          if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
+            const count = status.runningThreadCount;
+            const warning = `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`;
+            const whenIdleEnabled = (await sdk.system.config()).experiments
+              .updateWhenIdle;
+            if (
+              whenIdleEnabled &&
+              (!process.stdin.isTTY || !process.stdout.isTTY)
+            ) {
+              throw new CliExitError(
+                `${warning} Re-run with --when-idle to update once they finish, or --yes to interrupt them.`,
+                1,
+              );
+            }
+            confirmInterruptingThreads = await confirmDestructiveAction(
+              `${warning} Continue?`,
+            );
+            if (!confirmInterruptingThreads) {
+              console.log(
+                whenIdleEnabled
+                  ? "Update cancelled. Run bb updates app apply --when-idle to update once they finish."
+                  : "Update cancelled.",
+              );
+              return;
+            }
+          }
+          started = await sdk.system.applyAppUpdate({
+            confirmInterruptingThreads,
+          });
         }
-        const previousResultId = status.lastResult?.id ?? null;
-        const started = await sdk.system.applyAppUpdate({
-          confirmInterruptingThreads,
-        });
         if (!opts.wait) {
           if (outputJson(opts, started)) return;
           console.log(
@@ -444,6 +547,11 @@ function registerAppUpdateCommands(
           previousResultId,
           sdk,
         });
+        if (isWaitingForThreads(finished)) {
+          if (outputJson(opts, finished)) return;
+          printScheduledUpdate(finished);
+          return;
+        }
         const result = finished.lastResult;
         if (outputJson(opts, finished)) {
           if (result?.outcome !== "updated") process.exitCode = 1;
@@ -454,6 +562,26 @@ function registerAppUpdateCommands(
           throw new CliExitError(describeAppUpdateResult(result), 1);
         }
         console.log(describeAppUpdateResult(result));
+      }),
+    );
+
+  app
+    .command("cancel")
+    .description("Cancel an update scheduled with apply --when-idle")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: AppUpdateStatusOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const before = await sdk.system.appUpdate();
+        const status = await callUpdateWhenIdleRoute(() =>
+          sdk.system.experimental_cancelScheduledAppUpdate(),
+        );
+        if (outputJson(opts, status)) return;
+        console.log(
+          hasScheduledUpdate(before)
+            ? "Cancelled the scheduled update."
+            : "No update is scheduled.",
+        );
       }),
     );
 

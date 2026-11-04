@@ -123,6 +123,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb updates app`
 - `bb updates app status`
 - `bb updates app apply`
+- `bb updates app cancel`
 - `bb updates app dismiss`
 
 ## terminal
