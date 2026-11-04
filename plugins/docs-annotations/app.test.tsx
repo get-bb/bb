@@ -1889,17 +1889,35 @@ describe("Docs nav panel", () => {
     });
     const text = editor.querySelector("p")?.firstChild;
     if (!text) throw new Error("The document passage was not rendered");
-    const range = document.createRange();
-    range.setStart(text, 0);
-    range.setEnd(text, text.textContent?.length ?? 0);
-    editor.focus();
-    window.getSelection()?.removeAllRanges();
-    window.getSelection()?.addRange(range);
-    fireEvent.pointerUp(editor);
+    const selectPassage = () => {
+      // Re-derive the passage on every attempt: mounting the annotation layer
+      // re-renders the paragraph, which detaches a node captured too early and
+      // leaves the selection anchored to nothing.
+      const passage = editor.querySelector("p")?.firstChild;
+      if (!passage) throw new Error("The document passage was not rendered");
+      const range = document.createRange();
+      range.setStart(passage, 0);
+      range.setEnd(passage, passage.textContent?.length ?? 0);
+      editor.focus();
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      fireEvent.pointerUp(editor);
+    };
+    await waitFor(
+      () => {
+        selectPassage();
+        expect(
+          screen.queryByRole("button", { name: "Add to chat" }),
+        ).not.toBeNull();
+      },
+      { timeout: 5_000 },
+    );
 
-    const addToChat = await screen.findByRole("button", {
-      name: "Add to chat",
-    });
+    const addToChat = await screen.findByRole(
+      "button",
+      { name: "Add to chat" },
+      { timeout: 5_000 },
+    );
     fireEvent.mouseDown(addToChat);
     fireEvent.click(addToChat);
     fireEvent.change(await screen.findByRole("textbox", { name: "Comment" }), {
