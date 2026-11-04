@@ -67,27 +67,30 @@ jobs:
         with:
           node-version: "22.x"
           package-manager-cache: false
-      - parallel:
-          - name: Setup pnpm
-            run: npm install --global pnpm@9.15.0 --ignore-scripts
-          - name: Restore Windows dependency disk
-            id: disk
-            timeout-minutes: 2
-            continue-on-error: true
-            uses: ./.github/actions/windows-dependency-cache
-          - name: Restore React Compiler cache
-            timeout-minutes: 1
-            continue-on-error: true
-            uses: ./.github/actions/cache-react-compiler
-          - name: Restore workspace caches
-            id: cache
-            timeout-minutes: 1
-            continue-on-error: true
-            uses: ./.github/actions/cache-workspace
-            with:
-              node-version: "22.x"
-              cache-prefix: windows-app-smoke
-              turbo-cache-max-size-mb: "256"
+      - name: Setup pnpm
+        id: pnpm
+        background: true
+        run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - name: Restore Windows dependency disk
+        id: disk
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: "22.x"
+          cache-prefix: windows-app-smoke
+          turbo-cache-max-size-mb: "256"
+      - name: Wait for pnpm setup
+        wait: pnpm
       - name: Install dependencies
         timeout-minutes: 5
         shell: bash
@@ -198,3 +201,55 @@ jobs:
           test "$CACHE_OUTCOME" = failure
           test "$SETUP_OUTPUT" = true
           test "$SETUP_READY" = true
+  windows-cold:
+    name: Windows cold
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.x"
+          package-manager-cache: false
+      - name: Setup pnpm
+        id: pnpm
+        background: true
+        run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - name: Restore Windows dependency disk
+        id: disk
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: ./.github/actions/windows-dependency-cache
+        env:
+          ImageVersion: setup-overlap-cold-probe
+      - name: Restore React Compiler cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-react-compiler
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: "22.x"
+          cache-prefix: windows-app-smoke
+          turbo-cache-max-size-mb: "256"
+      - name: Wait for pnpm setup
+        wait: pnpm
+      - name: Install dependencies
+        timeout-minutes: 5
+        shell: bash
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...'
+      - name: Verify restored environment and runtime
+        shell: bash
+        env:
+          DISK_ACTIVE: ${{ steps.disk.outputs.active }}
+          CACHE_OUTCOME: ${{ steps.cache.outcome }}
+        run: |
+          test "$DISK_ACTIVE" != true
+          pnpm --version
+          node -e 'console.log({store: process.env.npm_config_store_dir, active: process.env.DISK_ACTIVE, cache: process.env.CACHE_OUTCOME}); if (process.env.DISK_ACTIVE === "true" && process.env.npm_config_store_dir.replaceAll(String.fromCharCode(92), "/") !== "P:/store") throw Error("store environment lost")'
+          pnpm exec turbo run test --filter=@bb/process-utils --output-logs=new-only
