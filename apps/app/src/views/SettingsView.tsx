@@ -1147,7 +1147,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   resumeThreadsAfterRestart: {
     label: "Resume interrupted threads after a restart",
     description:
-      "When an update, crash or restart cuts off a running thread, bb resumes it a few seconds after it comes back instead of leaving it in error. Messages you queued meanwhile send after it.",
+      "When an update, crash or restart cuts off a running thread or stops a background command a thread is waiting on, bb resumes the thread a few seconds after it comes back and tells the agent what was cut off. Messages you queued meanwhile send after it.",
   },
   serverMove: {
     label: "Server move",

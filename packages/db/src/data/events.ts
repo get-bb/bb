@@ -4731,7 +4731,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
         )`,
       ),
     )
-    .orderBy(events.threadId, events.itemId)
+    .orderBy(events.threadId, events.sequence)
     .all();
 
   return rows.flatMap((row) =>
@@ -4795,4 +4795,63 @@ export function listOpenBackgroundTaskItemRowsForThread(
   return rows.flatMap((row) =>
     row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],
   );
+}
+
+export function getUnfinishedCommandItemData(
+  db: DbQueryConnection,
+  args: { afterSequence: number; threadId: string },
+): string | null {
+  const startedType = "item/started" satisfies ThreadEventType;
+  const completedType = "item/completed" satisfies ThreadEventType;
+  const finished = alias(events, "finished_command");
+  const row = db
+    .select({ data: events.data })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, startedType),
+        sql`${events.itemKind} = 'commandExecution'`,
+        gt(events.sequence, args.afterSequence),
+        isNotNull(events.itemId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(finished)
+            .where(
+              and(
+                eq(finished.threadId, events.threadId),
+                eq(finished.itemId, events.itemId),
+                eq(finished.type, completedType),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  return row?.data ?? null;
+}
+
+export function listCommandItemDataByItemIds(
+  db: DbQueryConnection,
+  args: { itemIds: readonly string[]; threadId: string },
+): { data: string; itemId: string }[] {
+  if (args.itemIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({ data: events.data, itemId: sql<string>`${events.itemId}` })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.itemId, [...args.itemIds]),
+        inArray(events.type, ["item/started", "item/completed"]),
+        sql`${events.itemKind} = 'commandExecution'`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
 }

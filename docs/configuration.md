@@ -940,17 +940,29 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
-- `resumeThreadsAfterRestart` resumes threads a restart cut off. When a
-  machine's daemon comes back as a new process (bb quit, crashed, or updated,
-  or the machine restarted), the server marks the turns it was running as
-  interrupted (`host-daemon-restarted`) as before, and then queues a retry of
-  each one with reason "bb restarted", scheduled 5 seconds out (the queue
-  sweep sends it on its next pass after that). The retry is the same row
-  as `bb thread retry`: it sends "Please continue." when the provider had
-  accepted the cut turn's input and the original input otherwise. A message
-  you send (or Send now) before it goes out overtakes it. Turns stopped by the
-  user, threads waiting on a question or approval, and archived threads are
-  not resumed, and a turn is not retried again once its retry chain reaches
+- `resumeThreadsAfterRestart` resumes threads a
+  restart cut off. When a machine's daemon comes back as a new process (bb
+  quit, crashed, or updated, or the machine restarted), the server marks the
+  turns it was running as interrupted (`host-daemon-restarted`) and the
+  background tasks it was tracking as stopped, as before, and then queues a
+  retry with reason "bb restarted", scheduled 5 seconds out (the queue sweep
+  sends it on its next pass after that), for:
+  - each running turn it cut off;
+  - each idle thread with background work the restart stopped, such as a
+    background command its agent was waiting on (the retry re-runs the
+    thread's latest turn).
+
+  The retry is the same row as `bb thread retry`, titled "Resume after bb
+  restarted" in the app's queue and in `bb thread queue list`. When the provider had
+  accepted the turn's input, it sends an agent-only message instead of
+  "Please continue.": it says bb restarted, names the command the turn was
+  running and any background work the restart stopped (command and
+  description, one per line when there are several, up to ten), says the
+  restart, not the user, cut them off, and asks the agent to check their
+  effects before continuing or rerunning them. Otherwise it sends the original input. A message you send
+  (or Send now) before it goes out overtakes it. Turns stopped by the user,
+  threads waiting on a question or approval, and archived threads are not
+  resumed, and a turn is not retried again once its retry chain reaches
   attempt 4 (three restarts in a row). A child thread that resumes does not notify its parent
   that it was interrupted; the parent hears when the child finishes.
   `bb thread wait` keeps waiting on a thread whose resume is queued.

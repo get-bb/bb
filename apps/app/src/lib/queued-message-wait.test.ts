@@ -208,6 +208,29 @@ describe("queuedMessageFallbackTitle", () => {
       }),
     ).toBe(`Retry failed turn from ${clockAt(NOW)}`);
   });
+
+  it("titles a restart resume as a resume, with when it resumes and which attempt", () => {
+    const payload = {
+      kind: "retry" as const,
+      retryOfTurnRequestId: "req-1",
+      attempt: 3,
+      reason: "bb restarted",
+    };
+    expect(
+      queuedMessageFallbackTitle({ createdAt: NOW, now: NOW, payload }),
+    ).toBe("Resume after bb restarted");
+    expect(
+      describeQueuedMessageWait({
+        failureReason: null,
+        now: NOW,
+        payload,
+        pluginDisplayName: null,
+        sendAt: NOW + 5_000,
+        threadStatus: "idle",
+        waitingOn: { kind: "time" },
+      }),
+    ).toBe(`resuming at ${clockAt(NOW + 5_000)} · attempt 3`);
+  });
 });
 
 describe("isQueuedMessageSendNowAllowed", () => {
