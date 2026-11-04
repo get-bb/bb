@@ -235,10 +235,14 @@ export async function collectCiHealth(api, since, until, checkpoint) {
     });
   }
   await checkpoint(evidence);
-  for (let offset = 0; offset < runs.length; offset += 6) {
-    await Promise.all(
-      runs.slice(offset, offset + 6).map(async (run) => {
-        if (run.conclusion === null) return;
+  let next = 0;
+  let completed = 0;
+  let checkpointWork = Promise.resolve();
+  await Promise.all(
+    Array.from({ length: Math.min(6, runs.length) }, async () => {
+      while (next < runs.length) {
+        const run = runs[next++];
+        if (run.conclusion === null) continue;
         try {
           for (let page = 1; ; page++) {
             const data = await api(
@@ -299,10 +303,14 @@ export async function collectCiHealth(api, since, until, checkpoint) {
             message: error instanceof Error ? error.message : String(error),
           });
         }
-      }),
-    );
-    await checkpoint(evidence);
-  }
+        if (++completed % 6 === 0) {
+          checkpointWork = checkpointWork.then(() => checkpoint(evidence));
+          await checkpointWork;
+        }
+      }
+    }),
+  );
+  await checkpoint(evidence);
   return evidence;
 }
 
