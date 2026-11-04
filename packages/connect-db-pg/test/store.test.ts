@@ -67,11 +67,15 @@ function userRow(id: string) {
   };
 }
 
-function mirrorPair(primary: SqlBackend, secondary: SqlBackend | null) {
+function mirrorPair(
+  primary: SqlBackend,
+  secondary: SqlBackend | null,
+  shadowReads = 0,
+) {
   const pending: Promise<unknown>[] = [];
   const failures: MirrorFailure[] = [];
   const handle = createConnectDb({
-    backends: { primary, secondary },
+    backends: { primary, secondary, shadowReads },
     waitUntil: (promise) => pending.push(promise),
     onMirrorFailure: (failure) => failures.push(failure),
   });
@@ -312,5 +316,76 @@ describe("mirrored writes", () => {
       (await db.select().from(machine).where(eq(machine.id, "m1")).get())
         ?.lastSeenAt,
     ).toEqual(NOW);
+  });
+});
+
+describe("shadow reads", () => {
+  it("serves the primary's rows and reports reads that differ on the secondary", async () => {
+    const sqlite = sqliteBackend(migratedSqlite());
+    const { backend: pg } = await pglite();
+    const both = mirrorPair(sqlite, pg);
+    await both.db.insert(user).values(userRow("u1")).run();
+    await both.db.insert(user).values(userRow("u2")).run();
+    await both.mirrored();
+    await mirrorPair(sqlite, null)
+      .db.update(user)
+      .set({ name: "primary only" })
+      .where(eq(user.id, "u2"))
+      .run();
+    const { db, mirrored, failures } = mirrorPair(sqlite, pg, 1);
+
+    const matching = await db
+      .select({ id: user.id, verified: user.emailVerified })
+      .from(user)
+      .where(eq(user.id, "u1"))
+      .get();
+    const listed = await db.select({ id: user.id }).from(user).all();
+    const differing = await db
+      .select({ name: user.name })
+      .from(user)
+      .where(eq(user.id, "u2"))
+      .get();
+    await mirrored();
+
+    expect(matching).toEqual({ id: "u1", verified: true });
+    expect(listed.map((row) => row.id).sort()).toEqual(["u1", "u2"]);
+    expect(differing).toEqual({ name: "primary only" });
+    expect(failures).toEqual([
+      {
+        stage: "shadow_mismatch",
+        table: "user",
+        primary: "d1",
+        secondary: "pg",
+        error: "rows differ (primary 1, secondary 1)",
+      },
+    ]);
+  });
+
+  it("reports a failing secondary without failing the read", async () => {
+    const sqlite = sqliteBackend(migratedSqlite());
+    const broken: SqlBackend = {
+      kind: "pg",
+      execute: () => Promise.reject(new Error("connection refused")),
+    };
+    await mirrorPair(sqlite, null).db.insert(user).values(userRow("u1")).run();
+    const { db, mirrored, failures } = mirrorPair(sqlite, broken, 1);
+
+    const row = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.id, "u1"))
+      .get();
+    await mirrored();
+
+    expect(row).toEqual({ id: "u1" });
+    expect(failures).toEqual([
+      {
+        stage: "shadow_read",
+        table: "user",
+        primary: "d1",
+        secondary: "pg",
+        error: "connection refused",
+      },
+    ]);
   });
 });
