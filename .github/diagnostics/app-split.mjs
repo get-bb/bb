@@ -6,7 +6,7 @@ const root = 'apps/app/src/components/ui/';
 const paths = ['markdown-incremental-pieces.test.ts', 'markdown-incremental-pieces-test-helpers.ts', 'markdown-incremental-pathological.test.ts'];
 mkdirSync('app-benchmark', { recursive: true });
 const results = [];
-for (const [index, variant] of ['A', 'B', 'B', 'A'].entries()) {
+for (const [index, variant] of ['B', 'A', 'A', 'B'].entries()) {
   for (const file of paths) {
     if (variant === 'A' && file !== paths[0]) rmSync(root + file, { force: true });
     else writeFileSync(root + file, execFileSync('git', ['show', `${variant === 'A' ? baseline : candidate}:${root + file}`]));
