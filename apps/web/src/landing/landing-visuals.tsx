@@ -61,8 +61,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           note={
             simple ? (
               <>
-                {download.shortNote}
-                {" · "}
+                {download.shortNote ? `${download.shortNote} · ` : null}
                 {simpleLinks}
               </>
             ) : (

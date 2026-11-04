@@ -26,14 +26,14 @@ describe("homepage-download-area install block", () => {
     expect(html).not.toContain("Other platforms");
   });
 
-  it("shows one button, the chip note, the repo and /download in the test arm", () => {
+  it("shows one button, the repo and /download, with no note on macOS, in the test arm", () => {
     const html = renderArm("test");
     expect(html.match(/href="\/download\/(macos|windows|linux)/g)).toEqual([
       'href="/download/macos',
     ]);
     expect(html).not.toContain(CLI_COMMAND);
     expect(html).toMatch(
-      /<span class="install-note install-note-desktop">Apple Silicon · <a [^>]*href="https:\/\/github.com\/get-bb\/bb"/,
+      /<span class="install-note install-note-desktop"><a [^>]*href="https:\/\/github.com\/get-bb\/bb"/,
     );
     expect(html).toContain(`href="${GITHUB_URL}"`);
     expect(html).toContain('href="/download">Other platforms</a>');
