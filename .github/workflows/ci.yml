@@ -146,6 +146,8 @@ jobs:
           package-manager-cache: false
 
       - name: Setup pnpm
+        id: setup-pnpm
+        background: true
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
@@ -163,6 +165,9 @@ jobs:
           cache-prefix: windows-foundation
           turbo-cache: "true"
           turbo-cache-max-size-mb: "256"
+
+      - name: Wait for pnpm setup
+        wait: setup-pnpm
 
       - name: Install foundation dependencies
         timeout-minutes: 5
@@ -198,6 +203,8 @@ jobs:
           package-manager-cache: false
 
       - name: Setup pnpm
+        id: setup-pnpm
+        background: true
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
@@ -227,6 +234,9 @@ jobs:
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
+
+      - name: Wait for pnpm setup
+        wait: setup-pnpm
 
       - name: Install dependencies
         timeout-minutes: 5
@@ -283,6 +293,8 @@ jobs:
           package-manager-cache: false
 
       - name: Setup pnpm
+        id: setup-pnpm
+        background: true
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
@@ -312,6 +324,9 @@ jobs:
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
+
+      - name: Wait for pnpm setup
+        wait: setup-pnpm
 
       - name: Install dependencies
         timeout-minutes: 5
@@ -358,6 +373,8 @@ jobs:
           package-manager-cache: false
 
       - name: Setup pnpm
+        id: setup-pnpm
+        background: true
         run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
 
       - name: Restore Windows dependency disk
@@ -388,6 +405,9 @@ jobs:
         timeout-minutes: 1
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
+
+      - name: Wait for pnpm setup
+        wait: setup-pnpm
 
       - name: Install dependencies
         timeout-minutes: 5
@@ -942,12 +962,20 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/cache-pnpm
 
-      - name: Install dependencies
-        timeout-minutes: 5
-        env:
-          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+      - parallel:
+          - name: Install dependencies
+            timeout-minutes: 5
+            env:
+              TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+              PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+            run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+
+          - name: Install AppImage FUSE runtime
+            if: ${{ runner.os == 'Linux' }}
+            uses: ./.github/actions/install-appimage-fuse
+            timeout-minutes: 5
+            with:
+              package: libfuse2t64
 
       - name: Smoke bb-app tarball
         if: ${{ runner.os != 'Linux' }}
@@ -956,13 +984,6 @@ jobs:
       - name: Package Linux artifacts and smoke bb-app tarball
         if: ${{ runner.os == 'Linux' }}
         run: pnpm exec turbo run 'bb-app#smoke:tarball' '@bb/desktop#desktop:build:linux' --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 --continue=dependencies-successful
-
-      - name: Install AppImage FUSE runtime
-        if: ${{ runner.os == 'Linux' }}
-        uses: ./.github/actions/install-appimage-fuse
-        timeout-minutes: 5
-        with:
-          package: libfuse2t64
 
       - name: Smoke Linux AppImage mount lifecycle
         if: ${{ runner.os == 'Linux' }}
