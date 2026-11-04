@@ -1,0 +1,33 @@
+name: Temporary Windows hook cancellation investigation
+on:
+  push:
+    branches: [ci/windows-hook-cancel-probe]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        timeout-minutes: 2
+        continue-on-error: true
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Prepare actual test prerequisites
+        run: pnpm exec turbo run test --filter=@bb/host-daemon --output-logs=errors-only -- --passWithNoTests hook-probe-prerequisites-no-tests
+      - name: Repeat real cancellation coverage
+        run: node scripts/windows-hook-cancel-probe.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: windows-hook-cancel
+          path: ${{ runner.temp }}/windows-hook-cancel-results
+          retention-days: 7

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -179,6 +180,7 @@ describe("core environment scripts", () => {
           onProgress: (entry) => {
             if (!entry.text.startsWith("pids ")) return;
             pids = entry.text.split(" ").slice(1).map(Number);
+            process.stderr.write(JSON.stringify({ hookProbe: "expected-children", time: Date.now(), pids, workspacePath }) + "\n");
             controller.abort();
           },
         }),
@@ -192,6 +194,11 @@ describe("core environment scripts", () => {
           return false;
         }
       });
+      if (alive.length > 0) {
+        process.stderr.write(JSON.stringify({ hookProbe: "alive-after-cancel", time: Date.now(), pids, alive }) + "\n");
+        const snapshot = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate | ConvertTo-Json -Compress"], { encoding: "utf8", timeout: 10000, maxBuffer: 10 * 1024 * 1024 });
+        process.stderr.write(`HOOK_PROCESS_SNAPSHOT ${snapshot}\n`);
+      }
       expect(alive).toEqual([]);
     },
     20_000,

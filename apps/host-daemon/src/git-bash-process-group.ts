@@ -58,7 +58,9 @@ async function runGitBashHelper(
         timeout: HELPER_TIMEOUT_MS,
       },
     );
-    return parseProcessIds(result.stdout);
+    const parsed = parseProcessIds(result.stdout);
+    process.stderr.write(JSON.stringify({ hookProbe: "git-bash-helper", time: Date.now(), script: script === FIND_PROCESS_GROUP_SCRIPT ? "find" : "list", argument, parsed }) + "\n");
+    return parsed;
   } catch {
     return null;
   }
@@ -131,13 +133,15 @@ export async function stopGitBashProcessGroup(
       groupGone = true;
       break;
     }
-    await terminateWindowsProcessTrees(members);
+    const terminated = await terminateWindowsProcessTrees(members);
+    process.stderr.write(JSON.stringify({ hookProbe: "terminated-members", time: Date.now(), members, terminated }) + "\n");
     await delay(STOP_RETRY_DELAY_MS);
   }
   if (child.pid !== undefined && !hasExited(child)) {
     await terminateWindowsProcessTrees([child.pid]);
   }
   const rootExited = await waitForExit(child);
+  process.stderr.write(JSON.stringify({ hookProbe: "group-stop", time: Date.now(), rootPid: child.pid, processGroup, rootExited, groupGone }) + "\n");
   return {
     treeTermination: groupGone && rootExited ? "confirmed" : "unverified",
   };

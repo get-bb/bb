@@ -11,6 +11,7 @@ export function terminateWindowsProcessTrees(
   pids: readonly number[],
 ): Promise<boolean> {
   if (pids.length === 0) return Promise.resolve(true);
+  const startedAt = Date.now();
   return new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
     let killer: ChildProcess | undefined;
@@ -18,6 +19,7 @@ export function terminateWindowsProcessTrees(
     const finish = (terminated: boolean): void => {
       if (settled) return;
       settled = true;
+      process.stderr.write(JSON.stringify({ hookProbe: "taskkill-finish", time: Date.now(), pids, terminated, elapsed: Date.now() - startedAt }) + "\n");
       clearTimeout(timer);
       resolve(terminated);
     };
