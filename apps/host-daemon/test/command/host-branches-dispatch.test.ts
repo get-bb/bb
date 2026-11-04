@@ -106,7 +106,10 @@ async function readUploadPackInvocations(
   sshLogPath: string,
 ): Promise<string[]> {
   const log = await fs.readFile(sshLogPath, "utf8").catch(() => "");
-  return log.split("--\n").filter((entry) => entry.includes("git-upload-pack"));
+  return log
+    .split("--\n")
+    .slice(0, -1)
+    .filter((entry) => entry.includes("git-upload-pack"));
 }
 
 async function waitForUploadPackInvocations(
