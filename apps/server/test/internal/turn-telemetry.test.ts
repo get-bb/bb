@@ -187,6 +187,7 @@ describe("turn_finished telemetry", () => {
           hostId: host.id,
           includeStopping: false,
           reason,
+          resumingThreadIds: new Set(),
           ...(cause ? { cause } : {}),
         });
         await vi.waitFor(() =>
@@ -209,6 +210,7 @@ describe("turn_finished telemetry", () => {
         hostId: host.id,
         includeStopping: false,
         reason: "host-daemon-restarted",
+        resumingThreadIds: new Set(),
       });
       applyLoggedThreadLifecycleEvent(harness.deps, {
         event: { type: "run.preparing" },

@@ -197,6 +197,9 @@ applies after a reload.
 `sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
 Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
 still opens a thread in a split.
+`resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
+machine restart cut off, a few seconds after the machine's daemon comes back;
+see `bb guide thread-lifecycle`.
 `dismissReadNotifications` removes a thread's push, web, and desktop
 notifications once the thread is read on any client.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and

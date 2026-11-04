@@ -37,6 +37,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,
+    resumeThreadsAfterRestart: false,
     sidebarMultiSelect: false,
     skipFocusedThreadNotifications: false,
     threadContextCard: false,

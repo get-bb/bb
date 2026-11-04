@@ -2498,6 +2498,60 @@ export function hasQueuedRetryOfTurnRequest(
   );
 }
 
+export function hasLiveQueuedRetry(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          eq(queuedThreadMessages.payloadKind, "retry"),
+          ne(queuedThreadMessages.state, "failed_exhausted"),
+          notSupersededQueuedThreadMessage(),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function moveQueuedThreadMessageToFrontInTransaction(
+  tx: DbTransaction,
+  row: QueuedThreadMessageRow,
+): QueuedThreadMessageRow {
+  const first = tx
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, row.threadId),
+        ne(queuedThreadMessages.id, row.id),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+    .limit(1)
+    .get();
+  if (first === undefined || first.sortKey > row.sortKey) {
+    return row;
+  }
+  clearPreviousQueuedMessageGroupEdgeInTransaction(tx, row);
+  return tx
+    .update(queuedThreadMessages)
+    .set({
+      sortKey: createOrderKeyBetween({
+        previousKey: null,
+        nextKey: first.sortKey,
+      }),
+    })
+    .where(eq(queuedThreadMessages.id, row.id))
+    .returning()
+    .get();
+}
+
 export function getFirstUnclaimedQueuedRetry(
   db: DbQueryConnection,
   threadId: string,

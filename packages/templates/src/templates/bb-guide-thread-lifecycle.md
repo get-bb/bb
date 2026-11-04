@@ -57,6 +57,19 @@ Lifecycle:
   `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
+  With the `resumeThreadsAfterRestart` experiment, a turn cut off because a
+  machine's daemon came back as a new process (bb quit, crashed, updated, or
+  the machine restarted) gets a retry with reason "bb restarted", sent a few
+  seconds later. Turns stopped by the user, threads waiting on a question or
+  approval, and archived threads are left in error. After three of these in a
+  row, bb stops retrying the turn. The parent of a child that resumes hears
+  about it when the child finishes, not when it was cut off. The experiment
+  also puts every queued retry, including `bb thread retry` and provider-retry
+  ones, at the front of the thread's queue: the thread's other queued rows wait
+  behind it (as `thread-busy`) until it sends or is dropped, so messages queued
+  or steered during a restart go out after the resume. A message you send
+  directly, or Send now, still overtakes it.
+
   bb thread archive [id]                   Archive a thread (and children/hidden forks)
     --self                                 Archive current thread
 

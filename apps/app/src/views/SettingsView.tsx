@@ -1149,6 +1149,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
   },
+  resumeThreadsAfterRestart: {
+    label: "Resume interrupted threads after a restart",
+    description:
+      "When an update, crash or restart cuts off a running thread, bb resumes it a few seconds after it comes back instead of leaving it in error. Messages you queued meanwhile send after it.",
+  },
   serverMove: {
     label: "Server move",
     description:
