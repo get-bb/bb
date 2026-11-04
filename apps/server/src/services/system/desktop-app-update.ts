@@ -20,6 +20,7 @@ import {
   type AppUpdateServiceStatus,
   type RunningThreadsPolicy,
 } from "./app-update.js";
+import type { AppUpdateSendHold } from "./app-update-send-hold.js";
 import type { DesktopUpdateChannel } from "./desktop-update-channel.js";
 
 const stateSchema = z
@@ -38,6 +39,7 @@ export function createDesktopAppUpdateService(args: {
   notifyChanged: () => void;
   logger: ServerLogger;
   threadsResumeAfterRestart: () => boolean;
+  sendHold: AppUpdateSendHold;
 }): AppUpdateService {
   const path = join(args.dataDir, "bb-desktop-app-update.json");
   let info: DesktopAppUpdateInfo | null = null;
@@ -198,8 +200,10 @@ export function createDesktopAppUpdateService(args: {
     };
     try {
       await waitForDownload(version);
+      args.sendHold.hold();
       const count = args.countRunningThreads();
       if (runningThreads.kind === "wait" && runningThreads.shouldDefer(count)) {
+        args.sendHold.release();
         activity = { phase: "idle" };
         applying = false;
         args.notifyChanged();
@@ -225,6 +229,7 @@ export function createDesktopAppUpdateService(args: {
       await args.channel.request("install");
     } catch (error) {
       if (abort.signal.aborted) return;
+      args.sendHold.release();
       const failure: SystemAppUpdateStatus["lastResult"] = {
         ...result,
         finishedAt: new Date().toISOString(),
@@ -297,6 +302,7 @@ export function createDesktopAppUpdateService(args: {
               { error },
               "Could not record the desktop update result",
             );
+            args.sendHold.release();
             applying = false;
             activity = { phase: "idle" };
             args.notifyChanged();

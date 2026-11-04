@@ -154,6 +154,11 @@ Updating restarts bb, which interrupts running threads; with the
 `resumeThreadsAfterRestart` experiment on they resume after the update, and
 the prompt and the `threads_running` error say so.
 
+With `updateWhenIdle` on, once bb decides to restart into an update, new sends
+wait in the thread's queue (`sending after bb restarts to update` in
+`bb thread queue`) and go out after the restart, behind any resume; if the
+update is deferred, cancelled, or fails they go out at once.
+
 `bb updates app apply` also updates a server hosted by the desktop app, restarting
 that hosting app through its native updater. It never updates the desktop you
 are viewing from unless that desktop hosts this server.

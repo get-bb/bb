@@ -36,6 +36,7 @@ import {
   type AppUpdateService,
 } from "../../src/services/system/app-update.js";
 import { createScheduledAppUpdateService } from "../../src/services/system/app-update-schedule.js";
+import { createAppUpdateSendHold } from "../../src/services/system/app-update-send-hold.js";
 import {
   createCliCommandService,
   type CliCommandService,
@@ -309,6 +310,21 @@ export async function createTestAppHarness(
         notifyChanged: notifyAppUpdateChanged,
         threadsResumeAfterRestart: () =>
           getExperiments(db).resumeThreadsAfterRestart,
+        sendHold: createAppUpdateSendHold({
+          aiServices,
+          config,
+          db,
+          hub,
+          lifecycleDedupers,
+          logger,
+          machineAuth: testMachineAuth,
+          pendingInteractions,
+          pluginHostArtifacts,
+          providerRegistry,
+          skillTreeRegistry,
+          telemetry,
+          terminalSessions,
+        }),
       }),
     isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,

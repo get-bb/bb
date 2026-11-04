@@ -2603,6 +2603,22 @@ export function listThreadIdsWithHostOfflineQueueWaits(
     .map((row) => row.threadId);
 }
 
+export function listThreadIdsWithAppUpdateQueueWaits(
+  db: DbQueryConnection,
+): string[] {
+  return db
+    .selectDistinct({ threadId: queuedThreadMessages.threadId })
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'app-update'`,
+        automaticallyDrainableQueuedThreadMessage(),
+      ),
+    )
+    .all()
+    .map((row) => row.threadId);
+}
+
 export function deleteQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,

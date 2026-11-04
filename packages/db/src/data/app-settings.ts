@@ -27,6 +27,7 @@ const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
 const INSTALL_TURN_NUMBER_KEY = "installTurnNumber";
+const APP_UPDATE_SEND_HOLD_KEY = "appUpdateSendHold";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -332,4 +333,30 @@ export function claimInstallTurnNumber(db: DbQueryConnection, now: number): numb
     .returning({ value: appSettingsValues.value })
     .get();
   return Number(row!.value);
+}
+
+export function isAppUpdateSendHoldSet(db: DbQueryConnection): boolean {
+  return (
+    db
+      .select({ key: appSettingsValues.key })
+      .from(appSettingsValues)
+      .where(eq(appSettingsValues.key, APP_UPDATE_SEND_HOLD_KEY))
+      .get() !== undefined
+  );
+}
+
+export function setAppUpdateSendHold(
+  db: DbQueryConnection,
+  held: boolean,
+): boolean {
+  if (held) {
+    writeValue(db, APP_UPDATE_SEND_HOLD_KEY, true, Date.now());
+    return true;
+  }
+  return (
+    db
+      .delete(appSettingsValues)
+      .where(eq(appSettingsValues.key, APP_UPDATE_SEND_HOLD_KEY))
+      .run().changes > 0
+  );
 }

@@ -21,6 +21,7 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
+import type { AppUpdateSendHold } from "./app-update-send-hold.js";
 import type { AppVersionService } from "./app-version.js";
 import type { LauncherChannel } from "./launcher-channel.js";
 
@@ -73,6 +74,7 @@ interface CreateAppUpdateServiceArgs {
   mode: AppUpdateMode | null;
   notifyChanged: () => void;
   now?: () => number;
+  sendHold: AppUpdateSendHold;
   sourceCheckTtlMs?: number;
   threadsResumeAfterRestart: () => boolean;
 }
@@ -162,10 +164,19 @@ export function createAppUpdateService(
   let launcherConnected = args.launcher !== null;
   let runningThreadsPolicy: RunningThreadsPolicy = { kind: "refuse" };
   let decidedReadyAt: string | null = null;
+  let holdingSends = false;
+
+  const releaseSends = (): void => {
+    if (!holdingSends) return;
+    holdingSends = false;
+    args.sendHold.release();
+  };
 
   const decideRestart = (launcher: LauncherChannel, readyAt: string): void => {
     if (decidedReadyAt === readyAt) return;
     decidedReadyAt = readyAt;
+    holdingSends = true;
+    args.sendHold.hold();
     const runningThreadCount = args.countRunningThreads();
     const policy = runningThreadsPolicy;
     const request: AppUpdateLauncherRequest =
@@ -179,11 +190,13 @@ export function createAppUpdateService(
               message: threadsStartedMessage(runningThreadCount),
               type: "cancel",
             };
+    if (request.type !== "restart") releaseSends();
     void launcher.request(request).catch((error: unknown) => {
       args.logger.warn(
         { error: errorMessage(error), request: request.type },
         "Launcher did not accept the restart decision",
       );
+      releaseSends();
     });
   };
 
@@ -194,6 +207,8 @@ export function createAppUpdateService(
       resolveFirstStatus = null;
       if (status.activity.phase === "ready" && args.launcher !== null) {
         decideRestart(args.launcher, status.activity.startedAt);
+      } else if (status.activity.phase === "idle") {
+        releaseSends();
       }
       args.notifyChanged();
     }) ?? (() => undefined);
