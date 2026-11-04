@@ -167,12 +167,18 @@ jobs:
         run: exit 17
         background: true
       - name: Observe required setup failure
-        id: required-join
         wait: required
-        continue-on-error: true
-      - name: Verify failure propagated
+      - name: Dependent work must not run
+        run: exit 29
+  optional-join-contract:
+    needs: join-contract
+    if: always()
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Verify required failure propagated
         env:
-          OUTCOME: ${{ steps.required-join.outcome }}
+          OUTCOME: ${{ needs.join-contract.result }}
         run: test "$OUTCOME" = failure
       - parallel:
           - name: Optional cache failure
