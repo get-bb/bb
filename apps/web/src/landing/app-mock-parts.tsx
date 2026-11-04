@@ -239,13 +239,16 @@ type NavLabel = (typeof NAV_ITEMS)[number]["label"];
 
 export function NavRail({
   active = "Home",
+  lead,
   children,
 }: {
   active?: NavLabel | null;
+  lead?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <nav className="rail" aria-hidden>
+      {lead}
       {NAV_ITEMS.map(({ icon: Icon, label }) => (
         <span
           key={label}
