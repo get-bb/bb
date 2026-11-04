@@ -284,6 +284,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
     ],
   },
+  "host.inspect_git_checkout": {
+    checkout: {
+      kind: "branch",
+      branchName: "main",
+      headSha: "abc123",
+    },
+  },
   "host.inspect_git_source": {
     checkout: {
       kind: "branch",
@@ -1060,7 +1067,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(260);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(261);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1080,7 +1087,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(257)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

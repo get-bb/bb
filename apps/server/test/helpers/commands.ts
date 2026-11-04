@@ -106,6 +106,13 @@ interface RegisterTestHostRpcCaptureArgs {
   onInspectGitSource?: (
     command: Extract<HostDaemonRpcCommand, { type: "host.inspect_git_source" }>,
   ) => void;
+  gitCheckoutInspectionResult?: HostDaemonOnlineRpcResult<"host.inspect_git_checkout">;
+  onInspectGitCheckout?: (
+    command: Extract<
+      HostDaemonRpcCommand,
+      { type: "host.inspect_git_checkout" }
+    >,
+  ) => void;
 }
 
 export interface TestHostRpcSocket {
@@ -424,6 +431,22 @@ export function registerTestHostRpcCapture(
             result:
               args.gitBranchOptionsResult ??
               buildDefaultGitBranchOptionsResult(command.selectedBranch),
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
+      if (command.type === "host.inspect_git_checkout") {
+        args.onInspectGitCheckout?.(command);
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: args.gitCheckoutInspectionResult ?? {
+              checkout: buildDefaultGitSourceInspectionResult().checkout,
+            },
           }),
           sessionId: args.sessionId,
         });

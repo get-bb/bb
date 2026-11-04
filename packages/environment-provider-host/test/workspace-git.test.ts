@@ -238,6 +238,41 @@ describe("readDefaultBranchRefs", () => {
     });
   });
 
+  it("prefers origin's default branch over main when both exist locally", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+    await runGit(["branch", "develop"], { cwd: repoPath });
+    await runGit(["push", "origin", "develop"], { cwd: repoPath });
+    await runGit(["remote", "set-head", "origin", "develop"], {
+      cwd: repoPath,
+    });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "develop",
+      originDefaultBranch: "origin/develop",
+    });
+  });
+
+  it("does not mistake a branch under main/ for main", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "main/feature"], { cwd: repoPath });
+    await runGit(["branch", "master"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "master",
+    });
+  });
+
+  it("falls back to the first local branch by name without main or master", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "beta"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "beta",
+    });
+  });
+
   it("omits origin defaults when no origin ref exists", async () => {
     const repoPath = await initReadGitBlobRepo();
 
