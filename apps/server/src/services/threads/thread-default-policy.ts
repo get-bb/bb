@@ -204,7 +204,18 @@ export function resolveCreateThreadExecutionDefaults(
     );
   }
   const registration = registry.get(providerId);
-  if (registration !== null && !registration.info.available) {
+  if (registration === null) {
+    const registeredProviderIds = registry
+      .list()
+      .map((provider) => provider.info.id)
+      .join(", ");
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Unknown provider "${providerId}". Registered provider ids: ${registeredProviderIds || "(none)"}.`,
+    );
+  }
+  if (!registration.info.available) {
     throw new ApiError(
       409,
       "provider_unavailable",
