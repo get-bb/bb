@@ -798,12 +798,48 @@ export function createGitQueries(run: GitQueryRunner) {
       .filter(Boolean);
   }
 
+  async function readPreferredLocalDefaultBranch(
+    cwd: string,
+    originHeadBranch: string | undefined,
+    options: GitTimeoutOptions = {},
+  ): Promise<string | undefined> {
+    const candidates = [
+      ...new Set(
+        [originHeadBranch, "main", "master"].filter(
+          (name): name is string => name !== undefined,
+        ),
+      ),
+    ];
+    const found = await run(
+      [
+        "for-each-ref",
+        "--format=%(refname)",
+        ...candidates.map((name) => `refs/heads/${name}`),
+      ],
+      { cwd, ...options },
+    );
+    const present = new Set(
+      found.stdout.split("\n").map((value) => value.trim()),
+    );
+    const preferred = candidates.find((name) =>
+      present.has(`refs/heads/${name}`),
+    );
+    if (preferred !== undefined) {
+      return preferred;
+    }
+    const first = await run(
+      ["for-each-ref", "--count=1", "--format=%(refname:short)", "refs/heads"],
+      { cwd, ...options },
+    );
+    return trimOutput(first.stdout) || undefined;
+  }
+
   async function readOriginDefaultBranch(
     cwd: string,
+    originHeadBranch: string | undefined,
     localDefaultBranch: string | undefined,
     options: GitTimeoutOptions = {},
   ): Promise<string | undefined> {
-    const originHeadBranch = await readOriginHeadBranchName(cwd, options);
     if (
       originHeadBranch &&
       (await hasRef(cwd, `refs/remotes/origin/${originHeadBranch}`, options))
@@ -879,13 +915,14 @@ export function createGitQueries(run: GitQueryRunner) {
   ): Promise<DefaultBranchRefs> {
     await ensureGitRepo(cwd, options);
     const originHeadBranch = await readOriginHeadBranchName(cwd, options);
-    const localBranches = await readLocalBranches(cwd, options);
-    const defaultBranch = resolvePreferredLocalDefaultBranch(
-      localBranches,
+    const defaultBranch = await readPreferredLocalDefaultBranch(
+      cwd,
       originHeadBranch,
+      options,
     );
     const originDefaultBranch = await readOriginDefaultBranch(
       cwd,
+      originHeadBranch,
       defaultBranch,
       options,
     );
@@ -911,10 +948,7 @@ export function createGitQueries(run: GitQueryRunner) {
     if (originHeadBranch !== undefined) {
       return originHeadBranch;
     }
-    return resolvePreferredLocalDefaultBranch(
-      await readLocalBranches(cwd, options),
-      undefined,
-    );
+    return readPreferredLocalDefaultBranch(cwd, undefined, options);
   }
 
   async function readDefaultBranch(
