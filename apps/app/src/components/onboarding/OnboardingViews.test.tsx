@@ -242,12 +242,18 @@ describe("ProjectsStep selection", () => {
 describe("AgentSignInInstruction", () => {
   function renderInstruction(
     url: string | null,
-    overrides: { userCode?: string; paste?: boolean } = {},
+    overrides: {
+      userCode?: string;
+      paste?: boolean;
+      alternate?: "browser" | "code";
+      agentName?: string;
+      onOpenUrl?: (url: string) => void;
+    } = {},
   ) {
     render(
       <p data-testid="instruction">
         <AgentSignInInstruction
-          agentName="Cursor"
+          agentName={overrides.agentName ?? "Cursor"}
           view={{
             guide:
               url === null
@@ -260,8 +266,8 @@ describe("AgentSignInInstruction", () => {
             terminalVisible: false,
             started: url !== null,
           }}
-          alternate={null}
-          onOpenUrl={vi.fn()}
+          alternate={overrides.alternate ?? null}
+          onOpenUrl={overrides.onOpenUrl ?? vi.fn()}
           onUseAlternate={vi.fn()}
         />
       </p>,
@@ -283,10 +289,46 @@ describe("AgentSignInInstruction", () => {
     ).toBe("Sign in on claude.ai, then paste the code it shows you.");
   });
 
-  it("falls back to the browser when the URL has no website", () => {
-    expect(renderInstruction("file:///tmp/sign-in").textContent).toBe(
+  it("links the browser when the URL has no website", () => {
+    const url = "file:///tmp/sign-in";
+    expect(renderInstruction(url).textContent).toBe(
       "Finish signing in in your browser.",
     );
+    expect(
+      screen.getByRole("link", { name: "your browser" }).getAttribute("href"),
+    ).toBe(url);
+  });
+
+  it.each([
+    {
+      name: "Codex browser sign-in",
+      agentName: "Codex",
+      url: "https://auth.openai.com/oauth/authorize?state=abc",
+      overrides: { alternate: "code" as const },
+      site: "auth.openai.com",
+      text: "Sign in on auth.openai.com, or use a code instead.",
+    },
+    {
+      name: "Pi connect sign-in",
+      agentName: "Pi",
+      url: "https://claude.ai/oauth/authorize?code=true&state=abc",
+      overrides: { paste: true },
+      site: "claude.ai",
+      text: "Sign in on claude.ai, then paste the code it shows you.",
+    },
+  ])("links the sign-in page in the $name line", (example) => {
+    const onOpenUrl = vi.fn();
+    const line = renderInstruction(example.url, {
+      ...example.overrides,
+      agentName: example.agentName,
+      onOpenUrl,
+    });
+
+    expect(line.textContent).toBe(example.text);
+    const link = screen.getByRole("link", { name: example.site });
+    expect(link.getAttribute("href")).toBe(example.url);
+    fireEvent.click(link);
+    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(example.url);
   });
 });
 
@@ -299,11 +341,9 @@ describe("AgentSignInPanel", () => {
         view={{ guide: null, terminalVisible: false, started: false }}
         code=""
         codeSubmitted={false}
-        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
-        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -320,11 +360,9 @@ describe("AgentSignInPanel", () => {
         view={{ guide: null, terminalVisible: false, started: true }}
         code=""
         codeSubmitted={false}
-        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
-        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -349,11 +387,9 @@ describe("AgentSignInPanel", () => {
         }}
         code=""
         codeSubmitted={false}
-        alternate={null}
         terminal={null}
         onCodeChange={vi.fn()}
         onSubmitCode={vi.fn()}
-        onOpenUrl={vi.fn()}
         onCopy={vi.fn()}
         onToggleTerminal={vi.fn()}
       />,
@@ -366,80 +402,40 @@ describe("AgentSignInPanel", () => {
     expect(screen.queryByText(/continues automatically/u)).toBeNull();
   });
 
-  it("links the sign-in page when the browser sign-in line has no link", () => {
-    const url = "https://auth.openai.com/oauth/authorize?state=abc";
-    const onOpenUrl = vi.fn();
-    const onCopy = vi.fn();
-    const panel = (alternate: "browser" | "code" | null) => (
-      <AgentSignInPanel
-        connect={false}
-        agentName="Codex"
-        view={{
-          guide: { url, userCode: null, acceptsPastedCode: false },
-          terminalVisible: false,
-          started: true,
-        }}
-        code=""
-        codeSubmitted={false}
-        alternate={alternate}
-        terminal={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onOpenUrl={onOpenUrl}
-        onCopy={onCopy}
-        onToggleTerminal={vi.fn()}
-      />
-    );
-    const { rerender } = render(panel("code"));
+  it.each([
+    { name: "Codex browser", connect: false, acceptsPastedCode: false },
+    { name: "Pi connect", connect: true, acceptsPastedCode: true },
+  ])(
+    "keeps the $name sign-in link out of the panel toolbar",
+    ({ connect, acceptsPastedCode }) => {
+      render(
+        <AgentSignInPanel
+          connect={connect}
+          agentName={connect ? "Pi" : "Codex"}
+          view={{
+            guide: {
+              url: "https://auth.openai.com/oauth/authorize?state=abc",
+              userCode: null,
+              acceptsPastedCode,
+            },
+            terminalVisible: false,
+            started: true,
+          }}
+          code=""
+          codeSubmitted={false}
+          terminal={null}
+          onCodeChange={vi.fn()}
+          onSubmitCode={vi.fn()}
+          onCopy={vi.fn()}
+          onToggleTerminal={vi.fn()}
+        />,
+      );
 
-    const link = screen.getByRole("link", { name: "Open sign-in page" });
-    expect(link.getAttribute("href")).toBe(url);
-    fireEvent.click(link);
-    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(url);
-    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
-    expect(onCopy).toHaveBeenCalledExactlyOnceWith(url);
-
-    rerender(panel(null));
-    expect(
-      screen.queryByRole("link", { name: "Open sign-in page" }),
-    ).toBeNull();
-  });
-
-  it("links the sign-in page next to the paste box when signing in in the agent's terminal", () => {
-    const url = "https://claude.ai/oauth/authorize?code=true&state=abc";
-    const onOpenUrl = vi.fn();
-    const onCopy = vi.fn();
-    render(
-      <AgentSignInPanel
-        connect
-        agentName="Pi"
-        view={{
-          guide: { url, userCode: null, acceptsPastedCode: true },
-          terminalVisible: true,
-          started: true,
-        }}
-        code=""
-        codeSubmitted={false}
-        alternate={null}
-        terminal={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onOpenUrl={onOpenUrl}
-        onCopy={onCopy}
-        onToggleTerminal={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.getByRole("textbox", { name: "Pi authorization code" }),
-    ).toBeTruthy();
-    const link = screen.getByRole("link", { name: "Open sign-in page" });
-    expect(link.getAttribute("href")).toBe(url);
-    fireEvent.click(link);
-    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(url);
-    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
-    expect(onCopy).toHaveBeenCalledExactlyOnceWith(url);
-  });
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
+      expect(screen.getByText("Show terminal")).toBeTruthy();
+    },
+  );
 });
 
 function renderQuiet(agents: OnboardingAgent[]) {

@@ -93,6 +93,7 @@ import {
   STEP_COPY,
   connectAccessUrl,
   connectFlowFailed,
+  signInInstructionReady,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   featuredPluginEntryIds,
@@ -285,20 +286,12 @@ function AgentSignInContainer({
         view={view}
         code={code}
         codeSubmitted={codeSubmitted}
-        alternate={
-          alternate === null
-            ? null
-            : alternate.method === "remote"
-              ? "code"
-              : "browser"
-        }
         terminal={terminal}
         onCodeChange={(next) => {
           setCode(next);
           setCodeSubmitted(false);
         }}
         onSubmitCode={submitCode}
-        onOpenUrl={openUrlInExternalBrowser}
         onCopy={(text) => void copyToClipboardWithToast(text)}
         onToggleTerminal={() => setTerminalChoice(!terminalVisible)}
       />
@@ -497,7 +490,7 @@ function AgentStepContainer({
             : null;
           const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady =
-            view !== null && connectFlow === null && view.started;
+            view !== null && signInInstructionReady(view, connectFlow !== null);
           return {
             id: health.providerId,
             name: health.displayName,
