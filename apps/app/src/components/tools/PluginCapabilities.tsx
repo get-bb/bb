@@ -1,3 +1,4 @@
+import { useOnDemandPluginFrontendsDeferred } from "@/lib/plugin-surface-demand";
 import { pluginHasSettingsSections } from "@/lib/plugin-settings-availability";
 import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -181,11 +182,16 @@ function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
   configurationPath: string | undefined,
+  includeUnloadedSettings: boolean,
 ): PluginCapabilityItem[] {
   const pluginId = plugin.id;
   return [
     ...(plugin.hasSettings ||
-    pluginHasSettingsSections(plugin, slots.settingsSections)
+    pluginHasSettingsSections(
+      plugin,
+      slots.settingsSections,
+      includeUnloadedSettings,
+    )
       ? [
           namedSurface(
             "settings",
@@ -439,11 +445,17 @@ export function PluginIncludes({
   configurationPath?: string;
 }) {
   const slots = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const queryClient = useQueryClient();
   const cachedSkills = queryClient.getQueryData<SkillListResponse>(
     projectSkillsQueryKey(PERSONAL_PROJECT_ID),
   );
-  const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
+  const appItems = pluginAppSurfaceItems(
+    plugin,
+    slots,
+    configurationPath,
+    includeUnloadedSettings,
+  );
 
   const skillDestination = (capabilityId: string): string => {
     const installedSkill = cachedSkills?.skills.find((skill) => {
@@ -586,8 +598,14 @@ function PluginRuntimeStatusAlert({
   reloadPending: boolean;
 }) {
   const { settingsSections } = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const hasSettingsPage =
-    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
+    plugin.hasSettings ||
+    pluginHasSettingsSections(
+      plugin,
+      settingsSections,
+      includeUnloadedSettings,
+    );
   const canOpenSettings =
     plugin.status === "needs-configuration" && hasSettingsPage;
   const canReload =

@@ -1,3 +1,4 @@
+import { useOnDemandPluginFrontendsDeferred } from "@/lib/plugin-surface-demand";
 import { useServerChoices } from "@/hooks/useServerChoices";
 import {
   useCallback,
@@ -60,14 +61,16 @@ export function CommandPaletteBody({
   const optionIdPrefix = useId();
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const pluginSlots = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const settingsSections = useSettingsNavSections(pluginSlots.fileOpeners);
   const pluginSettingsEntries = useMemo(
     () =>
       buildPluginSettingsEntries({
+        includeUnloadedSettings,
         installedPlugins,
         settingsSections: pluginSlots.settingsSections,
       }),
-    [installedPlugins, pluginSlots.settingsSections],
+    [includeUnloadedSettings, installedPlugins, pluginSlots.settingsSections],
   );
   const settingsActions = useMemo(
     () =>

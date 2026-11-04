@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { PluginAppOnDemandSurface } from "@bb/domain";
 
 const demandedSurfaces = new Set<PluginAppOnDemandSurface>();
@@ -29,4 +29,32 @@ export function usePluginSurfaceDemand(
   useEffect(() => {
     demandPluginSurface(surface);
   }, [surface]);
+}
+
+let onDemandFrontendsDeferred = false;
+const deferredListeners = new Set<() => void>();
+
+export function setOnDemandPluginFrontendsDeferred(deferred: boolean): void {
+  if (onDemandFrontendsDeferred === deferred) return;
+  onDemandFrontendsDeferred = deferred;
+  for (const listener of [...deferredListeners]) listener();
+}
+
+function subscribeDeferred(listener: () => void): () => void {
+  deferredListeners.add(listener);
+  return () => {
+    deferredListeners.delete(listener);
+  };
+}
+
+function getDeferredSnapshot(): boolean {
+  return onDemandFrontendsDeferred;
+}
+
+export function useOnDemandPluginFrontendsDeferred(): boolean {
+  return useSyncExternalStore(
+    subscribeDeferred,
+    getDeferredSnapshot,
+    getDeferredSnapshot,
+  );
 }

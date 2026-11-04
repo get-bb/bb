@@ -1119,6 +1119,11 @@ const EXPERIMENT_DEFINITIONS: Record<
   ExperimentKey,
   { label: string; description: string }
 > = {
+  batchedPluginLoading: {
+    label: "Faster plugin loading",
+    description:
+      "Load the plugins the current page needs first, then every other plugin together once the page has settled. Plugins that only add settings or new-thread options load last, or as soon as a settings page or the new-thread composer opens. Applies after a reload.",
+  },
   compactExpiredCache: {
     label: "Compact before resuming expired sessions",
     description:

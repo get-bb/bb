@@ -1,3 +1,4 @@
+import { useOnDemandPluginFrontendsDeferred } from "@/lib/plugin-surface-demand";
 import { pluginHasSettingsSections } from "@/lib/plugin-settings-availability";
 import { PluginNameTag } from "@/components/plugin/management/PluginNameTag";
 import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
@@ -394,6 +395,7 @@ export function PluginDetail({
 }) {
   const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
     enabled: plugin !== null && !plugin.source.startsWith("builtin:"),
   });
@@ -441,7 +443,12 @@ export function PluginDetail({
       plugin.updateState.blockedVersion !== null ||
       plugin.updateState.lastFailure !== null);
   const hasConfiguration =
-    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
+    plugin.hasSettings ||
+    pluginHasSettingsSections(
+      plugin,
+      settingsSections,
+      includeUnloadedSettings,
+    );
 
   const pluginName = plugin.name ?? plugin.id;
   const pluginTitle = splitPluginDisplayName(pluginName);

@@ -191,6 +191,9 @@ connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
+`batchedPluginLoading` loads the plugins the current page needs first, then the
+rest in one batch, and plugins that only add settings or provider inputs last;
+it applies after a reload.
 `narrowPluginCss` serves each plugin a stylesheet that matches only that
 plugin's own UI, which makes style updates cheaper with many plugins; it
 applies after a reload.

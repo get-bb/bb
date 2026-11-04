@@ -42,8 +42,10 @@ function deps(
     flushSlotBatch: () => {},
     warn: () => {},
     priorityPluginIds: () => [],
+    batchedLoading: () => false,
     isSurfaceDemanded: () => false,
     whenPageSettled: async () => {},
+    whenIdleOrDemanded: async () => {},
   };
 }
 

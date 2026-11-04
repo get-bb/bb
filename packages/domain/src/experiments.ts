@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const experimentKeys = [
+  "batchedPluginLoading",
   "compactExpiredCache",
   "dismissReadNotifications",
   "narrowPluginCss",
@@ -27,6 +28,7 @@ export const experimentUpdatesSchema = z.partialRecord(
 export type ExperimentUpdates = z.infer<typeof experimentUpdatesSchema>;
 
 export const defaultExperiments: Experiments = {
+  batchedPluginLoading: false,
   compactExpiredCache: false,
   dismissReadNotifications: false,
   narrowPluginCss: false,
@@ -42,6 +44,7 @@ export const defaultExperiments: Experiments = {
 };
 
 export const earlyAdopterExperiments: Experiments = {
+  batchedPluginLoading: false,
   compactExpiredCache: true,
   dismissReadNotifications: false,
   narrowPluginCss: false,

@@ -50,11 +50,17 @@ import {
   retainPluginCss,
 } from "./plugin-css";
 import { frontendPriorityPluginIds } from "./plugin-surface-providers";
-import { PLUGIN_FRONTEND_BOOT_TIMEOUT_MS } from "./plugin-frontend-boot-schedule";
+import {
+  PLUGIN_FRONTEND_BOOT_TIMEOUT_MS,
+  requestBrowserIdle,
+} from "./plugin-frontend-boot-schedule";
+import { batchedPluginLoadingEnabled } from "./batched-plugin-loading";
+import { getPluginSettingsRoutePluginId } from "./route-paths";
 import { whenRouteContentPainted } from "./route-content-paint";
 import {
   isPluginSurfaceDemanded,
   onPluginSurfaceDemand,
+  setOnDemandPluginFrontendsDeferred,
 } from "./plugin-surface-demand";
 import { prefetchPluginModule } from "./plugin-module-preload";
 import {
@@ -357,6 +363,9 @@ export async function fetchFrontendCandidates(
 
 export { applyPluginCss } from "./plugin-css";
 
+const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
+const PLUGIN_FRONTEND_DOWNLOAD_AHEAD = 3;
+
 export function orderPluginFrontendCandidates(
   candidates: readonly PluginFrontendCandidate[],
   priorityPluginIds: readonly string[],
@@ -370,6 +379,25 @@ export function orderPluginFrontendCandidates(
       rank(left.pluginId) - rank(right.pluginId) ||
       left.bundle.jsBytes - right.bundle.jsBytes,
   );
+}
+
+async function runWithConcurrencyLimit<T>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      await worker(items[index]!, index);
+    }
+  };
+  const lanes = Array.from(
+    { length: Math.max(1, Math.min(limit, items.length)) },
+    () => lane(),
+  );
+  await Promise.all(lanes);
 }
 
 function appendPluginImportRetry(url: string, retryCount: number): string {
@@ -420,8 +448,10 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
+  batchedLoading: () => boolean;
   isSurfaceDemanded: (surface: PluginAppOnDemandSurface) => boolean;
   whenPageSettled: () => Promise<void>;
+  whenIdleOrDemanded: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -714,11 +744,7 @@ export async function reconcilePluginFrontends(
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
   if (
     [...state.records.keys()].some((pluginId) => !candidateIds.has(pluginId)) ||
-    candidates.some(
-      (candidate) =>
-        isCandidateWanted(candidate, state, deps, deps.priorityPluginIds()) &&
-        !isCandidateApplied(candidate, state),
-    )
+    candidates.some((candidate) => !isCandidateApplied(candidate, state))
   ) {
     onChanges?.();
   }
@@ -743,22 +769,17 @@ export async function reconcilePluginFrontends(
   }
 }
 
-function isCandidateWanted(
-  candidate: PluginFrontendCandidate,
+async function reconcileAll(
+  candidates: readonly PluginFrontendCandidate[],
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
-  priorityPluginIds: readonly string[],
-): boolean {
-  const surfaces = candidate.bundle.onDemandSurfaces;
-  return (
-    surfaces.length === 0 ||
-    priorityPluginIds.includes(candidate.pluginId) ||
-    state.records.has(candidate.pluginId) ||
-    surfaces.some(deps.isSurfaceDemanded)
+): Promise<void> {
+  await Promise.all(
+    candidates.map((candidate) => reconcileCandidate(candidate, state, deps)),
   );
 }
 
-async function reconcileCandidates(
+async function reconcileCandidatesInBatches(
   candidates: readonly PluginFrontendCandidate[],
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
@@ -768,22 +789,84 @@ async function reconcileCandidates(
   const ordered = orderPluginFrontendCandidates(candidates, priorityPluginIds);
   const isPriority = (candidate: PluginFrontendCandidate) =>
     priorityPluginIds.includes(candidate.pluginId);
-  await Promise.all(
-    ordered
-      .filter(isPriority)
-      .map((candidate) => reconcileCandidate(candidate, state, deps)),
-  );
+  await reconcileAll(ordered.filter(isPriority), state, deps);
   priorityLoaded();
   const rest = ordered.filter((candidate) => !isPriority(candidate));
   if (rest.length === 0) return;
   await deps.whenPageSettled();
   if (state.tornDown) return;
-  await Promise.all(
-    rest
-      .filter((candidate) =>
-        isCandidateWanted(candidate, state, deps, priorityPluginIds),
-      )
-      .map((candidate) => reconcileCandidate(candidate, state, deps)),
+  const loadsNow = (candidate: PluginFrontendCandidate) =>
+    candidate.bundle.onDemandSurfaces.length === 0 ||
+    state.records.has(candidate.pluginId) ||
+    candidate.bundle.onDemandSurfaces.some(deps.isSurfaceDemanded);
+  const batch = rest.filter(loadsNow);
+  const last = rest.filter((candidate) => !loadsNow(candidate));
+  await reconcileAll(batch, state, deps);
+  if (last.length === 0) return;
+  await deps.whenIdleOrDemanded();
+  if (state.tornDown) return;
+  await reconcileAll(last, state, deps);
+}
+
+async function reconcileCandidates(
+  candidates: readonly PluginFrontendCandidate[],
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+  priorityLoaded: () => void,
+): Promise<void> {
+  if (deps.batchedLoading()) {
+    await reconcileCandidatesInBatches(candidates, state, deps, priorityLoaded);
+    return;
+  }
+  await reconcileCandidatesInLanes(candidates, state, deps, priorityLoaded);
+}
+
+async function reconcileCandidatesInLanes(
+  candidates: readonly PluginFrontendCandidate[],
+  state: PluginFrontendReconcileState,
+  deps: PluginFrontendReconcileDeps,
+  priorityLoaded: () => void,
+): Promise<void> {
+  const priorityPluginIds = deps.priorityPluginIds();
+  const ordered = orderPluginFrontendCandidates(candidates, priorityPluginIds);
+  let pendingPriority = ordered.filter((candidate) =>
+    priorityPluginIds.includes(candidate.pluginId),
+  ).length;
+  let untaken = 0;
+  const prefetched = new Set<string>();
+  const prefetchAhead = () => {
+    if (pendingPriority > 0) return;
+    for (const candidate of ordered.slice(
+      untaken,
+      untaken + PLUGIN_FRONTEND_DOWNLOAD_AHEAD,
+    )) {
+      if (
+        prefetched.has(candidate.pluginId) ||
+        !candidate.bundle.compatible ||
+        isCandidateApplied(candidate, state)
+      ) {
+        continue;
+      }
+      prefetched.add(candidate.pluginId);
+      deps.prefetchModule(candidate.bundle.jsUrl);
+    }
+  };
+  if (pendingPriority === 0) priorityLoaded();
+  await runWithConcurrencyLimit(
+    ordered,
+    PLUGIN_FRONTEND_LOAD_CONCURRENCY,
+    async (candidate, index) => {
+      untaken = index + 1;
+      prefetchAhead();
+      try {
+        await reconcileCandidate(candidate, state, deps);
+      } finally {
+        if (priorityPluginIds.includes(candidate.pluginId)) {
+          pendingPriority -= 1;
+          if (pendingPriority === 0) priorityLoaded();
+        }
+      }
+    },
   );
 }
 
@@ -1089,6 +1172,30 @@ function whenQueriesIdle(queryClient: QueryClient): Promise<void> {
   });
 }
 
+function whenIdleOrDemanded(): Promise<void> {
+  return new Promise((resolve) => {
+    let cancelIdle = () => {};
+    const finish = () => {
+      unsubscribe();
+      cancelIdle();
+      resolve();
+    };
+    const unsubscribe = onPluginSurfaceDemand(finish);
+    cancelIdle = requestBrowserIdle(finish);
+  });
+}
+
+function browserPriorityPluginIds(): readonly string[] {
+  const pathname = window.location.pathname;
+  const pluginIds = frontendPriorityPluginIds(pathname);
+  const settingsPluginId = batchedPluginLoadingEnabled()
+    ? getPluginSettingsRoutePluginId(pathname)
+    : null;
+  return settingsPluginId === null || pluginIds.includes(settingsPluginId)
+    ? pluginIds
+    : [settingsPluginId, ...pluginIds];
+}
+
 let pageSettled: Promise<void> | null = null;
 
 function whenPageSettled(): Promise<void> {
@@ -1113,9 +1220,11 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchCss: prefetchPluginCss,
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
-  priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
+  priorityPluginIds: browserPriorityPluginIds,
+  batchedLoading: batchedPluginLoadingEnabled,
   isSurfaceDemanded: isPluginSurfaceDemanded,
   whenPageSettled,
+  whenIdleOrDemanded,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
@@ -1183,6 +1292,7 @@ function installPluginFrontendPageLifecycle(): void {
 
 export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
+    setOnDemandPluginFrontendsDeferred(batchedPluginLoadingEnabled());
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
     await reconcilePluginFrontends(state, browserReconcileDeps);
@@ -1241,7 +1351,7 @@ export function schedulePluginFrontendReconcile(): void {
 }
 
 function loadDemandedPluginFrontends(): void {
-  if (bootPromise === null) return;
+  if (bootPromise === null || !batchedPluginLoadingEnabled()) return;
   liveReconcileScheduler().flush();
 }
 

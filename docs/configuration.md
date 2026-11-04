@@ -891,6 +891,17 @@ either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
+- `batchedPluginLoading` changes the order plugin frontends load in. The
+  plugins the current page needs (the surface providers, an open plugin panel's
+  plugin, or the plugin whose settings page is open) load first and together.
+  Every other plugin then loads in one batch once the page has painted and its
+  first reads have finished. Plugins whose built frontend only adds settings
+  sections or environment and machine provider inputs
+  (`app.bundle.onDemandSurfaces` in the plugin list) load last, at browser
+  idle, or as soon as a settings page or the new-thread composer shows one of
+  their surfaces. Off, plugins load three at a time in priority order. The app
+  reads the experiment when it boots plugins, so a toggle applies after a
+  reload.
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -981,6 +992,7 @@ either way.
   plugin releases can go out ahead of a retry scheduled for later (for example
   a provider-retry row waiting hours for a subscription window) and overtake
   it; with it, those rows wait for the retry.
+
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,

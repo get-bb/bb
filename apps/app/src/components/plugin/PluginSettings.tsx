@@ -1,3 +1,4 @@
+import { useOnDemandPluginFrontendsDeferred } from "@/lib/plugin-surface-demand";
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { useEffect, useId, useState, type FocusEvent } from "react";
@@ -592,11 +593,17 @@ function PluginSettingsContent({
 }) {
   const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const { toggle, enabled } = usePluginEnabledMutation(plugin, () =>
     invalidateMachineProviders({ queryClient }),
   );
   const hasAvailableSettings =
-    plugin.hasSettings || pluginHasSettingsSections(plugin, settingsSections);
+    plugin.hasSettings ||
+    pluginHasSettingsSections(
+      plugin,
+      settingsSections,
+      includeUnloadedSettings,
+    );
   return (
     <div className="mx-auto w-full max-w-5xl">
       <PluginSettingsDetailsLink
@@ -647,9 +654,11 @@ function PluginSettingsContent({
 
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const hasSettingsSections = pluginHasSettingsSections(
     plugin,
     settingsSections,
+    includeUnloadedSettings,
   );
   const settingsAvailable = arePluginSettingsAvailable(plugin);
   if (!plugin.hasSettings && !hasSettingsSections) return null;

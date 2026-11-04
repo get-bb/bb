@@ -17,11 +17,13 @@ export function arePluginSettingsAvailable(
 export function pluginHasSettingsSections(
   plugin: Pick<InstalledPlugin, "app" | "enabled" | "id" | "status">,
   settingsSections: readonly { pluginId: string }[],
+  includeUnloaded: boolean,
 ): boolean {
   if (settingsSections.some((section) => section.pluginId === plugin.id))
     return true;
   const bundle = plugin.app.bundle;
   return (
+    includeUnloaded &&
     bundle !== null &&
     bundle.compatible &&
     bundle.onDemandSurfaces.includes("settings-section") &&

@@ -1,3 +1,4 @@
+import { useOnDemandPluginFrontendsDeferred } from "@/lib/plugin-surface-demand";
 import { useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
@@ -106,6 +107,7 @@ export function useSettingsNavSections(
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { fileOpeners, settingsSections } = usePluginSlots();
+  const includeUnloadedSettings = useOnDemandPluginFrontendsDeferred();
   const sections = useSettingsNavSections(fileOpeners);
   const pluginListQuery = usePluginList({ enabled: true });
 
@@ -114,6 +116,7 @@ export function useSettingsNavState(): SettingsNavState {
 
   const installedPlugins = pluginListQuery.data?.plugins ?? [];
   const pluginEntries = buildPluginSettingsEntries({
+    includeUnloadedSettings,
     installedPlugins,
     settingsSections,
   });

@@ -26,6 +26,7 @@ export interface PluginSettingsEntry {
 }
 
 interface BuildPluginSettingsEntriesArgs {
+  includeUnloadedSettings: boolean;
   installedPlugins: readonly PluginSettingsCandidate[];
   settingsSections: readonly PluginSettingsSectionOwner[];
 }
@@ -38,7 +39,11 @@ export function buildPluginSettingsEntries(
       (plugin) =>
         plugin.enabled &&
         (plugin.hasSettings ||
-          pluginHasSettingsSections(plugin, args.settingsSections)),
+          pluginHasSettingsSections(
+            plugin,
+            args.settingsSections,
+            args.includeUnloadedSettings,
+          )),
     )
     .map((plugin) => ({
       hasSettingsForm: plugin.hasSettings && arePluginSettingsAvailable(plugin),

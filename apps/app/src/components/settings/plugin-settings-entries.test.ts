@@ -42,6 +42,7 @@ function candidate(
 describe("buildPluginSettingsEntries", () => {
   it("only includes enabled plugins with declared or custom settings", () => {
     const entries = buildPluginSettingsEntries({
+      includeUnloadedSettings: false,
       installedPlugins: [
         candidate({ id: "workflows" }),
         candidate({ enabled: false, id: "disabled", name: "Disabled" }),
@@ -74,6 +75,7 @@ describe("buildPluginSettingsEntries", () => {
 
   it("reports a settings form only while the plugin's status shows one", () => {
     const entries = buildPluginSettingsEntries({
+      includeUnloadedSettings: false,
       installedPlugins: [
         candidate({ hasSettings: true, id: "ready", status: "running" }),
         candidate({
@@ -95,6 +97,7 @@ describe("buildPluginSettingsEntries", () => {
 
   it("lists a frontend that loads with its settings page before it has loaded", () => {
     const entries = buildPluginSettingsEntries({
+      includeUnloadedSettings: true,
       installedPlugins: [
         candidate({ app: deferredApp(["settings-section"]), id: "keep-awake" }),
         candidate({
@@ -115,5 +118,17 @@ describe("buildPluginSettingsEntries", () => {
     });
 
     expect(entries.map((entry) => entry.id)).toEqual(["keep-awake"]);
+    expect(
+      buildPluginSettingsEntries({
+        includeUnloadedSettings: false,
+        installedPlugins: [
+          candidate({
+            app: deferredApp(["settings-section"]),
+            id: "keep-awake",
+          }),
+        ],
+        settingsSections: [],
+      }),
+    ).toEqual([]);
   });
 });

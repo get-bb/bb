@@ -73,8 +73,10 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    batchedLoading: () => false,
     isSurfaceDemanded: () => false,
     whenPageSettled: async () => {},
+    whenIdleOrDemanded: async () => {},
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
     ...overrides,
@@ -109,12 +111,8 @@ describe("orderPluginFrontendCandidates", () => {
 });
 
 describe("reconcilePluginFrontends load scheduling", () => {
-  it("imports priority plugins first, then every other bundle at once after the page settles", async () => {
+  it("imports at most PLUGIN_FRONTEND_LOAD_CONCURRENCY bundles at once, in priority order", async () => {
     const imports = makeDeferredImports();
-    let settle = () => {};
-    const settled = new Promise<void>((resolve) => {
-      settle = resolve;
-    });
     const state = createPluginFrontendReconcileState();
     const deps = makeDeps(
       [
@@ -123,12 +121,10 @@ describe("reconcilePluginFrontends load scheduling", () => {
         candidate("small", 100),
         candidate("tiny", 10),
         candidate("panel", 700),
-        candidate("thread-list", 800),
       ],
       {
         importModule: imports.importModule,
-        priorityPluginIds: () => ["panel", "thread-list"],
-        whenPageSettled: () => settled,
+        priorityPluginIds: () => ["panel"],
       },
     );
     const done = reconcilePluginFrontends(state, deps);
@@ -136,33 +132,30 @@ describe("reconcilePluginFrontends load scheduling", () => {
 
     expect(imports.started).toEqual([
       "/api/v1/plugins/panel/assets/app.js?h=h",
-      "/api/v1/plugins/thread-list/assets/app.js?h=h",
-    ]);
-
-    await imports.resolveNext();
-    await imports.resolveNext();
-    expect(imports.started).toHaveLength(2);
-
-    settle();
-    for (let i = 0; i < 10; i += 1) await Promise.resolve();
-    expect(imports.started.slice(2)).toEqual([
       "/api/v1/plugins/tiny/assets/app.js?h=h",
       "/api/v1/plugins/small/assets/app.js?h=h",
-      "/api/v1/plugins/mid/assets/app.js?h=h",
-      "/api/v1/plugins/big/assets/app.js?h=h",
     ]);
 
-    while (imports.pending() > 0) await imports.resolveNext();
+    await imports.resolveNext();
+    expect(imports.started).toHaveLength(4);
+    expect(imports.started[3]).toBe("/api/v1/plugins/mid/assets/app.js?h=h");
+
+    await imports.resolveNext();
+    expect(imports.started).toHaveLength(5);
+    expect(imports.started[4]).toBe("/api/v1/plugins/big/assets/app.js?h=h");
+
+    await imports.resolveNext();
+    await imports.resolveNext();
+    await imports.resolveNext();
     await done;
     expect([...state.records.keys()].sort()).toEqual([
       "big",
       "mid",
       "panel",
       "small",
-      "thread-list",
       "tiny",
     ]);
-    expect(deps.setRegistrations).toHaveBeenCalledTimes(6);
+    expect(deps.setRegistrations).toHaveBeenCalledTimes(5);
   });
 
   it("publishes priority plugins while the remaining imports are still pending", async () => {
@@ -209,69 +202,41 @@ describe("reconcilePluginFrontends load scheduling", () => {
     ]);
   });
 
-  it("leaves on-demand frontends unloaded until one of their surfaces is demanded", async () => {
-    const demanded = new Set<PluginAppOnDemandSurface>();
-    const importModule = vi.fn(async () => pluginModule());
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps(
-      [
-        candidate("eager", 1),
-        candidate("keep-awake", 2, ["settings-section"]),
-        candidate("worktree", 3, ["environment-provider-inputs"]),
-      ],
-      {
-        importModule,
-        isSurfaceDemanded: (surface) => demanded.has(surface),
-      },
-    );
-
-    await reconcilePluginFrontends(state, deps);
-    expect([...state.records.keys()]).toEqual(["eager"]);
-
-    demanded.add("settings-section");
-    await reconcilePluginFrontends(state, deps);
-    expect([...state.records.keys()].sort()).toEqual(["eager", "keep-awake"]);
-    expect(importModule).toHaveBeenCalledTimes(2);
-  });
-
-  it("loads an on-demand frontend the current route needs without a demand", async () => {
-    const state = createPluginFrontendReconcileState();
-    await reconcilePluginFrontends(
-      state,
-      makeDeps([candidate("keep-awake", 2, ["settings-section"])], {
-        priorityPluginIds: () => ["keep-awake"],
-      }),
-    );
-    expect(state.records.get("keep-awake")?.status).toBe("loaded");
-  });
-
-  it("keeps a loaded on-demand frontend and reloads it when its bundle changes", async () => {
-    let demanded = true;
-    let hash = "h1";
-    const importModule = vi.fn(async () => pluginModule());
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([], {
-      fetchCandidates: async () => [
+  it("downloads the next bundles ahead of the import lanes once priority plugins load", async () => {
+    const imports = makeDeferredImports();
+    const prefetchModule = vi.fn();
+    const done = reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps(
+        [
+          candidate("thread-list", 900),
+          candidate("a", 10),
+          candidate("b", 20),
+          candidate("c", 30),
+          candidate("d", 40),
+          candidate("e", 50),
+          candidate("f", 60),
+        ],
         {
-          pluginId: "keep-awake",
-          bundle: {
-            ...candidate("keep-awake", 2, ["settings-section"]).bundle,
-            hash,
-          },
+          importModule: imports.importModule,
+          priorityPluginIds: () => ["thread-list"],
+          prefetchModule,
         },
-      ],
-      importModule,
-      isSurfaceDemanded: () => demanded,
-    });
+      ),
+    );
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(prefetchModule).not.toHaveBeenCalled();
 
-    await reconcilePluginFrontends(state, deps);
-    demanded = false;
-    hash = "h2";
-    await reconcilePluginFrontends(state, deps);
+    await imports.resolveNext();
+    const prefetchedIds = () =>
+      prefetchModule.mock.calls.map(([url]) => String(url).split("/")[4]);
+    expect(prefetchedIds()).toEqual(["d", "e", "f"]);
 
-    expect(importModule).toHaveBeenCalledTimes(2);
-    expect(state.appliedHashes.get("keep-awake")).toBe("h2");
-    expect(deps.removeRegistrations).not.toHaveBeenCalled();
+    while (imports.started.length < 7 || imports.pending() > 0) {
+      await imports.resolveNext();
+    }
+    await done;
+    expect(prefetchedIds()).toEqual(["d", "e", "f"]);
   });
 
   it("a rejected import in one lane does not stall the remaining candidates", async () => {
@@ -289,5 +254,169 @@ describe("reconcilePluginFrontends load scheduling", () => {
     expect(state.records.get("broken")?.status).toBe("failed");
     expect(state.records.get("fine")?.status).toBe("loaded");
     expect(state.records.get("also")?.status).toBe("loaded");
+  });
+});
+
+describe("reconcilePluginFrontends batched loading", () => {
+  it("imports priority plugins first, then every other bundle at once after the page settles", async () => {
+    const imports = makeDeferredImports();
+    let settle = () => {};
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps(
+      [
+        candidate("big", 900),
+        candidate("mid", 500),
+        candidate("small", 100),
+        candidate("tiny", 10),
+        candidate("panel", 700),
+        candidate("thread-list", 800),
+      ],
+      {
+        importModule: imports.importModule,
+        priorityPluginIds: () => ["panel", "thread-list"],
+        batchedLoading: () => true,
+        whenPageSettled: () => settled,
+      },
+    );
+    const done = reconcilePluginFrontends(state, deps);
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+
+    expect(imports.started).toEqual([
+      "/api/v1/plugins/panel/assets/app.js?h=h",
+      "/api/v1/plugins/thread-list/assets/app.js?h=h",
+    ]);
+
+    await imports.resolveNext();
+    await imports.resolveNext();
+    expect(imports.started).toHaveLength(2);
+
+    settle();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(imports.started.slice(2)).toEqual([
+      "/api/v1/plugins/tiny/assets/app.js?h=h",
+      "/api/v1/plugins/small/assets/app.js?h=h",
+      "/api/v1/plugins/mid/assets/app.js?h=h",
+      "/api/v1/plugins/big/assets/app.js?h=h",
+    ]);
+
+    while (imports.pending() > 0) await imports.resolveNext();
+    await done;
+    expect([...state.records.keys()].sort()).toEqual([
+      "big",
+      "mid",
+      "panel",
+      "small",
+      "thread-list",
+      "tiny",
+    ]);
+    expect(deps.setRegistrations).toHaveBeenCalledTimes(6);
+  });
+
+  it("loads on-demand frontends last, once the page is idle", async () => {
+    let idle = () => {};
+    const idled = new Promise<void>((resolve) => {
+      idle = resolve;
+    });
+    const state = createPluginFrontendReconcileState();
+    const done = reconcilePluginFrontends(
+      state,
+      makeDeps(
+        [
+          candidate("eager", 1),
+          candidate("keep-awake", 2, ["settings-section"]),
+          candidate("worktree", 3, ["environment-provider-inputs"]),
+        ],
+        { batchedLoading: () => true, whenIdleOrDemanded: () => idled },
+      ),
+    );
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    expect([...state.records.keys()]).toEqual(["eager"]);
+
+    idle();
+    await done;
+    expect([...state.records.keys()].sort()).toEqual([
+      "eager",
+      "keep-awake",
+      "worktree",
+    ]);
+  });
+
+  it("loads a demanded on-demand frontend with the batch", async () => {
+    const importModule = vi.fn(async () => pluginModule());
+    const state = createPluginFrontendReconcileState();
+    await reconcilePluginFrontends(
+      state,
+      makeDeps(
+        [
+          candidate("eager", 1),
+          candidate("keep-awake", 2, ["settings-section"]),
+        ],
+        {
+          batchedLoading: () => true,
+          importModule,
+          isSurfaceDemanded: (surface) => surface === "settings-section",
+          whenIdleOrDemanded: () => new Promise(() => {}),
+        },
+      ),
+    );
+    expect([...state.records.keys()].sort()).toEqual(["eager", "keep-awake"]);
+    expect(importModule).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads an on-demand frontend the current route needs first", async () => {
+    const imports = makeDeferredImports();
+    const done = reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps(
+        [
+          candidate("eager", 1),
+          candidate("keep-awake", 2, ["settings-section"]),
+        ],
+        {
+          batchedLoading: () => true,
+          importModule: imports.importModule,
+          priorityPluginIds: () => ["keep-awake"],
+        },
+      ),
+    );
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(imports.started).toEqual([
+      "/api/v1/plugins/keep-awake/assets/app.js?h=h",
+    ]);
+    while (imports.pending() > 0) await imports.resolveNext();
+    await done;
+  });
+
+  it("keeps a loaded on-demand frontend in the batch and reloads it when its bundle changes", async () => {
+    let hash = "h1";
+    const importModule = vi.fn(async () => pluginModule());
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([], {
+      batchedLoading: () => true,
+      fetchCandidates: async () => [
+        {
+          pluginId: "keep-awake",
+          bundle: {
+            ...candidate("keep-awake", 2, ["settings-section"]).bundle,
+            hash,
+          },
+        },
+      ],
+      importModule,
+    });
+
+    await reconcilePluginFrontends(state, deps);
+    hash = "h2";
+    await reconcilePluginFrontends(state, {
+      ...deps,
+      whenIdleOrDemanded: () => new Promise(() => {}),
+    });
+
+    expect(importModule).toHaveBeenCalledTimes(2);
+    expect(state.appliedHashes.get("keep-awake")).toBe("h2");
+    expect(deps.removeRegistrations).not.toHaveBeenCalled();
   });
 });

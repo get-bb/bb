@@ -276,8 +276,10 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    batchedLoading: () => false,
     isSurfaceDemanded: () => false,
     whenPageSettled: async () => {},
+    whenIdleOrDemanded: async () => {},
   };
 }
 
