@@ -17,7 +17,11 @@ jobs:
         with:
           node-version: 22.x
           package-manager-cache: false
-      - shell: ${{ matrix.shell }}
+      - if: matrix.shell == 'bash'
+        shell: bash
+        run: node .github/diagnostics/process-identity.mjs
+      - if: matrix.shell == 'pwsh'
+        shell: pwsh
         run: node .github/diagnostics/process-identity.mjs
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
