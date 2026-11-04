@@ -760,8 +760,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks for updates after marketplace removal converts provenance", async () => {
-    await installUpdater();
-    await service.remove("updater");
     await service.installCatalogPlugin({
       marketplace: "acme-plugins",
       entryId: "updater",
