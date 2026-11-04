@@ -163,11 +163,19 @@ describe("createServer (connect another bb)", () => {
   it("enforces the per-account server cap", async () => {
     await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    for (let i = 1; i < MAX_PER_ACCOUNT; i++) {
-      expect("ok" in (await createServer(deps, "u1", `sawyer-${i}`))).toBe(
-        true,
-      );
-    }
+    const createdAt = new Date();
+    await db.insert(server).values(
+      Array.from({ length: MAX_PER_ACCOUNT - 2 }, (_, index) => ({
+        id: `seeded-${index + 1}`,
+        userId: "u1",
+        name: `sawyer-${index + 1}`,
+        subdomain: `sawyer-${index + 1}`,
+        createdAt,
+      })),
+    );
+    expect(
+      "ok" in (await createServer(deps, "u1", `sawyer-${MAX_PER_ACCOUNT - 1}`)),
+    ).toBe(true);
     expect(
       await db.select().from(server).where(eq(server.userId, "u1")),
     ).toHaveLength(MAX_PER_ACCOUNT);
