@@ -49,6 +49,7 @@ Part 1: do these steps for each repo.
 5. If Scripts is yes, read .conductor/settings.toml and .conductor/settings.local.toml in the main checkout, or conductor.json if neither exists, and write the results in the main checkout:
    - setup goes in .bb-env-setup.sh, which bb runs in each new worktree.
    - archive goes in .bb-env-teardown.sh, which bb runs before it removes a worktree it made.
+   - If .bb-env-setup.sh or .bb-env-teardown.sh already exists, show me the current file next to your version and ask before changing it.
    - file_include_globs goes in .worktreeinclude. Keep an existing .worktreeinclude as it is; bb reads the same file. If neither is set, Conductor copied .env* files, so write .env* there.
    - Replace $CONDUCTOR_WORKSPACE_PATH with $PWD, $CONDUCTOR_WORKSPACE_NAME with $(basename "$PWD"), $CONDUCTOR_ROOT_PATH with $(git worktree list --porcelain | sed -n '1s/^worktree //p'), and $CONDUCTOR_DEFAULT_BRANCH with the default branch name.
    - bb doesn't assign ports, so drop --port $CONDUCTOR_PORT and let the server pick a free port.
@@ -66,7 +67,7 @@ Part 2: Conductor Cloud. Ask me whether I used it. If I did:
    Set up only what I pick, after I say yes. For a plugin, install it with bb plugin install and tell me where in Settings to connect my account.
 
 Part 3: a Run button. If any repo had run scripts, ask me whether I want a Run button in bb for them. If I do:
-8. Build a small bb plugin. Read bb plugin new --help and the plugin guide it points to, and scaffold it with bb plugin new run-button in a folder I approve.
+8. Build a small bb plugin. Use the bb-plugin-authoring skill that ships with bb and bb plugin new --help, and scaffold it with bb plugin new run-button in a folder I approve.
    - It adds a Run button to the thread header that opens a terminal in the thread's folder and starts that repo's run command there.
    - Keep each repo's commands in the plugin's settings, filled in from the Conductor run scripts without their port flags.
    - Build it with bb plugin build and install it with bb plugin install <folder>.
