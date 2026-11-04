@@ -32,6 +32,7 @@ type RestartResumeDeps = LoggedPendingInteractionWorkSessionDeps;
 const RESTART_RESUME_DELAY_MS = 5_000;
 const MAX_RESTART_RESUME_ATTEMPT = 4;
 const MAX_NAMED_COMMAND_CHARS = 200;
+const MAX_NAMED_JOBS = 10;
 
 const commandItemDataSchema = z.object({
   item: z.object({ command: z.string().min(1) }),
@@ -121,31 +122,44 @@ function listStoppedBackgroundJobsByThread(
   return jobsByThread;
 }
 
+function namedJobs(lead: string, jobs: readonly string[]): string {
+  if (jobs.length === 1) {
+    return `${lead}: ${jobs[0]}. `;
+  }
+  const lines = jobs.slice(0, MAX_NAMED_JOBS).map((job) => `- ${job}`);
+  if (jobs.length > MAX_NAMED_JOBS) {
+    lines.push(`- and ${jobs.length - MAX_NAMED_JOBS} more`);
+  }
+  return `${lead}:\n${lines.join("\n")}\n\n`;
+}
+
 function cutTurnContinuation(args: {
   command: string | null;
   jobs: readonly string[];
 }): string {
-  const stoppedJobs =
-    args.jobs.length === 0
-      ? ""
-      : ` The restart also stopped this background work: ${args.jobs.join(", ")}. Check how far each got, and restart one only when that is safe.`;
-  if (args.command === null) {
-    return renderTemplate("systemMessageRestartResume", {
-      interrupted: "while you were working",
-      check: `The restart interrupted your turn; the user did not, even if your history shows it as interrupted or rejected by the user. Check whether your last step finished or is still running, then continue the task without repeating work that already happened.${stoppedJobs}`,
-    });
+  const cut =
+    args.command === null
+      ? "while you were working. The restart cut off your turn, not the user, even if your history says the user rejected it. Check whether your last step finished, then continue the task without repeating work."
+      : `while you were running \`${args.command}\`. The restart cut it off, not the user, even if your history says the user rejected it. Check what it finished, then continue the task, rerunning it only if that is safe.`;
+  if (args.jobs.length === 0) {
+    return renderTemplate("systemMessageRestartResume", { details: cut });
   }
+  const check =
+    args.jobs.length === 1
+      ? "Check how far it got, and restart it only if that is safe."
+      : "Check how far each got, and restart only what is safe to restart.";
   return renderTemplate("systemMessageRestartResume", {
-    interrupted: `while you were running \`${args.command}\``,
-    check: `The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user. It may have completed, partly completed, never run, or still be running, so check its effects, then continue the task, rerunning it only if that is safe.${stoppedJobs}`,
+    details: `${cut} ${namedJobs("It also stopped this background work", args.jobs)}${check}`,
   });
 }
 
 function stoppedBackgroundWorkContinuation(jobs: readonly string[]): string {
+  const check =
+    jobs.length === 1
+      ? "The user didn't stop it. Check whether it's still running and how far it got, then restart it only if that is safe."
+      : "The user didn't stop them. Check whether each is still running and how far it got, then restart each only if that is safe.";
   return renderTemplate("systemMessageRestartResume", {
-    interrupted: `while this background work was running: ${jobs.join(", ")}`,
-    check:
-      "The restart may have stopped it; the user did not, even if your history shows it as stopped or killed. Check whether each is still running and how far it got, and restart one only when that is safe; otherwise explain what needs attention.",
+    details: `${namedJobs("and may have stopped this background work", jobs)}${check}`,
   });
 }
 

@@ -4731,7 +4731,7 @@ export function listOpenBackgroundTaskItemRowsForHost(
         )`,
       ),
     )
-    .orderBy(events.threadId, events.itemId)
+    .orderBy(events.threadId, events.sequence)
     .all();
 
   return rows.flatMap((row) =>

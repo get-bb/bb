@@ -955,11 +955,11 @@ either way.
   The retry is the same row as `bb thread retry`, titled "Resume after bb
   restarted" in the app's queue and in `bb thread queue list`. When the provider had
   accepted the turn's input, it sends an agent-only message instead of
-  "Please continue.": it says bb or the machine restarted, names the command
-  the turn was running and any background work the restart stopped (command
-  and description), says the restart, not the user, interrupted or rejected
-  them, and asks the agent to check their effects before continuing or
-  rerunning them. Otherwise it sends the original input. A message you send
+  "Please continue.": it says bb restarted, names the command the turn was
+  running and any background work the restart stopped (command and
+  description, one per line when there are several, up to ten), says the
+  restart, not the user, cut them off, and asks the agent to check their
+  effects before continuing or rerunning them. Otherwise it sends the original input. A message you send
   (or Send now) before it goes out overtakes it. Turns stopped by the user,
   threads waiting on a question or approval, and archived threads are not
   resumed, and a turn is not retried again once its retry chain reaches

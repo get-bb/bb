@@ -42,7 +42,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const HOST_ID = "host-restart";
 const RESUMED_WHILE_WORKING = expect.stringContaining(
-  "bb restarted, or the machine running this thread did, while you were working.",
+  "bb restarted while you were working. The restart cut off your turn, not the user, even if your history says the user rejected it.",
 );
 const WORKSPACE_PATH = "/tmp/restart-resume-project";
 
@@ -637,7 +637,7 @@ describe("resuming threads after a restart", () => {
             text: [
               "[bb system]",
               "",
-              "bb restarted, or the machine running this thread did, while this background work was running: `./migrate.sh` (Run database migration). The restart may have stopped it; the user did not, even if your history shows it as stopped or killed. Check whether each is still running and how far it got, and restart one only when that is safe; otherwise explain what needs attention.",
+              "bb restarted and may have stopped this background work: `./migrate.sh` (Run database migration). The user didn't stop it. Check whether it's still running and how far it got, then restart it only if that is safe.",
             ].join("\n"),
           },
         ],
@@ -646,6 +646,40 @@ describe("resuming threads after a restart", () => {
         expect(queue(harness, other.thread.id)).toEqual([]);
         expect(turnRequests(harness, other.thread.id)).toHaveLength(1);
       }
+    });
+  });
+
+  it("lists several stopped background jobs one per line, naming at most ten", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture);
+      for (let index = 1; index <= 12; index += 1) {
+        seedBackgroundCommand(harness, fixture, waiting, {
+          command: `./job-${index}.sh`,
+          description: `Job ${index}`,
+          id: `task-${index}`,
+        });
+      }
+      finishTurn(harness, waiting.thread.id);
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(requestTexts(harness, waiting.thread.id).at(-1)).toBe(
+        [
+          "[bb system]",
+          "",
+          "bb restarted and may have stopped this background work:",
+          ...Array.from(
+            { length: 10 },
+            (_, index) => `- \`./job-${index + 1}.sh\` (Job ${index + 1})`,
+          ),
+          "- and 2 more",
+          "",
+          "The user didn't stop them. Check whether each is still running and how far it got, then restart each only if that is safe.",
+        ].join("\n"),
+      );
     });
   });
 
@@ -698,7 +732,7 @@ describe("resuming threads after a restart", () => {
         [
           "[bb system]",
           "",
-          "bb restarted, or the machine running this thread did, while you were running `pnpm db:migrate`. The restart interrupted it; the user did not reject it, even if your history shows it as interrupted or rejected by the user. It may have completed, partly completed, never run, or still be running, so check its effects, then continue the task, rerunning it only if that is safe. The restart also stopped this background work: `pnpm dev` (Start the dev server). Check how far each got, and restart one only when that is safe.",
+          "bb restarted while you were running `pnpm db:migrate`. The restart cut it off, not the user, even if your history says the user rejected it. Check what it finished, then continue the task, rerunning it only if that is safe. It also stopped this background work: `pnpm dev` (Start the dev server). Check how far it got, and restart it only if that is safe.",
         ].join("\n"),
       );
     });
@@ -954,7 +988,7 @@ describe("holding sends while bb restarts to update", () => {
 
       expect(requestTexts(harness, running.thread.id)).toEqual([
         "Do the thing",
-        "Please continue.",
+        RESUMED_WHILE_WORKING,
         "First follow-up",
         "Second follow-up",
       ]);

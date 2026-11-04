@@ -274,7 +274,7 @@ describe("bb thread organization commands", () => {
         content: [
           {
             type: "text",
-            text: "[bb system] bb restarted, or the machine running this thread did",
+            text: "[bb system] bb restarted while you were working",
             mentions: [],
             visibility: "agent-only",
           },
