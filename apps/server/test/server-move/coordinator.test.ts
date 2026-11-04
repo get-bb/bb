@@ -35,11 +35,8 @@ import {
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { seedHost, seedPrimaryHost } from "../helpers/seed.js";
-import {
-  testLogger,
-  withTestHarness,
-  type TestAppHarness,
-} from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const OLD = "host-old";
 const NEW = "host-new";

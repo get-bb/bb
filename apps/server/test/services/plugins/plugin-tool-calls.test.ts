@@ -5,7 +5,7 @@ import {
   PluginToolCallRegistry,
   detachActivePluginToolCallForUserInput,
 } from "../../../src/services/plugins/plugin-tool-calls.js";
-import { testLogger } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { createDeferredPromise } from "@bb/test-helpers";
 
 function textResponse(text: string, success = true): ToolCallResponse {

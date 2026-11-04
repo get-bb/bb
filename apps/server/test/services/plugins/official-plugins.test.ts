@@ -22,7 +22,7 @@ import {
   type BundledPluginRegistration,
 } from "../../../src/services/plugins/builtin-registry.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
-import { testLogger } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;

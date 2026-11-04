@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createServerErrorHandler } from "../../src/errors.js";
 import { serverMoveFreezeMiddleware } from "../../src/services/server-move/freeze.js";
 import { readJson } from "../helpers/json.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 function frozenApp(state: { frozen: boolean }): Hono {
   const app = new Hono();

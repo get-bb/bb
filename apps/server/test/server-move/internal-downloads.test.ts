@@ -17,7 +17,8 @@ import {
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
 import { seedHost, seedPrimaryHost } from "../helpers/seed.js";
-import { testLogger, withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 type PrepareCommand = Extract<
   HostDaemonRpcCommand,

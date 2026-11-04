@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServerErrorHandler } from "../../src/errors.js";
 import { registerInternalPluginHostArtifactRoutes } from "../../src/internal/plugin-host-artifacts.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
-import { withTestHarness, testLogger } from "../helpers/test-app.js";
+import { withTestHarness } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const tempDirs: string[] = [];
 

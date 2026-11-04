@@ -12,11 +12,8 @@ import { TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY } from "../src/request-context.js";
 import { registerInternalHostRoutes } from "../src/internal/hosts.js";
 import type { AppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
-import {
-  createTestAppHarness,
-  testLogger,
-  withTestHarness,
-} from "./helpers/test-app.js";
+import { createTestAppHarness, withTestHarness } from "./helpers/test-app.js";
+import { testLogger } from "./helpers/test-logger.js";
 
 interface CreateHostRouteAppArgs {
   deps: AppDeps;

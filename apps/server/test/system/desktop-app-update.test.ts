@@ -9,7 +9,7 @@ import type {
 import { createDesktopAppUpdateService } from "../../src/services/system/desktop-app-update.js";
 import type { DesktopUpdateChannel } from "../../src/services/system/desktop-update-channel.js";
 import type { AppUpdateService } from "../../src/services/system/app-update.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 class DesktopChannel implements DesktopUpdateChannel {
   info: DesktopAppUpdateInfo = {

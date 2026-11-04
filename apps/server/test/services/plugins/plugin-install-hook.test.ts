@@ -10,7 +10,7 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
-import { testLogger } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;

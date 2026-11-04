@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Logger } from "@bb/logger";
 import { createPluginRuntime } from "../../../src/services/plugins/plugin-runtime.js";
-import { testLogger } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 import { createMigratedConnection } from "@bb/db/testing";
 

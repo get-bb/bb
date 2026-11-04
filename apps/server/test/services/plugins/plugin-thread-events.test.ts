@@ -19,9 +19,9 @@ import {
 import { createUserQuestionPayload } from "../../helpers/pending-interactions.js";
 import {
   createTestAppHarness,
-  testLogger,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 
 interface RecordedThreadPayload {
   thread: {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type DbConnection } from "@bb/db";
 import { exportLegacyAutomationsForPluginImport } from "../src/legacy-automations-export.js";
 import { initDb } from "../src/db.js";
-import { testLogger } from "./helpers/test-app.js";
+import { testLogger } from "./helpers/test-logger.js";
 
 function createLegacyTables(db: DbConnection): void {
   db.$client.exec(`

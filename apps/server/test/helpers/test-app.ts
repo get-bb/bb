@@ -1,3 +1,4 @@
+import { createTestLogger } from "./test-logger.js";
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -107,17 +108,6 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
     pluginId: string;
   }[];
 };
-
-function createTestLogger() {
-  return {
-    debug(): void {},
-    error(): void {},
-    info(): void {},
-    warn(): void {},
-  };
-}
-
-export const testLogger = createTestLogger();
 
 interface TestDaemonKeyParts {
   hostId: string;

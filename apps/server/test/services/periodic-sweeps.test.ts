@@ -43,11 +43,8 @@ import {
 } from "../helpers/seed.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
-import {
-  testLogger,
-  withTestHarness,
-  type TestAppHarness,
-} from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 type ReleaseCallback = () => void;
 

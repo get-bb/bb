@@ -30,10 +30,10 @@ import {
 } from "../../helpers/seed.js";
 import {
   createTestAppHarness,
-  testLogger,
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;

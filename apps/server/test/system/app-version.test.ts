@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAppVersionService } from "../../src/services/system/app-version.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 interface StubFetchOptions {
   body?: unknown;

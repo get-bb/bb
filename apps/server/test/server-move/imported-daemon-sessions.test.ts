@@ -15,11 +15,8 @@ import {
   seedThreadFixture,
   seedTurnStarted,
 } from "../helpers/seed.js";
-import {
-  testLogger,
-  withTestHarness,
-  type TestAppHarness,
-} from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const TASK_ITEM_ID = "task:wf-1";
 const PROVIDER_THREAD_ID = "claude-session-1";

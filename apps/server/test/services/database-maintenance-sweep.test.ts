@@ -22,7 +22,7 @@ import {
 import { createMigratedConnection } from "@bb/db/testing";
 import type { ServerLogger } from "../../src/types.js";
 import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-sweeps.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const FREELIST_ROW_COUNT = 1_200;
 const SQLITE_BUSY_HEADROOM_MS = 1_000;

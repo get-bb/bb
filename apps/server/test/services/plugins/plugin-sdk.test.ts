@@ -32,7 +32,8 @@ import {
   waitForQueuedCommand,
 } from "../../helpers/commands.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
-import { startTestServer, testLogger } from "../../helpers/test-app.js";
+import { startTestServer } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { listBundledPluginRegistrations } from "../../src/services/plugins/builtin-registry.js";
 import { readPluginManifest } from "../../src/services/plugins/manifest.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 import { resolveProjectSkillSourceFromContent } from "../../src/services/skills/injected-skills.js";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 

@@ -9,9 +9,9 @@ import {
 import { resolveSkillCatalogEntries } from "../../../src/services/skills/injected-skills.js";
 import {
   createTestAppHarness,
-  testLogger,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 
 const BASE = "http://127.0.0.1:3334";
 

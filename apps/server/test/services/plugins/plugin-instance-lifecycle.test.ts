@@ -19,9 +19,9 @@ import { createNoopTelemetryService } from "../../../src/services/system/telemet
 import { seedThreadFixture } from "../../helpers/seed.js";
 import {
   startTestServer,
-  testLogger,
   type RunningTestServer,
 } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 
 interface LifecycleControl {
   generation: number;

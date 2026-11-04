@@ -25,7 +25,7 @@ import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/l
 import { NotificationHub } from "../../../src/ws/hub.js";
 import { createMockHubSocket } from "../../helpers/mock-hub-socket.js";
 import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
-import { testLogger } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 
 const providerRegistry = await createTestProviderRegistry();
 

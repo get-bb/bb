@@ -19,10 +19,10 @@ import {
 import { stubHostArtifact } from "../../helpers/provider-registry.js";
 import { seedHostSession } from "../../helpers/seed.js";
 import {
-  testLogger,
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { testLogger } from "../../helpers/test-logger.js";
 
 const PLUGIN_ID = "provider-resolving";
 

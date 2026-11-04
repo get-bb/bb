@@ -16,7 +16,7 @@ import {
   createLauncherChannel,
   type LauncherChannel,
 } from "../../src/services/system/launcher-channel.js";
-import { testLogger } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const COMMIT_A = "a".repeat(40);
 const COMMIT_B = "b".repeat(40);

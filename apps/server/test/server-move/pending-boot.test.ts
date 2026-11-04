@@ -40,9 +40,9 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   createTestDaemonHostKey,
-  testLogger,
   withTestHarness,
 } from "../helpers/test-app.js";
+import { testLogger } from "../helpers/test-logger.js";
 
 const SOURCE_DATA_DIR = "/home/old/.bb";
 const DIRECT_URL = "https://desktop.example.test";
