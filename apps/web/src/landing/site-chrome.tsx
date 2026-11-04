@@ -316,7 +316,7 @@ export function SiteFooter({ current }: { current?: string }) {
     <footer className="footer">
       <span className="bb-mark footer-mark" aria-hidden="true" />
       <FooterColumn title="Product">
-        <li className="desktop-only">
+        <li>
           <DownloadLink placement="footer" platform={platform}>
             Download
           </DownloadLink>
