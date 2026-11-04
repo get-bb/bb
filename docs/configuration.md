@@ -885,7 +885,8 @@ The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
 (currently `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`)
+`resolveFileLinks`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
+`updateWhenIdle`)
 turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
@@ -940,6 +941,15 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
+- `resolveFileLinks` (on for early adopters) resolves relative paths in thread
+  messages on the machine that holds the files, in one request per render. A
+  Markdown link or inline-code path opens the exact path in the workspace,
+  then in thread storage, or else the one file in either whose path ends with
+  the same segments (matching case first). Inline code becomes a link only
+  when one of those finds a file. When several files match or none does, a
+  Markdown link keeps its workspace target. While it is off, relative links
+  resolve against the workspace only and inline code links only when that
+  exact path exists.
 - `resumeThreadsAfterRestart` resumes threads a
   restart cut off. When a machine's daemon comes back as a new process (bb
   quit, crashed, or updated, or the machine restarted), the server marks the

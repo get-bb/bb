@@ -7,6 +7,7 @@ import { useThreadStorageLocation } from "@/hooks/queries/thread-panel-queries";
 import { useLiveFileOpenTargets } from "@/hooks/useLiveFileOpenTargets";
 import type { AppFilePreviewIntent } from "@/lib/app-navigation-host";
 import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
+import { useThreadRelativeLinkHealing } from "./useRelativeLinkHealing";
 import type { ThreadSecondaryPanelFileOpenOptions } from "@/views/thread-detail/useThreadSecondaryPanelVisibility";
 
 type ResolveLocalFileLinkArgs = Parameters<
@@ -108,10 +109,11 @@ export function useThreadFileLinkOpener({
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   threadId: string | undefined;
 }) {
-  const threadStorageRootPath =
+  const threadStorageLocation =
     useThreadStorageLocation(threadId ?? "", {
       enabled: environment != null,
-    }).data?.storageRootPath ?? null;
+    }).data ?? null;
+  const threadStorageRootPath = threadStorageLocation?.storageRootPath ?? null;
   const opener = useLocalFileLinkOpener({
     canOpenInEditor:
       environment != null &&
@@ -128,5 +130,15 @@ export function useThreadFileLinkOpener({
         ? null
         : { environmentId: environment.id, rootPath: environment.path },
   });
-  return { ...opener, threadStorageRootPath };
+  const relativeLinkHealing = useThreadRelativeLinkHealing({
+    environment,
+    threadStorage:
+      threadStorageLocation === null
+        ? null
+        : {
+            hostId: threadStorageLocation.hostId,
+            rootPath: threadStorageLocation.storageRootPath,
+          },
+  });
+  return { ...opener, relativeLinkHealing, threadStorageRootPath };
 }

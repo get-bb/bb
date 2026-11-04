@@ -618,6 +618,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <ThreadTimelineNavigationProvider
             environmentId={null}
+            relativeLinkHealing={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={() => null}
             threadId="thr_a"
@@ -711,6 +712,7 @@ describe("ConversationMessageContent assistant directives", () => {
         <RouteNavigationProvider>
           <ThreadTimelineNavigationProvider
             environmentId={null}
+            relativeLinkHealing={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={() => null}
             threadId="thr_a"

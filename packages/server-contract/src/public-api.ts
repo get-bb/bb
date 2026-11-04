@@ -151,6 +151,8 @@ import {
   type HostPickFolderResponse,
   type HostPathsExistRequest,
   type HostPathsExistResponse,
+  type HostResolvePathsRequest,
+  type HostResolvePathsResponse,
   type HostProviderCliInstallEvent,
   type HostProviderCliInstallRequest,
   type HostProviderCliStatusResponse,
@@ -330,6 +332,7 @@ import {
   hostRemovePathRequestSchema,
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
+  hostResolvePathsRequestSchema,
   hostProviderCliInstallRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
@@ -986,6 +989,14 @@ export const publicApiRoutes = {
         hostPathsExistRequestSchema,
       ),
       response: jsonResponse<HostPathsExistResponse>(),
+    }),
+    resolvePaths: defineRoute({
+      path: "/hosts/:id/paths/resolve",
+      method: "post",
+      request: jsonRequest<PathId, HostResolvePathsRequest>(
+        hostResolvePathsRequestSchema,
+      ),
+      response: jsonResponse<HostResolvePathsResponse>(),
     }),
     pickFolder: defineRoute({
       path: "/hosts/:id/pick-folder",

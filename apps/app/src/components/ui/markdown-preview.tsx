@@ -88,7 +88,13 @@ import {
   type MarkdownLocalFileContextMenuItem,
   type MarkdownLocalFileLinkRouting,
   type MarkdownLocalImageRouting,
+  type MarkdownRelativeLinkHealing,
 } from "./markdown-link-routing.js";
+import {
+  chooseRelativeLinkTarget,
+  relativeLinkReference,
+  type MarkdownRelativeLinkReference,
+} from "./markdown-relative-link-healing.js";
 import {
   EMPTY_THREAD_MENTIONS,
   ThreadMentionElement,
@@ -134,7 +140,10 @@ import {
   useRewriteLocalhostLinksPreference,
 } from "@/lib/localhost-link-rewrite-preference";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import { useHostPathExists } from "@/hooks/queries/host-path-queries";
+import {
+  useHostPathExists,
+  useRelativePathResolution,
+} from "@/hooks/queries/host-path-queries";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
@@ -217,6 +226,11 @@ interface AreMarkdownRelativeLocalFileLinkRoutingsEqualArgs {
   previous: MarkdownRelativeLocalFileLinkRouting | undefined;
 }
 
+interface AreMarkdownRelativeLinkHealingsEqualArgs {
+  next: MarkdownRelativeLinkHealing | undefined;
+  previous: MarkdownRelativeLinkHealing | undefined;
+}
+
 interface AreMarkdownLocalFileLinkRoutingsEqualArgs {
   next: MarkdownLocalFileLinkRouting | undefined;
   previous: MarkdownLocalFileLinkRouting | undefined;
@@ -279,6 +293,20 @@ interface MarkdownInlineCodeFileLinkProps {
   linkRouting: MarkdownLinkRouting | undefined;
   rewriteLocalhostLinks: boolean;
   target: ResolvedMarkdownLocalFileTarget;
+}
+
+interface MarkdownHealedInlineCodeFileLinkProps {
+  code: ReactNode;
+  codeText: string;
+  healing: MarkdownRelativeLinkHealing;
+  linkRouting: MarkdownLinkRouting | undefined;
+  reference: MarkdownRelativeLinkReference;
+  rewriteLocalhostLinks: boolean;
+}
+
+interface MarkdownHealedRelativeAnchorProps extends MarkdownAnchorProps {
+  healing: MarkdownRelativeLinkHealing;
+  reference: MarkdownRelativeLinkReference;
 }
 
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
@@ -354,6 +382,25 @@ function areMarkdownRelativeLocalFileLinkRoutingsEqual({
   );
 }
 
+function areMarkdownRelativeLinkHealingsEqual({
+  next,
+  previous,
+}: AreMarkdownRelativeLinkHealingsEqualArgs): boolean {
+  if (previous === next) return true;
+  if (previous === undefined || next === undefined) return false;
+  return (
+    previous.roots.length === next.roots.length &&
+    previous.roots.every((root, index) => {
+      const nextRoot = next.roots[index];
+      return (
+        nextRoot !== undefined &&
+        root.hostId === nextRoot.hostId &&
+        root.rootPath === nextRoot.rootPath
+      );
+    })
+  );
+}
+
 function areMarkdownLocalFileLinkRoutingsEqual({
   next,
   previous,
@@ -370,6 +417,10 @@ function areMarkdownLocalFileLinkRoutingsEqual({
     areMarkdownRelativeLocalFileLinkRoutingsEqual({
       next: next.relativeLinks,
       previous: previous.relativeLinks,
+    }) &&
+    areMarkdownRelativeLinkHealingsEqual({
+      next: next.relativeLinkHealing,
+      previous: previous.relativeLinkHealing,
     })
   );
 }
@@ -494,7 +545,10 @@ function buildLocalAwareUrlTransform({
         localFileRouting.relativeLinks,
       );
       if (localFile !== null) {
-        return localFile.href;
+        return localFile.sourceKind === "relative" &&
+          localFileRouting.relativeLinkHealing !== undefined
+          ? value
+          : localFile.href;
       }
     }
 
@@ -608,13 +662,52 @@ function appendMarkdownLinkIcon(
   );
 }
 
-function MarkdownAnchor({
+function MarkdownAnchor(props: MarkdownAnchorProps) {
+  const healing = props.linkRouting?.localFile?.relativeLinkHealing;
+  const reference =
+    healing === undefined || !props.href
+      ? null
+      : relativeLinkReference(props.href, healing.roots);
+  if (healing !== undefined && reference !== null) {
+    return (
+      <MarkdownHealedRelativeAnchor
+        {...props}
+        healing={healing}
+        reference={reference}
+      />
+    );
+  }
+  return <MarkdownResolvedAnchor {...props} />;
+}
+
+function MarkdownHealedRelativeAnchor({
+  healing,
+  linkRouting,
+  reference,
+  ...anchorProps
+}: MarkdownHealedRelativeAnchorProps) {
+  const resolution = useRelativePathResolution(
+    healing.roots,
+    reference.relativePath,
+  );
+  const choice = chooseRelativeLinkTarget(reference, resolution);
+  return (
+    <MarkdownResolvedAnchor
+      {...anchorProps}
+      data-file-link-status={choice.kind}
+      href={choice.kind === "found" ? choice.href : reference.fallback.href}
+      linkRouting={linkRouting}
+    />
+  );
+}
+
+function MarkdownResolvedAnchor({
   children,
   href,
   linkRouting,
   rewriteLocalhostLinks,
   ...anchorProps
-}: MarkdownAnchorProps) {
+}: MarkdownAnchorProps & { "data-file-link-status"?: string }) {
   const navigation = useAppNavigationHost();
   const rewrittenHref = rewriteLocalhostLinkHref({
     currentHostname:
@@ -879,6 +972,23 @@ function MarkdownCode({
     localFileRouting,
   });
   if (localFileTarget !== null) {
+    const healing = localFileRouting.relativeLinkHealing;
+    const reference =
+      localFileTarget.sourceKind === "relative" && healing !== undefined
+        ? relativeLinkReference(codeText, healing.roots)
+        : null;
+    if (healing !== undefined && reference !== null) {
+      return (
+        <MarkdownHealedInlineCodeFileLink
+          code={code}
+          codeText={codeText}
+          healing={healing}
+          linkRouting={linkRouting}
+          reference={reference}
+          rewriteLocalhostLinks={rewriteLocalhostLinks}
+        />
+      );
+    }
     return (
       <MarkdownInlineCodeFileLink
         code={code}
@@ -907,14 +1017,42 @@ function MarkdownInlineCodeFileLink({
     return code;
   }
   return (
-    <MarkdownAnchor
+    <MarkdownResolvedAnchor
       data-clipboard-inline-code=""
       href={target.href}
       linkRouting={linkRouting}
       rewriteLocalhostLinks={rewriteLocalhostLinks}
     >
       {codeText}
-    </MarkdownAnchor>
+    </MarkdownResolvedAnchor>
+  );
+}
+
+function MarkdownHealedInlineCodeFileLink({
+  code,
+  codeText,
+  healing,
+  linkRouting,
+  reference,
+  rewriteLocalhostLinks,
+}: MarkdownHealedInlineCodeFileLinkProps) {
+  const resolution = useRelativePathResolution(
+    healing.roots,
+    reference.relativePath,
+  );
+  const choice = chooseRelativeLinkTarget(reference, resolution);
+  if (choice.kind !== "found") {
+    return code;
+  }
+  return (
+    <MarkdownResolvedAnchor
+      data-clipboard-inline-code=""
+      href={choice.href}
+      linkRouting={linkRouting}
+      rewriteLocalhostLinks={rewriteLocalhostLinks}
+    >
+      {codeText}
+    </MarkdownResolvedAnchor>
   );
 }
 

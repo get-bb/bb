@@ -456,6 +456,12 @@ type HostPathExistsQueryKey = readonly [
   string,
   string,
 ];
+type HostPathResolutionQueryKey = readonly [
+  typeof HOST_PATH_EXISTENCE_QUERY_KEY,
+  "resolution",
+  readonly string[],
+  string,
+];
 type HostPathExistenceQueryKeyPrefix = readonly [
   typeof HOST_PATH_EXISTENCE_QUERY_KEY,
 ];
@@ -1079,6 +1085,18 @@ export function hostPathExistsQueryKey(
   path: string,
 ): HostPathExistsQueryKey {
   return [HOST_PATH_EXISTENCE_QUERY_KEY, hostId, path];
+}
+
+export function hostPathResolutionQueryKey(
+  roots: readonly { hostId: string; rootPath: string }[],
+  path: string,
+): HostPathResolutionQueryKey {
+  return [
+    HOST_PATH_EXISTENCE_QUERY_KEY,
+    "resolution",
+    roots.map(({ hostId, rootPath }) => `${hostId}\u0000${rootPath}`),
+    path,
+  ];
 }
 
 export function hostPathExistenceQueryKeyPrefix(): HostPathExistenceQueryKeyPrefix {

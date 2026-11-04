@@ -1,13 +1,17 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
-import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
+import type {
+  MarkdownLinkRouting,
+  MarkdownRelativeLinkHealing,
+} from "@/components/ui/markdown-link-routing";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ThreadTimelineNavigation {
   environmentId: string | null;
   hostId: string | null;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
+  relativeLinkHealing: MarkdownRelativeLinkHealing | null;
   resolveMentionLink: PromptMentionLinkResolver;
   threadId?: string;
   workspaceRootPath: string | undefined;
@@ -21,6 +25,7 @@ export function ThreadTimelineNavigationProvider({
   environmentId,
   hostId,
   onOpenLocalFileLink,
+  relativeLinkHealing,
   resolveMentionLink,
   threadId,
   workspaceRootPath,
@@ -30,6 +35,7 @@ export function ThreadTimelineNavigationProvider({
       environmentId,
       hostId,
       onOpenLocalFileLink,
+      relativeLinkHealing,
       resolveMentionLink,
       threadId,
       workspaceRootPath,
@@ -38,6 +44,7 @@ export function ThreadTimelineNavigationProvider({
       environmentId,
       hostId,
       onOpenLocalFileLink,
+      relativeLinkHealing,
       resolveMentionLink,
       threadId,
       workspaceRootPath,
@@ -62,6 +69,7 @@ export function useMessageLinkRouting(
   const hostId = navigation?.hostId ?? null;
   const onOpenLocalFileLink = navigation?.onOpenLocalFileLink;
   const workspaceRootPath = navigation?.workspaceRootPath;
+  const relativeLinkHealing = navigation?.relativeLinkHealing ?? null;
   return useMemo(() => {
     if (onOpenLocalFileLink === undefined && threadId === undefined) {
       return undefined;
@@ -83,11 +91,18 @@ export function useMessageLinkRouting(
         absoluteLinks: { kind: "trusted-host" },
         hostId,
         onOpenLink: onOpenLocalFileLink,
+        ...(relativeLinkHealing === null ? {} : { relativeLinkHealing }),
         ...(relativePaths === undefined
           ? {}
           : { relativeLinks: relativePaths }),
       };
     }
     return routing;
-  }, [hostId, onOpenLocalFileLink, threadId, workspaceRootPath]);
+  }, [
+    hostId,
+    onOpenLocalFileLink,
+    relativeLinkHealing,
+    threadId,
+    workspaceRootPath,
+  ]);
 }

@@ -272,6 +272,7 @@ type ExpectedHostsKey =
   | "list"
   | "experimental_listProviders"
   | "pathsExist"
+  | "experimental_resolvePaths"
   | "pickFolder"
   | "providerCliStatus"
   | "experimental_resume"

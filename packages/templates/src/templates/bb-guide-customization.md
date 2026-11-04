@@ -202,6 +202,9 @@ thread-lifecycle`.
 notifications once the thread is read on any client.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
+`resolveFileLinks` finds the file behind a relative link or inline-code path
+in a thread message: the exact path in the workspace or thread storage, or the
+one file whose path ends the same way. It defaults on for early adopters.
 `skipFocusedThreadNotifications` skips the web and desktop system notification
 for a thread open in a visible, focused bb window or tab. It defaults on for
 early adopters.
@@ -217,7 +220,7 @@ every hour and restart into a new version once no thread is running, and
 enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`timelinePush`, `compactExpiredCache`, `pluginUpdates`, `resolveFileLinks`,
 `skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`; an
 experiment you set yourself keeps your value.
 

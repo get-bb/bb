@@ -52,6 +52,7 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
       <RouteNavigationProvider>
         <ThreadTimelineNavigationProvider
           environmentId={null}
+          relativeLinkHealing={null}
           onOpenLocalFileLink={() => false}
           resolveMentionLink={() => null}
           threadId="thr_parent"

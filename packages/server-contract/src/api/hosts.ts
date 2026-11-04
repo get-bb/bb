@@ -7,6 +7,7 @@ import {
 import {
   pathsExistRequestSchema,
   providerCliInstallEventSchema,
+  resolvePathsRequestSchema,
   providerCliInstallRequestSchema,
   type PathsExistRequest,
   type PathsExistResponse,
@@ -14,6 +15,8 @@ import {
   type ProviderCliInstallEvent,
   type ProviderCliInstallRequest,
   type ProviderCliStatusResponse,
+  type ResolvePathsRequest,
+  type ResolvePathsResponse,
 } from "@bb/host-daemon-contract/local";
 
 export const hostDirectoryQuerySchema = z.object({
@@ -140,6 +143,11 @@ export const hostPathsExistRequestSchema = pathsExistRequestSchema;
 export type HostPathsExistRequest = PathsExistRequest;
 
 export type HostPathsExistResponse = PathsExistResponse;
+
+export const hostResolvePathsRequestSchema = resolvePathsRequestSchema;
+export type HostResolvePathsRequest = ResolvePathsRequest;
+
+export type HostResolvePathsResponse = ResolvePathsResponse;
 
 export const hostPickFolderRequestSchema = z
   .object({

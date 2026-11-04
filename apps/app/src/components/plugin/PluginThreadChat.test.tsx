@@ -192,6 +192,7 @@ describe("PluginThreadChat", () => {
           <ThreadTimelineNavigationProvider
             environmentId={null}
             hostId={null}
+            relativeLinkHealing={null}
             onOpenLocalFileLink={onOpenLocalFileLink}
             resolveMentionLink={resolveMentionLink}
             workspaceRootPath="/workspace"

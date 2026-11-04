@@ -13,6 +13,8 @@ import type {
   HostActionResponse,
   HostPathsExistRequest,
   HostPathsExistResponse,
+  HostResolvePathsRequest,
+  HostResolvePathsResponse,
   HostPickFolderRequest,
   HostPickFolderResponse,
   HostProviderCliInstallEvent,
@@ -75,6 +77,11 @@ export interface HostPathsExistArgs extends HostPathsExistRequest {
   signal?: AbortSignal;
 }
 
+export interface HostResolvePathsArgs extends HostResolvePathsRequest {
+  hostId: string;
+  signal?: AbortSignal;
+}
+
 export interface HostPickFolderArgs extends HostPickFolderRequest {
   hostId: string;
   signal?: AbortSignal;
@@ -113,6 +120,7 @@ export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;
 export type HostProviderCliInstallResult = HostProviderCliInstallEvent[];
 export type HostListResult = Host[];
 export type HostPathsExistResult = HostPathsExistResponse;
+export type HostResolvePathsResult = HostResolvePathsResponse;
 export type HostPickFolderResult = HostPickFolderResponse;
 export type HostProviderCliStatusResult = HostProviderCliStatusResponse;
 export type HostRetryUpdateResult = HostRetryUpdateResponse;
@@ -148,6 +156,9 @@ export interface HostsArea {
     args?: MachineProviderListArgs,
   ): Promise<MachineProviderListResult>;
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
+  experimental_resolvePaths(
+    args: HostResolvePathsArgs,
+  ): Promise<HostResolvePathsResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
   providerCliStatus(
     args: HostProviderCliStatusArgs,
@@ -322,6 +333,17 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           {
             param: { id: input.hostId },
             json: { paths: input.paths },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_resolvePaths(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"].paths.resolve.$post(
+          {
+            param: { id: input.hostId },
+            json: { roots: input.roots, paths: input.paths },
           },
           ...signalRequestArgs(input.signal),
         ),

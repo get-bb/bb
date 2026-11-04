@@ -178,11 +178,12 @@ function PluginThreadChatBody({
     thread !== undefined &&
     thread.environmentId === timelineNavigation?.environmentId;
   const navigation = useAppNavigationHost();
-  const onOpenLocalFileLink = useThreadFileLinkOpener({
-    environment,
-    openFilePreview: navigation.openFilePreview,
-    threadId: thread?.id,
-  }).openLink;
+  const { openLink: onOpenLocalFileLink, relativeLinkHealing } =
+    useThreadFileLinkOpener({
+      environment,
+      openFilePreview: navigation.openFilePreview,
+      threadId: thread?.id,
+    });
   const resolveHostMentionLink = canUseHostFileNavigation
     ? timelineNavigation.resolveMentionLink
     : undefined;
@@ -308,6 +309,7 @@ function PluginThreadChatBody({
           environmentId={thread.environmentId}
           hostId={environment?.hostId ?? null}
           onOpenLocalFileLink={onOpenLocalFileLink}
+          relativeLinkHealing={relativeLinkHealing}
           resolveMentionLink={resolveMentionLink}
           threadId={thread.id}
           workspaceRootPath={workspaceRootPath}

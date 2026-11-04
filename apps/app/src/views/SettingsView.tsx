@@ -1144,6 +1144,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "List plugins with updates on the Updates page, update them one by one or all at once, and count them in the sidebar updates badge.",
   },
+  resolveFileLinks: {
+    label: "Find files behind links",
+    description:
+      "When a thread links or mentions a relative path, look for it in the workspace, then thread storage, then for the one file whose path ends the same way. Inline code becomes a link only when one file matches.",
+  },
   resumeThreadsAfterRestart: {
     label: "Resume interrupted threads after a restart",
     description:

@@ -21,6 +21,7 @@ import {
 import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "./path-list-policy.js";
 import { ApiError } from "../errors.js";
 import {
   getGateAuthKind,
@@ -405,6 +406,24 @@ export function registerHostRoutes(
       command: {
         type: "host.paths_exist",
         paths: payload.paths,
+      },
+    });
+    return context.json(result);
+  });
+
+  post(routes.resolvePaths, async (context, payload) => {
+    const hostId = context.req.param("id");
+    assertUsableHostId(deps, { hostId });
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.resolve_paths",
+        roots: payload.roots,
+        paths: payload.paths,
+        includeHidden: false,
+        respectGitIgnore: true,
+        excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
       },
     });
     return context.json(result);

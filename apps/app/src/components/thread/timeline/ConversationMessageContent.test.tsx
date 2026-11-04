@@ -132,6 +132,7 @@ describe("ConversationMessageContent user images", () => {
           <ThreadTimelineNavigationProvider
             environmentId={null}
             hostId={null}
+            relativeLinkHealing={null}
             onOpenLocalFileLink={() => false}
             resolveMentionLink={() => null}
             threadId="thr_image"

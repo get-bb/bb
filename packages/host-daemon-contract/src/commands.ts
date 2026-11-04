@@ -39,6 +39,8 @@ import { z } from "zod";
 import {
   pathsExistRequestSchema,
   pathsExistResponseSchema,
+  resolvePathsRequestSchema,
+  resolvePathsResponseSchema,
   pickFolderResponseSchema,
   providerCliInstallEventSchema,
   providerCliInstallActionKindSchema,
@@ -579,6 +581,15 @@ const hostBrowseDirectoryCommandSchema = z.object({
 const hostPathsExistCommandSchema = pathsExistRequestSchema
   .extend({
     type: z.literal("host.paths_exist"),
+  })
+  .strict();
+
+const hostResolvePathsCommandSchema = resolvePathsRequestSchema
+  .extend({
+    type: z.literal("host.resolve_paths"),
+    includeHidden: z.boolean(),
+    respectGitIgnore: z.boolean(),
+    excludeNames: fileListExcludeNamesSchema,
   })
   .strict();
 
@@ -1610,6 +1621,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.resolve_paths": defineHostDaemonCommandDescriptor({
+    type: "host.resolve_paths",
+    schema: hostResolvePathsCommandSchema,
+    resultSchema: resolvePathsResponseSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

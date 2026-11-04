@@ -213,6 +213,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       "/home/me/missing": false,
     },
   },
+  "host.resolve_paths": {
+    resolutions: {
+      "brief.md": { kind: "exact", path: "/home/me/storage/brief.md" },
+      "x.ts": { kind: "matches", paths: ["/home/me/project/src/x.ts"] },
+    },
+  },
   "project.inspect": {
     path: "/home/me/project",
     gitRemoteUrl: "git@example.com:me/project.git",
@@ -1067,7 +1073,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(261);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(262);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1088,7 +1094,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

@@ -3657,6 +3657,27 @@ Stabilization requires UI/CLI parity, registration validation, pre-allocation
 refusals, provisioning timeline coverage, clone-failure machine retention and
 later project-checkout/worktree reuse.
 
+## `bb.sdk.hosts.experimental_resolvePaths`
+
+`experimental_resolvePaths({ hostId, roots, paths })` resolves up to 200
+relative paths against up to 4 absolute roots on one machine in a single
+request. For each path it returns `{ kind: "exact", path }` for the first root
+where the joined path exists, or else `{ kind: "matches", paths }` with up to
+10 files whose path ends with the same segments, shallowest first, using
+case-insensitive matching only when nothing matches by case. Absolute paths
+and paths with `..` segments return no matches. The machine lists each root
+(respecting `.gitignore` and the server's default exclusions, without hidden
+files) only when some path misses exactly, and keeps that listing for 10
+seconds.
+
+Core caller: while the `resolveFileLinks` experiment is on, thread timeline
+Markdown links and inline-code file links resolve against the workspace and
+thread storage through this method
+(`apps/app/src/hooks/queries/host-path-queries.ts`).
+
+Before stabilizing, decide whether hidden files and per-root listing policy
+belong in the request, and measure the listing cost on large thread storage.
+
 ## Experimental host SDK machine operations
 
 `bb.sdk.hosts.experimental_create`, `experimental_getEnrollmentCommand`,

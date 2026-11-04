@@ -1,3 +1,4 @@
+import { resolveHostPaths } from "./command-handlers/path-resolve.js";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { withVcsProcessPriority } from "@bb/process-utils";
@@ -582,6 +583,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  "host.resolve_paths": resolveHostPaths,
   "project.inspect": async (command, options) =>
     inspectProjectPath(
       command.path,

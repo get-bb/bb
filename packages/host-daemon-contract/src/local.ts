@@ -140,6 +140,33 @@ export const pathsExistResponseSchema = z.object({
 });
 export type PathsExistResponse = z.infer<typeof pathsExistResponseSchema>;
 
+export const RESOLVE_PATHS_MAX_ROOTS = 4;
+export const RESOLVE_PATHS_MAX_MATCHES = 10;
+
+export const resolvePathsRequestSchema = z.object({
+  roots: z.array(z.string().min(1)).min(1).max(RESOLVE_PATHS_MAX_ROOTS),
+  paths: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(PATHS_EXIST_MAX_PATHS)
+    .transform((paths) => Array.from(new Set(paths))),
+});
+export type ResolvePathsRequest = z.infer<typeof resolvePathsRequestSchema>;
+
+export const pathResolutionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("exact"), path: z.string() }),
+  z.object({
+    kind: z.literal("matches"),
+    paths: z.array(z.string()).max(RESOLVE_PATHS_MAX_MATCHES),
+  }),
+]);
+export type PathResolution = z.infer<typeof pathResolutionSchema>;
+
+export const resolvePathsResponseSchema = z.object({
+  resolutions: z.record(z.string(), pathResolutionSchema),
+});
+export type ResolvePathsResponse = z.infer<typeof resolvePathsResponseSchema>;
+
 export const hostPlatformSchema = z.enum([
   "darwin",
   "linux",

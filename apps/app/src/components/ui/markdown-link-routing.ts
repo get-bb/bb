@@ -46,10 +46,20 @@ export const MarkdownLocalFileOpenTargetsContext = createContext<
   readonly WorkspaceOpenTarget[]
 >([]);
 
+export interface MarkdownRelativeLinkRoot {
+  hostId: string;
+  rootPath: string;
+}
+
+export interface MarkdownRelativeLinkHealing {
+  roots: readonly MarkdownRelativeLinkRoot[];
+}
+
 export interface MarkdownLocalFileLinkRouting {
   absoluteLinks: MarkdownAbsoluteLocalFileLinkRouting;
   hostId: string | null;
   onOpenLink: MarkdownPreviewLocalFileLinkHandler;
+  relativeLinkHealing?: MarkdownRelativeLinkHealing;
   relativeLinks?: MarkdownRelativeLocalFileLinkRouting;
 }
 

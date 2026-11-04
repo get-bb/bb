@@ -1075,6 +1075,7 @@ function ThreadDetailViewInternal(
       openPathInPreferredDirectoryTarget,
       preferredDirectoryTarget,
     },
+    relativeLinkHealing,
     threadStorageRootPath,
   } = useThreadFileLinkOpener({
     environment,
@@ -1700,6 +1701,7 @@ function ThreadDetailViewInternal(
         environmentId={thread.environmentId}
         hostId={environment?.hostId ?? null}
         onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+        relativeLinkHealing={relativeLinkHealing}
         resolveMentionLink={resolveMentionLink}
         threadId={thread.id}
         workspaceRootPath={environment?.path ?? undefined}

@@ -75,6 +75,7 @@ function assistant(
               <ThreadTimelineNavigationProvider
                 environmentId={null}
                 hostId={null}
+                relativeLinkHealing={null}
                 onOpenLocalFileLink={onOpenLocalFileLink}
                 resolveMentionLink={() => null}
                 threadId="thr_stream"
