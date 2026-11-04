@@ -112,7 +112,6 @@ interface RoutingAttempt {
   binding: AccountBinding | null;
   active: ActiveAccount | null;
   pinnedAccountId: string | null;
-  transientFailures: Set<string>;
 }
 interface UpstreamResult {
   response: Response;
@@ -452,7 +451,6 @@ export class AccountPoolHub {
       binding: null,
       active: null,
       pinnedAccountId: null,
-      transientFailures: new Set(),
     };
     let previousAccountId: string | null = null;
     let failure: FailureSummary | null = null;
@@ -565,7 +563,6 @@ export class AccountPoolHub {
           }
           signal.throwIfAborted();
           if (error instanceof TransientOAuthRefreshError) {
-            routing.transientFailures.add(selected.account.id);
             failure = { status: 503, message: error.message, headers: {} };
           } else {
             this.setError(selected.account.id, errorMessage(error));
@@ -578,7 +575,6 @@ export class AccountPoolHub {
         const retryTransient = async (
           retryAfter: string | null,
         ): Promise<boolean> => {
-          routing.transientFailures.add(selected.account.id);
           if (!selected.keepAffinity) return false;
           const delayMs = transientRetryDelay(
             transientRetries,
@@ -1027,9 +1023,7 @@ export class AccountPoolHub {
       !familyDetour(boundAccountId) &&
       (bound === undefined ||
         bound.account.id === selected.account.id ||
-        (binding === routing.binding &&
-          attempted.has(bound.account.id) &&
-          !routing.transientFailures.has(bound.account.id)));
+        (binding === routing.binding && attempted.has(bound.account.id)));
     const advance =
       !familyDetour(active.accountId) &&
       (activeAccount === undefined ||

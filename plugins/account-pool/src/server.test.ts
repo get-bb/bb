@@ -3927,7 +3927,7 @@ describe("Account Pool plugin", () => {
     };
 
     it.each(["claude", "codex"] as const)(
-      "keeps %s session pins through a transient failover while the pool cursor advances",
+      "keeps %s sessions and the pool cursor on the third account after two failures",
       async (provider) => {
         let outage = false;
         const attempts: string[] = [];
@@ -3977,13 +3977,9 @@ describe("Account Pool plugin", () => {
           "sk-first",
           "sk-second",
           "sk-third",
-          "sk-first",
-          "sk-first",
-          "sk-first",
-          "sk-second",
           "sk-third",
           "sk-third",
-          "sk-first",
+          "sk-third",
           "sk-third",
         ]);
       },
@@ -4032,7 +4028,7 @@ describe("Account Pool plugin", () => {
       },
     );
 
-    it("fails a pinned session over at once when a transient failure asks for a long wait, keeping its pin", async () => {
+    it("fails a pinned session over at once when a transient failure asks for a long wait", async () => {
       let overloaded = false;
       const attempts: string[] = [];
       const fixture = await affinityFixture("claude", async (_input, init) => {
@@ -4056,7 +4052,12 @@ describe("Account Pool plugin", () => {
       await send("warm");
       overloaded = false;
       await send("warm");
-      expect(attempts).toEqual(["sk-first", "sk-first", "sk-second", "sk-first"]);
+      expect(attempts).toEqual([
+        "sk-first",
+        "sk-first",
+        "sk-second",
+        "sk-second",
+      ]);
     });
 
     it.each(["claude", "codex"] as const)(
@@ -4817,7 +4818,7 @@ describe("Account Pool plugin", () => {
         "codex-parent-body",
         "codex-spawn",
       ])(
-        "inherits the eligible %s parent once and keeps both pins through a child failover",
+        "inherits the eligible %s parent once and keeps child failover independent",
         async (wire) => {
           const provider = wire === "claude" ? "claude" : "codex";
           const route =
@@ -4882,7 +4883,7 @@ describe("Account Pool plugin", () => {
               "sk-first",
               "sk-second",
               "sk-first",
-              "sk-first",
+              "sk-second",
             ]);
           } finally {
             await held.body?.cancel();

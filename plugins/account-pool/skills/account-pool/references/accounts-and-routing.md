@@ -125,11 +125,9 @@ before the response starts, retries a pinned conversation on its own account
 first: up to twice, after 1 and then 2 seconds, or after the response's
 `Retry-After` when that is at most 20 seconds. Prompt caches stay with the
 account, so a move would rewrite the whole cached context. When the retries
-fail, or the wait is longer, the request fails over to the next account without
-moving the session's pin, and the next request returns to the pinned account.
-A failed token refresh keeps the pin the same way. The provider cursor still
-advances, and a new conversation pins to the account that served its first
-request. HTTP 401 and 403 and quota refusals move the pin as before. The cursor
+fail, or the wait is longer, the request fails over to the next account, and
+the session's pin moves to the account that served it, where its context is now
+cached. Conversations without a pin fail over at once. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
