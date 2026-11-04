@@ -785,6 +785,38 @@ describe("connect settings section", () => {
     expect(onSetupStarted).toHaveBeenCalledOnce();
   });
 
+  it("reports setup started again when a failed sign-in is retried", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({
+        login: pendingLogin("denied"),
+        status: signedInAccount,
+      }),
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    const retry = await slot.findByRole(
+      "button",
+      { name: "Try again" },
+      { timeout: 4_000 },
+    );
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+    fireEvent.click(retry);
+    expect(onSetupStarted).toHaveBeenCalledTimes(2);
+  });
+
   it("reports setup started when a pairing code is submitted or remote access is turned on", async () => {
     const onSetupStarted = vi.fn();
     const account = fakeAccountSdk({ redeemCode: () => signedInAccount });

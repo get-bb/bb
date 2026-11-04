@@ -1232,7 +1232,14 @@ function AccountSignInCard({
         <p className="text-xs text-destructive-text">
           {login.message ?? "Sign-in didn't finish."}
         </p>
-        <Button type="button" variant="outline" onClick={start}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            onStarted();
+            start();
+          }}
+        >
           Try again
         </Button>
       </div>
