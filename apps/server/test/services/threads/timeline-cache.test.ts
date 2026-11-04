@@ -3,8 +3,10 @@ import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { ThreadTimelinePageRequest } from "../../../src/services/threads/timeline-pagination.js";
 import {
   buildThreadTimelineCacheKey,
+  buildThreadTimelineCacheRevision,
   createThreadTimelineCache,
   type ThreadTimelineCacheKeyArgs,
+  type ThreadTimelineCacheRevisionArgs,
 } from "../../../src/services/threads/timeline-cache.js";
 
 function makeResponse(rowCount: number): ThreadTimelineResponse {
@@ -52,10 +54,16 @@ const latestPage: ThreadTimelinePageRequest = {
 
 const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   threadId: "thr_x",
-  status: "idle",
-  surface: "surface-a",
   page: latestPage,
   summaryOnly: false,
+  deferContent: false,
+  includeNestedRows: false,
+};
+
+const baseRevisionArgs: ThreadTimelineCacheRevisionArgs = {
+  maxSeq: 10,
+  status: "idle",
+  surface: "surface-a",
 };
 
 describe("createThreadTimelineCache", () => {
@@ -63,8 +71,8 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    const first = cache.getOrBuild("thr_x", "k", 10, build);
-    const second = cache.getOrBuild("thr_x", "k", 10, build);
+    const first = cache.getOrBuild("thr_x", "k", "r10", build);
+    const second = cache.getOrBuild("thr_x", "k", "r10", build);
 
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
@@ -73,11 +81,11 @@ describe("createThreadTimelineCache", () => {
 
   it("drops the stale revision and skips caching above the row cap", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
-    cache.getOrBuild("thr_x", "k", 9, () => makeResponse(1));
+    cache.getOrBuild("thr_x", "k", "r9", () => makeResponse(1));
     const build = vi.fn(() => makeResponse(50));
 
-    cache.getOrBuild("thr_x", "k", 10, build);
-    cache.getOrBuild("thr_x", "k", 10, build);
+    cache.getOrBuild("thr_x", "k", "r10", build);
+    cache.getOrBuild("thr_x", "k", "r10", build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
@@ -87,25 +95,48 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(1));
 
-    const first = cache.getOrBuild("thr_x", "k", 10, build);
-    const second = cache.getOrBuild("thr_x", "k", 11, build);
+    const first = cache.getOrBuild("thr_x", "k", "r10", build);
+    const second = cache.getOrBuild("thr_x", "k", "r11", build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(second).not.toBe(first);
-    expect(cache.getOrBuild("thr_x", "k", 11, build)).toBe(second);
+    expect(cache.getOrBuild("thr_x", "k", "r11", build)).toBe(second);
+    expect(cache.size).toBe(1);
+  });
+
+  it("replaces the entry when the thread's status or surface changes", () => {
+    const cache = createThreadTimelineCache();
+    const key = buildThreadTimelineCacheKey(baseKeyArgs);
+    const build = vi.fn(() => makeResponse(1));
+    const revisions = [
+      baseRevisionArgs,
+      { ...baseRevisionArgs, status: "active" as const },
+      { ...baseRevisionArgs, status: "active" as const, surface: "renamed" },
+    ];
+
+    for (const revision of revisions) {
+      cache.getOrBuild(
+        "thr_x",
+        key,
+        buildThreadTimelineCacheRevision(revision),
+        build,
+      );
+    }
+
+    expect(build).toHaveBeenCalledTimes(3);
     expect(cache.size).toBe(1);
   });
 
   it("keeps an idle thread cached while another thread streams revisions", () => {
     const cache = createThreadTimelineCache({ maxEntries: 4 });
     const idleBuild = vi.fn(() => makeResponse(1));
-    const idle = cache.getOrBuild("thr_idle", "idle", 7, idleBuild);
+    const idle = cache.getOrBuild("thr_idle", "idle", "r7", idleBuild);
 
     for (let maxSeq = 1; maxSeq <= 20; maxSeq += 1) {
-      cache.getOrBuild("thr_active", "active", maxSeq, () => makeResponse(1));
+      cache.getOrBuild("thr_active", "active", `r${maxSeq}`, () => makeResponse(1));
     }
 
-    expect(cache.getOrBuild("thr_idle", "idle", 7, idleBuild)).toBe(idle);
+    expect(cache.getOrBuild("thr_idle", "idle", "r7", idleBuild)).toBe(idle);
     expect(idleBuild).toHaveBeenCalledTimes(1);
     expect(cache.size).toBe(2);
   });
@@ -114,40 +145,41 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
 
-    cache.getOrBuild("thr_x", "a", 10, build);
-    cache.getOrBuild("thr_x", "b", 10, build);
-    cache.getOrBuild("thr_x", "a", 10, build);
-    cache.getOrBuild("thr_x", "c", 10, build);
+    cache.getOrBuild("thr_x", "a", "r10", build);
+    cache.getOrBuild("thr_x", "b", "r10", build);
+    cache.getOrBuild("thr_x", "a", "r10", build);
+    cache.getOrBuild("thr_x", "c", "r10", build);
 
     expect(cache.size).toBe(2);
     const buildAgain = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("thr_x", "a", 10, buildAgain);
-    cache.getOrBuild("thr_x", "b", 10, buildAgain);
+    cache.getOrBuild("thr_x", "a", "r10", buildAgain);
+    cache.getOrBuild("thr_x", "b", "r10", buildAgain);
     expect(buildAgain).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates only entries for the rewritten thread", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("thr_x", "x", 10, build);
-    cache.getOrBuild("thr_y", "y", 10, build);
+    cache.getOrBuild("thr_x", "x", "r10", build);
+    cache.getOrBuild("thr_y", "y", "r10", build);
 
     cache.invalidateThread("thr_x");
 
-    cache.getOrBuild("thr_x", "x", 10, build);
-    cache.getOrBuild("thr_y", "y", 10, build);
+    cache.getOrBuild("thr_x", "x", "r10", build);
+    cache.getOrBuild("thr_y", "y", "r10", build);
     expect(build).toHaveBeenCalledTimes(3);
     expect(cache.size).toBe(2);
   });
 });
 
 describe("buildThreadTimelineCacheKey", () => {
-  it("differs when any projection input differs", () => {
+  it("differs when any request input differs", () => {
     const base = buildThreadTimelineCacheKey(baseKeyArgs);
     const variants: ThreadTimelineCacheKeyArgs[] = [
-      { ...baseKeyArgs, status: "active" },
-      { ...baseKeyArgs, surface: "surface-b" },
+      { ...baseKeyArgs, threadId: "thr_y" },
       { ...baseKeyArgs, summaryOnly: true },
+      { ...baseKeyArgs, deferContent: true },
+      { ...baseKeyArgs, includeNestedRows: true },
       {
         ...baseKeyArgs,
         page: {
@@ -180,5 +212,19 @@ describe("buildThreadTimelineCacheKey", () => {
       },
     });
     expect(cursorA).not.toBe(cursorB);
+  });
+});
+
+describe("buildThreadTimelineCacheRevision", () => {
+  it("differs when any thread-state input differs", () => {
+    const base = buildThreadTimelineCacheRevision(baseRevisionArgs);
+    const variants: ThreadTimelineCacheRevisionArgs[] = [
+      { ...baseRevisionArgs, maxSeq: 11 },
+      { ...baseRevisionArgs, status: "active" },
+      { ...baseRevisionArgs, surface: "surface-b" },
+    ];
+    for (const variant of variants) {
+      expect(buildThreadTimelineCacheRevision(variant)).not.toBe(base);
+    }
   });
 });

@@ -14,7 +14,7 @@ interface ThreadTimelineCache {
   getOrBuild(
     threadId: string,
     key: string,
-    maxSeq: number,
+    revision: string,
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
   invalidateThread(threadId: string): void;
@@ -22,7 +22,7 @@ interface ThreadTimelineCache {
 }
 
 interface ThreadTimelineCacheEntry {
-  maxSeq: number;
+  revision: string;
   response: ThreadTimelineResponse;
   threadId: string;
 }
@@ -36,11 +36,11 @@ export function createThreadTimelineCache(
   const entries = new Map<string, ThreadTimelineCacheEntry>();
 
   return {
-    getOrBuild(threadId, key, maxSeq, build) {
+    getOrBuild(threadId, key, revision, build) {
       const cached = entries.get(key);
       if (cached !== undefined) {
         entries.delete(key);
-        if (cached.maxSeq === maxSeq) {
+        if (cached.revision === revision) {
           entries.set(key, cached);
           return cached.response;
         }
@@ -48,7 +48,7 @@ export function createThreadTimelineCache(
 
       const value = build();
       if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, { maxSeq, response: value, threadId });
+        entries.set(key, { response: value, revision, threadId });
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {
@@ -74,10 +74,16 @@ export function createThreadTimelineCache(
 
 export interface ThreadTimelineCacheKeyArgs {
   threadId: string;
-  status: ThreadStatus;
-  surface: string;
   page: ThreadTimelinePageRequest;
   summaryOnly: boolean;
+  deferContent: boolean;
+  includeNestedRows: boolean;
+}
+
+export interface ThreadTimelineCacheRevisionArgs {
+  maxSeq: number;
+  status: ThreadStatus;
+  surface: string;
 }
 
 function pageKeyPart(page: ThreadTimelinePageRequest): string {
@@ -91,9 +97,15 @@ export function buildThreadTimelineCacheKey(
 ): string {
   return [
     args.threadId,
-    args.status,
-    args.surface,
     pageKeyPart(args.page),
     args.summaryOnly ? "1" : "0",
+    args.deferContent ? "1" : "0",
+    args.includeNestedRows ? "1" : "0",
   ].join("|");
+}
+
+export function buildThreadTimelineCacheRevision(
+  args: ThreadTimelineCacheRevisionArgs,
+): string {
+  return JSON.stringify([args.maxSeq, args.status, args.surface]);
 }
