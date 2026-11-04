@@ -27,13 +27,18 @@ jobs:
         continue-on-error: true
       - shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Setup Bun
+        timeout-minutes: 4
+        uses: ./.github/actions/setup-bun
+        with:
+          version: "1.3.14"
       - name: Warm owner prerequisites
         shell: cmd
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: pnpm exec turbo run test --filter=bb-plugin-provider-* --filter=bb-plugin-tasks --filter=bb-plugin-connect --filter=bb-plugin-thread-list --concurrency=2
-      - name: Compare full affected Windows server shard
+      - name: Compare full Windows plugins-1 shard
         shell: cmd
         env:
           TEMP: ${{ runner.temp }}
