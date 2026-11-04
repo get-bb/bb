@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 3
+          fetch-depth: 4
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22.x'
@@ -42,16 +42,9 @@ jobs:
           mkdir perf
           git show 3b93a156695f38ea15874737977fc5e1b5f90afe:apps/server/test/services/plugins/plugin-update.test.ts > perf\baseline.ts
           copy /Y apps\server\test\services\plugins\plugin-update.test.ts perf\candidate.ts > nul
-          set matches=0
-          for /L %%S in (1,1,3) do (
-            call pnpm --filter @bb/server exec vitest list --filesOnly --shard=%%S/3 > perf\files-%%S.log 2>&1
-            findstr /c:"plugin-update.test.ts" perf\files-%%S.log > nul
-            if not errorlevel 1 (
-              set "UPDATE_SHARD=%%S/3"
-              set /a matches+=1
-            )
-          )
-          if not !matches!==1 exit /b 1
+          node shard-probe.mjs
+          if errorlevel 1 exit /b 1
+          set /p UPDATE_SHARD=<affected-shard.txt
           echo Affected shard: !UPDATE_SHARD!
           set "BB_CI_TEST_SHARD=!UPDATE_SHARD!"
           set sample=0
