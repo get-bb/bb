@@ -23,11 +23,20 @@ describe("app update presentation", () => {
   });
 
   it("warns in the singular and plural", () => {
-    expect(runningThreadsWarning(1)).toBe(
+    expect(runningThreadsWarning(1, false)).toBe(
       "1 thread is running. Updating restarts bb and interrupts it.",
     );
-    expect(runningThreadsWarning(3)).toBe(
+    expect(runningThreadsWarning(3, false)).toBe(
       "3 threads are running. Updating restarts bb and interrupts them.",
+    );
+  });
+
+  it("says the threads resume when restarts resume them", () => {
+    expect(runningThreadsWarning(1, true)).toBe(
+      "1 thread is running. Updating restarts bb, and it resumes after the update.",
+    );
+    expect(runningThreadsWarning(3, true)).toBe(
+      "3 threads are running. Updating restarts bb, and they resume after the update.",
     );
   });
 });

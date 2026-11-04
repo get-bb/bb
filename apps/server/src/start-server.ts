@@ -275,6 +275,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       ? createDesktopUpdateChannel(process)
       : null;
   const countRunningThreads = (): number => listRunningThreads(db).length;
+  const threadsResumeAfterRestart = (): boolean =>
+    getExperiments(db).resumeThreadsAfterRestart;
   const notifyAppUpdateChanged = (): void =>
     hub.notifySystem(["app-update-changed"]);
   const appUpdateService =
@@ -293,6 +295,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           logger,
           mode: appUpdateMode,
           notifyChanged: notifyAppUpdateChanged,
+          threadsResumeAfterRestart,
         })
       : createDesktopAppUpdateService({
           channel: desktopUpdateChannel,
@@ -301,6 +304,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           countRunningThreads,
           notifyChanged: notifyAppUpdateChanged,
           logger,
+          threadsResumeAfterRestart,
         });
   const appUpdate = createScheduledAppUpdateService({
     countRunningThreads,

@@ -2359,6 +2359,33 @@ The published lede.
     });
   });
 
+  it("tells the user running threads resume after the update when restarts resume them", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.config).mockResolvedValue(
+      makeSystemConfig({
+        primaryHostId: "host_primary",
+        experiments: { ...defaultExperiments, resumeThreadsAfterRestart: true },
+      }),
+    );
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "2 threads are running. Updating restarts bb, and they resume after the update.",
+      ),
+    ).toBeDefined();
+  });
+
   it.each([
     {
       experiment: true,

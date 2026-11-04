@@ -960,6 +960,11 @@ either way.
   attempt 4 (three restarts in a row). A child thread that resumes does not notify its parent
   that it was interrupted; the parent hears when the child finishes.
   `bb thread wait` keeps waiting on a thread whose resume is queued.
+  Updating bb counts as a restart, so threads that Update now (or
+  `bb updates app apply --yes`) cuts resume after the update. With the
+  experiment on, the Update now dialog, the CLI prompt, and the
+  `threads_running` error say "Updating restarts bb, and they resume after
+  the update" instead of "interrupts them".
   The experiment also makes every queued retry, including `bb thread retry` and
   provider-retry ones, go first: a new retry row is placed at the front of the
   thread's queue, and while a live retry (not Not sent, not exhausted) is

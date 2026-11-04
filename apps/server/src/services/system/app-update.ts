@@ -43,11 +43,17 @@ export interface AppUpdateService {
   getStatus(args: { forceRefresh: boolean }): Promise<AppUpdateServiceStatus>;
 }
 
-export function runningThreadsError(count: number): ApiError {
+export function runningThreadsError(
+  count: number,
+  threadsResume: boolean,
+): ApiError {
+  const running = `${String(count)} thread${count === 1 ? " is" : "s are"} running.`;
   return new ApiError(
     409,
     "threads_running",
-    `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`,
+    threadsResume
+      ? `${running} Updating restarts bb, and ${count === 1 ? "it resumes" : "they resume"} after the update.`
+      : `${running} Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`,
     { details: { runningThreadCount: count } },
   );
 }
@@ -68,6 +74,7 @@ interface CreateAppUpdateServiceArgs {
   notifyChanged: () => void;
   now?: () => number;
   sourceCheckTtlMs?: number;
+  threadsResumeAfterRestart: () => boolean;
 }
 
 function toPublicRevision(revision: AppRevision): SystemAppUpdateRevision {
@@ -414,7 +421,10 @@ export function createAppUpdateService(
         runningThreads.kind === "refuse" &&
         status.runningThreadCount > 0
       ) {
-        throw runningThreadsError(status.runningThreadCount);
+        throw runningThreadsError(
+          status.runningThreadCount,
+          args.threadsResumeAfterRestart(),
+        );
       }
       const target: AppUpdateTarget | null =
         status.support.kind === "supported" && status.support.mode === "npm"

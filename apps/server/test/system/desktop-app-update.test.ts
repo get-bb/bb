@@ -58,6 +58,7 @@ async function fixture() {
       countRunningThreads: () => running.count,
       notifyChanged: vi.fn(),
       logger: testLogger,
+      threadsResumeAfterRestart: () => false,
     });
     services.push(service);
     return service;

@@ -2087,8 +2087,10 @@ export function UpdatesSettingsSection() {
       );
     }
   }
-  const updateWhenIdleEnabled =
-    useSystemConfig().data?.experiments.updateWhenIdle === true;
+  const experiments = useSystemConfig().data?.experiments;
+  const updateWhenIdleEnabled = experiments?.updateWhenIdle === true;
+  const threadsResumeAfterRestart =
+    experiments?.resumeThreadsAfterRestart === true;
 
   function startAppUpdate(): void {
     const runningThreadCount = appUpdate?.runningThreadCount ?? 0;
@@ -2357,7 +2359,10 @@ export function UpdatesSettingsSection() {
       >
         <ConfirmDeleteDialogContent
           title="Update bb now?"
-          description={runningThreadsWarning(confirmingAppUpdateThreads ?? 0)}
+          description={runningThreadsWarning(
+            confirmingAppUpdateThreads ?? 0,
+            threadsResumeAfterRestart,
+          )}
           confirmLabel="Update and restart"
           pending={applyAppUpdate.isPending}
           onCancel={() => setConfirmingAppUpdateThreads(null)}
