@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ExperimentsProvider } from "../experiments/context";
-import { InstallOptions } from "./landing-visuals";
+import { HomepageInstallOptions, InstallOptions } from "./landing-visuals";
 import { CLI_COMMAND, GITHUB_URL } from "./site";
 
 function renderArm(variant: "control" | "test") {
@@ -51,7 +51,10 @@ describe("homepage-download-path install block", () => {
 });
 
 describe("homepage-download-area with the homepage-phone-email test", () => {
-  function heroHtml(touchAction: "share" | "email") {
+  function heroHtml(
+    touchAction: "share" | "email",
+    placement: "hero" | "closer" = "hero",
+  ) {
     return renderToStaticMarkup(
       <ExperimentsProvider
         value={{
@@ -63,19 +66,28 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
           preview: false,
         }}
       >
-        <InstallOptions placement="hero" touchAction={touchAction} />
+        <HomepageInstallOptions placement={placement} />
       </ExperimentsProvider>,
     );
   }
 
-  it("gives a phone in both test arms the email form", () => {
-    const html = heroHtml("email");
+  it.each(["hero", "closer"] as const)(
+    "gives a phone in both test arms the email form in the %s",
+    (placement) => {
+      const html = heroHtml("email", placement);
     expect(html).toContain("Other platforms");
     expect(html.split('<span class="install-note touch-only">')[1]).toMatch(
       /^We’ll email a link to open on your computer<br\/>macOS, Windows, Linux<\/span>/,
     );
     expect(html).toContain('class="subscribe-form install-email touch-only"');
     expect(html).not.toContain("install-send");
+    },
+  );
+
+  it("keeps the share button in the closer when the phone email test is off", () => {
+    const html = heroHtml("share", "closer");
+    expect(html).toContain("install-send");
+    expect(html).not.toContain("install-email");
   });
 
   it("leaves the desktop markup unchanged", () => {

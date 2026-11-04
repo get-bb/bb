@@ -102,6 +102,20 @@ import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
 import { useActiveWhileVisible, usePageHidden } from "./visibility";
 
+export function HomepageInstallOptions({
+  placement,
+}: {
+  placement: CtaPlacement;
+}) {
+  const phoneEmail = useExperiment("homepage-phone-email");
+  return (
+    <InstallOptions
+      placement={placement}
+      touchAction={phoneEmail === "test" ? "email" : "share"}
+    />
+  );
+}
+
 export function InstallOptions({
   placement,
   touchAction = "share",
