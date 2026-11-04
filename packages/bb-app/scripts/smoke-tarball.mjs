@@ -180,8 +180,8 @@ async function runCommand({ args, command, cwd = tempRoot, env = {}, label }) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  console.log("PROBE owned", label, childProcess.pid);
-  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
+  console.log("PROBE owned", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const result = await waitForProcessExit(childProcess);
   if (result.code !== 0) {
@@ -206,8 +206,8 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  console.log("PROBE owned", label, childProcess.pid);
-  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
+  console.log("PROBE owned", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   return {
     childProcess,
@@ -657,8 +657,8 @@ async function smokeBridgeModelList({
   label,
 }) {
   const childProcess = spawnPackedBridge({ bridgePath, packageDir, pluginId });
-  console.log("PROBE owned", label, childProcess.pid);
-  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
+  console.log("PROBE owned", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const modelListResponsePromise = waitForJsonRpcResponse({
     childProcess,
@@ -826,8 +826,8 @@ async function smokePluginHostWorkerBundle(packageDir) {
     [artifactPath, "keep-awake", generation, dataDir, workerTempDir],
     { cwd: tempRoot, stdio: ["ignore", "ignore", "pipe", "ipc"] },
   );
-  console.log("PROBE owned", label, childProcess.pid);
-  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
+  console.log("PROBE owned", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", typeof label === "undefined" ? "plugin-host-worker" : label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const exited = waitForProcessExit(childProcess);
   const ready = new Promise((resolve, reject) => {
