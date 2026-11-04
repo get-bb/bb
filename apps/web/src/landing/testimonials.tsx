@@ -56,7 +56,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     avatar: ondrejAvatar,
     source: "x",
     url: "https://x.com/DavidOndrej1/status/2090488406228840865",
-    quote: "bb has the best GUI for Agentic Engineering right now",
+    quote: "bb has the best GUI for Agentic Engineering right now\n\nchange my mind",
   },
   {
     author: "Chris Banes",
@@ -65,7 +65,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/chrisbanes/status/2095501731530481784",
     quote:
-      "After trying out bb for a few days, I might have just replaced the ChatGPT app.",
+      "After trying out `bb` for a few days, I might have just replaced the ChatGPT app.\n\nThe ability to extend it with easy-to-create plugins is just :chef_kiss:",
   },
   {
     author: "Scott Sunarto",
@@ -74,7 +74,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/smsunarto/status/2087277136952578498",
     quote:
-      "…no AI dev tool … became my daily driver as quickly as bb",
+      "i’ve been using bb for the past week, and I have to say that no AI dev tool have stick with me and became my daily driver as quickly as bb",
   },
   {
     author: "Can Duruk",
@@ -98,7 +98,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "blog",
     url: "https://hem.so/multiplexers",
     quote:
-      "This is my current daily driver, primarily because of its incredibly robust and thoughtful plugin system. … I can’t recommend it enough.",
+      "This is my current daily driver, primarily because of its incredibly robust and thoughtful plugin system. … It’s a novel mental model for extensibility, and I can’t recommend it enough.",
   },
   {
     author: "Swair",
@@ -115,7 +115,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/brunotorious/status/2114326460852842598",
     quote:
-      "…my daily driver… open source, multi provider, natively multi-machine and remote, and extensible.",
+      "@get_bb_app is my daily driver for the same reasons: open source, multi provider, natively multi-machine and remote, and extensible.",
   },
   {
     author: "Steve Frost",
@@ -124,7 +124,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "github",
     url: "https://github.com/get-bb/bb/discussions/5562",
     quote:
-      "How is bb everything I’ve ever wanted from codex? Customizable like pi, first-class css overrides… I never want this to end.",
+      "How is `bb` everything I’ve ever wanted from codex? Customizable like pi, first-class css overrides, the ability to make internal plugins for internal bots, processes, etc.\n\nWhere can I support the project? I never want this to end. 😆",
   },
   {
     author: "ishan",
@@ -133,9 +133,15 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/0xishand/status/2098304763368767697",
     quote:
-      "bb is one of the most impressive tools I’ve used in a very long time. … This is exactly how adaptive UIs should act and feel.",
+      "bb is one of the most impressive tools I’ve used in a very long time. With a few prompts you can completely generate your own in-IDE tooling for anything. This is exactly how adaptive UIs should act and feel. Well done @sawyerhood",
   },
 ];
+
+function QuoteText({ text }: { text: string }) {
+  return text
+    .split("`")
+    .map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part));
+}
 
 function initials(name: string): string {
   return name
@@ -162,7 +168,9 @@ function TestimonialCard({ t }: { t: Testimonial }) {
           })
         }
       >
-        <blockquote className="tm-quote">{t.quote}</blockquote>
+        <blockquote className="tm-quote">
+          <QuoteText text={t.quote} />
+        </blockquote>
         <span className="tm-author">
           {t.avatar ? (
             <img className="tm-avatar" src={t.avatar} alt="" loading="lazy" />
