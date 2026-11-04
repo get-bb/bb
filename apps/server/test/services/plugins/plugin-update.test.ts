@@ -414,7 +414,6 @@ describe("plugin update service and routes", () => {
         materializationCount += 1;
       },
     });
-    await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
     const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
     registerPluginUpdateJobRoutes(app, updateJobs);
@@ -434,9 +433,14 @@ describe("plugin update service and routes", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  async function installUpdater(): Promise<void> {
+    await service.install(`git:${repo}@main`, { kind: "root" });
+  }
+
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",
     async (selector) => {
+      await installUpdater();
       const tagged = await taggedRepo();
       await service.install(`git:${tagged}@${selector}`, { kind: "root" });
       const offline = join(workDir, "offline");
@@ -474,6 +478,7 @@ describe("plugin update service and routes", () => {
   );
 
   it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
+    await installUpdater();
     const updateState = {
       lastCheckAt: null,
       availableCompatibleVersion: null,
@@ -630,6 +635,7 @@ describe("plugin update service and routes", () => {
   }
 
   it("accepts an update before activation finishes and exposes its result after reconnect", async () => {
+    await installUpdater();
     const nextCommit = await commitPlugin(repo, "1.1.0");
     let release = () => {};
     const gate = new Promise<void>((resolve) => {
@@ -675,6 +681,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
+    await installUpdater();
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("updater");
@@ -730,6 +737,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks a git candidate without installing or building it", async () => {
+    await installUpdater();
     const candidate = await commitPlugin(
       repo,
       "1.2.0",
@@ -752,7 +760,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks for updates after marketplace removal converts provenance", async () => {
-    await service.remove("updater");
     await service.installCatalogPlugin({
       marketplace: "acme-plugins",
       entryId: "updater",
@@ -807,6 +814,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
+    await installUpdater();
     const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
     const incompatibleCommit = await commitPlugin(repo, "2.0.0", {
       bb: ">=99.0.0",
@@ -850,6 +858,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("serializes two updates for one plugin so only one applies", async () => {
+    await installUpdater();
     const before = getInstalledPluginRegistration(db, "updater");
     if (before === undefined) throw new Error("missing installed updater");
     const oldRoot = before.rootDir;
@@ -894,6 +903,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {
+    await installUpdater();
     const installedCommit = getInstalledPluginRegistration(
       db,
       "updater",
@@ -970,6 +980,7 @@ describe("plugin update service and routes", () => {
   }, 60_000);
 
   it("finishes an interrupted rollback before loading plugins after restart", async () => {
+    await installUpdater();
     const pluginDir = join(workDir, "data", "plugins", "updater");
     const databasePath = join(pluginDir, "data.db");
     const secretPath = join(pluginDir, "secrets", "token");
@@ -1142,6 +1153,7 @@ describe("plugin update service and routes", () => {
   }
 
   it("shares one in-flight full sweep between concurrent callers", async () => {
+    await installUpdater();
     const first = service.checkForUpdates();
     expect(service.checkForUpdates()).toBe(first);
     await first;
@@ -1170,6 +1182,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("deletes the replaced version once the update settles and keeps rollback state through the grace period", async () => {
+    await installUpdater();
     await service.stop();
     let clock = Date.now();
     const makeService = () =>
@@ -1225,6 +1238,7 @@ describe("plugin update service and routes", () => {
   }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
+    await installUpdater();
     await commitPlugin(repo, "1.1.0");
     let releasePromotion: (() => void) | undefined;
     let reportPromotion: (() => void) | undefined;
@@ -1253,6 +1267,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("orders disablement after an in-flight update without re-enabling it", async () => {
+    await installUpdater();
     await commitPlugin(repo, "1.1.0");
     let releasePromotion: (() => void) | undefined;
     let reportPromotion: (() => void) | undefined;
@@ -1284,6 +1299,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("uses isolated staging directories for concurrent check and update", async () => {
+    await installUpdater();
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const [checked, applied] = await Promise.all([
       service.checkForUpdates("updater"),
@@ -1299,7 +1315,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks, updates, and rolls back a nested git plugin", async () => {
-    await service.remove("updater");
     const nestedRoot = join(repo, "plugins", "nested");
     const commitNested = async (
       version: string,
@@ -1371,7 +1386,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
-    await service.remove("updater");
     await git(repo, ["tag", "v1"]);
     await service.install(`git:${repo}@v1`, { kind: "root" });
     const response = await app.request("/plugins/updater/update", {
@@ -1387,7 +1401,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("loads a legacy-layout plugin unchanged, then migrates lazily on update", async () => {
-    await service.remove("updater");
     const legacyRoot = join(
       workDir,
       "data",
@@ -1568,6 +1581,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("protects an unclassified Phase 1 exact-tag row in a full update sweep", async () => {
+    await installUpdater();
     const tagged = await taggedRepo();
     const source = `git:${tagged}@v1.0.0`;
     await service.install(source, { kind: "root" });
