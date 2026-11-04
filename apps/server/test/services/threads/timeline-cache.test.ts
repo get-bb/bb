@@ -8,6 +8,7 @@ import {
   type ThreadTimelineCacheKeyArgs,
   type ThreadTimelineCacheRevisionArgs,
 } from "../../../src/services/threads/timeline-cache.js";
+import { timelineWindowJsonLength } from "../../../src/services/threads/timeline-window-tag.js";
 
 function makeResponse(rowCount: number): ThreadTimelineResponse {
   return {
@@ -47,6 +48,10 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
   };
 }
 
+function windowBytes(rowCount: number): number {
+  return timelineWindowJsonLength(makeResponse(rowCount));
+}
+
 const latestPage: ThreadTimelinePageRequest = {
   kind: "latest",
   segmentLimit: 20,
@@ -79,8 +84,8 @@ describe("createThreadTimelineCache", () => {
     expect(cache.size).toBe(1);
   });
 
-  it("drops the stale revision and skips caching above the row cap", () => {
-    const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
+  it("drops the stale revision and skips caching above the entry byte limit", () => {
+    const cache = createThreadTimelineCache({ maxEntryBytes: windowBytes(5) });
     cache.getOrBuild("thr_x", "k", "r9", () => makeResponse(1));
     const build = vi.fn(() => makeResponse(50));
 
@@ -89,6 +94,34 @@ describe("createThreadTimelineCache", () => {
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
+  });
+
+  it("caches windows with many rows when they fit the byte limit", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(500));
+
+    const first = cache.getOrBuild("thr_x", "k", "r10", build);
+
+    expect(cache.getOrBuild("thr_x", "k", "r10", build)).toBe(first);
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts least-recently-used entries beyond the byte budget", () => {
+    const cache = createThreadTimelineCache({
+      maxBytes: Math.floor(windowBytes(10) * 2.5),
+    });
+    const build = vi.fn(() => makeResponse(10));
+
+    cache.getOrBuild("thr_x", "a", "r10", build);
+    cache.getOrBuild("thr_x", "b", "r10", build);
+    cache.getOrBuild("thr_x", "a", "r10", build);
+    cache.getOrBuild("thr_x", "c", "r10", build);
+
+    expect(cache.size).toBe(2);
+    const buildAgain = vi.fn(() => makeResponse(10));
+    cache.getOrBuild("thr_x", "a", "r10", buildAgain);
+    cache.getOrBuild("thr_x", "b", "r10", buildAgain);
+    expect(buildAgain).toHaveBeenCalledTimes(1);
   });
 
   it("rebuilds when the thread's maxSeq advances", () => {
@@ -128,7 +161,7 @@ describe("createThreadTimelineCache", () => {
   });
 
   it("keeps an idle thread cached while another thread streams revisions", () => {
-    const cache = createThreadTimelineCache({ maxEntries: 4 });
+    const cache = createThreadTimelineCache({ maxBytes: windowBytes(1) * 2 });
     const idleBuild = vi.fn(() => makeResponse(1));
     const idle = cache.getOrBuild("thr_idle", "idle", "r7", idleBuild);
 
@@ -158,16 +191,18 @@ describe("createThreadTimelineCache", () => {
   });
 
   it("invalidates only entries for the rewritten thread", () => {
-    const cache = createThreadTimelineCache();
+    const cache = createThreadTimelineCache({ maxBytes: windowBytes(1) * 2 });
     const build = vi.fn(() => makeResponse(1));
     cache.getOrBuild("thr_x", "x", "r10", build);
     cache.getOrBuild("thr_y", "y", "r10", build);
 
-    cache.invalidateThread("thr_x");
+    for (let rewrite = 0; rewrite < 5; rewrite += 1) {
+      cache.invalidateThread("thr_x");
+      cache.getOrBuild("thr_x", "x", "r10", build);
+    }
 
-    cache.getOrBuild("thr_x", "x", "r10", build);
     cache.getOrBuild("thr_y", "y", "r10", build);
-    expect(build).toHaveBeenCalledTimes(3);
+    expect(build).toHaveBeenCalledTimes(7);
     expect(cache.size).toBe(2);
   });
 });
