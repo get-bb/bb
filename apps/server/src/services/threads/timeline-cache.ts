@@ -14,6 +14,7 @@ interface ThreadTimelineCache {
   getOrBuild(
     threadId: string,
     key: string,
+    maxSeq: number,
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
   invalidateThread(threadId: string): void;
@@ -21,6 +22,7 @@ interface ThreadTimelineCache {
 }
 
 interface ThreadTimelineCacheEntry {
+  maxSeq: number;
   response: ThreadTimelineResponse;
   threadId: string;
 }
@@ -34,17 +36,19 @@ export function createThreadTimelineCache(
   const entries = new Map<string, ThreadTimelineCacheEntry>();
 
   return {
-    getOrBuild(threadId, key, build) {
+    getOrBuild(threadId, key, maxSeq, build) {
       const cached = entries.get(key);
       if (cached !== undefined) {
         entries.delete(key);
-        entries.set(key, cached);
-        return cached.response;
+        if (cached.maxSeq === maxSeq) {
+          entries.set(key, cached);
+          return cached.response;
+        }
       }
 
       const value = build();
       if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, { response: value, threadId });
+        entries.set(key, { maxSeq, response: value, threadId });
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {
@@ -70,7 +74,6 @@ export function createThreadTimelineCache(
 
 export interface ThreadTimelineCacheKeyArgs {
   threadId: string;
-  maxSeq: number;
   status: ThreadStatus;
   surface: string;
   page: ThreadTimelinePageRequest;
@@ -87,7 +90,6 @@ export function buildThreadTimelineCacheKey(
   args: ThreadTimelineCacheKeyArgs,
 ): string {
   return [
-    args.maxSeq,
     args.threadId,
     args.status,
     args.surface,

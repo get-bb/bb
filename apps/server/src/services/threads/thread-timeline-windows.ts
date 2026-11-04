@@ -162,13 +162,13 @@ export function createThreadTimelineWindows(
       thread.id,
       buildThreadTimelineCacheKey({
         threadId: thread.id,
-        maxSeq,
         status: thread.status,
         surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
           .cacheKey,
         page: request.page,
         summaryOnly: request.summaryOnly,
       }),
+      maxSeq,
       () => {
         const { profile, response: built } = buildThreadTimelineWithProfile(
           deps.db,

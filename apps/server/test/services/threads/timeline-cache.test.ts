@@ -52,7 +52,6 @@ const latestPage: ThreadTimelinePageRequest = {
 
 const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   threadId: "thr_x",
-  maxSeq: 10,
   status: "idle",
   surface: "surface-a",
   page: latestPage,
@@ -64,51 +63,79 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    const first = cache.getOrBuild("thr_x", "k", build);
-    const second = cache.getOrBuild("thr_x", "k", build);
+    const first = cache.getOrBuild("thr_x", "k", 10, build);
+    const second = cache.getOrBuild("thr_x", "k", 10, build);
 
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
     expect(cache.size).toBe(1);
   });
 
-  it("does not cache responses above the row cap (streaming expanded turns)", () => {
+  it("drops the stale revision and skips caching above the row cap", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
+    cache.getOrBuild("thr_x", "k", 9, () => makeResponse(1));
     const build = vi.fn(() => makeResponse(50));
 
-    cache.getOrBuild("thr_x", "k", build);
-    cache.getOrBuild("thr_x", "k", build);
+    cache.getOrBuild("thr_x", "k", 10, build);
+    cache.getOrBuild("thr_x", "k", 10, build);
 
     expect(build).toHaveBeenCalledTimes(2);
     expect(cache.size).toBe(0);
+  });
+
+  it("rebuilds when the thread's maxSeq advances", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(1));
+
+    const first = cache.getOrBuild("thr_x", "k", 10, build);
+    const second = cache.getOrBuild("thr_x", "k", 11, build);
+
+    expect(build).toHaveBeenCalledTimes(2);
+    expect(second).not.toBe(first);
+    expect(cache.getOrBuild("thr_x", "k", 11, build)).toBe(second);
+    expect(cache.size).toBe(1);
+  });
+
+  it("keeps an idle thread cached while another thread streams revisions", () => {
+    const cache = createThreadTimelineCache({ maxEntries: 4 });
+    const idleBuild = vi.fn(() => makeResponse(1));
+    const idle = cache.getOrBuild("thr_idle", "idle", 7, idleBuild);
+
+    for (let maxSeq = 1; maxSeq <= 20; maxSeq += 1) {
+      cache.getOrBuild("thr_active", "active", maxSeq, () => makeResponse(1));
+    }
+
+    expect(cache.getOrBuild("thr_idle", "idle", 7, idleBuild)).toBe(idle);
+    expect(idleBuild).toHaveBeenCalledTimes(1);
+    expect(cache.size).toBe(2);
   });
 
   it("evicts least-recently-used entries beyond maxEntries", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
 
-    cache.getOrBuild("thr_x", "a", build);
-    cache.getOrBuild("thr_x", "b", build);
-    cache.getOrBuild("thr_x", "a", build);
-    cache.getOrBuild("thr_x", "c", build);
+    cache.getOrBuild("thr_x", "a", 10, build);
+    cache.getOrBuild("thr_x", "b", 10, build);
+    cache.getOrBuild("thr_x", "a", 10, build);
+    cache.getOrBuild("thr_x", "c", 10, build);
 
     expect(cache.size).toBe(2);
     const buildAgain = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("thr_x", "a", buildAgain);
-    cache.getOrBuild("thr_x", "b", buildAgain);
+    cache.getOrBuild("thr_x", "a", 10, buildAgain);
+    cache.getOrBuild("thr_x", "b", 10, buildAgain);
     expect(buildAgain).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates only entries for the rewritten thread", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("thr_x", "x", build);
-    cache.getOrBuild("thr_y", "y", build);
+    cache.getOrBuild("thr_x", "x", 10, build);
+    cache.getOrBuild("thr_y", "y", 10, build);
 
     cache.invalidateThread("thr_x");
 
-    cache.getOrBuild("thr_x", "x", build);
-    cache.getOrBuild("thr_y", "y", build);
+    cache.getOrBuild("thr_x", "x", 10, build);
+    cache.getOrBuild("thr_y", "y", 10, build);
     expect(build).toHaveBeenCalledTimes(3);
     expect(cache.size).toBe(2);
   });
@@ -118,7 +145,6 @@ describe("buildThreadTimelineCacheKey", () => {
   it("differs when any projection input differs", () => {
     const base = buildThreadTimelineCacheKey(baseKeyArgs);
     const variants: ThreadTimelineCacheKeyArgs[] = [
-      { ...baseKeyArgs, maxSeq: 11 },
       { ...baseKeyArgs, status: "active" },
       { ...baseKeyArgs, surface: "surface-b" },
       { ...baseKeyArgs, summaryOnly: true },
