@@ -155,20 +155,6 @@ Guide: ${url}
 4. Continue with what's left. Don't change anything outside this folder, and don't push.`;
 }
 
-export const PROJECTS_SHOT: GuideShot = {
-  src: "/guides/switch-to-bb/window-projects.webp",
-  alt: "bb's Settings → Projects page listing the acme-web project, with an Add a project button",
-  width: 2048,
-  height: 1280,
-};
-
-const EXISTING_WORKTREE_SHOT: GuideShot = {
-  src: "/guides/switch-to-bb/window-existing-worktree.webp",
-  alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
-  width: 2048,
-  height: 1280,
-};
-
 export function missingConversationTroubleshooting(oldTool: string): GuideFaq {
   return {
     question: "The agent couldn't find the old conversation",
@@ -241,7 +227,12 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             </li>
           </Substeps>
         ),
-        shot: PROJECTS_SHOT,
+        shot: {
+          src: "/guides/switch-to-bb/window-projects.webp",
+          alt: "bb's Settings → Projects page listing the acme-web project, with an Add a project button",
+          width: 2048,
+          height: 1280,
+        },
         options: [],
       },
       {
@@ -254,7 +245,12 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             folder {oldTool} worked in.
           </p>
         ),
-        shot: EXISTING_WORKTREE_SHOT,
+        shot: {
+          src: "/guides/switch-to-bb/window-existing-worktree.webp",
+          alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
+          width: 2048,
+          height: 1280,
+        },
         options: [],
       },
       {
