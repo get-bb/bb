@@ -51,7 +51,7 @@ jobs:
           CACHE_OUTCOME: ${{ steps.cache.outcome }}
         run: |
           pnpm --version
-          node -e 'console.log({store: process.env.npm_config_store_dir, active: process.env.DISK_ACTIVE, cache: process.env.CACHE_OUTCOME}); if (process.env.DISK_ACTIVE === "true" && process.env.npm_config_store_dir !== "P:\\store") throw Error("store environment lost")'
+          node -e 'console.log({store: process.env.npm_config_store_dir, active: process.env.DISK_ACTIVE, cache: process.env.CACHE_OUTCOME}); if (process.env.DISK_ACTIVE === "true" && process.env.npm_config_store_dir.replaceAll(String.fromCharCode(92), "/") !== "P:/store") throw Error("store environment lost")'
           pnpm exec turbo run test --filter=@bb/process-utils --output-logs=new-only
   windows-parallel:
     name: Windows parallel (${{ matrix.rep }})
@@ -101,5 +101,94 @@ jobs:
           CACHE_OUTCOME: ${{ steps.cache.outcome }}
         run: |
           pnpm --version
-          node -e 'console.log({store: process.env.npm_config_store_dir, active: process.env.DISK_ACTIVE, cache: process.env.CACHE_OUTCOME}); if (process.env.DISK_ACTIVE === "true" && process.env.npm_config_store_dir !== "P:\\store") throw Error("store environment lost")'
+          node -e 'console.log({store: process.env.npm_config_store_dir, active: process.env.DISK_ACTIVE, cache: process.env.CACHE_OUTCOME}); if (process.env.DISK_ACTIVE === "true" && process.env.npm_config_store_dir.replaceAll(String.fromCharCode(92), "/") !== "P:/store") throw Error("store environment lost")'
           pnpm exec turbo run test --filter=@bb/process-utils --output-logs=new-only
+  linux-serial:
+    name: Linux serial (${{ matrix.rep }})
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: "22.x"
+          pnpm-version: "9.15.0"
+      - name: Install dependencies
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+      - name: Install AppImage FUSE runtime
+        uses: ./.github/actions/install-appimage-fuse
+        timeout-minutes: 5
+        with:
+          package: libfuse2t64
+      - name: Verify prerequisites
+        run: |
+          test "$(dpkg-query -W -f='${Status}' libfuse2t64)" = 'install ok installed'
+          pnpm --version
+          pnpm exec turbo --version
+  linux-parallel:
+    name: Linux parallel (${{ matrix.rep }})
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: "22.x"
+          pnpm-version: "9.15.0"
+      - parallel:
+          - name: Install dependencies
+            timeout-minutes: 5
+            run: bash .github/actions/setup-workspace/install-dependencies.sh --filter '!@bb/mobile'
+          - name: Install AppImage FUSE runtime
+            uses: ./.github/actions/install-appimage-fuse
+            timeout-minutes: 5
+            with:
+              package: libfuse2t64
+      - name: Verify prerequisites
+        run: |
+          test "$(dpkg-query -W -f='${Status}' libfuse2t64)" = 'install ok installed'
+          pnpm --version
+          pnpm exec turbo --version
+  join-contract:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Required setup fails
+        id: required
+        run: exit 17
+        background: true
+      - name: Observe required setup failure
+        id: required-join
+        wait: required
+        continue-on-error: true
+      - name: Verify failure propagated
+        env:
+          OUTCOME: ${{ steps.required-join.outcome }}
+        run: test "$OUTCOME" = failure
+      - parallel:
+          - name: Optional cache failure
+            id: cache
+            continue-on-error: true
+            run: exit 19
+          - name: Independent setup succeeds
+            id: setup
+            run: |
+              echo 'ready=true' >> "$GITHUB_OUTPUT"
+              echo 'SETUP_READY=true' >> "$GITHUB_ENV"
+      - name: Verify optional failure and environment are retained
+        env:
+          CACHE_OUTCOME: ${{ steps.cache.outcome }}
+          SETUP_OUTPUT: ${{ steps.setup.outputs.ready }}
+        run: |
+          test "$CACHE_OUTCOME" = failure
+          test "$SETUP_OUTPUT" = true
+          test "$SETUP_READY" = true
