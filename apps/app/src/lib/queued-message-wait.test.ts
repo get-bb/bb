@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { QueuedMessageWaitingOn } from "@bb/domain";
+import type { QueuedMessageWaitingOn, ThreadStatus } from "@bb/domain";
 import {
   describeQueuedMessageWait,
   formatQueuedMessageCountdown,
@@ -28,6 +28,7 @@ function describeWait(
     now?: number;
     pluginDisplayName?: string | null;
     sendAt?: number | null;
+    threadStatus?: ThreadStatus;
   } = {},
 ): string | null {
   return describeQueuedMessageWait({
@@ -36,6 +37,7 @@ function describeWait(
     payload: { kind: "inline" },
     pluginDisplayName: overrides.pluginDisplayName ?? null,
     sendAt: overrides.sendAt ?? null,
+    threadStatus: overrides.threadStatus ?? "active",
     waitingOn,
   });
 }
@@ -59,6 +61,12 @@ describe("describeQueuedMessageWait", () => {
     expect(describeWait({ kind: "interaction" })).toBe(
       "Waiting for your reply",
     );
+  });
+
+  it("stops promising a turn start once the thread's run has failed", () => {
+    expect(
+      describeWait({ kind: "turn-starting" }, { threadStatus: "error" }),
+    ).toBe("Turn didn't start · sends on the next turn");
   });
 
   it("names the absent machine a host-offline row is waiting on", () => {
@@ -117,6 +125,7 @@ describe("describeQueuedMessageWait", () => {
         },
         pluginDisplayName: null,
         sendAt: NOW + HOUR,
+        threadStatus: "active",
         waitingOn: { kind: "time" },
       }),
     ).toBe(`Rate limited · retrying at ${clockAt(NOW + HOUR)} · attempt 2`);
@@ -132,6 +141,7 @@ describe("describeQueuedMessageWait", () => {
         },
         pluginDisplayName: "Concurrency limit",
         sendAt: null,
+        threadStatus: "active",
         waitingOn: {
           kind: "plugin",
           pluginId: "concurrency-limit",

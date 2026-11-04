@@ -47,15 +47,21 @@ function QueuedMessagesList({
   sendAction = "send-now",
   defaultExpanded = false,
   onExpandedChange,
+  threadStatus = "active",
   ...props
 }: Omit<
   QueuedMessagesListProps,
-  "attachedToComposer" | "sendAction" | "expanded" | "onExpandedChange"
+  | "attachedToComposer"
+  | "sendAction"
+  | "expanded"
+  | "onExpandedChange"
+  | "threadStatus"
 > & {
   attachedToComposer?: boolean;
   sendAction?: QueuedMessagesListProps["sendAction"];
   defaultExpanded?: boolean;
   onExpandedChange?: QueuedMessagesListProps["onExpandedChange"];
+  threadStatus?: QueuedMessagesListProps["threadStatus"];
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
@@ -63,6 +69,7 @@ function QueuedMessagesList({
       {...props}
       attachedToComposer={attachedToComposer}
       sendAction={sendAction}
+      threadStatus={threadStatus}
       expanded={expanded}
       onExpandedChange={(nextExpanded) => {
         setExpanded(nextExpanded);

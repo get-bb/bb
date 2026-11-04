@@ -1,4 +1,8 @@
-import type { QueuedMessagePayload, QueuedMessageWaitingOn } from "@bb/domain";
+import type {
+  QueuedMessagePayload,
+  QueuedMessageWaitingOn,
+  ThreadStatus,
+} from "@bb/domain";
 import type { IconName } from "@bb/shared-ui/icon";
 import { formatScheduledTime } from "@/lib/relative-time";
 
@@ -93,6 +97,7 @@ export interface DescribeQueuedMessageWaitArgs {
   payload: QueuedMessagePayload;
   pluginDisplayName: string | null;
   sendAt: number | null;
+  threadStatus: ThreadStatus;
   waitingOn: QueuedMessageWaitingOn | null;
 }
 
@@ -136,7 +141,9 @@ export function describeQueuedMessageWait(
     case "thread-busy":
       return null;
     case "turn-starting":
-      return "Waiting for turn to start";
+      return args.threadStatus === "error"
+        ? "Turn didn't start · sends on the next turn"
+        : "Waiting for turn to start";
     case "stopping":
       return "Sending when the thread stops";
     case "time":
