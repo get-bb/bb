@@ -15,11 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 4
-      - uses: ./.github/actions/setup-workspace-tools
+          fetch-depth: 1
+      - name: Fetch exact comparison revisions
+        run: git fetch --no-tags --depth=1 origin b77a9c9c47ea0198305fc4c4b0c03f3a72daf0d0 f331dd1527eff096c710c017be798fe30b971e7c
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22.x'
-          pnpm-version: '9.15.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - uses: ./.github/actions/windows-dependency-cache
         timeout-minutes: 1
         continue-on-error: true
