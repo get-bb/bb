@@ -57,7 +57,7 @@ Lifecycle:
   `superseded`) until you send or delete it.
   SDK: `threads.retry({ threadId, turnRequestId?, sendAt?, reason? })`.
 
-  With the `continueThreadsAfterRestarts` experiment, a turn cut off because a
+  With the `resumeThreadsAfterRestart` experiment, a turn cut off because a
   machine's daemon came back as a new process (bb quit, crashed, updated, or
   the machine restarted) gets a retry with reason "bb restarted", sent a few
   seconds later. Turns stopped by the user, threads waiting on a question or

@@ -32,12 +32,12 @@ const unavailableSystemConfig: SystemConfigResponse = {
   experiments: {
     applicationLinks: false,
     compactExpiredCache: false,
-    continueThreadsAfterRestarts: false,
     dismissReadNotifications: false,
     narrowPluginCss: false,
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,
+    resumeThreadsAfterRestart: false,
     sidebarMultiSelect: false,
     skipFocusedThreadNotifications: false,
     threadContextCard: false,

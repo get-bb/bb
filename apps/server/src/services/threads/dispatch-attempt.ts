@@ -463,7 +463,7 @@ async function runDispatchAttempt(
 
   const retriesGoFirst = getExperiments(
     deps.db,
-  ).continueThreadsAfterRestarts;
+  ).resumeThreadsAfterRestart;
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,

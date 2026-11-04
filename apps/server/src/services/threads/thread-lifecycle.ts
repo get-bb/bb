@@ -1944,7 +1944,7 @@ function interruptActiveThreads(
               code: "thread_command_failed",
               message: failureMessage,
               detail: resuming
-                ? "bb will continue the thread in a few seconds."
+                ? "bb will resume the thread shortly."
                 : threadCommandFailureDetailForInterruption(effectiveReason),
             }),
           });

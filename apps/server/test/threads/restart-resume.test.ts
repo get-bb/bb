@@ -42,7 +42,7 @@ const WORKSPACE_PATH = "/tmp/restart-resume-project";
 afterEach(() => vi.useRealTimers());
 
 function continueAfterRestarts(harness: TestAppHarness, enabled: boolean) {
-  setExperiments(harness.db, { continueThreadsAfterRestarts: enabled });
+  setExperiments(harness.db, { resumeThreadsAfterRestart: enabled });
 }
 
 function seedHostWithProject(harness: TestAppHarness) {
@@ -312,8 +312,8 @@ describe("retries going first", () => {
   });
 });
 
-describe("continuing threads after a restart", () => {
-  it("queues a resume for a turn a daemon restart cut off, then continues it", async () => {
+describe("resuming threads after a restart", () => {
+  it("queues a resume for a turn a daemon restart cut off, then resumes it", async () => {
     await withTestHarness(async (harness) => {
       continueAfterRestarts(harness, true);
       const fixture = seedHostWithProject(harness);
@@ -325,7 +325,7 @@ describe("continuing threads after a restart", () => {
       expect(interruptionErrors(harness, thread.id)).toEqual([
         {
           message: "Thread interrupted because bb restarted",
-          detail: "bb will continue the thread in a few seconds.",
+          detail: "bb will resume the thread shortly.",
         },
       ]);
       const [resume, ...rest] = queue(harness, thread.id);

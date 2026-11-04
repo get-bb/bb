@@ -24,7 +24,7 @@ export function planRestartResumes(
   args: { hostId: string },
 ): Set<string> {
   const resuming = new Set<string>();
-  if (!getExperiments(deps.db).continueThreadsAfterRestarts) {
+  if (!getExperiments(deps.db).resumeThreadsAfterRestart) {
     return resuming;
   }
   const running = deps.db
