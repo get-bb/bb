@@ -2607,6 +2607,52 @@ describe("ComposerBox escape", () => {
 
 describe("ComposerBox size controls", () => {
   it.each([
+    ["thread", "457.5", "260", "50dvh"],
+    ["new-thread", "640.5", "364", "70dvh"],
+  ] as const)(
+    "tracks the %s editor cap through keyboard resize, dismissal, and zoom",
+    (surface, initialHeight, keyboardHeight, fallbackHeight) => {
+      const viewport = Object.assign(new EventTarget(), {
+        height: 915,
+        scale: 1,
+      });
+      vi.stubGlobal("visualViewport", viewport);
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const view = render(<ComposerBox {...createPromptBoxProps({ surface })} />);
+      const editorScroll = document.querySelector<HTMLElement>(
+        "[data-promptbox-editor-scroll]",
+      );
+      const expectCap = (height: string) =>
+        expect(editorScroll?.style.maxHeight).toBe(
+          `min(calc(${height} - 3rem), var(--composer-editor-available-height, 100dvh))`,
+        );
+
+      expectCap(`${initialHeight}px`);
+      act(() => {
+        viewport.height = 520;
+        viewport.dispatchEvent(new Event("resize"));
+      });
+      expectCap(`${keyboardHeight}px`);
+      act(() => {
+        viewport.height = 915;
+        viewport.dispatchEvent(new Event("resize"));
+      });
+      expectCap(`${initialHeight}px`);
+      act(() => {
+        viewport.scale = 2;
+        viewport.dispatchEvent(new Event("resize"));
+      });
+      expectCap(fallbackHeight);
+
+      const removeListener = vi.spyOn(viewport, "removeEventListener");
+      view.unmount();
+      expect(removeListener).toHaveBeenCalledWith("resize", expect.any(Function));
+    },
+  );
+
+  it.each([
     [
       "thread",
       "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
