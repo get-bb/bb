@@ -124,8 +124,9 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
 - `experimental_FilePreview` — bb's side-panel preview of one live file:
   its header (path, Preview/Raw, open in browser, Open in editor, download,
   file menu with refresh) and its loading, empty, missing and error states.
-  Props: `{ target, renderPreview }` — `target` is an
-  `ExperimentalLiveFileTarget`; `renderPreview({ content, url })` draws the
+  Props (`ExperimentalFilePreviewProps`): `{ target, renderPreview }` — `target` is an
+  `ExperimentalLiveFileTarget`; `renderPreview({ content, url })` (an
+  `ExperimentalFilePreviewFile`) draws the
   Preview body of an HTML, Markdown or CSV file instead of bb's, with `url`
   the absolute raw-file URL for sibling assets. Raw mode and other file types
   stay bb's. A malformed target renders nothing. Reference: the Inline
