@@ -26,6 +26,7 @@ async function run(command) {
 }
 async function inventory(label) {
  const archive=join(desktop,"release/win-unpacked/resources/app.asar");
+ asar.uncache(archive);
  const files={};let bytes=0,maps=0,mapBytes=0;
  for(const listed of asar.listPackage(archive)) {
   const nativeName=listed.replace(/^[\\/]+/,"");
