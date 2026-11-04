@@ -171,8 +171,8 @@ const USES_PROCESS_GROUPS = process.platform !== "win32";
 interface GitRun {
   stdout: string;
   stderr: string;
-  exitCode: number;
-  signaled: boolean;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
   overflow: "stdout" | "stderr" | null;
   stopped: boolean;
   timedOut: boolean;
@@ -243,8 +243,8 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
     options.signal?.addEventListener("abort", onAbort, { once: true });
 
     const finish = (
-      exitCode: number,
-      signaled: boolean,
+      exitCode: number | null,
+      signal: NodeJS.Signals | null,
       spawnError: Error | undefined,
     ): void => {
       if (settled) return;
@@ -256,7 +256,7 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
         exitCode,
-        signaled,
+        signal,
         overflow,
         stopped,
         timedOut,
@@ -306,15 +306,15 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
       child.stdin?.on("error", () => undefined);
       child.stdin?.end(options.input);
     }
-    child.on("error", (error) => finish(1, false, error));
-    child.on("close", (code, signal) => finish(code ?? 1, signal !== null, undefined));
+    child.on("error", (error) => finish(null, null, error));
+    child.on("close", (code, signal) => finish(code, signal, undefined));
   });
 }
 
 function isWindowsStartupCrash(run: GitRun): boolean {
   return (
     run.exitCode === STATUS_DLL_INIT_FAILED &&
-    !run.signaled &&
+    run.signal === null &&
     run.stdout === "" &&
     run.stderr === ""
   );
@@ -369,10 +369,20 @@ export async function runGit(
       return {
         stdout: run.stdout,
         stderr: run.stderr,
-        exitCode: failure === undefined ? run.exitCode : 1,
+        exitCode: failure === undefined ? (run.exitCode ?? 1) : 1,
       };
     }
-    throw createGitCommandFailedError(args, trimOutput(run.stderr), failure);
+    const cause =
+      failure ??
+      Object.assign(
+        new Error(
+          run.signal === null
+            ? `Git exited with code ${run.exitCode}`
+            : `Git terminated by signal ${run.signal}`,
+        ),
+        { exitCode: run.exitCode, signal: run.signal },
+      );
+    throw createGitCommandFailedError(args, trimOutput(run.stderr), cause);
   }
 }
 
