@@ -55,7 +55,8 @@ experimental_openFileExternally(options), experimental_openTerminal({ terminalId
   with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
-  `ExperimentalFileOpenOptions` live-file target.
+  `ExperimentalFileOpenOptions` live-file target; the preview also accepts
+  `ExperimentalFilePreviewOptions.opener`, one of your `fileOpener` ids.
   `experimental_openTerminal` shows a terminal the plugin created with
   `useSdk().terminals.create` in the current surface's terminal panel; the
   create scope (thread, environment, or host path) picks its directory. It

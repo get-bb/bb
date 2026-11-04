@@ -1449,7 +1449,14 @@ fires after a final unterminated line is emitted.
 
 `experimental_FileLink` and `experimental_openFilePreview` open explicit live
 workspace, host and thread-storage file targets through the current surface's
-shared file-tab controller. `experimental_openFileExternally` opens a target
+shared file-tab controller. `experimental_openFilePreview`'s optional
+`opener` (`ExperimentalFilePreviewOptions`) names one of the calling plugin's
+`fileOpener` registrations to show the file with for that open; it becomes
+the same one-off viewer override the file-link "Open with" menu passes, and an
+unregistered id falls back to BB's preview. A `fileOpener` with
+`extensions: []` is never chosen by extension or listed under "Open with", so
+it shows only files its plugin opens this way; Inline visualizations' expanded
+page is the first caller. `experimental_openFileExternally` opens a target
 in the client's preferred external app. The boolean results report host
 acceptance, and malformed targets stay inert.
 `experimental_useCanOpenFileExternally(target)` is a hook that reports
@@ -2652,6 +2659,39 @@ loader callback.
    that through `useComposer()` rather than a renderer prop.
 6. **Size and virtualization.** Neither component caps input size or
    virtualizes. Audit against a plugin that renders a very large file or patch.
+
+## `experimental_FilePreview` (`@get-bb/plugin-sdk/app`)
+
+Host-owned side-panel preview of one live file target. bb loads the file and
+draws its usual preview header (path, Preview/Raw toggle, open in browser,
+Open in editor, download, and the file menu with copy and refresh) and its
+loading, empty, missing and error states. `renderPreview({ content, url })`
+draws the Preview body of an HTML, Markdown or CSV file in place of bb's;
+`url` is the absolute raw-file URL. Raw mode and every other file type keep
+bb's rendering, and a refresh passes the new text. Inside a panel tab it
+loads only while the tab is showing, the visibility `experimental_useTabVisible`
+reports; elsewhere it loads at once.
+
+**Core callers.** It renders the same workspace, thread-storage and host file
+tab contents the side panel renders, so the header, loading and refresh are
+core's own; core's previews reach `FilePreview` through those components with
+no body override. Open in editor uses `useLiveFileOpenTargets` and the
+`openFileExternally` intent, the path core's file previews use. The first
+plugin caller is the Inline visualizations `page` file opener, which draws the
+themed inline-vis frame as the body.
+
+Docs: `frontend-components.md`.
+
+**Audit before stabilizing.**
+
+1. Decide whether the body override should also cover files without a
+   Preview mode (plain text, images), and what the toggle shows for them.
+2. Confirm surface-specific header behaviour: core's thread view passes its
+   own Open in editor handlers and a line number for host files; the
+   component passes none, and Add to chat comes only from the surrounding
+   `SelectionAddToChatContext`.
+3. Decide whether `renderPreview` should receive the line range a file open
+   requested.
 
 ## `app.slots.experimental_sourceCodeRenderer` / `app.slots.experimental_diffRenderer` (`@get-bb/plugin-sdk/app`)
 

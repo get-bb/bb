@@ -121,6 +121,16 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,
   and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
   null). bb owns syntax highlighting, gutters, and the live code theme.
+- `experimental_FilePreview` — bb's side-panel preview of one live file:
+  its header (path, Preview/Raw, open in browser, Open in editor, download,
+  file menu with refresh) and its loading, empty, missing and error states.
+  Props (`ExperimentalFilePreviewProps`): `{ target, renderPreview }` — `target` is an
+  `ExperimentalLiveFileTarget`; `renderPreview({ content, url })` (an
+  `ExperimentalFilePreviewFile`) draws the
+  Preview body of an HTML, Markdown or CSV file instead of bb's, with `url`
+  the absolute raw-file URL for sibling assets. Raw mode and other file types
+  stay bb's. A malformed target renders nothing. Reference: the Inline
+  visualizations `page` file opener (`plugins/inline-vis/app.tsx`).
 - `experimental_Diff` — bb's diff viewer. Props:
   `{ patch, path, view?, overflow?, showLineNumbers?, experimental_fullFileContents?,
 className? }` —
@@ -203,7 +213,10 @@ onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and
   effects use
   `useBbNavigate().experimental_openFilePreview({ target, location })` or
   `.experimental_openFileExternally({ target, location })`; the boolean means
-  host acceptance, not completed I/O.
+  host acceptance, not completed I/O. `experimental_openFilePreview` also
+  takes `opener`, the id of one of your `fileOpener` registrations, to show
+  that file with it for this open; an unregistered id falls back to BB's
+  preview.
   The `experimental_useCanOpenFileExternally(target)` hook is true when the
   target resolves on its host and this client has an external file target
   for it; it is false while loading and re-renders the component when it

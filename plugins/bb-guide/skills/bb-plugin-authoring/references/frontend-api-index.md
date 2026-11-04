@@ -22,6 +22,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useBranches`
 - `experimental_useCheckoutState`
 - `experimental_SourceCode`
+- `experimental_FilePreview`
 - `experimental_Diff`
 - `experimental_InfoSection`
 - `experimental_DetailRow`
