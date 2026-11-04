@@ -25,6 +25,7 @@ import { resolvePackagedAppBinary } from "./packaged-app-paths.mjs";
 const run = promisify(execFile);
 
 async function hashPackagedResources(resources) {
+  const started = performance.now();
   const hash = createHash("sha256");
   async function visit(file) {
     const stat = await lstat(file);
@@ -40,6 +41,7 @@ async function hashPackagedResources(resources) {
   }
   await visit(join(resources, "app.asar"));
   await visit(join(resources, "app.asar.unpacked"));
+  console.log("PROBE hash packaged resources seconds", (performance.now()-started)/1000);
   return hash.digest("hex");
 }
 
@@ -158,6 +160,7 @@ async function auditDependencies(modulesRoot) {
 }
 
 export async function smokePackagedNpm(appBinary) {
+  console.log("PROBE packaged npm start", new Date().toISOString());
   appBinary = resolve(appBinary);
   const resources =
     process.platform === "darwin"

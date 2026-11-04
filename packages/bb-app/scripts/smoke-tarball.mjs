@@ -1,4 +1,4 @@
-import { fork, spawn } from "node:child_process";
+import { execFileSync, fork, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { mkdirSync, readdirSync } from "node:fs";
@@ -180,6 +180,8 @@ async function runCommand({ args, command, cwd = tempRoot, env = {}, label }) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  console.log("PROBE owned", label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const result = await waitForProcessExit(childProcess);
   if (result.code !== 0) {
@@ -204,6 +206,8 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  console.log("PROBE owned", label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   return {
     childProcess,
@@ -653,6 +657,8 @@ async function smokeBridgeModelList({
   label,
 }) {
   const childProcess = spawnPackedBridge({ bridgePath, packageDir, pluginId });
+  console.log("PROBE owned", label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const modelListResponsePromise = waitForJsonRpcResponse({
     childProcess,
@@ -820,6 +826,8 @@ async function smokePluginHostWorkerBundle(packageDir) {
     [artifactPath, "keep-awake", generation, dataDir, workerTempDir],
     { cwd: tempRoot, stdio: ["ignore", "ignore", "pipe", "ipc"] },
   );
+  console.log("PROBE owned", label, childProcess.pid);
+  childProcess.once("close", (code, signal) => console.log("PROBE closed", label, childProcess.pid, code, signal));
   const output = collectProcessOutput(childProcess);
   const exited = waitForProcessExit(childProcess);
   const ready = new Promise((resolve, reject) => {
@@ -1377,10 +1385,18 @@ try {
     `bb-app tarball smoke passed in ${formatElapsed(smokeStartedAt)}\n`,
   );
 } finally {
+  console.log("PROBE cleanup", tempRoot);
   await rm(tempRoot, {
     force: true,
     maxRetries: 20,
     recursive: true,
     retryDelay: 250,
+  }).catch((error) => {
+    console.log("PROBE cleanup failed", error);
+    for (const [command, args] of [
+      [process.env.RUNNER_TEMP + "\\handle\\handle64.exe", ["-accepteula", "-nobanner", tempRoot]],
+      ["powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'node|cmd|conhost|nginx|taskkill' } | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath | ConvertTo-Json -Compress"]],
+    ]) { try { console.log(execFileSync(command, args, {encoding: "utf8", timeout: 30000})); } catch (diagnosticError) { console.log(diagnosticError.message); } }
+    throw error;
   });
 }

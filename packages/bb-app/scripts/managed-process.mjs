@@ -24,7 +24,7 @@ function stopWindowsProcessTree(pid) {
       "taskkill",
       ["/pid", String(pid), "/T", "/F"],
       { timeout: TASKKILL_TIMEOUT_MS, windowsHide: true },
-      () => resolvePromise(),
+      (error, stdout, stderr) => { console.log("PROBE taskkill", pid, JSON.stringify({error: error?.message, stdout, stderr})); resolvePromise(); },
     );
   });
 }

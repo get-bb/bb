@@ -364,6 +364,7 @@ function resolveArchName(context) {
 }
 
 async function afterPack(context) {
+  console.log("PROBE afterPack start", new Date().toISOString());
   const arch = resolveArchName(context);
   const platform = context.electronPlatformName ?? process.platform;
   if (platform !== process.platform || arch !== process.arch) {
@@ -374,6 +375,7 @@ async function afterPack(context) {
     electronVersion: resolveElectronVersion(),
     platform,
   });
+  console.log("PROBE native modules prepared", new Date().toISOString());
   const { smokePackagedNpm } = await import("./smoke-packaged-npm.mjs");
   const productName = context.packager.appInfo.productFilename;
   const appBinary =
@@ -392,6 +394,7 @@ async function afterPack(context) {
             : context.packager.executableName,
         );
   await smokePackagedNpm(appBinary);
+  console.log("PROBE afterPack end", new Date().toISOString());
 }
 
 function parseStandaloneArguments(argv) {
