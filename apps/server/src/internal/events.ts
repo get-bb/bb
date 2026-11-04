@@ -6,6 +6,7 @@ import {
   deriveStoredEventItemFields,
   getThread,
   getLatestThreadSequence,
+  isStoredTurnContextCompactionOnly,
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
@@ -545,7 +546,17 @@ async function applyEventEffects(
                 threadId: turnCompleted.thread.id,
                 turnId,
               }));
-          if (!alreadyHandledByCommandFailure && !manuallyStopped) {
+          const compactionOnly =
+            event.status === "completed" &&
+            isStoredTurnContextCompactionOnly(deps.db, {
+              threadId: turnCompleted.thread.id,
+              turnId,
+            });
+          if (
+            !alreadyHandledByCommandFailure &&
+            !manuallyStopped &&
+            !compactionOnly
+          ) {
             addParentTurnNotificationFollowUp({
               failedParentNotificationThreadIds,
               followUps: continuation ? deferredParentNotifications : followUps,

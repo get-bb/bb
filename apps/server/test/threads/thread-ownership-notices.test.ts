@@ -24,6 +24,7 @@ const WORKSPACE_PATH = "/tmp/thread-ownership-notices";
 
 interface OwnershipFixture {
   children: string[];
+  expireWindows: () => void;
   harness: TestAppHarness;
   move: (childId: string, parentId: string | null) => Promise<void>;
   parents: string[];
@@ -74,6 +75,11 @@ function withOwnershipFixture(
       children,
       harness,
       parents,
+      expireWindows() {
+        harness.db.$client
+          .prepare("UPDATE queued_thread_messages SET send_at = ?")
+          .run(Date.now() - 1_000);
+      },
       async move(childId, parentThreadId) {
         const previousThread = getThread(harness.db, childId)!;
         const updatedThread = updateThread(
@@ -288,6 +294,18 @@ describe("ownership notices", () => {
           children: [`removed:${child}`],
         },
       ]);
+    });
+  });
+
+  it("withdraw a move undone after its window but before delivery", async () => {
+    await withOwnershipFixture(async (fixture) => {
+      const [a, b] = fixture.parents;
+      const [child] = fixture.children;
+      await fixture.move(child!, b!);
+      fixture.expireWindows();
+      await fixture.move(child!, a!);
+
+      expect(pendingNotices(fixture)).toEqual([]);
     });
   });
 
