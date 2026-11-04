@@ -174,7 +174,13 @@ export function InstallOptions({
 }
 
 function PhoneEmailNote() {
-  return <>We&rsquo;ll email a link to open on your computer · macOS, Windows, Linux</>;
+  return (
+    <>
+      We&rsquo;ll email a link to open on your computer
+      <br />
+      macOS, Windows, Linux
+    </>
+  );
 }
 
 function OpenSourceLink({ placement }: { placement: CtaPlacement }) {
