@@ -232,6 +232,10 @@ function systemMessageTitleSegments(
       return threadSubjectTitleSegments(subject, "assigned to you");
     case "ownership-removed":
       return threadSubjectTitleSegments(subject, "unassigned");
+    case "ownership-batch":
+      return subject !== null && subject.kind === "thread-batch"
+        ? [verbSegment(`Ownership changed for ${subject.count} threads`)]
+        : SYSTEM_MESSAGE_FALLBACK_SEGMENTS;
     case "child-needs-attention":
       return threadSubjectTitleSegments(subject, "needs attention");
     case "child-completed":
@@ -332,6 +336,8 @@ function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
       return "ChildThread";
     case "ownership-removed":
       return "UserRound";
+    case "ownership-batch":
+      return "ChildThread";
     case "child-needs-attention":
       return "AlertTriangle";
     case "child-completed":

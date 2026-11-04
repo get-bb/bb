@@ -937,6 +937,28 @@ export function updateCoalescedQueuedThreadMessageInTransaction(
   );
 }
 
+export function deleteCoalescedQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  pending: QueuedThreadMessageRow,
+): QueuedThreadMessageRow | null {
+  const deleted =
+    tx
+      .delete(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.id, pending.id),
+          eq(queuedThreadMessages.threadId, pending.threadId),
+          automaticallyDrainableQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+  if (deleted !== null) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(tx, deleted);
+  }
+  return deleted;
+}
+
 export function createQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
