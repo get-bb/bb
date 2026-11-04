@@ -14,6 +14,10 @@ import {
 } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
+import {
+  createAppUpdateSendHold,
+  releaseSendsHeldAcrossRestart,
+} from "../../src/services/system/app-update-send-hold.js";
 import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { acceptThreadSendRequest } from "../../src/services/threads/thread-send-request.js";
@@ -604,6 +608,137 @@ describe("resuming threads after a restart", () => {
           ).toEqual(["user", "system"]),
         { timeout: 10_000 },
       );
+    });
+  });
+});
+
+describe("holding sends while bb restarts to update", () => {
+  function updateWhenIdle(harness: TestAppHarness, enabled: boolean) {
+    setExperiments(harness.db, { updateWhenIdle: enabled });
+  }
+
+  function seedIdleThread(harness: TestAppHarness, fixture: HostFixture) {
+    const seeded = seedRunningThread(harness, fixture);
+    applyLoggedThreadLifecycleEvent(harness.deps, {
+      event: { type: "run.succeeded" },
+      threadId: seeded.thread.id,
+    });
+    return seeded;
+  }
+
+  function waits(harness: TestAppHarness, threadId: string) {
+    return queue(harness, threadId).map((row) => row.waitingOn?.kind ?? null);
+  }
+
+  it("holds a send while the restart is pending and sends it at once when the update is called off", async () => {
+    await withTestHarness(async (harness) => {
+      updateWhenIdle(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const { thread } = seedIdleThread(harness, fixture);
+      const sendHold = createAppUpdateSendHold(harness.deps);
+
+      sendHold.hold();
+      await sendMessage(harness, {
+        mode: "auto",
+        text: "Held follow-up",
+        threadId: thread.id,
+      });
+
+      expect(requestTexts(harness, thread.id)).toEqual(["Do the thing"]);
+      expect(waits(harness, thread.id)).toEqual(["app-update"]);
+
+      sendHold.release();
+
+      await vi.waitFor(() =>
+        expect(requestTexts(harness, thread.id)).toEqual([
+          "Do the thing",
+          "Held follow-up",
+        ]),
+      );
+      expect(queue(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("does not hold sends while the updateWhenIdle experiment is off", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostWithProject(harness);
+      const { thread } = seedIdleThread(harness, fixture);
+
+      createAppUpdateSendHold(harness.deps).hold();
+      await sendMessage(harness, {
+        mode: "auto",
+        text: "Not held",
+        threadId: thread.id,
+      });
+
+      expect(requestTexts(harness, thread.id)).toEqual([
+        "Do the thing",
+        "Not held",
+      ]);
+    });
+  });
+
+  it("sends held messages after the restart, behind the resume, in order", async () => {
+    await withTestHarness(async (harness) => {
+      updateWhenIdle(harness, true);
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const running = seedRunningThread(harness, fixture);
+      const idle = seedIdleThread(harness, fixture);
+
+      createAppUpdateSendHold(harness.deps).hold();
+      await sendMessage(harness, {
+        mode: "auto",
+        text: "First follow-up",
+        threadId: running.thread.id,
+      });
+      await sendMessage(harness, {
+        mode: "queue-if-active",
+        text: "Second follow-up",
+        threadId: running.thread.id,
+      });
+      await sendMessage(harness, {
+        mode: "auto",
+        text: "Idle follow-up",
+        threadId: idle.thread.id,
+      });
+      expect(waits(harness, running.thread.id)).toEqual([
+        "app-update",
+        "app-update",
+      ]);
+      expect(waits(harness, idle.thread.id)).toEqual(["app-update"]);
+
+      handleDaemonSocketClosed(harness.deps, {
+        sessionId: fixture.session.id,
+      });
+      releaseSendsHeldAcrossRestart(harness.deps);
+      await vi.waitFor(() =>
+        expect([
+          ...waits(harness, running.thread.id),
+          ...waits(harness, idle.thread.id),
+        ]).not.toContain("app-update"),
+      );
+      await restartDaemon(harness, fixture);
+
+      expect(requestTexts(harness, idle.thread.id)).toEqual([
+        "Do the thing",
+        "Idle follow-up",
+      ]);
+      expect(
+        queue(harness, running.thread.id).map((row) => row.payload.kind),
+      ).toEqual(["retry", "inline", "inline"]);
+
+      await sweepPastResume(harness);
+      await finishTurnAndDrain(harness, running.thread.id);
+      await finishTurnAndDrain(harness, running.thread.id);
+
+      expect(requestTexts(harness, running.thread.id)).toEqual([
+        "Do the thing",
+        "Please continue.",
+        "First follow-up",
+        "Second follow-up",
+      ]);
+      expect(queue(harness, running.thread.id)).toEqual([]);
     });
   });
 });

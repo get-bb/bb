@@ -142,6 +142,8 @@ export {
   setDisabledPluginProviderCatalog,
   setDisabledProviderIds,
   setPluginSafeMode,
+  isAppUpdateSendHoldSet,
+  setAppUpdateSendHold,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
@@ -483,6 +485,7 @@ export {
   listQueuedThreadMessagesWaitingOnKind,
   listRetryableFailedQueuedThreadMessages,
   listThreadIdsWithHostOfflineQueueWaits,
+  listThreadIdsWithAppUpdateQueueWaits,
   releaseQueuedMessageClaim,
   releaseQueuedThreadMessageEditHold,
   requeueClaimedQueuedThreadMessages,

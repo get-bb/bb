@@ -84,6 +84,17 @@ class FakeLauncher implements LauncherChannel {
   }
 }
 
+function recordingSendHold() {
+  const events: string[] = [];
+  return {
+    events,
+    sendHold: {
+      hold: () => events.push("hold"),
+      release: () => events.push("release"),
+    },
+  };
+}
+
 function sourceCheck(
   overrides: Partial<SourceUpdateCheck> = {},
 ): SourceUpdateCheck {
@@ -126,6 +137,7 @@ function createService(args: {
     notifyChanged,
     ...(args.now === undefined ? {} : { now: args.now }),
     threadsResumeAfterRestart: () => args.threadsResume ?? false,
+    sendHold: recordingSendHold().sendHold,
   });
   launcher?.push({});
   return { launcher, notifyChanged, service };
@@ -413,6 +425,7 @@ describe("app update service", () => {
       mode: "npm",
       notifyChanged: vi.fn(),
       threadsResumeAfterRestart: () => false,
+      sendHold: recordingSendHold().sendHold,
     });
     launcher.push({});
     await service.apply({ runningThreads: { kind: "refuse" } });
@@ -454,6 +467,86 @@ describe("app update service", () => {
       },
     });
     expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+  });
+
+  it("holds new sends from the restart decision until bb restarts, and releases them when it does not", async () => {
+    let runningThreads = 0;
+    const { events, sendHold } = recordingSendHold();
+    const launcher = new FakeLauncher();
+    const service = createAppUpdateService({
+      currentCommit: null,
+      appSurface: "web",
+      appVersion: appVersion({}),
+      config: { appVersion: "1.0.0", isDevelopment: false },
+      countRunningThreads: () => {
+        events.push("count");
+        return runningThreads;
+      },
+      launcher,
+      logger: testLogger,
+      mode: "npm",
+      notifyChanged: vi.fn(),
+      sendHold,
+      threadsResumeAfterRestart: () => false,
+    });
+    const ready = (startedAt: string) =>
+      launcher.push({
+        activity: {
+          phase: "ready",
+          startedAt,
+          target: { kind: "npm", version: "1.1.0" },
+          targetVersion: "1.1.0",
+        },
+      });
+    launcher.push({});
+
+    await service.apply({ runningThreads: { kind: "refuse" } });
+    events.length = 0;
+    ready("2026-09-23T00:00:00.000Z");
+    launcher.push({
+      activity: {
+        phase: "restarting",
+        startedAt: "2026-09-23T00:00:00.000Z",
+        target: { kind: "npm", version: "1.1.0" },
+        targetVersion: "1.1.0",
+      },
+    });
+    expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+    expect(events).toEqual(["hold", "count"]);
+
+    launcher.push({});
+    expect(events).toEqual(["hold", "count", "release"]);
+
+    await service.apply({ runningThreads: { kind: "refuse" } });
+    runningThreads = 1;
+    events.length = 0;
+    ready("2026-09-23T00:05:00.000Z");
+    expect(launcher.requests.at(-1)).toMatchObject({ type: "cancel" });
+    expect(events).toEqual(["hold", "count", "release"]);
+
+    launcher.push({});
+    runningThreads = 0;
+    await service.apply({
+      runningThreads: { kind: "wait", shouldDefer: (count) => count > 0 },
+    });
+    runningThreads = 1;
+    events.length = 0;
+    ready("2026-09-23T00:10:00.000Z");
+    expect(launcher.requests.at(-1)).toEqual({ type: "defer" });
+    expect(events).toEqual(["hold", "count", "release"]);
+
+    launcher.push({});
+    runningThreads = 0;
+    launcher.respond = async (request) => {
+      if (request.type === "restart") throw new Error("launcher went away");
+      return null;
+    };
+    await service.apply({ runningThreads: { kind: "refuse" } });
+    events.length = 0;
+    ready("2026-09-23T00:15:00.000Z");
+    await vi.waitFor(() =>
+      expect(events).toEqual(["hold", "count", "release"]),
+    );
   });
 
   it("stops offering updates once the launcher disconnects", async () => {
@@ -547,6 +640,7 @@ function createScheduledService(args: { runningThreads: number }) {
     mode: "npm",
     notifyChanged: vi.fn(),
     threadsResumeAfterRestart: () => false,
+    sendHold: recordingSendHold().sendHold,
   });
   launcher.push({});
   const notifyChanged = vi.fn();

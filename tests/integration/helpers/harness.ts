@@ -43,6 +43,7 @@ import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/inje
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppUpdateService } from "../../../apps/server/src/services/system/app-update.js";
 import { createScheduledAppUpdateService } from "../../../apps/server/src/services/system/app-update-schedule.js";
+import { createAppUpdateSendHold } from "../../../apps/server/src/services/system/app-update-send-hold.js";
 import { createCliCommandService } from "../../../apps/server/src/services/system/cli-command.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
@@ -283,6 +284,21 @@ async function startIntegrationServer(
       notifyChanged: notifyAppUpdateChanged,
       threadsResumeAfterRestart: () =>
         getExperiments(db).resumeThreadsAfterRestart,
+      sendHold: createAppUpdateSendHold({
+        aiServices,
+        config,
+        db,
+        hub,
+        lifecycleDedupers,
+        logger: testLogger,
+        machineAuth,
+        pendingInteractions,
+        pluginHostArtifacts,
+        providerRegistry,
+        skillTreeRegistry,
+        telemetry,
+        terminalSessions,
+      }),
     }),
     isEnabled: () => getExperiments(db).updateWhenIdle,
     logger: testLogger,

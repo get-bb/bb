@@ -41,6 +41,7 @@ export function isQueuedMessageSendNowAllowed({
     case "host-offline":
     case "interaction":
     case "turn-starting":
+    case "app-update":
       return false;
     case "stopping":
       return false;
@@ -86,6 +87,8 @@ export function queuedMessageWaitIcon(args: {
       return "CloudOff";
     case "interaction":
       return "CircleQuestion";
+    case "app-update":
+      return "Download";
     case "plugin":
       return null;
   }
@@ -156,6 +159,8 @@ export function describeQueuedMessageWait(
       return `Waiting for ${args.waitingOn.hostName} to be ready`;
     case "interaction":
       return "Waiting for your reply";
+    case "app-update":
+      return "Sending after bb restarts to update";
     case "plugin":
       return `Held by ${args.pluginDisplayName ?? args.waitingOn.pluginId} · ${args.waitingOn.reason}`;
   }

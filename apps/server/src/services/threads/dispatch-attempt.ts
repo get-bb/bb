@@ -11,6 +11,7 @@ import {
   getEnvironment,
   getExperiments,
   hasLiveQueuedRetry,
+  isAppUpdateSendHoldSet,
   type EnvironmentRow,
   getThread,
   isThreadQueueAutoSendPaused,
@@ -503,6 +504,11 @@ async function runDispatchAttempt(
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
       continued.outcome = waitOn({ kind: "time" }, sendAt);
+      return;
+    }
+
+    if (isAppUpdateSendHoldSet(deps.db)) {
+      continued.outcome = waitOn({ kind: "app-update" }, null);
       return;
     }
 

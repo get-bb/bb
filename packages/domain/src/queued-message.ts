@@ -62,6 +62,7 @@ export const queuedMessageWaitingOnKindValues = [
   "provisioning",
   "host-offline",
   "interaction",
+  "app-update",
   "plugin",
   "superseded",
 ] as const;
@@ -100,6 +101,7 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
     hostName: queuedMessageWaitHostNameSchema,
   }),
   z.object({ kind: z.literal("interaction") }),
+  z.object({ kind: z.literal("app-update") }),
   z.object({
     kind: z.literal("plugin"),
     pluginId: pluginIdSchema,

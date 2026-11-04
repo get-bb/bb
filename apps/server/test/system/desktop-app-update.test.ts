@@ -50,6 +50,7 @@ async function fixture() {
   roots.push(dataDir);
   const channel = new DesktopChannel();
   const running = { count: 0 };
+  const sendHoldEvents: string[] = [];
   const create = (currentVersion: string) => {
     const service = createDesktopAppUpdateService({
       channel,
@@ -59,11 +60,21 @@ async function fixture() {
       notifyChanged: vi.fn(),
       logger: testLogger,
       threadsResumeAfterRestart: () => false,
+      sendHold: {
+        hold: () => sendHoldEvents.push("hold"),
+        release: () => sendHoldEvents.push("release"),
+      },
     });
     services.push(service);
     return service;
   };
-  return { channel, running, create, service: create("1.0.0") };
+  return {
+    channel,
+    running,
+    create,
+    sendHoldEvents,
+    service: create("1.0.0"),
+  };
 }
 
 afterEach(async () => {
@@ -74,7 +85,8 @@ afterEach(async () => {
 
 describe("desktop-hosted server updates", () => {
   it("confirms running threads, waits for the download, and records the new server after restart", async () => {
-    const { service, channel, running, create } = await fixture();
+    const { service, channel, running, create, sendHoldEvents } =
+      await fixture();
     const status = await service.getStatus({ forceRefresh: true });
     expect(status).toMatchObject({
       desktopUpdateSupported: true,
@@ -110,6 +122,7 @@ describe("desktop-hosted server updates", () => {
         ).toHaveLength(1),
       { timeout: 3_000 },
     );
+    expect(sendHoldEvents).toEqual(["hold"]);
     service.dispose();
 
     const restarted = create("1.1.0");
@@ -128,7 +141,7 @@ describe("desktop-hosted server updates", () => {
   });
 
   it("keeps the server running when a new thread starts during download", async () => {
-    const { service, channel, running } = await fixture();
+    const { service, channel, running, sendHoldEvents } = await fixture();
     await service.apply({ runningThreads: { kind: "refuse" } });
     running.count = 1;
     channel.push({
@@ -142,13 +155,14 @@ describe("desktop-hosted server updates", () => {
       ).toContain("1 thread started while bb was downloading"),
     );
     expect(channel.requests).not.toContain("install");
+    expect(sendHoldEvents).toEqual(["hold", "release"]);
     expect(
       (await service.getStatus({ forceRefresh: false })).activity.phase,
     ).toBe("idle");
   });
 
   it("hands a waiting update back without a failure when a thread starts during download", async () => {
-    const { service, channel, running } = await fixture();
+    const { service, channel, running, sendHoldEvents } = await fixture();
     const shouldDefer = vi.fn((count: number) => count > 0);
     await service.apply({ runningThreads: { kind: "wait", shouldDefer } });
     running.count = 1;
@@ -164,6 +178,7 @@ describe("desktop-hosted server updates", () => {
       lastResult: null,
     });
     expect(channel.requests).not.toContain("install");
+    expect(sendHoldEvents).toEqual(["hold", "release"]);
 
     running.count = 0;
     await service.apply({ runningThreads: { kind: "wait", shouldDefer } });

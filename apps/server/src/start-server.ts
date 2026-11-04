@@ -1,5 +1,9 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createScheduledAppUpdateService } from "./services/system/app-update-schedule.js";
+import {
+  createAppUpdateSendHold,
+  releaseSendsHeldAcrossRestart,
+} from "./services/system/app-update-send-hold.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
@@ -277,6 +281,22 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const countRunningThreads = (): number => listRunningThreads(db).length;
   const threadsResumeAfterRestart = (): boolean =>
     getExperiments(db).resumeThreadsAfterRestart;
+  const sendHoldDeps = {
+    aiServices,
+    config: runtimeConfig,
+    db,
+    hub,
+    lifecycleDedupers,
+    logger,
+    machineAuth,
+    pendingInteractions,
+    pluginHostArtifacts,
+    providerRegistry,
+    skillTreeRegistry,
+    telemetry,
+    terminalSessions,
+  };
+  const sendHold = createAppUpdateSendHold(sendHoldDeps);
   const notifyAppUpdateChanged = (): void =>
     hub.notifySystem(["app-update-changed"]);
   const appUpdateService =
@@ -296,6 +316,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           mode: appUpdateMode,
           notifyChanged: notifyAppUpdateChanged,
           threadsResumeAfterRestart,
+          sendHold,
         })
       : createDesktopAppUpdateService({
           channel: desktopUpdateChannel,
@@ -305,6 +326,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           notifyChanged: notifyAppUpdateChanged,
           logger,
           threadsResumeAfterRestart,
+          sendHold,
         });
   const appUpdate = createScheduledAppUpdateService({
     countRunningThreads,
@@ -439,6 +461,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       ? installProviderCliStatusPrewarm(sweepDeps)
       : null;
   if (pendingServerMove === null) {
+    releaseSendsHeldAcrossRestart(sweepDeps);
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
