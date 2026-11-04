@@ -15,9 +15,6 @@ jobs:
             order: B A A B
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 30
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -34,6 +31,9 @@ jobs:
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
       - name: Warm owner prerequisites
         shell: cmd
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: pnpm exec turbo run test --filter=@bb/server --concurrency=2 -- test/services/plugins/plugin-update.test.ts
       - name: Compare full affected Windows server shard
         shell: cmd
