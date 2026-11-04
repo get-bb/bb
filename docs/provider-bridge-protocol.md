@@ -614,9 +614,17 @@ supervises per-thread app-server children); process topology is
 bridge-internal and invisible to the runtime. Bridges that spawn children
 finalize on `close`, not `exit`, with a bounded grace, verify currency in
 stream callbacks, and never let a descendant holding an inherited pipe inject
-into a fresh session. The bridge's own environment is constructed by the
-runtime from an allowlist; bridges construct their children's environments
-the same way and must not leak their own inherited env downward.
+into a fresh session.
+
+The runtime builds a bridge's environment from the host daemon's environment
+with `NODE_ENV`, every `BB_*` variable, and undefined values removed. It then
+adds the runtime's configured environment and the adapter's `process.env` on
+top. Other inherited variables, such as provider credentials, proxy settings,
+and platform variables, reach the bridge unchanged. A bridge that spawns
+children builds their environment with `sanitizeInheritedChildProcessEnv`,
+which removes the same names, so bb thread context and bridge settings such
+as `BB_PROVIDER_BRIDGE_RECORD_DIR` do not reach the provider. Pass any value a
+child needs explicitly.
 
 ## Record mode
 
