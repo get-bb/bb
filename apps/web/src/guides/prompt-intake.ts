@@ -10,12 +10,17 @@ const AFTER_QUESTIONS = [
 
 export function withIntake(fields: IntakeField[], prompt: string): string {
   const questions = fields.map((field) => `- ${field.label} (${field.hint})`);
+  const split = prompt.indexOf("\n\n");
+  const job = split === -1 ? prompt : prompt.slice(0, split);
+  const steps = split === -1 ? "" : prompt.slice(split + 2);
   return [
-    "Ask me about each of these, one at a time, with a suggested default:",
+    job,
+    "",
+    "First, tell me in a sentence or two what you're about to do. Then ask me about each of these, one at a time, with a suggested default:",
     ...questions,
     AFTER_QUESTIONS,
     "",
-    prompt,
+    steps,
   ].join("\n");
 }
 
