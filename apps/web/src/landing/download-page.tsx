@@ -97,7 +97,7 @@ function DownloadRows({
 
 export function DownloadPage() {
   const platform = useDesktopPlatform();
-  const { note, requirement } = DESKTOP_DOWNLOADS[platform];
+  const { note } = DESKTOP_DOWNLOADS[platform];
   return (
     <div className="wrap">
       <SiteNav />
@@ -112,19 +112,7 @@ export function DownloadPage() {
           <DesktopInstallChoice
             placement={PLACEMENT}
             platform={platform}
-            note={
-              <>
-                {note}
-                {requirement ? (
-                  <>
-                    {" · Needs "}
-                    <a className="install-note-link" href={requirement.href}>
-                      {requirement.label}
-                    </a>
-                  </>
-                ) : null}
-              </>
-            }
+            note={note}
           />
         </div>
       </header>
