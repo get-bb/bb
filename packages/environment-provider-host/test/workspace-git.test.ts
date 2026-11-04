@@ -134,6 +134,18 @@ afterEach(async () => {
 });
 
 describe("runGit", () => {
+  it("reports the exit status of a silent Git failure", async () => {
+    const repoPath = await initEmptyRepo();
+
+    await expect(
+      runGit(["config", "--local", "--get", "bb.missing-setting"], { cwd: repoPath }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "git_command_failed",
+      cause: { exitCode: 1, signal: null, message: "Git exited with code 1" },
+    });
+  });
+
   it("scrubs inherited bb runtime env vars and node mode", async () => {
     const repoPath = await initEmptyRepo();
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
