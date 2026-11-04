@@ -316,6 +316,7 @@ export {
   hasRootStoredTurnStarted,
   hasStoredSpawnAgentToolCall,
   hasStoredTerminalClientTurnRequestEvent,
+  findLatestUnresolvedClientTurnRequestIdAfterSequence,
   hasStoredTurnCompleted,
   hasStoredTurnStarted,
   classifyStoredProviderThreadClaim,
