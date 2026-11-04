@@ -498,7 +498,11 @@ describe("createAgentRuntime process lifecycle", () => {
     scriptPath: string;
     startsLog: string;
   }): void {
-    const holder = `require("node:fs").writeFileSync(${JSON.stringify(args.pidFile)}, String(process.pid)); setTimeout(() => {}, 30_000);`;
+    const holder = `const fs = require("node:fs");
+      const pidFile = ${JSON.stringify(args.pidFile)};
+      fs.writeFileSync(pidFile + ".tmp", String(process.pid));
+      fs.renameSync(pidFile + ".tmp", pidFile);
+      setTimeout(() => {}, 30_000);`;
     writeCrashOnceScript({
       scriptPath: args.scriptPath,
       startMarker: `${args.scriptPath}.started`,
