@@ -5,24 +5,16 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
 
-describe("native plugin server loading", () => {
-  const tempDirs: string[] = [];
-
-  afterEach(async () => {
-    await Promise.all(
-      tempDirs
-        .splice(0)
-        .map((dir) => rm(dir, { recursive: true, force: true })),
-    );
-  });
-
-  it("resolves BB-provided externals in a native Node import", async () => {
+describe.concurrent("native plugin server loading", () => {
+  it("resolves BB-provided externals in a native Node import", async ({
+    onTestFinished,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-plugin-load-"));
-    tempDirs.push(workDir);
+    onTestFinished(() => rm(workDir, { recursive: true, force: true }));
     const rootDir = join(workDir, "plugin");
     await mkdir(join(rootDir, "dist"), { recursive: true });
     await writeFile(
@@ -150,9 +142,11 @@ process.stdout.write(JSON.stringify(result));
     });
   });
 
-  it("loads a TypeScript source plugin through the cache in native Node", async () => {
+  it("loads a TypeScript source plugin through the cache in native Node", async ({
+    onTestFinished,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-load-"));
-    tempDirs.push(workDir);
+    onTestFinished(() => rm(workDir, { recursive: true, force: true }));
     const rootDir = join(workDir, "plugin");
     await mkdir(rootDir, { recursive: true });
     await writeFile(
@@ -247,9 +241,11 @@ process.stdout.write(JSON.stringify(result));
     });
   });
 
-  it("preserves cross-plugin dynamic imports across source reloads", async () => {
+  it("preserves cross-plugin dynamic imports across source reloads", async ({
+    onTestFinished,
+  }) => {
     const workDir = await mkdtemp(join(tmpdir(), "bb-native-source-reload-"));
-    tempDirs.push(workDir);
+    onTestFinished(() => rm(workDir, { recursive: true, force: true }));
     const importedDir = join(workDir, "bb-plugin-imported");
     const importerDir = join(workDir, "bb-plugin-importer");
     await mkdir(importedDir, { recursive: true });
