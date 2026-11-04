@@ -326,7 +326,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
       AGENTS_FAQ,
     ],
     closer: {
-      title: "Get more done with the agents you already use",
+      title: "Get more done with the agents you already use.",
       body: "Run more agents at once, see which one needs you, and let them hand work to each other. Free and open source, on the subscriptions you already have.",
     },
   };

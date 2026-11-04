@@ -170,7 +170,7 @@ export const guide: Guide = {
     ...BROWSER_FAQ,
   ],
   closer: {
-    title: "Get the answer, with sources",
+    title: "Get the answer, with sources.",
     body: "Free and open source. Use the agents you already have.",
   },
 };
