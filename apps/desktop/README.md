@@ -425,6 +425,13 @@ spctl --assess --verbose /path/to/bb.app
 codesign --verify --deep --strict --verbose=2 /path/to/bb.app
 ```
 
+The signed macOS app includes Automation permission support for agents
+and computer-use session cleanup. macOS still requires the user to allow the
+Automation request. A separately enrolled host daemon runs under the Node executable
+selected by its installer, so its signing and Automation permissions are independent
+of the desktop app. Desktop entitlements do not repair an external Node runtime
+that macOS rejects as the responsible process for Apple Events.
+
 ## Debugging
 
 Use the View menu to toggle DevTools. To open them automatically on launch, set
