@@ -6,7 +6,7 @@ import {
 export default defineWorkspaceTestConfig({
   resolve: { tsconfigPaths: true },
   test: {
-    silent: "passed-only",
+    silent: false,
     testTimeout: 15_000,
     projects: sharedWorkerProjects({
       pkgDir: __dirname,

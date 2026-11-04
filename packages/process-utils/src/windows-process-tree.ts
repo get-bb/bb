@@ -11,6 +11,7 @@ export function terminateWindowsProcessTrees(
   pids: readonly number[],
 ): Promise<boolean> {
   if (pids.length === 0) return Promise.resolve(true);
+  console.error("TASKKILL_TRACE", JSON.stringify({ event: "start", pids, time: Date.now() }));
   return new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
     let killer: ChildProcess | undefined;
@@ -18,6 +19,7 @@ export function terminateWindowsProcessTrees(
     const finish = (terminated: boolean): void => {
       if (settled) return;
       settled = true;
+      console.error("TASKKILL_TRACE", JSON.stringify({ event: "finish", pids, terminated, time: Date.now() }));
       clearTimeout(timer);
       resolve(terminated);
     };

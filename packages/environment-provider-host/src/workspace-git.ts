@@ -202,6 +202,7 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
       options.input === undefined
         ? spawnPortableOutputProcess(request)
         : spawnPortableProcess({ ...request, stdio: ["pipe", "pipe", "pipe"] });
+    console.error("GIT_TRACE", JSON.stringify({ event: "spawn", pid: child.pid, args, time: Date.now() }));
     const { stdout, stderr } = child;
     if (stdout === null || stderr === null) {
       throw new Error("git did not attach piped output");
@@ -229,6 +230,7 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
     const stop = (): void => {
       if (stopping) return;
       stopping = true;
+      console.error("GIT_TRACE", JSON.stringify({ event: "stop", pid: child.pid, args, time: Date.now() }));
       signalGit("SIGTERM");
       forceKill = setTimeout(() => signalGit("SIGKILL"), FORCE_KILL_AFTER_MS);
     };
@@ -249,6 +251,7 @@ function spawnGit(args: string[], options: RunGitOptions): Promise<GitRun> {
     ): void => {
       if (settled) return;
       settled = true;
+      console.error("GIT_TRACE", JSON.stringify({ event: "close", pid: child.pid, args, time: Date.now(), exitCode, signaled, stopped, timedOut, overflow, spawnError: spawnError?.message }));
       clearTimeout(timer);
       clearTimeout(forceKill);
       options.signal?.removeEventListener("abort", onAbort);
