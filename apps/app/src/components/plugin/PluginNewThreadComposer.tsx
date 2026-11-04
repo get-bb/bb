@@ -9,6 +9,7 @@ import {
   type NewThreadComposerSeed,
 } from "@/components/promptbox/NewThreadComposer";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 
 export function PluginNewThreadComposer({
   defaultProjectId,
@@ -27,6 +28,7 @@ export function PluginNewThreadComposer({
   onSubmit,
 }: PluginComposerProps) {
   const pluginId = useContext(PluginContext);
+  const quickCreateProject = useQuickCreateProjectController();
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
@@ -80,6 +82,14 @@ export function PluginNewThreadComposer({
           {renderPromptBox({
             placeholder,
             allowNoProject: true,
+            createProject: {
+              onCreate: () =>
+                quickCreateProject.openCreateDialogThen(setPickedProjectId),
+              disabled:
+                !quickCreateProject.isAvailable ||
+                quickCreateProject.isCreating,
+              isCreating: quickCreateProject.isCreating,
+            },
             mentionMenuPlacement: layout === "contained" ? "top" : "bottom",
           })}
         </div>
