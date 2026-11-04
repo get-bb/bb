@@ -28,10 +28,24 @@ export function pgliteQueryable(pglite: PGlite): PgQueryable {
   };
 }
 
-export async function createMigratedPglite(): Promise<PgliteConnectDb> {
+let migratedDataDir: Promise<Blob> | undefined;
+
+async function createMigratedDataDir(): Promise<Blob> {
   const pglite = new PGlite();
+  try {
+    await applyConnectDbPgMigrations(pgliteQueryable(pglite));
+    return await pglite.dumpDataDir("none");
+  } finally {
+    await pglite.close();
+  }
+}
+
+export async function createMigratedPglite(): Promise<PgliteConnectDb> {
+  const pglite = new PGlite({
+    loadDataDir: await (migratedDataDir ??= createMigratedDataDir()),
+  });
+  await pglite.waitReady;
   const queryable = pgliteQueryable(pglite);
-  await applyConnectDbPgMigrations(queryable);
   return {
     pglite,
     queryable,
