@@ -13,7 +13,6 @@ import linearLogo from "../assets/company-logos/linear.svg";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
   ChevronDown,
-  ChevronRight,
   CircleCheckIcon,
   CloseIcon,
   ComposerBox,
@@ -26,7 +25,6 @@ import {
   GitBranchIcon as BranchIcon,
   MessageIcon,
   MicIcon,
-  NAV_ITEMS,
   NavRail,
   NewThreadIcon,
   PanelRightIcon,
@@ -70,7 +68,6 @@ type Flag =
   | "panel"
   | "chart"
   | "composer"
-  | "strip"
   | "grouped";
 
 type StepKind = "plugin" | "cmd" | "file" | "work";
@@ -332,26 +329,18 @@ const SCENES: Scene[] = [
     id: "nav",
     hold: 2,
     title: "Tidy the navigation",
-    prompt: "Move my navigation icons into the top of the sidebar",
+    prompt: "Move New thread and Search into the left rail",
     steps: [
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin install collapsible-navigation",
-        dur: "5.1s",
+        em: "bb plugin install rail-shortcuts",
+        dur: "2.4s",
       },
     ],
-    post: [
-      {
-        reply: (
-          <>
-            Your navigation icons now sit in a strip at the top of the sidebar.
-          </>
-        ),
-      },
-    ],
+    post: [{ reply: <>New thread and Search now sit in the left rail.</> }],
     worked: "9s",
-    flags: ["strip"],
+    flags: [],
     sideView: true,
   },
   {
@@ -390,10 +379,11 @@ const SCENES: Scene[] = [
   },
 ];
 
-const PERSIST = new Set<string>(["spawn", "composer", "strip", "grouped"]);
+const PERSIST = new Set<string>(["spawn", "composer", "grouped"]);
 const RAIL: Record<string, string> = {
   sentry: "rail-sentry",
   linear: "rail-linear",
+  nav: "rail-nav",
 };
 const CLOSES = new Set<string>(["sentry", "linear"]);
 
@@ -1172,6 +1162,35 @@ function snapLayout(root: HTMLElement, reshapes: boolean): Snap {
   return { rects, left, root: box(root) };
 }
 
+function moveIn(root: HTMLElement, el: HTMLElement, b: DOMRect, first: Snap) {
+  const row = el.dataset.from
+    ? root.querySelector(`.rhb-side > .${el.dataset.from}`)
+    : null;
+  const was = row ? first.rects.get(row)?.r : undefined;
+  const from = row?.querySelector(".rhb-ic");
+  const to = el.querySelector(".rail-ic");
+  if (!row || !was || !from || !to) return false;
+  const r = box(row);
+  const a = box(from);
+  const c = box(to);
+  const dx = was.left + a.left - r.left + a.width / 2 - (c.left + c.width / 2);
+  const dy = was.top + a.top - r.top + a.height / 2 - (c.top + c.height / 2);
+  const k = c.width ? a.width / c.width : 1;
+  el.animate(
+    [
+      { transform: `translate(${dx}px, ${dy}px) scale(${k})` },
+      { transform: "none" },
+    ],
+    {
+      duration: 700,
+      delay: el.dataset.from === "rhb-row-search" ? 90 : 0,
+      easing: EASE_OUT,
+      fill: "backwards",
+    },
+  );
+  return true;
+}
+
 function flipLayout(root: HTMLElement, first: Snap) {
   const sentryOpens = root.matches(".rhb-scene-sentry.rhb-has-sentry");
   const sentryCloses = root.matches(".rhb-scene-sentry:not(.rhb-has-sentry)");
@@ -1330,7 +1349,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
     const pb = fin?.pb ?? boxOf(el.parentElement);
     if (!pb || b.height === 0) return;
     if (!s || !s.p || s.r.height === 0) {
-      if (el.matches(".rhb-strip")) return;
+      if (moveIn(root, el as HTMLElement, b, first)) return;
       glide(
         el,
         [
@@ -2282,36 +2301,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
 
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const stripItems: { icon: IconComp; label: string }[] = [
-    { icon: NewThreadIcon, label: "New thread" },
-    NAV_ITEMS[0],
-    ...(hasSet.has("rail-sentry")
-      ? [{ icon: SentryGlyph as IconComp, label: "Sentry" }]
-      : []),
-    ...(hasSet.has("rail-linear")
-      ? [{ icon: LinearGlyph as IconComp, label: "Linear" }]
-      : []),
-    { icon: SearchIcon, label: "Search" },
-    ...NAV_ITEMS.slice(1),
-  ];
-  const stripRef = useRef<HTMLSpanElement>(null);
-  const [stripFit, setStripFit] = useState(stripItems.length);
-  const hasStrip = usesSet.has("strip");
-  useLayoutEffect(() => {
-    const el = stripRef.current;
-    if (!el) return;
-    const measure = () => {
-      const per = 15 + 6;
-      setStripFit(Math.max(1, Math.floor((el.clientWidth + 6) / per)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hasStrip]);
-  const stripMore = stripItems.length > stripFit;
-  const stripShown = stripMore ? stripItems.slice(0, stripFit - 1) : stripItems;
-
   const lastPhase = useRef({ idx, n });
   const firstSnap = useRef<Snap | null>(null);
   const flips = lastPhase.current.idx === idx && lastPhase.current.n !== n;
@@ -2474,7 +2463,24 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         <div className="rhb-left">
           <div className="rhb-band rhb-chrome-space" />
           <div className="rhb-left-body">
-            <NavRail>
+            <NavRail
+              lead={
+                <>
+                  <span
+                    className="rail-btn rhb-rail-new rhb-rail-nav"
+                    data-from="rhb-row-new"
+                  >
+                    <NewThreadIcon className="rail-ic" />
+                  </span>
+                  <span
+                    className="rail-btn rhb-rail-new rhb-rail-nav"
+                    data-from="rhb-row-search"
+                  >
+                    <SearchIcon className="rail-ic" />
+                  </span>
+                </>
+              }
+            >
               <span className="rail-btn rhb-rail-new rhb-rail-sentry">
                 <SentryGlyph className="rail-ic" />
               </span>
@@ -2483,26 +2489,13 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
               </span>
             </NavRail>
             <aside className="rhb-side">
-              {uses("strip") ? (
-                <div className="rhb-strip">
-                  <ChevronRight className="rhb-chev" />
-                  <span className="rhb-strip-label">Navigation</span>
-                  <span className="rhb-strip-icons" ref={stripRef}>
-                    {stripShown.map(({ icon: Icon, label }) => (
-                      <Icon
-                        className={
-                          label === "Linear" ? "rhb-ic rhb-logo" : "rhb-ic"
-                        }
-                        key={label}
-                      />
-                    ))}
-                    {stripMore ? <Ellipsis className="rhb-ic" /> : null}
-                  </span>
-                </div>
-              ) : null}
-              <div className="rhb-row rhb-row-new">
+              <div className="rhb-row rhb-row-top rhb-row-new">
                 <NewThreadIcon className="rhb-ic" />
                 New thread
+              </div>
+              <div className="rhb-row rhb-row-top rhb-row-search">
+                <SearchIcon className="rhb-ic" />
+                Search
               </div>
               <div className="rhb-lists">
                 <div className="rhb-list rhb-list-plain">
