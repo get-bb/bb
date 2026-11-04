@@ -3043,7 +3043,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-start-stage {
   --bw-phone-size: 0.8;
-  --bw-start-window: 780px;
   --bw-overlay-scale: calc(
     clamp(0.74, var(--mock-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
   );
@@ -3056,14 +3055,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding-bottom: var(--bw-stage-pad);
 }
 
-.bw-start .bw-window {
-  width: var(--bw-start-window);
-}
-
 .bw-start .main {
   padding-right: calc(
-    var(--bw-start-window) - var(--bw-fit-slice) + 16px + (1 - var(--bw-drop)) *
-      (20px + 312px * var(--bw-overlay-scale))
+    var(--bw-drop) * max(0px, var(--mock-width) - var(--bw-fit-slice) + 16px)
   );
 }
 
