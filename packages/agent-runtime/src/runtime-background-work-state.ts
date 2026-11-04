@@ -1,5 +1,6 @@
 import {
-  stoppedBackgroundTaskItem,
+  backgroundTaskItemStatus,
+  isSettledBackgroundTaskStatus,
   threadScope,
   type ThreadEvent,
   type ThreadEventBackgroundTaskItem,
@@ -11,6 +12,15 @@ interface OpenBackgroundTask {
 }
 
 type OpenBackgroundWork = OpenBackgroundTask | null;
+
+function stoppedBackgroundTaskItem(
+  item: ThreadEventBackgroundTaskItem,
+): ThreadEventBackgroundTaskItem {
+  const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
+    ? item.taskStatus
+    : "stopped";
+  return { ...item, status: backgroundTaskItemStatus(taskStatus), taskStatus };
+}
 
 export interface RuntimeOpenBackgroundWork {
   itemIds: string[];
@@ -32,9 +42,9 @@ export class RuntimeBackgroundWorkState {
   }
 
   listOpenWork(): RuntimeOpenBackgroundWork[] {
-    return [...this.openTaskIdsByThreadId].map(([threadId, itemIds]) => ({
+    return [...this.openWorkByThreadId].map(([threadId, openWork]) => ({
       threadId,
-      itemIds: [...itemIds],
+      itemIds: [...openWork.keys()],
     }));
   }
 

@@ -304,7 +304,6 @@ export function onDaemonSocketMessage(
         return;
       }
       if (message.type === "machine.shutdown-ack") {
-        deps.hub.recordDaemonShutdownAck(args.sessionId);
         return;
       }
       deps.terminalSessions.handleDaemonTerminalMessage({

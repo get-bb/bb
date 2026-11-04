@@ -8,8 +8,9 @@ import {
   type OpenBackgroundTaskItemRow,
 } from "@bb/db";
 import {
+  backgroundTaskItemStatus,
   convertLegacyStoredThreadEvent,
-  stoppedBackgroundTaskItem,
+  isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
   threadScope,
 } from "@bb/domain";
@@ -21,9 +22,9 @@ interface SettleDanglingBackgroundTasksArgs {
   hostId: string;
   reason:
     | "host-connection-lost"
+    | "host-daemon-no-longer-runs-task"
     | "host-daemon-restarted"
-    | "host-removed"
-    | "machine-suspended";
+    | "host-removed";
 }
 
 type SettleDanglingBackgroundTasksDeps = Pick<AppDeps, "db" | "hub" | "logger">;
@@ -64,6 +65,7 @@ export function settleDanglingBackgroundTasks(
 ): void {
   settleBackgroundTaskRows(
     deps,
+    args,
     listOpenBackgroundTaskItemRowsForHost(deps.db, { hostId: args.hostId }),
   );
 }
@@ -78,6 +80,7 @@ export function settleBackgroundTasksTheDaemonNoLongerRuns(
 ): void {
   settleBackgroundTaskRows(
     deps,
+    { hostId: args.hostId, reason: "host-daemon-no-longer-runs-task" },
     listOpenBackgroundTaskItemRowsForHost(deps.db, {
       hostId: args.hostId,
     }).filter(
@@ -90,6 +93,7 @@ export function settleBackgroundTasksTheDaemonNoLongerRuns(
 
 function settleBackgroundTaskRows(
   deps: SettleDanglingBackgroundTasksDeps,
+  args: SettleDanglingBackgroundTasksArgs,
   rows: readonly OpenBackgroundTaskItemRow[],
 ): void {
   if (rows.length === 0) {
@@ -161,6 +165,9 @@ function appendDanglingBackgroundTaskCompletions(
       continue;
     }
     const providerThreadId = row.providerThreadId ?? "";
+    const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
+      ? item.taskStatus
+      : "stopped";
     appendThreadEventsInTransaction(deps.db, [
       {
         threadId: row.threadId,
@@ -170,7 +177,11 @@ function appendDanglingBackgroundTaskCompletions(
         scope: threadScope(),
         data: {
           providerThreadId,
-          item: stoppedBackgroundTaskItem(item),
+          item: {
+            ...item,
+            status: backgroundTaskItemStatus(taskStatus),
+            taskStatus,
+          },
         },
       },
     ]);

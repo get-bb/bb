@@ -347,8 +347,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
-      for (const event of backgroundWorkState.settleThread(threadId)) {
-        options.onEvent(event);
+      const settlements = backgroundWorkState.settleThread(threadId);
+      if (!suppressedThreadEventIds.has(threadId)) {
+        for (const event of settlements) {
+          options.onEvent(event);
+        }
       }
       threadEventGrammar.clearThread(threadId);
     },
