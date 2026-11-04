@@ -49,4 +49,25 @@ describe("Testimonials", () => {
     });
     act(() => root.unmount());
   });
+
+  it("quotes every post in full, cutting only Hemanth's and Swair's off-topic sentences", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<Testimonials />));
+
+    const cut = [...container.querySelectorAll("a.tm-card")]
+      .filter((card) =>
+        card.querySelector(".tm-quote")?.textContent?.includes("…"),
+      )
+      .map((card) => card.querySelector(".tm-name")?.textContent);
+    expect(cut).toEqual(["Hemanth Soni", "Swair"]);
+    expect(container.textContent).not.toContain("`");
+    expect(
+      [...container.querySelectorAll(".tm-quote code")].map(
+        (c) => c.textContent,
+      ),
+    ).toEqual(["bb", "bb"]);
+    act(() => root.unmount());
+  });
 });
