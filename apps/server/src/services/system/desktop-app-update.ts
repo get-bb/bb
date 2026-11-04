@@ -37,6 +37,7 @@ export function createDesktopAppUpdateService(args: {
   countRunningThreads: () => number;
   notifyChanged: () => void;
   logger: ServerLogger;
+  threadsResumeAfterRestart: () => boolean;
 }): AppUpdateService {
   const path = join(args.dataDir, "bb-desktop-app-update.json");
   let info: DesktopAppUpdateInfo | null = null;
@@ -277,7 +278,10 @@ export function createDesktopAppUpdateService(args: {
           runningThreads.kind === "refuse" &&
           status.runningThreadCount > 0
         ) {
-          throw runningThreadsError(status.runningThreadCount);
+          throw runningThreadsError(
+            status.runningThreadCount,
+            args.threadsResumeAfterRestart(),
+          );
         }
         activity = {
           phase: "preparing",

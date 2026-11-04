@@ -452,7 +452,7 @@ function registerAppUpdateCommands(
   app
     .command("apply")
     .description("Download the available bb update and restart bb into it")
-    .option("--yes", "Interrupt running threads without asking")
+    .option("--yes", "Update without asking about running threads")
     .option(
       "--when-idle",
       "Update once no thread is running instead of interrupting running threads",
@@ -504,15 +504,19 @@ function registerAppUpdateCommands(
           let confirmInterruptingThreads = opts.yes === true;
           if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
             const count = status.runningThreadCount;
-            const warning = `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`;
-            const whenIdleEnabled = (await sdk.system.config()).experiments
-              .updateWhenIdle;
+            const { experiments } = await sdk.system.config();
+            const threadsResume = experiments.resumeThreadsAfterRestart;
+            const running = `${String(count)} thread${count === 1 ? " is" : "s are"} running.`;
+            const warning = threadsResume
+              ? `${running} Updating restarts bb, and ${count === 1 ? "it resumes" : "they resume"} after the update.`
+              : `${running} Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`;
+            const whenIdleEnabled = experiments.updateWhenIdle;
             if (
               whenIdleEnabled &&
               (!process.stdin.isTTY || !process.stdout.isTTY)
             ) {
               throw new CliExitError(
-                `${warning} Re-run with --when-idle to update once they finish, or --yes to interrupt them.`,
+                `${warning} Re-run with --when-idle to update once they finish, or --yes to ${threadsResume ? "update now" : "interrupt them"}.`,
                 1,
               );
             }

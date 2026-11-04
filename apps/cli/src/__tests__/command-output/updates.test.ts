@@ -282,8 +282,13 @@ describe("bb updates command output", () => {
 const UPDATE_WHEN_IDLE_OFF =
   'Updating when idle is off. Turn on the "Update when idle" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
 
-function systemConfig(experiments: { updateWhenIdle: boolean }) {
-  return vi.fn(async () => ({ experiments }));
+function systemConfig(experiments: {
+  resumeThreadsAfterRestart?: boolean;
+  updateWhenIdle: boolean;
+}) {
+  return vi.fn(async () => ({
+    experiments: { resumeThreadsAfterRestart: false, ...experiments },
+  }));
 }
 
 function errorResponse(status: number, body: object): Response {
@@ -516,6 +521,32 @@ describe("bb updates app command output", () => {
     expect(apply).not.toHaveBeenCalled();
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
       "Error: 1 thread is running. Updating restarts bb and interrupts it. Re-run with --when-idle to update once they finish, or --yes to interrupt them.",
+    );
+  });
+
+  it("bb updates app apply says running threads resume after the update when restarts resume them", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 2 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({
+        resumeThreadsAfterRestart: true,
+        updateWhenIdle: true,
+      }),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(apply).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: 2 threads are running. Updating restarts bb, and they resume after the update. Re-run with --when-idle to update once they finish, or --yes to update now.",
     );
   });
 

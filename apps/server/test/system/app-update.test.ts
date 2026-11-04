@@ -108,6 +108,7 @@ function createService(args: {
   mode?: "npm" | "source" | null;
   now?: () => number;
   runningThreads?: number;
+  threadsResume?: boolean;
   version?: Partial<SystemVersionResponse>;
 }) {
   const notifyChanged = vi.fn();
@@ -124,6 +125,7 @@ function createService(args: {
     mode: args.mode === undefined ? "npm" : args.mode,
     notifyChanged,
     ...(args.now === undefined ? {} : { now: args.now }),
+    threadsResumeAfterRestart: () => args.threadsResume ?? false,
   });
   launcher?.push({});
   return { launcher, notifyChanged, service };
@@ -204,6 +206,9 @@ describe("app update service", () => {
       "threads_running",
     );
     expect(error.body.details).toEqual({ runningThreadCount: 2 });
+    expect(error.message).toBe(
+      "2 threads are running. Updating restarts bb and interrupts them.",
+    );
     expect(launcher?.requests).toEqual([]);
 
     await service.apply({ runningThreads: { kind: "interrupt" } });
@@ -214,6 +219,21 @@ describe("app update service", () => {
         type: "apply",
       },
     ]);
+  });
+
+  it("says running threads resume after the update when restarts resume them", async () => {
+    const { service } = createService({
+      runningThreads: 1,
+      threadsResume: true,
+    });
+
+    const error = await expectApiError(
+      service.apply({ runningThreads: { kind: "refuse" } }),
+      "threads_running",
+    );
+    expect(error.message).toBe(
+      "1 thread is running. Updating restarts bb, and it resumes after the update.",
+    );
   });
 
   it("rejects an update when bb is already current", async () => {
@@ -392,6 +412,7 @@ describe("app update service", () => {
       logger: testLogger,
       mode: "npm",
       notifyChanged: vi.fn(),
+      threadsResumeAfterRestart: () => false,
     });
     launcher.push({});
     await service.apply({ runningThreads: { kind: "refuse" } });
@@ -525,6 +546,7 @@ function createScheduledService(args: { runningThreads: number }) {
     logger: testLogger,
     mode: "npm",
     notifyChanged: vi.fn(),
+    threadsResumeAfterRestart: () => false,
   });
   launcher.push({});
   const notifyChanged = vi.fn();

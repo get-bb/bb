@@ -281,6 +281,8 @@ async function startIntegrationServer(
       logger: testLogger,
       mode: null,
       notifyChanged: notifyAppUpdateChanged,
+      threadsResumeAfterRestart: () =>
+        getExperiments(db).resumeThreadsAfterRestart,
     }),
     isEnabled: () => getExperiments(db).updateWhenIdle,
     logger: testLogger,

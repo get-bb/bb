@@ -307,6 +307,8 @@ export async function createTestAppHarness(
         logger,
         mode: null,
         notifyChanged: notifyAppUpdateChanged,
+        threadsResumeAfterRestart: () =>
+          getExperiments(db).resumeThreadsAfterRestart,
       }),
     isEnabled: () => getExperiments(db).updateWhenIdle,
     logger,

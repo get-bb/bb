@@ -114,8 +114,12 @@ export function scheduledAppUpdateCaption(count: number): string {
     : `Updates when all threads are idle (${String(count)} running)`;
 }
 
-export function runningThreadsWarning(count: number): string {
-  return `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${
-    count === 1 ? "it" : "them"
-  }.`;
+export function runningThreadsWarning(
+  count: number,
+  threadsResume: boolean,
+): string {
+  const running = `${String(count)} thread${count === 1 ? " is" : "s are"} running.`;
+  return threadsResume
+    ? `${running} Updating restarts bb, and ${count === 1 ? "it resumes" : "they resume"} after the update.`
+    : `${running} Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`;
 }
