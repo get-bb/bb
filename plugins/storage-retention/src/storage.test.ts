@@ -66,6 +66,7 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -222,6 +223,7 @@ it.each([
                 children: threads.map((thread) => ({
                   name: thread.id,
                   sizeBytes: 10,
+                  empty: false,
                 })),
               },
             ],
@@ -566,11 +568,53 @@ it.each([false, true])(
   },
 );
 
-it("builds every machine's report from one thread listing", async () => {
+it("reads only the threads a report needs: non-empty storage entries by id and threads in retired worktrees", async () => {
+  type Environment = Awaited<
+    ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
+  >[number];
   const root = await directory();
+  const worktrees = await directory();
   await fs.mkdir(path.join(root, "thr_kept"));
+  await fs.writeFile(path.join(root, "thr_kept", "notes.md"), "kept");
+  for (const name of ["thr_cleared", "thr_ghost"])
+    await fs.mkdir(path.join(root, name));
+  for (const name of ["busy", "free"])
+    await fs.mkdir(path.join(worktrees, name));
+  const retired = (id: string, name: string): Environment => ({
+    id,
+    name: null,
+    projectId: "proj_work",
+    hostId: "host_test",
+    path: path.join(worktrees, name),
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: name,
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "ready",
+    environmentProviderId: "bb--environment-git-worktree",
+    environmentProviderSelection: null,
+    environmentProviderInstanceKey: null,
+    lifecycle: { phase: "retiring", retireAt: 1, teardown: null },
+    hostLifecycle: "active",
+    managed: true,
+    workspaceProvisionType: "managed-worktree",
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const threads = [
+    makeThreadResponse({ id: "thr_kept" }),
+    makeThreadResponse({ id: "thr_cleared", archivedAt: 1 }),
+    makeThreadResponse({ id: "thr_busy", environmentId: "env_busy" }),
+    makeThreadResponse({
+      id: "thr_done",
+      environmentId: "env_free",
+      archivedAt: 1,
+    }),
+  ];
+  const requestedThreadIds = new Set<string>();
   const worker = experimental_createHostEntryHarness(hostEntry);
-  const machineIds = ["host_a", "host_b", "host_c"];
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
@@ -586,21 +630,44 @@ it("builds every machine's report from one thread listing", async () => {
           "capacity",
           hostStorageContract.capacity.input.parse(call.input),
         );
+      if (call.method === "listGitWorktrees")
+        return { repositories: [], failures: [] };
       throw new Error("Unexpected host method");
     },
     sdk: {
       projects: { list: async () => [] },
       hosts: {
-        list: async () =>
-          machineIds.map((id) => makeHostResponse({ id, status: "connected" })),
-        get: async ({ hostId }) => ({
-          ...makeHostResponse({ id: hostId, status: "connected" }),
+        list: async () => [
+          makeHostResponse({ id: "host_test", status: "connected" }),
+        ],
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
           threadStorageRootPath: root,
         }),
       },
-      environments: { list: async () => [] },
+      environments: {
+        list: async () => [
+          retired("env_busy", "busy"),
+          retired("env_free", "free"),
+        ],
+      },
       threads: {
-        list: async () => [makeThreadResponse({ id: "thr_kept" })],
+        list: async (input) => {
+          if (
+            input?.threadIds === undefined &&
+            input?.environmentId === undefined
+          )
+            throw new Error("Unfiltered thread listing");
+          for (const threadId of input.threadIds ?? [])
+            requestedThreadIds.add(threadId);
+          return threads.filter(
+            (thread) =>
+              (input.threadIds === undefined ||
+                input.threadIds.includes(thread.id)) &&
+              (input.environmentId === undefined ||
+                thread.environmentId === input.environmentId),
+          );
+        },
       },
     },
   });
@@ -608,20 +675,28 @@ it("builds every machine's report from one thread listing", async () => {
     plugin(host.bb);
     await host.harness.callRpc("scanAll", null);
     await expect
-      .poll(
-        async () =>
-          hostStorageListResponseSchema
-            .parse(await host.harness.callRpc("hosts", null))
-            .hosts.filter((machine) => machine.report !== null).length,
-      )
-      .toBe(machineIds.length);
-    const listed = host.harness.sdk.callsTo("threads.list").length;
-    await host.harness.callRpc("hosts", null);
-    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
-    await host.harness.callRpc("scanAll", null);
-    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(
-      listed + 1 + machineIds.length + 1,
-    );
+      .poll(async () => {
+        const report = hostStorageListResponseSchema.parse(
+          await host.harness.callRpc("hosts", null),
+        ).hosts[0]?.report;
+        return (
+          report && {
+            threadsWithStorageCount: report.threadsWithStorageCount,
+            archivedThreadCount: report.archivedThreadCount,
+            orphanCount: report.orphanCount,
+            leftoverWorktrees: report.leftoverWorktrees.map(
+              (worktree) => worktree.environmentId,
+            ),
+          }
+        );
+      })
+      .toEqual({
+        threadsWithStorageCount: 1,
+        archivedThreadCount: 0,
+        orphanCount: 0,
+        leftoverWorktrees: ["env_free"],
+      });
+    expect([...requestedThreadIds]).toEqual(["thr_kept"]);
   } finally {
     await host.harness.dispose();
     await worker.experimental_dispose();
@@ -685,7 +760,6 @@ it("rescans only the machine that reconnected when development cleanup is on", a
     host = await host.harness.lifecycle.reload(plugin);
     host.harness.behavior.runService("development-storage-recovery");
     await expect.poll(() => [...scannedHostIds].sort()).toEqual(machineIds);
-    const listed = host.harness.sdk.callsTo("threads.list").length;
     scannedHostIds.length = 0;
 
     for (const subscription of subscriptions)
@@ -698,7 +772,6 @@ it("rescans only the machine that reconnected when development cleanup is on", a
         });
 
     await expect.poll(() => scannedHostIds).toEqual(["host_b"]);
-    expect(host.harness.sdk.callsTo("threads.list")).toHaveLength(listed + 1);
   } finally {
     await host.harness.dispose();
   }
@@ -1052,6 +1125,7 @@ it("keeps cleanup available during a scan and leaves cleared storage out of its 
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -2616,11 +2690,13 @@ it("never clears thread storage that holds a workspace an environment still uses
     const report = hostStorageResponseSchema.parse(
       await host.harness.callRpc("host", { hostId: "host_test" }),
     ).report!;
-    expect(report.archivedFiles.threadCount).toBe(1);
+    expect(report.archivedFiles.threadCount).toBe(0);
     expect(report.orphanCount).toBe(1);
     expect(report.archivedLargeFiles.threadCount).toBe(0);
 
-    await host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" });
+    await expect(
+      host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" }),
+    ).resolves.toMatchObject({ clearedThreads: 0 });
     await host.harness.callRpc("clearLargeFiles", { hostId: "host_test" });
     await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
     expect(await ownerFiles()).toEqual(expectedOwnerFiles);

@@ -149,7 +149,7 @@ describe.each([
     );
 
     it.runIf(enabled)(
-      "sums nested directories and breaks a target down per child, including top-level files",
+      "sums nested directories and breaks a target down per child, including top-level files and empty folders",
       async () => {
         const root = await makeTempDir();
         const storage = path.join(root, "thread-storage");
@@ -160,6 +160,7 @@ describe.each([
         );
         await writeFile(path.join(storage, "thread-b", "image.png"), 20_000);
         await writeFile(path.join(storage, "stray.txt"), 3_000);
+        await fs.mkdir(path.join(storage, "thread-c"));
 
         const threadA = await allocatedBytes(
           path.join(storage, "thread-a"),
@@ -172,6 +173,7 @@ describe.each([
           path.join(storage, "thread-b"),
           path.join(storage, "thread-b", "image.png"),
         );
+        const threadC = await allocatedBytes(path.join(storage, "thread-c"));
         const stray = await allocatedBytes(path.join(storage, "stray.txt"));
         const own = await allocatedBytes(storage);
 
@@ -190,11 +192,12 @@ describe.each([
             {
               outcome: "measured",
               path: storage,
-              sizeBytes: own + threadA + threadB + stray,
+              sizeBytes: own + threadA + threadB + threadC + stray,
               children: expect.arrayContaining([
-                { name: "thread-a", sizeBytes: threadA },
-                { name: "thread-b", sizeBytes: threadB },
-                { name: "stray.txt", sizeBytes: stray },
+                { name: "thread-a", sizeBytes: threadA, empty: false },
+                { name: "thread-b", sizeBytes: threadB, empty: false },
+                { name: "thread-c", sizeBytes: threadC, empty: true },
+                { name: "stray.txt", sizeBytes: stray, empty: false },
               ]),
             },
             {
@@ -205,7 +208,7 @@ describe.each([
             },
           ],
         });
-        expect(result.targets[0]).toMatchObject({ children: { length: 3 } });
+        expect(result.targets[0]).toMatchObject({ children: { length: 4 } });
       },
     );
 
@@ -281,9 +284,9 @@ describe.each([
             path: target,
             sizeBytes: total,
             children: expect.arrayContaining([
-              { name: "linked-dir", sizeBytes: linkedDir },
-              { name: "linked-file", sizeBytes: linkedFile },
-              { name: "nested", sizeBytes: nested },
+              { name: "linked-dir", sizeBytes: linkedDir, empty: false },
+              { name: "linked-file", sizeBytes: linkedFile, empty: false },
+              { name: "nested", sizeBytes: nested, empty: false },
             ]),
           },
           {
@@ -543,9 +546,9 @@ describe("measureDiskUsage", () => {
             path: target,
             sizeBytes: own + 4 * 1024 + b + top,
             children: [
-              { name: "a", sizeBytes: 4 * 1024 },
-              { name: "b", sizeBytes: b },
-              { name: "top.txt", sizeBytes: top },
+              { name: "a", sizeBytes: 4 * 1024, empty: false },
+              { name: "b", sizeBytes: b, empty: false },
+              { name: "top.txt", sizeBytes: top, empty: false },
             ],
           },
           {
@@ -630,8 +633,12 @@ describe("measureDiskUsage", () => {
       expect(result.targets[0]).toMatchObject({
         outcome: "measured",
         children: expect.arrayContaining([
-          { name: "line\nbreak", sizeBytes: await childSize("line\nbreak") },
-          { name: "one", sizeBytes: await childSize("one") },
+          {
+            name: "line\nbreak",
+            sizeBytes: await childSize("line\nbreak"),
+            empty: false,
+          },
+          { name: "one", sizeBytes: await childSize("one"), empty: false },
         ]),
       });
     },
