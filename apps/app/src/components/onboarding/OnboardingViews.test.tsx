@@ -238,6 +238,19 @@ describe("ProjectsStep selection", () => {
     expect(header.hasAttribute("disabled")).toBe(true);
   });
 
+  it("labels the time column in the header, outside the select-all control", () => {
+    renderProjects({
+      selection: "header",
+      repos: [repo("a"), repo("b")],
+      selectedIds: ["a"],
+    });
+
+    const label = screen.getByText("Last active");
+    expect(label.closest("label")).toBeNull();
+    expect(
+      label.closest("li")?.querySelector('[aria-label="Select all projects"]'),
+    ).not.toBeNull();
+  });
 });
 
 describe("AgentSignInInstruction", () => {

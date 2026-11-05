@@ -961,10 +961,10 @@ export function ProjectsStep({
       )}
       <ul className={ONBOARDING_LIST_CLASS}>
         {selection === "header" ? (
-          <li>
+          <li className="flex items-center rounded-t-lg bg-surface-recessed text-xs text-muted-foreground">
             <label
               className={cn(
-                "flex items-center gap-3 rounded-t-lg bg-surface-recessed px-3 py-2 text-xs text-muted-foreground",
+                "flex min-w-0 flex-1 items-center gap-3 px-3 py-2",
                 selectableCount > 0 && "cursor-pointer hover:text-foreground",
               )}
             >
@@ -988,6 +988,9 @@ export function ProjectsStep({
               />
               Select all
             </label>
+            <span className="shrink-0 px-3 text-right tabular-nums">
+              Last active
+            </span>
           </li>
         ) : null}
         {repos.map((repo) => (
