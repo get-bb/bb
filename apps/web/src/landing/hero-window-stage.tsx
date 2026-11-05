@@ -170,19 +170,30 @@ const SCENES: Scene[] = [
   {
     id: "spawn",
     hold: 2.5,
-    title: "CSV export",
+    title: "Team invites",
     prompt:
-      "Add CSV export to reports. You do the button, have Codex build the export API.",
+      "Add team invites. You build the invite screen, have Codex build the invite API and emails.",
     steps: [
-      { kind: "work", verb: "Explored", em: "3 files" },
+      { kind: "work", verb: "Explored", em: "4 files" },
       {
         kind: "cmd",
         verb: "Ran",
-        em: 'bb thread spawn --project shop --parent-self --provider codex --prompt "Build GET /api/reports/export.csv with the page\'s filters"',
+        em: 'bb thread spawn --project shop --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
         dur: "0.8s",
       },
-      { kind: "file", verb: "Edited", file: "ExportButton.tsx", diff: [41, 3] },
-      { kind: "file", verb: "Edited", file: "ReportsPage.tsx", diff: [18, 2] },
+      {
+        kind: "file",
+        verb: "Created",
+        file: "InviteDialog.tsx",
+        diff: [122, 0],
+      },
+      { kind: "file", verb: "Edited", file: "MembersPage.tsx", diff: [35, 4] },
+      {
+        kind: "file",
+        verb: "Edited",
+        file: "PendingInvites.tsx",
+        diff: [61, 0],
+      },
     ],
     worked: "52s",
     flags: ["spawn"],
@@ -191,7 +202,8 @@ const SCENES: Scene[] = [
       worked: "52s",
       reply: (
         <>
-          The export button is in. Codex is building the API in its own thread.
+          The invite screen is in. Codex is building the invite API in its own
+          thread.
         </>
       ),
     },
@@ -550,7 +562,7 @@ const THREADS: { title: string; status: Status }[] = [
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
 
-const CHILD = { icon: OpenAiIcon, title: "CSV export API" };
+const CHILD = { icon: OpenAiIcon, title: "Team invites API" };
 
 const LINEAR_TASKS = [
   {
@@ -2054,7 +2066,7 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-gen-verb">finished</span>
               </span>
               <span className="rhb-gen-body">
-                GET /api/reports/export.csv is in, with filters.
+                Invite API and email are in: create, accept, expire.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[1])}>
@@ -2064,7 +2076,7 @@ const FeedBody = memo(function FeedBody({
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
               <span className="rhb-gen-body">
-                The button sends the same filters as the table.
+                The screen sends email and role, then lists pending invites.
               </span>
             </div>
             <div className="rhb-gen customize-msg" style={delay(then.notes[2])}>
@@ -2074,7 +2086,7 @@ const FeedBody = memo(function FeedBody({
                 <ThreadPill icon={CHILD.icon} label={CHILD.title} />
               </span>
               <span className="rhb-gen-body">
-                Checked it end to end. Both sides match.
+                Tested it end to end. Both sides match.
               </span>
             </div>
           </div>
