@@ -9,6 +9,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./dev": {
+      "source": "./src/dev.ts",
+      "types": "./src/dev.ts",
+      "default": "./src/dev.ts"
+    },
     "./testing": {
       "source": "./src/testing.ts",
       "types": "./src/testing.ts",

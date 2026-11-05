@@ -28,19 +28,40 @@ Keep the Hyperdrive origin connection limit below the database's
 
 ## Local development
 
-`pnpm cloud:dev` migrates and uses a local Postgres at
-`postgresql://bb:bb@localhost:5432/bb_connect`, the binding's
-`localConnectionString` (override with `BB_CLOUD_DEV_DATABASE_URL`). Start one
-with:
+`pnpm cloud:dev` calls `startCloudDevDatabase()` from `@bb/connect-db-pg/dev`
+unless `BB_CLOUD_DEV_DATABASE_URL` is set. It opens a persistent PGlite data
+directory, applies the migrations in process, and serves it over the Postgres
+wire protocol on a fixed loopback port; the workers' Hyperdrive bindings
+connect there as they would to Postgres. With `BB_CLOUD_DEV_DATABASE_URL` it
+runs `db:migrate` against that database instead. See
+[debugging-and-qa.md](../../docs/debugging-and-qa.md#local-cloud).
 
-```sh
-docker run -d --name bb-connect-pg -p 5432:5432 \
-  -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect \
-  postgres:17
-```
+A plain `wrangler dev` in `apps/connect` or `apps/ai-gateway` uses the
+binding's `localConnectionString`,
+`postgresql://bb:bb@localhost:5432/bb_connect`; run `db:migrate` against it
+first.
 
-A plain `wrangler dev` in `apps/connect` or `apps/ai-gateway` uses the same
-`localConnectionString`; run `db:migrate` against it first.
+### PGlite wire server
+
+`servePglite()` (`src/wire-server.ts`) serves one PGlite instance to many
+connections, for `pnpm cloud:dev` and for `serveTestConnectDb()`. PGlite is a
+single Postgres session, so the server serializes:
+
+- Each connection's messages up to `Sync` (extended protocol) or `Query`
+  (simple protocol) run as one unit; units from different connections never
+  interleave.
+- When a unit leaves a transaction open, including a failed one, only that
+  connection runs until the transaction ends. Other connections queue.
+- A connection that closes inside its transaction is rolled back before
+  anything else runs. One that idles inside a transaction for 60 seconds is
+  ended with `25P03`, like `idle_in_transaction_session_timeout`.
+
+Limits: there is no real isolation level, since transactions run one at a
+time, and code that waits inside a transaction on a second connection blocks
+until that idle timeout. Session state is shared: named prepared statements,
+`SET`, temporary tables, and session advisory locks are visible to every
+connection, and two connections preparing the same statement name collide.
+`COPY`, cancel requests and TLS are not supported.
 
 ## Tests
 
@@ -51,7 +72,5 @@ A plain `wrangler dev` in `apps/connect` or `apps/ai-gateway` uses the same
   as Vitest `globalSetup`) and loaded once per worker. `close()` returns the
   instance to the worker's pool; the next test gets it back truncated, or a
   fresh copy if the test changed the schema.
-- `serveTestConnectDb()` also serves that database over the Postgres wire
-  protocol on a loopback port, for Miniflare `hyperdrives` bindings. Each
-  connection's statements up to `Sync` run as one unit, and an open
-  transaction keeps the session until it ends.
+- `serveTestConnectDb()` also serves that database with `servePglite()` on a
+  loopback port, for Miniflare `hyperdrives` bindings.

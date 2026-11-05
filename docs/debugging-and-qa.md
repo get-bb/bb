@@ -440,18 +440,33 @@ pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-m
 ## Local Cloud
 
 Run the Cloud dashboard, the Connect worker, and the AI gateway against one
-local Postgres database. The workers' `HYPERDRIVE` binding defaults to
-`postgresql://bb:bb@localhost:5432/bb_connect`; start a Postgres there once:
+local Postgres database:
+
+```bash
+pnpm cloud:dev
+```
+
+Nothing needs to be installed first. The command opens a PGlite database in
+`connect-db-pglite` under the state directory (`.wrangler/cloud-dev`, or
+`BB_CLOUD_DEV_STATE_DIR`), applies the migrations, serves it over the Postgres
+wire protocol on a loopback port derived from the worktree's dev ports, and
+points the three workers' `HYPERDRIVE` binding at it. The startup log prints
+the connection string, so `psql` or a `pg` script can inspect the data while it
+runs. The PGlite server
+runs one statement batch at a time; a client's open transaction holds the
+database until it commits, rolls back, disconnects, or idles for 60 seconds.
+
+`BB_CLOUD_DEV_DATABASE_URL` uses another Postgres instead, for example a
+container:
 
 ```bash
 docker run -d --name bb-connect-pg -p 5432:5432 \
   -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect \
   postgres:17
-pnpm cloud:dev
+BB_CLOUD_DEV_DATABASE_URL=postgresql://bb:bb@localhost:5432/bb_connect pnpm cloud:dev
 ```
 
-`BB_CLOUD_DEV_DATABASE_URL` points the three services at another database.
-The command applies migrations and prints the dashboard URL. Create a local
+The command prints the dashboard URL when it is ready. Create a local
 email/password account, claim a handle, create a pairing code, and run the
 displayed `bb account login --code` command against a bb started with
 `pnpm dev` (`bb connect --code` does the same and also turns remote access
@@ -492,8 +507,10 @@ staging key with `wrangler secret put OPENROUTER_API_KEY --env staging` from
 `apps/ai-gateway`. Use a dedicated OpenRouter key with account-wide zero data
 retention and a daily credit limit.
 
-Ctrl-C stops the local services. Account data stays in the local Postgres;
-Durable Object state is kept under `.wrangler/cloud-dev`.
+Ctrl-C stops the local services. Account data and Durable Object state are
+kept under `.wrangler/cloud-dev` (or `BB_CLOUD_DEV_STATE_DIR`); delete that
+directory to start over. With `BB_CLOUD_DEV_DATABASE_URL`, account data stays
+in that database.
 
 To test a source bb against the deployed staging Cloud instead, start it with
 `pnpm dev --staging`. bb account and Connect then sign in, redeem codes, open
