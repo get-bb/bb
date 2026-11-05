@@ -66,10 +66,7 @@ export interface WatchManagerOptions {
   refreshWorkspace?: (args: RefreshWorkspaceArgs) => Promise<HostWorkspace>;
   shellEnv?: () => NodeJS.ProcessEnv;
   threadStorageRootPath?: string | null;
-  onThreadStorageChanged?: (args: {
-    environmentId: string;
-    threadId: string;
-  }) => void;
+  onThreadStorageChanged?: (args: { threadId: string }) => void;
   onThreadStorageWatchError?: (args: {
     error: ThreadStorageWatchError;
   }) => void;
@@ -558,7 +555,6 @@ export class WatchManager {
           return;
         }
         this.options.onThreadStorageChanged?.({
-          environmentId: entry.target.environmentId,
           threadId: entry.target.threadId,
         });
       },

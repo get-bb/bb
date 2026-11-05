@@ -976,7 +976,7 @@ describe("WatchManager", () => {
     });
   });
 
-  it("watches each thread's storage directory and reports its current environment", async () => {
+  it("keeps one storage watcher per thread across watch sets and reports the thread", async () => {
     const stopWatching = vi.fn(() => undefined);
     let watchThreadStorageArgs: WatchThreadStorageArgs | undefined;
     const { hostWatcher, watchThreadStorage } = createFakeHostWatcher({
@@ -995,22 +995,12 @@ describe("WatchManager", () => {
     await manager.replaceWatchSet({
       generation: 1,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-storage",
-          threadId: "thread-1",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-1" }],
     });
     await manager.replaceWatchSet({
       generation: 2,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-moved",
-          threadId: "thread-1",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-1" }],
     });
     watchThreadStorageArgs?.onChange();
 
@@ -1019,7 +1009,6 @@ describe("WatchManager", () => {
       path.resolve("/tmp/bb-data/thread-storage", "thread-1"),
     );
     expect(onThreadStorageChanged).toHaveBeenCalledWith({
-      environmentId: "env-moved",
       threadId: "thread-1",
     });
 
@@ -1052,25 +1041,14 @@ describe("WatchManager", () => {
       generation: 1,
       workspaceTargets: [],
       threadStorageTargets: [
-        {
-          environmentId: "env-a",
-          threadId: "thread-a",
-        },
-        {
-          environmentId: "env-b",
-          threadId: "thread-b",
-        },
+        { threadId: "thread-a" },
+        { threadId: "thread-b" },
       ],
     });
     await manager.replaceWatchSet({
       generation: 2,
       workspaceTargets: [],
-      threadStorageTargets: [
-        {
-          environmentId: "env-b",
-          threadId: "thread-b",
-        },
-      ],
+      threadStorageTargets: [{ threadId: "thread-b" }],
     });
 
     expect(
@@ -1097,9 +1075,9 @@ describe("WatchManager", () => {
       generation: 1,
       workspaceTargets: [],
       threadStorageTargets: [
-        { environmentId: "env-a", threadId: "." },
-        { environmentId: "env-a", threadId: "../escape" },
-        { environmentId: "env-a", threadId: "nested/thread" },
+        { threadId: "." },
+        { threadId: "../escape" },
+        { threadId: "nested/thread" },
       ],
     });
 

@@ -280,12 +280,7 @@ describe("WatchInterestCoordinator", () => {
     });
 
     expect(watchInterests.reconcileWatchSetForHost(host.id)).toMatchObject({
-      threadStorageTargets: [
-        {
-          environmentId: environment.id,
-          threadId: thread.id,
-        },
-      ],
+      threadStorageTargets: [{ threadId: thread.id }],
       workspaceTargets: [],
     });
   });
@@ -313,12 +308,7 @@ describe("WatchInterestCoordinator", () => {
 
     expect(lastDaemonMessage(daemonSocket)).toMatchObject({
       type: "watch-set.replace",
-      threadStorageTargets: [
-        {
-          environmentId: environment.id,
-          threadId: thread.id,
-        },
-      ],
+      threadStorageTargets: [{ threadId: thread.id }],
       workspaceTargets: [],
     });
   });
@@ -379,7 +369,6 @@ describe("WatchInterestCoordinator", () => {
       ],
       threadStorageTargets: watched.map((thread) => ({
         threadId: thread.id,
-        environmentId: thread.environmentId,
       })),
     });
     const generation = watchInterests.reconcileWatchSetForHost(
@@ -417,10 +406,7 @@ describe("WatchInterestCoordinator", () => {
         workspaceTargets: [{ environmentId: environment.id }],
         threadStorageTargets: watched
           .filter((_, index) => index > 2 && index % 2 === 0)
-          .map((thread) => ({
-            threadId: thread.id,
-            environmentId: thread.environmentId,
-          })),
+          .map((thread) => ({ threadId: thread.id })),
       },
     );
     hub.unregisterClient(socket);

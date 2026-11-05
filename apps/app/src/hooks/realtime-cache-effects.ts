@@ -26,7 +26,6 @@ import {
 } from "@/lib/document-visibility";
 import {
   applyRealtimeThreadPatches,
-  collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
@@ -54,7 +53,6 @@ const HIDDEN_SIDEBAR_REFRESH_MAX_WAIT_MS = 5_000;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 const WATCHED_ENVIRONMENT_CHANGE_KINDS: EnvironmentChangeKind[] = [
   "work-status-changed",
-  "thread-storage-changed",
 ];
 
 type RealtimeConnectedEvent =
@@ -322,8 +320,6 @@ function invalidateRealtimeEnvironmentChange({
     executeRealtimeDirtyHandlers({
       context: {
         environmentId,
-        getCachedThreadIdsForEnvironment: () =>
-          collectCachedThreadIdsForEnvironment({ environmentId, queryClient }),
         queryClient,
       },
       handlers: REALTIME_ENVIRONMENT_CHANGE_REGISTRY[changeKind].dirty,
@@ -499,6 +495,12 @@ export function createRealtimeCacheEffects({
         );
         return;
       case "thread-detail": {
+        mergeThreadChanges({
+          changes: ["storage-changed"],
+          state: threadChangeState,
+          threadId: target.threadId,
+        });
+        invalidationScheduler.schedule();
         const environmentId = getCachedThreadEnvironmentId({
           queryClient,
           threadId: target.threadId,

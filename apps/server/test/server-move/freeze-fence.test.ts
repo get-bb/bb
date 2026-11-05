@@ -518,7 +518,7 @@ describe("writes while a server move is frozen", () => {
         feed({
           type: "environment-change",
           environmentId: environment.id,
-          change: "thread-storage-changed",
+          change: "git-refs-changed",
         });
         feed({
           type: "server_move.progress",
@@ -531,7 +531,7 @@ describe("writes while a server move is frozen", () => {
           JSON.stringify({ type: "heartbeat-ack" }),
         );
         expect(notifyEnvironment).toHaveBeenCalledWith(environment.id, [
-          "thread-storage-changed",
+          "git-refs-changed",
         ]);
         expect(serverMove.handleProgress).toHaveBeenCalledWith(
           host.id,

@@ -1553,58 +1553,44 @@ describe("createRealtimeCacheEffects", () => {
     },
   );
 
-  it("refetches active thread storage preview queries for thread storage changes", async () => {
+  it("refetches only the changed thread's storage queries on a storage change", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const threadKey = threadQueryKey("thr_1");
-    const storagePreviewKey = threadStorageFilePreviewQueryKey(
-      "thr_1",
-      "notes.md",
-    );
-    const initialStoragePreview = {
-      kind: "text",
-      content: "old",
-      mimeType: "text/plain",
-      path: "notes.md",
-      url: "/old",
+    const observeStoragePreview = (threadId: string) => {
+      const queryKey = threadStorageFilePreviewQueryKey(threadId, "notes.md");
+      queryClient.setQueryData(threadQueryKey(threadId), {
+        id: threadId,
+        environmentId: "env-1",
+      });
+      queryClient.setQueryData(queryKey, { content: "old" });
+      const queryFn = vi.fn(async () => ({ content: "new" }));
+      const unsubscribe = new QueryObserver(queryClient, {
+        queryKey,
+        queryFn,
+        staleTime: Infinity,
+      }).subscribe(() => {});
+      queryFn.mockClear();
+      return { queryFn, queryKey, unsubscribe };
     };
-    const nextStoragePreview = {
-      kind: "text",
-      content: "new",
-      mimeType: "text/plain",
-      path: "notes.md",
-      url: "/new",
-    };
-    queryClient.setQueryData(threadKey, {
-      id: "thr_1",
-      environmentId: "env-1",
-    });
-    queryClient.setQueryData(storagePreviewKey, initialStoragePreview);
-    const storagePreviewQueryFn = vi.fn(async () => nextStoragePreview);
-    const storagePreviewObserver = new QueryObserver(queryClient, {
-      queryKey: storagePreviewKey,
-      queryFn: storagePreviewQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeStoragePreview = storagePreviewObserver.subscribe(
-      () => {},
-    );
-    storagePreviewQueryFn.mockClear();
+    const changed = observeStoragePreview("thr_1");
+    const sibling = observeStoragePreview("thr_2");
 
     effects.handleChanged({
       type: "changed",
-      entity: "environment",
-      id: "env-1",
-      changes: ["thread-storage-changed"],
+      entity: "thread",
+      id: "thr_1",
+      changes: ["storage-changed"],
     });
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(storagePreviewQueryFn).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryData(storagePreviewKey)).toEqual(
-      nextStoragePreview,
-    );
+    expect(changed.queryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(changed.queryKey)).toEqual({
+      content: "new",
+    });
+    expect(sibling.queryFn).not.toHaveBeenCalled();
 
-    unsubscribeStoragePreview();
+    changed.unsubscribe();
+    sibling.unsubscribe();
     effects.dispose();
   });
 
