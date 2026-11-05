@@ -42,6 +42,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `deleteMachineEnvironmentVariable`; sub-areas `attachments` (`upload` `read`
   `copy`), `sources` (`add` `update` `delete`)
 - `experimental_promptHistory`: `list`
+- `experimental_storage`: `database`
 - `environments`: `list` `listProviders` `get` `update` `delete` `paths`
   `commit` `archiveThreads` `experimental_cleanup`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
@@ -97,6 +98,16 @@ latest user messages, and the agent's latest replies, in the task's language:
 the thread menu's Regenerate title action. The service may keep the current
 title when it still fits. It rejects and keeps the title when no title service
 is available or generation fails.
+
+`experimental_storage.database()` (`GET /api/v1/storage/database`) reads
+bb.db: `database` has `path`, `fileBytes`, `walBytes`, `pageSize`,
+`pageCount`, `freelistPages`, `reclaimableBytes` (free pages × page size) and
+`autoVacuum` (`none`, `incremental` or `full`); `history` counts `threads`,
+`events` and `searchSegments` for `active`, `archived` and `deleted` (awaiting
+cleanup) threads, from per-thread index counts read in short slices that
+yield to the event loop. Figures are rows, not bytes, because byte sizes per table
+would need a scan of every page. The Storage & retention page and
+`bb storage db` show it.
 
 ```ts
 const thread = await bb.sdk.threads.spawn({

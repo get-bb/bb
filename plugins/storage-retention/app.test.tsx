@@ -162,6 +162,26 @@ function fixture(subPath = "host_test") {
         system: {
           config: async () => makeSystemConfig({ primaryHostId: "host_test" }),
         },
+        experimental_storage: {
+          database: async () => ({
+            measuredAt: 1,
+            database: {
+              path: "/data/bb.db",
+              fileBytes: 4096,
+              walBytes: 0,
+              pageSize: 4096,
+              pageCount: 1,
+              freelistPages: 0,
+              reclaimableBytes: 0,
+              autoVacuum: "incremental" as const,
+            },
+            history: {
+              active: { threads: 0, events: 0, searchSegments: 0 },
+              archived: { threads: 0, events: 0, searchSegments: 0 },
+              deleted: { threads: 0, events: 0, searchSegments: 0 },
+            },
+          }),
+        },
       },
     },
   );

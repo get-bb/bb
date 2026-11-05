@@ -10,6 +10,12 @@ Core supplies ordinary thread lifecycle actions, machine storage paths, and
 environment cleanup retry. The existing core idle orphan sweep is unchanged.
 Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
+The overview's Database section and `bb storage db` read bb.db from core's
+`GET /api/v1/storage/database` (SDK `experimental_storage.database()`):
+file and WAL size, free pages, auto-vacuum mode, and history rows by thread
+state. Core reads only PRAGMA headers and per-thread index counts in short yielding
+slices; the plugin stores nothing for it.
+
 The machine page offers Clear archived files for whole storage folders, including
 small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
 keeps conversations and uploaded attachments and requires confirmation. The
