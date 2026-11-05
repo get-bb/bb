@@ -1946,12 +1946,6 @@
   animation: none;
 }
 
-@media (max-width: 720px) {
-  .rhb.mockup-wrap .rhb-win.mock {
-    --mock-visible-width: var(--mock-desktop-width);
-  }
-}
-
 .rhb .rhb-scene-sentry .rhb-card-main {
   transition:
     border-top-right-radius 0.15s ease 0.55s,
