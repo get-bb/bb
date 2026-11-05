@@ -62,6 +62,23 @@ import {
   SendIcon,
   Spinner,
   useFitMock,
+  MOCK_CHILD_REPORT_PAUSE_S,
+  MOCK_FIRST_ROW_S,
+  MOCK_LOOP_FADE_MS,
+  MOCK_LOOP_IDLE_S,
+  MOCK_LOOP_SCROLL_BACK_MS,
+  MOCK_MUTE_AFTER_S,
+  MOCK_PACE_S,
+  MOCK_SIDEBAR_LAG_S,
+  MOCK_SLIDE_FIRST_HOLD_MS,
+  MOCK_SLIDE_HOLD_MS,
+  MOCK_SLIDE_MS,
+  MOCK_STATUS_LEAD_S,
+  MOCK_TEST_RUN_S,
+  MOCK_TIMER_AFTER_S,
+  MOCK_TOAST_AFTER_S,
+  MOCK_WAIT_DONE_LEAD_S,
+  MOCK_WORKING_AFTER_PROMPT_S,
 } from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
@@ -874,28 +891,55 @@ function WindowComposer({
   );
 }
 
-function LeadTurn({
-  step,
-  start,
-  furl,
-  worked,
+const MORPH_PROMPT_FORMS = [
+  "Checkout times out on slow networks. Find the cause and fix it.",
+  "Checkout times out on slow networks.\nFind the cause and fix it.",
+  "Checkout times out on\nslow networks. Find the\ncause and fix it.",
+] as const;
+
+const LEAD_PROMPT_FORMS = [
+  "Ship the checkout timeout fix. Plan it, build it and get it reviewed.",
+  "Ship the checkout timeout fix.\nPlan it, build it and get it reviewed.",
+  "Ship the checkout timeout\nfix. Plan it, build it\nand get it reviewed.",
+] as const;
+
+function BubbleForms({ forms }: { forms: readonly string[] }) {
+  return forms.map((form, index) => (
+    <span className={`bw-fit-form bw-fit-${index}`} key={form}>
+      {form
+        .split("\n")
+        .flatMap((line, i) => (i === 0 ? [line] : [<br key={i} />, line]))}
+    </span>
+  ));
+}
+
+function FoldAway({
+  foldAt,
+  children,
 }: {
-  step: MockStep;
-  start: number;
-  furl: number;
-  worked: string;
+  foldAt: number;
+  children: ReactNode;
 }) {
   return (
-    <Reveal at={start}>
-      <div className="bw-turn">
-        <MockTurnHeader worked={worked} openAt={`${furl}s`} />
-        <div className="bw-turn-fold" style={at(furl)}>
-          <div className="bw-turn-body">
-            <MockStepRow step={step} />
-          </div>
-        </div>
-      </div>
-    </Reveal>
+    <div className="bw-turn-fold bw-fold-away" style={at(foldAt)}>
+      <div className="bw-turn-body">{children}</div>
+    </div>
+  );
+}
+
+function WaitStep({ id, doneAt }: { id: string; doneAt: number }) {
+  const em = `bb thread wait ${id}`;
+  return (
+    <div className="rhb-work rhb-work-cmd bw-swap bw-wait">
+      <span className="bw-swap-a" style={at(doneAt)}>
+        <MockStepContent
+          step={{ kind: "cmd", verb: "Running", em, spin: true }}
+        />
+      </span>
+      <span className="bw-swap-b is-dim" style={at(doneAt)}>
+        <MockStepContent step={{ kind: "cmd", verb: "Ran", em }} />
+      </span>
+    </div>
   );
 }
 
@@ -908,11 +952,9 @@ const MORPH_SCENES: readonly MorphScene[] = [
   "taskboard",
   "shelves",
 ];
-const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
-const MORPH_FIRST_HOLD_MS = 1050;
-const MORPH_OUT_MS = 120;
-const MORPH_GLIDE_MS = 800;
-const MORPH_HOLD_MS = 1820;
+const MORPH_FIRST_HOLD_MS = MOCK_SLIDE_FIRST_HOLD_MS;
+const MORPH_SLIDE_MS = MOCK_SLIDE_MS;
+const MORPH_HOLD_MS = MOCK_SLIDE_HOLD_MS;
 
 type MorphCenter = "thread" | "files" | "taskboard";
 type MorphSide = "threads" | "shelves" | null;
@@ -941,57 +983,59 @@ const MORPH_TITLES: Record<MorphCenter, string> = {
   taskboard: "Taskboard",
 };
 
-type MorphRegion = "center" | "side" | "panel" | "title";
-
-function morphChanges(a: MorphScene, b: MorphScene): MorphRegion[] {
-  const regions: MorphRegion[] = [];
-  if (MORPH_CENTER[a] !== MORPH_CENTER[b]) regions.push("center");
-  if (MORPH_SIDE[a] !== MORPH_SIDE[b]) regions.push("side");
-  if ((a === "graph") !== (b === "graph")) regions.push("panel");
-  if (MORPH_TITLES[MORPH_CENTER[a]] !== MORPH_TITLES[MORPH_CENTER[b]])
-    regions.push("title");
-  return regions;
-}
-
-type MorphState = { scene: number; hide: MorphRegion[]; slide: boolean };
+type MorphState = {
+  scene: number;
+  previous: number | null;
+  title: number;
+  key: number;
+};
 
 function useMorphTimeline(active: boolean) {
   const [state, setState] = useState<MorphState>({
     scene: 0,
-    hide: [],
-    slide: false,
+    previous: null,
+    title: 0,
+    key: 0,
   });
   useEffect(() => {
     if (!active) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setState({ scene: MORPH_STATIC_SCENE, hide: [], slide: false });
-      return;
-    }
     let timer = 0;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const cut = () => {
+        timer = window.setTimeout(() => {
+          setState((current) => {
+            const scene = (current.scene + 1) % MORPH_SCENES.length;
+            return {
+              scene,
+              previous: null,
+              title: scene,
+              key: current.key + 1,
+            };
+          });
+          cut();
+        }, MORPH_HOLD_MS);
+      };
+      cut();
+      return () => window.clearTimeout(timer);
+    }
     let first = true;
     const hold = () => {
-      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_GLIDE_MS + MORPH_HOLD_MS;
+      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_HOLD_MS;
       first = false;
       timer = window.setTimeout(() => {
-        setState((current) => {
-          const next = (current.scene + 1) % MORPH_SCENES.length;
-          return {
-            scene: current.scene,
-            hide: morphChanges(
-              MORPH_SCENES[current.scene]!,
-              MORPH_SCENES[next]!,
-            ),
-            slide: false,
-          };
-        });
+        setState((current) => ({
+          scene: (current.scene + 1) % MORPH_SCENES.length,
+          previous: current.scene,
+          title: current.scene,
+          key: current.key + 1,
+        }));
         timer = window.setTimeout(() => {
-          setState((current) => ({
-            scene: (current.scene + 1) % MORPH_SCENES.length,
-            hide: [],
-            slide: !current.hide.includes("center"),
-          }));
-          hold();
-        }, MORPH_OUT_MS);
+          setState((current) => ({ ...current, title: current.scene }));
+          timer = window.setTimeout(() => {
+            setState((current) => ({ ...current, previous: null }));
+            hold();
+          }, MORPH_SLIDE_MS / 2);
+        }, MORPH_SLIDE_MS / 2);
       }, wait);
     };
     hold();
@@ -999,14 +1043,71 @@ function useMorphTimeline(active: boolean) {
   }, [active]);
   return {
     scene: MORPH_SCENES[state.scene]!,
-    hide: state.hide,
-    slide: state.slide,
+    previous: state.previous === null ? null : MORPH_SCENES[state.previous]!,
+    title: MORPH_SCENES[state.title]!,
+    key: state.key,
     paused: !active,
   };
 }
 
-function morphLayer<T extends string>(base: string, key: T, current: T | null) {
-  return key === current ? `${base} mx-layer is-on` : `${base} mx-layer`;
+function MorphPane({
+  scene,
+  role,
+}: {
+  scene: MorphScene;
+  role: "" | " is-entering" | " is-leaving";
+}) {
+  const center = MORPH_CENTER[scene];
+  const side = MORPH_SIDE[scene];
+  return (
+    <div
+      className={`mx-pane mx-${scene}${side === null ? " mx-collapsed" : ""}${role}`}
+    >
+      <NavRail active={center === "thread" ? "Home" : null}>
+        {(["files-editor", "taskboard"] as const).map((id) => (
+          <span
+            key={id}
+            className={
+              center === (id === "files-editor" ? "files" : id)
+                ? "rail-btn mx-rail-plugin is-on"
+                : "rail-btn mx-rail-plugin"
+            }
+          >
+            <PluginMark id={id} className="rail-ic" />
+          </span>
+        ))}
+      </NavRail>
+      <div className="mx-side-slot">
+        {side === "threads" ? (
+          <aside className="side mx-side-threads mx-layer is-on">
+            <MorphThreads />
+          </aside>
+        ) : side === "shelves" ? (
+          <aside className="side mx-side-shelves mx-layer is-on">
+            <MorphShelves />
+          </aside>
+        ) : null}
+      </div>
+      <div className="mx-center">
+        <div className="main mx-layer is-on">
+          {center === "thread" ? (
+            <MorphThread />
+          ) : center === "files" ? (
+            <MorphFiles />
+          ) : (
+            <MorphTaskboard />
+          )}
+        </div>
+      </div>
+      <div className="mx-panel-slot">
+        {scene === "graph" ? (
+          <div className="mx-panel">
+            <MorphAgentGraph />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 const PLUGIN_MARKS = {
@@ -1143,8 +1244,8 @@ function MorphThread() {
   return (
     <>
       <div className="feed bw-feed mx-feed">
-        <MockUserBubble>
-          Checkout times out on slow networks. Find the cause and fix it.
+        <MockUserBubble className="bw-fit-morph">
+          <BubbleForms forms={MORPH_PROMPT_FORMS} />
         </MockUserBubble>
         <MockTurnHeader worked="1m 4s" />
         <div className="msg-say">
@@ -1605,82 +1706,46 @@ function MorphAgentGraph() {
 
 export function PluginMorph() {
   const { ref, active } = useMockWindow();
-  const { scene, hide, slide, paused } = useMorphTimeline(active);
-  const center = MORPH_CENTER[scene];
-  const side = MORPH_SIDE[scene];
+  const { scene, previous, title, key, paused } = useMorphTimeline(active);
   const titles = [...new Set(Object.values(MORPH_TITLES))];
-  const centerLayer = (key: MorphCenter) => morphLayer("main", key, center);
+  const side = MORPH_SIDE[scene];
   return (
     <div
       ref={ref}
-      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${hide.map((region) => ` mx-hide-${region}`).join("")}${slide ? " mx-slide" : ""}${paused ? " fw-paused" : ""}`}
+      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${paused ? " fw-paused" : ""}`}
       data-scene={scene}
       role="img"
       aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
     >
       <div className="mock bw-window mx-window mock-ui">
         <WindowBar
-          panelOpen={scene === "graph"}
+          panelOpen={title === "graph"}
           title={
             <span className="mx-titles">
-              {titles.map((title) => (
+              {titles.map((label) => (
                 <span
-                  key={title}
+                  key={label}
                   className={
-                    title === MORPH_TITLES[center]
+                    label === MORPH_TITLES[MORPH_CENTER[title]]
                       ? "mx-title is-on"
                       : "mx-title"
                   }
                 >
-                  {title}
+                  {label}
                 </span>
               ))}
             </span>
           }
         />
         <div className="mock-body bw-body mx-body" aria-hidden>
-          <NavRail active={center === "thread" ? "Home" : null}>
-            {(["files-editor", "taskboard"] as const).map((id) => (
-              <span
-                key={id}
-                className={
-                  center === (id === "files-editor" ? "files" : id)
-                    ? "rail-btn mx-rail-plugin is-on"
-                    : "rail-btn mx-rail-plugin"
-                }
-              >
-                <PluginMark id={id} className="rail-ic" />
-              </span>
-            ))}
-          </NavRail>
-          <div className="mx-side-slot">
-            <aside
-              className={morphLayer("side mx-side-threads", "threads", side)}
-            >
-              <MorphThreads />
-            </aside>
-            <aside
-              className={morphLayer("side mx-side-shelves", "shelves", side)}
-            >
-              <MorphShelves />
-            </aside>
-          </div>
-          <div className="mx-center">
-            <div className={centerLayer("thread")}>
-              <MorphThread />
-            </div>
-            <div className={centerLayer("files")}>
-              <MorphFiles />
-            </div>
-            <div className={centerLayer("taskboard")}>
-              <MorphTaskboard />
-            </div>
-          </div>
-          <div className="mx-panel-slot">
-            <div className="mx-panel">
-              <MorphAgentGraph />
-            </div>
-          </div>
+          {previous === null ? null : (
+            <MorphPane key={key - 1} scene={previous} role=" is-leaving" />
+          )}
+          <MorphPane
+            key={key}
+            scene={scene}
+            role={previous === null ? "" : " is-entering"}
+          />
         </div>
       </div>
     </div>
@@ -1689,28 +1754,72 @@ export function PluginMorph() {
 
 const DELEGATION_LEAD = "Ship the checkout fix";
 
+const CHILD_REPORT_WAIT = MOCK_CHILD_REPORT_PAUSE_S;
+const SIDEBAR_LAG = MOCK_SIDEBAR_LAG_S;
+const STATUS_LEAD = MOCK_STATUS_LEAD_S;
+const WAIT_DONE_LEAD = MOCK_WAIT_DONE_LEAD_S;
+
+const LEAD_AT = (() => {
+  const spawnPlan = MOCK_FIRST_ROW_S;
+  const planning = spawnPlan + MOCK_PACE_S;
+  const waitPlan = planning + MOCK_PACE_S;
+  const planDone = waitPlan + CHILD_REPORT_WAIT;
+  const planSay = planDone + MOCK_PACE_S;
+  const spawnBuild = planSay + MOCK_PACE_S;
+  const waitBuild = spawnBuild + MOCK_PACE_S;
+  const buildAsks = waitBuild + CHILD_REPORT_WAIT;
+  const sentBuild = buildAsks + MOCK_PACE_S;
+  const toldSay = sentBuild + MOCK_PACE_S;
+  const waitBuildAgain = toldSay + MOCK_PACE_S;
+  const buildDone = waitBuildAgain + CHILD_REPORT_WAIT;
+  const spawnReview = buildDone + MOCK_PACE_S;
+  const waitReview = spawnReview + MOCK_PACE_S;
+  const reviewAsks = waitReview + CHILD_REPORT_WAIT;
+  const reply = reviewAsks + MOCK_PACE_S;
+  const end = reply + MOCK_PACE_S;
+  return {
+    spawnPlan,
+    planning,
+    waitPlan,
+    planDone,
+    planSay,
+    spawnBuild,
+    waitBuild,
+    buildAsks,
+    sentBuild,
+    toldSay,
+    waitBuildAgain,
+    buildDone,
+    spawnReview,
+    waitReview,
+    reviewAsks,
+    reply,
+    end,
+  };
+})();
+
 const DELEGATION_CHILDREN = [
   {
     icon: ClaudeIcon,
     title: "Plan the fix",
-    landsAt: 1.88,
-    then: [{ status: "done", at: 5.6 }],
+    landsAt: LEAD_AT.spawnPlan + SIDEBAR_LAG,
+    then: [{ status: "done", at: LEAD_AT.planDone - STATUS_LEAD }],
   },
   {
     icon: CursorIcon,
     title: "Build it",
-    landsAt: 8.6,
+    landsAt: LEAD_AT.spawnBuild + SIDEBAR_LAG,
     then: [
-      { status: "done", at: 12.2 },
-      { status: "running", at: 16.24 },
-      { status: "done", at: 19.5 },
+      { status: "done", at: LEAD_AT.buildAsks - STATUS_LEAD },
+      { status: "running", at: LEAD_AT.sentBuild + SIDEBAR_LAG },
+      { status: "done", at: LEAD_AT.buildDone - STATUS_LEAD },
     ],
   },
   {
     icon: OpenAiIcon,
     title: "Review the diff",
-    landsAt: 22.5,
-    then: [{ status: "waiting", at: 26.1 }],
+    landsAt: LEAD_AT.spawnReview + SIDEBAR_LAG,
+    then: [{ status: "waiting", at: LEAD_AT.reviewAsks - STATUS_LEAD }],
   },
 ] as const;
 
@@ -1728,15 +1837,9 @@ const REVIEW_THREAD = { label: "Review the diff" };
 
 const DELEGATION_PING = "Waiting for your input";
 
-const LEAD_STATUS: readonly StatusStep[] = [
-  { status: "done", at: 3.72 },
-  { status: "running", at: 7.1 },
-  { status: "done", at: 10.44 },
-  { status: "running", at: 13.7 },
-  { status: "done", at: 17.74 },
-  { status: "running", at: 21 },
-  { status: "done", at: 24.34 },
-];
+const LEAD_END = LEAD_AT.end;
+
+const LEAD_STATUS: readonly StatusStep[] = [{ status: "done", at: LEAD_END }];
 
 function NeedsAttention({ label }: { label: string }) {
   return (
@@ -1752,7 +1855,11 @@ function NeedsAttention({ label }: { label: string }) {
 
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(31000, 2000, active);
+  const { cycle, leaving, paused } = useCycle(
+    Math.round((LEAD_END + MOCK_LOOP_IDLE_S) * 1000),
+    MOCK_LOOP_SCROLL_BACK_MS,
+    active,
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const view = scrollRef.current;
@@ -1809,98 +1916,157 @@ export function DelegationTree() {
           <div className="main">
             <div ref={scrollRef} className="bw-feed-scroll">
               <div className="feed bw-feed">
-                <MockUserBubble>
-                  Ship the checkout timeout fix. Plan it, build it and get it
-                  reviewed.
+                <MockUserBubble className="bw-fit-lead">
+                  <BubbleForms forms={LEAD_PROMPT_FORMS} />
                 </MockUserBubble>
-                <LeadTurn
-                  start={0.84}
-                  furl={3.72}
-                  worked="3s"
-                  step={spawnStep(
-                    '--provider claude-code --prompt "Plan the checkout timeout fix"',
-                  )}
-                />
-                <Reveal at={2.68}>
-                  <div className="msg-say">
-                    Claude Code is planning the fix.
+                <div className="bw-turn">
+                  <MockTurnHeader
+                    worked={`${Math.round(LEAD_END)}s`}
+                    openAt={`${LEAD_END}s`}
+                  />
+                  <div className="bw-turn-stay">
+                    <div className="bw-turn-body">
+                      <Reveal at={LEAD_AT.spawnPlan}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <MockStepRow
+                            className="bw-spawn bw-mute"
+                            style={
+                              {
+                                "--bw-mute-at": `${LEAD_AT.spawnPlan + MOCK_MUTE_AFTER_S}s`,
+                              } as CSSProperties
+                            }
+                            step={spawnStep(
+                              '--provider claude-code --prompt "Plan the checkout timeout fix"',
+                            )}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.planning}>
+                        <div className="msg-say">
+                          Claude Code is planning the fix.
+                        </div>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.waitPlan}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <WaitStep
+                            id="$PLAN_THREAD_ID"
+                            doneAt={LEAD_AT.planDone - WAIT_DONE_LEAD}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.planDone}>
+                        <MockChildEvent
+                          kind="finished"
+                          thread={PLAN_THREAD}
+                          body={
+                            <>
+                              three steps in <code>plan.md</code>
+                            </>
+                          }
+                        />
+                      </Reveal>
+                      <Reveal at={LEAD_AT.planSay}>
+                        <div className="msg-say">
+                          The plan has three steps. Cursor is building it now.
+                        </div>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.spawnBuild}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <MockStepRow
+                            className="bw-spawn bw-mute"
+                            style={
+                              {
+                                "--bw-mute-at": `${LEAD_AT.spawnBuild + MOCK_MUTE_AFTER_S}s`,
+                              } as CSSProperties
+                            }
+                            step={spawnStep(
+                              '--provider acp-cursor --prompt "Build the fix in plan.md"',
+                            )}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.waitBuild}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <WaitStep
+                            id="$BUILD_THREAD_ID"
+                            doneAt={LEAD_AT.buildAsks - WAIT_DONE_LEAD}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.buildAsks}>
+                        <MockChildEvent
+                          kind="message"
+                          thread={BUILD_THREAD}
+                          body="keep the 30s timeout, or make it configurable?"
+                        />
+                      </Reveal>
+                      <Reveal at={LEAD_AT.sentBuild}>
+                        <MockChildEvent
+                          kind="sent"
+                          thread={BUILD_THREAD}
+                          body="Make it configurable, default 30s."
+                        />
+                      </Reveal>
+                      <Reveal at={LEAD_AT.toldSay}>
+                        <div className="msg-say">
+                          Told Build it to make the timeout configurable.
+                        </div>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.waitBuildAgain}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <WaitStep
+                            id="$BUILD_THREAD_ID"
+                            doneAt={LEAD_AT.buildDone - WAIT_DONE_LEAD}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.buildDone}>
+                        <MockChildEvent
+                          kind="finished"
+                          thread={BUILD_THREAD}
+                          body="PR #482 is open"
+                        />
+                      </Reveal>
+                      <Reveal at={LEAD_AT.spawnReview}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <MockStepRow
+                            className="bw-spawn bw-mute"
+                            style={
+                              {
+                                "--bw-mute-at": `${LEAD_AT.spawnReview + MOCK_MUTE_AFTER_S}s`,
+                              } as CSSProperties
+                            }
+                            step={spawnStep(
+                              '--provider codex --prompt "Review PR #482"',
+                            )}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.waitReview}>
+                        <FoldAway foldAt={LEAD_END}>
+                          <WaitStep
+                            id="$REVIEW_THREAD_ID"
+                            doneAt={LEAD_AT.reviewAsks - WAIT_DONE_LEAD}
+                          />
+                        </FoldAway>
+                      </Reveal>
+                      <Reveal at={LEAD_AT.reviewAsks}>
+                        <NeedsAttention label={REVIEW_THREAD.label} />
+                      </Reveal>
+                    </div>
                   </div>
-                </Reveal>
-                <Reveal at={0.2} fadeAt={3.72} until={6.06}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={6.06}>
-                  <MockChildEvent
-                    kind="finished"
-                    thread={PLAN_THREAD}
-                    body={
-                      <>
-                        three steps in <code>plan.md</code>
-                      </>
-                    }
-                  />
-                </Reveal>
-                <LeadTurn
-                  start={7.56}
-                  furl={10.44}
-                  worked="4s"
-                  step={spawnStep(
-                    '--provider acp-cursor --prompt "Build the fix in plan.md"',
-                  )}
-                />
-                <Reveal at={9.4}>
-                  <div className="msg-say">
-                    The plan has three steps. Cursor is building it now.
-                  </div>
-                </Reveal>
-                <Reveal at={7.1} fadeAt={10.44} until={12.66}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={12.66}>
-                  <MockChildEvent
-                    kind="message"
-                    thread={BUILD_THREAD}
-                    body="keep the 30s timeout, or make it configurable?"
-                  />
-                </Reveal>
-                <Reveal at={15.2}>
-                  <MockChildEvent
-                    kind="sent"
-                    thread={BUILD_THREAD}
-                    body="Make it configurable, default 30s."
-                  />
-                </Reveal>
-                <Reveal at={16.7}>
-                  <div className="msg-say">
-                    Told Build it to make the timeout configurable.
-                  </div>
-                </Reveal>
-                <Reveal at={13.7} fadeAt={17.74} until={19.96}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={19.96}>
-                  <MockChildEvent
-                    kind="finished"
-                    thread={BUILD_THREAD}
-                    body="PR #482 is open"
-                  />
-                </Reveal>
-                <LeadTurn
-                  start={21.46}
-                  furl={24.34}
-                  worked="3s"
-                  step={spawnStep('--provider codex --prompt "Review PR #482"')}
-                />
-                <Reveal at={23.3}>
+                </div>
+                <Reveal at={LEAD_AT.reply}>
                   <div className="msg-say">
                     The fix is in. Codex is reviewing the diff.
                   </div>
                 </Reveal>
-                <Reveal at={21} fadeAt={24.34} until={26.56}>
+                <Reveal
+                  at={MOCK_WORKING_AFTER_PROMPT_S}
+                  fadeAt={LEAD_END}
+                  until={LEAD_END}
+                >
                   <MockWorkingRow />
-                </Reveal>
-                <Reveal at={26.56}>
-                  <NeedsAttention label={REVIEW_THREAD.label} />
                 </Reveal>
               </div>
             </div>
@@ -1916,23 +2082,40 @@ export function DelegationTree() {
               ]}
             />
           </div>
-          <div className="bw-toast" style={at(27.6)}>
-            <BbGlyph className="bw-toast-mark" />
-            <span className="bw-toast-text">
-              <span className="bw-toast-head">
-                <span className="bw-toast-title">{REVIEW_THREAD.label}</span>
-                <span className="bw-toast-time">now</span>
-              </span>
-              <span className="bw-toast-body">{DELEGATION_PING}</span>
+        </div>
+      </div>
+      <div
+        className={stageClass("bw-toast-layer", leaving, paused)}
+        key={cycle}
+      >
+        <div className="bw-toast" style={at(LEAD_END + MOCK_TOAST_AFTER_S)}>
+          <BbGlyph className="bw-toast-mark" />
+          <span className="bw-toast-text">
+            <span className="bw-toast-head">
+              <span className="bw-toast-title">{REVIEW_THREAD.label}</span>
+              <span className="bw-toast-time">now</span>
             </span>
-          </div>
+            <span className="bw-toast-body">{DELEGATION_PING}</span>
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-const START_PROMPT = "Fix the checkout bug: payments hang on slow networks";
+const START_PROMPT_FORMS = [
+  "Fix the checkout bug: payments hang on slow networks",
+  "Fix the checkout bug:\npayments hang on slow networks",
+  "Fix the checkout\nbug: payments hang\non slow networks",
+] as const;
+
+const START_DONE = "Checkout tests pass.";
+
+const PHONE_PROMPT_LINES = [
+  "Fix the checkout",
+  "bug: payments hang",
+  "on slow networks",
+];
 
 type StartWork = {
   at: number;
@@ -1946,15 +2129,40 @@ type StartWork = {
 
 type StartStep = { at: number; say: string } | StartWork;
 
+const START_FIRST_STEP = MOCK_FIRST_ROW_S;
+const START_TESTS_AT = START_FIRST_STEP + 3 * MOCK_PACE_S;
+const START_TESTS_DONE = START_TESTS_AT + MOCK_TEST_RUN_S;
+const START_REPLY = START_TESTS_DONE + MOCK_PACE_S;
+const START_END = START_REPLY + MOCK_PACE_S;
+const START_TEST_TIME = "4s";
+
 function StepRow({ step }: { step: StartWork }) {
+  if (!step.live) {
+    return (
+      <div className="bw-step">
+        <step.icon className="bw-step-ic" />
+        <span>{step.verb}</span>
+        <span className="bw-step-object">{step.object}</span>
+      </div>
+    );
+  }
   return (
-    <div className={step.live ? "bw-step is-live" : "bw-step"}>
-      <step.icon className="bw-step-ic" />
-      <span>{step.verb}</span>
-      <span className="bw-step-object">{step.object}</span>
-      {step.live ? (
-        <span className="bw-step-timer" style={at(step.at + 1)} />
-      ) : null}
+    <div className="bw-step is-live bw-swap">
+      <span className="bw-swap-a" style={at(START_TESTS_DONE)}>
+        <step.icon className="bw-step-ic" />
+        <span>{step.verb}</span>
+        <span className="bw-step-object">{step.object}</span>
+        <span
+          className="bw-step-timer"
+          style={at(step.at + MOCK_TIMER_AFTER_S)}
+        />
+      </span>
+      <span className="bw-swap-b is-dim" style={at(START_TESTS_DONE)}>
+        <step.icon className="bw-step-ic" />
+        <span>Ran</span>
+        <span className="bw-step-object">{step.object}</span>
+        <span className="bw-m-timer-done">{START_TEST_TIME}</span>
+      </span>
     </div>
   );
 }
@@ -1963,35 +2171,45 @@ function DesktopStep({ step }: { step: StartWork }) {
   const mock: MockStep = { kind: step.kind, verb: step.verb, em: step.object };
   if (!step.live) return <MockStepRow step={mock} className="is-past" />;
   return (
-    <div className={`rhb-work rhb-work-${step.kind}`}>
-      <MockStepContent step={mock} />
-      <span className="rhb-dur bw-step-timer" style={at(step.at + 1)} />
-      <Spinner className="trun rhb-work-spin" />
+    <div className={`rhb-work rhb-work-${step.kind} bw-swap`}>
+      <span className="bw-swap-a" style={at(START_TESTS_DONE)}>
+        <MockStepContent step={mock} />
+        <span
+          className="rhb-dur bw-step-timer"
+          style={at(step.at + MOCK_TIMER_AFTER_S)}
+        />
+        <Spinner className="trun rhb-work-spin" />
+      </span>
+      <span className="bw-swap-b is-dim" style={at(START_TESTS_DONE)}>
+        <MockStepContent
+          step={{ ...mock, verb: "Ran", dur: START_TEST_TIME }}
+        />
+      </span>
     </div>
   );
 }
 
 const START_STEPS: readonly StartStep[] = [
   {
-    at: 1.8,
+    at: START_FIRST_STEP,
     kind: "work",
     icon: SearchIcon,
     verb: "Explored",
     object: "5 files, 1 search",
   },
   {
-    at: 3.34,
+    at: START_FIRST_STEP + MOCK_PACE_S,
     say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
   },
   {
-    at: 4.6,
+    at: START_FIRST_STEP + 2 * MOCK_PACE_S,
     kind: "file",
     icon: EditFileIcon,
     verb: "Edited",
     object: "2 files",
   },
   {
-    at: 5.72,
+    at: START_FIRST_STEP + 3 * MOCK_PACE_S,
     kind: "cmd",
     icon: CommandIcon,
     verb: "Running",
@@ -2037,7 +2255,11 @@ function PhoneStatusBar() {
 
 export function StartAnywhere() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(12600, 800, active);
+  const { cycle, leaving, paused } = useCycle(
+    Math.round((START_END + MOCK_LOOP_IDLE_S) * 1000),
+    MOCK_LOOP_FADE_MS,
+    active,
+  );
   return (
     <div
       ref={ref}
@@ -2062,16 +2284,17 @@ export function StartAnywhere() {
                 title="Fix the checkout bug"
                 icon={OpenAiIcon}
                 status="running"
+                then={[{ status: "done", at: START_END }]}
                 active
               />
-              <Reveal at={7.2}>
+              <Reveal at={START_TESTS_AT + MOCK_PACE_S}>
                 <ThreadRow
                   title="Fix CI on main"
                   icon={ClaudeIcon}
                   status="running"
                 />
               </Reveal>
-              <Reveal at={8.4}>
+              <Reveal at={START_TESTS_AT + 2 * MOCK_PACE_S}>
                 <ThreadRow
                   title="Daily changelog"
                   icon={OpenAiIcon}
@@ -2092,22 +2315,45 @@ export function StartAnywhere() {
             <div className="main">
               <div className="feed bw-feed">
                 <Reveal>
-                  <MockUserBubble>{START_PROMPT}</MockUserBubble>
+                  <MockUserBubble className="bw-fit-start">
+                    <BubbleForms forms={START_PROMPT_FORMS} />
+                  </MockUserBubble>
                 </Reveal>
-                {START_STEPS.map((step) => (
-                  <Reveal key={step.at} at={step.at}>
-                    {step.say !== undefined ? (
-                      <div className="msg-say">{step.say}</div>
-                    ) : (
-                      <DesktopStep step={step} />
-                    )}
-                  </Reveal>
-                ))}
-                <Reveal at={0.2}>
+                <div className="bw-turn">
+                  <MockTurnHeader worked="9s" openAt={`${START_END}s`} />
+                  <div className="bw-turn-fold" style={at(START_END)}>
+                    <div className="bw-turn-body">
+                      {START_STEPS.map((step) => (
+                        <Reveal key={step.at} at={step.at}>
+                          {step.say !== undefined ? (
+                            <div className="msg-say">{step.say}</div>
+                          ) : (
+                            <DesktopStep step={step} />
+                          )}
+                        </Reveal>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <Reveal at={START_REPLY}>
+                  <div className="msg-say">{START_DONE}</div>
+                </Reveal>
+                <Reveal
+                  at={MOCK_WORKING_AFTER_PROMPT_S}
+                  fadeAt={START_END}
+                  until={START_END}
+                >
                   <MockWorkingRow />
                 </Reveal>
               </div>
-              <WindowComposer model="Codex" modelIcon={OpenAiIcon} running />
+              <WindowComposer
+                model="Codex"
+                modelIcon={OpenAiIcon}
+                running={[
+                  { at: 0, running: true },
+                  { at: START_END, running: false },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -2121,27 +2367,48 @@ export function StartAnywhere() {
                 <MoreIcon className="bw-m-head-ic" />
                 <PanelRightIcon className="bw-m-head-ic bw-m-head-end" />
               </div>
-              <div className="bw-m-feed">
+              <div className="bw-m-feed mock-ui">
                 <Reveal>
-                  <div className="bw-m-user">{START_PROMPT}</div>
+                  <div className="bw-m-user">
+                    {PHONE_PROMPT_LINES.map((line, index) => (
+                      <span key={line}>
+                        {index > 0 ? <br /> : null}
+                        {line}
+                      </span>
+                    ))}
+                  </div>
                 </Reveal>
-                {START_STEPS.map((step) => (
-                  <Reveal key={step.at} at={step.at}>
-                    {step.say !== undefined ? (
-                      <div className="bw-m-say">{step.say}</div>
-                    ) : (
-                      <StepRow step={step} />
-                    )}
-                  </Reveal>
-                ))}
-                <div className="bw-m-working bw-fade" style={at(0.2)}>
-                  Working...
+                <div className="bw-turn">
+                  <MockTurnHeader worked="9s" openAt={`${START_END}s`} />
+                  <div className="bw-turn-fold" style={at(START_END)}>
+                    <div className="bw-turn-body">
+                      {START_STEPS.map((step) => (
+                        <Reveal key={step.at} at={step.at}>
+                          {step.say !== undefined ? (
+                            <div className="bw-m-say">{step.say}</div>
+                          ) : (
+                            <StepRow step={step} />
+                          )}
+                        </Reveal>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+                <Reveal at={START_REPLY}>
+                  <div className="bw-m-say">{START_DONE}</div>
+                </Reveal>
+                <Reveal
+                  at={MOCK_WORKING_AFTER_PROMPT_S}
+                  fadeAt={START_END}
+                  until={START_END}
+                >
+                  <div className="bw-m-working">Working...</div>
+                </Reveal>
               </div>
               <div className="bw-m-composer">
                 <span className="bw-m-placeholder">Ask a follow-up</span>
                 <MicIcon className="bw-m-mic" />
-                <span className="bw-m-stop">
+                <span className="bw-m-stop" style={at(START_END)}>
                   <i />
                 </span>
               </div>

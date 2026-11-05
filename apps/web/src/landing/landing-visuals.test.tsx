@@ -151,7 +151,7 @@ describe("StartAnywhere", () => {
   it("shows bb desktop grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
-      "Fix the checkout bug: payments hang on slow networks",
+      "Fix the checkout bug:<br/>payments hang on slow networks",
       "src/checkout/pay.ts",
       "linux-box",
       ">server<",
@@ -174,7 +174,7 @@ describe("StartAnywhere", () => {
   it("opens the thread with its prompt already in place on both screens", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     const still =
-      /<div class="bw-reveal bw-reveal-still"><div class="bw-reveal-inner"><div class="(rhb-user|bw-m-user)">Fix the checkout bug: payments hang on slow networks</g;
+      /<div class="bw-reveal bw-reveal-still"><div class="bw-reveal-inner"><div class="(rhb-user bw-fit-start|bw-m-user)">(<span( class="bw-fit-form bw-fit-0")?>)?Fix the checkout( bug:)?/g;
     expect(html.match(still)).toHaveLength(2);
   });
 
@@ -211,66 +211,60 @@ describe("PluginMorph", () => {
     return { ...view, root, layer };
   }
 
-  it("draws every configuration in one window, starting on a plain thread", () => {
+  it("starts on a plain thread in one window", () => {
     const html = renderToStaticMarkup(<PluginMorph />);
     for (const text of [
       'role="img"',
       'data-scene="stock"',
       "Fix the checkout bug",
-      "Kanban",
-      "Start task",
-      "Agent graph",
-      "Search in files",
-      "README.md",
-      "Settled (23)",
+      "Signups by plan",
     ]) {
       expect(html).toContain(text);
     }
     expect(
       html.match(/class="mock bw-window mx-window mock-ui"/g),
     ).toHaveLength(1);
+    expect(html.match(/class="mx-pane /g)).toHaveLength(1);
     expect(html.match(/mx-layer is-on/g)).toHaveLength(2);
   });
 
-  it("changes the window's layout on a beat, only while on screen and visible", () => {
-    const { root, layer, unmount } = mount();
+  it("slides the next setup in on a beat, only while on screen and visible", () => {
+    const { root, unmount } = mount();
+    const panes = () =>
+      [...root.querySelectorAll(".mx-pane")].map((pane) => pane.className);
+    const title = () => root.querySelector(".mx-title.is-on")!.textContent;
     act(() => vi.advanceTimersByTime(20_000));
     expect(root.dataset.scene).toBe("stock");
 
     FakeObserver.instances[0]!.show(true);
     act(() => vi.advanceTimersByTime(1_050));
-    expect(root.dataset.scene).toBe("stock");
-    expect(root.className).toContain("mx-hide-center");
-    expect(root.className).toContain("mx-hide-side");
-    expect(root.className).not.toContain("mx-hide-panel");
-
-    act(() => vi.advanceTimersByTime(120));
     expect(root.dataset.scene).toBe("files");
-    expect(root.className).not.toContain("mx-hide-");
-    expect(root.className).not.toContain("mx-slide");
-    expect(root.className).toContain("mx-collapsed");
-    expect(layer(".mx-center > .main:nth-child(2)")).toContain("is-on");
-    expect(layer(".mx-center > .main:nth-child(1)")).not.toContain("is-on");
-    expect(layer(".mx-side-threads")).not.toContain("is-on");
+    expect(panes()).toEqual([
+      "mx-pane mx-stock is-leaving",
+      "mx-pane mx-files mx-collapsed is-entering",
+    ]);
+    expect(title()).toBe("Fix the checkout bug");
 
-    act(() => vi.advanceTimersByTime(2_740));
+    act(() => vi.advanceTimersByTime(700));
+    expect(title()).toBe("Files");
+
+    act(() => vi.advanceTimersByTime(700));
+    expect(panes()).toEqual(["mx-pane mx-files mx-collapsed"]);
+
+    act(() => vi.advanceTimersByTime(3_600));
     expect(root.dataset.scene).toBe("graph");
     expect(root.querySelector(".bar-toggle.active")).not.toBeNull();
 
-    act(() => vi.advanceTimersByTime(2_740));
+    act(() => vi.advanceTimersByTime(3_600));
     expect(root.dataset.scene).toBe("taskboard");
     expect(root.querySelector(".bar-toggle.active")).toBeNull();
 
-    act(() => vi.advanceTimersByTime(2_740));
+    act(() => vi.advanceTimersByTime(3_600));
     expect(root.dataset.scene).toBe("shelves");
-    expect(root.className).not.toContain("mx-collapsed");
-    expect(root.className).not.toContain("mx-hide-");
-    expect(layer(".mx-side-shelves")).toContain("is-on");
+    expect(panes()).toEqual(["mx-pane mx-shelves"]);
 
-    act(() => vi.advanceTimersByTime(2_740));
+    act(() => vi.advanceTimersByTime(3_600));
     expect(root.dataset.scene).toBe("stock");
-    expect(root.className).toContain("mx-slide");
-    expect(root.className).not.toContain("mx-hide-");
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -291,15 +285,16 @@ describe("PluginMorph", () => {
     const seen: string[] = [];
     const layout = () =>
       [
-        root.className.includes("mx-collapsed"),
+        root.querySelector(".mx-pane")!.className,
         root.querySelector(".mx-side-slot .is-on")?.className ?? "",
-        root.querySelector(".mx-center .is-on")!.className,
+        root.querySelector(".mx-center .is-on")!.firstElementChild!.className,
         root.querySelector(".bar-toggle.active") !== null,
       ].join("|");
     seen.push(layout());
+    act(() => vi.advanceTimersByTime(2_600));
     for (let step = 0; step < 5; step += 1) {
-      act(() => vi.advanceTimersByTime(2_740));
       seen.push(layout());
+      act(() => vi.advanceTimersByTime(3_600));
     }
     for (let step = 1; step < seen.length; step += 1) {
       expect(seen[step]).not.toBe(seen[step - 1]);
@@ -308,12 +303,18 @@ describe("PluginMorph", () => {
     unmount();
   });
 
-  it("holds one static configuration under reduced motion", () => {
+  it("cuts straight to each setup under reduced motion", () => {
     const { root, unmount } = mount(true);
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(20_000));
+    expect(root.dataset.scene).toBe("stock");
+    act(() => vi.advanceTimersByTime(2_200));
+    expect(root.dataset.scene).toBe("files");
+    expect(root.querySelectorAll(".mx-pane")).toHaveLength(1);
+    expect(root.querySelector(".mx-pane")!.className).not.toContain("is-");
+    expect(root.querySelector(".mx-title.is-on")!.textContent).toBe("Files");
+    act(() => vi.advanceTimersByTime(2_200));
     expect(root.dataset.scene).toBe("graph");
-    expect(root.className).not.toContain("mx-hide-");
+    expect(root.querySelectorAll(".mx-pane")).toHaveLength(1);
     unmount();
   });
 });

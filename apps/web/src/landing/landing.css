@@ -2843,6 +2843,78 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-left: auto;
 }
 
+.bw .bw-feed {
+  container-type: inline-size;
+}
+
+.bw .bw-fit-form {
+  display: none;
+}
+
+.bw .bw-fit-0 {
+  display: inline;
+}
+
+@container (max-width: 618.98px) {
+  .bw .bw-fit-lead .bw-fit-0 {
+    display: none;
+  }
+
+  .bw .bw-fit-lead .bw-fit-1 {
+    display: inline;
+  }
+}
+
+@container (max-width: 348.98px) {
+  .bw .bw-fit-lead .bw-fit-1 {
+    display: none;
+  }
+
+  .bw .bw-fit-lead .bw-fit-2 {
+    display: inline;
+  }
+}
+
+@container (max-width: 609.98px) {
+  .bw .bw-fit-morph .bw-fit-0 {
+    display: none;
+  }
+
+  .bw .bw-fit-morph .bw-fit-1 {
+    display: inline;
+  }
+}
+
+@container (max-width: 385.98px) {
+  .bw .bw-fit-morph .bw-fit-1 {
+    display: none;
+  }
+
+  .bw .bw-fit-morph .bw-fit-2 {
+    display: inline;
+  }
+}
+
+@container (max-width: 541.98px) {
+  .bw .bw-fit-start .bw-fit-0 {
+    display: none;
+  }
+
+  .bw .bw-fit-start .bw-fit-1 {
+    display: inline;
+  }
+}
+
+@container (max-width: 342.98px) {
+  .bw .bw-fit-start .bw-fit-1 {
+    display: none;
+  }
+
+  .bw .bw-fit-start .bw-fit-2 {
+    display: inline;
+  }
+}
+
 .bw .bar-title {
   font-weight: 400;
 }
@@ -2859,6 +2931,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw .rhb-turn-head.is-opening {
   animation-name: bw-turn-open;
+  animation-duration: var(--mock-fold-dur);
+  animation-timing-function: var(--mock-fold-ease);
 }
 
 @keyframes bw-turn-open {
@@ -2868,41 +2942,103 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+.bw-feed > .bw-turn {
+  margin-top: 0;
+}
+
 .bw .bw-turn-fold {
   display: grid;
   grid-template-rows: 1fr;
-  animation: bw-furl 0.3s var(--ease-in-out) var(--fw-at, 0s) forwards;
+  animation: bw-furl var(--mock-fold-dur) var(--mock-fold-ease) var(--fw-at, 0s)
+    forwards;
 }
 
 .bw .bw-turn-body {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding-left: 12px;
 }
 
-.bw .bw-turn-body::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 6px;
-  width: 1px;
-  background: color-mix(in oklch, var(--ink) 9.5%, var(--bg));
+.bw .bw-fold-away {
+  animation-name: bw-furl-away;
+}
+
+@keyframes bw-furl-away {
+  60% {
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 0fr;
+    margin-top: 0;
+    opacity: 0;
+  }
 }
 
 @keyframes bw-furl {
+  60% {
+    opacity: 0;
+  }
   to {
     grid-template-rows: 0fr;
     opacity: 0;
   }
 }
 
-.bw-feed > .bw-reveal.bw-reveal-until {
+.bw .bw-swap,
+.bw .rhb-work.bw-swap {
+  display: grid;
+}
+
+.bw .bw-swap > span {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bw .bw-swap-a {
+  animation: fw-fade-out 0.26s ease var(--fw-at, 0s) forwards;
+}
+
+.bw .bw-swap-b {
+  animation: fw-fade-in 0.26s ease var(--fw-at, 0s) both;
+}
+
+.bw .bw-mute > * {
+  animation: mock-row-dim 0.35s ease var(--bw-mute-at, 0s) both;
+}
+
+@keyframes mock-row-dim {
+  to {
+    opacity: 0.4;
+  }
+}
+
+.bw .bw-swap-b.is-dim {
+  opacity: 0.4;
+}
+
+.bw-phone .rhb-turn {
+  font-size: var(--mock-text-lg);
+}
+
+.bw-m-timer-done {
+  color: var(--subtle);
+}
+
+.bw-start .bw-m-stop {
+  animation: fw-fade-out var(--mock-fold-dur) var(--mock-fold-ease)
+    var(--fw-at, 0s) forwards;
+}
+
+.bw-feed > .bw-reveal.bw-reveal-until,
+.bw-m-feed > .bw-reveal.bw-reveal-until {
   animation:
-    bw-reveal 0.84s var(--ease-out-expo) var(--fw-at, 0s) both,
-    fw-fade-out 0.3s ease var(--fw-fade, 0s) forwards,
-    bw-collapse 0.84s var(--ease-out-expo) var(--fw-out, 0s) forwards;
+    bw-reveal var(--mock-row-dur) var(--mock-row-ease) var(--fw-at, 0s) both,
+    fw-fade-out var(--mock-fold-dur) var(--mock-fold-ease) var(--fw-fade, 0s)
+      forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2911,7 +3047,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     opacity: 0;
   }
 
-  .bw-feed > .bw-reveal.bw-reveal-until {
+  .bw-feed > .bw-reveal.bw-reveal-until,
+  .bw-m-feed > .bw-reveal.bw-reveal-until,
+  .bw-m-stop {
     display: none;
   }
 }
@@ -2929,13 +3067,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: 0;
 }
 
-.bw-feed > .bw-reveal > .bw-reveal-inner > * {
+.bw-feed .bw-reveal > .bw-reveal-inner > * {
   margin-top: 14px;
 }
 
-.bw-feed > .bw-reveal,
-.bw-m-feed > .bw-reveal {
-  animation-duration: 0.84s;
+.bw-feed .bw-reveal,
+.bw-m-feed .bw-reveal {
+  animation-duration: var(--mock-row-dur);
+  animation-timing-function: var(--mock-row-ease);
+}
+
+.bw
+  .bw-feed
+  .bw-reveal:has(> .bw-reveal-inner :is(.rhb-gen, .bw-wait, .bw-spawn)),
+.bw .side .bw-reveal {
+  animation-duration: var(--mock-block-dur);
+  animation-timing-function: var(--mock-row-ease);
 }
 
 .bw-feed-scroll {
@@ -2955,7 +3102,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-reveal {
   display: grid;
   grid-template-rows: 1fr;
-  animation: bw-reveal var(--dur-slow) var(--ease-out-expo) var(--fw-at, 0s)
+  animation: bw-reveal var(--mock-row-dur) var(--mock-row-ease) var(--fw-at, 0s)
     both;
 }
 
@@ -2977,23 +3124,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-lead .leaving .bw-toast {
-  position: absolute;
-  z-index: 3;
-  top: 14px;
-  left: calc(var(--bw-fit-slice) - 360px);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 344px;
-  padding: 10px 14px 10px 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: 16px;
-  background: var(--bg);
-  box-shadow: var(--shadow-pop);
-  animation: bw-toast 0.7s var(--ease-out-expo) var(--fw-at, 0s) both;
-}
-
-.leaving .bw-toast {
   animation-delay: 0s;
 }
 
@@ -3007,8 +3137,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-.bw-start .leaving .bw-feed > :not(.bw-reveal-still),
-.bw-start .leaving .bw-m-feed > :not(.bw-reveal-still) {
+.bw-start .leaving .bw-feed > :not(.bw-reveal-still, .bw-reveal-until),
+.bw-start .leaving .bw-m-feed > :not(.bw-reveal-still, .bw-reveal-until) {
   animation: fw-fade-out 0.3s ease forwards;
 }
 
@@ -3070,18 +3200,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-size: var(--text-label-small);
 }
 
+.bw-lead {
+  position: relative;
+}
+
 .bw-toast {
   position: absolute;
   z-index: 3;
-  top: 14px;
-  left: calc(var(--bw-fit-slice) - 316px);
+  top: 12px;
+  right: 12px;
   display: flex;
   align-items: center;
-  gap: 11px;
-  width: 300px;
-  padding: 11px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  gap: 10px;
+  width: 344px;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
   background: var(--bg);
   box-shadow: var(--shadow-pop);
   animation: bw-toast 0.7s var(--ease-out-expo) var(--fw-at, 0s) both;
@@ -3093,9 +3227,20 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 @keyframes bw-toast {
   from {
-    opacity: 0;
-    transform: translateX(24px);
+    transform: translateX(calc(100% + 24px));
   }
+}
+
+.bw-toast-layer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: calc(var(--mock-width) - var(--bw-fit-slice));
+  overflow: hidden;
+  border-radius: 12px;
+  pointer-events: none;
 }
 
 .bw-toast-mark {
@@ -3162,18 +3307,50 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-start-stage {
-  --bw-phone-size: calc(0.8 + var(--bw-drop) * 1.1);
+  --bw-drop: clamp(0, (0.7 - var(--mock-slice-ratio, 1)) * 1000, 1);
   --bw-overlay-scale: calc(
-    clamp(0.74, var(--mock-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
+    (1 - var(--bw-drop)) * 0.8173 + var(--bw-drop) * 0.8013 /
+      var(--mock-scale, 0.62)
   );
-  --bw-drop: clamp(0, (0.968 - var(--mock-slice-ratio, 1)) * 1000, 1);
-  --bw-phone-down: calc((1 - var(--bw-drop)) * 56px);
-  --bw-stage-pad: calc(
-    (1 - var(--bw-drop)) * 24px + var(--bw-phone-down) + var(--bw-drop) *
-      (656px * var(--bw-overlay-scale) - 150px)
+  --bw-phone-out: calc(
+    (1 - var(--bw-drop)) * 175px + var(--bw-drop) * 160px /
+      var(--mock-scale, 0.62)
+  );
+  --bw-phone-overlap: calc(
+    (1 - var(--bw-drop)) * 80px + var(--bw-drop) * 90px /
+      var(--mock-scale, 0.62)
+  );
+  --bw-phone-top: calc(
+    (1 - var(--bw-drop)) * 76px + var(--bw-drop) * 36px /
+      var(--mock-scale, 0.62)
+  );
+  --bw-window-h: calc(46px + var(--bw-start-body-h));
+  --bw-start-body-h: calc(540px + var(--bw-drop) * 280px);
+  --bw-phone-hang: max(
+    0px,
+    var(--bw-phone-top) + 656px * var(--bw-overlay-scale) - var(--bw-window-h)
   );
   position: relative;
-  padding-bottom: var(--bw-stage-pad);
+  padding-bottom: calc(24px + var(--bw-phone-hang));
+}
+
+.bw-start .bw-window {
+  width: calc(
+    100% - (1 - var(--bw-drop)) *
+      (var(--mock-width) - var(--bw-fit-slice) + var(--bw-phone-out))
+  );
+  translate: calc(
+      var(--bw-drop) *
+        (
+          var(--bw-fit-slice) - var(--bw-phone-out) - var(--mock-width) - 24px /
+            var(--mock-scale, 0.62)
+        )
+    )
+    0;
+}
+
+.bw-start .mock-body {
+  height: var(--bw-start-body-h);
 }
 
 .bw-lead .main {
@@ -3181,19 +3358,17 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-start .main {
-  padding-right: calc(
-    var(--bw-drop) * max(0px, var(--mock-width) - var(--bw-fit-slice) + 16px)
-  );
+  padding-right: calc(var(--bw-phone-overlap) + 16px);
 }
 
 .bw-phone {
-  --bw-phone-ui-scale: 0.748;
+  --bw-phone-ui-scale: 0.98;
   position: absolute;
   z-index: 3;
-  bottom: 0;
+  top: var(--bw-phone-top);
   left: calc(
-    var(--bw-fit-slice) - 332px + var(--bw-drop) *
-      ((312px * var(--bw-overlay-scale) - var(--bw-fit-slice)) / 2 + 20px)
+    var(--bw-fit-slice) - 312px - var(--bw-drop) * 24px /
+      var(--mock-scale, 0.62)
   );
   width: 312px;
   height: 656px;
@@ -3201,8 +3376,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 50px;
   background: var(--phone-body);
   box-shadow: var(--shadow-phone);
-  transform: translateY(var(--bw-phone-down)) scale(var(--bw-overlay-scale));
-  transform-origin: right bottom;
+  transform: scale(var(--bw-overlay-scale));
+  transform-origin: right top;
 }
 
 .bw-phone-screen {
@@ -3220,8 +3395,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   left: 0;
   display: flex;
   flex-direction: column;
-  width: 393px;
-  height: 852px;
+  width: 300px;
+  height: 651px;
   transform: scale(var(--bw-phone-ui-scale));
   transform-origin: 0 0;
   color: var(--ink);
@@ -3230,10 +3405,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-phone-island {
   position: absolute;
   z-index: 5;
-  top: 11px;
+  top: 8px;
   left: 50%;
-  width: 124px;
-  height: 36px;
+  width: 94px;
+  height: 28px;
   border-radius: var(--radius-pill);
   background: var(--phone-screen);
   transform: translateX(-50%);
@@ -3244,9 +3419,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  height: 54px;
-  padding: 4px 30px 0 52px;
-  font-size: 17px;
+  height: 44px;
+  padding: 2px 20px 0 32px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.2px;
   color: var(--heading);
@@ -3318,12 +3493,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow: hidden;
 }
 
-.bw-m-feed > .bw-reveal > .bw-reveal-inner > * {
+.bw-m-feed .bw-reveal > .bw-reveal-inner > * {
   margin-top: 10px;
 }
 
 .bw-m-user {
-  width: fit-content;
+  width: max-content;
   max-width: 70%;
   margin-left: auto;
   margin-bottom: 6px;
@@ -4809,6 +4984,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-morph {
   --mock-visible-width: 924px;
+}
+
+.bw-morph,
+.bw-morph {
   --mx-canvas: var(--bg);
   --mx-ink: var(--ink);
   --mx-side: var(--surface);
@@ -4819,34 +4998,56 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-red: var(--del);
   --mx-cyan: oklch(0.6 0.1 220);
   --mx-line: var(--border-mix-light);
+  --mx-page-bg: var(--bg);
+  --mx-page-ink: var(--ink);
+  --mx-page-surface: var(--surface);
+  --mx-page-accent: var(--accent);
+  --mx-page-ok: var(--ok);
+  --mx-page-spark: var(--spark);
+  --mx-page-del: var(--del);
+  --mx-page-line: var(--border-mix-light);
+}
+
+.mx-pane {
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
-  --mx-color: 0.8s cubic-bezier(0.9, 0, 0.1, 1);
-  --mx-move: 0s;
+}
+
+.mx-pane.mx-stock {
+  --mx-canvas: var(--mx-page-bg);
+  --mx-ink: var(--mx-page-ink);
+  --mx-side: var(--mx-page-surface);
+  --mx-accent: var(--mx-page-accent);
+  --mx-ok: var(--mx-page-ok);
+  --mx-warn: var(--mx-page-spark);
+  --mx-purple: oklch(0.55 0.17 300);
+  --mx-red: var(--mx-page-del);
+  --mx-cyan: oklch(0.6 0.1 220);
+  --mx-line: var(--mx-page-line);
+}
+
+.bw-morph {
+  --mx-slide: var(--mock-slide-dur) var(--mock-slide-ease);
   transition:
-    --mx-canvas var(--mx-color),
-    --mx-ink var(--mx-color),
-    --mx-side var(--mx-color),
-    --mx-accent var(--mx-color),
-    --mx-ok var(--mx-color),
-    --mx-warn var(--mx-color),
-    --mx-purple var(--mx-color),
-    --mx-red var(--mx-color),
-    --mx-cyan var(--mx-color),
-    --mx-line var(--mx-color),
-    --mx-side-w var(--mx-move),
-    --mx-panel-w var(--mx-move);
+    --mx-canvas var(--mx-slide),
+    --mx-ink var(--mx-slide),
+    --mx-side var(--mx-slide),
+    --mx-accent var(--mx-slide),
+    --mx-ok var(--mx-slide),
+    --mx-warn var(--mx-slide),
+    --mx-purple var(--mx-slide),
+    --mx-red var(--mx-slide),
+    --mx-cyan var(--mx-slide),
+    --mx-line var(--mx-slide),
+    --mx-side-w var(--mx-slide),
+    --mx-panel-w var(--mx-slide);
 }
 
-.bw-morph.mx-slide {
-  --mx-move: 0.3s var(--ease-in-out);
-}
-
-.dark .bw-morph.mx-stock {
+.dark .mx-stock {
   --mx-line: var(--border-mix-dark);
 }
 
-.bw-morph.mx-files {
+.mx-files {
   --mx-canvas: #1a1b26;
   --mx-ink: #c0caf5;
   --mx-side: color-mix(in oklch, #c0caf5 4.3%, #1a1b26);
@@ -4859,7 +5060,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-dark);
 }
 
-.bw-morph.mx-graph {
+.mx-graph {
   --mx-canvas: #151515;
   --mx-ink: #e3e3dd;
   --mx-side: #181818;
@@ -4873,7 +5074,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-panel-w: 440px;
 }
 
-.bw-morph.mx-taskboard {
+.mx-taskboard {
   --mx-canvas: #fcfcfc;
   --mx-ink: #5c6166;
   --mx-side: #f8f9fa;
@@ -4886,7 +5087,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-light);
 }
 
-.bw-morph.mx-shelves {
+.mx-shelves {
   --mx-canvas: #242936;
   --mx-ink: #cccac2;
   --mx-side: #1f2430;
@@ -4900,11 +5101,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-side-w: 256px;
 }
 
-.bw-morph.mx-collapsed {
+.mx-collapsed {
   --mx-side-w: 0px;
 }
 
-.mx-window {
+.mx-window,
+.mx-pane {
   --bg: var(--mx-canvas);
   --ink: var(--mx-ink);
   --ink-strong: var(--mx-ink);
@@ -4946,26 +5148,37 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-right-color: transparent;
 }
 
-.mx-window .bar-toggle,
-.mx-window .rail-btn {
-  transition:
-    background 0.4s ease,
-    color 0.4s ease;
+.mx-body {
+  position: relative;
+  overflow: hidden;
 }
 
-.mx-center > .mx-layer,
-.mx-side-slot > .mx-layer,
-.mx-panel > .mx-ag,
-.mx-title {
-  transition: opacity 0.2s var(--ease-out);
+.mx-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  background: var(--bg);
+  color: var(--ink);
 }
 
-.mx-hide-center .mx-center > .mx-layer,
-.mx-hide-side .mx-side-slot > .mx-layer,
-.mx-hide-panel .mx-panel > .mx-ag,
-.mx-hide-title .mx-title {
-  opacity: 0;
-  transition-duration: 0.12s;
+.mx-pane.is-entering {
+  animation: mx-slide-in var(--mx-slide) both;
+}
+
+.mx-pane.is-leaving {
+  animation: mx-slide-out var(--mx-slide) both;
+}
+
+@keyframes mx-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes mx-slide-out {
+  to {
+    transform: translateX(-100%);
+  }
 }
 
 .mx-titles {
@@ -4989,12 +5202,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: -6px;
   opacity: 0;
   overflow: hidden;
-  transition:
-    height 0.2s var(--ease-in-out),
-    margin 0.2s var(--ease-in-out),
-    opacity 0.2s var(--ease-out),
-    background 0.4s ease,
-    color 0.4s ease;
 }
 
 .mx-rail-plugin.is-on {
@@ -5789,11 +5996,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     zoom: var(--mock-scale, 0.88);
   }
 
-  .bw-morph {
+  .bw-morph,
+  .mx-pane {
     --mx-side-w: 0px;
   }
 
-  .bw-morph.mx-graph {
+  .mx-shelves {
+    --mx-side-w: 256px;
+  }
+
+  .mx-graph {
     --mx-side-w: 0px;
     --mx-panel-w: calc(var(--bw-fit-slice) - 44px);
   }
@@ -5822,7 +6034,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     border-right-width: 0;
   }
 
-  .bw-morph.mx-shelves .mx-side-slot {
+  .mx-shelves .mx-side-slot {
     border-right-width: 1px;
   }
 
