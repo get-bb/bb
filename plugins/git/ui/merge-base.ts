@@ -6,7 +6,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { toast } from "sonner";
-import { useGitBranches, useSetMergeBase } from "./queries.js";
+import {
+  useFetchRemoteBranches,
+  useGitBranches,
+  useSetMergeBase,
+} from "./queries.js";
 import type { GitBranchRefClassification } from "@bb/domain";
 import type { WorkspaceStatus } from "../contract.js";
 
@@ -157,9 +161,17 @@ export function useMergeBase(
     },
     [environmentId, mutate],
   );
-  const onPickerOpenChange = useCallback((open: boolean) => {
-    if (open) setPickerRequested(true);
-  }, []);
+  const { mutate: fetchRemoteBranches } = useFetchRemoteBranches();
+  const onPickerOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) return;
+      setPickerRequested(true);
+      if (environmentId !== null) {
+        void fetchRemoteBranches({ environmentId }).catch(() => undefined);
+      }
+    },
+    [environmentId, fetchRemoteBranches],
+  );
   return {
     effectiveMergeBaseBranch,
     showMergeBase: Boolean(effectiveMergeBaseBranch) && !isOnDefaultBranch,

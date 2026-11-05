@@ -108,8 +108,8 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   as the Worktree provider does.
 - `experimental_useBranches({ hostId, projectId, query? })` — returns
   `{ branches, remoteBranches, isLoading, refresh }` for the same project-source
-  query as the host picker. `refresh()` performs a blocking refresh from the
-  enrolled machine. Use this when the plugin owns the menu or selection model.
+  query as the host picker. `refresh()` performs a blocking fetch of `origin` (or
+  the only remote when there is no `origin`) on the enrolled machine. Use this when the plugin owns the menu or selection model.
 - `experimental_useCheckoutState({ hostId, projectId })` — returns
   `{ isGit, unborn, detached, dirty, currentBranch, operation }`. Combine it
   with `experimental_useBranches` for checkout-specific controls. The Project
