@@ -25,7 +25,6 @@ import {
   ClaudeIcon,
   CopilotIcon,
   CursorIcon,
-  AntigravityIcon,
   GeminiIcon,
   GrokIcon,
   HermesAgentIcon,
@@ -169,22 +168,11 @@ const PROVIDER_ICONS = [
 
 const PROVIDER_ICONS_MOBILE_VISIBLE = 3;
 
-type LogoMark = (props: { className?: string }) => ReactNode;
-
-function LogoMarks({
-  icons,
-  desktopMore,
-  noun,
-}: {
-  icons: readonly LogoMark[];
-  desktopMore: number | null;
-  noun: string;
-}) {
-  const mobileMore =
-    icons.length - PROVIDER_ICONS_MOBILE_VISIBLE + (desktopMore ?? 0);
+export function ProviderChips() {
+  const extra = PROVIDER_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE;
   return (
     <>
-      {icons.map((Icon, i) => (
+      {PROVIDER_ICONS.map((Icon, i) => (
         <Icon
           key={i}
           className={
@@ -192,26 +180,12 @@ function LogoMarks({
           }
         />
       ))}
-      {desktopMore ? (
-        <span
-          className="pmore pmore-desktop"
-          aria-label={`${desktopMore} more ${noun}`}
-        >
-          +{desktopMore} more
-        </span>
-      ) : null}
-      {mobileMore > 0 ? (
-        <span className="pmore" aria-label={`${mobileMore} more ${noun}`}>
-          +{mobileMore} more
+      {extra > 0 ? (
+        <span className="pmore" aria-label={`${extra} more providers`}>
+          +{extra} more
         </span>
       ) : null}
     </>
-  );
-}
-
-export function ProviderChips() {
-  return (
-    <LogoMarks icons={PROVIDER_ICONS} desktopMore={null} noun="providers" />
   );
 }
 
@@ -221,7 +195,6 @@ const AGENT_ROW = [
   { Icon: ClaudeIcon, registry: ["claude-acp"] },
   { Icon: OpenAiIcon, registry: ["codex-acp"] },
   { Icon: GeminiIcon, registry: ["gemini"] },
-  { Icon: AntigravityIcon, registry: ["antigravity-acp"] },
   { Icon: CursorIcon, registry: ["cursor"] },
   { Icon: CopilotIcon, registry: ["github-copilot-cli"] },
   { Icon: PiIcon, registry: ["pi-acp"] },
@@ -246,14 +219,28 @@ export function AgentRow({
 }: {
   registryIds?: readonly string[] | null;
 }) {
+  const more = moreRegistryAgents(registryIds);
+  const mobileMore =
+    AGENT_ROW.length - PROVIDER_ICONS_MOBILE_VISIBLE + (more ?? 0);
   return (
     <div className="providers agent-row">
       <span className="label">Bring your own subscription</span>
-      <LogoMarks
-        icons={AGENT_ROW.map((agent) => agent.Icon)}
-        desktopMore={moreRegistryAgents(registryIds)}
-        noun="agents"
-      />
+      {AGENT_ROW.map(({ Icon }, i) => (
+        <Icon
+          key={i}
+          className={
+            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
+          }
+        />
+      ))}
+      {more ? (
+        <span className="agent-more" aria-label={`${more} more agents`}>
+          +{more} more
+        </span>
+      ) : null}
+      <span className="pmore" aria-label={`${mobileMore} more agents`}>
+        +{mobileMore} more
+      </span>
     </div>
   );
 }
