@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
   connectAccessUrl,
+  devicesShowMachines,
   connectFlowFailed,
   defaultSelectedRepoPaths,
   featuredPluginEntryIds,
@@ -659,6 +660,16 @@ describe("agentContinueDisabled", () => {
         statesLoading: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("devicesShowMachines", () => {
+  it("offers other machines when bb connect is on or is not running at all", () => {
+    expect(devicesShowMachines({ status: "on", url: "https://x" }, true)).toBe(
+      true,
+    );
+    expect(devicesShowMachines({ status: "unavailable" }, false)).toBe(true);
+    expect(devicesShowMachines({ status: "off" }, true)).toBe(false);
   });
 });
 

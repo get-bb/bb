@@ -34,19 +34,18 @@ function Section({
 }
 
 function renderSections(onSetupStarted = vi.fn()) {
-  render(
+  const view = render(
     <MemoryRouter>
       <ul>
         <PluginSetupGuideSections
           pluginId="connect"
           onPhone
           onSetupStarted={onSetupStarted}
-          fallback={<li>core fallback</li>}
         />
       </ul>
     </MemoryRouter>,
   );
-  return onSetupStarted;
+  return { ...view, onSetupStarted };
 }
 
 describe("PluginSetupGuideSections", () => {
@@ -57,28 +56,26 @@ describe("PluginSetupGuideSections", () => {
         setupGuideSections: [{ id: "remote-access", component: Section }],
       }),
     );
-    const onSetupStarted = renderSections();
+    const { onSetupStarted } = renderSections();
 
     expect(screen.getByText("phone row")).toBeDefined();
-    expect(screen.queryByText("core fallback")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set up" }));
     expect(onSetupStarted).toHaveBeenCalledOnce();
   });
 
-  it("renders the fallback when the plugin registers no section", () => {
+  it("renders nothing when the plugin registers no section", () => {
     setPluginSlotRegistrations(
       "other",
       registrationSet({
         setupGuideSections: [{ id: "remote-access", component: Section }],
       }),
     );
-    renderSections();
+    const { container } = renderSections();
 
-    expect(screen.getByText("core fallback")).toBeDefined();
-    expect(screen.queryByText("phone row")).toBeNull();
+    expect(container.querySelector("ul")?.childElementCount).toBe(0);
   });
 
-  it("renders the fallback when the section crashes", () => {
+  it("shows the standard crashed-plugin chip when the section crashes", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashes(): never {
@@ -92,6 +89,6 @@ describe("PluginSetupGuideSections", () => {
     );
     renderSections();
 
-    expect(screen.getByText("core fallback")).toBeDefined();
+    expect(screen.getByText("plugin connect crashed")).toBeDefined();
   });
 });

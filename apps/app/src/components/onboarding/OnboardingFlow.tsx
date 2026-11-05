@@ -17,6 +17,7 @@ import {
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
@@ -82,7 +83,6 @@ import {
   OnboardingPluginGrid,
   OnboardingPluginGridSkeleton,
   ProjectsStep,
-  ConnectUnavailableRow,
   RedesignedDevicesStep,
   type OnboardingAgent,
   type OnboardingRepo,
@@ -93,6 +93,7 @@ import {
   ONBOARDING_STEPS,
   STEP_COPY,
   connectAccessUrl,
+  devicesShowMachines,
   connectFlowFailed,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
@@ -1097,6 +1098,10 @@ function DevicesStepContainer({
     (host) => host.id !== hostId,
   ).length;
   const connect = connectAccessUrl(configQuery.data?.serverAccess);
+  const connectContributesSection = usePluginSlots().setupGuideSections.some(
+    (section) => section.pluginId === CONNECT_PLUGIN_ID,
+  );
+  const showMachines = devicesShowMachines(connect, connectContributesSection);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
@@ -1164,17 +1169,18 @@ function DevicesStepContainer({
       >
         <RedesignedDevicesStep
           hostName={hostName}
-          showMachines={connect.status === "on"}
+          showMachines={showMachines}
           connectSection={
-            <PluginSetupGuideSections
-              pluginId={CONNECT_PLUGIN_ID}
-              onPhone={onPhone}
-              onSetupStarted={startRemoteAccessSetup}
-              fallback={<ConnectUnavailableRow />}
-            />
+            connectContributesSection ? (
+              <PluginSetupGuideSections
+                pluginId={CONNECT_PLUGIN_ID}
+                onPhone={onPhone}
+                onSetupStarted={startRemoteAccessSetup}
+              />
+            ) : null
           }
           addMachinePanel={
-            addMachineOpen && connect.status === "on" ? (
+            addMachineOpen && showMachines ? (
               <AddMachineInline />
             ) : null
           }

@@ -292,6 +292,13 @@ export function connectAccessUrl(
   return { status: "off" };
 }
 
+export function devicesShowMachines(
+  connect: ReturnType<typeof connectAccessUrl>,
+  connectContributesSection: boolean,
+): boolean {
+  return connect.status === "on" || !connectContributesSection;
+}
+
 export function signInSiteName(url: string): string | null {
   try {
     const host = new URL(url).hostname.replace(/^www\./u, "");

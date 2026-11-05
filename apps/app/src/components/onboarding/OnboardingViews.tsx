@@ -1488,16 +1488,6 @@ export function AgentSignInPanel({
   );
 }
 
-export function ConnectUnavailableRow() {
-  return (
-    <SetupOptionRow
-      icon="ComputerCloud"
-      title="bb connect"
-      description="bb connect is turned off on this server. Turn on its plugin to get a private getbb.app address."
-    />
-  );
-}
-
 export function RedesignedDevicesStep({
   hostName,
   connectSection,
@@ -1516,9 +1506,11 @@ export function RedesignedDevicesStep({
   const open = addMachinePanel !== null;
   return (
     <div className="flex flex-col gap-3">
-      <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
-        {connectSection}
-      </SetupOptionGroup>
+      {connectSection === null ? null : (
+        <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
+          {connectSection}
+        </SetupOptionGroup>
+      )}
       {showMachines ? (
         <SetupOptionGroup label="Where agents run">
           <SetupOptionRow

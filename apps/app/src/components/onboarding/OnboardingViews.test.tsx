@@ -714,4 +714,23 @@ describe("RedesignedDevicesStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
+
+  it("shows only the machine section when bb connect contributes nothing", () => {
+    render(
+      <TooltipProvider>
+        <RedesignedDevicesStep
+          hostName="bee"
+          connectSection={null}
+          showMachines
+          addMachinePanel={null}
+          onAddMachine={vi.fn()}
+          onCloseAddMachine={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByText("Where you use bb")).toBeNull();
+    expect(screen.queryByText(/turned off on this server/u)).toBeNull();
+    screen.getByText("Add another machine");
+  });
 });
