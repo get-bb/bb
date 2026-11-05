@@ -3503,7 +3503,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .dl-h2 {
   margin: 36px 0 8px;
   padding: 0 4px;
-  font-size: var(--text-body);
+  font-size: 15px;
   font-weight: 400;
   letter-spacing: 0;
   color: var(--ink);
