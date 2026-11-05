@@ -42,7 +42,7 @@ import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect } from "react";
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon } from "./icons";
@@ -296,4 +296,247 @@ export function useFitMock(ref: RefObject<HTMLElement | null>) {
     observer.observe(wrap);
     return () => observer.disconnect();
   }, [ref]);
+}
+
+export function MockUserBubble({
+  children,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      className={className ? `rhb-user ${className}` : "rhb-user"}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
+export type MockStepKind = "plugin" | "cmd" | "file" | "work";
+
+export type MockStep = {
+  kind: MockStepKind;
+  plugin?: string;
+  verb: string;
+  em?: string;
+  file?: string;
+  diff?: [number, number];
+  dur?: string;
+  spin?: boolean;
+};
+
+export function MockStepIcon({ kind }: { kind: MockStepKind }) {
+  if (kind === "plugin")
+    return <PluginsIcon className="rhb-step-ic is-plugin" />;
+  if (kind === "cmd") return <TerminalIcon className="rhb-step-ic" />;
+  if (kind === "file") return <FileEditGlyph className="rhb-step-ic" />;
+  return <SearchIcon className="rhb-step-ic" />;
+}
+
+export function MockStepContent({ step }: { step: MockStep }) {
+  return (
+    <>
+      <MockStepIcon kind={step.kind} />
+      <span className="rhb-work-text">
+        {step.plugin ? <span className="rhb-em">{step.plugin} </span> : null}
+        <span className={step.spin ? "rhb-verb rhb-shimmer-text" : "rhb-verb"}>
+          {step.verb}
+        </span>
+        {step.em ? <span className="rhb-em"> {step.em}</span> : null}
+        {step.file ? <span className="rhb-file"> {step.file}</span> : null}
+      </span>
+      {step.diff ? (
+        <span className="rhb-diff">
+          <span className="is-add">+{step.diff[0]}</span>
+          {step.diff[1] ? (
+            <span className="is-del">-{step.diff[1]}</span>
+          ) : null}
+        </span>
+      ) : null}
+      {step.dur ? <span className="rhb-dur">{step.dur}</span> : null}
+      {step.spin ? <Spinner className="trun rhb-work-spin" /> : null}
+    </>
+  );
+}
+
+export function MockStepRow({
+  step,
+  className,
+  style,
+}: {
+  step: MockStep;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      className={`rhb-work rhb-work-${step.kind}${className ? ` ${className}` : ""}`}
+      style={style}
+    >
+      <MockStepContent step={step} />
+    </div>
+  );
+}
+
+export function MockComposer({
+  input,
+  model = "Opus 5.5",
+  reasoning = "Medium",
+  project,
+  environment = "Worktree",
+  branch = "main",
+  access = "Full Access",
+  className,
+}: {
+  input: ReactNode;
+  model?: string;
+  reasoning?: string;
+  project: string;
+  environment?: string;
+  branch?: string;
+  access?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className ? `rhb-dock-wrap ${className}` : "rhb-dock-wrap"}>
+      <div className="rhb-box">
+        <div className="rhb-input">{input}</div>
+        <div className="rhb-box-row">
+          <PlusIcon className="rhb-ic" />
+          <span className="rhb-model">
+            <ClaudeIcon className="rhb-model-ic" />
+            <span className="rhb-model-name">{model}</span>{" "}
+            <span className="rhb-model-sub">{reasoning}</span>
+            <ChevronDown className="rhb-chev" />
+          </span>
+          <span className="rhb-box-end">
+            <MicIcon className="rhb-ic" />
+            <span className="rhb-send">
+              <ReturnIcon className="rhb-send-ic" />
+            </span>
+          </span>
+        </div>
+      </div>
+      <div className="rhb-context">
+        <span className="rhb-ctx">
+          <FolderIcon className="rhb-ctx-ic" />
+          {project}
+        </span>
+        <span className="rhb-ctx">
+          <FolderGitIcon className="rhb-ctx-ic" />
+          {environment}
+        </span>
+        <span className="rhb-ctx">
+          <GitBranchIcon className="rhb-ctx-ic" />
+          {branch}
+        </span>
+        <span className="rhb-perm">
+          {access}
+          <ChevronDown className="rhb-chev" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function MockTurnHeader({
+  worked,
+  openAt = null,
+}: {
+  worked: string;
+  openAt?: string | null;
+}) {
+  return (
+    <div
+      className={openAt == null ? "rhb-turn-head" : "rhb-turn-head is-opening"}
+      style={openAt == null ? undefined : { animationDelay: openAt }}
+    >
+      <div className="rhb-turn">
+        <span className="rhb-turn-label">Worked for</span>
+        <span className="rhb-dur">{worked}</span>
+        <ChevronRight className="rhb-chev" />
+      </div>
+    </div>
+  );
+}
+
+export function MockWorkingRow({
+  at = "0s",
+  endAt = null,
+}: {
+  at?: string;
+  endAt?: string | null;
+}) {
+  return (
+    <div
+      className={endAt == null ? "rhb-working" : "rhb-working is-ending"}
+      style={{ animationDelay: endAt == null ? at : `${at}, ${endAt}` }}
+    >
+      <span className="rhb-working-label rhb-shimmer-text">Working...</span>
+    </div>
+  );
+}
+
+export function MockThreadPill({
+  icon: Icon,
+  label,
+}: {
+  icon: MockIcon;
+  label: string;
+}) {
+  return (
+    <span className="rhb-pill">
+      <Icon className="rhb-pill-ic" />
+      <span className="rhb-pill-text">{label}</span>
+    </span>
+  );
+}
+
+export function MockChildEvent({
+  kind,
+  thread,
+  body,
+  className,
+  style,
+}: {
+  kind: "finished" | "sent" | "message";
+  thread: { icon: MockIcon; label: string };
+  body: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <div
+      className={className ? `rhb-gen ${className}` : "rhb-gen"}
+      style={style}
+    >
+      <span className="rhb-gen-head">
+        {kind === "finished" ? (
+          <>
+            <CircleCheckIcon className="rhb-gen-ic" />
+            <span className="rhb-gen-subject">{thread.label}</span>
+            <span className="rhb-gen-verb">finished</span>
+          </>
+        ) : (
+          <>
+            {kind === "sent" ? (
+              <PaperPlane className="rhb-gen-ic" />
+            ) : (
+              <MessageIcon className="rhb-gen-ic" />
+            )}
+            <span className="rhb-gen-verb">
+              {kind === "sent" ? "Sent to" : "Message from"}
+            </span>
+            <MockThreadPill icon={thread.icon} label={thread.label} />
+          </>
+        )}
+      </span>
+      <span className="rhb-gen-body">{body}</span>
+    </div>
+  );
 }
