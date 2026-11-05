@@ -2,25 +2,45 @@ import { mobileAppDownloads } from "@bb/domain/mobile-app";
 import AndroidIcon from "@hugeicons/core-free-icons/AndroidIcon";
 import AppleIcon from "@hugeicons/core-free-icons/AppleIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
-import { DesktopDownloadIcon, DownloadLink } from "./cta";
+import {
+  DesktopDownloadButton,
+  DesktopDownloadIcon,
+  DownloadLink,
+} from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
-import { DesktopInstallChoice } from "./install-choice";
+import { SendToComputerButton } from "./send-to-computer-button";
 import { SiteFooter, SiteNav } from "./site-chrome";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
+import { CLI_COMMAND } from "./site";
 import type { DesktopPlatform } from "./site";
 
 export const DOWNLOAD_PAGE_TITLE = "Download bb";
 const PLACEMENT = "download_page";
 
+const GIT_FOR_WINDOWS_URL = "https://git-scm.com/download/win";
+
+const BUTTON_NOTES: Record<DesktopPlatform, ReactNode> = {
+  macos: null,
+  windows: (
+    <>
+      x64 · alpha · Needs{" "}
+      <a className="install-note-link" href={GIT_FOR_WINDOWS_URL}>
+        Git for Windows
+      </a>
+    </>
+  ),
+  linux: "x64 AppImage · alpha",
+};
+
 type DownloadKind = DesktopPlatform | "terminal" | "ios" | "android";
 
 const ROWS: Record<DownloadKind, { name: string; tag: string }> = {
-  macos: { name: "macOS", tag: DESKTOP_DOWNLOADS.macos.note },
-  windows: { name: "Windows", tag: DESKTOP_DOWNLOADS.windows.note },
-  linux: { name: "Linux", tag: DESKTOP_DOWNLOADS.linux.note },
+  macos: { name: "macOS", tag: "Apple Silicon" },
+  windows: { name: "Windows", tag: "Alpha" },
+  linux: { name: "Linux", tag: "Alpha · AppImage" },
   terminal: { name: "Terminal", tag: "Intel Macs, servers" },
   ios: { name: "iPhone", tag: "Beta · TestFlight" },
   android: { name: "Android", tag: "Alpha · APK" },
@@ -73,22 +93,11 @@ function RowAction({ kind }: { kind: DownloadKind }) {
   }
 }
 
-function DownloadRows({
-  kinds,
-  className = "dl-rows",
-}: {
-  kinds: readonly DownloadKind[];
-  className?: string;
-}) {
+function DownloadRows({ kinds }: { kinds: readonly DownloadKind[] }) {
   return (
-    <div className={className}>
+    <div className="dl-rows">
       {kinds.map((kind) => (
-        <div
-          className={
-            kind in DESKTOP_DOWNLOADS ? "dl-row dl-row-installer" : "dl-row"
-          }
-          key={kind}
-        >
+        <div className="dl-row" key={kind}>
           <span className="dl-row-name">{ROWS[kind].name}</span>
           <span className="dl-row-tag">{ROWS[kind].tag}</span>
           <span className="dl-row-action">
@@ -102,7 +111,7 @@ function DownloadRows({
 
 export function DownloadPage() {
   const platform = useDesktopPlatform();
-  const { note } = DESKTOP_DOWNLOADS[platform];
+  const note = BUTTON_NOTES[platform];
   return (
     <div className="wrap">
       <SiteNav />
@@ -114,17 +123,25 @@ export function DownloadPage() {
           For macOS, Windows, Linux, iPhone, and Android. Free and open source.
         </p>
         <div className="dl-hero-actions">
-          <DesktopInstallChoice
-            placement={PLACEMENT}
-            platform={platform}
-            note={note}
-          />
+          <span className="install-choice">
+            <DesktopDownloadButton
+              placement={PLACEMENT}
+              platform={platform}
+              className="btn btn-primary btn-install install-download"
+            />
+            <SendToComputerButton placement={PLACEMENT} />
+            {note ? (
+              <span className="install-note install-note-desktop">{note}</span>
+            ) : null}
+            <span className="install-note install-note-touch">
+              bb runs on macOS, Windows, and Linux
+            </span>
+          </span>
         </div>
       </header>
       <div className="dl-body">
         <DownloadRows
           kinds={COMPUTER_KINDS.filter((kind) => kind !== platform)}
-          className="dl-rows dl-computers"
         />
         <h2 className="dl-h2">Phones</h2>
         <DownloadRows kinds={PHONE_KINDS} />

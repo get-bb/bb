@@ -6,8 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DownloadPage } from "./download-page";
-import { InstallOptions } from "./landing-visuals";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
+import { CLI_COMMAND } from "./site";
 
 const posthog = vi.hoisted(() => ({
   init: vi.fn(),
@@ -30,7 +29,7 @@ describe("/download page", () => {
     const html = renderToStaticMarkup(<DownloadPage />);
     expect(html).toContain('href="/download/macos?placement=download_page"');
     const computers = html.slice(
-      html.indexOf('class="dl-rows dl-computers"'),
+      html.indexOf('class="dl-rows"'),
       html.indexOf('class="dl-h2"'),
     );
     expect(computers).not.toContain("/download/macos");
@@ -41,8 +40,7 @@ describe("/download page", () => {
       'href="/download/linux?placement=download_page"',
     );
     expect(computers).toContain(CLI_COMMAND);
-    expect(computers).toMatch(/<div class="dl-row">[^]*npx bb-app@latest/);
-    expect(computers).toContain('class="dl-row dl-row-installer"');
+    expect(computers).not.toContain("dl-row-installer");
     const phones = html.slice(html.indexOf('class="dl-h2"'));
     expect(phones).toContain("testflight.apple.com");
     expect(phones).toContain("bb-android.apk");
@@ -50,15 +48,12 @@ describe("/download page", () => {
     expect(html).toContain("install-send");
   });
 
-  it("shows the same platform notes as the homepage install block", () => {
-    const page = renderToStaticMarkup(<DownloadPage />);
-    const home = renderToStaticMarkup(<InstallOptions placement="hero" />);
-    const note = `<span class="install-note install-note-desktop">${DESKTOP_DOWNLOADS.macos.note}`;
-    expect(page).toContain(note);
-    expect(home).toContain(note);
-    expect(page).toContain(
-      `<span class="dl-row-tag">${DESKTOP_DOWNLOADS.windows.note}</span>`,
-    );
+  it("shows no note under the macOS button and tags the alpha installers", () => {
+    const html = renderToStaticMarkup(<DownloadPage />);
+    expect(html).not.toContain("install-note-desktop");
+    expect(html).not.toContain("Apple Silicon");
+    expect(html).toContain('<span class="dl-row-tag">Alpha</span>');
+    expect(html).toContain('<span class="dl-row-tag">Alpha · AppImage</span>');
   });
 
   it("starts page-view analytics", async () => {
