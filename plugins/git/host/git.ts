@@ -301,7 +301,7 @@ export async function resolveMergeBaseBranch(
   const candidates =
     ref.startsWith("refs/") || ref.startsWith("origin/")
       ? [ref]
-      : [ref, `refs/remotes/origin/${ref}`];
+      : [`refs/remotes/origin/${ref}`, ref];
   for (const candidate of candidates) {
     const result = await runGit(
       ["rev-parse", "--verify", "--end-of-options", `${candidate}^{commit}`],

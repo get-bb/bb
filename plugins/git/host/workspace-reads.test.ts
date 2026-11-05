@@ -795,10 +795,48 @@ describe.concurrent("WorkspaceReads", () => {
       (
         await workspace.getStatus({
           freshness: fresh(),
-          mergeBaseBranch: "main",
+          mergeBaseBranch: "refs/heads/main",
         })
       ).mergeBase?.aheadCount,
     ).toBe(0);
+  });
+
+  it("prefers the remote base when a local base branch is stale", async ({
+    onTestFinished,
+  }) => {
+    const repoPath = await copyRepository(
+      await makeTempDir(onTestFinished, "bb-workspace-stale-base-"),
+    );
+    const originalMain = (await runGit(["rev-parse", "HEAD"], { cwd: repoPath })).stdout.trim();
+    await fs.writeFile(path.join(repoPath, "base.txt"), "new base\n");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Base update"], { cwd: repoPath });
+    await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
+      cwd: repoPath,
+    });
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    await runGit(["update-ref", "refs/heads/main", originalMain], {
+      cwd: repoPath,
+    });
+    await fs.writeFile(path.join(repoPath, "feature.txt"), "feature\n");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature"], { cwd: repoPath });
+
+    const workspace = new WorkspaceReads(repoPath, tmpdir());
+    const remote = await workspace.getDiff({
+      ...UNLIMITED_DIFF,
+      freshness: fresh(),
+      target: { type: "branch_committed", mergeBaseBranch: "main" },
+    });
+    const local = await workspace.getDiff({
+      ...UNLIMITED_DIFF,
+      freshness: fresh(),
+      target: { type: "branch_committed", mergeBaseBranch: "refs/heads/main" },
+    });
+    expect(remote.shortstat).toContain("1 file changed");
+    expect(remote.files).toContain("feature.txt");
+    expect(remote.files).not.toContain("base.txt");
+    expect(local.shortstat).toContain("2 files changed");
   });
 
   it("reports unresolved merge bases instead of empty diffs", async ({
