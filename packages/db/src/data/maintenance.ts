@@ -14,8 +14,11 @@ export const DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES = 1_024;
 export const DATABASE_INCREMENTAL_VACUUM_MAX_PAGES = 20_000;
 export const DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS = 100;
 
-const ACTIVE_THREAD_STATUSES = ["active", "starting"] as const;
-const ACTIVE_PENDING_INTERACTION_STATUSES = ["pending", "resolving"] as const;
+export const ACTIVE_THREAD_STATUSES = ["active", "starting"] as const;
+export const ACTIVE_PENDING_INTERACTION_STATUSES = [
+  "pending",
+  "resolving",
+] as const;
 
 interface CountRow {
   value: number;
