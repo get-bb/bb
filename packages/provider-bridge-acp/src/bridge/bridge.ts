@@ -1309,14 +1309,12 @@ async function probeAcpSession(
     onExit: () => {},
   });
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const timeoutReached = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
+      timedOut = true;
       connection.kill();
-      reject(
-        new Error(
-          `The agent did not answer within ${ACP_AUTH_PROBE_TIMEOUT_MS / 1000} seconds while bb checked its sign-in`,
-        ),
-      );
+      reject(new Error("ACP sign-in probe timed out"));
     }, ACP_AUTH_PROBE_TIMEOUT_MS);
   });
   const probed: {
@@ -1353,8 +1351,9 @@ async function probeAcpSession(
       authMethods: probed.capabilities?.authMethods ?? [],
     };
   } catch (error) {
-    const typed = withAcpAuthRequiredRecovery(error);
     const authMethods = probed.capabilities?.authMethods ?? [];
+    if (timedOut) return { kind: "timedOut", authMethods };
+    const typed = withAcpAuthRequiredRecovery(error);
     const message = error instanceof Error ? error.message : String(error);
     return typed instanceof AcpAuthRequiredError
       ? { kind: "authRequired", authMethods, message }

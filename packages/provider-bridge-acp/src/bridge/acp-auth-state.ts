@@ -46,7 +46,8 @@ export type AcpSessionProbeOutcome =
       authMethods: readonly AcpAuthMethod[];
       message: string;
     }
-  | { kind: "failed"; authMethods: readonly AcpAuthMethod[]; message: string };
+  | { kind: "failed"; authMethods: readonly AcpAuthMethod[]; message: string }
+  | { kind: "timedOut"; authMethods: readonly AcpAuthMethod[] };
 
 export type AcpSessionProbe = (
   agent: AcpAgentCommandParam,
@@ -175,7 +176,8 @@ async function readSessionAuthState(
   }
   if (
     outcome.kind === "authRequired" ||
-    mentionsSignedOut(signedOutText, outcome.message)
+    (outcome.kind === "failed" &&
+      mentionsSignedOut(signedOutText, outcome.message))
   ) {
     return signedOut({ agent, signIn, authMethods: outcome.authMethods });
   }
@@ -187,7 +189,8 @@ async function readSessionAuthState(
       authMethods: outcome.authMethods,
       declaredCommand: signIn.command,
     }),
-    statusMessage: firstLine(outcome.message) || null,
+    statusMessage:
+      outcome.kind === "failed" ? firstLine(outcome.message) || null : null,
   };
 }
 

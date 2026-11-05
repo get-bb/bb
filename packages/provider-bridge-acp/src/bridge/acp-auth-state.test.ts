@@ -203,6 +203,20 @@ describe("ACP sign-in state", () => {
     ).resolves.toEqual({ status: "signedOut", loginCommand: null });
   });
 
+  it("reports a probe that never answers as unknown without adding its own text", async () => {
+    await expect(
+      readUncachedAcpAuthState({
+        agent: { command: "hermes", args: ["acp"] },
+        signIn: sessionCheck(["No LLM provider configured"], "hermes model"),
+        probe: probeOf({ kind: "timedOut", authMethods: [] }),
+      }),
+    ).resolves.toEqual({
+      status: "unknown",
+      loginCommand: "hermes model",
+      statusMessage: null,
+    });
+  });
+
   it("treats a session failure as signed out only when it carries the agent's signed-out words", async () => {
     const agent = { command: "hermes", args: ["acp"] };
     const failed = probeOf({
