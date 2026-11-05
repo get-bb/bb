@@ -288,10 +288,16 @@ describe("settleDanglingBackgroundTasks", () => {
       );
       expect(completed).toHaveLength(1);
       const data = JSON.parse(completed[0]!.data) as {
-        item: { status: string; taskStatus: string; workflowName: string };
+        item: {
+          ownerStopped?: true;
+          status: string;
+          taskStatus: string;
+          workflowName: string;
+        };
       };
       expect(data.item.status).toBe("interrupted");
       expect(data.item.taskStatus).toBe("stopped");
+      expect(data.item.ownerStopped).toBe(true);
       expect(data.item.workflowName).toBe("fixture-mini");
 
       settleDanglingBackgroundTasks(harness.deps, {
@@ -445,7 +451,6 @@ describe("background-task lifecycle reconciliation triggers", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
 
   it("settles open tasks when a restarted daemon re-registers after its previous session already closed", async () => {
     await withTestHarness(async (harness) => {

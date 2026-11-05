@@ -253,12 +253,10 @@ describe("createAgentRuntime process lifecycle", () => {
       onTestFinished(() => manager.shutdown());
 
       await manager.ensureProvider(MANAGER_PROVIDER);
-      const providerPid = manager.requireProviderProcess(MANAGER_PROVIDER)
-        .child.pid;
+      const providerPid =
+        manager.requireProviderProcess(MANAGER_PROVIDER).child.pid;
 
-      const ownScore = Number(
-        readFileSync("/proc/self/oom_score_adj", "utf8"),
-      );
+      const ownScore = Number(readFileSync("/proc/self/oom_score_adj", "utf8"));
       expect(
         Number(readFileSync(`/proc/${providerPid}/oom_score_adj`, "utf8")),
       ).toBe(Math.min(1_000, ownScore + 500));
@@ -1625,6 +1623,7 @@ describe("createAgentRuntime process lifecycle", () => {
         scope: { kind: "thread" },
         item: {
           ...startedTask.item,
+          ownerStopped: true,
           status: "interrupted",
           taskStatus: "stopped",
         },
@@ -1649,6 +1648,7 @@ describe("createAgentRuntime process lifecycle", () => {
         scope: { kind: "thread" },
         item: {
           ...startedTask.item,
+          ownerStopped: true,
           status: "interrupted",
           taskStatus: "stopped",
         },

@@ -7,7 +7,7 @@ import {
   setExperiments,
   threads,
 } from "@bb/db";
-import { turnRequestEventDataSchema, turnScope } from "@bb/domain";
+import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   groupHostDaemonEvents,
@@ -194,6 +194,38 @@ function seedBackgroundCommand(
       id: toolCallId,
       status: "completed",
     }),
+  });
+}
+
+function settleBackgroundCommand(
+  harness: TestAppHarness,
+  fixture: HostFixture,
+  running: ReturnType<typeof seedRunningThread>,
+  args: { description: string; id: string; ownerStopped: boolean },
+) {
+  seedEvent(harness.deps, {
+    threadId: running.thread.id,
+    environmentId: fixture.environment.id,
+    providerThreadId: running.providerThreadId,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: running.thread.id }) + 1,
+    type: "item/backgroundTask/completed",
+    scope: threadScope(),
+    data: {
+      providerThreadId: running.providerThreadId,
+      item: {
+        type: "backgroundTask",
+        id: args.id,
+        taskType: "local_bash",
+        description: args.description,
+        status: "interrupted",
+        taskStatus: "stopped",
+        skipTranscript: false,
+        foreground: false,
+        parentToolCallId: `${args.id}-tool`,
+        ...(args.ownerStopped ? { ownerStopped: true } : {}),
+      },
+    },
   });
 }
 
@@ -646,6 +678,68 @@ describe("resuming threads after a restart", () => {
         expect(queue(harness, other.thread.id)).toEqual([]);
         expect(turnRequests(harness, other.thread.id)).toHaveLength(1);
       }
+    });
+  });
+
+  it("wakes an idle thread whose background command the daemon stopped as it shut down, once", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture);
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: "gh pr checks 7131 --watch",
+        description: "Wait for CI",
+        id: "task-ci",
+      });
+      finishTurn(harness, waiting.thread.id);
+      settleBackgroundCommand(harness, fixture, waiting, {
+        description: "Wait for CI",
+        id: "task-ci",
+        ownerStopped: true,
+      });
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(requestTexts(harness, waiting.thread.id).at(-1)).toBe(
+        [
+          "[bb system]",
+          "",
+          "bb restarted and may have stopped this background work: `gh pr checks 7131 --watch` (Wait for CI). The user didn't stop it. Check whether it's still running and how far it got, then restart it only if that is safe.",
+        ].join("\n"),
+      );
+
+      await finishTurnAndDrain(harness, waiting.thread.id);
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(turnRequests(harness, waiting.thread.id)).toHaveLength(2);
+      expect(queue(harness, waiting.thread.id)).toEqual([]);
+    });
+  });
+
+  it("leaves an idle thread alone when its background command was stopped by the agent or the user", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture);
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: "pnpm dev",
+        description: "Dev server",
+        id: "task-dev",
+      });
+      settleBackgroundCommand(harness, fixture, waiting, {
+        description: "Dev server",
+        id: "task-dev",
+        ownerStopped: false,
+      });
+      finishTurn(harness, waiting.thread.id);
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      expect(queue(harness, waiting.thread.id)).toEqual([]);
+      expect(turnRequests(harness, waiting.thread.id)).toHaveLength(1);
     });
   });
 

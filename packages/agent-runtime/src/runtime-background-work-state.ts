@@ -16,10 +16,15 @@ type OpenBackgroundWork = OpenBackgroundTask | null;
 function stoppedBackgroundTaskItem(
   item: ThreadEventBackgroundTaskItem,
 ): ThreadEventBackgroundTaskItem {
-  const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
-    ? item.taskStatus
-    : "stopped";
-  return { ...item, status: backgroundTaskItemStatus(taskStatus), taskStatus };
+  if (isSettledBackgroundTaskStatus(item.taskStatus)) {
+    return { ...item, status: backgroundTaskItemStatus(item.taskStatus) };
+  }
+  return {
+    ...item,
+    ownerStopped: true,
+    status: backgroundTaskItemStatus("stopped"),
+    taskStatus: "stopped",
+  };
 }
 
 export interface RuntimeOpenBackgroundWork {

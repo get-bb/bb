@@ -105,7 +105,7 @@ function settleBackgroundTaskRows(
     (tx) => {
       for (const threadId of appendDanglingBackgroundTaskCompletions(
         { db: tx, logger: deps.logger },
-        rows,
+        { ownerStopped: true, rows },
       )) {
         settledThreadIds.add(threadId);
       }
@@ -139,7 +139,10 @@ export function settleDanglingBackgroundTasksForStoppedThreadInTransaction(
   args: { threadId: string },
 ): void {
   const rows = listOpenBackgroundTaskItemRowsForThread(deps.db, args);
-  const settledThreadIds = appendDanglingBackgroundTaskCompletions(deps, rows);
+  const settledThreadIds = appendDanglingBackgroundTaskCompletions(deps, {
+    ownerStopped: false,
+    rows,
+  });
   for (const threadId of settledThreadIds) {
     deps.hub.notifyThread(threadId, ["events-appended"], {
       timelineSequence: getLatestThreadSequence(deps.db, {
@@ -152,10 +155,10 @@ export function settleDanglingBackgroundTasksForStoppedThreadInTransaction(
 
 function appendDanglingBackgroundTaskCompletions(
   deps: Pick<SettleDanglingBackgroundTasksTransactionDeps, "db" | "logger">,
-  rows: readonly OpenBackgroundTaskItemRow[],
+  args: { ownerStopped: boolean; rows: readonly OpenBackgroundTaskItemRow[] },
 ): Set<string> {
   const settledThreadIds = new Set<string>();
-  for (const row of rows) {
+  for (const row of args.rows) {
     const item = parseStoredBackgroundTaskItem(row);
     if (!item) {
       deps.logger.warn(
@@ -165,9 +168,8 @@ function appendDanglingBackgroundTaskCompletions(
       continue;
     }
     const providerThreadId = row.providerThreadId ?? "";
-    const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
-      ? item.taskStatus
-      : "stopped";
+    const forcedStop = !isSettledBackgroundTaskStatus(item.taskStatus);
+    const taskStatus = forcedStop ? "stopped" : item.taskStatus;
     appendThreadEventsInTransaction(deps.db, [
       {
         threadId: row.threadId,
@@ -179,6 +181,9 @@ function appendDanglingBackgroundTaskCompletions(
           providerThreadId,
           item: {
             ...item,
+            ...(forcedStop && args.ownerStopped
+              ? { ownerStopped: true as const }
+              : {}),
             status: backgroundTaskItemStatus(taskStatus),
             taskStatus,
           },

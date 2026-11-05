@@ -7,6 +7,7 @@ import {
   getUnfinishedCommandItemData,
   listCommandItemDataByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
+  listOwnerStoppedBackgroundTaskRowsForHost,
   liveThread,
   threads,
   type DbConnection,
@@ -72,54 +73,69 @@ function nameBackgroundJob(args: {
     : `\`${args.command}\` (${args.description})`;
 }
 
-function listStoppedBackgroundJobsByThread(
+interface StoppedBackgroundTaskRow {
+  data: string;
+  itemId: string;
+  sequence: number | null;
+  threadId: string;
+}
+
+function groupRowsByThread(
+  rows: readonly StoppedBackgroundTaskRow[],
+): Map<string, StoppedBackgroundTaskRow[]> {
+  const rowsByThread = new Map<string, StoppedBackgroundTaskRow[]>();
+  for (const row of rows) {
+    const threadRows = rowsByThread.get(row.threadId) ?? [];
+    threadRows.push(row);
+    rowsByThread.set(row.threadId, threadRows);
+  }
+  return rowsByThread;
+}
+
+function nameStoppedBackgroundJobs(
   db: DbConnection,
-  hostId: string,
-): Map<string, string[]> {
-  const tasksByThread = new Map<
-    string,
-    { description: string; parentToolCallId: string | null }[]
-  >();
-  for (const row of listOpenBackgroundTaskItemRowsForHost(db, { hostId })) {
+  args: { rows: readonly StoppedBackgroundTaskRow[]; threadId: string },
+): string[] {
+  const tasks: { description: string; parentToolCallId: string | null }[] = [];
+  const seenItemIds = new Set<string>();
+  for (const row of args.rows) {
+    if (seenItemIds.has(row.itemId)) {
+      continue;
+    }
+    seenItemIds.add(row.itemId);
     const parsed = backgroundTaskItemDataSchema.safeParse(parseJson(row.data));
     if (!parsed.success || parsed.data.item.skipTranscript) {
       continue;
     }
-    const tasks = tasksByThread.get(row.threadId) ?? [];
     tasks.push({
       description: parsed.data.item.description,
       parentToolCallId: parsed.data.item.parentToolCallId ?? null,
     });
-    tasksByThread.set(row.threadId, tasks);
   }
-  const jobsByThread = new Map<string, string[]>();
-  for (const [threadId, tasks] of tasksByThread) {
-    const commandByItemId = new Map<string, string>();
-    for (const row of listCommandItemDataByItemIds(db, {
-      threadId,
-      itemIds: tasks.flatMap((task) =>
-        task.parentToolCallId === null ? [] : [task.parentToolCallId],
-      ),
-    })) {
-      const command = readCommand(row.data);
-      if (command !== null) {
-        commandByItemId.set(row.itemId, command);
-      }
+  if (tasks.length === 0) {
+    return [];
+  }
+  const commandByItemId = new Map<string, string>();
+  for (const row of listCommandItemDataByItemIds(db, {
+    threadId: args.threadId,
+    itemIds: tasks.flatMap((task) =>
+      task.parentToolCallId === null ? [] : [task.parentToolCallId],
+    ),
+  })) {
+    const command = readCommand(row.data);
+    if (command !== null) {
+      commandByItemId.set(row.itemId, command);
     }
-    jobsByThread.set(
-      threadId,
-      tasks.map((task) =>
-        nameBackgroundJob({
-          command:
-            task.parentToolCallId === null
-              ? null
-              : (commandByItemId.get(task.parentToolCallId) ?? null),
-          description: task.description,
-        }),
-      ),
-    );
   }
-  return jobsByThread;
+  return tasks.map((task) =>
+    nameBackgroundJob({
+      command:
+        task.parentToolCallId === null
+          ? null
+          : (commandByItemId.get(task.parentToolCallId) ?? null),
+      description: task.description,
+    }),
+  );
 }
 
 function namedJobs(lead: string, jobs: readonly string[]): string {
@@ -184,13 +200,23 @@ function withinResumeLimit(
 
 export function planRestartResumes(
   deps: RestartResumeDeps,
-  args: { hostId: string },
+  args: { hostId: string; ownerStoppedSinceMs: number },
 ): Map<string, string> {
   const continuations = new Map<string, string>();
   if (!getExperiments(deps.db).resumeThreadsAfterRestart) {
     return continuations;
   }
-  const jobsByThread = listStoppedBackgroundJobsByThread(deps.db, args.hostId);
+  const openRowsByThread = groupRowsByThread(
+    listOpenBackgroundTaskItemRowsForHost(deps.db, { hostId: args.hostId }).map(
+      (row) => ({ ...row, sequence: null }),
+    ),
+  );
+  const ownerStoppedRowsByThread = groupRowsByThread(
+    listOwnerStoppedBackgroundTaskRowsForHost(deps.db, {
+      hostId: args.hostId,
+      settledSinceMs: args.ownerStoppedSinceMs,
+    }),
+  );
   const candidates = deps.db
     .select({ id: threads.id, status: threads.status })
     .from(threads)
@@ -204,8 +230,13 @@ export function planRestartResumes(
     )
     .all();
   for (const { id, status } of candidates) {
-    const jobs = jobsByThread.get(id) ?? [];
-    if (status === "idle" && jobs.length === 0) {
+    const openRows = openRowsByThread.get(id) ?? [];
+    const ownerStoppedRows = ownerStoppedRowsByThread.get(id) ?? [];
+    if (
+      status === "idle" &&
+      openRows.length === 0 &&
+      ownerStoppedRows.length === 0
+    ) {
       continue;
     }
     if (
@@ -219,7 +250,22 @@ export function planRestartResumes(
       continue;
     }
     const turn = loadFailedTurn(deps.db, id);
-    if (turn === null || !withinResumeLimit(deps, { threadId: id, turn })) {
+    if (turn === null) {
+      continue;
+    }
+    const jobs = nameStoppedBackgroundJobs(deps.db, {
+      rows: [
+        ...openRows,
+        ...ownerStoppedRows.filter(
+          (row) => row.sequence !== null && row.sequence > turn.requestSequence,
+        ),
+      ],
+      threadId: id,
+    });
+    if (status === "idle" && jobs.length === 0) {
+      continue;
+    }
+    if (!withinResumeLimit(deps, { threadId: id, turn })) {
       continue;
     }
     if (status === "idle") {
