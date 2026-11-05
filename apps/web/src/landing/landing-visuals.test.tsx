@@ -166,7 +166,7 @@ describe("StartAnywhere", () => {
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
+    expect(html.match(/class="mock bw-window mock-ui"/g)).toHaveLength(1);
     expect(html.match(/class="bw-phone"/g)).toHaveLength(1);
     expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto|bw-chat/);
   });
@@ -174,7 +174,7 @@ describe("StartAnywhere", () => {
   it("opens the thread with its prompt already in place on both screens", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     const still =
-      /<div class="bw-reveal bw-reveal-still"><div class="bw-reveal-inner"><div class="(msg-user|bw-m-user)">Fix the checkout bug: payments hang on slow networks</g;
+      /<div class="bw-reveal bw-reveal-still"><div class="bw-reveal-inner"><div class="(rhb-user|bw-m-user)">Fix the checkout bug: payments hang on slow networks</g;
     expect(html.match(still)).toHaveLength(2);
   });
 
@@ -182,9 +182,9 @@ describe("StartAnywhere", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     expect(html).not.toContain("bw-sp");
     expect(html).not.toContain("bar-toggle active");
-    expect(html.match(/class="composer"/g)).toHaveLength(1);
+    expect(html.match(/class="rhb-dock-wrap bw-dock"/g)).toHaveLength(1);
     expect(html).toContain("Ask for a follow-up");
-    expect(html).toContain(">Codex<");
+    expect(html).toContain(">GPT-5.5<");
     const label = html.match(/aria-label="([^"]*)"/)![1]!;
     expect(label).toContain("desktop app");
     expect(label).toContain("iPhone");
@@ -226,7 +226,9 @@ describe("PluginMorph", () => {
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/class="mock bw-window mx-window"/g)).toHaveLength(1);
+    expect(
+      html.match(/class="mock bw-window mx-window mock-ui"/g),
+    ).toHaveLength(1);
     expect(html.match(/mx-layer is-on/g)).toHaveLength(2);
   });
 
@@ -323,11 +325,15 @@ describe("DelegationTree", () => {
       "Cursor",
       "Codex",
       "Grok Build",
-      "Replied to <strong>Build it</strong>",
+      "bb thread spawn --project $BB_PROJECT_ID --parent-self",
+      "Worked for",
+      "Sent to",
+      "Message from",
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/class="bw-update"/g)).toHaveLength(4);
+    expect(html.match(/class="rhb-gen"/g)).toHaveLength(5);
+    expect(html.match(/rhb-gen-verb">finished/g)).toHaveLength(2);
     expect(html).not.toContain("Child thread updates");
     expect(html.match(/class="bw-toast"/g)).toHaveLength(1);
     expect(html).toContain("Review the diff needs your approval");

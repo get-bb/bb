@@ -2845,10 +2845,77 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-.bw .msg-user {
-  align-self: flex-end;
+.bw .rhb-user {
   width: fit-content;
   margin-left: auto;
+}
+
+.bw .bw-dock {
+  flex-shrink: 0;
+  padding: 0 16px 8px;
+}
+
+.bw .bw-turn {
+  display: flex;
+  flex-direction: column;
+}
+
+.bw .rhb-turn-head.is-opening {
+  animation-name: bw-turn-open;
+}
+
+@keyframes bw-turn-open {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.bw .bw-turn-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: bw-furl 0.3s var(--ease-in-out) var(--fw-at, 0s) forwards;
+}
+
+.bw .bw-turn-body {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  padding-left: 12px;
+}
+
+.bw .bw-turn-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: color-mix(in oklch, var(--ink) 9.5%, var(--bg));
+}
+
+@keyframes bw-furl {
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.bw-feed > .bw-reveal.bw-reveal-until {
+  animation:
+    bw-reveal 0.84s var(--ease-out-expo) var(--fw-at, 0s) both,
+    bw-collapse 0.84s var(--ease-out-expo) var(--fw-out, 0s) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bw .bw-turn-fold {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  .bw-feed > .bw-reveal.bw-reveal-until {
+    display: none;
+  }
 }
 
 .bw-feed {
@@ -2909,7 +2976,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: bw-scroll-top 0.6s var(--ease-in-out) 0.45s forwards;
 }
 
-.bw-lead .leaving .bw-feed > :not(.msg-user) {
+.bw-lead .leaving .bw-feed > :not(.rhb-user, .bw-reveal-until) {
   animation: fw-fade-out 0.3s ease 1.15s forwards;
 }
 
@@ -3022,41 +3089,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding-left: 26px;
 }
 
-.bw-update {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 60ch;
-  padding: 9px 12px;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: var(--mock-text-base);
-  color: var(--ink-strong);
-}
-
-.bw-update-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  line-height: 1.45;
-}
-
-.bw-update-ic {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--dim);
-}
-
-.bw-update strong,
 .bw .msg-say strong {
   font-weight: 600;
   color: var(--ink);
 }
 
-.bw-update code {
+.bw .rhb-gen-body code {
   padding: 1px 5px;
   border-radius: var(--radius-xs);
   background: var(--surface-recessed);
@@ -3326,12 +3364,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   opacity: 0.4;
 }
 
-.bw-feed .bw-step {
-  padding: 0 2px;
-  font-size: var(--mock-text-base);
-  line-height: 20px;
-}
-
 .bw-m-feed .bw-step {
   padding: 0 8px;
   font-size: var(--mock-text-lg);
@@ -3384,14 +3416,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
-.bw-working {
-  min-height: 28px;
-  padding: 0 2px;
-  font-size: var(--mock-text-base);
-  line-height: 28px;
-  color: var(--dim);
-}
-
 .bw-m-working {
   min-height: 28px;
   margin-top: 16px;
@@ -3399,10 +3423,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-size: var(--mock-text-lg);
   line-height: 28px;
   color: var(--dim);
-}
-
-.bw-working,
-.bw-m-working {
   -webkit-mask-image: linear-gradient(
     100deg,
     #000 30%,
