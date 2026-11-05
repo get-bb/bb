@@ -537,7 +537,7 @@ it("reads changes only for base commits that touch the branch's paths", async ()
   const repo = await copyInitialRepository(
     await makeTempDir("bb-status-path-limited-"),
   );
-  const picked = ":picked [1]*.txt";
+  const picked = "picked dir/[1] picked.txt";
   const unrelated = Array.from({ length: 20 }, (_, i) =>
     commitInput(
       10 + i,

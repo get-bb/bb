@@ -149,16 +149,25 @@ export async function readCommitsTouchingPaths(
   }
   if (unknown.length > 0) {
     const log = await run(
-      ["log", ...COMMIT_LOG_ARGS, "--format=%H", "--", ...pathspecs],
+      [
+        "log",
+        ...COMMIT_LOG_ARGS,
+        "--no-renames",
+        "--name-only",
+        "--format=%x01%H",
+        "--",
+        ...pathspecs,
+      ],
       { input: `${unknown.join("\n")}\n` },
     );
     if (log.exitCode !== 0) return null;
-    const matched = new Set(log.stdout.split("\n"));
+    let shown: string | undefined;
+    for (const line of log.stdout.split("\n")) {
+      if (line.startsWith("\u0001")) shown = line.slice(1);
+      else if (line !== "" && shown !== undefined) touching.add(shown);
+    }
     for (const commit of unknown) {
-      if (matched.has(commit)) {
-        touching.add(commit);
-        continue;
-      }
+      if (touching.has(commit)) continue;
       for (const path of pathSet) {
         const key = `${commit}:${path}`;
         untouchedCommits.set(
