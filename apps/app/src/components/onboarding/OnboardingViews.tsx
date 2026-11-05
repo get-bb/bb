@@ -9,7 +9,6 @@ import {
   CodeDisplay,
   DisclosureToggle,
   InlinePanel,
-  InlineTextButton,
   InlineTextLink,
   PasteCodeForm,
   SignInPanel,
@@ -1360,20 +1359,14 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
   );
 }
 
-type SignInAlternate = "browser" | "code" | null;
-
 export function AgentSignInInstruction({
   agentName,
   view,
-  alternate,
   onOpenUrl,
-  onUseAlternate,
 }: {
   agentName: string;
   view: AgentSignInView;
-  alternate: SignInAlternate;
   onOpenUrl: (url: string) => void;
-  onUseAlternate: () => void;
 }) {
   const url = view.guide?.url ?? null;
   const userCode = view.guide?.userCode ?? null;
@@ -1398,32 +1391,11 @@ export function AgentSignInInstruction({
     </InlineTextLink>
   );
   const place = siteName === null ? <>in {link}</> : <>on {link}</>;
-  const alternateAction =
-    alternate === null ? null : (
-      <InlineTextButton onClick={onUseAlternate}>
-        {alternate === "browser"
-          ? "sign in with a browser"
-          : "use a code instead"}
-      </InlineTextButton>
-    );
   if (userCode !== null) {
-    return alternateAction === null ? (
-      <>Enter this code {place}.</>
-    ) : (
-      <>
-        Enter this code {place}, or {alternateAction}.
-      </>
-    );
+    return <>Enter this code {place}.</>;
   }
   if (acceptsPastedCode) {
     return <>Sign in {place}, then paste the code it shows you.</>;
-  }
-  if (alternate === "code") {
-    return (
-      <>
-        Sign in {place}, or {alternateAction}.
-      </>
-    );
   }
   return <>Finish signing in {place}.</>;
 }

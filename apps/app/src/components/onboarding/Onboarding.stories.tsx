@@ -1024,14 +1024,6 @@ function redesignSignInView(story: RedesignSignInStory) {
   };
 }
 
-function redesignSignInAlternate(
-  story: RedesignSignInStory,
-): "browser" | "code" | null {
-  if (story === "codex") return "browser";
-  if (story === "codex-browser") return "code";
-  return null;
-}
-
 function RedesignSignInPanel({ story }: { story: RedesignSignInStory }) {
   const [code, setCode] = useState("");
   const codex = story !== "claude-code";
@@ -1114,9 +1106,7 @@ function grokSigningInAgent(): OnboardingAgent {
       <AgentSignInInstruction
         agentName="Grok Build"
         view={view}
-        alternate={null}
         onOpenUrl={noop}
-        onUseAlternate={noop}
       />
     ),
     expanded: (
@@ -1184,9 +1174,7 @@ function RedesignAgentFrame({
           <AgentSignInInstruction
             agentName={agent.name}
             view={redesignSignInView(signingIn)}
-            alternate={redesignSignInAlternate(signingIn)}
             onOpenUrl={noop}
-            onUseAlternate={noop}
           />
         ) : undefined,
       expanded:
