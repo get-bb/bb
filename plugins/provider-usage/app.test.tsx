@@ -272,6 +272,9 @@ describe("provider usage footer disclosure", () => {
       "Codex personal@example.com",
       "Claude Code claude-team@example.com",
     ]);
+    const allAccountHeadings = slot
+      .getAllByRole("heading")
+      .map((heading) => heading.textContent);
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
@@ -463,6 +466,11 @@ describe("provider usage footer disclosure", () => {
     }
     expect(diagnostics).toHaveBeenCalledTimes(3);
     await mounted.lifecycle.dispose();
+    expect(allAccountHeadings).toEqual([
+      "Codex · team@example.com",
+      "Codex · personal@example.com",
+      "Claude Code · claude-team@example.com",
+    ]);
   }, 15_000);
 });
 

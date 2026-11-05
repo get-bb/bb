@@ -359,7 +359,13 @@ function AccountUsage({
 }) {
   const usage = account.usage;
   const email = usage?.status === "ok" ? usage.accountEmail : null;
-  const title = account.accountLabel ?? email ?? account.displayName;
+  const accountTitle = account.accountLabel ?? email ?? account.displayName;
+  const title =
+    showProvider &&
+    accountTitle !== account.displayName &&
+    !accountTitle.startsWith(`${account.displayName} ·`)
+      ? `${account.displayName} · ${accountTitle}`
+      : accountTitle;
   const plan = usage?.status === "ok" ? usage.planLabel : null;
   const message =
     usage === null && loading
@@ -369,7 +375,7 @@ function AccountUsage({
         : accountStatusMessage(account);
   return (
     <section
-      aria-label={showProvider ? `${account.displayName} ${title}` : title}
+      aria-label={showProvider ? `${account.displayName} ${accountTitle}` : title}
       className="col-span-full grid grid-cols-subgrid"
     >
       <div className="col-span-full flex h-5 min-w-0 items-center gap-1.5">
@@ -393,7 +399,7 @@ function AccountUsage({
           </span>
         )}
       </div>
-      {email !== null && email !== title ? (
+      {email !== null && email !== accountTitle ? (
         <p
           title={email}
           className="col-span-full truncate text-2xs text-subtle-foreground"
