@@ -310,6 +310,8 @@ export default function gitPlugin(bb: BbPluginApi): void {
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         }),
+      fetchRemoteBranches: ({ environmentId }) =>
+        reads.fetchRemoteBranches(environmentId),
       viewed: ({ environmentId, target, paths }) =>
         viewed.list(environmentId, target, paths),
       markViewed: ({ environmentId, target, path, revision }) =>

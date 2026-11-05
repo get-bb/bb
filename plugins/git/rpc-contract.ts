@@ -126,6 +126,12 @@ export const gitRpcContract = defineRpcContract({
     output: gitBranchOptionsSchema,
     tags: ({ environmentId }) => [gitRefsTag(environmentId)],
   },
+  fetchRemoteBranches: {
+    experimental_description:
+      "Start a background fetch of remote branches for an environment's repository, at most once every 30 seconds per repository. Refreshed branches arrive through branches.",
+    input: environmentInputSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
   viewed: {
     experimental_description:
       "Files marked Viewed for an environment and diff target.",

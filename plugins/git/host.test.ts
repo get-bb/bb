@@ -4,7 +4,8 @@ import {
   experimental_createHostEntryHarness,
 } from "@get-bb/plugin-sdk/testing/host";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
-import { describe, expect, it } from "vitest";
+import { runGit } from "bb-environment-provider-host/workspace-git";
+import { describe, expect, it, vi } from "vitest";
 import hostEntry from "./host.js";
 
 const FILE_COUNT = 20;
@@ -43,6 +44,53 @@ describe("Git plugin host patches", () => {
           ...result.value.deferred,
         ].sort(),
       ).toEqual([...paths].sort());
+    } finally {
+      await harness.experimental_dispose();
+    }
+  });
+});
+
+describe("Git plugin host branches", () => {
+  it("fetches remote branches when asked, never on a branch read", async () => {
+    const repo = await initRepo(await makeTempDir("bb-git-host-branches-"));
+    const remote = await makeTempDir("bb-git-host-branches-remote-");
+    const tempDir = await makeTempDir("bb-git-host-branches-temp-");
+    const marker = path.join(tempDir, "fetched");
+    const uploadPack = path.join(tempDir, "upload-pack.sh");
+    await runGit(["init", "--bare", "-q"], { cwd: remote });
+    await runGit(["remote", "add", "origin", remote], { cwd: repo });
+    await fs.writeFile(
+      uploadPack,
+      `#!/bin/sh\ntouch ${JSON.stringify(marker.replaceAll("\\", "/"))}\nexec git-upload-pack "$@"\n`,
+      { mode: 0o755 },
+    );
+    await runGit(
+      ["config", "remote.origin.uploadpack", uploadPack.replaceAll("\\", "/")],
+      { cwd: repo },
+    );
+    const fetched = () =>
+      fs.access(marker).then(
+        () => true,
+        () => false,
+      );
+    const harness = experimental_createHostEntryHarness(hostEntry, {
+      experimental_paths: { dataDir: tempDir, tempDir },
+    });
+    try {
+      await harness.experimental_call("branches", { path: repo, limit: 50 });
+      await harness.experimental_call("branches", {
+        path: repo,
+        limit: 50,
+        query: "ma",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      expect(await fetched()).toBe(false);
+
+      await harness.experimental_call("fetchRemoteBranches", { path: repo });
+
+      await vi.waitFor(async () => expect(await fetched()).toBe(true), {
+        timeout: 10_000,
+      });
     } finally {
       await harness.experimental_dispose();
     }

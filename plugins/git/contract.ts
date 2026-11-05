@@ -445,4 +445,8 @@ export const gitHostContract = defineRpcContract({
       .strict(),
     output: gitBranchOptionsSchema,
   },
+  fetchRemoteBranches: {
+    input: hostPathSchema,
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
 });

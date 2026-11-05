@@ -106,6 +106,13 @@ export function useGitBranches(args: {
   });
 }
 
+export function useFetchRemoteBranches() {
+  return useRpcMutation({
+    contract: gitRpcContract,
+    method: "fetchRemoteBranches",
+  });
+}
+
 export function useSetMergeBase() {
   return useRpcMutation({
     contract: gitRpcContract,

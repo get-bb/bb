@@ -195,6 +195,7 @@ export interface GitReads {
     limit: number;
     selectedBranch?: string;
   }): Promise<GitBranchOptions>;
+  fetchRemoteBranches(environmentId: string): Promise<{ ok: true }>;
   clearCaches(environmentId: string): void;
   clearHostCaches(hostId: string): void;
 }
@@ -391,6 +392,14 @@ export function createGitReads(
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         },
+        environment.hostId,
+      );
+    },
+    async fetchRemoteBranches(environmentId) {
+      const environment = await requireGitEnvironment(bb, environmentId);
+      return host.call(
+        "fetchRemoteBranches",
+        { path: requireWorkspacePath(environment) },
         environment.hostId,
       );
     },

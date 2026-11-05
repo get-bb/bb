@@ -250,13 +250,17 @@ describe("bb git", () => {
   });
 
   it("lists local and remote branches with truncation", async () => {
-    const { fake } = setup(() => ({
-      branches: ["main", "release"],
-      branchesTruncated: false,
-      remoteBranches: [],
-      remoteBranchesTruncated: true,
-      selectedBranch: null,
-    }));
+    const { fake } = setup((call) =>
+      call.method === "fetchRemoteBranches"
+        ? { ok: true }
+        : {
+            branches: ["main", "release"],
+            branchesTruncated: false,
+            remoteBranches: [],
+            remoteBranchesTruncated: true,
+            selectedBranch: null,
+          },
+    );
     expect(
       await stdout(fake, [
         "branches",
@@ -278,6 +282,7 @@ describe("bb git", () => {
       ].join("\n"),
     );
     expect(fake.harness.experimental_hostRpcCalls).toMatchObject([
+      { method: "fetchRemoteBranches", input: { path: "/work/env-1" } },
       { method: "branches", input: { query: "main", limit: 20 } },
     ]);
   });
