@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NO_EXPERIMENTS } from "./flags";
+import { EXPERIMENT_KEYS, NO_EXPERIMENTS } from "./flags";
 import {
   EXPERIMENT_CACHE_CONTROL,
   ASSIGNMENT_COOKIE_NAME,
