@@ -359,7 +359,7 @@ function quietAgentSubline(
     case "checking":
       return AGENT_STATUS_COPY.checking;
     case "ready":
-      return state.detail ?? (setup === "connect" ? "Model connected" : null);
+      return state.detail;
     case "signIn":
       if (state.reason !== "failed") return null;
       return setup === "connect"
