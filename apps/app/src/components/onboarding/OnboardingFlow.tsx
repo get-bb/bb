@@ -30,6 +30,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
+import { restartSystemProviderStatesLoad } from "@/hooks/cache-owners/system-cache-effects";
 import {
   useHostDiscoveredRepos,
   useHosts,
@@ -692,8 +693,12 @@ function AgentStepContainer({
         onViewInstallLog={viewInstallLog}
         onCancelSignIn={(providerId) => signIns.end(providerId)}
         onRecheck={() => {
-          statesLoad.restart();
-          void refetchStates();
+          if (statesLoadFailed) {
+            statesLoad.restart();
+            void restartSystemProviderStatesLoad({ queryClient, hostId });
+          } else {
+            void refetchStates();
+          }
           void cliStatusQuery.refetch();
         }}
       />
