@@ -36,9 +36,9 @@ interface GetPullRequestForCurrentBranchArgs {
   refresh: boolean;
 }
 
-interface RunPullRequestActionForCurrentBranchArgs {
+interface RunPullRequestActionArgs {
   cwd: string;
-  localBranch: string;
+  url: string;
   action: HostPullRequestAction;
 }
 
@@ -323,16 +323,15 @@ function getMergeMethodFlag(
 
 function buildPullRequestActionArgs(
   action: HostPullRequestAction,
-  selector: string | null,
+  url: string,
 ): string[] {
-  const target = selector ? [selector] : [];
   switch (action.operation) {
     case "ready":
-      return ["pr", "ready", ...target];
+      return ["pr", "ready", url];
     case "draft":
-      return ["pr", "ready", ...target, "--undo"];
+      return ["pr", "ready", url, "--undo"];
     case "merge":
-      return ["pr", "merge", ...target, getMergeMethodFlag(action.method)];
+      return ["pr", "merge", url, getMergeMethodFlag(action.method)];
   }
 }
 
@@ -840,20 +839,10 @@ export async function getPullRequestForCurrentBranch(
   return startRead(await prepareCurrentBranchRead(args));
 }
 
-export async function runPullRequestActionForCurrentBranch(
-  args: RunPullRequestActionForCurrentBranchArgs,
+export async function runPullRequestAction(
+  args: RunPullRequestActionArgs,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const branchConfig = await readBranchConfig(args);
-  if (branchConfig.outcome === "unavailable")
-    return { ok: false, message: branchConfig.message };
-  const target = getPullRequestTarget(args.localBranch, branchConfig.config);
-  if (target.outcome === "unavailable") {
-    return { ok: false, message: target.message };
-  }
-  const ghArgs = buildPullRequestActionArgs(
-    args.action,
-    target.outcome === "upstream-branch" ? target.selector : null,
-  );
+  const ghArgs = buildPullRequestActionArgs(args.action, args.url);
   try {
     await runGh(ghArgs, {
       priority: "interactive",

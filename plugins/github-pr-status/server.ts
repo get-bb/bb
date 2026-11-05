@@ -14,6 +14,7 @@ import {
   type EnvironmentPullRequest,
   type HostPullRequestAction,
   type HostPullRequestLookup,
+  type HostRefs,
   type PullRequest,
 } from "./contract.js";
 import { createPullRequestPersistence } from "./persistence.js";
@@ -276,11 +277,15 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     }
   }
 
+  type LoadOutcome = {
+    result: EnvironmentPullRequest;
+    refs: HostRefs | null;
+  };
   type QueuedLoad = {
     environmentId: string;
     url: string | null;
     refresh: boolean;
-    resolve(result: EnvironmentPullRequest): void;
+    resolve(outcome: LoadOutcome): void;
   };
   let queuedLoads: QueuedLoad[] = [];
   let loadsStartedAt = 0;
@@ -300,8 +305,11 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         const view = results[index];
         if (view === undefined) {
           entry.load.resolve({
-            outcome: "unavailable",
-            message: "The machine returned no pull request result",
+            result: {
+              outcome: "unavailable",
+              message: "The machine returned no pull request result",
+            },
+            refs: null,
           });
           return;
         }
@@ -309,13 +317,16 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
           lookedUpBranches.set(entry.load.environmentId, view.refs.branchName);
           upstreams.set(entry.load.environmentId, view.refs.oid);
         }
-        entry.load.resolve(toEnvironmentPullRequest(view.lookup));
+        entry.load.resolve({
+          result: toEnvironmentPullRequest(view.lookup),
+          refs: view.refs,
+        });
       });
     } catch (error) {
       for (const entry of batch)
         entry.load.resolve({
-          outcome: "unavailable",
-          message: errorMessage(error),
+          result: { outcome: "unavailable", message: errorMessage(error) },
+          refs: null,
         });
     }
   }
@@ -330,7 +341,7 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     prepared.forEach((entry, index) => {
       const load = loads[index]!;
       if (entry.kind === "done") {
-        load.resolve(entry.result);
+        load.resolve({ result: entry.result, refs: null });
         return;
       }
       const group = views.get(entry.hostId) ?? [];
@@ -367,6 +378,16 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     url: string | null,
     refresh: boolean,
   ): Promise<EnvironmentPullRequest> {
+    return loadPullRequestAndBranch(environmentId, url, refresh).then(
+      ({ result }) => result,
+    );
+  }
+
+  function loadPullRequestAndBranch(
+    environmentId: string,
+    url: string | null,
+    refresh: boolean,
+  ): Promise<LoadOutcome> {
     return new Promise((resolve) => {
       if (queuedLoads.length === 0) loadsStartedAt = Date.now();
       queuedLoads.push({ environmentId, url, refresh, resolve });
@@ -482,7 +503,17 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         `${machine.name} isn't available, so its pull request can't be changed. Start the machine and try again.`,
       );
     }
-    const result = await loadPullRequest(environmentId, null, true);
+    const url = store.currentUrl(environmentId);
+    const checked = await loadPullRequestAndBranch(environmentId, url, true);
+    let result = checked.result;
+    if (
+      url !== null &&
+      result.outcome === "available" &&
+      (result.pullRequest.state === "merged" ||
+        result.pullRequest.state === "closed" ||
+        result.pullRequest.headRefName !== checked.refs?.branchName)
+    )
+      result = await loadPullRequest(environmentId, null, true);
     if (result.outcome === "unavailable") refuse(result.message);
     if (result.outcome === "absent") refuse("No pull request found");
     return {
@@ -502,7 +533,7 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     try {
       const result = await host.call(
         "act",
-        { path: target.path, action },
+        { path: target.path, url: target.pullRequest.url, action },
         { hostId: target.environment.hostId, timeoutMs: 90_000 },
       );
       if (!result.ok) refuse(result.message);

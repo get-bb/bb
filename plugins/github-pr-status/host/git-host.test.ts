@@ -3,7 +3,7 @@ import type { HostPullRequestAction } from "../contract.js";
 import { installFakeGh, makeTempDir } from "../test/fake-gh.js";
 import {
   getPullRequestForCurrentBranch,
-  runPullRequestActionForCurrentBranch,
+  runPullRequestAction,
 } from "./git-host.js";
 
 afterEach(() => {
@@ -56,37 +56,33 @@ function graphqlResponse(pr: object) {
 
 const prView = { stdout: JSON.stringify({ url: PR_URL }) };
 
-describe("runPullRequestActionForCurrentBranch", () => {
+describe("runPullRequestAction", () => {
   it.each([
-    ["ready", { operation: "ready" }, ["pr", "ready"]],
-    ["draft", { operation: "draft" }, ["pr", "ready", "--undo"]],
+    ["ready", { operation: "ready" }, ["pr", "ready", PR_URL]],
+    ["draft", { operation: "draft" }, ["pr", "ready", PR_URL, "--undo"]],
     [
       "merge",
       { operation: "merge", method: "merge" },
-      ["pr", "merge", "--merge"],
+      ["pr", "merge", PR_URL, "--merge"],
     ],
     [
       "squash",
       { operation: "merge", method: "squash" },
-      ["pr", "merge", "--squash"],
+      ["pr", "merge", PR_URL, "--squash"],
     ],
     [
       "rebase",
       { operation: "merge", method: "rebase" },
-      ["pr", "merge", "--rebase"],
+      ["pr", "merge", PR_URL, "--rebase"],
     ],
   ] satisfies readonly [string, HostPullRequestAction, readonly string[]][])(
-    "runs gh pr %s without a target so gh can honor a fork upstream",
+    "runs gh pr %s against the checked pull request URL",
     async (_label, action, expectedArgs) => {
       const gh = await installFakeGh({});
       const cwd = await makeTempDir("bb-pr-action-");
 
       await expect(
-        runPullRequestActionForCurrentBranch({
-          cwd,
-          localBranch: "bb/pr-action",
-          action,
-        }),
+        runPullRequestAction({ cwd, url: PR_URL, action }),
       ).resolves.toEqual({ ok: true });
 
       expect(await gh.readCalls()).toEqual([expectedArgs]);
@@ -99,18 +95,17 @@ describe("runPullRequestActionForCurrentBranch", () => {
     });
 
     await expect(
-      runPullRequestActionForCurrentBranch({
+      runPullRequestAction({
         cwd: await makeTempDir("bb-pr-action-"),
-        localBranch: "bb/pr-action",
+        url: PR_URL,
         action: { operation: "merge", method: "squash" },
       }),
     ).resolves.toEqual({
       ok: false,
-      message: "gh pr merge --squash failed: Pull request is not mergeable",
+      message: `gh pr merge ${PR_URL} --squash failed: Pull request is not mergeable`,
     });
   });
 });
-
 
 describe("getPullRequestForCurrentBranch", () => {
   async function lookup() {
