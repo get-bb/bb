@@ -40,14 +40,17 @@ import {
   MockChildEvent,
   MockComposer,
   MockStepContent,
+  MockStatusTrack,
   MockStepRow,
+  MockThreadStatus,
   MockTurnHeader,
   MockUserBubble,
   MockWorkingRow,
   type IconProps,
+  type MockRunPhase,
   type MockStep,
+  type MockThreadStatusKind,
   type NavLabel,
-  type ThreadState,
   NavRail,
   NewThreadIcon,
   PanelIcon,
@@ -58,7 +61,6 @@ import {
   SearchIcon,
   SendIcon,
   Spinner,
-  StatusGlyph,
   useFitMock,
 } from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
@@ -696,52 +698,17 @@ const BbGlyph = ({ className }: IconProps) => (
   <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
 
-type RowState = ThreadState | "idle";
-
-type StatusStep = { status: RowState; at: number };
+type StatusStep = { status: MockThreadStatusKind; at: number };
 
 function RowStatus({
   status,
   then = [],
 }: {
-  status: RowState;
+  status: MockThreadStatusKind;
   then?: readonly StatusStep[];
 }) {
-  if (then.length === 0) {
-    return (
-      <span className="tstatus" aria-hidden>
-        {status === "idle" ? null : <StatusGlyph status={status} />}
-      </span>
-    );
-  }
-  const phases = [{ status, at: 0 }, ...then];
-  return (
-    <span className="tstatus bw-phases" aria-hidden>
-      {phases.map((phase, index) => {
-        const next = phases[index + 1];
-        const role =
-          index === 0 ? "first" : next === undefined ? "last" : "mid";
-        return (
-          <span
-            key={index}
-            className={`bw-phase bw-phase-${role}`}
-            style={phaseStyle(phase.at, next?.at)}
-          >
-            {phase.status === "idle" ? null : (
-              <StatusGlyph status={phase.status} />
-            )}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-function phaseStyle(start: number, end?: number): CSSProperties {
-  return {
-    "--fw-at": `${start}s`,
-    "--fw-out": `${end ?? start}s`,
-  } as CSSProperties;
+  if (then.length === 0) return <MockThreadStatus status={status} />;
+  return <MockStatusTrack phases={[{ status, at: 0 }, ...then]} />;
 }
 
 function at(seconds: number): CSSProperties {
@@ -859,7 +826,7 @@ function ThreadRow({
   meta,
 }: {
   title: string;
-  status?: RowState;
+  status?: MockThreadStatusKind;
   then?: readonly StatusStep[];
   icon?: RowIcon;
   active?: boolean;
@@ -888,9 +855,11 @@ const FOLLOW_UP_PLACEHOLDER =
 function WindowComposer({
   model,
   modelIcon,
+  running = false,
 }: {
   model: string;
   modelIcon: RowIcon;
+  running?: boolean | MockRunPhase[];
 }) {
   return (
     <MockComposer
@@ -899,6 +868,7 @@ function WindowComposer({
       model={model}
       modelIcon={modelIcon}
       reasoning={null}
+      running={running}
       input={<span className="rhb-placeholder">{FOLLOW_UP_PLACEHOLDER}</span>}
     />
   );
@@ -1703,16 +1673,16 @@ const DELEGATION_CHILDREN = [
     icon: ClaudeIcon,
     title: "Plan the fix",
     landsAt: 1.88,
-    then: [{ status: "idle", at: 5.6 }],
+    then: [{ status: "done", at: 5.6 }],
   },
   {
     icon: CursorIcon,
     title: "Build it",
     landsAt: 8.6,
     then: [
-      { status: "idle", at: 12.2 },
+      { status: "done", at: 12.2 },
       { status: "running", at: 16.24 },
-      { status: "idle", at: 19.5 },
+      { status: "done", at: 19.5 },
     ],
   },
   {
@@ -1731,20 +1701,20 @@ function spawnStep(flags: string): MockStep {
   };
 }
 
-const PLAN_THREAD = { icon: ClaudeIcon, label: "Plan the fix" };
-const BUILD_THREAD = { icon: CursorIcon, label: "Build it" };
-const REVIEW_THREAD = { icon: OpenAiIcon, label: "Review the diff" };
+const PLAN_THREAD = { label: "Plan the fix" };
+const BUILD_THREAD = { label: "Build it" };
+const REVIEW_THREAD = { label: "Review the diff" };
 
 const DELEGATION_PING = "Review the diff needs your approval";
 
 const LEAD_STATUS: readonly StatusStep[] = [
-  { status: "idle", at: 4.22 },
+  { status: "done", at: 4.22 },
   { status: "running", at: 7.1 },
-  { status: "idle", at: 10.94 },
+  { status: "done", at: 10.94 },
   { status: "running", at: 13.7 },
-  { status: "idle", at: 18.24 },
+  { status: "done", at: 18.24 },
   { status: "running", at: 21 },
-  { status: "idle", at: 24.84 },
+  { status: "done", at: 24.84 },
 ];
 
 function NeedsAttention({ label }: { label: string }) {
@@ -1913,7 +1883,17 @@ export function DelegationTree() {
                 </Reveal>
               </div>
             </div>
-            <WindowComposer model="Grok Build" modelIcon={GrokIcon} />
+            <WindowComposer
+              model="Grok Build"
+              modelIcon={GrokIcon}
+              running={[
+                { at: 0, running: true },
+                ...LEAD_STATUS.map((step) => ({
+                  at: step.at,
+                  running: step.status === "running",
+                })),
+              ]}
+            />
           </div>
           <div className="bw-toast" style={at(27.6)}>
             <BbGlyph className="bw-toast-mark" />
@@ -1957,7 +1937,7 @@ function StepRow({ step }: { step: StartWork }) {
 
 function DesktopStep({ step }: { step: StartWork }) {
   const mock: MockStep = { kind: step.kind, verb: step.verb, em: step.object };
-  if (!step.live) return <MockStepRow step={mock} />;
+  if (!step.live) return <MockStepRow step={mock} className="is-past" />;
   return (
     <div className={`rhb-work rhb-work-${step.kind}`}>
       <MockStepContent step={mock} />
@@ -2103,7 +2083,7 @@ export function StartAnywhere() {
                   <MockWorkingRow />
                 </Reveal>
               </div>
-              <WindowComposer model="Codex" modelIcon={OpenAiIcon} />
+              <WindowComposer model="Codex" modelIcon={OpenAiIcon} running />
             </div>
           </div>
         </div>
