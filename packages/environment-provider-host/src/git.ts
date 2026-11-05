@@ -4,13 +4,14 @@ import {
   type GitProcessOptions,
   type GitTimeoutOptions,
   type DefaultBranchRefs,
+  type GitRepo,
   createGitQueries,
   pathExists,
   runGit as runSharedGit,
   trimOutput,
 } from "./workspace-git.js";
 export { pathExists, WorkspaceError };
-export type { GitCommandResult, GitProcessOptions, DefaultBranchRefs };
+export type { GitCommandResult, GitProcessOptions, DefaultBranchRefs, GitRepo };
 
 export interface RunGitOptions extends GitProcessOptions {
   cwd: string;
@@ -79,6 +80,9 @@ export async function findWorktreeForBranch(
 }
 
 export const {
+  readGitRepo,
+  readCheckoutRef,
+  readRefs,
   detectGitRepo,
   detectGitSource,
   ensureGitRepo,

@@ -11,11 +11,13 @@ import {
   vi,
 } from "vitest";
 import {
+  ensureGitRepo,
   getCheckoutRef,
   getWorkspaceGitOperation,
+  readGitRepo,
   runGit,
 } from "bb-environment-provider-host/workspace-git";
-import { detectLinkedWorktree, readGitBlob } from "../src/git.js";
+import { readGitBlob } from "../src/git.js";
 
 const tempDirs: string[] = [];
 
@@ -153,7 +155,9 @@ describe("getWorkspaceGitOperation", () => {
   it("reports no operation for ordinary repositories", async () => {
     const repoPath = await initReadGitBlobRepo();
 
-    await expect(getWorkspaceGitOperation(repoPath)).resolves.toEqual({
+    await expect(
+      getWorkspaceGitOperation(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
       kind: "none",
     });
   });
@@ -166,7 +170,9 @@ describe("getWorkspaceGitOperation", () => {
     });
     expect(merge.exitCode).not.toBe(0);
 
-    await expect(getWorkspaceGitOperation(repoPath)).resolves.toEqual({
+    await expect(
+      getWorkspaceGitOperation(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
       kind: "merge",
       hasConflicts: true,
     });
@@ -181,7 +187,9 @@ describe("getWorkspaceGitOperation", () => {
     });
     expect(rebase.exitCode).not.toBe(0);
 
-    await expect(getWorkspaceGitOperation(repoPath)).resolves.toEqual({
+    await expect(
+      getWorkspaceGitOperation(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
       kind: "rebase",
       hasConflicts: true,
     });
@@ -251,15 +259,25 @@ describe("readGitBlob", () => {
   });
 });
 
-describe("detectLinkedWorktree", () => {
+describe("readGitRepo", () => {
   it("tells a linked worktree apart from an ordinary checkout", async () => {
-    const { worktreePath } = await initBareWorktreeLayout();
+    const { root, worktreePath } = await initBareWorktreeLayout();
     const ordinaryCheckout = await initReadGitBlobRepo();
     const plainDir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-plain-wt-"));
     tempDirs.push(plainDir);
 
-    await expect(detectLinkedWorktree(worktreePath)).resolves.toBe(true);
-    await expect(detectLinkedWorktree(ordinaryCheckout)).resolves.toBe(false);
-    await expect(detectLinkedWorktree(plainDir)).resolves.toBe(false);
+    await expect(readGitRepo(worktreePath)).resolves.toMatchObject({
+      kind: "work-tree",
+      isLinkedWorktree: true,
+    });
+    await expect(readGitRepo(ordinaryCheckout)).resolves.toMatchObject({
+      kind: "work-tree",
+      isLinkedWorktree: false,
+    });
+    await expect(readGitRepo(root)).resolves.toMatchObject({
+      kind: "bare",
+      isLinkedWorktree: false,
+    });
+    await expect(readGitRepo(plainDir)).resolves.toBeNull();
   });
 });

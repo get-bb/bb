@@ -91,21 +91,6 @@ export async function inspectGitRepository(
   };
 }
 
-export async function detectLinkedWorktree(
-  cwd: string,
-  options: GitTimeoutOptions = {},
-): Promise<boolean> {
-  const gitDirResult = await runGit(["rev-parse", "--git-dir"], {
-    cwd,
-    ...options,
-    allowFailure: true,
-  });
-  if (gitDirResult.exitCode !== 0) {
-    return false;
-  }
-  return gitDirResult.stdout.trim().includes("/worktrees/");
-}
-
 export interface SharedGitRefsSnapshot {
   fingerprint: string;
   defaultBranch: string | null;

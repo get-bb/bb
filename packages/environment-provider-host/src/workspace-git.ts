@@ -388,6 +388,19 @@ export async function runGit(
 
 type GitRepoKind = "work-tree" | "bare" | "none";
 
+export interface GitRepo {
+  path: string;
+  kind: "work-tree" | "bare";
+  gitDir: string;
+  commonDir: string;
+  isLinkedWorktree: boolean;
+}
+
+interface GitRefRecord {
+  oid: string;
+  symref: string;
+}
+
 interface PorcelainV2Status {
   entries: PorcelainEntry[];
   headOid: string | null;
@@ -530,26 +543,50 @@ type GitQueryRunner = (
   },
 ) => Promise<GitCommandResult>;
 
+const ORIGIN_HEAD_REF = "refs/remotes/origin/HEAD";
+
+const FALLBACK_DEFAULT_BRANCHES: readonly string[] = ["main", "master"];
+
 export function createGitQueries(run: GitQueryRunner) {
+  async function readGitRepo(
+    cwd: string,
+    options: GitTimeoutOptions = {},
+  ): Promise<GitRepo | null> {
+    const result = await run(
+      [
+        "rev-parse",
+        "--is-inside-work-tree",
+        "--is-bare-repository",
+        "--git-dir",
+        "--absolute-git-dir",
+        "--git-common-dir",
+      ],
+      { cwd, ...options, allowFailure: true },
+    );
+    if (result.exitCode !== 0) {
+      return null;
+    }
+    const [insideWorkTree, bare, gitDir, absoluteGitDir, commonDir] =
+      trimOutput(result.stdout).split("\n");
+    const kind =
+      insideWorkTree === "true" ? "work-tree" : bare === "true" ? "bare" : null;
+    if (kind === null || !gitDir || !absoluteGitDir || !commonDir) {
+      return null;
+    }
+    return {
+      path: cwd,
+      kind,
+      gitDir: path.resolve(absoluteGitDir),
+      commonDir: path.resolve(cwd, commonDir),
+      isLinkedWorktree: gitDir.includes("/worktrees/"),
+    };
+  }
+
   async function detectGitRepoKind(
     cwd: string,
     options: GitTimeoutOptions = {},
   ): Promise<GitRepoKind> {
-    const result = await run(
-      ["rev-parse", "--is-inside-work-tree", "--is-bare-repository"],
-      { cwd, ...options, allowFailure: true },
-    );
-    if (result.exitCode !== 0) {
-      return "none";
-    }
-    const [insideWorkTree, bare] = trimOutput(result.stdout).split("\n");
-    if (insideWorkTree === "true") {
-      return "work-tree";
-    }
-    if (bare === "true") {
-      return "bare";
-    }
-    return "none";
+    return (await readGitRepo(cwd, options))?.kind ?? "none";
   }
 
   async function detectGitRepo(
@@ -569,9 +606,10 @@ export function createGitQueries(run: GitQueryRunner) {
   async function ensureGitRepo(
     cwd: string,
     options: GitTimeoutOptions = {},
-  ): Promise<void> {
-    if (await detectGitSource(cwd, options)) {
-      return;
+  ): Promise<GitRepo> {
+    const repo = await readGitRepo(cwd, options);
+    if (repo !== null) {
+      return repo;
     }
 
     throw new WorkspaceError(
@@ -638,9 +676,18 @@ export function createGitQueries(run: GitQueryRunner) {
     cwd: string,
     options: GitTimeoutOptions = {},
   ): Promise<GitCheckoutState> {
-    if (!(await detectGitSource(cwd, options))) {
+    const repo = await readGitRepo(cwd, options);
+    if (repo === null) {
       return { kind: "unknown", reason: "Path is not a git repository" };
     }
+    return readCheckoutRef(repo, options);
+  }
+
+  async function readCheckoutRef(
+    repo: GitRepo,
+    options: GitTimeoutOptions = {},
+  ): Promise<GitCheckoutState> {
+    const cwd = repo.path;
     const [symbolicRef, headSha] = await Promise.all([
       run(["symbolic-ref", "--quiet", "--short", "HEAD"], {
         cwd,
@@ -673,7 +720,7 @@ export function createGitQueries(run: GitQueryRunner) {
         "--no-optional-locks",
         "status",
         "--porcelain=v1",
-        "--untracked-files=all",
+        "--untracked-files=normal",
       ],
       { cwd, ...options },
     );
@@ -688,14 +735,13 @@ export function createGitQueries(run: GitQueryRunner) {
   }
 
   async function getWorkspaceGitOperation(
-    cwd: string,
+    repo: GitRepo,
     options: GitProcessOptions = {},
   ): Promise<GitOperationState> {
-    const gitDir = await getAbsoluteGitDir(cwd, options);
     for (const marker of GIT_OPERATION_MARKERS) {
       for (const markerName of marker.markerNames) {
-        if (await pathExists(path.join(gitDir, markerName))) {
-          const status = await readPorcelainStatus(cwd, options);
+        if (await pathExists(path.join(repo.gitDir, markerName))) {
+          const status = await readPorcelainStatus(repo.path, options);
           return {
             kind: marker.kind,
             hasConflicts: hasPorcelainConflict(status),
@@ -834,27 +880,28 @@ export function createGitQueries(run: GitQueryRunner) {
     return trimOutput(first.stdout) || undefined;
   }
 
-  async function readOriginDefaultBranch(
+  async function readRefs(
     cwd: string,
-    originHeadBranch: string | undefined,
-    localDefaultBranch: string | undefined,
+    refNames: readonly string[],
     options: GitTimeoutOptions = {},
-  ): Promise<string | undefined> {
-    if (
-      originHeadBranch &&
-      (await hasRef(cwd, `refs/remotes/origin/${originHeadBranch}`, options))
-    ) {
-      return `origin/${originHeadBranch}`;
+  ): Promise<Map<string, GitRefRecord>> {
+    const result = await run(
+      [
+        "for-each-ref",
+        "--format=%(refname)%00%(objectname)%00%(symref)",
+        ...refNames,
+      ],
+      { cwd, ...options },
+    );
+    const wanted = new Set(refNames);
+    const refs = new Map<string, GitRefRecord>();
+    for (const line of result.stdout.split("\n")) {
+      const [refName = "", oid = "", symref = ""] = line.split("\0");
+      if (wanted.has(refName)) {
+        refs.set(refName, { oid, symref });
+      }
     }
-
-    if (
-      localDefaultBranch &&
-      (await hasRef(cwd, `refs/remotes/origin/${localDefaultBranch}`, options))
-    ) {
-      return `origin/${localDefaultBranch}`;
-    }
-
-    return undefined;
+    return refs;
   }
 
   async function readBranchRelation(
@@ -873,17 +920,31 @@ export function createGitQueries(run: GitQueryRunner) {
       revParseRef(cwd, localRef, options),
       revParseRef(cwd, originRef, options),
     ]);
-    if (!localSha || !originSha) {
+    return compareBranchOids(
+      cwd,
+      { ref: localRef, oid: localSha },
+      { ref: originRef, oid: originSha },
+      options,
+    );
+  }
+
+  async function compareBranchOids(
+    cwd: string,
+    local: { ref: string; oid: string | undefined },
+    origin: { ref: string; oid: string | undefined },
+    options: GitTimeoutOptions,
+  ): Promise<DefaultBranchRelation> {
+    if (!local.oid || !origin.oid) {
       return "unknown";
     }
-    if (localSha === originSha) {
+    if (local.oid === origin.oid) {
       return "equal";
     }
 
     const localIsAncestor = await isAncestorRef(
       cwd,
-      localRef,
-      originRef,
+      local.ref,
+      origin.ref,
       options,
     );
     if (localIsAncestor === true) {
@@ -895,8 +956,8 @@ export function createGitQueries(run: GitQueryRunner) {
 
     const originIsAncestor = await isAncestorRef(
       cwd,
-      originRef,
-      localRef,
+      origin.ref,
+      local.ref,
       options,
     );
     if (originIsAncestor === true) {
@@ -910,33 +971,85 @@ export function createGitQueries(run: GitQueryRunner) {
   }
 
   async function readDefaultBranchRefs(
-    cwd: string,
+    repo: GitRepo,
     options: GitTimeoutOptions = {},
   ): Promise<DefaultBranchRefs> {
-    await ensureGitRepo(cwd, options);
-    const originHeadBranch = await readOriginHeadBranchName(cwd, options);
-    const defaultBranch = await readPreferredLocalDefaultBranch(
+    const cwd = repo.path;
+    const branchRefNames = (name: string) => [
+      `refs/heads/${name}`,
+      `refs/remotes/origin/${name}`,
+    ];
+    const refs = await readRefs(
       cwd,
-      originHeadBranch,
+      [ORIGIN_HEAD_REF, ...FALLBACK_DEFAULT_BRANCHES.flatMap(branchRefNames)],
       options,
     );
-    const originDefaultBranch = await readOriginDefaultBranch(
-      cwd,
-      originHeadBranch,
-      defaultBranch,
-      options,
-    );
-    const defaultBranchRelation = await readBranchRelation(
-      cwd,
-      defaultBranch,
-      originDefaultBranch,
-      options,
-    );
+    const addRefs = async (name: string) => {
+      const extra = branchRefNames(name).filter((ref) => !refs.has(ref));
+      if (extra.length === 0) return;
+      for (const [ref, record] of await readRefs(cwd, extra, options)) {
+        refs.set(ref, record);
+      }
+    };
 
+    const originHead = refs.get(ORIGIN_HEAD_REF);
+    const originHeadBranch =
+      originHead === undefined
+        ? await readOriginHeadBranchName(cwd, options)
+        : parseOriginHeadBranchName(originHead.symref);
+    if (
+      originHeadBranch !== undefined &&
+      !FALLBACK_DEFAULT_BRANCHES.includes(originHeadBranch)
+    ) {
+      await addRefs(originHeadBranch);
+    }
+
+    let defaultBranch = [
+      ...(originHeadBranch === undefined ? [] : [originHeadBranch]),
+      ...FALLBACK_DEFAULT_BRANCHES,
+    ].find((name) => refs.has(`refs/heads/${name}`));
+    if (defaultBranch === undefined) {
+      const first = await run(
+        [
+          "for-each-ref",
+          "--count=1",
+          "--format=%(refname:short)",
+          "refs/heads",
+        ],
+        { cwd, ...options },
+      );
+      defaultBranch = trimOutput(first.stdout) || undefined;
+      if (defaultBranch !== undefined) {
+        await addRefs(defaultBranch);
+      }
+    }
+
+    const originDefaultBranch = [originHeadBranch, defaultBranch].find(
+      (name): name is string =>
+        name !== undefined && refs.has(`refs/remotes/origin/${name}`),
+    );
+    if (defaultBranch === undefined || originDefaultBranch === undefined) {
+      return {
+        defaultBranch,
+        defaultBranchRelation: undefined,
+        originDefaultBranch:
+          originDefaultBranch === undefined
+            ? undefined
+            : `origin/${originDefaultBranch}`,
+      };
+    }
+
+    const localRef = `refs/heads/${defaultBranch}`;
+    const originRef = `refs/remotes/origin/${originDefaultBranch}`;
     return {
       defaultBranch,
-      defaultBranchRelation,
-      originDefaultBranch,
+      defaultBranchRelation: await compareBranchOids(
+        cwd,
+        { ref: localRef, oid: refs.get(localRef)?.oid },
+        { ref: originRef, oid: refs.get(originRef)?.oid },
+        options,
+      ),
+      originDefaultBranch: `origin/${originDefaultBranch}`,
     };
   }
 
@@ -959,6 +1072,9 @@ export function createGitQueries(run: GitQueryRunner) {
     return readRepoDefaultBranch(cwd, options);
   }
   return {
+    readGitRepo,
+    readCheckoutRef,
+    readRefs,
     detectGitRepoKind,
     detectGitRepo,
     detectGitSource,
@@ -980,6 +1096,9 @@ export function createGitQueries(run: GitQueryRunner) {
 }
 
 export const {
+  readGitRepo,
+  readCheckoutRef,
+  readRefs,
   detectGitRepoKind,
   detectGitRepo,
   detectGitSource,
