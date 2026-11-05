@@ -141,8 +141,26 @@ const INSTALL_FAILED_MESSAGE = "Install failed";
 const REDESIGN_INSTALL_FAILED_MESSAGE =
   "Couldn't install. Check your connection and retry.";
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
+const AGENT_STATES_LOAD_TIMEOUT_MS = 10_000;
+const AGENT_STATES_LOAD_FAILED_MESSAGE =
+  "Provider readiness could not be checked.";
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
+
+function useLoadTimedOut(loading: boolean, timeoutMs: number) {
+  const [attempt, setAttempt] = useState(0);
+  const [timedOutAttempt, setTimedOutAttempt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(
+      () => setTimedOutAttempt(attempt),
+      timeoutMs,
+    );
+    return () => window.clearTimeout(timer);
+  }, [attempt, loading, timeoutMs]);
+  const restart = useCallback(() => setAttempt((current) => current + 1), []);
+  return { timedOut: loading && timedOutAttempt === attempt, restart };
+}
 
 function stepCopy(redesign: boolean, step: OnboardingStepId) {
   return STEP_COPY[redesign ? "new" : "control"][step];
@@ -388,6 +406,12 @@ function AgentStepContainer({
   const { mutate: closeTerminalMutate } = closeTerminal;
   const { mutateAsync: createTerminalAsync } = createTerminal;
   const states = statesQuery.data?.providers;
+  const statesLoading =
+    hostId !== null && states === undefined && !statesQuery.isError;
+  const statesLoad = useLoadTimedOut(
+    redesign && statesLoading,
+    AGENT_STATES_LOAD_TIMEOUT_MS,
+  );
   const refetchProviderStates = useCallback(() => {
     void refetchStates();
   }, [refetchStates]);
@@ -418,9 +442,14 @@ function AgentStepContainer({
   );
   const signIns = useAgentSignIns({
     concurrent: redesign,
+    failUnreadyExits: redesign,
     entry,
     hostId,
     states,
+    statesSettledAt: Math.max(
+      statesQuery.dataUpdatedAt,
+      statesQuery.errorUpdatedAt,
+    ),
     isLocalHost: redesign
       ? (targetHostId) =>
           signInBrowserIsOnMachine({
@@ -614,6 +643,11 @@ function AgentStepContainer({
 
   const agentReady = hasReadyAgent(states);
   const agentBlocked = agents === null ? statesQuery.isError : !agentReady;
+  const statesLoadFailed =
+    redesign &&
+    hostId !== null &&
+    states === undefined &&
+    (statesQuery.isError || statesLoad.timedOut);
   return (
     <OnboardingLayout
       {...chrome}
@@ -627,8 +661,7 @@ function AgentStepContainer({
       primaryDisabled={agentContinueDisabled({
         redesign,
         agentReady,
-        statesLoading:
-          hostId !== null && states === undefined && !statesQuery.isError,
+        statesLoading: statesLoading && !statesLoad.timedOut,
       })}
       secondaryLabel={agentBlocked && !redesign ? "Skip for now" : undefined}
       onPrimary={onContinue}
@@ -638,11 +671,15 @@ function AgentStepContainer({
         quiet={redesign}
         machineName={hostName}
         agents={agents}
+        loadFailedMessage={
+          statesLoadFailed ? AGENT_STATES_LOAD_FAILED_MESSAGE : null
+        }
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={(providerId) => void startInstall(providerId)}
         onViewInstallLog={viewInstallLog}
         onCancelSignIn={(providerId) => signIns.end(providerId)}
         onRecheck={() => {
+          statesLoad.restart();
           void refetchStates();
           void cliStatusQuery.refetch();
         }}
@@ -1194,11 +1231,13 @@ export function OnboardingFlow({
   initialStep,
   entry,
   setupGuide,
+  closing,
   onClose,
 }: {
   initialStep: OnboardingStepId;
   entry: OnboardingEntry;
   setupGuide: SetupGuide;
+  closing: boolean;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
@@ -1310,6 +1349,9 @@ export function OnboardingFlow({
     });
   }, [entry, step]);
   const finishedRef = useRef(false);
+  useEffect(() => {
+    if (!closing) finishedRef.current = false;
+  }, [closing]);
   const close = (outcome: "completed" | "skipped") => {
     if (finishedRef.current) return;
     finishedRef.current = true;
