@@ -488,7 +488,8 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
       url !== null &&
       result.outcome === "available" &&
       (result.pullRequest.state === "merged" ||
-        result.pullRequest.state === "closed")
+        result.pullRequest.state === "closed" ||
+        result.pullRequest.headRefName !== lookedUpBranches.get(environmentId))
     )
       result = await loadPullRequest(environmentId, null, true);
     if (result.outcome === "unavailable") refuse(result.message);

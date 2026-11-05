@@ -504,6 +504,47 @@ describe("GitHub PR Status server", () => {
     ).toMatchObject({ url: "https://github.com/acme/bb/pull/8" });
   });
 
+  it("acts on the current branch's pull request when the known one belongs to another branch", async () => {
+    const oldUrl = "https://github.com/acme/bb/pull/6";
+    const pullRequests: Record<string, GitHubPullRequestView> = {
+      "bb/old": view({ number: 6, url: oldUrl, headRefName: "bb/old" }),
+      "bb/pr": view(),
+    };
+    let branchName = "bb/old";
+    const fake = await setup({
+      callHost: (call) =>
+        call.method === "upstream"
+          ? { oid: null, branchName }
+          : call.method === "views"
+            ? (call.input as { reads: { url: string | null }[] }).reads.map(
+                (read) => ({
+                  outcome: "found",
+                  pullRequest:
+                    read.url === oldUrl
+                      ? pullRequests["bb/old"]
+                      : pullRequests[branchName],
+                }),
+              )
+            : { ok: true },
+    });
+    await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
+    branchName = "bb/pr";
+    await expect(
+      fake.harness.callRpc("markReady", { environmentId: "env-1" }),
+    ).rejects.toMatchObject({ message: "Pull request is not a draft" });
+
+    await fake.harness.callRpc("merge", {
+      environmentId: "env-1",
+      method: "squash",
+    });
+
+    expect(
+      fake.harness.experimental_hostRpcCalls.find(
+        (call) => call.method === "act",
+      )?.input,
+    ).toMatchObject({ url: "https://github.com/acme/bb/pull/7" });
+  });
+
   it("returns the gh failure as a refusal and the CLI prints it", async () => {
     const fake = await setup({
       callHost: (call) =>
