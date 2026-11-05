@@ -1,4 +1,3 @@
-import { experimental_getHostPathComparisonKey as getHostPathComparisonKey } from "@get-bb/plugin-sdk";
 import { experimental_execHostFileCallback as execFile } from "@get-bb/plugin-sdk/process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -173,14 +172,8 @@ export async function listGitWorktrees(
   signal: AbortSignal,
 ): Promise<ListOutput> {
   const owned = new Set(
-    ownedPaths.flatMap(
-      (ownedPath) => getHostPathComparisonKey(ownedPath) ?? [],
-    ),
+    ownedPaths.map((ownedPath) => path.normalize(ownedPath)),
   );
-  const external = (worktreePath: string) => {
-    const key = getHostPathComparisonKey(worktreePath);
-    return key !== null && !owned.has(key);
-  };
   const repositories: ListOutput["repositories"] = [];
   const failures: ListOutput["failures"] = [];
   const seen = new Set<string>();
@@ -202,7 +195,7 @@ export async function listGitWorktrees(
     seen.add(main.path);
     const worktrees = await mapConcurrently(
       linked.filter(
-        (entry) => !entry.bare && !entry.prunable && external(entry.path),
+        (entry) => !entry.bare && !entry.prunable && !owned.has(entry.path),
       ),
       4,
       async (entry): Promise<Worktree> => {

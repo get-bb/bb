@@ -730,6 +730,7 @@ export function createStorage(
           projectByRepository.set(source.path, project.id);
     const repositoryPaths = [...projectByRepository.keys()];
     const ownedPaths = bbOwnedPathList(hostId, environments, projects);
+    const owned = bbOwnedPaths(hostId, environments, projects);
     const found = new Map<
       string,
       Omit<Scan["externalWorktrees"][number], "sizeBytes">
@@ -745,7 +746,8 @@ export function createStorage(
       );
       for (const repository of result.repositories)
         for (const worktree of repository.worktrees) {
-          if (found.has(worktree.path)) continue;
+          if (ownedByBb(owned, worktree.path) || found.has(worktree.path))
+            continue;
           found.set(worktree.path, {
             projectId: projectByRepository.get(repository.repositoryPath)!,
             repositoryPath: repository.repositoryPath,
