@@ -50,11 +50,11 @@ describe("nav experiment exposure", () => {
     (variant) => {
       renderNav({
         distinctID: "id",
-        featureFlags: { "homepage-header": variant },
+        featureFlags: { "homepage-download-path": variant },
         preview: false,
       });
       expect(exposeExperiment).toHaveBeenCalledWith(
-        "homepage-header",
+        "homepage-download-path",
         "desktop",
       );
     },
@@ -69,7 +69,7 @@ describe("nav experiment exposure", () => {
       "a preview",
       {
         distinctID: "id",
-        featureFlags: { "homepage-header": "test" },
+        featureFlags: { "homepage-download-path": "test" },
         preview: true,
       },
     ],

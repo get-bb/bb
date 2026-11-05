@@ -52,7 +52,7 @@ describe("site navigation", () => {
   it("keeps today's header in control", () => {
     for (const html of [
       renderToStaticMarkup(<SiteNav current="blog" />),
-      navFor("homepage-header", "control"),
+      navFor("homepage-download-path", "control"),
     ]) {
       expect(html).toMatch(/^<nav class="nav">/);
       expect(html).not.toContain("nav-actions");
@@ -62,7 +62,7 @@ describe("site navigation", () => {
   });
 
   it("puts every header change in the test arm", () => {
-    const html = navFor("homepage-header", "test");
+    const html = navFor("homepage-download-path", "test");
     expect(html).toMatch(/^<nav class="nav nav-sticky nav-centered">/);
     const actionsAt = html.indexOf('<div class="nav-actions">');
     const links = html.slice(html.indexOf('class="nav-links"'), actionsAt);

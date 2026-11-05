@@ -227,8 +227,8 @@ export function SiteNav({
   path?: string;
 }) {
   const platform = useDesktopPlatform();
-  const newHeader = useExperiment("homepage-header") === "test";
-  useExperimentExposure("homepage-header", "desktop");
+  const newHeader = useExperiment("homepage-download-path") === "test";
+  useExperimentExposure("homepage-download-path", "desktop");
   return (
     <nav className={newHeader ? "nav nav-sticky nav-centered" : "nav"}>
       <a className="logo" href="/" aria-label="bb">
