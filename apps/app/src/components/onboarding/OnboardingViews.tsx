@@ -1297,24 +1297,37 @@ export function DevicesStep({
       />
       <DeviceRow
         icon="Smartphone"
-        title="Get the mobile app"
-        description="Get a push when a thread needs you."
-        action={
-          <span className="flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.ios} target="_blank" rel="noreferrer">
-                iOS
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.android} target="_blank" rel="noreferrer">
-                Android
-              </a>
-            </Button>
-          </span>
-        }
+        title={MOBILE_APP_ROW_COPY.title}
+        description={MOBILE_APP_ROW_COPY.description}
+        action={<MobileAppLinks mobileLinks={mobileLinks} />}
       />
     </ul>
+  );
+}
+
+const MOBILE_APP_ROW_COPY = {
+  title: "Get the mobile app",
+  description: "Get a push when a thread needs you.",
+} as const;
+
+function MobileAppLinks({
+  mobileLinks,
+}: {
+  mobileLinks: { ios: string; android: string };
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <Button size="sm" variant="outline" asChild>
+        <a href={mobileLinks.ios} target="_blank" rel="noreferrer">
+          iOS
+        </a>
+      </Button>
+      <Button size="sm" variant="outline" asChild>
+        <a href={mobileLinks.android} target="_blank" rel="noreferrer">
+          Android
+        </a>
+      </Button>
+    </span>
   );
 }
 
@@ -1489,6 +1502,7 @@ export function RedesignedDevicesStep({
   hostName,
   connectSection,
   showMachines,
+  mobileLinks,
   addMachinePanel,
   onAddMachine,
   onCloseAddMachine,
@@ -1496,6 +1510,7 @@ export function RedesignedDevicesStep({
   hostName: string | null;
   connectSection: ReactNode;
   showMachines: boolean;
+  mobileLinks: { ios: string; android: string };
   addMachinePanel: ReactNode;
   onAddMachine: () => void;
   onCloseAddMachine: () => void;
@@ -1503,11 +1518,15 @@ export function RedesignedDevicesStep({
   const open = addMachinePanel !== null;
   return (
     <div className="flex flex-col gap-3">
-      {connectSection === null ? null : (
-        <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
-          {connectSection}
-        </SetupOptionGroup>
-      )}
+      <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
+        {connectSection}
+        <SetupOptionRow
+          icon="Smartphone"
+          title={MOBILE_APP_ROW_COPY.title}
+          description={MOBILE_APP_ROW_COPY.description}
+          action={<MobileAppLinks mobileLinks={mobileLinks} />}
+        />
+      </SetupOptionGroup>
       {showMachines ? (
         <SetupOptionGroup label="Where agents run">
           <SetupOptionRow

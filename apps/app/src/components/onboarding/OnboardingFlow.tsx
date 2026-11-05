@@ -1170,6 +1170,7 @@ function DevicesStepContainer({
         <RedesignedDevicesStep
           hostName={hostName}
           showMachines={showMachines}
+          mobileLinks={mobileAppDownloads}
           connectSection={
             connectContributesSection ? (
               <PluginSetupGuideSections
