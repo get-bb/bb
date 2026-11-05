@@ -20,7 +20,7 @@ import {
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
 
 function tempDatabasePath(): string {
