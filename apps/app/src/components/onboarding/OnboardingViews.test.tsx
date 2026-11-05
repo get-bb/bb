@@ -259,7 +259,6 @@ describe("AgentSignInInstruction", () => {
     overrides: {
       userCode?: string;
       paste?: boolean;
-      alternate?: "browser" | "code";
       agentName?: string;
       onOpenUrl?: (url: string) => void;
     } = {},
@@ -280,9 +279,7 @@ describe("AgentSignInInstruction", () => {
             terminalVisible: false,
             started: url !== null,
           }}
-          alternate={overrides.alternate ?? null}
           onOpenUrl={overrides.onOpenUrl ?? vi.fn()}
-          onUseAlternate={vi.fn()}
         />
       </p>,
     );
@@ -318,9 +315,17 @@ describe("AgentSignInInstruction", () => {
       name: "Codex browser sign-in",
       agentName: "Codex",
       url: "https://auth.openai.com/oauth/authorize?state=abc",
-      overrides: { alternate: "code" as const },
+      overrides: {},
       site: "auth.openai.com",
-      text: "Sign in on auth.openai.com, or use a code instead.",
+      text: "Finish signing in on auth.openai.com.",
+    },
+    {
+      name: "Codex one-time code",
+      agentName: "Codex",
+      url: "https://auth.openai.com/codex/device",
+      overrides: { userCode: "JWMS-GLRCB" },
+      site: "auth.openai.com",
+      text: "Enter this code on auth.openai.com.",
     },
   ])("links the sign-in page in the $name line", (example) => {
     const onOpenUrl = vi.fn();
@@ -331,6 +336,7 @@ describe("AgentSignInInstruction", () => {
     });
 
     expect(line.textContent).toBe(example.text);
+    expect(within(line).queryByRole("button")).toBeNull();
     const link = screen.getByRole("link", { name: example.site });
     expect(link.getAttribute("href")).toBe(example.url);
     fireEvent.click(link);
