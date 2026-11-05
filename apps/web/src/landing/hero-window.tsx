@@ -78,9 +78,10 @@ export function HeroWindow({
         <div className="rhb-band rhb-band-left" aria-hidden>
           <WindowDots />
           <span className="rhb-band-ctrls">
+            <PanelIcon className="rhb-ic" />
+            <span className="rhb-band-gap" />
             <ChevronLeft className="rhb-ic" />
             <ChevronRight className="rhb-ic" />
-            <PanelIcon className="rhb-ic" />
           </span>
         </div>
         {stage}

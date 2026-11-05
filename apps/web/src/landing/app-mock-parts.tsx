@@ -20,6 +20,7 @@ import FolderGit2Icon from "@hugeicons/core-free-icons/FolderGit2Icon";
 import GitBranchGlyph from "@hugeicons/core-free-icons/GitBranchIcon";
 import GitMergeGlyph from "@hugeicons/core-free-icons/GitMergeIcon";
 import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
 import Home01Icon from "@hugeicons/core-free-icons/Home01Icon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
@@ -38,7 +39,9 @@ import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
 import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import SquareGlyph from "@hugeicons/core-free-icons/SquareIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import UserGlyph from "@hugeicons/core-free-icons/UserIcon";
 import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect } from "react";
@@ -66,8 +69,11 @@ export const NewThreadIcon = glyph(BubbleChatAddIcon);
 export const HomeIcon = glyph(Home01Icon);
 export const SearchIcon = glyph(Search01Icon);
 export const PluginsIcon = glyph(Plug02Icon);
-const SkillsIcon = glyph(ZapIcon);
-const AutomationsIcon = glyph(RepeatIcon);
+export const SkillsIcon = glyph(ZapIcon);
+export const AutomationsIcon = glyph(RepeatIcon);
+const CircleQuestionIcon = glyph(HelpCircleIcon);
+const UserRoundIcon = glyph(UserGlyph);
+const StopSquareIcon = glyph(SquareGlyph);
 export const ClockIcon = glyph(Clock01Icon);
 export const BookIcon = glyph(BookOpen01Icon);
 export const ReturnIcon = glyph(CornerDownLeftIcon);
@@ -383,25 +389,44 @@ export function MockStepRow({
   );
 }
 
+export type MockRunPhase = { at: number; running: boolean };
+
+function MockSendButton({ running }: { running: boolean }) {
+  return running ? (
+    <span className="rhb-send is-stop">
+      <StopSquareIcon className="rhb-stop-ic" />
+    </span>
+  ) : (
+    <span className="rhb-send">
+      <ReturnIcon className="rhb-send-ic" />
+    </span>
+  );
+}
+
 export function MockComposer({
   input,
   model = "Opus 5.5",
   reasoning = "Medium",
-  project,
-  environment = "Worktree",
-  branch = "main",
+  project = null,
+  environment,
+  branch,
   access = "Full Access",
+  running = false,
   className,
 }: {
   input: ReactNode;
   model?: string;
   reasoning?: string;
-  project: string;
+  project?: string | null;
   environment?: string;
-  branch?: string;
+  branch?: string | null;
   access?: string;
+  running?: boolean | MockRunPhase[];
   className?: string;
 }) {
+  const env = environment ?? (project ? "Worktree" : "Personal workspace");
+  const checkout = branch === undefined ? (project ? "main" : null) : branch;
+  const phases = typeof running === "boolean" ? null : running;
   return (
     <div className={className ? `rhb-dock-wrap ${className}` : "rhb-dock-wrap"}>
       <div className="rhb-box">
@@ -416,31 +441,111 @@ export function MockComposer({
           </span>
           <span className="rhb-box-end">
             <MicIcon className="rhb-ic" />
-            <span className="rhb-send">
-              <ReturnIcon className="rhb-send-ic" />
-            </span>
+            {phases ? (
+              <span
+                className="rhb-send-track"
+                key={phases.map((p) => p.at).join(" ")}
+              >
+                {phases.map((p, i) => (
+                  <span
+                    key={p.at}
+                    style={{
+                      animation: [
+                        i > 0
+                          ? `mock-phase-in 0.2s ease ${p.at}s backwards`
+                          : "",
+                        i < phases.length - 1
+                          ? `mock-phase-out 0.01s linear ${phases[i + 1].at}s forwards`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(", "),
+                    }}
+                  >
+                    <MockSendButton running={p.running} />
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <MockSendButton running={running === true} />
+            )}
           </span>
         </div>
       </div>
       <div className="rhb-context">
+        {project ? (
+          <span className="rhb-ctx">
+            <FolderIcon className="rhb-ctx-ic" />
+            {project}
+          </span>
+        ) : null}
         <span className="rhb-ctx">
-          <FolderIcon className="rhb-ctx-ic" />
-          {project}
+          {project ? (
+            <FolderGitIcon className="rhb-ctx-ic" />
+          ) : (
+            <FolderIcon className="rhb-ctx-ic" />
+          )}
+          {env}
         </span>
-        <span className="rhb-ctx">
-          <FolderGitIcon className="rhb-ctx-ic" />
-          {environment}
-        </span>
-        <span className="rhb-ctx">
-          <GitBranchIcon className="rhb-ctx-ic" />
-          {branch}
-        </span>
+        {checkout ? (
+          <span className="rhb-ctx">
+            <GitBranchIcon className="rhb-ctx-ic" />
+            {checkout}
+          </span>
+        ) : null}
         <span className="rhb-perm">
           {access}
           <ChevronDown className="rhb-chev" />
         </span>
       </div>
     </div>
+  );
+}
+
+export type MockThreadStatusKind = "running" | "done" | "unread" | "waiting";
+
+export function MockThreadStatus({ status }: { status: MockThreadStatusKind }) {
+  return (
+    <span className="tstatus" aria-hidden>
+      {status === "running" ? (
+        <Spinner className="trun" />
+      ) : status === "waiting" ? (
+        <CircleQuestionIcon className="twait" />
+      ) : status === "unread" ? (
+        <span className="tunread" />
+      ) : null}
+    </span>
+  );
+}
+
+export function MockStatusTrack({
+  phases,
+}: {
+  phases: { at: number; status: MockThreadStatusKind }[];
+}) {
+  return (
+    <span
+      className="rhb-status-track"
+      key={phases.map((p) => `${p.at}:${p.status}`).join(" ")}
+    >
+      {phases.map((p, i) => (
+        <span
+          key={p.at}
+          style={{
+            animation: [
+              i > 0 ? `mock-phase-in 0.25s ease ${p.at}s backwards` : "",
+              i < phases.length - 1
+                ? `mock-phase-out 0.25s ease ${phases[i + 1].at}s forwards`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(", "),
+          }}
+        >
+          <MockThreadStatus status={p.status} />
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -482,16 +587,10 @@ export function MockWorkingRow({
   );
 }
 
-export function MockThreadPill({
-  icon: Icon,
-  label,
-}: {
-  icon: MockIcon;
-  label: string;
-}) {
+export function MockThreadPill({ label }: { icon?: MockIcon; label: string }) {
   return (
     <span className="rhb-pill">
-      <Icon className="rhb-pill-ic" />
+      <UserRoundIcon className="rhb-pill-ic" />
       <span className="rhb-pill-text">{label}</span>
     </span>
   );
@@ -505,7 +604,7 @@ export function MockChildEvent({
   style,
 }: {
   kind: "finished" | "sent" | "message";
-  thread: { icon: MockIcon; label: string };
+  thread: { icon?: MockIcon; label: string };
   body: ReactNode;
   className?: string;
   style?: CSSProperties;
@@ -532,7 +631,7 @@ export function MockChildEvent({
             <span className="rhb-gen-verb">
               {kind === "sent" ? "Sent to" : "Message from"}
             </span>
-            <MockThreadPill icon={thread.icon} label={thread.label} />
+            <MockThreadPill label={thread.label} />
           </>
         )}
       </span>
