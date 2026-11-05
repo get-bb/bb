@@ -382,6 +382,7 @@ const CLOSES = new Set<string>();
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
+const THREAD_OPENS_AT = 0.55;
 const ROW_GAP = 1.1;
 const WORK_ROW_GAP = 0.85;
 const FIRST_ROW = 1.3;
@@ -408,9 +409,6 @@ const MUTE_FOR = 0.35;
 const SWAP_FOR = 0.3;
 const FURL_FOR = 0.3;
 const FURL_BEAT = 0.6;
-const ARRIVE_FOR = 0.42;
-const REPLY_AFTER = FURL_FOR + 0.1;
-const STATUS_AFTER = REPLY_AFTER + 0.45;
 const TURN_GAP = 0.9;
 
 type TurnRow = { step: Step; at: number; muteAt: number | null };
@@ -419,7 +417,6 @@ type TurnPlan = { rows: TurnRow[]; furlAt: number | null; readyAt: number };
 function planTurn(
   rows: { step: Step; at: number }[],
   done: number | null,
-  arrivals: number[] = [],
 ): TurnPlan {
   const planned = rows.map(({ step, at }) => {
     const muteAt = step.spin
@@ -433,11 +430,8 @@ function planTurn(
   });
   const greyAt =
     Math.max(...planned.map((r) => r.muteAt ?? Infinity)) + MUTE_FOR;
-  let furlAt =
+  const furlAt =
     done == null || !Number.isFinite(greyAt) ? null : Math.max(greyAt, done);
-  for (const at of [...arrivals].sort((a, b) => a - b))
-    if (furlAt != null && at > furlAt - ARRIVE_FOR && at < furlAt + FURL_FOR)
-      furlAt = at + ARRIVE_FOR + 0.05;
   return {
     rows: planned,
     furlAt,
@@ -457,7 +451,7 @@ function timing(scene: Scene, tablet = false) {
   const replyFirst = scene.replyFirst;
   if (replyFirst) {
     postAt = posts.map((_, i) => lastStep + ROW_GAP + i * ROW_GAP);
-    changeAt = (postAt.at(-1) ?? lastStep) + ROW_GAP;
+    changeAt = (postAt.at(-1) ?? lastStep) + ROW_GAP + FURL_FOR + ROW_GAP;
   } else {
     changeAt = scene.prompt ? lastStep + ROW_GAP + (scene.beat ?? 0) : 0.6;
     const chrome = CHROME_FOR[scene.id];
@@ -471,13 +465,18 @@ function timing(scene: Scene, tablet = false) {
   }
   const lastAt = replyFirst ? changeAt : Math.max(changeAt, postAt.at(-1) ?? 0);
 
-  const replyIdx = posts.findIndex((p) => "reply" in p);
-  let doneAt: number | null = scene.running
-    ? null
-    : replyIdx >= 0
-      ? postAt[replyIdx]
-      : changeAt;
-  let end = lastAt + scene.hold;
+  const chartAt = scene.flags.includes("chart")
+    ? (postAt.at(-1) ?? changeAt) + ROW_GAP
+    : null;
+  const lastContent = replyFirst
+    ? (postAt.at(-1) ?? lastStep)
+    : Math.max(
+        changeAt + (CHROME_FOR[scene.id] ?? 0),
+        postAt.at(-1) ?? 0,
+        chartAt ?? 0,
+      );
+  let doneAt: number | null = scene.running ? null : lastContent + ROW_GAP;
+  let end = Math.max(lastAt, doneAt ?? 0) + scene.hold;
   if (scene.id === "composer") end = Math.max(end, changeAt + 5.1);
 
   let then: null | {
@@ -492,24 +491,23 @@ function timing(scene: Scene, tablet = false) {
   } = null;
   if (scene.then) {
     const at = lastAt + ROW_GAP;
-    const finished = at + NOTE_GAP;
-    const work = finished + TURN_GAP;
-    const sent = work + TURN_GAP;
-    const workDone = sent + TURN_GAP;
-    const sentReplyAt = workDone + REPLY_AFTER;
-    const message = sentReplyAt + NOTE_GAP;
-    const work3 = message + TURN_GAP;
-    const workDone3 = work3 + TURN_GAP * 1.5;
-    const finalReplyAt = workDone3 + REPLY_AFTER;
-    doneAt = at;
-    end = finalReplyAt + scene.hold;
+    const firstDone = at + ROW_GAP;
+    const finished = firstDone + NOTE_GAP;
+    const sent = finished + TURN_GAP;
+    const sentReplyAt = sent + TURN_GAP;
+    const workDone = sentReplyAt + ROW_GAP;
+    const message = workDone + NOTE_GAP;
+    const finalReplyAt = message + TURN_GAP * 1.5;
+    const workDone3 = finalReplyAt + ROW_GAP;
+    doneAt = firstDone;
+    end = workDone3 + scene.hold;
     then = {
       at,
       notes: [finished, sent, message],
-      work,
+      work: finished,
       workDone,
       sentReplyAt,
-      work3,
+      work3: message,
       workDone3,
       finalReplyAt,
     };
@@ -522,42 +520,35 @@ function timing(scene: Scene, tablet = false) {
       ),
     ],
     doneAt,
-    [changeAt, ...postAt, ...(then ? [then.at, ...then.notes] : [])],
   );
-  const replyAt = doneAt == null ? null : doneAt + REPLY_AFTER;
-  const statusAt = doneAt == null ? null : doneAt + STATUS_AFTER;
-  const chartAt = scene.flags.includes("chart")
-    ? Math.max(
-        (postAt.at(-1) ?? changeAt) + ROW_GAP,
-        (statusAt ?? turn.readyAt) + BEAT + 0.1,
-      )
-    : null;
+  const statusAt = doneAt;
   let f: null | {
     user: number;
     steps: number[];
     reply: number;
     cards: number[];
     clicks: number[];
+    done: number;
     turn: TurnPlan;
   } = null;
   if (scene.follow) {
     const F = scene.follow;
 
-    const user = (chartAt ?? postAt.at(-1) ?? changeAt) + 2.8;
+    const user = (doneAt ?? lastContent) + FURL_FOR + 2.2;
     const steps = F.steps.map((_, i) => user + FIRST_ROW + i * WORK_ROW_GAP);
     const reply = (steps.at(-1) ?? user) + ROW_GAP;
-    const cards = F.fixes.map(
-      (_, i) => reply + REPLY_AFTER + ROW_GAP + i * ROW_GAP,
-    );
+    const cards = F.fixes.map((_, i) => reply + ROW_GAP + i * ROW_GAP);
     const lastCard = cards.at(-1) ?? reply;
-    const clicks = F.clicks.map((_, i) => lastCard + 1.0 + i * CLICK_GAP);
+    const done = lastCard + ROW_GAP;
+    const clicks = F.clicks.map(
+      (_, i) => done + FURL_FOR + 1.0 + i * CLICK_GAP,
+    );
     end = (clicks.at(-1) ?? lastCard) + scene.hold;
     const fTurn = planTurn(
       F.steps.map((step, i) => ({ step, at: steps[i] })),
-      reply,
-      cards,
+      done,
     );
-    f = { user, steps, reply, cards, clicks, turn: fTurn };
+    f = { user, steps, reply, cards, clicks, done, turn: fTurn };
   }
   const ready = Math.max(turn.readyAt, f?.turn.readyAt ?? 0);
   const leavesAtEnd = CLOSES.has(scene.id) || scene === SCENES.at(-1);
@@ -566,7 +557,6 @@ function timing(scene: Scene, tablet = false) {
     end += ready + FURL_BEAT - leaves;
   return {
     chartAt,
-    replyAt,
     statusAt,
     collapseAt,
     userAt,
@@ -1749,15 +1739,11 @@ function Turn({
   plan,
   head,
   reduced,
-  working = true,
-  startAt = 0,
 }: {
   worked: string;
   plan: TurnPlan;
   head: number;
   reduced: boolean;
-  working?: boolean;
-  startAt?: number;
 }) {
   const sec = (s: number) => (reduced ? "0s" : `${s}s`);
   const furlAt = plan.furlAt;
@@ -1790,9 +1776,6 @@ function Turn({
           ))}
         </div>
       </div>
-      {working && !(reduced && done) ? (
-        <MockWorkingRow at={sec(startAt)} endAt={done ? sec(furlAt) : null} />
-      ) : null}
     </>
   );
 }
@@ -1813,7 +1796,13 @@ const FeedBody = memo(function FeedBody({
     animationDelay: reduced ? "0s" : `${sec}s`,
   });
   const head = t.stepAt[0] ?? t.userAt + 0.4;
-  const replyIdx = (scene.post ?? []).findIndex((p) => "reply" in p);
+  const hasChart = scene.flags.includes("chart");
+  const mainWorking = reduced ? null : (
+    <MockWorkingRow
+      at="0s"
+      endAt={t.turn.furlAt == null ? null : `${t.turn.furlAt}s`}
+    />
+  );
   return (
     <>
       {scene.prompt ? <MockUserBubble>{scene.prompt}</MockUserBubble> : null}
@@ -1823,7 +1812,6 @@ const FeedBody = memo(function FeedBody({
           plan={t.turn}
           head={head}
           reduced={reduced}
-          working={!scene.running}
         />
       ) : null}
       {(scene.post ?? []).map((p, i) =>
@@ -1831,26 +1819,20 @@ const FeedBody = memo(function FeedBody({
           <div
             className="rhb-say customize-msg"
             key={`r${i}`}
-            style={delay(
-              i === replyIdx && t.replyAt != null ? t.replyAt : t.postAt[i],
-            )}
+            style={delay(t.postAt[i])}
           >
             {p.reply}
           </div>
         ) : null,
       )}
-      {scene.running && !reduced ? (
-        <MockWorkingRow at="0s" endAt={null} />
-      ) : null}
+      {!then && !hasChart ? mainWorking : null}
 
       {then ? (
         <>
-          <div
-            className="rhb-say customize-msg"
-            style={delay(then.at + REPLY_AFTER)}
-          >
+          <div className="rhb-say customize-msg" style={delay(then.at)}>
             {then.reply}
           </div>
+          {mainWorking}
           <div className="rhb-notes">
             <MockChildEvent
               kind="finished"
@@ -1866,18 +1848,18 @@ const FeedBody = memo(function FeedBody({
               style={delay(then.notes[1])}
               body="The screen sends email and role, then lists pending invites."
             />
-            {reduced ? null : (
-              <MockWorkingRow
-                at={`${then.work}s`}
-                endAt={`${then.workDone}s`}
-              />
-            )}
             <div
               className="rhb-say customize-msg"
               style={delay(then.sentReplyAt)}
             >
               {then.sentReply}
             </div>
+            {reduced ? null : (
+              <MockWorkingRow
+                at={`${then.work}s`}
+                endAt={`${then.workDone}s`}
+              />
+            )}
             <MockChildEvent
               kind="message"
               thread={CHILD}
@@ -1885,18 +1867,18 @@ const FeedBody = memo(function FeedBody({
               style={delay(then.notes[2])}
               body="Tested it end to end. Both sides match."
             />
-            {reduced ? null : (
-              <MockWorkingRow
-                at={`${then.work3}s`}
-                endAt={`${then.workDone3}s`}
-              />
-            )}
             <div
               className="rhb-say customize-msg"
               style={delay(then.finalReplyAt)}
             >
               {then.finalReply}
             </div>
+            {reduced ? null : (
+              <MockWorkingRow
+                at={`${then.work3}s`}
+                endAt={`${then.workDone3}s`}
+              />
+            )}
           </div>
         </>
       ) : null}
@@ -1929,6 +1911,7 @@ const FeedBody = memo(function FeedBody({
           </span>
         </div>
       ) : null}
+      {hasChart ? mainWorking : null}
 
       {f ? (
         <>
@@ -1939,13 +1922,9 @@ const FeedBody = memo(function FeedBody({
             worked={f.worked}
             plan={f.at.turn}
             head={f.at.steps[0]}
-            startAt={f.at.user + 0.45}
             reduced={reduced}
           />
-          <div
-            className="rhb-say customize-msg"
-            style={delay(f.at.reply + REPLY_AFTER)}
-          >
+          <div className="rhb-say customize-msg" style={delay(f.at.reply)}>
             {f.reply}
           </div>
           {f.fixes.map((x, i) => {
@@ -1988,6 +1967,12 @@ const FeedBody = memo(function FeedBody({
               </div>
             );
           })}
+          {reduced ? null : (
+            <MockWorkingRow
+              at={`${f.at.user}s`}
+              endAt={f.at.turn.furlAt == null ? null : `${f.at.turn.furlAt}s`}
+            />
+          )}
         </>
       ) : null}
     </>
@@ -2105,6 +2090,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     animationDelay: reduced ? "0s" : `${sec}s`,
   });
 
+  const opensAt = idx > 0 ? THREAD_OPENS_AT : 0;
   const hasSet = new Set<string>();
   const usesSet = new Set<string>();
   SCENES.forEach((sc, k) => {
@@ -2445,7 +2431,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             ) : (
                               <MockStatusTrack
                                 phases={[
-                                  { at: 0, status: "running" },
+                                  ...(idx > 0
+                                    ? [{ at: 0, status: "done" as const }]
+                                    : []),
+                                  { at: opensAt, status: "running" },
                                   { at: tk.statusAt, status: statusOf(k) },
                                   ...(tk.then
                                     ? [
@@ -2454,7 +2443,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                           status: "running" as const,
                                         },
                                         {
-                                          at: tk.then.workDone + FURL_FOR,
+                                          at: tk.then.workDone,
                                           status: statusOf(k),
                                         },
                                         {
@@ -2462,7 +2451,19 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                           status: "running" as const,
                                         },
                                         {
-                                          at: tk.then.workDone3 + FURL_FOR,
+                                          at: tk.then.workDone3,
+                                          status: statusOf(k),
+                                        },
+                                      ]
+                                    : []),
+                                  ...(tk.f
+                                    ? [
+                                        {
+                                          at: tk.f.user,
+                                          status: "running" as const,
+                                        },
+                                        {
+                                          at: tk.f.done,
                                           status: statusOf(k),
                                         },
                                       ]
@@ -2633,7 +2634,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                   : scene.running
                     ? true
                     : [
-                        { at: 0, running: true },
+                        ...(idx > 0 ? [{ at: 0, running: false }] : []),
+                        { at: opensAt, running: true },
                         ...(t.doneAt == null
                           ? []
                           : [{ at: t.doneAt, running: false }]),
@@ -2648,7 +2650,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         ...(f
                           ? [
                               { at: f.at.user, running: true },
-                              { at: f.at.reply, running: false },
+                              { at: f.at.done, running: false },
                             ]
                           : []),
                       ]
