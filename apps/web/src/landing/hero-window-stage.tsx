@@ -10,7 +10,6 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import linearLogo from "../assets/company-logos/linear.svg";
-import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
   AutomationsIcon,
@@ -35,10 +34,57 @@ import {
   MockThreadStatus,
   BugIcon,
   QuestionIcon,
+  MOCK_FOLD_EASE,
+  MOCK_FOLD_MS,
+  MOCK_BLOCK_MS,
+  MOCK_CHILD_REPORT_PAUSE_S,
+  MOCK_FIRST_ROW_S,
+  MOCK_THREAD_OPEN_S,
+  MOCK_WORKING_AFTER_PROMPT_S,
+  MOCK_HEAD_AFTER_PROMPT_S,
+  MOCK_TURN_GAP_S,
+  MOCK_BEAT_S,
+  MOCK_FOLD_BEAT_S,
+  MOCK_FOLLOW_UP_PAUSE_S,
+  MOCK_CLICK_LEAD_S,
+  MOCK_CLICK_GAP_S,
+  MOCK_KID_AFTER_CLICK_S,
+  MOCK_CURSOR_LEAD_S,
+  MOCK_MUTE_AFTER_S,
+  MOCK_MUTE_S,
+  MOCK_SWAP_S,
+  MOCK_RAIL_DELAY_S,
+  MOCK_RAIL_IN_S,
+  MOCK_TYPE_CHAR_S,
+  MOCK_BAR_DELAY_S,
+  MOCK_BAR_STAGGER_S,
+  MOCK_SCENE_HOLD_S,
+  MOCK_SCENE_HOLD_SHORT_S,
+  MOCK_SCENE_REST_S,
+  MOCK_SCENE_REST_AFTER_CLOSE_S,
+  MOCK_FINAL_HOLD_S,
+  MOCK_LOOP_PRELOAD_S,
+  MOCK_RESTART_FADE_S,
+  MOCK_SIDEBAR_SWAP_MS,
+  MOCK_SIDEBAR_MOVE_MS,
+  MOCK_CROSSFADE_IN_MS,
+  MOCK_CROSSFADE_DELAY_MS,
+  MOCK_CROSSFADE_OUT_MS,
+  MOCK_GHOST_FADE_MS,
+  MOCK_TITLE_GLIDE_MS,
+  MOCK_TITLE_GLIDE_DELAY_MS,
+  MOCK_GLIDE_RATE,
+  MOCK_PACE_S,
+  MOCK_PANEL_EASE,
+  MOCK_PANEL_OPEN_MS,
+  mockGrowRow,
+  mockAnimateFromNow,
   MockChildEvent,
   MockComposer,
   MockStepContent,
+  MockTurnFold,
   MockTurnHeader,
+  MockBubbleLines,
   MockUserBubble,
   MockWorkingRow,
   type MockIcon as IconComp,
@@ -79,6 +125,7 @@ type Scene = {
   title: string;
 
   prompt?: string;
+  promptNarrow?: string;
 
   steps: Step[];
 
@@ -118,10 +165,11 @@ type Follow = {
 const SCENES: Scene[] = [
   {
     id: "sentry",
-    hold: 2.5,
+    hold: MOCK_SCENE_HOLD_S,
     beat: 1.3,
     title: "Sentry errors",
     prompt: "Make a plugin that charts my Sentry errors",
+    promptNarrow: "Make a plugin that\ncharts my Sentry errors",
     steps: [
       { kind: "work", verb: "Explored", em: "4 files, 1 search" },
       {
@@ -161,10 +209,10 @@ const SCENES: Scene[] = [
   },
   {
     id: "spawn",
-    hold: 2.5,
+    hold: MOCK_SCENE_HOLD_S,
     title: "Team invites",
     prompt:
-      "Add team invites to checkout-web. You build the invite screen, have Codex build the invite API and emails.",
+      "Add team invites to checkout-web. You build the invite\nscreen, have Codex build the invite API and emails.",
     steps: [
       { kind: "work", verb: "Explored", em: "4 files" },
       {
@@ -192,9 +240,11 @@ const SCENES: Scene[] = [
   },
   {
     id: "linear",
-    hold: 2,
+    hold: MOCK_SCENE_HOLD_SHORT_S,
     title: "Linear issues panel",
     prompt: "Make a plugin that shows my open Linear issues in a side panel",
+    promptNarrow:
+      "Make a plugin that shows\nmy open Linear issues\nin a side panel",
     steps: [
       {
         kind: "cmd",
@@ -224,7 +274,7 @@ const SCENES: Scene[] = [
   },
   {
     id: "chart",
-    hold: 2.5,
+    hold: MOCK_SCENE_HOLD_S,
     title: "Chart flaky tests",
     prompt: "Chart checkout-web's flaky tests by package",
     steps: [
@@ -273,7 +323,7 @@ const SCENES: Scene[] = [
   {
     id: "composer",
     replyFirst: true,
-    hold: 2,
+    hold: MOCK_SCENE_HOLD_SHORT_S,
     title: "Mention GitHub issues",
     prompt: "Let me type # in the composer to mention my GitHub issues",
     steps: [
@@ -314,7 +364,7 @@ const SCENES: Scene[] = [
   },
   {
     id: "nav",
-    hold: 2,
+    hold: MOCK_SCENE_HOLD_SHORT_S,
     title: "Tidy the navigation",
     prompt: "Move my navigation icons into the top of the sidebar",
     steps: [
@@ -340,9 +390,10 @@ const SCENES: Scene[] = [
   },
   {
     id: "grouped",
-    hold: 2,
+    hold: MOCK_SCENE_HOLD_SHORT_S,
     title: "Group sidebar by status",
-    prompt: "Group my sidebar by status: needs my input, running, unread, done",
+    prompt:
+      "Group my sidebar by status:\nneeds my input, running, unread, done",
     steps: [
       {
         kind: "cmd",
@@ -382,18 +433,18 @@ const CLOSES = new Set<string>();
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
-const THREAD_OPENS_AT = 0.55;
-const ROW_GAP = 1.1;
-const WORK_ROW_GAP = 0.85;
-const FIRST_ROW = 1.3;
-const NOTE_GAP = 1.4;
-const CLICK_GAP = 1.8;
-const KID_AFTER_CLICK = 0.75;
-const BEAT = 0.3;
+const THREAD_OPENS_AT = MOCK_THREAD_OPEN_S;
+const WORKING_AFTER_PROMPT = MOCK_WORKING_AFTER_PROMPT_S;
+const ROW_GAP = MOCK_PACE_S;
+const WORK_ROW_GAP = MOCK_PACE_S;
+const FIRST_ROW = MOCK_FIRST_ROW_S;
+const CLICK_GAP = MOCK_CLICK_GAP_S;
+const KID_AFTER_CLICK = MOCK_KID_AFTER_CLICK_S;
+const BEAT = MOCK_BEAT_S;
 
-const PANEL_OPEN = 0.7;
-const RAIL_IN = 0.4;
-const RAIL_AT = PANEL_OPEN + 0.25;
+const PANEL_OPEN = MOCK_PANEL_OPEN_MS / 1000;
+const RAIL_IN = MOCK_RAIL_IN_S;
+const RAIL_AT = PANEL_OPEN + MOCK_RAIL_DELAY_S;
 const CHROME_FOR: Record<string, number> = {
   sentry: RAIL_AT + RAIL_IN,
   linear: RAIL_AT + RAIL_IN,
@@ -401,15 +452,15 @@ const CHROME_FOR: Record<string, number> = {
   grouped: 0.7,
 };
 
-const REST = 1.1;
-const REST_AFTER_CLOSE = 1.4;
+const REST = MOCK_SCENE_REST_S;
+const REST_AFTER_CLOSE = MOCK_SCENE_REST_AFTER_CLOSE_S;
 
-const MUTE_AFTER = 0.35;
-const MUTE_FOR = 0.35;
-const SWAP_FOR = 0.3;
-const FURL_FOR = 0.3;
-const FURL_BEAT = 0.6;
-const TURN_GAP = 0.9;
+const MUTE_AFTER = MOCK_MUTE_AFTER_S;
+const MUTE_FOR = MOCK_MUTE_S;
+const SWAP_FOR = MOCK_SWAP_S;
+const FURL_FOR = MOCK_FOLD_MS / 1000;
+const FURL_BEAT = MOCK_FOLD_BEAT_S;
+const TURN_GAP = MOCK_TURN_GAP_S;
 
 type TurnRow = { step: Step; at: number; muteAt: number | null };
 type TurnPlan = { rows: TurnRow[]; furlAt: number | null; readyAt: number };
@@ -481,35 +532,29 @@ function timing(scene: Scene, tablet = false) {
 
   let then: null | {
     at: number;
+    waitAt: number;
     notes: number[];
-    work: number;
-    workDone: number;
     sentReplyAt: number;
-    work3: number;
-    workDone3: number;
     finalReplyAt: number;
+    wait: TurnPlan;
   } = null;
   if (scene.then) {
     const at = lastAt + ROW_GAP;
-    const firstDone = at + ROW_GAP;
-    const finished = firstDone + NOTE_GAP;
+    const waitAt = at + ROW_GAP;
+    const finished = waitAt + MOCK_CHILD_REPORT_PAUSE_S;
     const sent = finished + TURN_GAP;
     const sentReplyAt = sent + TURN_GAP;
-    const workDone = sentReplyAt + ROW_GAP;
-    const message = workDone + NOTE_GAP;
+    const message = sentReplyAt + MOCK_CHILD_REPORT_PAUSE_S;
     const finalReplyAt = message + TURN_GAP * 1.5;
-    const workDone3 = finalReplyAt + ROW_GAP;
-    doneAt = firstDone;
-    end = workDone3 + scene.hold;
+    doneAt = finalReplyAt + ROW_GAP;
+    end = doneAt + scene.hold;
     then = {
       at,
+      waitAt,
       notes: [finished, sent, message],
-      work: finished,
-      workDone,
       sentReplyAt,
-      work3: message,
-      workDone3,
       finalReplyAt,
+      wait: planTurn([{ step: WAIT_STEP, at: waitAt }], doneAt),
     };
   }
   const turn = planTurn(
@@ -534,14 +579,14 @@ function timing(scene: Scene, tablet = false) {
   if (scene.follow) {
     const F = scene.follow;
 
-    const user = (doneAt ?? lastContent) + FURL_FOR + 2.2;
+    const user = (doneAt ?? lastContent) + FURL_FOR + MOCK_FOLLOW_UP_PAUSE_S;
     const steps = F.steps.map((_, i) => user + FIRST_ROW + i * WORK_ROW_GAP);
     const reply = (steps.at(-1) ?? user) + ROW_GAP;
     const cards = F.fixes.map((_, i) => reply + ROW_GAP + i * ROW_GAP);
     const lastCard = cards.at(-1) ?? reply;
     const done = lastCard + ROW_GAP;
     const clicks = F.clicks.map(
-      (_, i) => done + FURL_FOR + 1.0 + i * CLICK_GAP,
+      (_, i) => done + FURL_FOR + MOCK_CLICK_LEAD_S + i * CLICK_GAP,
     );
     end = (clicks.at(-1) ?? lastCard) + scene.hold;
     const fTurn = planTurn(
@@ -578,6 +623,11 @@ const THREADS: { title: string; status: Status }[] = [
 ];
 
 const CHILD = { icon: OpenAiIcon, label: "Team invites API" };
+const WAIT_STEP: Step = {
+  kind: "cmd",
+  verb: "Ran",
+  em: "bb thread wait thr_k7q2m9p4xd",
+};
 
 const LINEAR_TASKS = [
   {
@@ -790,8 +840,8 @@ function WorkRow({
   return (
     <div
       className={`rhb-work rhb-work-${step.kind} customize-msg${
-        muteAt === null ? "" : " is-muting"
-      }`}
+        step === WAIT_STEP ? " rhb-wait" : ""
+      }${step.em?.startsWith("bb thread spawn") ? " rhb-spawn" : ""}${muteAt === null ? "" : " is-muting"}`}
       style={
         muteAt === null
           ? style
@@ -844,7 +894,7 @@ function useMedia(query: string) {
   );
 }
 
-const EASE_OUT = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+const EASE_OUT = MOCK_PANEL_EASE;
 const TOP = ".rhb-col-main, .rhb-col-page, .rhb-col-panel, .rhb-side";
 const KIDS =
   ".rhb-side > :not(.rhb-xf), .rhb-rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
@@ -925,7 +975,11 @@ function pin(el: HTMLElement, r: DOMRect, root: DOMRect, z: string) {
   });
 }
 
-function glide(el: Element, keyframes: Keyframe[], duration = 650) {
+function glide(
+  el: Element,
+  keyframes: Keyframe[],
+  duration = MOCK_PANEL_OPEN_MS,
+) {
   (el as HTMLElement).animate(keyframes, { duration, easing: EASE_OUT });
 }
 
@@ -951,7 +1005,7 @@ function dissolve(
   t: { x: number; y: number },
   pad?: number,
   seq = false,
-  dur = 650,
+  dur = MOCK_PANEL_OPEN_MS,
 ) {
   const host = el.parentElement;
   if (!host) return;
@@ -1019,13 +1073,13 @@ function dissolve(
   }
   if (seq)
     el.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 260,
-      delay: 150,
+      duration: MOCK_CROSSFADE_IN_MS,
+      delay: MOCK_CROSSFADE_DELAY_MS,
       fill: "backwards",
       easing: "ease-out",
     });
   const anim = wrap.animate([{ opacity: 1 }, { opacity: 0 }], {
-    duration: 150,
+    duration: MOCK_CROSSFADE_OUT_MS,
     easing: "cubic-bezier(0.7, 0, 0.3, 1)",
     fill: "forwards",
   });
@@ -1077,7 +1131,7 @@ function snapLayout(root: HTMLElement, reshapes: boolean): Snap {
 }
 
 function flipLayout(root: HTMLElement, first: Snap) {
-  const dur = 650;
+  const dur = MOCK_PANEL_OPEN_MS;
   const finals = new Map<Element, { b: DOMRect; pb?: DOMRect }>();
   root.querySelectorAll(KIDS).forEach((el) => {
     if (!el.closest(".rhb-frozen"))
@@ -1256,7 +1310,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
     pin(ghost, keep && sideWas ? sideWas : first.left, first.root, "0");
     root.appendChild(ghost);
     const a = ghost.animate([{ opacity: 1 }, { opacity: 0 }], {
-      duration: 450,
+      duration: MOCK_GHOST_FADE_MS,
       easing: EASE_OUT,
       fill: "forwards",
     });
@@ -1304,8 +1358,8 @@ function snapRows(root: HTMLElement): RowSnap {
   return rows;
 }
 
-const ROW_SWAP = 160;
-const ROW_MOVE = 420;
+const ROW_SWAP = MOCK_SIDEBAR_SWAP_MS;
+const ROW_MOVE = MOCK_SIDEBAR_MOVE_MS;
 function slideRows(root: HTMLElement, first: RowSnap) {
   const ease = "cubic-bezier(0.65, 0, 0.35, 1)";
   const timing = {
@@ -1510,9 +1564,6 @@ const LinearPanel = memo(function LinearPanel() {
   );
 });
 
-const GLIDE_RATE = 0.02;
-const GROW_FOR = 420;
-
 type FeedProps = {
   scene: Scene;
   reduced: boolean;
@@ -1531,7 +1582,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
 
     type Off = { top: number; off: number; v: number; w: number };
     const offs = new Map<HTMLElement, Off>();
-    const self: Off = { top: feed.offsetTop, off: 0, v: 0, w: GLIDE_RATE };
+    const self: Off = { top: feed.offsetTop, off: 0, v: 0, w: MOCK_GLIDE_RATE };
     let raf = 0;
     let last = 0;
     const apply = (el: HTMLElement, off: number) => {
@@ -1556,7 +1607,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       if (live) raf = requestAnimationFrame(tick);
       else {
         self.off = self.v = 0;
-        self.w = GLIDE_RATE;
+        self.w = MOCK_GLIDE_RATE;
         apply(feed, 0);
         offs.forEach((o, el) => {
           o.off = o.v = 0;
@@ -1591,16 +1642,21 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       const mb = parseFloat(getComputedStyle(el).marginBottom) || 0;
       if (room < 1) return false;
       growing++;
-      const anim = el.animate(
-        [
-          {
-            marginBottom: `${mb - room}px`,
-            clipPath: `inset(0 -100vw ${room}px -100vw)`,
-          },
-          { marginBottom: `${mb}px`, clipPath: "inset(0 -100vw 0 -100vw)" },
-        ],
-        { duration: GROW_FOR, easing: EASE_OUT },
-      );
+      const scroller = feed.closest<HTMLElement>(".rhb-scroll");
+      const lift = scroller
+        ? Math.min(room, Math.max(0, feed.offsetHeight - scroller.clientHeight))
+        : 0;
+      const anim =
+        lift >= 1 && el.matches(".rhb-working")
+          ? mockAnimateFromNow(el, [
+              {
+                marginBottom: `${mb - room}px`,
+                translate: `0 ${-lift}px`,
+                opacity: "0",
+              },
+              { marginBottom: `${mb}px`, translate: "0 0", opacity: "1" },
+            ])
+          : mockGrowRow(el, room, mb);
       const done = () => {
         growing--;
         self.top = feed.offsetTop;
@@ -1617,6 +1673,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
     };
     let resume = 0;
     let lastWidth = feed.offsetWidth;
+    const fitHeights = new WeakMap<HTMLElement, number>();
     const ro = new ResizeObserver(() => {
       const fresh: HTMLElement[] = [];
       for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
@@ -1627,6 +1684,37 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       primed = true;
       let run = 0;
       let grew = false;
+      for (const el of feed.querySelectorAll<HTMLElement>(".rhb-fit")) {
+        const h = el.offsetHeight;
+        const was = fitHeights.get(el);
+        fitHeights.set(el, h);
+        if (was !== undefined && h - was >= 1 && visible(el)) {
+          growing++;
+          const mb = parseFloat(getComputedStyle(el).marginBottom) || 0;
+          const anim = mockAnimateFromNow(
+            el,
+            [
+              {
+                marginBottom: `${mb - (h - was)}px`,
+                clipPath: `inset(0 -100vw ${h - was}px -100vw)`,
+              },
+              {
+                marginBottom: `${mb}px`,
+                clipPath: "inset(0 -100vw 0 -100vw)",
+              },
+            ],
+            MOCK_PANEL_OPEN_MS,
+            MOCK_PANEL_EASE,
+          );
+          const done = () => {
+            growing--;
+            self.top = feed.offsetTop;
+          };
+          anim.onfinish = done;
+          anim.oncancel = done;
+          grew = true;
+        }
+      }
       for (const el of fresh) {
         if (fresh.some((p) => p !== el && p.contains(el))) continue;
         run += roomOf(el);
@@ -1658,10 +1746,10 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
           child.offsetParent === feed ? child.offsetTop : child.offsetTop - ft;
         const o = offs.get(child);
         if (!o) {
-          offs.set(child, { top, off: 0, v: 0, w: GLIDE_RATE });
+          offs.set(child, { top, off: 0, v: 0, w: MOCK_GLIDE_RATE });
           continue;
         }
-        const d = furling || resized ? 0 : o.top - top;
+        const d = furling || resized || growing ? 0 : o.top - top;
         o.top = top;
         if (Math.abs(d) >= 0.5) {
           o.off += d;
@@ -1679,13 +1767,44 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       }
     });
     const FOLDS = new Set(["rhb-furl", "rhb-turn-open", "rhb-working-end"]);
+    const holdWorking = (working: HTMLElement) => {
+      const anims = feed.getAnimations({ subtree: true }).filter((a) => {
+        const timing = a.effect?.getComputedTiming();
+        const progress = timing?.progress;
+        return (
+          a.playState !== "finished" &&
+          typeof timing?.endTime === "number" &&
+          Number.isFinite(timing.endTime) &&
+          ((a instanceof CSSAnimation && FOLDS.has(a.animationName)) ||
+            (typeof progress === "number" && progress < 1))
+        );
+      });
+      const before = working.getBoundingClientRect().top;
+      const saved = anims.map((a) => a.currentTime);
+      for (const a of anims) {
+        const end = a.effect?.getComputedTiming().endTime;
+        if (typeof end === "number") a.currentTime = end;
+      }
+      const after = working.getBoundingClientRect().top;
+      anims.forEach((a, i) => {
+        a.currentTime = saved[i] ?? null;
+      });
+      const rise = before - after;
+      if (rise < 0.5) return;
+      working.animate([{ translate: "0 0" }, { translate: `0 ${rise}px` }], {
+        duration: MOCK_FOLD_MS,
+        easing: MOCK_FOLD_EASE,
+        fill: "forwards",
+      });
+    };
     const onAnimation = (e: AnimationEvent) => {
       if (!FOLDS.has(e.animationName)) return;
-      if (e.type === "animationstart" && !furling)
-        feed.style.minHeight = `${Math.max(
-          feed.offsetHeight,
-          parseFloat(feed.style.minHeight) || 0,
-        )}px`;
+      if (
+        e.type === "animationstart" &&
+        e.animationName === "rhb-working-end" &&
+        e.target instanceof HTMLElement
+      )
+        holdWorking(e.target);
       furling = Math.max(0, furling + (e.type === "animationstart" ? 1 : -1));
       if (furling) return;
       const ft = feed.offsetTop;
@@ -1734,6 +1853,33 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
   );
 }
 
+function TurnFold({
+  plan,
+  head,
+  reduced,
+}: {
+  plan: TurnPlan;
+  head: number;
+  reduced: boolean;
+}) {
+  const sec = (s: number) => (reduced ? "0s" : `${s}s`);
+  return (
+    <MockTurnFold
+      revealAt={sec(head)}
+      foldAt={plan.furlAt == null ? null : sec(plan.furlAt)}
+    >
+      {plan.rows.map((row, i) => (
+        <WorkRow
+          step={row.step}
+          key={i}
+          style={{ animationDelay: sec(row.at - head) }}
+          muteAt={row.muteAt == null ? null : reduced ? 0 : row.muteAt - row.at}
+        />
+      ))}
+    </MockTurnFold>
+  );
+}
+
 function Turn({
   worked,
   plan,
@@ -1745,37 +1891,16 @@ function Turn({
   head: number;
   reduced: boolean;
 }) {
-  const sec = (s: number) => (reduced ? "0s" : `${s}s`);
   const furlAt = plan.furlAt;
-  const done = furlAt != null;
   return (
     <>
-      {done ? (
-        <MockTurnHeader worked={worked} openAt={reduced ? null : sec(furlAt)} />
+      {furlAt != null ? (
+        <MockTurnHeader
+          worked={worked}
+          openAt={reduced ? null : `${furlAt}s`}
+        />
       ) : null}
-      <div
-        className={
-          done
-            ? "rhb-turn-fold rhb-reveal is-furling"
-            : "rhb-turn-fold rhb-reveal"
-        }
-        style={{
-          animationDelay: done ? `${sec(head)}, ${sec(furlAt)}` : sec(head),
-        }}
-      >
-        <div className="rhb-turn-body">
-          {plan.rows.map((row, i) => (
-            <WorkRow
-              step={row.step}
-              key={i}
-              style={{ animationDelay: sec(row.at - head) }}
-              muteAt={
-                row.muteAt == null ? null : reduced ? 0 : row.muteAt - row.at
-              }
-            />
-          ))}
-        </div>
-      </div>
+      <TurnFold plan={plan} head={head} reduced={reduced} />
     </>
   );
 }
@@ -1795,7 +1920,7 @@ const FeedBody = memo(function FeedBody({
   const delay = (sec: number) => ({
     animationDelay: reduced ? "0s" : `${sec}s`,
   });
-  const head = t.stepAt[0] ?? t.userAt + 0.4;
+  const head = t.stepAt[0] ?? t.userAt + MOCK_HEAD_AFTER_PROMPT_S;
   const hasChart = scene.flags.includes("chart");
   const mainWorking = reduced ? null : (
     <MockWorkingRow
@@ -1805,7 +1930,19 @@ const FeedBody = memo(function FeedBody({
   );
   return (
     <>
-      {scene.prompt ? <MockUserBubble>{scene.prompt}</MockUserBubble> : null}
+      {scene.prompt ? (
+        scene.promptNarrow ? (
+          <MockUserBubble className="rhb-fit">
+            <MockBubbleLines text={scene.prompt} className="rhb-fit-wide" />
+            <MockBubbleLines
+              text={scene.promptNarrow}
+              className="rhb-fit-narrow"
+            />
+          </MockUserBubble>
+        ) : (
+          <MockUserBubble>{scene.prompt}</MockUserBubble>
+        )
+      ) : null}
       {scene.steps.length > 0 ? (
         <Turn
           worked={then ? then.worked : scene.worked}
@@ -1832,7 +1969,7 @@ const FeedBody = memo(function FeedBody({
           <div className="rhb-say customize-msg" style={delay(then.at)}>
             {then.reply}
           </div>
-          {mainWorking}
+          <TurnFold plan={then.wait} head={then.waitAt} reduced={reduced} />
           <div className="rhb-notes">
             <MockChildEvent
               kind="finished"
@@ -1854,12 +1991,6 @@ const FeedBody = memo(function FeedBody({
             >
               {then.sentReply}
             </div>
-            {reduced ? null : (
-              <MockWorkingRow
-                at={`${then.work}s`}
-                endAt={`${then.workDone}s`}
-              />
-            )}
             <MockChildEvent
               kind="message"
               thread={CHILD}
@@ -1873,13 +2004,8 @@ const FeedBody = memo(function FeedBody({
             >
               {then.finalReply}
             </div>
-            {reduced ? null : (
-              <MockWorkingRow
-                at={`${then.work3}s`}
-                endAt={`${then.workDone3}s`}
-              />
-            )}
           </div>
+          {mainWorking}
         </>
       ) : null}
 
@@ -1901,7 +2027,7 @@ const FeedBody = memo(function FeedBody({
                     className="rhb-chart-bar"
                     style={{
                       width: `${(row.n / FLAKY[0].n) * 100}%`,
-                      ...delay(0.45 + i * 0.06),
+                      ...delay(MOCK_BAR_DELAY_S + i * MOCK_BAR_STAGGER_S),
                     }}
                   />
                 </span>
@@ -1960,7 +2086,11 @@ const FeedBody = memo(function FeedBody({
                         <Spinner className="trun rhb-work-spin" />
                         Running
                       </span>
-                      <CursorGlyph style={{ animationDelay: `${at - 0.7}s` }} />
+                      <CursorGlyph
+                        style={{
+                          animationDelay: `${at - MOCK_CURSOR_LEAD_S}s`,
+                        }}
+                      />
                     </>
                   )}
                 </span>
@@ -1969,7 +2099,7 @@ const FeedBody = memo(function FeedBody({
           })}
           {reduced ? null : (
             <MockWorkingRow
-              at={`${f.at.user}s`}
+              at={`${f.at.user + WORKING_AFTER_PROMPT}s`}
               endAt={f.at.turn.furlAt == null ? null : `${f.at.turn.furlAt}s`}
             />
           )}
@@ -2027,7 +2157,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
           </span>
           <span className="rhb-issue-q">
             <span>#</span>
-            <Typed text="csv" at={0.1} step={0.07} />
+            <Typed text="csv" at={0.1} step={MOCK_TYPE_CHAR_S} />
             <i className="rhb-caret" />
           </span>
           <div className="rhb-issue-picker">
@@ -2061,7 +2191,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
               </span>
             </span>
             <span className="rhb-issue-rest">
-              <Typed text="fix this" at={0.25} step={0.06} />
+              <Typed text="fix this" at={0.25} step={MOCK_TYPE_CHAR_S} />
             </span>
           </span>
         </div>
@@ -2195,8 +2325,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     el.style.overflow = "hidden";
     titles.forEach((t) => (t.style.textOverflow = "clip"));
     const anim = el.animate([{ width: `${was.w}px` }, { width: `${w}px` }], {
-      duration: 300,
-      delay: 250,
+      duration: MOCK_TITLE_GLIDE_MS,
+      delay: MOCK_TITLE_GLIDE_DELAY_MS,
       easing: EASE_OUT,
       fill: "backwards",
     });
@@ -2436,30 +2566,11 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                     : []),
                                   { at: opensAt, status: "running" },
                                   { at: tk.statusAt, status: statusOf(k) },
-                                  ...(tk.then
-                                    ? [
-                                        {
-                                          at: tk.then.work,
-                                          status: "running" as const,
-                                        },
-                                        {
-                                          at: tk.then.workDone,
-                                          status: statusOf(k),
-                                        },
-                                        {
-                                          at: tk.then.work3,
-                                          status: "running" as const,
-                                        },
-                                        {
-                                          at: tk.then.workDone3,
-                                          status: statusOf(k),
-                                        },
-                                      ]
-                                    : []),
+
                                   ...(tk.f
                                     ? [
                                         {
-                                          at: tk.f.user,
+                                          at: tk.f.user + WORKING_AFTER_PROMPT,
                                           status: "running" as const,
                                         },
                                         {
@@ -2483,7 +2594,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                           }
                           style={
                             k === idx
-                              ? delay((t.stepAt[spawnStep] ?? t.changeAt) + 0.4)
+                              ? delay(
+                                  (t.stepAt[spawnStep] ?? t.changeAt) +
+                                    MOCK_BLOCK_MS / 1000,
+                                )
                               : undefined
                           }
                         >
@@ -2598,10 +2712,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </span>
             <Ellipsis className="rhb-ic" />
             <span className="rhb-band-end">
-              <span className="rhb-btn">
-                <img src={vscodeIcon} alt="" className="rhb-editor-ic" />
-                <ChevronDown className="rhb-chev" />
-              </span>
               <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
             </span>
           </div>
@@ -2639,17 +2749,12 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         ...(t.doneAt == null
                           ? []
                           : [{ at: t.doneAt, running: false }]),
-                        ...(then
-                          ? [
-                              { at: then.work, running: true },
-                              { at: then.workDone, running: false },
-                              { at: then.work3, running: true },
-                              { at: then.workDone3, running: false },
-                            ]
-                          : []),
                         ...(f
                           ? [
-                              { at: f.at.user, running: true },
+                              {
+                                at: f.at.user + WORKING_AFTER_PROMPT,
+                                running: true,
+                              },
                               { at: f.at.done, running: false },
                             ]
                           : []),
@@ -2675,8 +2780,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   );
 }
 
-const FINAL_HOLD = 4.7;
-const RESTART_FADE = 0.7;
+const FINAL_HOLD = MOCK_FINAL_HOLD_S;
+const RESTART_FADE = MOCK_RESTART_FADE_S;
 
 type Clock = {
   at: (sec: number, fn: () => void) => () => void;
@@ -2762,7 +2867,7 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     } else {
       ids.push(at(t.statusAt ?? t.end, () => setPos({ idx, n: 4 })));
       ids.push(
-        at(t.end + FINAL_HOLD - 1.6, () =>
+        at(t.end + FINAL_HOLD - MOCK_LOOP_PRELOAD_S, () =>
           startTransition(() => setPre(loop + 1)),
         ),
       );

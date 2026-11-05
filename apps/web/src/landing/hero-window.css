@@ -87,25 +87,6 @@
     padding 0.3s ease;
 }
 
-.rhb .rhb-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.rhb .rhb-editor-ic {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
 .rhb .rhb-left {
   position: relative;
   z-index: 1;
@@ -604,7 +585,7 @@
 .rhb .rhb-has-sentry .rhb-page {
   opacity: 1;
   visibility: visible;
-  animation: rhb-page-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rhb-page-in var(--mock-panel-open-dur) var(--mock-panel-ease);
 }
 
 .rhb .rhb-page-head {
@@ -717,10 +698,6 @@
   margin-left: auto;
   font-variant-numeric: tabular-nums;
   color: var(--dim);
-}
-
-.rhb .rhb-has-sentry .rhb-col-main .rhb-btn {
-  display: none;
 }
 
 .rhb .rhb-rail-sentry .rhb-ic {
@@ -1820,7 +1797,7 @@
 .rhb .rhb-col-main { position: relative; z-index: 2; }
 .rhb .rhb-band-left { min-width: 150px; background: var(--rhb-frame); }
 .rhb .rhb-stage.rhb-scene-linear .rhb-col-panel {
-  transition: width 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+  transition: width var(--mock-panel-open-dur) var(--mock-panel-ease);
 }
 
 @media (max-width: 720px), (min-width: 861px) {
@@ -1854,11 +1831,12 @@
   overflow: hidden;
 }
 .rhb .rhb-thread.is-new {
-  animation: rhb-row-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) 0.25s backwards;
+  animation: rhb-row-in var(--mock-block-dur) var(--mock-row-ease) 0.25s
+    backwards;
 }
 .rhb .rhb-kids-late {
   overflow: hidden;
-  animation: rhb-kid-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  animation: rhb-kid-in var(--mock-block-dur) var(--mock-row-ease) backwards;
 }
 @keyframes rhb-row-in {
   from { max-height: 0; opacity: 0; }
@@ -1898,8 +1876,18 @@
 .rhb .rhb-stage:not(.rhb-scene-linear) .rhb-col-panel {
   opacity: 0;
   transition:
-    opacity 0.25s ease,
-    width 0s linear 0.25s;
+    opacity var(--mock-panel-close-dur) var(--mock-panel-ease),
+    width 0s linear var(--mock-panel-close-dur);
+}
+
+.rhb .rhb-stage:not(.rhb-scene-sentry) .rhb-col-page,
+.rhb .rhb-stage:not(.rhb-scene-linear) .rhb-col-panel {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  bottom: 8px;
+  z-index: 3;
+  pointer-events: none;
 }
 
 .rhb .rhb-feed-layer {
@@ -1930,16 +1918,9 @@
   100% { opacity: 0; }
 }
 .rhb .rhb-issue-ph { position: absolute; inset: 0 0 auto; animation: rhb-gone 0s linear 1s forwards; }
-.rhb .rhb-col-main .rhb-band-end .rhb-btn { animation: rhb-fade-in 0.3s ease; }
-.rhb .rhb-has-sentry .rhb-col-main .rhb-btn { display: inline-flex; opacity: 0; visibility: hidden; animation: rhb-btn-out 0.3s ease; }
-
-@keyframes rhb-btn-out {
-  from { opacity: 1; visibility: visible; }
-  to { opacity: 0; visibility: visible; }
-}
 
 .rhb .rhb-scene-sentry .rhb-col-page {
-  transition: width 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+  transition: width var(--mock-panel-open-dur) var(--mock-panel-ease);
 }
 
 .rhb .rhb-scene-sentry .rhb-col-page .rhb-page {
@@ -2003,55 +1984,12 @@
   padding-left: 0;
 }
 
-.rhb .rhb-turn-fold {
-  display: grid;
-  grid-template-rows: 1fr;
-  margin-top: -6px;
-}
-
-.rhb .rhb-turn-fold > .rhb-turn-body {
-  min-width: 0;
-  min-height: 0;
-  margin-top: 0;
-}
-
-.rhb .rhb-turn-fold.is-furling {
-  animation:
-    rhb-reveal 0s linear backwards,
-    rhb-furl 0.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
-}
-
-@keyframes rhb-furl {
-  from {
-    grid-template-rows: 1fr;
-    margin-bottom: 0;
-    opacity: 1;
-    clip-path: inset(0);
-  }
-  40% {
-    opacity: 0;
-  }
-  to {
-    grid-template-rows: 0fr;
-    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
-    opacity: 0;
-    clip-path: inset(0);
-  }
-}
 
 .rhb .rhb-notes > .rhb-working.is-ending {
   --rhb-feed-gap: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rhb .rhb-turn-fold.is-furling {
-    animation: none;
-    grid-template-rows: 0fr;
-    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
-    opacity: 0;
-    clip-path: inset(0);
-  }
-
   .rhb .rhb-turn-head.is-opening {
     animation: none;
   }
@@ -2077,4 +2015,18 @@
 
 .rhb .rhb-scene-nav .rhb-foot-gear {
   animation: rhb-fade-in 0.35s ease 1s backwards;
+}
+
+.rhb .rhb-fit-narrow {
+  display: none;
+}
+
+.rhb :is(.rhb-has-sentry, .rhb-has-panel) .rhb-fit-wide,
+.rhb .rhb-feed-layer.is-out .rhb-fit-wide {
+  display: none;
+}
+
+.rhb :is(.rhb-has-sentry, .rhb-has-panel) .rhb-fit-narrow,
+.rhb .rhb-feed-layer.is-out .rhb-fit-narrow {
+  display: inline;
 }

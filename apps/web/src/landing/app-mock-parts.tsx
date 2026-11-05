@@ -304,6 +304,22 @@ export function useFitMock(ref: RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
+export function MockBubbleLines({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  return (
+    <span className={className}>
+      {text
+        .split("\n")
+        .flatMap((line, i) => (i === 0 ? [line] : [<br key={i} />, line]))}
+    </span>
+  );
+}
+
 export function MockUserBubble({
   children,
   className,
@@ -318,7 +334,11 @@ export function MockUserBubble({
       className={className ? `rhb-user ${className}` : "rhb-user"}
       style={style}
     >
-      {children}
+      {typeof children === "string"
+        ? children
+            .split("\n")
+            .flatMap((line, i) => (i === 0 ? [line] : [<br key={i} />, line]))
+        : children}
     </div>
   );
 }
@@ -636,6 +656,139 @@ export function MockChildEvent({
         )}
       </span>
       <span className="rhb-gen-body">{body}</span>
+    </div>
+  );
+}
+
+export const MOCK_FOLD_MS = 900;
+export const MOCK_FOLD_EASE = "cubic-bezier(0.45, 0, 0.2, 1)";
+export const MOCK_ROW_GROW_MS = 550;
+export const MOCK_BLOCK_MS = 650;
+export const MOCK_BLOCK_MS_PER_PX = 5;
+export const MOCK_BLOCK_MAX_MS = 1200;
+const MOCK_BLOCK_ROWS =
+  ".rhb-chart, .rhb-fix-card, .rhb-gen, .rhb-wait, .rhb-spawn";
+
+export function mockBlockMs(heightPx: number) {
+  return Math.min(
+    MOCK_BLOCK_MAX_MS,
+    Math.max(MOCK_BLOCK_MS, Math.round(heightPx * MOCK_BLOCK_MS_PER_PX)),
+  );
+}
+export const MOCK_ROW_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+export const MOCK_PANEL_OPEN_MS = 900;
+export const MOCK_PANEL_EASE = "cubic-bezier(0.45, 0, 0.2, 1)";
+export const MOCK_SLIDE_MS = 1400;
+export const MOCK_GLIDE_RATE = 0.02;
+export const MOCK_PACE_S = 1.1;
+export const MOCK_CHILD_REPORT_PAUSE_S = 2.5;
+export const MOCK_FIRST_ROW_S = 1.3;
+export const MOCK_THREAD_OPEN_S = 0.55;
+export const MOCK_WORKING_AFTER_PROMPT_S = 0.35;
+export const MOCK_HEAD_AFTER_PROMPT_S = 0.4;
+export const MOCK_TURN_GAP_S = 0.9;
+export const MOCK_BEAT_S = 0.3;
+export const MOCK_FOLD_BEAT_S = 0.6;
+export const MOCK_FOLLOW_UP_PAUSE_S = 2.2;
+export const MOCK_CLICK_LEAD_S = 1;
+export const MOCK_CLICK_GAP_S = 1.8;
+export const MOCK_KID_AFTER_CLICK_S = 0.75;
+export const MOCK_CURSOR_LEAD_S = 0.7;
+export const MOCK_MUTE_AFTER_S = 0.35;
+export const MOCK_MUTE_S = 0.35;
+export const MOCK_SWAP_S = 0.3;
+export const MOCK_RAIL_DELAY_S = 0.25;
+export const MOCK_RAIL_IN_S = 0.4;
+export const MOCK_TYPE_CHAR_S = 0.065;
+export const MOCK_BAR_DELAY_S = 0.45;
+export const MOCK_BAR_STAGGER_S = 0.06;
+export const MOCK_SCENE_HOLD_S = 1.7;
+export const MOCK_SCENE_HOLD_SHORT_S = 1.4;
+export const MOCK_SCENE_REST_S = MOCK_PACE_S;
+export const MOCK_SCENE_REST_AFTER_CLOSE_S = 1.4;
+export const MOCK_FINAL_HOLD_S = 3.2;
+export const MOCK_LOOP_PRELOAD_S = 1.1;
+export const MOCK_RESTART_FADE_S = 0.7;
+export const MOCK_LOOP_IDLE_S = 3.7;
+export const MOCK_SIDEBAR_LAG_S = 1.04;
+export const MOCK_STATUS_LEAD_S = 0.72;
+export const MOCK_WAIT_DONE_LEAD_S = 0.26;
+export const MOCK_TOAST_AFTER_S = 0.8;
+export const MOCK_TIMER_AFTER_S = 1;
+export const MOCK_TEST_RUN_S = 3.5;
+export const MOCK_LOOP_FADE_MS = 800;
+export const MOCK_LOOP_SCROLL_BACK_MS = 2000;
+export const MOCK_SLIDE_FIRST_HOLD_MS = 1050;
+export const MOCK_SLIDE_HOLD_MS = 2200;
+export const MOCK_SIDEBAR_SWAP_MS = 160;
+export const MOCK_SIDEBAR_MOVE_MS = 420;
+export const MOCK_CROSSFADE_IN_MS = 260;
+export const MOCK_CROSSFADE_DELAY_MS = 150;
+export const MOCK_CROSSFADE_OUT_MS = 150;
+export const MOCK_GHOST_FADE_MS = 450;
+export const MOCK_TITLE_GLIDE_MS = 300;
+export const MOCK_TITLE_GLIDE_DELAY_MS = 250;
+
+export function mockGrowRow(
+  el: HTMLElement,
+  room: number,
+  marginBottom = parseFloat(getComputedStyle(el).marginBottom) || 0,
+): Animation {
+  return mockAnimateFromNow(
+    el,
+    [
+      {
+        marginBottom: `${marginBottom - room}px`,
+        clipPath: `inset(0 -100vw ${room}px -100vw)`,
+      },
+      {
+        marginBottom: `${marginBottom}px`,
+        clipPath: "inset(0 -100vw 0 -100vw)",
+      },
+    ],
+    el.matches(MOCK_BLOCK_ROWS) ? mockBlockMs(room) : MOCK_ROW_GROW_MS,
+  );
+}
+
+export function mockAnimateFromNow(
+  el: HTMLElement,
+  [first, last]: [Record<string, string>, Record<string, string>],
+  duration = MOCK_ROW_GROW_MS,
+  easing = MOCK_ROW_EASE,
+): Animation {
+  Object.assign(el.style, first);
+  const anim = el.animate([first, last], {
+    duration,
+    easing,
+  });
+  const clear = () => {
+    for (const key of Object.keys(first))
+      el.style.removeProperty(
+        key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+      );
+  };
+  anim.addEventListener("finish", clear);
+  anim.addEventListener("cancel", clear);
+  return anim;
+}
+
+export function MockTurnFold({
+  revealAt = "0s",
+  foldAt = null,
+  children,
+}: {
+  revealAt?: string;
+  foldAt?: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={foldAt == null ? "rhb-turn-fold" : "rhb-turn-fold is-furling"}
+      style={{
+        animationDelay: foldAt == null ? revealAt : `${revealAt}, ${foldAt}`,
+      }}
+    >
+      <div className="rhb-turn-body">{children}</div>
     </div>
   );
 }

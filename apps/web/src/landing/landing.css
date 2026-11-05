@@ -71,6 +71,16 @@
   --mock-active: color-mix(in oklab, var(--ink) 10%, transparent);
   --shadow-lift: 0 -4px 12px -4px
     color-mix(in oklab, var(--shade) 8%, transparent);
+  --mock-fold-dur: 900ms;
+  --mock-fold-ease: cubic-bezier(0.45, 0, 0.2, 1);
+  --mock-row-dur: 550ms;
+  --mock-block-dur: 650ms;
+  --mock-row-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --mock-panel-open-dur: 900ms;
+  --mock-panel-close-dur: 250ms;
+  --mock-panel-ease: cubic-bezier(0.45, 0, 0.2, 1);
+  --mock-slide-dur: 1400ms;
+  --mock-slide-ease: cubic-bezier(0.45, 0, 0.55, 1);
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -3880,8 +3890,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mock-ui .rhb-user {
   align-self: flex-end;
-  max-width: 70%;
+  width: max-content;
+  max-width: none;
   padding: 9px 15px;
+  white-space: nowrap;
   border: 1px solid
     var(--rhb-seam, color-mix(in oklch, var(--ink) 9.5%, var(--bg)));
   border-radius: 12px;
@@ -4211,7 +4223,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mock-ui .rhb-turn-head.is-opening {
-  animation: rhb-turn-open 0.3s cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation: rhb-turn-open var(--mock-fold-dur) var(--mock-fold-ease) both;
 }
 
 @keyframes rhb-turn-open {
@@ -4242,18 +4254,17 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mock-ui .rhb-working.is-ending {
   animation:
     rhb-reveal 0s linear backwards,
-    rhb-working-end 0.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    rhb-working-end var(--mock-fold-dur) var(--mock-fold-ease) forwards;
 }
 
 @keyframes rhb-working-end {
-  40% {
-    opacity: 0;
-  }
   to {
-    grid-template-rows: 0fr;
-    margin-bottom: calc(-1 * var(--rhb-feed-gap, 12px));
     opacity: 0;
   }
+}
+
+.mock-ui .rhb-working.is-ending + * {
+  margin-top: calc(-20px - var(--rhb-feed-gap, 12px));
 }
 
 .mock-ui .rhb-turn .rhb-chev {
@@ -4345,5 +4356,60 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   to {
     opacity: 0;
     visibility: hidden;
+  }
+}
+
+.mock-ui .rhb-turn-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-top: -6px;
+  animation: rhb-reveal 0s linear backwards;
+}
+
+.mock-ui .rhb-turn-fold > .rhb-turn-body {
+  min-width: 0;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.mock-ui .rhb-turn-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+}
+
+.mock-ui .rhb-turn-fold.is-furling {
+  animation:
+    rhb-reveal 0s linear backwards,
+    rhb-furl var(--mock-fold-dur) var(--mock-fold-ease) forwards;
+}
+
+@keyframes rhb-furl {
+  from {
+    grid-template-rows: 1fr;
+    margin-bottom: 0;
+    opacity: 1;
+    clip-path: inset(0);
+  }
+  35% {
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
+    opacity: 0;
+    clip-path: inset(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mock-ui .rhb-turn-fold.is-furling {
+    animation: none;
+    grid-template-rows: 0fr;
+    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
+    opacity: 0;
+    clip-path: inset(0);
   }
 }
