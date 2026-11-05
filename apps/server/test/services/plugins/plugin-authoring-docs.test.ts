@@ -240,7 +240,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_environment.removed": ["removal"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
-  "thread.idle": ["thread", "lastAssistantText"],
+  "thread.idle": ["thread", "lastAssistantText", "silent"],
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.unarchived": ["thread"],

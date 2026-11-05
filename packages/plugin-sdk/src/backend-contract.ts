@@ -314,8 +314,15 @@ export interface PluginThreadEventPayloads {
   /** Fired when a thread transitions into `active`. */
   "thread.active": { thread: ThreadResponse };
   /** Fired when a thread transitions into `idle`. `lastAssistantText` is
-   * assembled the same way GET /threads/:id/output is. */
-  "thread.idle": { thread: ThreadResponse; lastAssistantText: string | null };
+   * assembled the same way GET /threads/:id/output is. `silent` is true when
+   * the turn that ended was started by the agent itself and left nothing to
+   * read (no agent text, question, approval or failed tool); that transition
+   * does not mark the thread unread, and notifiers should not announce it. */
+  "thread.idle": {
+    thread: ThreadResponse;
+    lastAssistantText: string | null;
+    silent?: true;
+  };
   /** Fired when a thread transitions into `error`. `error` is the latest
    * system/error event message, when one exists. */
   "thread.failed": { thread: ThreadResponse; error: string | null };

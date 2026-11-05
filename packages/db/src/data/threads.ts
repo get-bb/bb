@@ -2281,6 +2281,7 @@ export type ApplyThreadLifecycleEventOutcome =
 export interface ApplyThreadLifecycleEventArgs {
   event: ThreadLifecycleEvent;
   threadId: string;
+  attention?: "none";
 }
 
 interface ThreadLifecycleEventNotAppliedErrorArgs {
@@ -2350,6 +2351,7 @@ export function applyThreadLifecycleEventInTransaction(
     set.startupContext = null;
   }
   if (
+    args.attention !== "none" &&
     statusTransitionNeedsAttention({
       currentStatus: thread.status,
       newStatus: evaluation.to,

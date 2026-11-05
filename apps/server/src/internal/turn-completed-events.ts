@@ -56,6 +56,9 @@ export function applyTurnCompletedEvent(
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
     event: lifecycleEventForTurnCompletion(payload.status),
     threadId: payload.threadId,
+    ...(payload.silent === true && payload.status === "completed"
+      ? { attention: "none" as const }
+      : {}),
   });
   const nextStatus = outcome.applied ? outcome.thread.status : null;
 

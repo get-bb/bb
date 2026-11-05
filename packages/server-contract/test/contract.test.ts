@@ -46,7 +46,7 @@ interface OptionalServerFieldGroup {
   reason: string;
 }
 
-const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 46;
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 47;
 
 const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
@@ -270,6 +270,14 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadTimelineResponseSchema.rows.reasoningId",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.reasoningId",
+    ],
+  },
+  {
+    reason:
+      "A turn row carries a quiet turn count only when it holds agent-started turns that left nothing to read, folded into one row; absence means the row is a single turn whose duration can be shown.",
+    fields: [
+      "threadTimelineResponseSchema.rows.quietTurnCount",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.quietTurnCount",
     ],
   },
   {

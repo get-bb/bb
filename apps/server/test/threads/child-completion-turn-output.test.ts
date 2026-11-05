@@ -17,6 +17,7 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 interface ChildTurn {
   turnId: string;
   compacted?: boolean;
+  silent?: true;
   messages: { text: string; parentToolCallId?: string }[];
 }
 
@@ -93,6 +94,7 @@ function childTurnEvents(
         providerThreadId,
         scope,
         status: "completed" as const,
+        ...(turn.silent ? { silent: true as const } : {}),
       },
     },
   ];
@@ -200,6 +202,34 @@ describe("child completion output is scoped to the completed root turn", () => {
         expect(readParentNotices(harness, seeded.parent.id)).toEqual([
           expect.objectContaining({
             text: expect.stringContaining("Result after compaction."),
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("does not notify the parent for an agent-started turn that left nothing to read", async () => {
+    await withTestHarness(async (harness) => {
+      const seeded = seedParentAndChild(harness);
+      vi.useFakeTimers();
+      await postChildTurn(harness, {
+        ...seeded,
+        turn: { turnId: "turn-quiet", silent: true, messages: [] },
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(readParentNotices(harness, seeded.parent.id)).toEqual([]);
+
+      await postChildTurn(harness, {
+        ...seeded,
+        turn: {
+          turnId: "turn-answer",
+          messages: [{ text: "Background result." }],
+        },
+      });
+      await vi.waitFor(() =>
+        expect(readParentNotices(harness, seeded.parent.id)).toEqual([
+          expect.objectContaining({
+            text: expect.stringContaining("Background result."),
           }),
         ]),
       );

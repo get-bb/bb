@@ -507,6 +507,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     status: threadEventTurnStatusSchema,
     error: z.object({ message: z.string() }).optional(),
     providerCheckpointId: z.string().min(1).optional(),
+    silent: z.literal(true).optional(),
   }),
   z
     .object({

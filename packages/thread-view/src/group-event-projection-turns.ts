@@ -15,6 +15,7 @@ import {
 } from "./apply-turn-message-detail.js";
 import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
 import { isExternalUserBoundaryForTurn } from "./external-user-boundaries.js";
+import { eventProjectionMessageTurnScopeFields } from "./message-scope.js";
 
 export interface ThreadEventWithMeta {
   event: ThreadEvent;
@@ -25,8 +26,10 @@ type TurnCompletedEvent = Extract<ThreadEvent, { type: "turn/completed" }>;
 type TurnStartedEvent = Extract<ThreadEvent, { type: "turn/started" }>;
 
 interface ProjectionTurnDraft {
+  acceptedInput: boolean;
   completionSequence: number | null;
   messages: EventProjectionMessage[];
+  silent: boolean;
   startedSequence: number;
   turn: EventProjectionTurn;
 }
@@ -99,8 +102,10 @@ function createProjectionTurn(
     scope: event.scope,
   });
   return {
+    acceptedInput: false,
     completionSequence: null,
     messages: [],
+    silent: false,
     startedSequence: meta.seq,
     turn: {
       turnId,
@@ -145,7 +150,131 @@ function updateProjectionTurnCompletion(
   });
   draft.turn.completedAt = meta.createdAt;
   draft.turn.status = toEventProjectionTurnStatus(event.status);
+  draft.silent = event.status === "completed" && event.silent === true;
   draft.completionSequence ??= meta.seq;
+}
+
+function isReadableProjectionMessage(message: EventProjectionMessage): boolean {
+  switch (message.kind) {
+    case "assistant-text":
+      return message.text.trim() !== "";
+    case "user":
+    case "error":
+    case "permission-grant-lifecycle":
+    case "plugin-form-lifecycle":
+    case "user-question-lifecycle":
+      return true;
+    default:
+      return "status" in message && message.status === "error";
+  }
+}
+
+function isQuietProjectionTurn(draft: ProjectionTurnDraft): boolean {
+  return (
+    draft.silent &&
+    !draft.acceptedInput &&
+    draft.turn.status === "completed" &&
+    !draft.messages.some(isReadableProjectionMessage)
+  );
+}
+
+function hasClientRequestBetween(
+  clientRequestSequences: readonly number[],
+  after: number,
+  before: number,
+): boolean {
+  return clientRequestSequences.some(
+    (sequence) => sequence > after && sequence < before,
+  );
+}
+
+function foldQuietTurns(
+  quiet: readonly ProjectionTurnDraft[],
+  into: ProjectionTurnDraft | null,
+): ProjectionTurnDraft {
+  const first = quiet[0]!;
+  const last = into ?? quiet[quiet.length - 1]!;
+  const turnId = first.turn.turnId;
+  const scope = eventProjectionMessageTurnScopeFields(turnId);
+  const messages = [...quiet, ...(into ? [into] : [])].flatMap((draft) =>
+    draft.messages.map((message) =>
+      draft === first ? message : { ...message, ...scope },
+    ),
+  );
+  const quietTurnCount = quiet.reduce(
+    (count, draft) => count + (draft.turn.quietTurnCount ?? 1),
+    into?.turn.quietTurnCount ?? 0,
+  );
+  return {
+    acceptedInput: false,
+    completionSequence: last.completionSequence,
+    messages,
+    silent: into === null || into.silent,
+    startedSequence: first.startedSequence,
+    turn: {
+      ...last.turn,
+      turnId,
+      sourceSeqStart: first.turn.sourceSeqStart,
+      startedAt: first.turn.startedAt,
+      quietTurnCount,
+    },
+  };
+}
+
+function foldQuietTurnEntries(
+  entryDrafts: readonly ProjectionEntryDraft[],
+  turnsById: Map<string, ProjectionTurnDraft>,
+  clientRequestSequences: readonly number[],
+): ProjectionEntryDraft[] {
+  const folded: ProjectionEntryDraft[] = [];
+  let quiet: ProjectionTurnDraft[] = [];
+  let quietEntry: TurnEntryDraft | null = null;
+  const flush = () => {
+    if (quietEntry === null) return;
+    const group = foldQuietTurns(quiet, null);
+    turnsById.set(group.turn.turnId, group);
+    folded.push(quietEntry);
+    quiet = [];
+    quietEntry = null;
+  };
+  for (const entry of entryDrafts) {
+    if (entry.kind !== "turn") {
+      flush();
+      folded.push(entry);
+      continue;
+    }
+    const draft = turnsById.get(entry.turnId);
+    if (!draft) {
+      folded.push(entry);
+      continue;
+    }
+    const previous = quiet[quiet.length - 1];
+    const separated =
+      previous !== undefined &&
+      hasClientRequestBetween(
+        clientRequestSequences,
+        previous.completionSequence ?? previous.startedSequence,
+        draft.startedSequence,
+      );
+    if (separated) flush();
+    if (isQuietProjectionTurn(draft)) {
+      quietEntry ??= entry;
+      quiet.push(draft);
+      continue;
+    }
+    if (quietEntry !== null && !draft.acceptedInput) {
+      const group = foldQuietTurns(quiet, draft);
+      turnsById.set(group.turn.turnId, group);
+      folded.push(quietEntry);
+      quiet = [];
+      quietEntry = null;
+      continue;
+    }
+    flush();
+    folded.push(entry);
+  }
+  flush();
+  return folded;
 }
 
 function addProjectionTurnMessage(
@@ -272,11 +401,13 @@ export function groupEventProjectionTurns(
 ): EventProjection {
   const turnsById = new Map<string, ProjectionTurnDraft>();
   const clientRequestMetaById = new Map<string, EventMeta>();
+  const clientRequestSequences: number[] = [];
   const entryDrafts: ProjectionEntryDraft[] = [];
 
   for (const { event, meta } of args.events) {
     if (event.type === "client/turn/requested") {
       clientRequestMetaById.set(event.requestId, meta);
+      clientRequestSequences.push(meta.seq);
     }
   }
 
@@ -325,6 +456,7 @@ export function groupEventProjectionTurns(
           `Timeline projection found turn/input/accepted without turn/started for ${turnId}`,
         );
       }
+      existing.acceptedInput = true;
       const clientRequestMeta = clientRequestMetaById.get(
         event.clientRequestId,
       );
@@ -386,8 +518,10 @@ export function groupEventProjectionTurns(
       activeWorkflows: [],
       activeBackgroundCommands: [],
     },
-    entries: orderedEntryDrafts.map((entryDraft) =>
-      createEventProjectionEntry(entryDraft, turnsById),
-    ),
+    entries: foldQuietTurnEntries(
+      orderedEntryDrafts,
+      turnsById,
+      clientRequestSequences,
+    ).map((entryDraft) => createEventProjectionEntry(entryDraft, turnsById)),
   };
 }

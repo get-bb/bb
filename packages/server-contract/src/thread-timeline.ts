@@ -618,6 +618,7 @@ export interface TimelineTurnRow extends TimelineRowBase {
   summaryCount: number;
   completedAt: number | null;
   children: TimelineRow[] | null;
+  quietTurnCount?: number;
 }
 
 export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
@@ -628,6 +629,7 @@ export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
     summaryCount: z.number().int().nonnegative(),
     completedAt: z.number().nullable(),
     children: z.array(timelineRowSchema).nullable(),
+    quietTurnCount: z.number().int().positive().optional(),
   }),
 );
 

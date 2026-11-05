@@ -1528,9 +1528,12 @@ function mapWorkSummaryTitle(
 
 function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
   const isPending = row.status === "pending";
-  const durationDeco = isPending
-    ? durationDecoration(row.startedAt, row.completedAt, { em: true })
-    : completedTurnDurationDecoration(row.startedAt, row.completedAt);
+  const foldsQuietTurns = (row.quietTurnCount ?? 0) > 0;
+  const durationDeco = foldsQuietTurns
+    ? null
+    : isPending
+      ? durationDecoration(row.startedAt, row.completedAt, { em: true })
+      : completedTurnDurationDecoration(row.startedAt, row.completedAt);
   const hasCapturedDuration =
     !isPending && row.completedAt !== null && durationDeco !== null;
   if (hasCapturedDuration) {

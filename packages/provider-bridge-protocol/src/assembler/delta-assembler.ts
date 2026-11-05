@@ -1335,6 +1335,7 @@ export function createDeltaAssembler(
             ...(delta.providerCheckpointId === undefined
               ? {}
               : { providerCheckpointId: delta.providerCheckpointId }),
+            ...(delta.silent === undefined ? {} : { silent: delta.silent }),
           });
           return;
         }
@@ -1356,6 +1357,7 @@ export function createDeltaAssembler(
           ...(delta.providerCheckpointId === undefined
             ? {}
             : { providerCheckpointId: delta.providerCheckpointId }),
+          ...(delta.silent === undefined ? {} : { silent: delta.silent }),
         });
         finishTurn(state);
         return;

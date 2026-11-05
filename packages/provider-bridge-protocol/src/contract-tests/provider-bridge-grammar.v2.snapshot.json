@@ -148,7 +148,8 @@
       "error": "optional",
       "providerCheckpointId": "optional",
       "claimIfIdle": "optional",
-      "providerTurnId": "optional"
+      "providerTurnId": "optional",
+      "silent": "optional"
     },
     "turn.diff": {
       "kind": "required",
