@@ -14,7 +14,7 @@ jobs:
           node-version: '22.x'
           package-manager-cache: false
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
-      - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter '@bb/config...'
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter '@bb/config...' --filter '@bb/db...'
       - env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
