@@ -205,16 +205,41 @@ describe("OnboardingGate", () => {
     });
   });
 
-  it("starts loading agent install info while the guide is still opening", () => {
+  it("starts loading agent install info before the new guide renders, and leaves today's guide as it was", () => {
     configWith({ onboardingCompletedAt: null });
     mocks.useSetupGuideAssignment.mockReturnValue({
       isPending: true,
       data: undefined,
     });
+    const { view } = renderGate();
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host-1",
+      enabled: false,
+    });
 
-    renderGate();
+    mocks.useSetupGuideAssignment.mockReturnValue({
+      isPending: false,
+      data: { variant: "control", featuredPluginEntryIds: null },
+    });
+    view.rerender(
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
+    );
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host-1",
+      enabled: false,
+    });
 
-    expect(screen.queryByText(/Setup guide/u)).toBeNull();
+    mocks.useSetupGuideAssignment.mockReturnValue({
+      isPending: false,
+      data: { variant: "new", featuredPluginEntryIds: null },
+    });
+    view.rerender(
+      <OnboardingGate>
+        <div>App shell</div>
+      </OnboardingGate>,
+    );
     expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
       hostId: "host-1",
       enabled: true,

@@ -94,6 +94,7 @@ import {
   STEP_COPY,
   connectAccessUrl,
   devicesShowMachines,
+  agentRowSetup,
   connectFlowFailed,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
@@ -142,8 +143,6 @@ const REDESIGN_INSTALL_FAILED_MESSAGE =
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
-
-function noop() {}
 
 function stepCopy(redesign: boolean, step: OnboardingStepId) {
   return STEP_COPY[redesign ? "new" : "control"][step];
@@ -535,7 +534,10 @@ function AgentStepContainer({
             id: health.providerId,
             name: health.displayName,
             provider: info ?? { id: health.providerId, logoUrl: null },
-            setup: connectFlow !== null ? "connect" : "signIn",
+            setup: agentRowSetup({
+              connect: connectFlow !== null,
+              awaitingSession: starting && signIn === null,
+            }),
             installQueued: redesign && installRunner.queuedJobKeys.has(jobKey),
             ...(redesign && installFailure !== undefined
               ? { installLog: installFailure.logDialogState.log }
@@ -574,26 +576,7 @@ function AgentStepContainer({
               whileInstallInfoPending: redesign ? "offerInstall" : "checking",
             }),
             expanded:
-              signIn === null ? (
-                starting ? (
-                  <AgentSignInPanel
-                    connect={connectFlow !== null}
-                    agentName={health.displayName}
-                    view={{
-                      guide: null,
-                      terminalVisible: !parsed,
-                      started: false,
-                    }}
-                    code=""
-                    codeSubmitted={false}
-                    terminal={null}
-                    onCodeChange={noop}
-                    onSubmitCode={noop}
-                    onCopy={noop}
-                    onToggleTerminal={noop}
-                  />
-                ) : undefined
-              ) : (
+              signIn === null ? undefined : (
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}

@@ -544,7 +544,8 @@ describe("AgentStep progress in the redesign", () => {
     within(rowOf("claude-code")).getByText("Ready");
     expect(screen.queryByText("Signed in")).toBeNull();
     within(rowOf("cursor")).getByText("you@example.com · Pro");
-    within(rowOf("pi")).getByText("Model connected");
+    expect(hasSubtitle("pi")).toBe(false);
+    within(rowOf("pi")).getByText("Ready");
   });
 
   it("shows Installing… in the same disabled button", () => {
