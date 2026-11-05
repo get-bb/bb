@@ -4597,8 +4597,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-light);
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
-  --mx-move: 0.75s var(--ease-in-out);
-  --mx-color: 1s ease;
+  --mx-color: 0.8s cubic-bezier(0.9, 0, 0.1, 1);
+  --mx-move: 0s;
   transition:
     --mx-canvas var(--mx-color),
     --mx-ink var(--mx-color),
@@ -4612,6 +4612,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     --mx-line var(--mx-color),
     --mx-side-w var(--mx-move),
     --mx-panel-w var(--mx-move);
+}
+
+.bw-morph.mx-slide {
+  --mx-move: 0.3s var(--ease-in-out);
 }
 
 .dark .bw-morph.mx-stock {
@@ -4729,14 +4733,15 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-side-slot > .mx-layer,
 .mx-panel > .mx-ag,
 .mx-title {
-  transition: opacity 0.4s ease;
+  transition: opacity 0.2s var(--ease-out);
 }
 
 .mx-hide-center .mx-center > .mx-layer,
 .mx-hide-side .mx-side-slot > .mx-layer,
 .mx-hide-panel .mx-panel > .mx-ag,
-.mx-hide-title .mx-title.is-on {
+.mx-hide-title .mx-title {
   opacity: 0;
+  transition-duration: 0.12s;
 }
 
 .mx-titles {
@@ -4761,9 +4766,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   opacity: 0;
   overflow: hidden;
   transition:
-    height var(--mx-move),
-    margin var(--mx-move),
-    opacity 0.4s ease,
+    height 0.2s var(--ease-in-out),
+    margin 0.2s var(--ease-in-out),
+    opacity 0.2s var(--ease-out),
     background 0.4s ease,
     color 0.4s ease;
 }

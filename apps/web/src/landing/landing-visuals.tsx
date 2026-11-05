@@ -906,10 +906,9 @@ const MORPH_SCENES: readonly MorphScene[] = [
 ];
 const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
 const MORPH_FIRST_HOLD_MS = 1050;
+const MORPH_OUT_MS = 120;
+const MORPH_GLIDE_MS = 800;
 const MORPH_HOLD_MS = 1820;
-const MORPH_OUT_MS = 400;
-const MORPH_MOVE_MS = 750;
-const MORPH_IN_MS = 500;
 
 type MorphCenter = "thread" | "files" | "taskboard";
 type MorphSide = "threads" | "shelves" | null;
@@ -941,11 +940,8 @@ const MORPH_TITLES: Record<MorphCenter, string> = {
 type MorphRegion = "center" | "side" | "panel" | "title";
 
 function morphChanges(a: MorphScene, b: MorphScene): MorphRegion[] {
-  const layout = (scene: MorphScene) =>
-    `${MORPH_SIDE[scene]}|${scene === "graph"}`;
   const regions: MorphRegion[] = [];
-  if (MORPH_CENTER[a] !== MORPH_CENTER[b] || layout(a) !== layout(b))
-    regions.push("center");
+  if (MORPH_CENTER[a] !== MORPH_CENTER[b]) regions.push("center");
   if (MORPH_SIDE[a] !== MORPH_SIDE[b]) regions.push("side");
   if ((a === "graph") !== (b === "graph")) regions.push("panel");
   if (MORPH_TITLES[MORPH_CENTER[a]] !== MORPH_TITLES[MORPH_CENTER[b]])
@@ -953,20 +949,24 @@ function morphChanges(a: MorphScene, b: MorphScene): MorphRegion[] {
   return regions;
 }
 
-type MorphState = { scene: number; hide: MorphRegion[] };
+type MorphState = { scene: number; hide: MorphRegion[]; slide: boolean };
 
 function useMorphTimeline(active: boolean) {
-  const [state, setState] = useState<MorphState>({ scene: 0, hide: [] });
+  const [state, setState] = useState<MorphState>({
+    scene: 0,
+    hide: [],
+    slide: false,
+  });
   useEffect(() => {
     if (!active) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setState({ scene: MORPH_STATIC_SCENE, hide: [] });
+      setState({ scene: MORPH_STATIC_SCENE, hide: [], slide: false });
       return;
     }
     let timer = 0;
     let first = true;
     const hold = () => {
-      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_IN_MS + MORPH_HOLD_MS;
+      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_GLIDE_MS + MORPH_HOLD_MS;
       first = false;
       timer = window.setTimeout(() => {
         setState((current) => {
@@ -977,17 +977,16 @@ function useMorphTimeline(active: boolean) {
               MORPH_SCENES[current.scene]!,
               MORPH_SCENES[next]!,
             ),
+            slide: false,
           };
         });
         timer = window.setTimeout(() => {
           setState((current) => ({
             scene: (current.scene + 1) % MORPH_SCENES.length,
-            hide: current.hide,
+            hide: [],
+            slide: !current.hide.includes("center"),
           }));
-          timer = window.setTimeout(() => {
-            setState((current) => ({ ...current, hide: [] }));
-            hold();
-          }, MORPH_MOVE_MS);
+          hold();
         }, MORPH_OUT_MS);
       }, wait);
     };
@@ -997,6 +996,7 @@ function useMorphTimeline(active: boolean) {
   return {
     scene: MORPH_SCENES[state.scene]!,
     hide: state.hide,
+    slide: state.slide,
     paused: !active,
   };
 }
@@ -1601,7 +1601,7 @@ function MorphAgentGraph() {
 
 export function PluginMorph() {
   const { ref, active } = useMockWindow();
-  const { scene, hide, paused } = useMorphTimeline(active);
+  const { scene, hide, slide, paused } = useMorphTimeline(active);
   const center = MORPH_CENTER[scene];
   const side = MORPH_SIDE[scene];
   const titles = [...new Set(Object.values(MORPH_TITLES))];
@@ -1609,7 +1609,7 @@ export function PluginMorph() {
   return (
     <div
       ref={ref}
-      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${hide.map((region) => ` mx-hide-${region}`).join("")}${paused ? " fw-paused" : ""}`}
+      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${hide.map((region) => ` mx-hide-${region}`).join("")}${slide ? " mx-slide" : ""}${paused ? " fw-paused" : ""}`}
       data-scene={scene}
       role="img"
       aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
