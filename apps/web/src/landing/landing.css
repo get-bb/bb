@@ -1686,6 +1686,13 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
+.bw .tunread {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--subtle) 60%, transparent);
+}
+
 .twait {
   width: 14px;
   height: 14px;
@@ -2663,7 +2670,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .band-stacked .band-copy {
   order: 0;
-  max-width: 640px;
+  max-width: none;
+}
+
+.band-stacked .band-copy p {
+  max-width: none;
 }
 
 .band-stacked .band-visual {
@@ -2818,8 +2829,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: 0;
 }
 
-.bw-feed > .bw-reveal > .bw-reveal-inner {
-  padding-top: 14px;
+.bw-feed > .bw-reveal > .bw-reveal-inner > * {
+  margin-top: 14px;
 }
 
 .bw-feed > .bw-reveal,
@@ -3091,7 +3102,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-start-stage {
-  --bw-phone-size: 0.8;
+  --bw-phone-size: calc(0.8 + var(--bw-drop) * 1.1);
   --bw-overlay-scale: calc(
     clamp(0.74, var(--mock-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
   );
@@ -3119,7 +3130,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   position: absolute;
   z-index: 3;
   bottom: 0;
-  left: calc(var(--bw-fit-slice) - 20px - 312px);
+  left: calc(
+    var(--bw-fit-slice) - 332px + var(--bw-drop) *
+      ((312px * var(--bw-overlay-scale) - var(--bw-fit-slice)) / 2 + 20px)
+  );
   width: 312px;
   height: 656px;
   padding: 9px;
@@ -3243,8 +3257,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow: hidden;
 }
 
-.bw-m-feed > .bw-reveal > .bw-reveal-inner {
-  padding-top: 10px;
+.bw-m-feed > .bw-reveal > .bw-reveal-inner > * {
+  margin-top: 10px;
 }
 
 .bw-m-user {
@@ -3268,45 +3282,79 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--ink);
 }
 
-.bw-m-row {
+.bw-step {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
-  font-size: var(--mock-text-lg);
-  line-height: 20px;
   color: var(--dim);
   white-space: nowrap;
   opacity: 0.4;
 }
 
-.bw-m-row.is-live {
+.bw-feed .bw-step {
+  padding: 0 2px;
+  font-size: var(--mock-text-base);
+  line-height: 20px;
+}
+
+.bw-m-feed .bw-step {
+  padding: 0 8px;
+  font-size: var(--mock-text-lg);
+  line-height: 20px;
+}
+
+.bw-step.is-live {
   opacity: 1;
 }
 
-.bw-m-row-ic {
+.bw-step-ic {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
   margin-right: 2px;
 }
 
-.bw-m-object {
+.bw-step-object {
   overflow: hidden;
   font-weight: 500;
   color: color-mix(in oklab, var(--ink) 70%, transparent);
   text-overflow: ellipsis;
 }
 
-.bw-m-timer {
-  color: var(--subtle);
+@property --bw-sec {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 1;
 }
 
-.bw-m-chev {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  color: color-mix(in oklab, var(--subtle) 60%, transparent);
+.bw-step-timer {
+  color: var(--subtle);
+  counter-reset: bw-sec var(--bw-sec);
+  opacity: 0;
+  animation: bw-tick 60s steps(60, end) var(--fw-at, 0s) forwards;
+}
+
+.bw-step-timer::after {
+  content: counter(bw-sec) "s";
+}
+
+@keyframes bw-tick {
+  from {
+    --bw-sec: 1;
+    opacity: 1;
+  }
+  to {
+    --bw-sec: 61;
+    opacity: 1;
+  }
+}
+
+.bw-working {
+  min-height: 28px;
+  padding: 0 2px;
+  font-size: var(--mock-text-base);
+  line-height: 28px;
+  color: var(--dim);
 }
 
 .bw-m-working {
@@ -3316,6 +3364,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-size: var(--mock-text-lg);
   line-height: 28px;
   color: var(--dim);
+}
+
+.bw-working,
+.bw-m-working {
   -webkit-mask-image: linear-gradient(
     100deg,
     #000 30%,
@@ -4574,22 +4626,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-light);
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
-  --mx-color-ms: 1.35s;
-  --mx-move: 1.35s var(--ease-in-out);
-  transition:
-    --mx-canvas var(--mx-color-ms) ease,
-    --mx-ink var(--mx-color-ms) ease,
-    --mx-side var(--mx-color-ms) ease,
-    --mx-accent var(--mx-color-ms) ease,
-    --mx-ok var(--mx-color-ms) ease,
-    --mx-warn var(--mx-color-ms) ease,
-    --mx-purple var(--mx-color-ms) ease,
-    --mx-red var(--mx-color-ms) ease,
-    --mx-cyan var(--mx-color-ms) ease,
-    --mx-line var(--mx-color-ms) ease,
-    --mx-side-w var(--mx-move),
-    --mx-panel-w var(--mx-move);
-  transition-delay: 0.45s;
 }
 
 .dark .bw-morph.mx-stock {
@@ -4690,18 +4726,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-window .bar-left {
   width: calc(44px + max(var(--mx-side-w), 128px));
-  transition: border-color 0.75s ease 0.45s;
 }
 
 .mx-collapsed .mx-window .bar-left {
   border-right-color: transparent;
 }
 
+.mx-window {
+  transition: opacity 0.5s ease;
+}
+
+.mx-hidden .mx-window {
+  opacity: 0;
+}
+
 .mx-window .bar-toggle,
 .mx-window .rail-btn {
-  transition:
-    background 0.75s ease 0.45s,
-    color 0.75s ease 0.45s;
+  transition: none;
 }
 
 .mx-titles {
@@ -4714,12 +4755,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  transition: opacity 0.375s ease 0.45s;
 }
 
 .mx-title.is-on {
   opacity: 1;
-  transition: opacity 0.525s ease 0.9s;
 }
 
 .mx-rail-plugin {
@@ -4727,22 +4766,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: -6px;
   opacity: 0;
   overflow: hidden;
-  transition:
-    height var(--mx-move) 0.45s,
-    margin var(--mx-move) 0.45s,
-    opacity 0.6s ease 0.45s,
-    background 0.75s ease 0.45s;
 }
 
 .mx-rail-plugin.is-on {
   height: 28px;
   margin-top: 0;
   opacity: 1;
-  transition:
-    height var(--mx-move) 0.45s,
-    margin var(--mx-move) 0.45s,
-    opacity 0.75s ease 0.9s,
-    background 0.75s ease 0.45s;
 }
 
 .mx-side-slot,
@@ -4776,46 +4805,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   visibility: hidden;
 }
 
-.mx-layer.is-under {
-  z-index: 1;
-  visibility: visible;
-  animation: mx-leave 0.4s ease both;
-}
-
 .mx-layer.is-on {
   z-index: 2;
   visibility: visible;
-}
-
-.mx-layer.is-entering {
-  animation: mx-enter 0.6s ease 1.9s both;
-}
-
-.mx-layer.is-staying {
-  animation: mx-stay 2.5s ease both;
-}
-
-@keyframes mx-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-@keyframes mx-leave {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes mx-stay {
-  16% {
-    opacity: 0;
-  }
-  76% {
-    opacity: 0;
-    transform: translateY(8px);
-  }
 }
 
 .bw-morph .side.mx-layer {
@@ -5388,16 +5380,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--bg);
 }
 
-.mx-panel > .mx-ag {
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-
-.bw-morph.mx-graph .mx-panel > .mx-ag {
-  opacity: 1;
-  transition: opacity 0.6s ease 1.9s;
-}
-
 .mx-ag {
   display: flex;
   flex-direction: column;
@@ -5630,12 +5612,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .mx-fe-doc {
     padding: 18px 16px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bw-morph {
-    transition: none;
   }
 }
 
