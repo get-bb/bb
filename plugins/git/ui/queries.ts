@@ -92,7 +92,7 @@ export function useGitBranches(args: {
     args.query.trim(),
     BRANCH_SEARCH_DEBOUNCE_MS,
   );
-  return useRpcQuery({
+  const branches = useRpcQuery({
     contract: gitRpcContract,
     method: "branches",
     input: {
@@ -104,6 +104,18 @@ export function useGitBranches(args: {
     },
     enabled: args.enabled && args.environmentId !== null,
   });
+  const scope = `${args.environmentId ?? ""}\0${args.selectedBranch ?? ""}`;
+  const [lastLoaded, setLastLoaded] = useState<{
+    scope: string;
+    data: NonNullable<typeof branches.data>;
+  } | null>(null);
+  if (branches.data !== undefined && lastLoaded?.data !== branches.data) {
+    setLastLoaded({ scope, data: branches.data });
+  }
+  const data =
+    branches.data ??
+    (lastLoaded?.scope === scope ? lastLoaded.data : undefined);
+  return { ...branches, data };
 }
 
 export function useFetchRemoteBranches() {
