@@ -44,6 +44,7 @@ export interface Env {
   PRESENCE_WRITES?: string;
   GATE_SECRET?: string;
   NEXT_BASE_DOMAIN?: string;
+  CONNECT_DB_FLAGS?: KVNamespace;
 }
 
 const TUNNEL_TAG = "tunnel";

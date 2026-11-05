@@ -7,6 +7,7 @@ export type GateStage =
 
 export interface GateProgress {
   stage: GateStage;
+  upstream: "tunnel-object" | "fly-gate";
   tunnelObjectAttempts: number;
   routingKey: string | null;
 }

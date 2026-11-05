@@ -15,6 +15,12 @@ export const GATE_PRESENCE_BATCH_MAX = 500;
 export const GATE_KEYS_PATH = "/.well-known/bb-connect-gate-keys.json";
 export const GATE_ASSERTION_TTL_SECONDS = 60;
 export const GATE_ASSERTION_CLOCK_SKEW_SECONDS = 30;
+export const FRP_LOGIN_PAUSED_REASON =
+  "bb connect next: not yet enabled for this server";
+export const GATE_FORWARDED_HOST_HEADER = "x-bb-gate-forwarded-host";
+export const GATE_FORWARDED_AUTH_HEADER = "x-bb-gate-forwarded-auth";
+export const GATE_FAST_OFFLINE_HEADER = "x-bb-gate-fast-offline";
+export const GATE_OFFLINE_HEADER = "x-bb-gate-offline";
 
 export const GATE_PUBLIC_PATHS: ReadonlySet<string> = new Set([
   "/install.sh",

@@ -85,6 +85,7 @@ export default {
           originRequest,
           {
             stage: "routing",
+            upstream: "tunnel-object",
             tunnelObjectAttempts: 0,
             routingKey: null,
           },

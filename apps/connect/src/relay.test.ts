@@ -77,7 +77,12 @@ function upgradedWith(socket: FakeRelaySocket, relayHeader = "1") {
 const STREAM_ID = 7;
 
 function newProgress(): GateProgress {
-  return { stage: "routing", tunnelObjectAttempts: 0, routingKey: null };
+  return {
+    stage: "routing",
+    upstream: "tunnel-object",
+    tunnelObjectAttempts: 0,
+    routingKey: null,
+  };
 }
 
 describe("relay upgrade request", () => {

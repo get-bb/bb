@@ -164,6 +164,10 @@ requests, so the gate also writes these to the Analytics Engine dataset
   or unreported previous tunnel is a bb whose abandoned dial replaced its
   working tunnel; `double1 + double2` near 300,000 means it then waited out the
   five-minute takeover backoff.
+- `blob1` `route` records which gate served a request on a label the bb connect
+  next route flag allows (`fly`, `cloudflare` or `fallback` in `blob2`, reason
+  in `blob6`, status in `double2`); see "`<label>.getbb.app` through the
+  Worker" in [connect-next.md](connect-next.md).
 
 Query with the Analytics Engine SQL API and an Account Analytics Read token,
 for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM

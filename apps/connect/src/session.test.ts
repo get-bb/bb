@@ -150,7 +150,33 @@ describe("resolveLabel — label → server row (multi-server)", () => {
         credentialHash: "hash",
         revokedAt: null,
         lastSeenAt: seen,
+        nextTunnelGate: null,
+        nextTunnelAt: null,
       },
+    });
+  });
+
+  it("carries the server's bb connect next tunnel so the gate can route to Fly", async () => {
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer", createdAt: now });
+    await seedServer({
+      id: "srv-next",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+    });
+    const nextAt = new Date(now.getTime() - 30_000);
+    await db
+      .update(server)
+      .set({ nextTunnelGate: "gate-iad-1", nextTunnelAt: nextAt })
+      .where(eq(server.id, "srv-next"));
+
+    const resolved = await resolveLabel("sawyer", db, { fresh: true });
+    expect(resolved?.kind === "server" ? resolved.server : null).toMatchObject({
+      nextTunnelGate: "gate-iad-1",
+      nextTunnelAt: nextAt,
     });
   });
 
@@ -321,6 +347,8 @@ describe("resolveLabel — label → server row (multi-server)", () => {
         credentialHash: "machine-hash",
         revokedAt: null,
         lastSeenAt: seen,
+        nextTunnelGate: null,
+        nextTunnelAt: null,
       },
     });
   });
