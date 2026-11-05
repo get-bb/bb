@@ -449,6 +449,7 @@ function MockSendButton({ running }: { running: boolean }) {
 export function MockComposer({
   input,
   model = "Opus 5.5",
+  modelIcon: ModelIcon = ClaudeIcon,
   reasoning = "Medium",
   project = null,
   environment,
@@ -459,6 +460,7 @@ export function MockComposer({
 }: {
   input: ReactNode;
   model?: string;
+  modelIcon?: MockIcon;
   reasoning?: string;
   project?: string | null;
   environment?: string;
@@ -477,7 +479,7 @@ export function MockComposer({
         <div className="rhb-box-row">
           <PlusIcon className="rhb-ic" />
           <span className="rhb-model">
-            <ClaudeIcon className="rhb-model-ic" />
+            <ModelIcon className="rhb-model-ic" />
             <span className="rhb-model-name">{model}</span>{" "}
             <span className="rhb-model-sub">{reasoning}</span>
             <ChevronDown className="rhb-chev" />

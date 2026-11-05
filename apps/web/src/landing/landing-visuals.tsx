@@ -37,7 +37,15 @@ import {
   Maximize2,
   MicIcon,
   MockBar,
+  MockChildEvent,
+  MockComposer,
+  MockStepContent,
+  MockStepRow,
+  MockTurnHeader,
+  MockUserBubble,
+  MockWorkingRow,
   type IconProps,
+  type MockStep,
   type NavLabel,
   type ThreadState,
   NavRail,
@@ -51,7 +59,6 @@ import {
   SendIcon,
   Spinner,
   StatusGlyph,
-  SubagentIcon,
   TerminalIcon,
   useFitMock,
 } from "./app-mock-parts";
@@ -756,21 +763,30 @@ function stageClass(base: string, leaving: boolean, paused: boolean) {
 
 function Reveal({
   at: seconds,
+  until,
   className,
   children,
 }: {
   at?: number;
+  until?: number;
   className?: string;
   children: ReactNode;
 }) {
   const classes = ["bw-reveal"];
   if (seconds === undefined) classes.push("bw-reveal-still");
+  if (until !== undefined) classes.push("bw-reveal-until");
   if (className) classes.push(className);
+  const style =
+    seconds === undefined
+      ? undefined
+      : until === undefined
+        ? at(seconds)
+        : ({
+            "--fw-at": `${seconds}s`,
+            "--fw-out": `${until}s`,
+          } as CSSProperties);
   return (
-    <div
-      className={classes.join(" ")}
-      style={seconds === undefined ? undefined : at(seconds)}
-    >
+    <div className={classes.join(" ")} style={style}>
       <div className="bw-reveal-inner">{children}</div>
     </div>
   );
@@ -858,25 +874,49 @@ function ThreadRow({
   );
 }
 
+const FOLLOW_UP_PLACEHOLDER =
+  "Ask for a follow-up. @ to mention files, folders, sections, or threads";
+
 function WindowComposer({
-  placeholder,
   model,
   modelIcon,
-  banner,
 }: {
-  placeholder: string;
   model: string;
   modelIcon: RowIcon;
-  banner?: ReactNode;
 }) {
   return (
-    <div className="composer">
-      {banner}
-      <ComposerBox model={model} modelIcon={modelIcon}>
-        <span className="composer-input bw-placeholder">{placeholder}</span>
-        <Maximize2 className="cb-expand" />
-      </ComposerBox>
-    </div>
+    <MockComposer
+      className="bw-dock"
+      project="checkout-web"
+      model={model}
+      modelIcon={modelIcon}
+      input={<span className="rhb-placeholder">{FOLLOW_UP_PLACEHOLDER}</span>}
+    />
+  );
+}
+
+function LeadTurn({
+  step,
+  start,
+  furl,
+  worked,
+}: {
+  step: MockStep;
+  start: number;
+  furl: number;
+  worked: string;
+}) {
+  return (
+    <Reveal at={start}>
+      <div className="bw-turn">
+        <MockTurnHeader worked={worked} openAt={`${furl}s`} />
+        <div className="bw-turn-fold" style={at(furl)}>
+          <div className="bw-turn-body">
+            <MockStepRow step={step} />
+          </div>
+        </div>
+      </div>
+    </Reveal>
   );
 }
 
@@ -1103,23 +1143,16 @@ function MorphThread() {
   return (
     <>
       <div className="feed bw-feed mx-feed">
-        <div className="msg-user">
+        <MockUserBubble>
           Checkout times out on slow networks. Find the cause and fix it.
-        </div>
-        <div className="msg-step">
-          <ChevronRight className="step-chev" />
-          Explored 4 files, ran 2 commands
-        </div>
+        </MockUserBubble>
+        <MockTurnHeader worked="1m 4s" />
         <div className="msg-say">
           Found it: the payment request gives up after 5 seconds. I raised the
           timeout to 30 seconds, added one retry, and the checkout tests pass.
         </div>
       </div>
-      <WindowComposer
-        placeholder="Ask for a follow-up"
-        model="Opus 5.5"
-        modelIcon={ClaudeIcon}
-      />
+      <WindowComposer model="Opus 5.5" modelIcon={ClaudeIcon} />
     </>
   );
 }
@@ -1585,7 +1618,7 @@ export function PluginMorph() {
       role="img"
       aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
     >
-      <div className="mock bw-window mx-window">
+      <div className="mock bw-window mx-window mock-ui">
         <WindowBar
           panelOpen={scene === "graph"}
           title={
@@ -1660,58 +1693,44 @@ const DELEGATION_CHILDREN = [
   {
     icon: ClaudeIcon,
     title: "Plan the fix",
-    landsAt: 1.84,
-    then: [{ status: "unread", at: 4.9 }],
+    landsAt: 1.88,
+    then: [{ status: "unread", at: 6 }],
   },
   {
     icon: CursorIcon,
     title: "Build it",
-    landsAt: 9.12,
+    landsAt: 8.74,
     then: [
-      { status: "waiting", at: 11.6 },
-      { status: "running", at: 14.74 },
-      { status: "unread", at: 16.4 },
+      { status: "waiting", at: 12.7 },
+      { status: "running", at: 17.04 },
+      { status: "unread", at: 18.6 },
     ],
   },
   {
     icon: OpenAiIcon,
     title: "Review the diff",
-    landsAt: 20.66,
-    then: [{ status: "waiting", at: 23.1 }],
+    landsAt: 21.34,
+    then: [{ status: "waiting", at: 25.2 }],
   },
 ] as const;
 
-function SpawnLine({ title, provider }: { title: string; provider: string }) {
-  return (
-    <div className="msg-step msg-spawn">
-      <SubagentIcon className="step-chev" />
-      Started <strong>{title}</strong> in {provider}
-    </div>
-  );
+function spawnStep(provider: string, prompt: string): MockStep {
+  return {
+    kind: "cmd",
+    verb: "Ran",
+    em: `bb thread spawn --project $BB_PROJECT_ID --parent-self --provider ${provider} --prompt "${prompt}"`,
+  };
 }
 
-function ChildUpdate({
-  icon: Icon,
-  children,
-}: {
-  icon: RowIcon;
-  children: ReactNode;
-}) {
-  return (
-    <div className="bw-update">
-      <span className="bw-update-body">
-        <Icon className="bw-update-ic" />
-        <span>{children}</span>
-      </span>
-    </div>
-  );
-}
+const PLAN_THREAD = { icon: ClaudeIcon, label: "Plan the fix" };
+const BUILD_THREAD = { icon: CursorIcon, label: "Build it" };
+const REVIEW_THREAD = { icon: OpenAiIcon, label: "Review the diff" };
 
 const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(27000, 2000, active);
+  const { cycle, leaving, paused } = useCycle(30300, 2000, active);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const view = scrollRef.current;
@@ -1729,7 +1748,7 @@ export function DelegationTree() {
       role="img"
       aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows a short note from the lead between each child's update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
     >
-      <div className="mock bw-window">
+      <div className="mock bw-window mock-ui">
         <WindowBar title={DELEGATION_LEAD} />
         <div
           className={stageClass("mock-body bw-body", leaving, paused)}
@@ -1767,80 +1786,99 @@ export function DelegationTree() {
           <div className="main">
             <div ref={scrollRef} className="bw-feed-scroll">
               <div className="feed bw-feed">
-                <div className="msg-user">
+                <MockUserBubble>
                   Ship the checkout timeout fix. Plan it, build it and get it
                   reviewed.
-                </div>
-                <Reveal at={0.84}>
-                  <SpawnLine title="Plan the fix" provider="Claude Code" />
+                </MockUserBubble>
+                <LeadTurn
+                  start={0.84}
+                  furl={3.2}
+                  worked="3s"
+                  step={spawnStep("claude", "Plan the checkout timeout fix")}
+                />
+                <Reveal at={0.84} until={3.9}>
+                  <MockWorkingRow />
                 </Reveal>
-                <Reveal at={2.64}>
+                <Reveal at={3.9}>
                   <div className="msg-say">
                     Claude Code is planning the fix.
                   </div>
                 </Reveal>
-                <Reveal at={5.36}>
-                  <ChildUpdate icon={ClaudeIcon}>
-                    <strong>Plan the fix</strong> finished: three steps in{" "}
-                    <code>plan.md</code>
-                  </ChildUpdate>
+                <Reveal at={6.46}>
+                  <MockChildEvent
+                    kind="finished"
+                    thread={PLAN_THREAD}
+                    body={
+                      <>
+                        Three steps in <code>plan.md</code>
+                      </>
+                    }
+                  />
                 </Reveal>
-                <Reveal at={7}>
+                <LeadTurn
+                  start={7.7}
+                  furl={10}
+                  worked="4s"
+                  step={spawnStep("cursor", "Build the fix in plan.md")}
+                />
+                <Reveal at={7.7} until={10.7}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={10.7}>
                   <div className="msg-say">
-                    The plan has three steps. Handing the build to Cursor.
+                    The plan has three steps. Cursor is building it now.
                   </div>
                 </Reveal>
-                <Reveal at={8.12}>
-                  <SpawnLine title="Build it" provider="Cursor" />
+                <Reveal at={13.16}>
+                  <MockChildEvent
+                    kind="message"
+                    thread={BUILD_THREAD}
+                    body="Keep the 30s timeout, or make it configurable?"
+                  />
                 </Reveal>
-                <Reveal at={9.92}>
-                  <div className="msg-say">Cursor is building it now.</div>
+                <Reveal at={14.4} until={16}>
+                  <MockWorkingRow />
                 </Reveal>
-                <Reveal at={12.06}>
-                  <ChildUpdate icon={CursorIcon}>
-                    <strong>Build it</strong> asked: keep the 30s timeout, or
-                    make it configurable?
-                  </ChildUpdate>
+                <Reveal at={16}>
+                  <MockChildEvent
+                    kind="sent"
+                    thread={BUILD_THREAD}
+                    body="Make it configurable, default 30s."
+                  />
                 </Reveal>
-                <Reveal at={13.74}>
+                <Reveal at={19.06}>
+                  <MockChildEvent
+                    kind="finished"
+                    thread={BUILD_THREAD}
+                    body="PR #482 is open"
+                  />
+                </Reveal>
+                <LeadTurn
+                  start={20.3}
+                  furl={22.6}
+                  worked="3s"
+                  step={spawnStep("codex", "Review PR #482")}
+                />
+                <Reveal at={20.3} until={23.3}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={23.3}>
                   <div className="msg-say">
-                    Replied to <strong>Build it</strong>: make it configurable,
-                    default 30s.
+                    The fix is in. Codex is reviewing the diff.
                   </div>
                 </Reveal>
-                <Reveal at={16.86}>
-                  <ChildUpdate icon={CursorIcon}>
-                    <strong>Build it</strong> finished: PR #482 is open
-                  </ChildUpdate>
+                <Reveal at={25.66}>
+                  <MockChildEvent
+                    kind="message"
+                    thread={REVIEW_THREAD}
+                    body="PR #482 looks good. It needs your approval to merge."
+                  />
                 </Reveal>
-                <Reveal at={18.54}>
-                  <div className="msg-say">
-                    The fix is in. Handing the review to Codex.
-                  </div>
-                </Reveal>
-                <Reveal at={19.66}>
-                  <SpawnLine title="Review the diff" provider="Codex" />
-                </Reveal>
-                <Reveal at={21.46}>
-                  <div className="msg-say">Codex is reviewing the diff.</div>
-                </Reveal>
-                <Reveal at={23.56}>
-                  <ChildUpdate icon={OpenAiIcon}>
-                    <strong>Review the diff</strong> is waiting on your approval
-                  </ChildUpdate>
-                </Reveal>
-                <div className="bw-working bw-fade" style={at(0.3)}>
-                  Working...
-                </div>
               </div>
             </div>
-            <WindowComposer
-              placeholder="Ask for a follow-up"
-              model="Grok Build"
-              modelIcon={GrokIcon}
-            />
+            <WindowComposer model="Grok 4.6" modelIcon={GrokIcon} />
           </div>
-          <div className="bw-toast" style={at(24.6)}>
+          <div className="bw-toast" style={at(26.9)}>
             <BbGlyph className="bw-toast-mark" />
             <span className="bw-toast-text">
               <span className="bw-toast-app">bb · now</span>
@@ -1858,6 +1896,7 @@ const START_PROMPT = "Fix the checkout bug: payments hang on slow networks";
 type StartWork = {
   at: number;
   say?: undefined;
+  kind: MockStep["kind"];
   icon: RowIcon;
   verb: string;
   object: string;
@@ -1879,16 +1918,47 @@ function StepRow({ step }: { step: StartWork }) {
   );
 }
 
+function DesktopStep({ step }: { step: StartWork }) {
+  const mock: MockStep = { kind: step.kind, verb: step.verb, em: step.object };
+  if (!step.live) return <MockStepRow step={mock} />;
+  return (
+    <div className={`rhb-work rhb-work-${step.kind}`}>
+      <MockStepContent step={mock} />
+      <span className="rhb-dur bw-step-timer" style={at(step.at + 1)} />
+      <Spinner className="trun rhb-work-spin" />
+    </div>
+  );
+}
+
 const START_STEPS: readonly StartStep[] = [
-  { at: 1.8, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
-  { at: 2.5, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
+  {
+    at: 1.8,
+    kind: "work",
+    icon: SearchIcon,
+    verb: "Explored",
+    object: "4 files, 1 search",
+  },
+  {
+    at: 2.5,
+    kind: "work",
+    icon: FileReadIcon,
+    verb: "Read",
+    object: "src/checkout/pay.ts",
+  },
   {
     at: 3.34,
     say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
   },
-  { at: 4.6, icon: EditFileIcon, verb: "Edited", object: "2 files" },
+  {
+    at: 4.6,
+    kind: "file",
+    icon: EditFileIcon,
+    verb: "Edited",
+    object: "2 files",
+  },
   {
     at: 5.72,
+    kind: "cmd",
     icon: CommandIcon,
     verb: "Running",
     object: "pnpm test checkout",
@@ -1945,7 +2015,7 @@ export function StartAnywhere() {
         className={stageClass("bw-start-stage", leaving, paused)}
         key={cycle}
       >
-        <div className="mock bw-window">
+        <div className="mock bw-window mock-ui">
           <WindowBar title="Fix the checkout bug" />
           <div className="mock-body bw-body">
             <Sidebar>
@@ -1990,26 +2060,22 @@ export function StartAnywhere() {
             <div className="main">
               <div className="feed bw-feed">
                 <Reveal>
-                  <div className="msg-user">{START_PROMPT}</div>
+                  <MockUserBubble>{START_PROMPT}</MockUserBubble>
                 </Reveal>
                 {START_STEPS.map((step) => (
                   <Reveal key={step.at} at={step.at}>
                     {step.say !== undefined ? (
                       <div className="msg-say">{step.say}</div>
                     ) : (
-                      <StepRow step={step} />
+                      <DesktopStep step={step} />
                     )}
                   </Reveal>
                 ))}
-                <div className="bw-working bw-fade" style={at(6.28)}>
-                  Working...
-                </div>
+                <Reveal at={6.28}>
+                  <MockWorkingRow />
+                </Reveal>
               </div>
-              <WindowComposer
-                placeholder="Ask for a follow-up"
-                model="Codex"
-                modelIcon={OpenAiIcon}
-              />
+              <WindowComposer model="GPT-5.5" modelIcon={OpenAiIcon} />
             </div>
           </div>
         </div>
