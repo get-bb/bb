@@ -18,6 +18,7 @@ import {
   setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
+  startWalCheckpointer,
   type DbConnection,
 } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
@@ -345,6 +346,7 @@ export async function createTestAppHarness(
       set: (key) => setSkippedAppUpdate(db, key),
     },
   });
+  const walCheckpointer = startWalCheckpointer({ logger });
   const deps: ServerAppDeps = {
     appUpdate,
     appVersion,
@@ -388,6 +390,7 @@ export async function createTestAppHarness(
     terminalSessions,
     watchInterests,
     sharedPorts,
+    walCheckpointer,
   };
   const { app, pluginCatalogService, pluginService, serverMove } =
     createApp(deps);
@@ -406,6 +409,7 @@ export async function createTestAppHarness(
       clearAllThreadProvisionSchedules();
       setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
+      await walCheckpointer.stop();
       await rm(dataDir, {
         recursive: true,
         force: true,
