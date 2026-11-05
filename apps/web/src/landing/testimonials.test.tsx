@@ -28,7 +28,7 @@ describe("Testimonials", () => {
     const section = container.querySelector("section");
     expect(section?.dataset.section).toBe("testimonials");
     const cards = [
-      ...container.querySelectorAll<HTMLAnchorElement>("a.tm-card"),
+      ...container.querySelectorAll<HTMLAnchorElement>("a.tm-card-link"),
     ];
     expect(cards).toHaveLength(12);
     for (const card of cards) {
@@ -56,7 +56,7 @@ describe("Testimonials", () => {
     const root = createRoot(container);
     act(() => root.render(<Testimonials />));
 
-    const cut = [...container.querySelectorAll("a.tm-card")]
+    const cut = [...container.querySelectorAll(".tm-card")]
       .filter((card) =>
         card.querySelector(".tm-quote")?.textContent?.includes("…"),
       )
@@ -67,7 +67,12 @@ describe("Testimonials", () => {
       [...container.querySelectorAll(".tm-quote code")].map(
         (c) => c.textContent,
       ),
-    ).toEqual(["bb", "bb"]);
+    ).toEqual(["bb"]);
+    const repoLink = container.querySelector<HTMLAnchorElement>(
+      ".tm-quote a.tm-quote-link",
+    );
+    expect(repoLink?.href).toBe("https://github.com/get-bb/bb");
+    expect(repoLink?.textContent).toBe("github.com/get-bb/bb");
     act(() => root.unmount());
   });
 });
