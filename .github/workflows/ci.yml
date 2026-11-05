@@ -7,9 +7,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -18,9 +15,18 @@ jobs:
           package-manager-cache: false
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter '@bb/config...'
-      - name: Reproduce unreachable lock owner during garbage collection
+      - env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        name: Reproduce unreachable lock owner during garbage collection
         run: node --import tsx .file-lock-probe.mjs
-      - name: Verify retained owner withstands garbage collection
+      - env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        name: Verify retained owner withstands garbage collection
         run: node --import tsx .file-lock-probe.mjs --retained
-      - name: Full config tests, typecheck and lint
+      - env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        name: Full config tests, typecheck and lint
         run: pnpm exec turbo run test typecheck lint --filter=@bb/config --force
