@@ -96,30 +96,6 @@ function claudeDistTags(value: string | null): {
   }
 }
 
-function claudeDoctor(value: string | null): {
-  installMethod: "native" | "npm-global" | "package-manager" | "unknown" | null;
-  updateChannel: "latest" | "stable" | null;
-} {
-  const running =
-    value === null ? null : /^Running:\s+([^\s(]+)/mu.exec(value)?.[1];
-  const channel =
-    value === null
-      ? null
-      : /^Auto-update channel:\s+(latest|stable)\s*$/mu.exec(value)?.[1];
-  return {
-    installMethod:
-      running === "native" || running === "npm-global"
-        ? running
-        : running !== null && running !== undefined
-          ? ["homebrew", "winget", "apt", "dnf", "apk"].includes(running)
-            ? "package-manager"
-            : "unknown"
-          : null,
-    updateChannel:
-      channel === "latest" || channel === "stable" ? channel : null,
-  };
-}
-
 function isDefaultNativeClaudePath(executablePath: string | null): boolean {
   if (executablePath === null) return false;
   const normalized = executablePath.replace(/\\/gu, "/");
@@ -134,36 +110,27 @@ export async function getClaudeProviderInstallationStatus(
   checkUpdates = true,
 ): Promise<ProviderInstallationStatus> {
   const command = await claudeExecutable();
-  const [
-    resolvedExecutable,
-    versionOutput,
-    tagsOutput,
-    npmGlobal,
-    doctorOutput,
-  ] = await Promise.all([
-    resolveExecutablePath(command),
-    commandOutput(command, ["--version"]),
-    checkUpdates
-      ? commandOutput(npmCommand(), [
-          "view",
-          CLAUDE_NPM_PACKAGE,
-          "dist-tags",
-          "--json",
-        ])
-      : null,
-    checkUpdates
-      ? probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE)
-      : { npmBin: null, npmGlobalPackageVersion: null },
-    checkUpdates ? commandOutput(command, ["doctor"]) : null,
-  ]);
+  const [resolvedExecutable, versionOutput, tagsOutput, npmGlobal] =
+    await Promise.all([
+      resolveExecutablePath(command),
+      commandOutput(command, ["--version"]),
+      checkUpdates
+        ? commandOutput(npmCommand(), [
+            "view",
+            CLAUDE_NPM_PACKAGE,
+            "dist-tags",
+            "--json",
+          ])
+        : null,
+      checkUpdates
+        ? probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE)
+        : { npmBin: null, npmGlobalPackageVersion: null },
+    ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
   const currentVersion = versionFrom(versionOutput);
-  const doctor = claudeDoctor(doctorOutput);
   const tags = claudeDistTags(tagsOutput);
   const latestVersion =
-    doctor.updateChannel === null || tags === null
-      ? null
-      : tags[doctor.updateChannel];
+    tags !== null && tags.latest === tags.stable ? tags.latest : null;
   const definitelyNeedsUnknownChannelUpdate =
     installed &&
     currentVersion !== null &&
@@ -180,15 +147,10 @@ export async function getClaudeProviderInstallationStatus(
     executablePath: resolvedExecutable,
     npmBin: npmGlobal.npmBin,
   });
-  const nativeFallback =
-    doctor.installMethod === null &&
-    installSource === "external" &&
-    isDefaultNativeClaudePath(resolvedExecutable);
   const canRunUpdate =
-    doctor.installMethod === "native" ||
-    nativeFallback ||
-    (installSource === "npmGlobal" &&
-      (doctor.installMethod === null || doctor.installMethod === "npm-global"));
+    installSource === "npmGlobal" ||
+    (installSource === "external" &&
+      isDefaultNativeClaudePath(resolvedExecutable));
   const actionKind = !installed
     ? "install"
     : needsUpdate && canRunUpdate
