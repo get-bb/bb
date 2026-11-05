@@ -449,12 +449,15 @@ describe("GitHub PR Status server", () => {
     expect(
       calls.filter((call) => call.method === "views").map((call) => call.input),
     ).toEqual([
-      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
+      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
       {
         reads: [
           {
             path: "/work/env-1",
-            url: "https://github.com/acme/bb/pull/7",
+            known: {
+              url: "https://github.com/acme/bb/pull/7",
+              branchName: "bb/pr",
+            },
             refresh: true,
           },
         ],
@@ -467,27 +470,41 @@ describe("GitHub PR Status server", () => {
     });
   });
 
+  function workspaceHost(workspace: {
+    branchName: string;
+    byUrl: Record<string, GitHubPullRequestView>;
+    byBranch: Record<string, GitHubPullRequestView>;
+  }) {
+    return (call: ExperimentalFakeHostRpcCall) =>
+      call.method === "views"
+        ? (call.input as { reads: ViewRead[] }).reads.map((read) => ({
+            lookup: {
+              outcome: "found",
+              pullRequest:
+                read.known !== null &&
+                read.known.branchName === workspace.branchName
+                  ? workspace.byUrl[read.known.url]
+                  : workspace.byBranch[workspace.branchName],
+            },
+            refs: { oid: null, branchName: workspace.branchName },
+          }))
+        : call.method === "upstream"
+          ? { oid: null, branchName: workspace.branchName }
+          : { ok: true };
+  }
+
   it("rediscovers the branch when the known pull request has closed, and acts on the newer one", async () => {
     const closedUrl = "https://github.com/acme/bb/pull/6";
-    let branchPullRequest = view({ number: 6, url: closedUrl });
-    const fake = await setup({
-      callHost: (call) =>
-        call.method === "upstream"
-          ? { oid: null, branchName: "bb/pr" }
-          : call.method === "views"
-            ? (call.input as { reads: { url: string | null }[] }).reads.map(
-                (read) => ({
-                  outcome: "found",
-                  pullRequest:
-                    read.url === closedUrl
-                      ? view({ number: 6, url: closedUrl, state: "CLOSED" })
-                      : branchPullRequest,
-                }),
-              )
-            : { ok: true },
-    });
+    const workspace = {
+      branchName: "bb/pr",
+      byUrl: {
+        [closedUrl]: view({ number: 6, url: closedUrl, state: "CLOSED" }),
+      },
+      byBranch: { "bb/pr": view({ number: 6, url: closedUrl }) },
+    };
+    const fake = await setup({ callHost: workspaceHost(workspace) });
     await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
-    branchPullRequest = view({
+    workspace.byBranch["bb/pr"] = view({
       number: 8,
       url: "https://github.com/acme/bb/pull/8",
     });
@@ -506,29 +523,19 @@ describe("GitHub PR Status server", () => {
 
   it("acts on the current branch's pull request when the known one belongs to another branch", async () => {
     const oldUrl = "https://github.com/acme/bb/pull/6";
-    const pullRequests: Record<string, GitHubPullRequestView> = {
-      "bb/old": view({ number: 6, url: oldUrl, headRefName: "bb/old" }),
-      "bb/pr": view(),
-    };
-    let branchName = "bb/old";
-    const fake = await setup({
-      callHost: (call) =>
-        call.method === "upstream"
-          ? { oid: null, branchName }
-          : call.method === "views"
-            ? (call.input as { reads: { url: string | null }[] }).reads.map(
-                (read) => ({
-                  outcome: "found",
-                  pullRequest:
-                    read.url === oldUrl
-                      ? pullRequests["bb/old"]
-                      : pullRequests[branchName],
-                }),
-              )
-            : { ok: true },
+    const oldPullRequest = view({
+      number: 6,
+      url: oldUrl,
+      headRefName: "bb/old",
     });
+    const workspace = {
+      branchName: "bb/old",
+      byUrl: { [oldUrl]: oldPullRequest },
+      byBranch: { "bb/old": oldPullRequest, "bb/pr": view() },
+    };
+    const fake = await setup({ callHost: workspaceHost(workspace) });
     await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
-    branchName = "bb/pr";
+    workspace.branchName = "bb/pr";
     await expect(
       fake.harness.callRpc("markReady", { environmentId: "env-1" }),
     ).rejects.toMatchObject({ message: "Pull request is not a draft" });
