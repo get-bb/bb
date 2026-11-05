@@ -59,7 +59,10 @@ interface MachineLabelAssignmentHooks {
 }
 
 function isLabelCollision(error: unknown): boolean {
-  return error instanceof Error && /unique constraint/iu.test(error.message);
+  if (!(error instanceof Error)) return false;
+  return (
+    /unique constraint/iu.test(error.message) || isLabelCollision(error.cause)
+  );
 }
 
 export async function assignMachineLabel(

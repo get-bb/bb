@@ -4972,7 +4972,9 @@ describe("ComposerBox mention triggers", () => {
     ]);
     const promptEditor = getPromptEditorElement();
     expect(promptEditor.querySelector('[data-icon="Zap"]')).toBeTruthy();
-    expect(promptEditor.querySelector("img")).toBeNull();
+    expect(
+      promptEditor.querySelector("img:not(.ProseMirror-separator)"),
+    ).toBeNull();
   });
 
   it("labels thread mention rows with their relation to the current thread", async () => {

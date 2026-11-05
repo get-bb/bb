@@ -59,7 +59,9 @@ describe("account link and AI usage tables", () => {
     ).toEqual({ userId: null });
     await expect(
       db.insert(connectCode).values({ code: "BBBB-BBBB", ...row }),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
   });
 
   it("keys per-user usage by user and UTC day and cascades with the user", async () => {
@@ -70,7 +72,9 @@ describe("account link and AI usage tables", () => {
       .values({ userId: "u1", day: "2026-09-23", spentMicros: 5 });
     await expect(
       db.insert(aiUsageDay).values({ userId: "u1", day: "2026-09-22" }),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
     await db.insert(aiRequestLog).values({
       id: "r1",
       userId: "u1",

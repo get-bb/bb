@@ -114,7 +114,9 @@ describe("migration matches the drizzle schema", () => {
         subdomain: "shared-label",
         createdAt,
       }),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
     await db.insert(machine).values({
       id: "claim-ignorant-machine",
       userId: "u2",
@@ -126,7 +128,9 @@ describe("migration matches the drizzle schema", () => {
         .update(machine)
         .set({ subdomain: "shared-label" })
         .where(eq(machine.id, "claim-ignorant-machine")),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
     expect(
       await db
         .select()
@@ -226,7 +230,9 @@ describe("constraints", () => {
       db
         .insert(profile)
         .values({ userId: "u2", handle: "taken", createdAt: now }),
-    ).rejects.toThrow(/UNIQUE/i);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/UNIQUE/i) },
+    });
   });
 
   it("allows nullable machine labels and enforces uniqueness when assigned", async () => {
@@ -256,7 +262,9 @@ describe("constraints", () => {
         credentialHash: "h3",
         createdAt: now,
       }),
-    ).rejects.toThrow(/UNIQUE/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/UNIQUE/iu) },
+    });
   });
 
   it("enforces one server name per user but allows the same name across users", async () => {
@@ -278,7 +286,9 @@ describe("constraints", () => {
         subdomain: "u1-second",
         createdAt: now,
       }),
-    ).rejects.toThrow(/UNIQUE/i);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/UNIQUE/i) },
+    });
     await db.insert(server).values({
       id: "s3",
       userId: "u2",
@@ -307,7 +317,9 @@ describe("constraints", () => {
         subdomain: "taken",
         createdAt: now,
       }),
-    ).rejects.toThrow(/UNIQUE/i);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/UNIQUE/i) },
+    });
   });
 
   it("lets one account own several servers, each with its own subdomain", async () => {
@@ -414,7 +426,9 @@ describe("checkLabelAvailability (all routing namespaces)", () => {
         .update(machine)
         .set({ subdomain: "legacy-server" })
         .where(eq(machine.id, "attacker-machine")),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
     await expect(checkLabelAvailability(db, "legacy-server")).resolves.toEqual({
       available: false,
       reason: "taken",

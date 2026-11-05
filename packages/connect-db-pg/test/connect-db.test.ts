@@ -84,7 +84,9 @@ describe("connect-db on Postgres", () => {
         subdomain: "alice",
         createdAt: NOW,
       }),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
 
     await db.insert(machine).values({
       id: "m1",

@@ -51,7 +51,12 @@ function gateway(
     compatibilityDate: "2026-06-11",
     compatibilityFlags: ["nodejs_compat"],
     hyperdrives: { HYPERDRIVE: connectionString },
-    ratelimits: { AI_RATE_LIMITER: { simple: { limit: 60, period: 60 } } },
+    ratelimits: {
+      AI_RATE_LIMITER: {
+        namespace_id: "4201",
+        simple: { limit: 60, period: 60 },
+      },
+    },
     bindings,
     outboundService: async (request: MiniflareRequest) => {
       upstreamBodies.push(await request.json());

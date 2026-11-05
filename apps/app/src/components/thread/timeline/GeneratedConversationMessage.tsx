@@ -453,7 +453,10 @@ function GeneratedAutomationTitle({
         <span className="shrink-0">Automation</span>
       ) : (
         <RouteAnchor
-          href={generatePath(AUTOMATION_DETAIL_ROUTE_PATH, automationLink)}
+          href={generatePath(AUTOMATION_DETAIL_ROUTE_PATH, {
+            automationId: automationLink.automationId,
+            projectId: automationLink.projectId,
+          })}
           className="shrink-0 underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
           onClick={stopRowToggle}
           onKeyDown={stopRowToggleKey}

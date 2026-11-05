@@ -477,7 +477,7 @@ describe("electron-builder signing config", () => {
       );
       await mkdir(resolve(nodeModules, "@parcel/watcher"), { recursive: true });
       const result = await runNativePrepScript(appOutDir, [
-        "--electron-version=44.9.3",
+        "--electron-version=44.10.2",
       ]);
       expect(result.stderr).toBe("");
       expect(result.exitCode).toBe(0);
@@ -488,7 +488,7 @@ describe("electron-builder signing config", () => {
       );
       await writeFile(binaryPath, "invalid native binary");
       const invalidResult = await runNativePrepScript(appOutDir, [
-        "--electron-version=44.9.3",
+        "--electron-version=44.10.2",
       ]);
       expect(invalidResult.exitCode).not.toBe(0);
       expect(invalidResult.stderr).toContain(binaryPath);
