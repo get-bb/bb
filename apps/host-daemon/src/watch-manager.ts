@@ -24,6 +24,7 @@ import { userExecutableProcessOptions } from "./user-executable-env.js";
 type StopWatching = () => void | Promise<void>;
 
 const STOP_WATCHING: StopWatching = () => undefined;
+const SHARED_GIT_REFS_JOIN_MS = 25;
 const LOCAL_WORKSPACE_WATCH_CHANGE_KINDS: readonly WorkspaceStatusWatchChangeKind[] =
   [
     "workspace-content-changed",
@@ -115,6 +116,10 @@ export class WatchManager {
     ThreadStorageWatchEntry
   >();
   private readonly workspaceEntries = new Map<string, WorkspaceWatchEntry>();
+  private readonly pendingSharedGitRefsReads = new Map<
+    string,
+    Promise<SharedGitRefsSnapshot>
+  >();
   private latestAppliedWatchSetGeneration = -1;
   private watchSetMutationTail: Promise<void> = Promise.resolve();
 
@@ -349,7 +354,7 @@ export class WatchManager {
       ) {
         [localState, sharedRefs] = await Promise.all([
           args.entry.workspace.getLocalStateSnapshot(),
-          args.entry.workspace.getSharedGitRefsSnapshot(),
+          this.readSharedGitRefs(args.entry.workspace),
         ]);
         if (
           this.workspaceEntries.get(args.entry.target.environmentId) !==
@@ -358,7 +363,7 @@ export class WatchManager {
           return;
         args.entry.watchState.lastLocalFingerprint = localState.fingerprint;
         args.entry.watchState.lastSharedRefsFingerprint =
-          sharedRefs.fingerprint;
+          sharedRefs.fingerprintFor(localState.branchName);
       }
       if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
         if (
@@ -385,8 +390,12 @@ export class WatchManager {
         args.entry.workspace.isGitRepo &&
         pendingKinds.includes("shared-git-refs-changed")
       ) {
-        sharedRefs ??= await args.entry.workspace.getSharedGitRefsSnapshot();
-        const nextSharedRefsFingerprint = sharedRefs.fingerprint;
+        sharedRefs ??= await this.readSharedGitRefs(args.entry.workspace);
+        const nextSharedRefsFingerprint = sharedRefs.fingerprintFor(
+          localState?.branchName ??
+            args.entry.watchState.lastBranchName ??
+            null,
+        );
         if (
           args.entry.watchState.lastSharedRefsFingerprint !==
           nextSharedRefsFingerprint
@@ -495,18 +504,17 @@ export class WatchManager {
       return;
     }
 
-    const [branchName, resolvedDefaultBranch, sharedRefsFingerprint] =
-      await Promise.all([
-        workspace.getCurrentBranch(),
-        workspace.getDefaultBranch(),
-        workspace.getSharedGitRefsSnapshot(),
-      ]);
+    const [branchName, resolvedDefaultBranch, sharedRefs] = await Promise.all([
+      workspace.getCurrentBranch(),
+      workspace.getDefaultBranch(),
+      this.readSharedGitRefs(workspace),
+    ]);
     if (this.workspaceEntries.get(entry.target.environmentId) !== entry) return;
     entry.workspace = workspace;
     entry.watchState.lastBranchName = branchName;
     entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
     entry.watchState.lastSharedRefsFingerprint =
-      sharedRefsFingerprint.fingerprint;
+      sharedRefs.fingerprintFor(branchName);
     this.options.onWorkspaceMetadataChanged?.({
       environmentId: entry.target.environmentId,
       workspace: {
@@ -517,6 +525,24 @@ export class WatchManager {
         defaultBranch: resolvedDefaultBranch ?? branchName,
       },
     });
+  }
+
+  private readSharedGitRefs(
+    workspace: HostWorkspace,
+  ): Promise<SharedGitRefsSnapshot> {
+    const commonDir = workspace.gitCommonDir;
+    if (commonDir === null) return workspace.getSharedGitRefsSnapshot();
+    const pending = this.pendingSharedGitRefsReads.get(commonDir);
+    if (pending !== undefined) return pending;
+    const read = new Promise<void>((resolve) => {
+      setTimeout(resolve, SHARED_GIT_REFS_JOIN_MS);
+    }).then(() => {
+      if (this.pendingSharedGitRefsReads.get(commonDir) === read)
+        this.pendingSharedGitRefsReads.delete(commonDir);
+      return workspace.getSharedGitRefsSnapshot();
+    });
+    this.pendingSharedGitRefsReads.set(commonDir, read);
+    return read;
   }
 
   private async stopWorkspaceWatch(entry: WorkspaceWatchEntry): Promise<void> {

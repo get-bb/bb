@@ -111,6 +111,7 @@ function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
     path: workspacePath,
     isGitRepo: false,
     isWorktree: false,
+    gitCommonDir: null,
     getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
     getHeadSha: unexpectedWorkspaceCall,

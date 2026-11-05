@@ -28,6 +28,7 @@ export interface HostWorkspace {
   readonly path: string;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
+  readonly gitCommonDir: string | null;
 
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
@@ -54,14 +55,18 @@ async function provisionUnmanaged(
       `Unmanaged workspace path does not exist: ${opts.path}`,
     );
   }
-  const { isGitRepo, isWorktree } = await inspectGitRepository(opts.path, {
-    ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
-  });
+  const { isGitRepo, isWorktree, gitCommonDir } = await inspectGitRepository(
+    opts.path,
+    {
+      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+    },
+  );
 
   return new Workspace({
     path: opts.path,
     isGitRepo,
     isWorktree,
+    gitCommonDir,
     shellPath: opts.shellPath,
   });
 }

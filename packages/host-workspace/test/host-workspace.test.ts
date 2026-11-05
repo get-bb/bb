@@ -21,6 +21,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
 
     const initialFingerprint = await workspace.getLocalStateSnapshot();
@@ -51,6 +52,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
     expect((await workspace.getLocalStateSnapshot()).branchName).toBe("main");
     expect(
@@ -64,6 +66,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
     const initialFingerprint = await workspace.getLocalStateSnapshot();
 
@@ -95,19 +98,68 @@ describe("Workspace", () => {
         path: repoPath,
         isGitRepo: false,
         isWorktree: false,
+        gitCommonDir: null,
       });
       const initialSnapshot = await workspace.getSharedGitRefsSnapshot();
       expect(initialSnapshot.defaultBranch).toBe("main");
 
       await fs.writeFile(path.join(repoPath, "README.md"), "dirty\n", "utf8");
-      expect(await workspace.getSharedGitRefsSnapshot()).toEqual(
-        initialSnapshot,
-      );
+      expect(
+        (await workspace.getSharedGitRefsSnapshot()).fingerprintFor("main"),
+      ).toBe(initialSnapshot.fingerprintFor("main"));
 
       await runGit(["branch", "feature"], { cwd: repoPath });
       const branchSnapshot = await workspace.getSharedGitRefsSnapshot();
-      expect(branchSnapshot.fingerprint).not.toBe(initialSnapshot.fingerprint);
+      expect(branchSnapshot.fingerprintFor("main")).not.toBe(
+        initialSnapshot.fingerprintFor("main"),
+      );
       expect(branchSnapshot.defaultBranch).toBe("main");
+
+      const commit = await runGit(
+        ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "moved"],
+        { cwd: repoPath },
+      );
+      const movedOid = commit.stdout.trim();
+      await runGit(["update-ref", "refs/heads/feature", movedOid], {
+        cwd: repoPath,
+      });
+      const featureMovedSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(featureMovedSnapshot.fingerprintFor("main")).toBe(
+        branchSnapshot.fingerprintFor("main"),
+      );
+      expect(featureMovedSnapshot.fingerprintFor("feature")).not.toBe(
+        branchSnapshot.fingerprintFor("feature"),
+      );
+
+      await runGit(["update-ref", "refs/remotes/origin/feature-up", "HEAD"], {
+        cwd: repoPath,
+      });
+      await runGit(["remote", "add", "origin", repoPath], { cwd: repoPath });
+      await runGit(["config", "branch.feature.remote", "origin"], {
+        cwd: repoPath,
+      });
+      await runGit(
+        ["config", "branch.feature.merge", "refs/heads/feature-up"],
+        { cwd: repoPath },
+      );
+      const upstreamSnapshot = await workspace.getSharedGitRefsSnapshot();
+      await runGit(["update-ref", "refs/remotes/origin/feature-up", movedOid], {
+        cwd: repoPath,
+      });
+      const upstreamMovedSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(upstreamMovedSnapshot.fingerprintFor("feature")).not.toBe(
+        upstreamSnapshot.fingerprintFor("feature"),
+      );
+      expect(upstreamMovedSnapshot.fingerprintFor("main")).toBe(
+        upstreamSnapshot.fingerprintFor("main"),
+      );
+
+      await runGit(["update-ref", "refs/heads/main", movedOid], {
+        cwd: repoPath,
+      });
+      expect(
+        (await workspace.getSharedGitRefsSnapshot()).fingerprintFor("feature"),
+      ).not.toBe(upstreamMovedSnapshot.fingerprintFor("feature"));
 
       await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
         cwd: repoPath,
@@ -134,8 +186,8 @@ describe("Workspace", () => {
         { cwd: repoPath },
       );
       const remoteSnapshot = await workspace.getSharedGitRefsSnapshot();
-      expect(remoteSnapshot.fingerprint).not.toBe(
-        originMainSnapshot.fingerprint,
+      expect(remoteSnapshot.fingerprintFor("feature")).not.toBe(
+        originMainSnapshot.fingerprintFor("feature"),
       );
       expect(remoteSnapshot.defaultBranch).toBe("trunk");
       await runGit(["update-ref", "-d", "refs/remotes/origin/trunk"], {
@@ -180,6 +232,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
 
     await fs.writeFile(path.join(repoPath, "README.md"), "commit me\n", "utf8");
@@ -199,6 +252,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
 
     await expect(
@@ -286,6 +340,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
 
     expect(await workspace.getHeadSha()).toBeNull();
@@ -296,6 +351,7 @@ describe("Workspace", () => {
       path: repoPath,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
     await fs.writeFile(path.join(repoPath, "README.md"), "pending\n", "utf8");
 
@@ -332,6 +388,7 @@ describe("Workspace", () => {
       path: folder,
       isGitRepo: false,
       isWorktree: false,
+      gitCommonDir: null,
     });
 
     expect(await workspace.getCurrentBranch()).toBeNull();
