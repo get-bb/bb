@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -80,6 +81,13 @@ const CODEX_SCRIPT: ScriptedEchoLaunchScript = {
 };
 
 const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
+const SUPERSEDING_BRIDGE_LAUNCH = {
+  ...MANAGER_BRIDGE_LAUNCH,
+  source: {
+    ...MANAGER_BRIDGE_LAUNCH.source,
+    digest: `b${MANAGER_BRIDGE_LAUNCH.source.digest.slice(1)}`,
+  },
+};
 const MANAGER_PROVIDER = {
   bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
   processKey: "fake",
@@ -282,7 +290,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      bridgeLaunch: SUPERSEDING_BRIDGE_LAUNCH,
       processKey: freshKey,
       providerId: "fake",
     });
@@ -968,6 +976,40 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       });
       expect(initializeCount()).toBe(2);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("starts threads of two skill catalogs at once without retiring either bridge", async () => {
+    const runtime = createAgentRuntime({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({ contentItems: [], success: true }),
+    });
+    const bridgeLaunch = createScriptedEchoLaunch();
+    const stageSkillRoots = (name: string) => {
+      const path = join(tmpDir, `skills-${name}`);
+      mkdirSync(join(path, name), { recursive: true });
+      writeFileSync(join(path, name, "SKILL.md"), `---\nname: ${name}\n---\n`);
+      return [
+        { id: `skills:${name}`, path, skills: [{ name, description: name }] },
+      ];
+    };
+    const start = (threadId: string, skillName: string) =>
+      runtime.startThread({
+        bridgeLaunch,
+        skillRoots: stageSkillRoots(skillName),
+        environmentId: "env-1",
+        threadId,
+        projectId: "p1",
+        providerId: "scripted",
+        options: fullRuntimeOptions,
+      });
+    try {
+      await Promise.all([start("t1", "first"), start("t2", "second")]);
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(runtime.hasThread("t2")).toBe(true);
     } finally {
       await runtime.shutdown();
     }
