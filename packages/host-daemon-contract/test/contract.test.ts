@@ -2015,6 +2015,54 @@ describe("host-daemon command schemas", () => {
     );
   });
 
+  it("carries an ACP agent's sign-in check to the bridge and its signed-out health back without a protocol change", () => {
+    const providerHealthCommand = {
+      type: "provider.health",
+      bridgeLaunch: {
+        ...ACP_BRIDGE_LAUNCH,
+        providerOptions: {
+          acpLaunchSpec: ACP_LAUNCH_SPEC,
+          acpSignIn: {
+            command: "grok login",
+            check: {
+              kind: "command",
+              args: ["models"],
+              signedOutText: ["You are not authenticated"],
+            },
+          },
+        },
+      },
+      providerId: "acp-grok",
+    };
+    const roundTrip = JSON.parse(JSON.stringify(providerHealthCommand));
+    expect(hostDaemonOnlineRpcCommandSchema.parse(roundTrip)).toEqual(
+      providerHealthCommand,
+    );
+    const signedOut = {
+      supported: true,
+      health: {
+        status: "unauthenticated",
+        statusMessage: null,
+        accountEmail: null,
+        planLabel: null,
+        installedVersion: "1.0.70",
+        minimumSupportedVersion: null,
+        canInstall: false,
+        canUpdate: false,
+        loginCommand: "grok login",
+      },
+    };
+    expect(
+      hostDaemonOnlineRpcResponseMessageSchema.parse({
+        type: "host-rpc.response",
+        requestId: "rpc-acp-health",
+        commandType: "provider.health",
+        ok: true,
+        result: signedOut,
+      }),
+    ).toMatchObject({ result: signedOut });
+  });
+
   it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",

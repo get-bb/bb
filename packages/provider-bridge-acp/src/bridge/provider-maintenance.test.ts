@@ -76,7 +76,14 @@ describe("ACP provider maintenance", () => {
           versionUnsupported: false,
         });
         expect(
-          await getAcpProviderHealth({ command, maintenance: undefined }),
+          await getAcpProviderHealth({
+            command,
+            maintenance: undefined,
+            readAuthState: async () => ({
+              status: "signedIn",
+              loginCommand: null,
+            }),
+          }),
         ).toMatchObject({
           supported: true,
           health: { status: "ready", installedVersion: version },
@@ -86,6 +93,85 @@ describe("ACP provider maintenance", () => {
       }
     },
   );
+
+  it("reports an installed agent without a maintenance dialect from its sign-in state instead of as ready", async () => {
+    const command = process.execPath;
+    expect(
+      await getAcpProviderHealth({
+        command,
+        maintenance: undefined,
+        readAuthState: async () => ({
+          status: "signedOut",
+          loginCommand: "grok login",
+        }),
+      }),
+    ).toMatchObject({
+      supported: true,
+      health: {
+        status: "unauthenticated",
+        loginCommand: "grok login",
+        statusMessage: null,
+        canInstall: false,
+      },
+    });
+    expect(
+      await getAcpProviderHealth({
+        command,
+        maintenance: undefined,
+        readAuthState: async () => ({
+          status: "signedOut",
+          loginCommand: null,
+        }),
+      }),
+    ).toMatchObject({
+      health: {
+        status: "unauthenticated",
+        loginCommand: null,
+        statusMessage: null,
+      },
+    });
+    expect(
+      await getAcpProviderHealth({
+        command,
+        maintenance: undefined,
+        readAuthState: async () => ({
+          status: "unknown",
+          loginCommand: null,
+          statusMessage: "the agent did not answer initialize within 10000ms",
+        }),
+      }),
+    ).toMatchObject({
+      health: {
+        status: "unknown",
+        statusMessage: "the agent did not answer initialize within 10000ms",
+      },
+    });
+  });
+
+  it("never starts the sign-in check for a missing agent or a dialect that reads its own account", async () => {
+    const readAuthState = async (): Promise<never> => {
+      throw new Error("must not check sign-in");
+    };
+    expect(
+      await getAcpProviderHealth({
+        command: "/nonexistent/acp-agent",
+        maintenance: undefined,
+        readAuthState,
+      }),
+    ).toMatchObject({ health: { status: "not_installed" } });
+    expect(
+      await getAcpProviderHealth({
+        command: process.execPath,
+        maintenance: {
+          ...CURSOR_ACP_MAINTENANCE,
+          readAccount: async () => null,
+        },
+        readAuthState,
+      }),
+    ).toMatchObject({
+      health: { status: "unauthenticated", loginCommand: "cursor-agent login" },
+    });
+  });
 
   it("normalizes Cursor plan and spend limits without reading daemon state", () => {
     expect(

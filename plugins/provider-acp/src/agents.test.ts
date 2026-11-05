@@ -245,6 +245,51 @@ describe("custom agents that report usage", () => {
     ).toBe(true);
   });
 
+  it("tells the bridge how to check each agent's sign-in and which command signs it in", () => {
+    const signInOf = (agent: AcpAgentDefinition) =>
+      acpProviderDeclaration(agent).experimental_bridgeOptions?.["acpSignIn"];
+    const known = Object.fromEntries(
+      KNOWN_ACP_AGENTS.map((agent) => [agent.id, signInOf(agent)]),
+    );
+
+    expect(known).toMatchObject({
+      "acp-opencode": {
+        command: "opencode auth login",
+        check: { kind: "none" },
+      },
+      "acp-omp": {
+        command: "omp login",
+        check: {
+          kind: "command",
+          args: ["models"],
+          signedOutText: ["No models available"],
+        },
+      },
+      "acp-grok": {
+        command: "grok login",
+        check: {
+          kind: "command",
+          args: ["models"],
+          signedOutText: ["You are not authenticated"],
+        },
+      },
+      "acp-hermes-agent": {
+        command: "hermes model",
+        check: {
+          kind: "session",
+          signedOutText: ["No LLM provider configured"],
+        },
+      },
+    });
+    expect(
+      signInOf(
+        customAcpAgentDefinition(
+          parse({ id: "amp", displayName: "Amp", command: "amp" }),
+        ),
+      ),
+    ).toEqual({ command: null, check: { kind: "session", signedOutText: [] } });
+  });
+
   it("stays out of the usage surface by default", () => {
     const agent = parse({
       id: "amp-plain",

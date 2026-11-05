@@ -85,12 +85,21 @@ import {
 } from "../dialect.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
+import {
+  acpSignInOptionsSchema,
+  createAcpAuthStateReader,
+  DEFAULT_ACP_SIGN_IN_OPTIONS,
+  type AcpAuthState,
+  type AcpSessionProbeOutcome,
+  type AcpSignInOptions,
+} from "./acp-auth-state.js";
 import { planAcpElicitation } from "../elicitation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
 } from "../interactions.js";
 import {
+  buildAcpAgentCommand,
   buildAcpModelListParams,
   buildAcpModelSelectionParams,
   buildAcpSessionParams,
@@ -1132,6 +1141,7 @@ async function loadSessionDiscoveredModels(
   parameterizedModelPicker: boolean,
   dialectId: string,
   selectedModel: string | undefined,
+  signIn: AcpSignInOptions,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify({
     agent,
@@ -1258,6 +1268,7 @@ async function loadSessionDiscoveredModels(
       command: agent.command,
       args: agent.args,
       capabilities: discoveredCapabilities,
+      signIn,
     });
   } finally {
     if (timeout !== undefined) {
@@ -1275,6 +1286,96 @@ async function loadSessionDiscoveredModels(
     );
   }
 }
+
+const ACP_AUTH_PROBE_TIMEOUT_MS = 20_000;
+
+async function probeAcpSession(
+  agent: AcpAgentCommandParam,
+): Promise<AcpSessionProbeOutcome> {
+  const childEnv = {
+    ...withoutBridgeRuntimeEnv(process.env),
+    ...(agent.envVars ?? {}),
+  };
+  const connection = createBridgeAgentConnection({
+    command: agent.command,
+    args: agent.args,
+    cwd: agent.cwd ?? process.cwd(),
+    env: childEnv,
+    recordThreadId: null,
+    onNotification: () => {},
+    onRequest: (_method, _params, responder) => {
+      responder.error(-32601, "bb is checking whether this agent is signed in");
+    },
+    onExit: () => {},
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      connection.kill();
+      reject(
+        new Error(
+          `The agent did not answer within ${ACP_AUTH_PROBE_TIMEOUT_MS / 1000} seconds while bb checked its sign-in`,
+        ),
+      );
+    }, ACP_AUTH_PROBE_TIMEOUT_MS);
+  });
+  const probed: {
+    capabilities: AcpAgentCapabilities | null;
+    session: AcpDiscoverySession | null;
+  } = { capabilities: null, session: null };
+  try {
+    await Promise.race([
+      (async () => {
+        const initialized = await requestAcpInitialize(connection, {
+          parameterizedModelPicker: false,
+          fsAccess: false,
+        });
+        probed.capabilities = initialized;
+        await authenticateAcpAgent({
+          connection,
+          env: childEnv,
+          capabilities: initialized,
+        });
+        const created = await connection.request({
+          method: "session/new",
+          params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
+          resultSchema: acpSessionNewResultSchema,
+        });
+        probed.session = {
+          capabilities: initialized,
+          sessionId: created.sessionId,
+        };
+      })(),
+      timeoutReached,
+    ]);
+    return {
+      kind: "session",
+      authMethods: probed.capabilities?.authMethods ?? [],
+    };
+  } catch (error) {
+    const typed = withAcpAuthRequiredRecovery(error);
+    const authMethods = probed.capabilities?.authMethods ?? [];
+    const message = error instanceof Error ? error.message : String(error);
+    return typed instanceof AcpAuthRequiredError
+      ? { kind: "authRequired", authMethods, message }
+      : { kind: "failed", authMethods, message };
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    await endDiscoveryConnection({
+      connection,
+      agent,
+      env: childEnv,
+      dialectId: resolveAcpDialect({ command: agent.command }).id,
+      session: probed.session,
+    });
+  }
+}
+
+const acpAuthStateReader = createAcpAuthStateReader({
+  probe: probeAcpSession,
+});
 
 async function discoverAcpNativeModelSupport(args: {
   connection: AcpAgentConnection;
@@ -1469,25 +1570,45 @@ function withAcpAuthRequiredRecovery(error: unknown): unknown {
   return error;
 }
 
+function withDeclaredSignedOutRecovery(
+  error: unknown,
+  signIn: AcpSignInOptions | undefined,
+): unknown {
+  const typed = withAcpAuthRequiredRecovery(error);
+  if (typed instanceof AcpAuthRequiredError || !(error instanceof Error)) {
+    return typed;
+  }
+  const signedOutText =
+    signIn?.check.kind === "session" ? signIn.check.signedOutText : [];
+  const message = error.message.toLowerCase();
+  return signedOutText.some((text) => message.includes(text.toLowerCase()))
+    ? new AcpAuthRequiredError(error.message)
+    : error;
+}
+
 function withAcpSignInGuidance(
   error: unknown,
   agent: {
     command: string;
     args: readonly string[];
     capabilities: AcpAgentCapabilities | null | undefined;
+    signIn?: AcpSignInOptions;
   },
 ): unknown {
-  const typed = withAcpAuthRequiredRecovery(error);
+  const typed = withDeclaredSignedOutRecovery(error, agent.signIn);
   if (!(typed instanceof AcpAuthRequiredError)) {
     return error;
   }
-  const guidance = agent.capabilities
-    ? describeAcpSignIn({
-        command: agent.command,
-        args: agent.args,
-        authMethods: agent.capabilities.authMethods,
-      })
-    : null;
+  const declaredCommand = agent.signIn?.command ?? null;
+  const guidance =
+    agent.capabilities || declaredCommand !== null
+      ? describeAcpSignIn({
+          command: agent.command,
+          args: agent.args,
+          authMethods: agent.capabilities?.authMethods ?? [],
+          declaredCommand,
+        })
+      : null;
   return guidance === null
     ? typed
     : new AcpAuthRequiredError(
@@ -3623,11 +3744,25 @@ async function handleModelList(
   params: AcpModelListParams,
   dialectId: string | undefined,
   selectedModel: string | undefined,
+  signIn: AcpSignInOptions,
 ): Promise<void> {
   const dialect = resolveAcpDialect({
     dialectId,
     command: params.optionsAgent?.command ?? params.agent?.command ?? "",
   });
+  if (
+    signIn.check.kind === "command" &&
+    params.optionsAgent !== undefined &&
+    dialect.maintenance === undefined
+  ) {
+    const auth = await acpAuthStateReader.read({
+      agent: params.optionsAgent,
+      signIn,
+    });
+    if (auth.status === "signedOut") {
+      throw new AcpModelListAuthRequiredError();
+    }
+  }
   const resolvedDialectId = dialect.id;
   const declaredOptions = (): Promise<ThreadSessionOption[]> =>
     params.optionsAgent
@@ -3687,6 +3822,7 @@ async function handleModelList(
         params.parameterizedModelPicker,
         resolvedDialectId,
         selectedModel,
+        signIn,
       )
     : null;
   if (sessionDiscoveredModels) {
@@ -3762,6 +3898,15 @@ function decodeDialectId(
   return acpProviderOptionsSchema.parse(providerOptions ?? {}).acpDialect;
 }
 
+function decodeSignInOptions(
+  providerOptions: Record<string, unknown> | undefined,
+): AcpSignInOptions {
+  const parsed = acpSignInOptionsSchema.safeParse(
+    providerOptions?.["acpSignIn"],
+  );
+  return parsed.success ? parsed.data : DEFAULT_ACP_SIGN_IN_OPTIONS;
+}
+
 function maintenanceTarget(
   providerOptions: Record<string, unknown> | undefined,
 ): {
@@ -3769,17 +3914,30 @@ function maintenanceTarget(
   command: string | null;
   dialectId: string;
   env: NodeJS.ProcessEnv;
+  readAuthState: () => Promise<AcpAuthState>;
 } {
   const launchSpec = decodeLaunchSpec(providerOptions);
   const dialect = resolveAcpDialect({
     dialectId: decodeDialectId(providerOptions),
     command: launchSpec?.command ?? "",
   });
+  const signIn = decodeSignInOptions(providerOptions);
   return {
     maintenance: dialect.maintenance,
     command: launchSpec?.command ?? null,
     dialectId: dialect.id,
     env: { ...process.env, ...launchSpec?.env },
+    readAuthState: () =>
+      launchSpec === null
+        ? Promise.resolve({
+            status: "unknown",
+            loginCommand: signIn.command,
+            statusMessage: null,
+          })
+        : acpAuthStateReader.read({
+            agent: buildAcpAgentCommand(launchSpec),
+            signIn,
+          }),
   };
 }
 
@@ -3822,6 +3980,7 @@ async function handleRequest(
         ),
         decodeDialectId(request.params.providerOptions),
         request.params.selectedModel,
+        decodeSignInOptions(request.params.providerOptions),
       );
       return;
     }

@@ -3,7 +3,11 @@ import type {
   PluginProviderDeclaration,
   PluginProviderStrings,
 } from "@get-bb/plugin-sdk";
-import { ACP_FAMILY, type AcpAgentDefinition } from "./agents.js";
+import {
+  ACP_FAMILY,
+  type AcpAgentDefinition,
+  type AcpSignInCheck,
+} from "./agents.js";
 
 const ACP_BASE_CAPABILITIES: PluginProviderCapabilities = {
   supportsServiceTier: true,
@@ -37,6 +41,29 @@ function acpStrings(agent: AcpAgentDefinition): PluginProviderStrings {
     installUrl: agent.installUrl ?? "https://agentclientprotocol.com",
     ...(agent.iconTint === undefined ? {} : { iconTint: agent.iconTint }),
   };
+}
+
+type SignInCheckOption =
+  | { kind: "command"; args: string[]; signedOutText: string[] }
+  | { kind: "session"; signedOutText: string[] }
+  | { kind: "none" };
+
+function signInCheckOption(
+  check: AcpSignInCheck | undefined,
+): SignInCheckOption {
+  if (check === undefined) return { kind: "session", signedOutText: [] };
+  switch (check.kind) {
+    case "command":
+      return {
+        kind: "command",
+        args: [...check.args],
+        signedOutText: [...check.signedOutText],
+      };
+    case "session":
+      return { kind: "session", signedOutText: [...check.signedOutText] };
+    case "none":
+      return { kind: "none" };
+  }
 }
 
 export function acpProviderDeclaration(
@@ -79,6 +106,10 @@ export function acpProviderDeclaration(
             ],
           }),
       acpLaunchSpec: { ...agent.launch },
+      acpSignIn: {
+        command: agent.signInCommand ?? null,
+        check: signInCheckOption(agent.signInCheck),
+      },
     },
     models: { scope: agent.modelCatalogScope ?? "host" },
     maintenance: {

@@ -10,6 +10,7 @@ export interface AcpAuthMethod {
   type: string;
   args: string[];
   env: Record<string, string>;
+  terminalCommand?: { command: string; args: string[] };
 }
 
 export interface AcpAgentImplementation {
@@ -65,6 +66,26 @@ function isPresent(source: AcpJsonObject, key: string): boolean {
   return value !== undefined && value !== null && value !== false;
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function decodeTerminalAuthMeta(
+  entry: AcpJsonObject,
+): { command: string; args: string[] } | undefined {
+  const terminalAuth = readMeta(entry)?.["terminal-auth"];
+  if (!isJsonObject(terminalAuth)) {
+    return undefined;
+  }
+  const command = readString(terminalAuth, "command");
+  if (command === undefined || command.trim() === "") {
+    return undefined;
+  }
+  return { command, args: stringArray(terminalAuth["args"]) };
+}
+
 function decodeAuthMethods(value: unknown): AcpAuthMethod[] {
   if (!Array.isArray(value)) {
     return [];
@@ -79,7 +100,7 @@ function decodeAuthMethods(value: unknown): AcpAuthMethod[] {
       continue;
     }
     const description = readString(entry, "description");
-    const rawArgs = entry["args"];
+    const terminalCommand = decodeTerminalAuthMeta(entry);
     const rawEnv = entry["env"];
     const env: Record<string, string> = {};
     if (isJsonObject(rawEnv)) {
@@ -94,10 +115,9 @@ function decodeAuthMethods(value: unknown): AcpAuthMethod[] {
       name: readString(entry, "name") ?? id,
       ...(description !== undefined ? { description } : {}),
       type: readString(entry, "type") ?? "agent",
-      args: Array.isArray(rawArgs)
-        ? rawArgs.filter((arg): arg is string => typeof arg === "string")
-        : [],
+      args: stringArray(entry["args"]),
       env,
+      ...(terminalCommand === undefined ? {} : { terminalCommand }),
     });
   }
   return methods;

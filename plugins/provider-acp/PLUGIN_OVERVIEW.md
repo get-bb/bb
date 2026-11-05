@@ -17,6 +17,6 @@ The plugin launches the agent command on the host machine and talks to it over A
 ## Requirements
 
 - Install the agent CLI on the host: `cursor-agent`, `opencode`, `omp`, `grok`, or `hermes`.
-- Sign in with the agent's own command, for example `cursor-agent login` or `opencode auth login`.
+- Sign in with the agent's own command, for example `cursor-agent login`, `grok login` or `hermes model`. bb checks each installed agent's sign-in and offers Sign in when it is signed out.
 - A custom agent needs a command that starts an ACP server on stdio.
 - An agent added from the registry needs Node.js (`npx`) or uv (`uvx`) on the host.
