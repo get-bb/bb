@@ -243,6 +243,47 @@ describe("pull request row metadata", () => {
     ).toBeTruthy();
   });
 
+  it.each<[string, Partial<PullRequest>, string]>([
+    [
+      "changes requested",
+      {
+        review: { state: "changes_requested", reviewRequestCount: 0 },
+        checks: passingChecks,
+      },
+      "text-destructive-text",
+    ],
+    [
+      "failed checks",
+      { checks: { ...passingChecks, state: "failing" } },
+      "text-warning-text",
+    ],
+    ["running checks", {}, "text-file-accent"],
+    [
+      "approved",
+      {
+        review: { state: "approved", reviewRequestCount: 0 },
+        checks: passingChecks,
+      },
+      "text-success-foreground",
+    ],
+    ["review pending", { checks: passingChecks }, "text-muted-foreground"],
+    [
+      "draft",
+      { state: "draft", checks: { ...passingChecks, state: "failing" } },
+      "text-muted-foreground",
+    ],
+    ["merged", { state: "merged" }, "text-pr-merged"],
+  ])("colors %s by its actionable status", async (_case, overrides, color) => {
+    const view = renderRow(
+      { thread: thread("env_row") },
+      {
+        env_row: { outcome: "available", pullRequest: pullRequest(overrides) },
+      },
+    );
+    const badge = await view.findByRole("img", { name: /Pull request #6143/ });
+    expect(badge.firstElementChild?.classList.contains(color)).toBe(true);
+  });
+
   it("draws a glyph only while checks run, after they fail, or on conflicts", async () => {
     const glyphs = async (overrides: Partial<PullRequest>) => {
       const view = renderRow(

@@ -40,6 +40,22 @@ const CHECKS_LABEL: Record<GithubCheckStatus, string> = {
   pending: "checks running",
 };
 
+function badgeColor(pullRequest: PullRequest): string {
+  if (pullRequest.state !== "open") {
+    return PULL_REQUEST_STATE_DISPLAY[pullRequest.state].className;
+  }
+  if (
+    pullRequest.review.state === "changes_requested" ||
+    pullRequest.attention === "conflicts"
+  ) {
+    return "text-destructive-text";
+  }
+  if (pullRequest.checks.state === "failing") return "text-warning-text";
+  if (pullRequest.checks.state === "pending") return "text-file-accent";
+  if (pullRequest.review.state === "approved") return "text-success-foreground";
+  return "text-muted-foreground";
+}
+
 function AttentionGlyph({ kind }: { kind: "blocked" | "running" }) {
   return kind === "running" ? (
     <span className="flex size-3 shrink-0 items-center justify-center">
@@ -87,15 +103,7 @@ export function PullRequestBadge({
       className="flex shrink-0 items-center gap-1 text-xs leading-3.5 tabular-nums"
       onPointerEnter={hovered ? undefined : () => setHovered(true)}
     >
-      <span
-        className={
-          pullRequest.state === "draft"
-            ? "text-subtle-foreground"
-            : state.className
-        }
-      >
-        #{pullRequest.number}
-      </span>
+      <span className={badgeColor(pullRequest)}>#{pullRequest.number}</span>
       {glyph === null ? null : <AttentionGlyph kind={glyph} />}
     </span>
   );
