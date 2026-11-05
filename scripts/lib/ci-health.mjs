@@ -246,7 +246,7 @@ export async function collectCiHealth(api, since, until, checkpoint) {
         try {
           for (let page = 1; ; page++) {
             const data = await api(
-              `actions/runs/${run.id}/jobs?filter=all&per_page=50&page=${page}`,
+              `actions/runs/${run.id}/jobs?filter=all&per_page=30&page=${page}`,
             );
             if (!Array.isArray(data?.jobs))
               throw new Error("Invalid CI job inventory");
@@ -292,7 +292,7 @@ export async function collectCiHealth(api, since, until, checkpoint) {
                 ),
               });
             }
-            if (data.jobs.length < 50) break;
+            if (data.jobs.length < 30) break;
             if (page === 200)
               throw new Error("CI job inventory exceeded the report limit");
           }
