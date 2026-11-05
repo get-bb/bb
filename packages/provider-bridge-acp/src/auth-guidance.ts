@@ -43,24 +43,55 @@ export function acpTerminalSignInCommand(args: {
   ].join(" ");
 }
 
-export function describeAcpSignIn(args: {
+export function resolveAcpSignInCommand(args: {
   command: string;
   args: readonly string[];
   authMethods: readonly AcpAuthMethod[];
+  declaredCommand: string | null;
   platform?: NodeJS.Platform;
 }): string | null {
+  const platform = args.platform ?? process.platform;
   const terminal = args.authMethods.find(
     (method) => method.type === "terminal",
   );
   if (terminal !== undefined) {
-    return `To sign in, run this in a terminal on the machine that hosts the thread, then try again: ${acpTerminalSignInCommand(
-      {
-        command: args.command,
-        args: args.args,
-        method: terminal,
-        ...(args.platform === undefined ? {} : { platform: args.platform }),
-      },
-    )}`;
+    return acpTerminalSignInCommand({
+      command: args.command,
+      args: args.args,
+      method: terminal,
+      platform,
+    });
+  }
+  const terminalCommand = args.authMethods.find(
+    (method) => method.terminalCommand !== undefined,
+  )?.terminalCommand;
+  if (terminalCommand !== undefined) {
+    return acpTerminalSignInCommand({
+      command: terminalCommand.command,
+      args: [],
+      method: { args: terminalCommand.args, env: {} },
+      platform,
+    });
+  }
+  return args.declaredCommand;
+}
+
+export function describeAcpSignIn(args: {
+  command: string;
+  args: readonly string[];
+  authMethods: readonly AcpAuthMethod[];
+  declaredCommand?: string | null;
+  platform?: NodeJS.Platform;
+}): string | null {
+  const signInCommand = resolveAcpSignInCommand({
+    command: args.command,
+    args: args.args,
+    authMethods: args.authMethods,
+    declaredCommand: args.declaredCommand ?? null,
+    ...(args.platform === undefined ? {} : { platform: args.platform }),
+  });
+  if (signInCommand !== null) {
+    return `To sign in, run this in a terminal on the machine that hosts the thread, then try again: ${signInCommand}`;
   }
   const names = [
     ...new Set(

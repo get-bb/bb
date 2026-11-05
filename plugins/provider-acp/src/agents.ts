@@ -13,6 +13,15 @@ export function formatCustomAcpProviderId(slug: string): string {
 
 export type { AcpLaunchSpec };
 
+export type AcpSignInCheck =
+  | {
+      kind: "command";
+      args: readonly string[];
+      signedOutText: readonly string[];
+    }
+  | { kind: "session"; signedOutText: readonly string[] }
+  | { kind: "none" };
+
 export interface AcpAgentDefinition {
   id: string;
   displayName: string;
@@ -24,6 +33,7 @@ export interface AcpAgentDefinition {
   reasoningProbePriorityModelIds?: readonly string[];
   visibility?: "always" | "installed";
   signInCommand?: string;
+  signInCheck?: AcpSignInCheck;
   installUrl?: string;
   iconTint?: { light: string; dark: string };
   supportsManualCompaction?: boolean;

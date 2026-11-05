@@ -28,6 +28,19 @@ on Settings → Providers. Restore it with `bb provider enable acp-opencode`.
 This leaves other ACP agents and the host CLI intact. Disabled agents skip
 background capability probing. `bb provider list --all` includes disabled agents.
 
+An installed ACP agent counts as ready only after bb checks its sign-in on the
+host. omp and grok answer through their own `models` command; Hermes, registry
+agents and custom agents are started over ACP and asked for a session, and an
+`Authentication required` answer means signed out. OpenCode serves its free
+models without an account, so it is ready whenever it is installed. A
+signed-out agent reports `unauthenticated` with the command that signs it in:
+the terminal method the agent advertises over ACP when it has one, else
+`omp login`, `grok login` or `hermes model`. The setup guide runs that command
+in a terminal from Sign in, and the new-thread composer reports the agent as
+not signed in. Read the same state with `bb.sdk.system.providerStates({ hostId })`.
+A signed-in result is reused for five minutes; a signed-out one is checked
+again after 10 seconds (status command) or 30 seconds (ACP session).
+
 Cursor project skills come from `.cursor/skills`, which can link to
 `.agents/skills`. BB lists these linked skills as read-only under `cursor-project`.
 

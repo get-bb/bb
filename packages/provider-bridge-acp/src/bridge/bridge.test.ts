@@ -1627,6 +1627,140 @@ describe("acp bridge", () => {
     });
   });
 
+  function sendProviderHealth(
+    args: AgentLaunchArgs & { acpSignIn?: unknown } = {},
+  ): number {
+    const { acpSignIn, ...launch } = args;
+    return sendRequest("provider/health", {
+      providerId: "acp-fake",
+      providerOptions: {
+        ...launchProviderOptions(launch),
+        ...(acpSignIn === undefined ? {} : { acpSignIn }),
+      },
+    });
+  }
+
+  it("reports a signed-out agent as unauthenticated with its own terminal sign-in command", async () => {
+    const response = await waitForResponse(
+      sendProviderHealth({
+        envVars: {
+          FAKE_ACP_AUTH_METHODS: "agent.login",
+          FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
+          FAKE_ACP_LAUNCH_LOG: join(workspaceDir, "health-signed-out.txt"),
+        },
+      }),
+    );
+
+    expect(response.result).toMatchObject({
+      supported: true,
+      health: { status: "unauthenticated", statusMessage: null },
+    });
+    expect(
+      (response.result as { health: { loginCommand: string } }).health
+        .loginCommand,
+    ).toMatch(/\S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u);
+  });
+
+  it("reports a signed-in agent as ready and checks it once while the result is fresh", async () => {
+    const launchLog = join(workspaceDir, "health-signed-in.txt");
+    const launch = {
+      envVars: {
+        FAKE_ACP_AUTH_METHODS: "agent.login",
+        FAKE_ACP_AUTH_OPTIONAL: "1",
+        FAKE_ACP_LAUNCH_LOG: launchLog,
+      },
+      acpSignIn: {
+        command: "fake login",
+        check: { kind: "session", signedOutText: [] },
+      },
+    };
+    const first = await waitForResponse(sendProviderHealth(launch));
+    const second = await waitForResponse(sendProviderHealth(launch));
+
+    expect(first.result).toMatchObject({
+      health: { status: "ready", loginCommand: "fake login" },
+    });
+    expect(second.result).toEqual(first.result);
+    expect(readFileSync(launchLog, "utf8").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("maps an agent's declared signed-out error to unauthenticated with the declared command", async () => {
+    const response = await waitForResponse(
+      sendProviderHealth({
+        envVars: {
+          FAKE_ACP_SESSION_NEW_ERROR:
+            "No LLM provider configured. Run `fake model` to select a provider.",
+          FAKE_ACP_LAUNCH_LOG: join(workspaceDir, "health-declared.txt"),
+        },
+        acpSignIn: {
+          command: "fake model",
+          check: {
+            kind: "session",
+            signedOutText: ["No LLM provider configured"],
+          },
+        },
+      }),
+    );
+
+    expect(response.result).toMatchObject({
+      health: { status: "unauthenticated", loginCommand: "fake model" },
+    });
+  });
+
+  it("falls back to the session check when the server sends no or an unreadable sign-in check", async () => {
+    for (const acpSignIn of [undefined, { command: 42 }]) {
+      const response = await waitForResponse(
+        sendProviderHealth({
+          envVars: {
+            FAKE_ACP_SESSION_NEW_ERROR: "the agent's database is locked",
+            FAKE_ACP_LAUNCH_LOG: join(
+              workspaceDir,
+              `health-fallback-${String(acpSignIn === undefined)}.txt`,
+            ),
+          },
+          ...(acpSignIn === undefined ? {} : { acpSignIn }),
+        }),
+      );
+      expect(response.result).toMatchObject({
+        health: {
+          status: "unknown",
+          loginCommand: null,
+          statusMessage: expect.stringMatching(/database is locked/u),
+        },
+      });
+    }
+  });
+
+  it("blocks the model list of an agent whose status command says it is signed out", async () => {
+    const response = await waitForResponse(
+      sendRequest("model/list", {
+        providerOptions: {
+          ...launchProviderOptions({
+            envVars: {
+              FAKE_ACP_MODEL_CONFIG: "1",
+              FAKE_ACP_LAUNCH_LOG: join(workspaceDir, "list-signed-out.txt"),
+            },
+          }),
+          acpSignIn: {
+            command: "fake login",
+            check: {
+              kind: "command",
+              args: ["-e", "console.log('No models available.')"],
+              signedOutText: ["No models available"],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toBe("ACP agent is not authenticated.");
+    expect(response.error?.data).toMatchObject({
+      recovery: { kind: "authRequired", retryable: false },
+    });
+    expect(existsSync(join(workspaceDir, "list-signed-out.txt"))).toBe(false);
+  });
+
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
     const launchLog = join(workspaceDir, "discovery-launches.txt");
     const discoveryEnv = {

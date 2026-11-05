@@ -19,6 +19,7 @@ import {
   versionFrom,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
+import type { AcpAuthState } from "./acp-auth-state.js";
 import { readOpenCodeGoUsage } from "./opencode-usage.js";
 
 const execFileAsync = execHostFile;
@@ -141,6 +142,7 @@ function healthResult(args: {
   accountEmail?: string | null;
   installedVersion?: string | null;
   statusMessage?: string | null;
+  loginCommand?: string | null;
 }): ProviderHealthResult {
   const maintained = args.maintenance !== undefined;
   return {
@@ -154,7 +156,7 @@ function healthResult(args: {
       minimumSupportedVersion: null,
       canInstall: maintained,
       canUpdate: maintained && args.status !== "not_installed",
-      loginCommand: args.maintenance?.loginCommand ?? null,
+      loginCommand: args.maintenance?.loginCommand ?? args.loginCommand ?? null,
     },
   };
 }
@@ -180,9 +182,16 @@ async function readAcpCliVersion(command: string): Promise<string | null> {
   }
 }
 
+const AUTH_STATE_HEALTH_STATUS = {
+  signedIn: "ready",
+  signedOut: "unauthenticated",
+  unknown: "unknown",
+} as const satisfies Record<AcpAuthState["status"], string>;
+
 export async function getAcpProviderHealth(args: {
   maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
+  readAuthState: () => Promise<AcpAuthState>;
 }): Promise<ProviderHealthResult> {
   const maintenance = args.maintenance;
   if (args.command === null) {
@@ -197,10 +206,13 @@ export async function getAcpProviderHealth(args: {
   }
   const version = await readAcpCliVersion(args.command);
   if (maintenance === undefined) {
+    const auth = await args.readAuthState();
     return healthResult({
       maintenance,
-      status: "ready",
+      status: AUTH_STATE_HEALTH_STATUS[auth.status],
       installedVersion: version,
+      loginCommand: auth.loginCommand,
+      statusMessage: auth.status === "unknown" ? auth.statusMessage : null,
     });
   }
   try {

@@ -152,7 +152,9 @@ function buildAcpModelListCommand(
   };
 }
 
-function buildAcpAgentCommand(launchSpec: AcpLaunchSpec): AcpAgentCommandParam {
+export function buildAcpAgentCommand(
+  launchSpec: AcpLaunchSpec,
+): AcpAgentCommandParam {
   return {
     command: launchSpec.command,
     args: [...launchSpec.args],
