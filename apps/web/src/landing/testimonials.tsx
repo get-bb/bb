@@ -58,7 +58,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/alanaagoyal/status/2085121395361828929",
     quote:
-      "truly one of the craziest pieces of software i’ve used in the past six months\n\ngive it a try: github.com/get-bb/bb",
+      "truly one of the craziest pieces of software i've used in the past six months\n\ngive it a try: github.com/get-bb/bb",
     link: {
       text: "github.com/get-bb/bb",
       href: "https://github.com/get-bb/bb",
@@ -124,7 +124,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/swairshah/status/2095643295020122216",
     quote:
-      "Only good malleable software I’ve used in the LLM era is bb… So good I could get the codex voice integration to be much more powerful in bb than in codex.",
+      "Only good malleable software I've used in the LLM era is bb… So good I could get the codex voice integration to be much more powerful in bb than in codex.",
   },
   {
     author: "Bruno Bornsztein",
@@ -133,7 +133,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/brunotorious/status/2098491369895428369",
     quote:
-      "Holy shit @get_bb_app is really good.\n\nAnd I’ve tried everything. claude, codex, t3, delta, tembo and any number of others (including building my own @taskyoudev TUI which is still my go to).\n\nThis is the first thing I’ve seen in a while that really blows me away.",
+      "Holy shit @get_bb_app is really good.\n\nAnd I've tried everything. claude, codex, t3, delta, tembo and any number of others (including building my own @taskyoudev TUI which is still my go to).\n\nThis is the first thing I've seen in a while that really blows me away.",
   },
   {
     author: "ishan",
@@ -142,7 +142,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/0xishand/status/2098304763368767697",
     quote:
-      "bb is one of the most impressive tools I’ve used in a very long time. With a few prompts you can completely generate your own in-IDE tooling for anything. This is exactly how adaptive UIs should act and feel.",
+      "bb is one of the most impressive tools I've used in a very long time. With a few prompts you can completely generate your own in-IDE tooling for anything. This is exactly how adaptive UIs should act and feel.",
   },
 ];
 
