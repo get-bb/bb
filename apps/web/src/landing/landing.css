@@ -930,14 +930,28 @@ html:has(.nav-sticky) {
   color: var(--ink);
 }
 
+.agent-more {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--subtle);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
 @media (max-width: 560px) {
   .providers.agent-row {
-    row-gap: var(--gap-md);
+    row-gap: 10px;
   }
 
   .agent-row .label {
     flex-basis: 100%;
     text-align: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-more {
+    display: none;
   }
 }
 
@@ -949,10 +963,6 @@ html:has(.nav-sticky) {
   color: var(--subtle);
   white-space: nowrap;
   letter-spacing: -0.01em;
-}
-
-.pmore-desktop {
-  display: inline;
 }
 
 /* ── Hero app mock (interactive recreation of the bb app) ───────── */
@@ -3339,10 +3349,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .pmore {
     display: inline;
-  }
-
-  .pmore.pmore-desktop {
-    display: none;
   }
 
   /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
