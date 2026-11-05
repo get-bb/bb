@@ -66,6 +66,7 @@ it("queues thread cleanup and bulk maintenance in order and continues after a fa
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -222,6 +223,7 @@ it.each([
                 children: threads.map((thread) => ({
                   name: thread.id,
                   sizeBytes: 10,
+                  empty: false,
                 })),
               },
             ],
@@ -566,13 +568,16 @@ it.each([false, true])(
   },
 );
 
-it("reads only the threads a report needs: storage entries by id and threads in retired worktrees", async () => {
+it("reads only the threads a report needs: non-empty storage entries by id and threads in retired worktrees", async () => {
   type Environment = Awaited<
     ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
   >[number];
   const root = await directory();
   const worktrees = await directory();
   await fs.mkdir(path.join(root, "thr_kept"));
+  await fs.writeFile(path.join(root, "thr_kept", "notes.md"), "kept");
+  for (const name of ["thr_cleared", "thr_ghost"])
+    await fs.mkdir(path.join(root, name));
   for (const name of ["busy", "free"])
     await fs.mkdir(path.join(worktrees, name));
   const retired = (id: string, name: string): Environment => ({
@@ -600,6 +605,7 @@ it("reads only the threads a report needs: storage entries by id and threads in 
   });
   const threads = [
     makeThreadResponse({ id: "thr_kept" }),
+    makeThreadResponse({ id: "thr_cleared", archivedAt: 1 }),
     makeThreadResponse({ id: "thr_busy", environmentId: "env_busy" }),
     makeThreadResponse({
       id: "thr_done",
@@ -607,6 +613,7 @@ it("reads only the threads a report needs: storage entries by id and threads in 
       archivedAt: 1,
     }),
   ];
+  const requestedThreadIds = new Set<string>();
   const worker = experimental_createHostEntryHarness(hostEntry);
   const host = createFakePluginHost({
     pluginId: "storage-retention",
@@ -651,6 +658,8 @@ it("reads only the threads a report needs: storage entries by id and threads in 
             input?.environmentId === undefined
           )
             throw new Error("Unfiltered thread listing");
+          for (const threadId of input.threadIds ?? [])
+            requestedThreadIds.add(threadId);
           return threads.filter(
             (thread) =>
               (input.threadIds === undefined ||
@@ -673,6 +682,8 @@ it("reads only the threads a report needs: storage entries by id and threads in 
         return (
           report && {
             threadsWithStorageCount: report.threadsWithStorageCount,
+            archivedThreadCount: report.archivedThreadCount,
+            orphanCount: report.orphanCount,
             leftoverWorktrees: report.leftoverWorktrees.map(
               (worktree) => worktree.environmentId,
             ),
@@ -681,8 +692,11 @@ it("reads only the threads a report needs: storage entries by id and threads in 
       })
       .toEqual({
         threadsWithStorageCount: 1,
+        archivedThreadCount: 0,
+        orphanCount: 0,
         leftoverWorktrees: ["env_free"],
       });
+    expect([...requestedThreadIds]).toEqual(["thr_kept"]);
   } finally {
     await host.harness.dispose();
     await worker.experimental_dispose();
@@ -1111,6 +1125,7 @@ it("keeps cleanup available during a scan and leaves cleared storage out of its 
               children: threads.map((thread) => ({
                 name: thread.id,
                 sizeBytes: 1000,
+                empty: false,
               })),
             },
           ],
@@ -2675,11 +2690,13 @@ it("never clears thread storage that holds a workspace an environment still uses
     const report = hostStorageResponseSchema.parse(
       await host.harness.callRpc("host", { hostId: "host_test" }),
     ).report!;
-    expect(report.archivedFiles.threadCount).toBe(1);
+    expect(report.archivedFiles.threadCount).toBe(0);
     expect(report.orphanCount).toBe(1);
     expect(report.archivedLargeFiles.threadCount).toBe(0);
 
-    await host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" });
+    await expect(
+      host.harness.callRpc("clearArchivedFiles", { hostId: "host_test" }),
+    ).resolves.toMatchObject({ clearedThreads: 0 });
     await host.harness.callRpc("clearLargeFiles", { hostId: "host_test" });
     await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
     expect(await ownerFiles()).toEqual(expectedOwnerFiles);

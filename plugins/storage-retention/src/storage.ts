@@ -55,7 +55,11 @@ const cachedScanSchema = z.object({
     )
     .default([]),
   entries: z.array(
-    z.object({ name: z.string(), sizeBytes: z.number().int().nonnegative() }),
+    z.object({
+      name: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+      empty: z.boolean().default(false),
+    }),
   ),
   worktrees: z.array(
     z.object({
@@ -180,6 +184,10 @@ function linkedThreads(link: ThreadLink, threads: Thread[]) {
         (thread.environmentId !== null &&
           link.environmentIds.has(thread.environmentId)) ||
         thread.id === link.threadId,
+    )
+    .sort(
+      (a, b) =>
+        b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
     )
     .map((thread) => ({
       threadId: thread.id,
@@ -442,12 +450,13 @@ export function createStorage(
       ].map((path) => [path, threadLink(path, allEnvironments)]),
     );
     const retired = retiredEnvironments(allEnvironments);
+    const entries = scan.entries.filter((entry) => !entry.empty);
     const [threadsById, environmentThreads] = await Promise.all([
       readThreadsById(
         bb,
         [
           ...new Set([
-            ...scan.entries.map((entry) => entry.name),
+            ...entries.map((entry) => entry.name),
             ...scan.largeFiles.map((entry) => entry.name),
             ...[...links.values()].flatMap((link) =>
               link.threadId === null ? [] : [link.threadId],
@@ -518,11 +527,11 @@ export function createStorage(
       counts.bytes += worktree.sizeBytes;
       externalCounts.set(worktree.projectId, counts);
     }
-    const owned = scan.entries.flatMap((entry) => {
+    const owned = entries.flatMap((entry) => {
       const thread = byId.get(entry.name);
       return thread ? [{ ...entry, thread }] : [];
     });
-    const orphans = scan.entries.filter(
+    const orphans = entries.filter(
       (entry) => !byId.has(entry.name) && !workspaces.has(entry.name),
     );
     const worktrees = scan.worktrees.flatMap((entry) => {
@@ -963,9 +972,10 @@ export function createStorage(
   ) {
     let count = 0;
     let bytes = 0;
-    for (let offset = 0; offset < entries.length; offset += 100) {
+    const filled = entries.filter((entry) => !entry.empty);
+    for (let offset = 0; offset < filled.length; offset += 100) {
       lifecycle.signal.throwIfAborted();
-      const candidates = entries.slice(offset, offset + 100);
+      const candidates = filled.slice(offset, offset + 100);
       const [byId, workspaces] = await Promise.all([
         readThreadsById(
           bb,

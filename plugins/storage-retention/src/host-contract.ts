@@ -28,6 +28,7 @@ export const measuredTargetSchema = z.discriminatedUnion("outcome", [
         z.object({
           name: z.string(),
           sizeBytes: z.number().int().nonnegative(),
+          empty: z.boolean(),
         }),
       )
       .nullable(),
