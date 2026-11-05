@@ -166,7 +166,6 @@ body {
   position: sticky;
   top: 0;
   z-index: var(--z-site-header);
-  min-height: var(--site-header-height);
 }
 
 .nav-shell:has(> .nav-sticky) {
@@ -197,7 +196,7 @@ body {
   .nav-sticky::after {
     animation: nav-hairline linear both;
     animation-timeline: scroll(root);
-    animation-range: 0 var(--site-header-height);
+    animation-range: 0 48px;
   }
 }
 
@@ -436,7 +435,7 @@ html:has(.nav-sticky) {
   .nav-github-stars {
     display: inline-flex;
     align-items: center;
-    gap: var(--gap-xs);
+    gap: 5px;
     width: auto;
     padding: 0 var(--gap-sm);
   }
