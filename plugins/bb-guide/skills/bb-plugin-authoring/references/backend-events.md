@@ -5,12 +5,13 @@
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
 bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }) => { ... }); // see backend-sdk.md
+bb.events.on("experimental_thread.read", ({ thread }) => { ... });        // thread is now read
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
 bb.events.on("experimental_environment.removed", ({ removal }) => { ... });
 bb.events.on("experimental_host.deleted", ({ host }) => { ... });
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
-bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
+bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: final root reply of the latest turn, or null
 bb.events.on("thread.failed", ({ thread, error }) => { ... });             // error: string | null
 bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.unarchived", ({ thread }) => { ... });
@@ -29,29 +30,28 @@ caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
 stats survive reloads and reset on remove). The surface that asks is
 `bb.experimental_hooks`, below, where core acts on your answer.
 
-Seventeen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
-fires after core commits a pending interaction row. The three `message.*`
-ones fire when a dispatch is queued behind a wait (again when a row's wait is
-rewritten), when a queued row's waits all clear and it dispatches, or when the
-user removes a queued row before it dispatched. Every listener sees every
-queued row, so a plugin that only wants its own filters on
+Eighteen events. The seven `thread.*` ones are thread lifecycle.
+`interaction.pending` fires after core commits a pending interaction row. The
+three `message.*` ones fire when a dispatch is queued behind a wait (again when
+its wait or `sendAt` is rewritten), when a queued row's waits all clear and it
+dispatches, or when the user removes a queued row before it dispatched. Every
+listener sees every queued row, so a plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`message.cancelled` is the only signal for that removal: release external
-resources held for a waiting message (a sandbox mid-provision, a reserved
-slot) there. Archiving or deleting the whole thread fires the thread event
-instead.
+`message.cancelled` is the only signal for that removal: release resources held
+for a waiting message (a sandbox mid-provision, a reserved slot) there.
+Archiving or deleting the whole thread fires the thread event instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
 `threadId`, the failed turn's `requestId`, the provider `turnId` (null when the
 failure never reached a turn), `errorInfo` (the failure's `ProviderErrorInfo`:
-the provider's own report, or the typed code of a request the provider rejected
-at the door; null when neither carried one), `inputAccepted` (whether the
-provider took the input into its conversation before failing), `rateLimits`
-(the latest `ProviderRateLimitState`, null when the provider reports no
-windows) and `attemptNumber` (1 on a first failure, 2 on the first retry's).
-There is no thread DTO and no copy of the message, because a retry is asked for
-BY REFERENCE:
+the provider's report, or the typed code of a request rejected at the door;
+null when neither carried one), `inputAccepted` (whether the provider took the
+input before failing), `rateLimits` (the latest `ProviderRateLimitState`, null
+without windows), `attemptNumber` (1 on a first failure, 2 on the first
+retry's) and `originPluginId` (the plugin that sent the message through
+`threads.send` or `threads.spawn`; null for a user, agent, core, or retry).
+No thread DTO and no message copy: a retry is asked for BY REFERENCE:
 
 ```ts
 bb.events.on("turn.failed", async (event) => {

@@ -604,7 +604,10 @@ export function registerMachineCommands(
           serverUrl: getUrl(),
           target,
         });
-        const result = await sdk.hosts.providerCliStatus({ hostId });
+        const result = await sdk.hosts.providerCliStatus({
+          hostId,
+          refresh: true,
+        });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),

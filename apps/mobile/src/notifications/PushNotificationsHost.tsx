@@ -9,6 +9,7 @@ import {
   useRealtimeConnectionState,
 } from "@/app-shell";
 import {
+  isDismissalPushData,
   parsePushNotificationData,
   resolvePushTargetProfile,
   isPushRegistrationAllowed,
@@ -46,9 +47,9 @@ export function PushNotificationsHost() {
 
   useEffect(() => {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
+      handleNotification: async (notification) => ({
         shouldShowBanner: false,
-        shouldShowList: true,
+        shouldShowList: !isDismissalPushData(notification.request.content.data),
         shouldPlaySound: false,
         shouldSetBadge: false,
       }),

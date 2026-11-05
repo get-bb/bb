@@ -155,6 +155,11 @@ it("shows a failed run's error when queued work continues to a completed turn", 
       kind: "provider.error",
       message: "Provider error",
       detail: "scripted unrecovered failure",
+      errorInfo: {
+        category: "unknown",
+        httpStatusCode: null,
+        providerCode: null,
+      },
     },
   ]);
   expect(deltas.filter((d) => d.kind === "turn.boundary")).toEqual([

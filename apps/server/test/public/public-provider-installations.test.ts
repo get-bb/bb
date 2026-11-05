@@ -15,6 +15,7 @@ import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import {
   aggregateProviderInstallations,
+  PROVIDER_INSTALLATION_STATUS_FRESH_MS,
   PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS,
 } from "../../src/services/system/provider-installations.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
@@ -150,54 +151,93 @@ function handleProviderInstallationRpc(
 }
 
 describe("public provider installation routes", () => {
-  it("shares concurrent status probes and invalidates after installation, reconnect and TTL expiry", async () => {
+  it("shares status probes, serves a stale status while refreshing it, and pushes changed statuses", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "cached-installations",
       });
+      let version = "1.0.0";
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
         async handle(request) {
+          const { command } = request;
+          if (command.type !== "provider.installation.status") {
+            return handleProviderInstallationRpc(request);
+          }
+          const currentVersion = version;
           await new Promise((resolve) => setTimeout(resolve, 10));
-          return handleProviderInstallationRpc(request);
+          return {
+            ok: true as const,
+            result: {
+              ...installationStatus(command.providerId),
+              currentVersion,
+            },
+          };
         },
       });
+      let pushes = 0;
+      harness.deps.hub.onChangedMessage((message) => {
+        if (
+          message.entity === "host" &&
+          message.id === host.id &&
+          message.changes.includes("provider-cli-status-changed")
+        ) {
+          pushes += 1;
+        }
+      });
       const url = `${API}/hosts/${host.id}/provider-clis/status`;
-      const read = async () => {
-        const response = await harness.app.request(url);
+      const readVersions = async (query = "") => {
+        const response = await harness.app.request(`${url}${query}`);
         expect(response.status).toBe(200);
-        expect(Object.keys(await response.json())).toHaveLength(4);
+        const body: ProviderCliStatusResponse = await response.json();
+        expect(Object.keys(body)).toHaveLength(4);
+        return [...new Set(Object.values(body).map((s) => s.currentVersion))];
       };
       const count = () =>
         responder.requests.filter(
           (request) => request.command.type === "provider.installation.status",
         ).length;
-      await Promise.all(Array.from({ length: 8 }, read));
-      expect(count()).toBe(4);
-      await read();
-      expect(count()).toBe(4);
-      const installed = await harness.app.request(
-        `${API}/hosts/${host.id}/provider-clis/install`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: "codex", actionKind: "update" }),
-        },
-      );
-      expect(installed.status).toBe(200);
-      await read();
-      expect(count()).toBe(8);
-      harness.hub.notifyHost(host.id, ["host-connected"]);
-      await read();
-      expect(count()).toBe(12);
-      const realNow = Date.now();
-      const clock = vi.spyOn(Date, "now").mockReturnValue(realNow + 30_001);
+      let clock = Date.now();
+      const dateNow = vi.spyOn(Date, "now").mockImplementation(() => clock);
       try {
-        await read();
+        await Promise.all(Array.from({ length: 8 }, () => readVersions()));
+        expect(count()).toBe(4);
+        harness.hub.notifyHost(host.id, ["host-connected"]);
+        expect(await readVersions()).toEqual(["1.0.0"]);
+        expect(count()).toBe(4);
+
+        version = "1.1.0";
+        clock += PROVIDER_INSTALLATION_STATUS_FRESH_MS + 1;
+        expect(await readVersions()).toEqual(["1.0.0"]);
+        await vi.waitFor(() => expect(pushes).toBe(4));
+        expect(await readVersions()).toEqual(["1.1.0"]);
+        expect(count()).toBe(8);
+
+        expect(await readVersions("?refresh=true")).toEqual(["1.1.0"]);
+        expect(count()).toBe(12);
+        expect(pushes).toBe(4);
+
+        version = "1.2.0";
+        expect(await readVersions("?refresh=true")).toEqual(["1.2.0"]);
         expect(count()).toBe(16);
+        expect(pushes).toBe(8);
+
+        const installed = await harness.app.request(
+          `${API}/hosts/${host.id}/provider-clis/install`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+          },
+        );
+        expect(installed.status).toBe(200);
+        version = "1.3.0";
+        expect(await readVersions()).toEqual(["1.3.0"]);
+        expect(count()).toBe(20);
+        expect(pushes).toBe(8);
       } finally {
-        clock.mockRestore();
+        dateNow.mockRestore();
         responder.unregister();
       }
     });

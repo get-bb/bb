@@ -48,11 +48,11 @@
       "RESEND_API_KEY",
     ],
   },
-  "d1_databases": [
+  "hyperdrive": [
     {
-      "binding": "DB",
-      "database_name": "bb-connect-staging",
-      "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
+      "binding": "HYPERDRIVE",
+      "id": "c4123f16fa6d4ef084d4531996012f1b",
+      "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
     },
   ],
   "durable_objects": {
@@ -111,11 +111,11 @@
         "GATE_PUBLIC_KEYS": "{\"keys\":[{\"kid\":\"prod-2026-10-21\",\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"sSHHgGnUQNXtsJ2_4EDXj4ZpIq9y45fZDvMGkKsWnGU\"}]}",
         "RESEND_AUDIENCE_ID": "299db4ee-f3db-476d-9847-0bf4344d9c44",
       },
-      "d1_databases": [
+      "hyperdrive": [
         {
-          "binding": "DB",
-          "database_name": "bb-connect-prod",
-          "database_id": "5e37a076-93e9-4dcf-933f-761c22f7cf8b",
+          "binding": "HYPERDRIVE",
+          "id": "1645c9edadb74b8cb593218030fac7f2",
+          "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
         },
       ],
       "durable_objects": {

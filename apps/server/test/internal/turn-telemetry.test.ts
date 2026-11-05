@@ -22,6 +22,7 @@ import { internalAuthHeaders } from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHostSession,
+  seedPrimaryHost,
   seedProjectWithSource,
   seedThread,
   seedThreadRuntimeState,
@@ -91,8 +92,9 @@ async function setup(
 
 describe("turn_finished telemetry", () => {
   it("reports a completed root turn once, as the install's first turn", async () => {
-    const { harness, session, thread, turnFinished } = await setup();
+    const { harness, host, session, thread, turnFinished } = await setup();
     try {
+      seedPrimaryHost(harness.deps, host.id);
       const response = await postEventBatch(harness, session.id, [
         {
           threadId: thread.id,
@@ -124,6 +126,7 @@ describe("turn_finished telemetry", () => {
               provider: "codex",
               error_category: "none",
               install_turn_number: 1,
+              execution_location: "server_machine",
             },
           },
         ]),
@@ -184,6 +187,7 @@ describe("turn_finished telemetry", () => {
           hostId: host.id,
           includeStopping: false,
           reason,
+          resumingThreadIds: new Set(),
           ...(cause ? { cause } : {}),
         });
         await vi.waitFor(() =>
@@ -206,6 +210,7 @@ describe("turn_finished telemetry", () => {
         hostId: host.id,
         includeStopping: false,
         reason: "host-daemon-restarted",
+        resumingThreadIds: new Set(),
       });
       applyLoggedThreadLifecycleEvent(harness.deps, {
         event: { type: "run.preparing" },
@@ -379,6 +384,7 @@ describe("turn_finished telemetry", () => {
             error_category: "none",
             provider: "codex",
             install_turn_number: 1,
+            execution_location: "unknown",
           },
         },
       ]);
@@ -394,7 +400,7 @@ describe("turn_finished telemetry", () => {
     }
   });
 
-  it("maps outcomes, provider failures, and provider ids to coarse values", () => {
+  it("maps outcomes and provider ids to coarse values", () => {
     expect(turnFinishedOutcome({ type: "run.succeeded" }, "active")).toBe(
       "succeeded",
     );
@@ -404,15 +410,6 @@ describe("turn_finished telemetry", () => {
     expect(turnFinishedOutcome({ type: "run.failed" }, "starting")).toBe(
       "failed",
     );
-    expect(turnErrorCategory("unauthorized")).toBe("auth");
-    expect(turnErrorCategory("budget-exceeded")).toBe("billing");
-    expect(turnErrorCategory("rate-limit")).toBe("rate_limit");
-    expect(turnErrorCategory("stream-disconnected")).toBe(
-      "provider_unavailable",
-    );
-    expect(turnErrorCategory("max-turns")).toBe("limit_reached");
-    expect(turnErrorCategory("policy")).toBe("other");
-    expect(turnErrorCategory(null)).toBe("other");
     expect(reportedProviderId("claude-code")).toBe("claude-code");
     expect(reportedProviderId("acp-hermes-agent")).toBe("acp-hermes-agent");
     expect(reportedProviderId("acp-my-private-agent")).toBe("other");

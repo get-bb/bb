@@ -11,10 +11,14 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   definePluginApp,
+  experimental_FilePreview as FilePreview,
   Markdown,
   useBbNavigate,
   useRpc,
   type ExperimentalCodeFenceRendererProps,
+  type ExperimentalLiveFileTarget,
+  type PluginFileOpenerProps,
+  type PluginFileOpenerSource,
   type PluginMessageDirectiveProps,
   type MarkdownProps,
 } from "@get-bb/plugin-sdk/app";
@@ -354,27 +358,25 @@ function OpenPreviewAction({
 
 const rememberedFrameHeights = new Map<string, number>();
 
-function HtmlFrame({
+function ThemedFrame({
   title,
   content,
   baseHref,
-  heightKey,
-  requested,
-  action,
+  onContentHeight,
 }: {
   title: string;
   content: string;
   baseHref: string;
-  heightKey: string;
-  requested: number | null;
-  action: ReactNode;
+  onContentHeight: ((height: number) => void) | null;
 }) {
   const theme = useFrameTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const latestTheme = useRef(theme);
+  const latestOnContentHeight = useRef(onContentHeight);
   useLayoutEffect(() => {
     latestTheme.current = theme;
-  }, [theme]);
+    latestOnContentHeight.current = onContentHeight;
+  }, [theme, onContentHeight]);
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -388,12 +390,6 @@ function HtmlFrame({
     };
   }, [content, baseHref]);
   const [loaded, setLoaded] = useState(false);
-  const [contentHeight, setContentHeight] = useState<number>();
-  const height = frameHeight({
-    requested,
-    contentHeight,
-    remembered: rememberedFrameHeights.get(heightKey),
-  });
 
   const postTheme = () => {
     const message = frameThemeMessage(theme);
@@ -407,13 +403,7 @@ function HtmlFrame({
       if (frame === null || event.source !== frame.contentWindow) return;
       const reported = readFrameContentHeight(event.data);
       if (reported !== undefined) {
-        rememberBounded(
-          rememberedFrameHeights,
-          heightKey,
-          reported,
-          MAX_REMEMBERED_FRAME_HEIGHTS,
-        );
-        setContentHeight(reported);
+        latestOnContentHeight.current?.(reported);
         return;
       }
       const link = readFrameLinkRequest(event.data);
@@ -429,7 +419,46 @@ function HtmlFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [heightKey]);
+  }, []);
+
+  if (srcDoc === null) return null;
+  return (
+    <iframe
+      ref={frameRef}
+      title={title}
+      srcDoc={srcDoc}
+      sandbox="allow-scripts allow-forms"
+      onLoad={() => {
+        setLoaded(true);
+        postTheme();
+      }}
+      className="block size-full border-0"
+      style={{ colorScheme: loaded ? theme.appearance : "light" }}
+    />
+  );
+}
+
+function HtmlFrame({
+  title,
+  content,
+  baseHref,
+  heightKey,
+  requested,
+  action,
+}: {
+  title: string;
+  content: string;
+  baseHref: string;
+  heightKey: string;
+  requested: number | null;
+  action: ReactNode;
+}) {
+  const [contentHeight, setContentHeight] = useState<number>();
+  const height = frameHeight({
+    requested,
+    contentHeight,
+    remembered: rememberedFrameHeights.get(heightKey),
+  });
 
   return (
     <div
@@ -437,20 +466,20 @@ function HtmlFrame({
       className="group/inline-vis relative my-2"
       style={{ height }}
     >
-      {srcDoc === null ? null : (
-        <iframe
-          ref={frameRef}
-          title={title}
-          srcDoc={srcDoc}
-          sandbox="allow-scripts allow-forms"
-          onLoad={() => {
-            setLoaded(true);
-            postTheme();
-          }}
-          className="block size-full border-0"
-          style={{ colorScheme: loaded ? theme.appearance : "light" }}
-        />
-      )}
+      <ThemedFrame
+        title={title}
+        content={content}
+        baseHref={baseHref}
+        onContentHeight={(reported) => {
+          rememberBounded(
+            rememberedFrameHeights,
+            heightKey,
+            reported,
+            MAX_REMEMBERED_FRAME_HEIGHTS,
+          );
+          setContentHeight(reported);
+        }}
+      />
       <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/inline-vis:opacity-100 pointer-coarse:opacity-100">
         {action}
       </div>
@@ -619,6 +648,7 @@ function InlineVisDirective({
     navigate.experimental_openFilePreview({
       target: state.target,
       location: null,
+      ...(state.kind === "html" ? { opener: PAGE_OPENER_ID } : {}),
     });
   };
 
@@ -719,6 +749,39 @@ function InlineVisFence({
   );
 }
 
+const PAGE_OPENER_ID = "page";
+
+function pageTarget(
+  path: string,
+  source: PluginFileOpenerSource,
+): ExperimentalLiveFileTarget | null {
+  if (source.kind === "workspace" && source.environmentId !== null) {
+    return { kind: "workspace", environmentId: source.environmentId, path };
+  }
+  if (source.kind === "thread-storage" && source.threadId !== null) {
+    return { kind: "thread-storage", threadId: source.threadId, path };
+  }
+  return null;
+}
+
+function InlineVisPageOpener({ path, source, Original }: PluginFileOpenerProps) {
+  const target = pageTarget(path, source);
+  if (target === null) return <Original />;
+  return (
+    <FilePreview
+      target={target}
+      renderPreview={(file) => (
+        <ThemedFrame
+          title={`inline-vis: ${path}`}
+          content={file.content}
+          baseHref={file.url}
+          onContentHeight={null}
+        />
+      )}
+    />
+  );
+}
+
 export default definePluginApp((app) => {
   const previewCache: PreviewCache = new Map();
   app.slots.messageDirective({
@@ -735,6 +798,12 @@ export default definePluginApp((app) => {
         previewCache={previewCache}
       />
     ),
+  });
+  app.slots.fileOpener({
+    id: PAGE_OPENER_ID,
+    title: "Inline visualization page",
+    extensions: [],
+    component: InlineVisPageOpener,
   });
   app.slots.experimental_codeFenceRenderer({
     id: "inline-vis",

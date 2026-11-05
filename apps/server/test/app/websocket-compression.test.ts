@@ -3,7 +3,6 @@ import {
   buildHostDaemonWebSocketProtocols,
   HOST_DAEMON_PROTOCOL_VERSION,
 } from "@bb/host-daemon-contract";
-import { setExperiments } from "@bb/db";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { z } from "zod";
@@ -86,7 +85,6 @@ afterEach(async () => {
 describe("WebSocket compression", () => {
   it("compresses large realtime pushes and leaves small replies uncompressed", async () => {
     server = await startTestServer();
-    setExperiments(server.db, { websocketCompression: true });
     const { response, socket } = await openSocket(
       websocketUrl(server.baseUrl, "/ws"),
     );
@@ -115,39 +113,8 @@ describe("WebSocket compression", () => {
     expect(wireBytes).toBeLessThan(Buffer.byteLength(message) / 4);
   });
 
-  it("follows the experiment on each new realtime connection", async () => {
+  it("declines compression on terminal and daemon sockets", async () => {
     server = await startTestServer();
-    const realtimeUrl = websocketUrl(server.baseUrl, "/ws");
-    const putExperiment = async (websocketCompression: boolean) => {
-      const response = await fetch(
-        `${server?.baseUrl}/api/v1/settings/experiments`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ websocketCompression }),
-        },
-      );
-      expect(response.status).toBe(200);
-    };
-
-    const off = await openSocket(realtimeUrl);
-    expect(off.response.headers["sec-websocket-extensions"]).toBe(undefined);
-    expect(off.socket.extensions).toBe("");
-
-    await putExperiment(true);
-    const on = await openSocket(realtimeUrl);
-    expect(on.socket.extensions).toContain("permessage-deflate");
-    expect(off.socket.extensions).toBe("");
-
-    await putExperiment(false);
-    const offAgain = await openSocket(realtimeUrl);
-    expect(offAgain.socket.extensions).toBe("");
-    expect(on.socket.extensions).toContain("permessage-deflate");
-  });
-
-  it("declines compression on terminal and daemon sockets with the experiment on", async () => {
-    server = await startTestServer();
-    setExperiments(server.db, { websocketCompression: true });
     const terminal = await openSocket(
       websocketUrl(server.baseUrl, "/ws/terminals/missing-terminal"),
     );
@@ -170,6 +137,7 @@ describe("WebSocket compression", () => {
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
+        openThreadWork: [],
       }),
     });
     expect(opened.status).toBe(201);

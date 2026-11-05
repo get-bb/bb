@@ -1567,6 +1567,7 @@ describe("environment providers are asked inside provisioning", () => {
       if (failedThread === null) return;
 
       const outcome = await attemptDispatch(harness.deps, {
+        systemNotice: null,
         thread: failedThread,
         payload: { input: textInput("Retry the task"), mode: "start" },
         source: { kind: "inline" },
@@ -1712,14 +1713,8 @@ describe("environment providers are asked inside provisioning", () => {
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
-        gitSourceInspectionResult: {
+        gitCheckoutInspectionResult: {
           checkout: { kind: "unborn", branchName: "main" },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          isWorktree: false,
-          hasUncommittedChanges: false,
-          operation: { kind: "none" },
-          originDefaultBranch: null,
         },
       });
       const failed = await createTargetThread(harness, {
@@ -1767,7 +1762,7 @@ describe("provider validate at create time", () => {
       registerTestHostRpcCapture(harness.deps, {
         hostId: host.id,
         sessionId: session.id,
-        onInspectGitSource: inspect,
+        onInspectGitCheckout: inspect,
       });
       const args = { hostId: host.id, path: WORKSPACE_PATH };
       const results = await Promise.all(
@@ -2367,14 +2362,8 @@ describe("environment provider listing", () => {
         registerTestHostRpcCapture(harness, {
           hostId: host.id,
           sessionId: session.id,
-          gitSourceInspectionResult: {
+          gitCheckoutInspectionResult: {
             checkout: { kind: "unknown", reason: "not a git repository" },
-            defaultBranch: null,
-            defaultBranchRelation: null,
-            isWorktree: false,
-            hasUncommittedChanges: false,
-            operation: { kind: "none" },
-            originDefaultBranch: null,
           },
         });
         const hostId = requirement === "host" ? "missing-host" : host.id;
@@ -2408,15 +2397,9 @@ describe("environment provider listing", () => {
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
-        onInspectGitSource: inspect,
-        gitSourceInspectionResult: {
+        onInspectGitCheckout: inspect,
+        gitCheckoutInspectionResult: {
           checkout: { kind: "unknown", reason: "not a git repository" },
-          defaultBranch: null,
-          defaultBranchRelation: null,
-          isWorktree: false,
-          hasUncommittedChanges: false,
-          operation: { kind: "none" },
-          originDefaultBranch: null,
         },
       });
       const first = await listProviders(
@@ -2874,6 +2857,7 @@ describe("a provider-produced environment over its life", () => {
         },
         emitThreadParentChanged: () => {},
         emitThreadDeleted: () => {},
+        emitThreadRead: () => {},
         emitMessageQueued: () => {},
         emitMessageDispatched: () => {},
         emitMessageCancelled: () => {},

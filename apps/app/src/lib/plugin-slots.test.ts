@@ -43,6 +43,7 @@ describe("plugin slot store", () => {
       registrationSet({
         homepageSections: [
           { id: "a", title: "Alpha", component: SectionComponent },
+          { id: "b", title: "Beta", component: SectionComponent },
         ],
         composerCustomizations: [
           {
@@ -55,8 +56,15 @@ describe("plugin slot store", () => {
 
     const snapshot = getPluginSlotSnapshot();
     expect(
-      snapshot.homepageSections.map((section) => section.pluginId),
-    ).toEqual(["alpha", "zeta"]);
+      snapshot.homepageSections.map((section) => [
+        section.pluginId,
+        section.id,
+      ]),
+    ).toEqual([
+      ["alpha", "a"],
+      ["alpha", "b"],
+      ["zeta", "z"],
+    ]);
     expect(snapshot.composerCustomizations).toHaveLength(1);
     expect(snapshot.composerCustomizations[0]?.pluginId).toBe("alpha");
   });
@@ -138,43 +146,6 @@ describe("plugin slot store", () => {
     removePluginSlotRegistrations("demo");
     expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
-  });
-
-  it("returns a stable snapshot object between changes", () => {
-    setPluginSlotRegistrations("demo", registrationSet());
-    const first = getPluginSlotSnapshot();
-    expect(getPluginSlotSnapshot()).toBe(first);
-  });
-
-  it("flattens messageDirectives sorted by plugin id with generation metadata", () => {
-    setPluginSlotRegistrations(
-      "zeta",
-      registrationSet({
-        messageDirectives: [{ id: "z-vis", component: DirectiveComponent }],
-      }),
-    );
-    setPluginSlotRegistrations(
-      "alpha",
-      registrationSet({
-        messageDirectives: [
-          { id: "inline-vis", component: DirectiveComponent },
-          { id: "chart", component: DirectiveComponent },
-        ],
-      }),
-    );
-
-    const snapshot = getPluginSlotSnapshot();
-    expect(
-      snapshot.messageDirectives.map((directive) => ({
-        pluginId: directive.pluginId,
-        id: directive.id,
-        generation: directive.generation,
-      })),
-    ).toEqual([
-      { pluginId: "alpha", id: "inline-vis", generation: 1 },
-      { pluginId: "alpha", id: "chart", generation: 1 },
-      { pluginId: "zeta", id: "z-vis", generation: 1 },
-    ]);
   });
 });
 

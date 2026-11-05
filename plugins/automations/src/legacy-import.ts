@@ -232,15 +232,6 @@ export async function ingestLegacyImport(args: {
            )`,
         )
         .run(run);
-      if (run.threadId !== null) {
-        args.db
-          .prepare(
-            `INSERT OR IGNORE INTO automation_thread_marks (
-               thread_id, automation_id, run_id, created_at
-             ) VALUES (?, ?, ?, ?)`,
-          )
-          .run(run.threadId, run.automationId, run.id, run.startedAt);
-      }
     }
   })();
 

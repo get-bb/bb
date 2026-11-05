@@ -328,13 +328,23 @@ async function readAccountEmail(): Promise<string | null> {
   return (await readAccount())?.emailAddress ?? null;
 }
 
-function planLabel(credentials: ClaudeCredentials): string | null {
-  const maxMatch = (credentials.rateLimitTier ?? "").match(/max_(\d+)x/u);
-  if (maxMatch) return `Max (${maxMatch[1]}x)`;
+function claudePlan(
+  credentials: ClaudeCredentials,
+): { id: string; label: string } | null {
+  const tier = credentials.rateLimitTier ?? "";
+  if (/max_20x/u.test(tier)) return { id: "ultra", label: "Ultra" };
+  if (/max_\d+x/u.test(tier)) return { id: "max", label: "Max" };
   const subscription = credentials.subscriptionType;
   return subscription
-    ? subscription.charAt(0).toUpperCase() + subscription.slice(1)
+    ? {
+        id: subscription.toLowerCase(),
+        label: subscription.charAt(0).toUpperCase() + subscription.slice(1),
+      }
     : null;
+}
+
+function planLabel(credentials: ClaudeCredentials): string | null {
+  return claudePlan(credentials)?.label ?? null;
 }
 
 function healthResult(
@@ -494,18 +504,12 @@ function normalizeUsage(
     usageWindow(parsed.data.seven_day, "Weekly limit", "weekly"),
     ...scopedWindows(parsed.data.limits),
   ].filter((window): window is ProviderUsageWindow => window !== null);
+  const plan = claudePlan(credentials);
   return {
     status: "ok",
     accountEmail: email,
-    planLabel: planLabel(credentials),
-    plan: credentials.subscriptionType
-      ? {
-          id: credentials.subscriptionType.toLowerCase(),
-          multiplier:
-            Number(credentials.rateLimitTier?.match(/max_(\d+)x/u)?.[1]) ||
-            null,
-        }
-      : null,
+    planLabel: plan?.label ?? null,
+    plan: plan ? { id: plan.id, multiplier: null } : null,
     windows,
   };
 }

@@ -423,6 +423,9 @@ type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
   string | null,
 ];
+type AllHostProviderCliStatusQueryKeyPrefix = readonly [
+  typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
+];
 type SystemProviderStatesQueryKey = readonly [
   typeof SYSTEM_PROVIDER_STATES_QUERY_KEY,
   string | null,
@@ -447,6 +450,11 @@ type HostPathExistenceQueryKey = readonly [
   typeof HOST_PATH_EXISTENCE_QUERY_KEY,
   string | null,
   readonly string[],
+];
+type HostPathExistsQueryKey = readonly [
+  typeof HOST_PATH_EXISTENCE_QUERY_KEY,
+  string,
+  string,
 ];
 type HostPathExistenceQueryKeyPrefix = readonly [
   typeof HOST_PATH_EXISTENCE_QUERY_KEY,
@@ -1012,6 +1020,10 @@ export function hostProviderCliStatusQueryKey(
   return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY, hostId];
 }
 
+export function allHostProviderCliStatusQueryKeyPrefix(): AllHostProviderCliStatusQueryKeyPrefix {
+  return [HOST_PROVIDER_CLI_STATUS_QUERY_KEY];
+}
+
 export function systemProviderStatesQueryKey(
   args: Pick<SystemExecutionOptionsQueryKeyArgs, "environmentId" | "hostId">,
 ): SystemProviderStatesQueryKey {
@@ -1060,6 +1072,13 @@ export function hostPathExistenceQueryKey(
   paths: readonly string[],
 ): HostPathExistenceQueryKey {
   return [HOST_PATH_EXISTENCE_QUERY_KEY, hostId, paths];
+}
+
+export function hostPathExistsQueryKey(
+  hostId: string,
+  path: string,
+): HostPathExistsQueryKey {
+  return [HOST_PATH_EXISTENCE_QUERY_KEY, hostId, path];
 }
 
 export function hostPathExistenceQueryKeyPrefix(): HostPathExistenceQueryKeyPrefix {

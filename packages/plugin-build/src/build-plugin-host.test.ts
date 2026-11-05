@@ -339,6 +339,32 @@ describe("plugin host build", () => {
       );
     });
 
+    it("uses the stub when only an erased type import names another host export", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-host-type-import-test-"));
+      tempDirs.push(dir);
+      await writeFixture(dir);
+      await writeFile(
+        join(dir, "host.ts"),
+        [
+          'import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";',
+          'type Contract = import("@get-bb/plugin-sdk/host").ExperimentalHostEntry;',
+          "export const contract: Contract | null = null;",
+          "export default experimental_defineHostEntry({ contract: {}, handlers: {} });",
+          "",
+        ].join("\n"),
+      );
+
+      const result = await buildPluginHost(
+        dir,
+        "0.9.0-test",
+        await testToolchain(),
+      );
+
+      expect(await readFile(result.jsPath, "utf8")).not.toMatch(
+        /@get-bb\/plugin-sdk/u,
+      );
+    });
+
     it("names the unbuilt SDK dist when the package is installed without it", async () => {
       const dir = await mkdtemp(join(tmpdir(), "bb-host-unbuilt-sdk-test-"));
       tempDirs.push(dir);

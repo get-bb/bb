@@ -15,6 +15,12 @@ version, and warns when that SDK version is not on npm yet. When npm leaves a
 package out, it prints the manual `npm install --include=dev` step to run
 before `bb plugin build`.
 
+A plugin installed from `$BB_THREAD_STORAGE` or from a bb-managed workspace
+(such as a thread's worktree) keeps working after bb deletes that folder: bb
+first copies it to `<dataDir>/plugins/<id>/preserved-source` and moves the
+install there. `bb plugin install` prints a `note:` line when this applies.
+Later edits belong in that copy.
+
 ## Manifest
 
 The manifest is `package.json`. This block is illustrative. The scaffold adds
@@ -161,6 +167,13 @@ namespaces routes, storage, settings, and CLI commands.
   `app.meta.json` also lists `runtimeSlots`, the shimmed host modules the
   bundle imports. bb downloads `@pierre/diffs` only before evaluating a bundle
   that lists it; a bundle built without the field gets every slot.
+- Give every mount and portal your plugin id. Current `lib/portal-scope`
+  and the shared overlays set `data-bb-plugin` next to `data-bb-plugin-root`.
+  If `app.js` sets `data-bb-plugin-root` without it, as copies of
+  `lib/portal-scope` from before July 2026 do, `bb plugin build` warns. The
+  `narrowPluginCss` experiment then still serves that plugin the slower
+  stylesheet, whose utilities also match any id-less root. Refresh it with
+  `npx shadcn add @bb/portal-scope`.
 - Runtime imports that bb does not shim belong in `dependencies`; validator
   imports such as Zod are ordinary runtime dependencies that the build
   bundles. `devDependencies` is for types and tooling only. A build-required

@@ -9,6 +9,7 @@ import {
   oauthGrant,
   parseMcpScopes,
   verifyMcpAccessToken,
+  first,
 } from "@bb/connect-db";
 import { SettledLookupCache } from "./session.js";
 
@@ -129,16 +130,18 @@ async function lookupGrant(
   grantId: string,
   db: ConnectDb,
 ): Promise<CachedGrant | null> {
-  const row = await db
-    .select({
-      userId: oauthGrant.userId,
-      serverId: oauthGrant.serverId,
-      revokedAt: oauthGrant.revokedAt,
-      lastUsedAt: oauthGrant.lastUsedAt,
-    })
-    .from(oauthGrant)
-    .where(eq(oauthGrant.id, grantId))
-    .get();
+  const row = await first(
+    db
+      .select({
+        userId: oauthGrant.userId,
+        serverId: oauthGrant.serverId,
+        revokedAt: oauthGrant.revokedAt,
+        lastUsedAt: oauthGrant.lastUsedAt,
+      })
+      .from(oauthGrant)
+      .where(eq(oauthGrant.id, grantId))
+      .limit(1),
+  );
   if (!row) return null;
   return {
     userId: row.userId,
@@ -156,8 +159,7 @@ async function writeGrantFirstUse(
   await db
     .update(oauthGrant)
     .set({ lastUsedAt: new Date(now) })
-    .where(and(eq(oauthGrant.id, grantId), isNull(oauthGrant.lastUsedAt)))
-    .run();
+    .where(and(eq(oauthGrant.id, grantId), isNull(oauthGrant.lastUsedAt)));
 }
 
 interface McpAuthorization {

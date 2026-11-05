@@ -35,6 +35,7 @@ const READY_DECISION_TIMEOUT_MS = 60 * 1000;
 type RestartDecision =
   | { kind: "abort" }
   | { kind: "cancel"; message: string }
+  | { kind: "defer" }
   | { kind: "restart" };
 
 export interface LauncherAppUpdateControllerArgs {
@@ -277,6 +278,11 @@ export function createLauncherAppUpdateController(
     pushStatus();
     const decision = await waitForRestartDecision();
     if (decision.kind === "abort") return;
+    if (decision.kind === "defer") {
+      activity = { phase: "idle" };
+      pushStatus();
+      return;
+    }
     if (decision.kind === "cancel") {
       await recordPrepareFailure(to, "prepare", decision.message, []);
       activity = { phase: "idle" };
@@ -329,15 +335,16 @@ export function createLauncherAppUpdateController(
         return null;
       }
       case "restart":
-      case "cancel": {
+      case "cancel":
+      case "defer": {
         const decide = decideRestart;
         if (activity.phase !== "ready" || decide === null) {
           throw new Error("No update is waiting to restart.");
         }
         decide(
-          request.type === "restart"
-            ? { kind: "restart" }
-            : { kind: "cancel", message: request.message },
+          request.type === "cancel"
+            ? { kind: "cancel", message: request.message }
+            : { kind: request.type },
         );
         return null;
       }

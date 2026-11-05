@@ -1,4 +1,3 @@
-import { drizzle } from "drizzle-orm/d1";
 import { escapeHtmlText } from "@bb/text-utils";
 import {
   GATE_OAUTH_AUTH_KIND,
@@ -10,9 +9,9 @@ import {
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
   parseVisitorHost,
-  schema,
   sha256Hex,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import {
   getSetCookies,
   refreshAccountSessionCookies,
@@ -73,7 +72,10 @@ import {
   isWorkerHeldResponse,
   workerHeldResponsesEnabled,
 } from "./relay.js";
-import { responseHeadTimeoutMs } from "./response-head-timeout.js";
+import {
+  RESP_HEAD_MAX_WAIT_MS,
+  RESP_HEAD_TIMEOUT_MS,
+} from "./response-head-timeout.js";
 import {
   authorizeMcpToken,
   isMcpLocalPath,
@@ -83,7 +85,11 @@ import {
   readBearerToken,
   type McpForwardAuth,
 } from "./mcp-gate.js";
-import { readTunnelLiveness, type TunnelLiveness } from "./tunnel-liveness.js";
+import {
+  readTunnelLiveness,
+  tunnelServing,
+  type TunnelLiveness,
+} from "./tunnel-liveness.js";
 import {
   handleGatePresence,
   handleGatePresenceBatch,
@@ -332,6 +338,7 @@ async function fetchTunnelDo(
   request: Request,
   transport: "direct" | "relay-when-enabled",
   progress: GateProgress,
+  signal: AbortSignal,
 ): Promise<Response> {
   const replayable = REPLAYABLE_TUNNEL_METHODS.has(request.method);
   const relay =
@@ -344,7 +351,9 @@ async function fetchTunnelDo(
     progress.tunnelObjectAttempts += 1;
     try {
       const response =
-        (relay ? await fetchThroughRelay(stub, request, progress) : null) ??
+        (relay
+          ? await fetchThroughRelay(stub, request, progress, signal)
+          : null) ??
         (await stub.fetch(replayable ? new Request(request) : request));
       progress.stage = "finishing";
       return response;
@@ -469,6 +478,7 @@ const gate = {
     env: Env,
     ctx: ExecutionContext,
     progress: GateProgress,
+    signal: AbortSignal,
   ): Promise<Response> {
     const runtime = resolveConnectRuntime(env);
     const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
@@ -521,7 +531,7 @@ const gate = {
       );
     }
 
-    const db = drizzle(env.DB, { schema });
+    const { db } = openGateDb(env);
     const isTunnelDial = url.pathname === "/__tunnel";
     const resolved = await resolveLabel(
       label,
@@ -546,6 +556,7 @@ const gate = {
         new Request(doRequest, { headers }),
         "relay-when-enabled",
         progress,
+        signal,
       );
     };
 
@@ -583,6 +594,7 @@ const gate = {
         new Request(new Request(forward, request), { headers }),
         "direct",
         progress,
+        signal,
       );
     }
 
@@ -841,15 +853,21 @@ export default {
     try {
       return await withGateDeadline({
         request,
-        deadlineMs: responseHeadTimeoutMs(
-          request.method,
-          requestUrl,
-          request.headers,
-        ),
+        deadlineMs: RESP_HEAD_TIMEOUT_MS,
+        maxWaitMs: RESP_HEAD_MAX_WAIT_MS,
         slowAfterMs:
           requestUrl.pathname === "/__tunnel" ? SLOW_TUNNEL_DIAL_MS : null,
         progress,
-        run: () => gate.fetch(request, env, ctx, progress),
+        run: (signal) => gate.fetch(request, env, ctx, progress, signal),
+        tunnelServing: async () =>
+          progress.routingKey !== null &&
+          tunnelServing(
+            await readTunnelLiveness(
+              env.TUNNEL_DO,
+              progress.routingKey,
+              TUNNEL_STATUS_TIMEOUT_MS,
+            ),
+          ),
         onDelay: (delay) =>
           recordGateDelay(env, ctx, delay, progress.routingKey),
       });

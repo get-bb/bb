@@ -110,6 +110,7 @@ export const systemExecutionOptionsQuerySchema = z
     providerId: z.string().min(1),
     projectId: z.string().min(1),
     selectedModel: z.string().min(1),
+    preferCached: z.enum(["true", "false"]),
   })
   .partial()
   .superRefine(rejectMultipleWorkspaceSelectors)
@@ -223,7 +224,54 @@ const onboardingStepTelemetryPropertiesSchema = z
   })
   .strict();
 
+const telemetryResourceIdSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,127}$/);
+
+const releaseVersionTelemetrySchema = z
+  .string()
+  .max(32)
+  .regex(/^\d+(\.\d+){1,3}$/);
+
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("recommendation"),
+      properties: z
+        .object({
+          resource_type: z.enum(["plugin"]),
+          resource_id: telemetryResourceIdSchema,
+          recommendation_id: z.string().regex(/^[A-Za-z0-9_-]{21}$/),
+          action: z.enum(["shown", "selected"]),
+          surface: z.enum(["onboarding"]),
+          entry: onboardingEntryTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_operation"),
+      properties: z
+        .object({
+          entry: onboardingEntryTelemetrySchema,
+          step: onboardingStepTelemetrySchema,
+          operation: z.enum([
+            "install",
+            "update",
+            "scan",
+            "import",
+            "remote_access",
+            "add_machine",
+          ]),
+          outcome: z.enum(["started", "succeeded", "failed"]),
+          resource_id: telemetryResourceIdSchema.optional(),
+          item_count: z.number().int().nonnegative().optional(),
+          succeeded_count: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
   z
     .object({
       name: z.literal("onboarding_agent_state"),
@@ -248,6 +296,24 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "exited",
             "failed",
             "cancelled",
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_blocker"),
+      properties: z
+        .object({
+          reason: z.enum([
+            "agent_missing",
+            "agent_update",
+            "sign_in",
+            "model_unavailable",
+            "provider_selection",
+            "model_selection",
+            "project_setup",
           ]),
         })
         .strict(),
@@ -297,6 +363,23 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
           last_step: onboardingStepTelemetrySchema,
         })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("release_notes_opened"),
+      properties: z
+        .object({
+          release_version: releaseVersionTelemetrySchema,
+          view: z.enum(["inline", "web"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("plugin_creation_started"),
+      properties: z.object({}).strict(),
     })
     .strict(),
 ]);
@@ -432,6 +515,7 @@ export type SystemAppUpdateSupport = z.infer<
 >;
 
 export const systemAppUpdateAvailableSchema = z.object({
+  behindSince: z.iso.datetime().nullable(),
   channel: z.enum(["latest", "nightly", "main"]),
   commit: z.string().nullable(),
   commitCount: z.number().int().nonnegative().nullable(),
@@ -489,11 +573,14 @@ export type SystemAppUpdateResult = z.infer<typeof systemAppUpdateResultSchema>;
 export const systemAppUpdateStatusSchema = z.object({
   desktopUpdateSupported: z.literal(true).optional(),
   activity: systemAppUpdateActivitySchema,
+  autoUpdate: z.boolean(),
   available: systemAppUpdateAvailableSchema.nullable(),
+  availableSkipped: z.boolean(),
   blocked: systemAppUpdateBlockedSchema.nullable(),
   current: systemAppUpdateRevisionSchema,
   lastResult: systemAppUpdateResultSchema.nullable(),
   runningThreadCount: z.number().int().nonnegative(),
+  scheduled: z.object({ requestedAt: z.string() }).nullable(),
   support: systemAppUpdateSupportSchema,
 });
 export type SystemAppUpdateStatus = z.infer<typeof systemAppUpdateStatusSchema>;
@@ -508,6 +595,13 @@ export const systemAppUpdateApplyRequestSchema = z.object({
 });
 export type SystemAppUpdateApplyRequest = z.infer<
   typeof systemAppUpdateApplyRequestSchema
+>;
+
+export const systemAppUpdateAutoRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+export type SystemAppUpdateAutoRequest = z.infer<
+  typeof systemAppUpdateAutoRequestSchema
 >;
 
 export const systemAppUpdateAcknowledgeRequestSchema = z.object({

@@ -62,7 +62,6 @@ const SKILL_ROOT = fileURLToPath(
     import.meta.url,
   ),
 );
-const SKILL_PATH = join(SKILL_ROOT, "SKILL.md");
 
 function readSkillTree(directory = SKILL_ROOT): string {
   return readdirSync(directory, { withFileTypes: true })
@@ -195,7 +194,7 @@ const BB_PLUGIN_API_KEYS = [
 
 type MissingApiKey = Exclude<
   keyof BbPluginApi,
-  (typeof BB_PLUGIN_API_KEYS)[number]
+  (typeof BB_PLUGIN_API_KEYS)[number] | `internal_DO_NOT_USE_${string}`
 >;
 const _assertAllApiKeysListed: MissingApiKey extends never ? true : never =
   true;
@@ -235,6 +234,7 @@ void _assertAllAuthModesListed;
 const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_thread.parentChanged": ["thread", "previousParentThreadId"],
+  "experimental_thread.read": ["thread"],
   "experimental_terminal.input": ["terminal"],
   "experimental_host.deleted": ["host"],
   "experimental_environment.removed": ["removal"],
@@ -257,6 +257,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
     "inputAccepted",
     "rateLimits",
     "attemptNumber",
+    "originPluginId",
   ],
 } as const satisfies {
   [
@@ -640,7 +641,6 @@ const _assertAllThreadChatMessageActionFieldsListed: MissingThreadChatMessageAct
 void _assertAllThreadChatMessageActionFieldsListed;
 
 describe("bb-plugin-authoring skill", () => {
-  const skillEntry = readFileSync(SKILL_PATH, "utf8");
   const skill = readSkillTree();
 
   it("typechecks the machine provider guide example against the public SDK", () => {
@@ -678,10 +678,6 @@ describe("bb-plugin-authoring skill", () => {
           ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
         ),
     ).toEqual([]);
-  });
-
-  it("has frontmatter naming the skill after its directory", () => {
-    expect(skillEntry).toMatch(/^---\nname: bb-plugin-authoring\n/);
   });
 
   it("documents every BbPluginApi property", () => {

@@ -214,17 +214,6 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   useEffect(() => {
     if (!tasksQuery.isLoading) settledScope.current = scopeKey;
   }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
-  const routeScope = `${projectId ?? "-"}/${activeOnly}`;
-  const [settledRouteScope, setSettledRouteScope] = useState(routeScope);
-  const routeScopeChanged = settledRouteScope !== routeScope;
-  const previousRouteScope = useRef(routeScope);
-  useEffect(() => {
-    const routeScopeJustChanged = previousRouteScope.current !== routeScope;
-    previousRouteScope.current = routeScope;
-    if (!routeScopeJustChanged && !tasksQuery.isLoading) {
-      setSettledRouteScope(routeScope);
-    }
-  }, [routeScope, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
     contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
     loading: tasksQuery.isLoading || scopeChanged,
@@ -241,13 +230,9 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (
-    routeScopeChanged ||
-    tasksQuery.data === undefined ||
-    displayTasks === undefined
-  ) {
+  if (tasksQuery.data === undefined || displayTasks === undefined) {
     body =
-      !routeScopeChanged && tasksQuery.error !== null ? (
+      tasksQuery.error !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"

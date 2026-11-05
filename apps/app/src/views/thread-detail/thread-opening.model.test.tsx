@@ -87,11 +87,7 @@ interface Pending {
 }
 
 function OpenedThread() {
-  const { unreadDividerState } = useThreadDetailThread(
-    THREAD_ID,
-    true,
-    "first-unread-row",
-  );
+  const { unreadDividerState } = useThreadDetailThread(THREAD_ID, true);
   const timeline = useThreadTimelineController({ threadId: THREAD_ID });
   return (
     <BottomAnchoredScrollBody
@@ -115,7 +111,6 @@ function OpenedThread() {
         timelineRows={timeline.timelineRows}
         unreadDividerAutoScroll={unreadDividerState.autoScroll}
         unreadDividerPlacement={unreadDividerState.placement}
-        workspaceRootPath={undefined}
       />
     </BottomAnchoredScrollBody>
   );
@@ -128,7 +123,18 @@ function Host({ shown }: { shown: boolean }) {
 let restoreLayout: (() => void) | null = null;
 
 function getScrollElement() {
-  return document.querySelector<HTMLElement>("[data-page-scroll-viewport]");
+  const elements = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT);
+  let element = elements.nextNode();
+  while (element !== null) {
+    if (
+      element instanceof Element &&
+      element.hasAttribute("data-page-scroll-viewport")
+    ) {
+      return element as HTMLElement;
+    }
+    element = elements.nextNode();
+  }
+  return null;
 }
 
 function installOpeningLayout(
@@ -358,8 +364,22 @@ async function runSeed(seed: number): Promise<void> {
     );
   };
   const topRowOnScreen = (): { id: string; top: number } | null => {
+    const scrollElement = getScrollElement();
+    if (scrollElement === null) return null;
+    const elements = new Map<string | null, HTMLElement>();
+    for (const element of document.querySelectorAll<HTMLElement>(
+      "[data-timeline-row-id]",
+    )) {
+      const id = element.getAttribute("data-timeline-row-id");
+      if (!elements.has(id)) elements.set(id, element);
+    }
     for (const entry of history) {
-      const top = rowTop(entry.row.id);
+      const element = elements.get(entry.row.id);
+      const top =
+        element === undefined
+          ? null
+          : element.getBoundingClientRect().top -
+            scrollElement.getBoundingClientRect().top;
       if (top !== null && top + entry.height > 1) {
         return { id: entry.row.id, top };
       }

@@ -31,7 +31,7 @@ jobs:
           cache-prefix: marketplace-v2-live
 
       - name: Parse marketplace v2
-        run: pnpm exec tsx apps/server/scripts/validate-live-marketplace.ts https://getbb.app/marketplace/v2/marketplace.json
+        run: pnpm exec turbo run validate:marketplace --filter=@bb/server -- https://getbb.app/marketplace/v2/marketplace.json
 
       - name: Check the published schema
         run: |

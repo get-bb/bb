@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { getEnvironment } from "@bb/db";
+import { getEnvironment, threads } from "@bb/db";
 import {
   registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
@@ -15,138 +16,6 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
-
-  it("stores viewed files per environment and diff target", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-environment-diff-viewed",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/diff-viewed-env",
-        environmentProviderId: "git-worktree",
-      });
-      const other = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/diff-viewed-other-env",
-        environmentProviderId: "git-worktree",
-      });
-      const viewedUrl = (id: string) =>
-        `/api/v1/environments/${id}/diff/viewed`;
-      const send = (
-        id: string,
-        method: "PUT" | "DELETE" | "POST",
-        body: unknown,
-      ) =>
-        harness.app.request(viewedUrl(id), {
-          method,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      const list = async (id: string, query: string) =>
-        readJson(await harness.app.request(`${viewedUrl(id)}?${query}`));
-
-      const uncommitted = { type: "uncommitted" };
-      await send(environment.id, "PUT", {
-        target: uncommitted,
-        path: "a.ts",
-        revision: "rev-1",
-      });
-      await send(environment.id, "PUT", {
-        target: uncommitted,
-        path: "b.ts",
-        revision: "rev-b",
-      });
-      const remarked = await send(environment.id, "PUT", {
-        target: uncommitted,
-        path: "a.ts",
-        revision: "rev-2",
-      });
-      await expect(readJson(remarked)).resolves.toEqual({ ok: true });
-      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
-        {
-          files: [
-            { path: "a.ts", revision: "rev-2" },
-            { path: "b.ts", revision: "rev-b" },
-          ],
-        },
-      );
-      await expect(
-        readJson(
-          await send(environment.id, "POST", {
-            target: "uncommitted",
-            paths: ["b.ts", "missing.ts", "b.ts"],
-          }),
-        ),
-      ).resolves.toEqual({ files: [{ path: "b.ts", revision: "rev-b" }] });
-      await expect(
-        readJson(
-          await send(environment.id, "POST", {
-            target: "uncommitted",
-            paths: [],
-          }),
-        ),
-      ).resolves.toEqual({ files: [] });
-      expect(
-        (
-          await send(environment.id, "POST", {
-            target: "uncommitted",
-            paths: Array.from({ length: 501 }, (_, i) => `${i}.ts`),
-          })
-        ).status,
-      ).toBe(400);
-      await send(environment.id, "PUT", {
-        target: { type: "commit", sha: "ABCDEF1" },
-        path: "a.ts",
-        revision: "rev-commit",
-      });
-
-      await expect(
-        list(environment.id, "target=commit&sha=abcdef1"),
-      ).resolves.toEqual({ files: [{ path: "a.ts", revision: "rev-commit" }] });
-      await expect(list(other.id, "target=uncommitted")).resolves.toEqual({
-        files: [],
-      });
-
-      await expect(
-        readJson(
-          await send(environment.id, "DELETE", {
-            target: uncommitted,
-            path: "a.ts",
-          }),
-        ),
-      ).resolves.toEqual({ ok: true });
-      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
-        { files: [{ path: "b.ts", revision: "rev-b" }] },
-      );
-      await send(environment.id, "DELETE", { target: uncommitted });
-      await expect(list(environment.id, "target=uncommitted")).resolves.toEqual(
-        { files: [] },
-      );
-      await expect(
-        list(environment.id, "target=commit&sha=abcdef1"),
-      ).resolves.toEqual({ files: [{ path: "a.ts", revision: "rev-commit" }] });
-
-      const invalid = await send(environment.id, "PUT", {
-        target: uncommitted,
-        path: "",
-        revision: "rev",
-      });
-      expect(invalid.status).toBe(400);
-      const missing = await send("env_missing", "PUT", {
-        target: uncommitted,
-        path: "a.ts",
-        revision: "rev",
-      });
-      expect(missing.status).toBe(404);
-    });
-  });
-
   it("renames an environment through the public update route", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -531,6 +400,56 @@ describe("environment list and delete", () => {
       });
     });
   });
+
+  it.each([
+    { method: "DELETE", path: "" },
+    { method: "POST", path: "/cleanup" },
+    { method: "POST", path: "/cleanup?recover=true" },
+  ])(
+    "reports live threads for $method $path while an archived thread still runs",
+    async ({ method, path }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-env-archived-running",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/env-archived-running",
+          environmentProviderId: "git-worktree",
+          providerOwnsPath: true,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "active",
+        });
+        harness.db
+          .update(threads)
+          .set({ archivedAt: Date.now() })
+          .where(eq(threads.id, thread.id))
+          .run();
+
+        const response = await harness.app.request(
+          `/api/v1/environments/${environment.id}${path}`,
+          { method },
+        );
+
+        expect(response.status).toBe(409);
+        await expect(readJson(response)).resolves.toMatchObject({
+          message: "Environment still has live threads",
+        });
+        expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+          status: "ready",
+          teardownStatus: null,
+          retireAt: null,
+        });
+      });
+    },
+  );
 
   it("refuses to delete an environment with live threads", async () => {
     await withTestHarness(async (harness) => {

@@ -1,4 +1,9 @@
-import { hasQueuedRetryOfTurnRequest } from "@bb/db";
+import {
+  getFirstUnclaimedQueuedRetry,
+  hasQueuedRetryOfTurnRequest,
+  updateQueuedThreadMessage,
+  type QueuedThreadMessageRow,
+} from "@bb/db";
 import { permissionModeSchema } from "@bb/domain";
 import type {
   ClientTurnRequestId,
@@ -13,7 +18,9 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { emitPluginMessageQueued } from "../plugins/plugin-thread-events.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
+import { toThreadQueuedMessage } from "./thread-queued-messages.js";
 import {
   loadFailedTurn,
   retryChain,
@@ -107,14 +114,14 @@ const CONTINUE_ACCEPTED_TURN_TEXT = "Please continue.";
  */
 function retryInput(
   deps: Pick<TurnRetryDeps, "db">,
-  args: { threadId: string; failed: FailedTurnRecord },
+  args: { continuation: string; threadId: string; failed: FailedTurnRecord },
 ): { input: PromptInput[]; inputGroups?: PromptInput[][] } {
   if (wasFailedTurnInputAccepted(deps.db, args)) {
     return {
       input: [
         {
           type: "text",
-          text: CONTINUE_ACCEPTED_TURN_TEXT,
+          text: args.continuation,
           mentions: [],
           visibility: "agent-only",
         },
@@ -162,6 +169,56 @@ function retryExecution(failed: FailedTurnRecord): {
   };
 }
 
+function moveWaitingRetry(
+  deps: Pick<TurnRetryDeps, "db" | "hub">,
+  args: { waiting: QueuedThreadMessageRow; sendAt: number },
+): QueuedThreadMessageRow | null {
+  const { waiting, sendAt } = args;
+  if (waiting.state !== "scheduled" || waiting.sendAt === sendAt) {
+    return waiting;
+  }
+  const result = updateQueuedThreadMessage(deps.db, deps.hub, {
+    content: null,
+    execution: null,
+    reschedule: { sendAt },
+    expectedUpdatedAt: waiting.updatedAt,
+    id: waiting.id,
+    threadId: waiting.threadId,
+  });
+  if (result.kind !== "updated") {
+    return null;
+  }
+  emitPluginMessageQueued(toThreadQueuedMessage(result.queuedMessage));
+  return result.queuedMessage;
+}
+
+function joinWaitingRetry(
+  deps: TurnRetryDeps,
+  args: { thread: Thread; sendAt: number },
+): RetryTurnResponse | null {
+  const waiting = getFirstUnclaimedQueuedRetry(deps.db, args.thread.id);
+  if (waiting === null) {
+    return null;
+  }
+  const moved = moveWaitingRetry(deps, { waiting, sendAt: args.sendAt });
+  if (moved === null) {
+    return null;
+  }
+  const entry = toThreadQueuedMessage(moved);
+  if (entry.payload.kind !== "retry") {
+    return null;
+  }
+  return {
+    ok: true,
+    delivery: "queued",
+    turnRequestId: entry.payload.retryOfTurnRequestId,
+    attempt: entry.payload.attempt,
+    queuedMessageId: entry.id,
+    waitingOn: entry.waitingOn ?? { kind: "thread-busy" },
+    sendAt: entry.sendAt,
+  };
+}
+
 /**
  * Originals with a retry currently being decided in this process.
  *
@@ -186,11 +243,49 @@ export async function retryFailedTurn(
   deps: TurnRetryDeps,
   args: RetryFailedTurnArgs,
 ): Promise<RetryTurnResponse> {
-  const { request, thread } = args;
   const failed = requireFailedTurn(deps, {
-    thread,
-    turnRequestId: request.turnRequestId,
+    thread: args.thread,
+    turnRequestId: args.request.turnRequestId,
   });
+  return dispatchRetry(deps, {
+    ...args,
+    continuation: CONTINUE_ACCEPTED_TURN_TEXT,
+    failed,
+  });
+}
+
+export async function retryTurnAfterRestart(
+  deps: TurnRetryDeps,
+  args: RetryFailedTurnArgs & { continuation: string },
+): Promise<RetryTurnResponse> {
+  if (args.thread.status === "idle") {
+    const latest = loadFailedTurn(deps.db, args.thread.id);
+    if (latest === null) {
+      throw new ApiError(
+        409,
+        "no_failed_turn",
+        `Thread ${args.thread.id} has no turn to resume.`,
+      );
+    }
+    return dispatchRetry(deps, { ...args, failed: latest });
+  }
+  return dispatchRetry(deps, {
+    ...args,
+    failed: requireFailedTurn(deps, {
+      thread: args.thread,
+      turnRequestId: args.request.turnRequestId,
+    }),
+  });
+}
+
+async function dispatchRetry(
+  deps: TurnRetryDeps,
+  args: RetryFailedTurnArgs & {
+    continuation: string;
+    failed: FailedTurnRecord;
+  },
+): Promise<RetryTurnResponse> {
+  const { continuation, failed, request, thread } = args;
   const chain = retryChain(failed.request);
   const originalRequestId = chain.originalRequestId;
   const inFlightKey = `${thread.id}:${originalRequestId}`;
@@ -204,6 +299,18 @@ export async function retryFailedTurn(
       `Turn ${originalRequestId} already has a retry waiting on thread ${thread.id}.`,
     );
   }
+  if (
+    request.sendAt !== null &&
+    wasFailedTurnInputAccepted(deps.db, { threadId: thread.id, failed })
+  ) {
+    const joined = joinWaitingRetry(deps, {
+      thread,
+      sendAt: request.sendAt,
+    });
+    if (joined !== null) {
+      return joined;
+    }
+  }
   retriesInFlight.add(inFlightKey);
   try {
     const attempt = chain.attemptNumber + 1;
@@ -213,7 +320,7 @@ export async function retryFailedTurn(
         // A retry never steers: it re-runs a turn, so a thread that is busy
         // again is something to wait behind rather than to interrupt.
         mode: "queue-if-active",
-        ...retryInput(deps, { threadId: thread.id, failed }),
+        ...retryInput(deps, { continuation, threadId: thread.id, failed }),
         ...retryExecution(failed),
         ...(request.sendAt === null ? {} : { sendAt: request.sendAt }),
       },
@@ -225,6 +332,7 @@ export async function retryFailedTurn(
         reason: request.reason,
       },
       pluginSubmission: null,
+      systemNotice: null,
       retryOf: { requestId: originalRequestId, attempt },
       origin: null,
       originPluginId: null,

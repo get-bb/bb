@@ -487,10 +487,18 @@ export function createPluginUpdates(
               `plugin "${row.id}" disappeared during update check`,
             );
           }
-          const resolution = await resolveUpdateForRow({
-            row: current,
-            npmRun: npmRunForRow(current),
-          });
+          let resolution: PluginUpdateResolution;
+          try {
+            resolution = await resolveUpdateForRow({
+              row: current,
+              npmRun: npmRunForRow(current),
+            });
+          } catch (error) {
+            resolution = {
+              outcome: "unavailable",
+              detail: error instanceof Error ? error.message : String(error),
+            };
+          }
           const checked = checkEntryFromResolution(
             current.id,
             installedUpdateVersion(current),

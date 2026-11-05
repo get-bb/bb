@@ -18,6 +18,7 @@ import {
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import type { TurnRequestRetryMarker } from "./thread-events.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
 export interface ReadyThreadEnvironment extends EnvironmentRow {
@@ -33,6 +34,8 @@ interface DispatchTurnDuringReprovisionArgs {
   initiator: ThreadTurnInitiator;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
+  originPluginId: string | null;
+  retryOf?: TurnRequestRetryMarker;
   senderThreadId: string | null;
   systemMessageKind?: SystemMessageKind;
   systemMessageSubject?: SystemMessageSubject | null;
@@ -85,6 +88,8 @@ export async function dispatchTurnDuringReprovision(
       initiator: args.initiator,
       input: args.input,
       inputGroups: args.inputGroups,
+      originPluginId: args.originPluginId,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       senderThreadId: args.senderThreadId,
       systemMessageKind: args.systemMessageKind,
       systemMessageSubject: args.systemMessageSubject,

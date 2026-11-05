@@ -43,6 +43,7 @@ async function load(
   await createConnectNextPlugin({
     env: { BB_CONNECT_FRPC: fakeFrpc, ...env },
     timing: { restartMinMs: 60_000 },
+    accountRetryMinMs: 5,
     onTunnel: (created) => {
       tunnel = created;
     },
@@ -274,6 +275,37 @@ describe("connect-next plugin wiring", () => {
       localPort: Number(baseUrl.port),
     });
     await host.harness.callRpc("setEnabled", { enabled: false });
+    expect(ingresses[0]?.closed).toBe(true);
+  });
+
+  it("keeps the tunnel up while the server is moving", async () => {
+    const { host, account, tunnel } = await load({ enabled: true });
+    account.signIn({ serverId: "srv_1", label: "sawyer", credential: "c" });
+    await waitFor(
+      () => status(host),
+      (current) => current.url !== null,
+    );
+    const ingresses = host.harness.internal_DO_NOT_USE_tunnelIngresses;
+    expect(ingresses).toHaveLength(1);
+
+    account.startServerMove();
+    await waitFor(
+      () => account.movingReads,
+      (reads) => reads >= 3,
+    );
+    expect(ingresses).toHaveLength(1);
+    expect(ingresses[0]?.closed).toBe(false);
+    expect(await status(host)).toMatchObject({
+      url: "https://sawyer.next.getbb.app",
+    });
+
+    account.finishServerMove();
+    account.signOut();
+    await waitFor(
+      () => status(host),
+      (current) => current.url === null,
+    );
+    await tunnel.idle();
     expect(ingresses[0]?.closed).toBe(true);
   });
 

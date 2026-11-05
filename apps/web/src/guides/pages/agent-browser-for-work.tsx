@@ -18,7 +18,7 @@ const AGENT_PROMPT = withIntake(
     { label: "Logins", hint: "sites that need your account, if any" },
     { label: "Bring back", hint: "e.g. a table with a source link per row" },
   ],
-  `Use a real browser to do the web task above, and show me what you found.
+  `Use a real browser to do a web task I give you, and show me what you found.
 Guide: https://getbb.app/guides/agent-browser-for-work
 
 Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
@@ -170,7 +170,7 @@ export const guide: Guide = {
     ...BROWSER_FAQ,
   ],
   closer: {
-    title: "Get the answer, with sources",
+    title: "Get the answer, with sources.",
     body: "Free and open source. Use the agents you already have.",
   },
 };

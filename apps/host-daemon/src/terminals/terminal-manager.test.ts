@@ -221,7 +221,7 @@ function createFakeRuntime(): AgentRuntime {
     resumeThread: vi.fn(async () => ({
       providerThreadId: "provider-thread",
     })),
-    runTurn: vi.fn(async () => undefined),
+    runTurn: vi.fn(async () => ({ status: "started" as const })),
     steerTurn: vi.fn(async () => steerTurnResult),
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
@@ -246,6 +246,7 @@ function createFakeRuntime(): AgentRuntime {
     hasThread: vi.fn(() => false),
     getLiveThreadIds: vi.fn(() => []),
     hasOpenBackgroundWork: vi.fn(() => false),
+    listOpenBackgroundWork: vi.fn(() => []),
     shutdown: vi.fn(async () => undefined),
   };
 }

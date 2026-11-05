@@ -19,6 +19,7 @@ export default {
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 
 type StageSize = "desktop" | "mobile";
 
@@ -356,6 +357,7 @@ function StaticQueuedMessagesList({
       attachedToComposer={true}
       queuedMessages={queuedMessages}
       sendAction="send-now"
+      threadStatus="active"
       sendDisabled={sendDisabled}
       actionDisabled={actionDisabled}
       processingMessageId={processingMessageId ?? null}
@@ -364,6 +366,7 @@ function StaticQueuedMessagesList({
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}
@@ -397,6 +400,7 @@ function ReorderableQueuedMessagesList() {
       attachedToComposer={true}
       queuedMessages={queuedMessages}
       sendAction="send-now"
+      threadStatus="active"
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
@@ -405,6 +409,7 @@ function ReorderableQueuedMessagesList() {
       onReorder={handleReorder}
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}

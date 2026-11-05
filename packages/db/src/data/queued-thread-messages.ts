@@ -29,6 +29,7 @@ import {
   queuedMessageStateFor,
 } from "@bb/domain";
 import type {
+  QueuedMessageDeliveryMode,
   QueuedMessageLifecycleEventType,
   QueuedMessageLifecycleFrom,
   QueuedMessageState,
@@ -60,6 +61,7 @@ import {
 } from "../ids.js";
 import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
 import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
+import { liveThread } from "./threads.js";
 
 export interface CreateQueuedThreadMessageInput {
   threadId: string;
@@ -93,10 +95,30 @@ export interface CreateQueuedThreadMessageInput {
   payload: QueuedMessagePayload;
   /** Non-null only for one of core's own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
+  deliveryMode?: QueuedMessageDeliveryMode;
+  coalesce?: { key: string; state: string } | null;
+}
+
+export interface UpdateCoalescedQueuedThreadMessageInput {
+  coalesceState: string;
+  content: PromptInput[];
+  id: string;
+  systemNotice: QueuedMessageSystemNotice;
+  threadId: string;
+  windowEndsAt: number;
+}
+
+export interface QueuedThreadMessageExecution {
+  model: string;
+  reasoningLevel: string;
+  permissionMode: PermissionMode;
+  serviceTier: string;
 }
 
 export interface UpdateQueuedThreadMessageInput {
-  content: PromptInput[];
+  content: PromptInput[] | null;
+  execution: QueuedThreadMessageExecution | null;
+  reschedule: { sendAt: number | null } | null;
   expectedUpdatedAt: number;
   id: string;
   threadId: string;
@@ -355,18 +377,19 @@ export type UpdateQueuedThreadMessageResult =
       kind: "updated";
       queuedMessage: QueuedThreadMessageRow;
       releasedEditHold: boolean;
+      rescheduled: boolean;
     }
   | { kind: "not_found" }
   | { kind: "claimed" }
-  | { kind: "stale" };
+  | { kind: "stale" }
+  | QueuedThreadMessageGroupBoundaryInvalidExecutionOptions;
 
 export interface QueuedThreadMessageEditHoldArgs {
   id: string;
   threadId: string;
 }
 
-export interface HoldQueuedThreadMessageForEditArgs
-  extends QueuedThreadMessageEditHoldArgs {
+export interface HoldQueuedThreadMessageForEditArgs extends QueuedThreadMessageEditHoldArgs {
   heldUntil: number;
 }
 
@@ -665,10 +688,7 @@ function resolveQueuedThreadMessageNeighbor(
     return false;
   }
 
-  const neighbor = getQueuedThreadMessage(
-    db,
-    args.neighborQueuedMessageId,
-  );
+  const neighbor = getQueuedThreadMessage(db, args.neighborQueuedMessageId);
   if (
     !neighbor ||
     neighbor.threadId !== args.threadId ||
@@ -847,6 +867,9 @@ export function createQueuedThreadMessageInTransaction(
       retryAttempt:
         input.payload.kind === "retry" ? input.payload.attempt : null,
       retryReason: input.payload.kind === "retry" ? input.payload.reason : null,
+      deliveryMode: input.deliveryMode ?? "steer",
+      coalesceKey: input.coalesce?.key ?? null,
+      coalesceState: input.coalesce?.state ?? null,
       groupWithNext: false,
       claimedAt: null,
       claimToken: null,
@@ -857,6 +880,81 @@ export function createQueuedThreadMessageInTransaction(
     })
     .returning()
     .get();
+}
+
+export function getPendingCoalescedQueuedThreadMessage(
+  db: DbQueryConnection,
+  args: { coalesceKey: string; threadId: string },
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, args.threadId),
+          eq(queuedThreadMessages.coalesceKey, args.coalesceKey),
+          automaticallyDrainableQueuedThreadMessage(),
+        ),
+      )
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function updateCoalescedQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  input: UpdateCoalescedQueuedThreadMessageInput,
+): QueuedThreadMessageRow | null {
+  const now = Date.now();
+  acquireProjectAttachmentOwnership(
+    tx,
+    input.threadId,
+    projectAttachmentPaths(input.content),
+  );
+  return (
+    tx
+      .update(queuedThreadMessages)
+      .set({
+        content: JSON.stringify(input.content),
+        systemNotice: JSON.stringify(input.systemNotice),
+        coalesceState: input.coalesceState,
+        sendAt: sql`CASE WHEN ${queuedThreadMessages.state} = 'scheduled' AND ${queuedThreadMessages.sendAt} > ${now} AND json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'time' THEN ${input.windowEndsAt} ELSE ${queuedThreadMessages.sendAt} END`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, input.id),
+          eq(queuedThreadMessages.threadId, input.threadId),
+          automaticallyDrainableQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
+export function deleteCoalescedQueuedThreadMessageInTransaction(
+  tx: DbTransaction,
+  pending: QueuedThreadMessageRow,
+): QueuedThreadMessageRow | null {
+  const deleted =
+    tx
+      .delete(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.id, pending.id),
+          eq(queuedThreadMessages.threadId, pending.threadId),
+          automaticallyDrainableQueuedThreadMessage(),
+        ),
+      )
+      .returning()
+      .get() ?? null;
+  if (deleted !== null) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(tx, deleted);
+  }
+  return deleted;
 }
 
 export function createQueuedThreadMessage(
@@ -870,6 +968,44 @@ export function createQueuedThreadMessage(
   );
   notifier.notifyThread(input.threadId, ["queue-changed"]);
   return row;
+}
+
+function executionFitsQueuedMessageGroup(
+  tx: DbTransaction,
+  row: QueuedThreadMessageRow,
+  execution: QueuedThreadMessageExecution,
+): boolean {
+  const group = partitionQueuedMessageGroups(
+    listQueuedThreadMessages(tx, row.threadId),
+  ).find((members) => members.some((member) => member.id === row.id));
+  const updated = { ...row, ...execution };
+  return (group ?? []).every(
+    (member) =>
+      member.id === row.id ||
+      queuedMessageGroupingEnvelopeMatches(updated, member),
+  );
+}
+
+function rescheduleTransition(
+  row: QueuedThreadMessageRow,
+  sendAt: number | null,
+): QueuedMessageTransition | null {
+  if (sendAt !== null) {
+    return { event: "wait.recorded", sendAt, waitingOn: { kind: "time" } };
+  }
+  return row.sendAt !== null || hasTimeWait(row)
+    ? { event: "wait.cleared" }
+    : null;
+}
+
+function hasTimeWait(row: QueuedThreadMessageRow): boolean {
+  if (row.waitingOn === null) return false;
+  try {
+    const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
+    return parsed.kind === "time";
+  } catch {
+    return false;
+  }
 }
 
 export function updateQueuedThreadMessage(
@@ -890,17 +1026,51 @@ export function updateQueuedThreadMessage(
         return { kind: "stale" };
       }
 
-      acquireProjectAttachmentOwnership(
-        tx,
-        input.threadId,
-        projectAttachmentPaths(input.content),
-      );
+      if (
+        input.execution !== null &&
+        !executionFitsQueuedMessageGroup(tx, existing, input.execution)
+      ) {
+        return { kind: "invalid_execution_options" };
+      }
+      const now = Date.now();
+      const contentPatch =
+        input.content === null
+          ? {}
+          : { content: JSON.stringify(input.content), editHeldUntil: null };
+      if (input.content !== null) {
+        acquireProjectAttachmentOwnership(
+          tx,
+          input.threadId,
+          projectAttachmentPaths(input.content),
+        );
+      }
+      const transition =
+        input.reschedule === null
+          ? null
+          : rescheduleTransition(existing, input.reschedule.sendAt);
+      const schedulePatch =
+        transition === null
+          ? {}
+          : queuedMessageTransitionPatch(existing, transition, now);
+      const state =
+        transition === null
+          ? existing.state
+          : requireQueuedMessageTransition({
+              event: transition.event,
+              from: existing.state,
+              id: existing.id,
+              to: queuedMessageStateOf({ ...existing, ...schedulePatch }),
+            });
       const queuedMessage = tx
         .update(queuedThreadMessages)
         .set({
-          content: JSON.stringify(input.content),
-          editHeldUntil: null,
-          updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
+          ...contentPatch,
+          ...(input.execution ?? {}),
+          ...schedulePatch,
+          coalesceKey: null,
+          coalesceState: null,
+          state,
+          updatedAt: Math.max(now, existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
         .returning()
@@ -911,7 +1081,9 @@ export function updateQueuedThreadMessage(
       return {
         kind: "updated",
         queuedMessage,
-        releasedEditHold: existing.editHeldUntil !== null,
+        releasedEditHold:
+          input.content !== null && existing.editHeldUntil !== null,
+        rescheduled: transition !== null,
       };
     },
     { behavior: "immediate" },
@@ -1035,6 +1207,99 @@ export function deleteQueuedRetriesForThreadEventSuffixInTransaction(
   return retries.length;
 }
 
+function hasAcceptedQueuedRetryInput(
+  db: DbQueryConnection,
+  retry: QueuedThreadMessageRow,
+): boolean {
+  const accepted = alias(events, "retry_chain_accepted");
+  const chainRequest = alias(events, "retry_chain_request");
+  return (
+    db
+      .select({ sequence: accepted.sequence })
+      .from(accepted)
+      .where(
+        and(
+          eq(accepted.threadId, retry.threadId),
+          eq(accepted.type, "turn/input/accepted"),
+          exists(
+            db
+              .select({ sequence: chainRequest.sequence })
+              .from(chainRequest)
+              .where(
+                and(
+                  eq(chainRequest.threadId, retry.threadId),
+                  eq(chainRequest.type, "client/turn/requested"),
+                  sql`json_extract(${chainRequest.data}, '$.requestId') = json_extract(${accepted.data}, '$.clientRequestId')`,
+                  or(
+                    sql`json_extract(${chainRequest.data}, '$.requestId') = ${retry.retryOfTurnRequestId}`,
+                    sql`json_extract(${chainRequest.data}, '$.retryOfRequestId') = ${retry.retryOfTurnRequestId}`,
+                  ),
+                ),
+              ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function supersedeQueuedRetriesInTransaction(
+  tx: DbTransaction,
+  args: { threadId: string; retryOfTurnRequestId: string | null },
+): number {
+  const overtaken = tx
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, args.threadId),
+        eq(queuedThreadMessages.payloadKind, "retry"),
+        liveQueuedThreadMessage(),
+        notSupersededQueuedThreadMessage(),
+        ...(args.retryOfTurnRequestId === null
+          ? []
+          : [
+              ne(
+                queuedThreadMessages.retryOfTurnRequestId,
+                args.retryOfTurnRequestId,
+              ),
+            ]),
+      ),
+    )
+    .all();
+  const now = Date.now();
+  for (const retry of overtaken) {
+    clearPreviousQueuedMessageGroupEdgeInTransaction(tx, retry, now);
+    clearQueuedMessageGroupEdgeInTransaction(tx, retry, now);
+    if (hasAcceptedQueuedRetryInput(tx, retry)) {
+      tx.delete(queuedThreadMessages)
+        .where(eq(queuedThreadMessages.id, retry.id))
+        .run();
+      continue;
+    }
+    const current = getQueuedThreadMessage(tx, retry.id);
+    if (current === null) continue;
+    transitionQueuedMessage(tx, {
+      now,
+      row: current,
+      transition: {
+        event: "wait.recorded",
+        sendAt: null,
+        waitingOn: { kind: "superseded" },
+      },
+    });
+  }
+  return overtaken.length;
+}
+
+function notSupersededQueuedThreadMessage() {
+  return or(
+    isNull(queuedThreadMessages.waitingOn),
+    sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') != 'superseded'`,
+  );
+}
+
 function manuallyStoppedQueuePauseQuery(
   db: DbQueryConnection,
   threadId: string | typeof threads.id,
@@ -1119,6 +1384,27 @@ function notOrdinaryTurnEndQueuedThreadMessage() {
   );
 }
 
+export function listReadySystemNoticesOnBusyThreads(
+  db: DbQueryConnection,
+): QueuedThreadMessageRow[] {
+  return db
+    .select({ row: queuedThreadMessages })
+    .from(queuedThreadMessages)
+    .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
+    .where(
+      and(
+        eq(queuedThreadMessages.state, "queued"),
+        isNotNull(queuedThreadMessages.systemNotice),
+        isNull(queuedThreadMessages.waitingOn),
+        notInArray(threads.status, ["idle", "pending"]),
+        liveThread,
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.createdAt), asc(queuedThreadMessages.id))
+    .all()
+    .map(({ row }) => row);
+}
+
 /**
  * Threads a drain could move right now.
  *
@@ -1141,16 +1427,12 @@ export function listIdleThreadsWithQueuedMessages(
     .where(
       and(
         inArray(threads.status, ["idle", "pending"]),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
         or(
           notExists(manuallyStoppedQueuePauseQuery(db, threads.id)),
           notOrdinaryTurnEndQueuedThreadMessage(),
         ),
-        or(
-          isNull(threads.environmentId),
-          ne(environments.status, "destroyed"),
-        ),
+        or(isNull(threads.environmentId), ne(environments.status, "destroyed")),
         // Only rows an idle thread actually unblocks. A thread whose only
         // queued row is waiting on a clock or a plugin is not a drain
         // candidate, and listing it would re-run the whole send pipeline
@@ -1344,10 +1626,7 @@ export function reorderQueuedThreadMessage({
   try {
     result = db.transaction(
       (tx): ReorderQueuedThreadMessageResult => {
-        const movedQueuedMessage = getQueuedThreadMessage(
-          tx,
-          queuedMessageId,
-        );
+        const movedQueuedMessage = getQueuedThreadMessage(tx, queuedMessageId);
         if (!movedQueuedMessage || movedQueuedMessage.threadId !== threadId) {
           return { kind: "not_found" };
         }
@@ -1625,7 +1904,12 @@ export function releaseStaleQueuedMessageClaims(
             eq(queuedThreadMessages.state, "claimed"),
             lt(queuedThreadMessages.claimedAt, args.claimedBefore),
             ...(protectedClaimTokens.length > 0
-              ? [notInArray(queuedThreadMessages.claimToken, protectedClaimTokens)]
+              ? [
+                  notInArray(
+                    queuedThreadMessages.claimToken,
+                    protectedClaimTokens,
+                  ),
+                ]
               : []),
           ),
         )
@@ -1799,6 +2083,7 @@ export interface QueuedThreadMessageCounts {
    * whose queued work failed shows the failure instead.
    */
   failedQueuedMessageCount: number;
+  userQueuedMessageCount: number;
 }
 
 /**
@@ -1826,6 +2111,9 @@ export function listQueuedThreadMessageCountsByThreadIds(
           queuedMessageCount: count(queuedThreadMessages.id),
           failedQueuedMessageCount: count(
             sql`CASE WHEN ${inArray(queuedThreadMessages.state, [...QUEUED_MESSAGE_FAILED_STATES])} THEN 1 END`,
+          ),
+          userQueuedMessageCount: count(
+            sql`CASE WHEN ${isNull(queuedThreadMessages.systemNotice)} THEN 1 END`,
           ),
         })
         .from(queuedThreadMessages)
@@ -2005,14 +2293,16 @@ export function listRetryableFailedQueuedThreadMessages(
             .where(
               and(
                 eq(threads.id, queuedThreadMessages.threadId),
-                isNull(threads.archivedAt),
-                isNull(threads.deletedAt),
+                liveThread,
               ),
             ),
         ),
       ),
     )
-    .orderBy(asc(queuedThreadMessages.nextAttemptAt), asc(queuedThreadMessages.id))
+    .orderBy(
+      asc(queuedThreadMessages.nextAttemptAt),
+      asc(queuedThreadMessages.id),
+    )
     .all();
 }
 
@@ -2081,8 +2371,7 @@ export function listDueScheduledQueuedThreadMessages(
             .where(
               and(
                 eq(threads.id, queuedThreadMessages.threadId),
-                isNull(threads.archivedAt),
-                isNull(threads.deletedAt),
+                liveThread,
               ),
             ),
         ),
@@ -2233,6 +2522,82 @@ export function hasQueuedRetryOfTurnRequest(
   );
 }
 
+export function hasLiveQueuedRetry(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          eq(queuedThreadMessages.payloadKind, "retry"),
+          ne(queuedThreadMessages.state, "failed_exhausted"),
+          notSupersededQueuedThreadMessage(),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+export function moveQueuedThreadMessageToFrontInTransaction(
+  tx: DbTransaction,
+  row: QueuedThreadMessageRow,
+): QueuedThreadMessageRow {
+  const first = tx
+    .select()
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        eq(queuedThreadMessages.threadId, row.threadId),
+        ne(queuedThreadMessages.id, row.id),
+      ),
+    )
+    .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+    .limit(1)
+    .get();
+  if (first === undefined || first.sortKey > row.sortKey) {
+    return row;
+  }
+  clearPreviousQueuedMessageGroupEdgeInTransaction(tx, row);
+  return tx
+    .update(queuedThreadMessages)
+    .set({
+      sortKey: createOrderKeyBetween({
+        previousKey: null,
+        nextKey: first.sortKey,
+      }),
+    })
+    .where(eq(queuedThreadMessages.id, row.id))
+    .returning()
+    .get();
+}
+
+export function getFirstUnclaimedQueuedRetry(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(
+        and(
+          eq(queuedThreadMessages.threadId, threadId),
+          eq(queuedThreadMessages.payloadKind, "retry"),
+          ne(queuedThreadMessages.state, "claimed"),
+          notSupersededQueuedThreadMessage(),
+        ),
+      )
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
 /**
  * Threads on one host with live rows parked on a `host-offline` wait.
  *
@@ -2253,9 +2618,24 @@ export function listThreadIdsWithHostOfflineQueueWaits(
     .where(
       and(
         eq(environments.hostId, hostId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
         sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'host-offline'`,
+        automaticallyDrainableQueuedThreadMessage(),
+      ),
+    )
+    .all()
+    .map((row) => row.threadId);
+}
+
+export function listThreadIdsWithAppUpdateQueueWaits(
+  db: DbQueryConnection,
+): string[] {
+  return db
+    .selectDistinct({ threadId: queuedThreadMessages.threadId })
+    .from(queuedThreadMessages)
+    .where(
+      and(
+        sql`json_extract(${queuedThreadMessages.waitingOn}, '$.kind') = 'app-update'`,
         automaticallyDrainableQueuedThreadMessage(),
       ),
     )

@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import {
+  ThreadContextCard,
   ThreadContextCardProvider,
   type CoreThreadContextCardRow,
 } from "@/components/plugin/PluginThreadContextCard";
@@ -125,6 +126,7 @@ function renderBanner({
   expandedSegment?: string | null;
   onToggleSegment?: (key: string) => void;
 } = {}) {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1600);
   return render(
     <MemoryRouter>
       <GitSegmentFixtureProvider value={git}>
@@ -136,6 +138,9 @@ function renderBanner({
           projectId="proj_1"
           environment={{ id: "env_1" }}
         >
+          <div data-scroll-overlay="">
+            <ThreadContextCard />
+          </div>
           <ThreadPromptContextBanner
             input={{
               threadId: "thr_1",

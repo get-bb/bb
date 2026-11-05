@@ -50,6 +50,10 @@ const claudeSandboxOverrideFlagSchema = z
   .object({ dangerouslyDisableSandbox: z.boolean().optional() })
   .passthrough();
 
+const claudeBashDescriptionSchema = z
+  .object({ description: z.string() })
+  .passthrough();
+
 const claudeReadArgsSchema = z
   .object({ file_path: z.string().optional(), path: z.string().optional() })
   .passthrough();
@@ -103,6 +107,7 @@ const claudeTodoWriteArgsSchema = z
 interface ClaudeBashCommand {
   command: string;
   cwd: string | null;
+  description: string | null;
   background: boolean;
   sandboxOverridden: boolean;
 }
@@ -120,9 +125,14 @@ export function parseClaudeBashCommand(
   }
   const background = claudeBackgroundFlagSchema.safeParse(input);
   const sandboxOverride = claudeSandboxOverrideFlagSchema.safeParse(input);
+  const description = claudeBashDescriptionSchema.safeParse(input);
   return {
     command,
     cwd: toOptionalString(parsed.data.cwd) ?? null,
+    description:
+      description.success && description.data.description.trim().length > 0
+        ? description.data.description.trim()
+        : null,
     background:
       background.success && background.data.run_in_background === true,
     sandboxOverridden:
@@ -347,6 +357,7 @@ export function classifyClaudeToolUse(args: {
   input: unknown;
   injectedTools: ReadonlyMap<string, ClaudeInjectedTool>;
   sandboxEnabled: boolean;
+  commandDescriptionsEnabled: boolean;
 }): ClaudeClassifiedTool {
   const { toolName, toolUseId, input, sandboxEnabled } = args;
   switch (toolName) {
@@ -358,6 +369,10 @@ export function classifyClaudeToolUse(args: {
               type: "command",
               command: command.command,
               cwd: command.cwd ?? "",
+              ...(args.commandDescriptionsEnabled &&
+              command.description !== null
+                ? { description: command.description }
+                : {}),
             },
             presentation: commandPresentation({
               ...command,

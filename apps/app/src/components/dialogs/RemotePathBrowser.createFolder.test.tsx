@@ -14,7 +14,6 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   RemotePathBrowser,
   getFolderNameValidationMessage,
-  joinHostPath,
 } from "./RemotePathBrowser";
 
 vi.mock("@/lib/sdk", () => ({
@@ -54,16 +53,6 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
-});
-
-describe("joinHostPath", () => {
-  it("joins with the separator implied by the directory", () => {
-    expect(joinHostPath("/home/me", "repo")).toBe("/home/me/repo");
-    expect(joinHostPath("/", "repo")).toBe("/repo");
-    expect(joinHostPath("/home/me/", "repo")).toBe("/home/me/repo");
-    expect(joinHostPath("C:\\Users\\me", "repo")).toBe("C:\\Users\\me\\repo");
-    expect(joinHostPath("C:\\", "repo")).toBe("C:\\repo");
-  });
 });
 
 describe("getFolderNameValidationMessage", () => {

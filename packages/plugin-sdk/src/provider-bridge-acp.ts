@@ -48,6 +48,14 @@
  * });
  * ```
  *
+ * `normalizeCommandEvent` and `normalizeToolCallEvent` rewrite a tool call
+ * update before bb reads its output: command output and exit code for the
+ * first, progress and result text for every other tool. Each receives the
+ * update and the call: everything the agent has reported for that tool call
+ * so far, this update included. A dialect can therefore judge an update by
+ * the call's `rawInput` without keeping per-call state; the two arguments
+ * are the same event when the call closes.
+ *
  * The registration then names it: `acpDialect: "amp"`. A built-in id cannot
  * be replaced, and an id nothing registered falls back to the generic
  * dialect. The registry is one per host artifact, and a dialect's hooks are

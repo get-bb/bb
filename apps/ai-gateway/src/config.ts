@@ -1,5 +1,5 @@
 export interface Env {
-  DB: D1Database;
+  HYPERDRIVE: Hyperdrive;
   AI_RATE_LIMITER: RateLimit;
   AI_DAILY_BUDGET_MICROS: string;
   AI_MODELS: string;
@@ -42,7 +42,7 @@ function parseBaseUrl(raw: string | undefined): string {
 }
 
 export function parseGatewayConfig(
-  env: Omit<Env, "DB" | "AI_RATE_LIMITER">,
+  env: Omit<Env, "HYPERDRIVE" | "AI_RATE_LIMITER">,
 ): GatewayConfig {
   const apiKey = env.OPENROUTER_API_KEY?.trim() ?? "";
   return {

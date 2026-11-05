@@ -575,6 +575,7 @@ function sessionOpenRequest(hostId: string, hostName: string) {
       localApiPort: 38_888,
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
       activeThreads: [],
+      openThreadWork: [],
       loadedEnvironments: [],
     }),
   };
@@ -773,6 +774,7 @@ describe("pending server mode", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          openThreadWork: [],
           loadedEnvironments: [],
         }),
       });

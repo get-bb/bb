@@ -1,10 +1,12 @@
+import type { AccountFetchRequest } from "bb-plugin-bb-account/src/client.js";
+import type {
+  AccountFetchResult,
+  AdoptResult,
+} from "bb-plugin-bb-account/src/contract.js";
 import type {
   Account,
-  AccountFetchRequest,
-  AccountFetchResult,
   AccountStatus,
-  AdoptResult,
-} from "../account-client.js";
+} from "bb-plugin-bb-account/src/schemas.js";
 
 export interface AdoptRequest {
   credential: string;
@@ -185,7 +187,9 @@ export class FakeAccount {
         };
       }
       case "bb-account.v1.confirmRefusedCredential": {
-        this.refusedCredentials.push((input as { credential: string }).credential);
+        this.refusedCredentials.push(
+          (input as { credential: string }).credential,
+        );
         return this.current;
       }
       case "redeemCode": {

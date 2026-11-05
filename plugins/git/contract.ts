@@ -102,11 +102,15 @@ export type WorkspaceCommitSummary = z.infer<
   typeof workspaceCommitSummarySchema
 >;
 
-const workspaceChangeStatsSchema = z.object({
+const workspaceChangeTotalsSchema = z.object({
   insertions: z.number(),
   deletions: z.number(),
   lineStatsComplete: z.boolean(),
   fileCount: z.number().int().nonnegative(),
+});
+export type WorkspaceChangeTotals = z.infer<typeof workspaceChangeTotalsSchema>;
+
+const workspaceChangeStatsSchema = workspaceChangeTotalsSchema.extend({
   files: z.array(workspaceFileStatusSchema),
 });
 
@@ -139,6 +143,7 @@ export const workspaceStatusSchema = z.object({
   checkout: gitCheckoutRefSchema,
   branch: workspaceBranchSchema,
   mergeBase: workspaceMergeBaseSchema.nullable(),
+  allChanges: workspaceChangeTotalsSchema,
 });
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
@@ -166,6 +171,14 @@ export function gitRefsTag(environmentId: string): string {
 export function gitViewedTag(environmentId: string): string {
   return `viewed:${environmentId}`;
 }
+
+export const gitViewedFileSchema = z
+  .object({
+    path: z.string().min(1),
+    revision: z.string().min(1),
+  })
+  .strict();
+export type GitViewedFile = z.infer<typeof gitViewedFileSchema>;
 
 const notApplicableSchema = z
   .object({

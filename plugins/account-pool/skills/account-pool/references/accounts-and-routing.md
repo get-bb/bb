@@ -3,12 +3,11 @@ or Codex credentials, and inspect its proxy routes and account quota with:
 
 ```sh
 bb plugin enable account-pool
-bb pool account add --provider claude --login
+bb pool account add --provider claude --login [--label <text>] [--priority <n>]
 printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
-bb pool account add --provider codex --login
+bb pool account add --provider codex --login [--label <text>] [--priority <n>]
 bb pool account login-poll --session <id>
-bb pool account add --provider claude --import
-bb pool account add --provider codex --import
+bb pool account login <id>
 printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
 bb pool account add --provider claude --api-key <key> [--label <text>] [--priority <n>]
 bb pool account list [--json]
@@ -41,6 +40,20 @@ URL, one-time code, session ID, and an `account login-poll` command that waits
 for authorization. The Claude code stays out of process arguments, and either
 browser may be on a different machine from the bb server. The plugin settings
 page offers the same flows as **Sign in to Claude** and **Sign in to Codex**.
+
+Each account holds its own login. Anthropic and OpenAI refresh tokens are single
+use and rotate, so two programs holding one login sign each other out at the
+next refresh; the pool therefore never copies this machine's Claude Code or
+Codex login, and signing in to the same account the machine uses gives the pool
+a separate login. `bb pool account login <id>` (settings: **Sign in again**,
+RPC `login.start` or `codexLogin.start` with `{ kind: "relogin", accountId }`)
+renews an existing account in place: finish it with `login-complete` or
+`login-poll` as above. The account keeps its id, label, priority, enabled
+state, pinned conversations, and quota observations; its error clears, and a
+disabled account stays disabled. A login for a different account (Claude
+account UUID or email, ChatGPT workspace and email) is refused and the stored
+login is kept. Use it when a login expires or is revoked, or for accounts
+added with the removed `--import`, which shared the machine's login.
 Newly added or enabled accounts are available without a plugin reload. With an
 enabled account whose secret file remains readable and valid, matching Claude
 Code or Codex sessions receive the pool route and a distinct secret token for
@@ -48,6 +61,13 @@ their machine. Claude Code also receives `ENABLE_TOOL_SEARCH=true`, so tool
 search stays on through the pool, and
 `_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`, so Opus keeps its 1M context
 window instead of the 200k fallback for custom base URLs.
+Routed Claude Code also receives `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1`, so it
+neither reads nor refreshes this machine's Claude login. Features that need
+that login (Claude in Chrome, claude.ai connectors, Remote Control) stay off in
+routed threads; use `bb pool bypass <thread-id>` for a thread that needs them.
+Claude Code removes `ANTHROPIC_AUTH_TOKEN` from tool subprocesses in this mode,
+so route a nested `claude` explicitly with
+`ANTHROPIC_AUTH_TOKEN="$BB_ACCOUNT_POOL_PARENT_TOKEN" claude ...`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies them as in-memory app-server config.
 Codex image generation and editing use the same authenticated pool route.
@@ -57,25 +77,33 @@ local Claude login before the pool can be disabled safely. Rotation keeps the
 prior token valid for ten minutes. Agents should pipe API keys to
 `--api-key-stdin`;
 `--api-key <key>` is an unsafe compatibility form that exposes the key in
-process arguments, shell history, and agent transcripts. Prefer `--import` for
-an existing Claude Code login. The CLI Codex import path reads
-`~/.codex/auth.json` on the bb server host. OAuth quota refreshes on add or
-enable and every five minutes while an account is idle. When a request finds no
-eligible account, the pool first refreshes the OAuth accounts it considers
-exhausted, at most once every 30 seconds per account, so a plan upgrade or an
-early reset takes effect on the next turn. Use
+process arguments, shell history, and agent transcripts. OAuth quota refreshes
+on add, enable, or re-login of an enabled account and every five minutes while
+an account is idle. Before a request falls back to an account at or above the
+switch threshold, or is refused, the pool first refreshes the OAuth accounts at
+or above the threshold for that request, at most once every 30 seconds per
+account, so a plan upgrade or an early reset takes effect on the next turn. Use
 `bb pool account refresh <id>` to request an immediate refresh for one account.
 For an OAuth account in error, `refresh` also forces a new token with the stored
 refresh token and clears the error when that succeeds, so a spurious error does
 not require logging in again.
-An account enters error only when its OAuth refresh token is rejected (HTTP 400
-or 401 from the token endpoint) or an API key is rejected. A 401 or 403 on a
-freshly refreshed OAuth token is treated as an upstream failure instead: the
-request gets HTTP 503, and that token is held out of routing for one minute.
+When the token endpoint rejects an OAuth refresh token (HTTP 400 or 401), the
+pool stores a SHA-256 fingerprint of that token, never sends it again on its
+own, even after a restart, and keeps serving the stored access token. The
+account enters error once that access token expires or upstream rejects it; an
+API key enters error when it is rejected. `bb pool account login <id>` replaces
+the login and clears both the error and the stored fingerprint.
+`bb pool account enable` clears the error, but an unchanged rejected refresh
+token puts the account back in error as soon as its access token has expired;
+`refresh` is the command that retries it. A 401
+or 403 on a freshly refreshed OAuth token is treated as an upstream failure
+instead: the request gets HTTP 503, and that token is held out of routing for
+one minute.
 Account tables add columns for observed model-family buckets; JSON status
 exposes their utilization, reset, status, observation time, and source under
-`familyWeekly`. Selection skips an account whose requested family is spent
-while retaining it for other families. A present `metadata.user_id` account
+`familyWeekly`. Selection routes a request away from an account whose requested
+family is at or above the switch threshold while retaining it for other
+families. A present `metadata.user_id` account
 UUID is aligned with the selected OAuth account. Use `bb pool config` to
 inspect the full routing configuration and
 `bb pool config set <key> <value>` to update one value. The upstream URL keys
@@ -85,20 +113,43 @@ Accounts run sequentially per provider: lower priority numbers first, with ties
 following the order accounts were added. New conversations use the current
 account until it reaches the switch threshold or fails; the pool then advances
 to the next eligible account and wraps at the end. It keeps using that fallback
-even when an earlier account recovers. Existing conversations stay pinned while
-their account remains eligible. Short temporary rate limits wait on the same
+even when an earlier account recovers. Existing conversations stay pinned, even
+past the switch threshold, until the provider refuses their account; a
+conversation that inherits its parent's pin follows the same rule. Short temporary rate limits wait on the same
 account once; longer holds return Retry-After for pinned conversations while new
 conversations can advance. A model-family limit detours only requests for that
-family without moving the session's main pin or the provider cursor. The cursor
+family without moving the session's main pin or the provider cursor.
+
+An HTTP 408, 500, 502, 503, 504 or 529 response, or a connection failure,
+before the response starts, retries a pinned conversation on its own account
+first: up to twice, after 1 and then 2 seconds, or after the response's
+`Retry-After` when that is at most 20 seconds. Prompt caches stay with the
+account, so a move would rewrite the whole cached context. When the retries
+fail, or the wait is longer, the request fails over to the next account, and
+the session's pin moves to the account that served it, where its context is now
+cached. Conversations without a pin fail over at once. The cursor
 and session pins survive hub restarts. Session pins expire after 30 idle minutes,
 and the pool retains the 4,096 most recently used pins.
 
+The switch threshold is a preference, not a cutoff. New conversations go to
+accounts below it first, and existing conversations keep their account past it.
+When no account below it is available, accounts at or above it keep serving
+until the provider refuses them; refused accounts with extra usage or Codex
+credits come after those.
+Where the provider reports a window status, `rejected` decides whether it
+refused the window; a window without a status counts as refused from 100
+percent utilization. The pool answers with its own HTTP 429 only when no
+account can serve. Its `Retry-After`, the time in its message, and
+`provider-retry.v1.availability` count only refused windows, and `account list`
+and `status` report `exhausted` only for an account the provider refused.
+
 Claude accounts with an exhausted subscription window remain eligible as a
 fallback when Anthropic reports extra usage enabled with remaining allowance,
-or an allowed overage response header. Accounts below the switch threshold
-are preferred, including for conversations pinned to an extra-usage fallback;
-those conversations return to subscription quota when it recovers. Before using
-extra usage, the pool rechecks exhausted OAuth accounts (at most every 30 seconds).
+or an allowed overage response header. Accounts the provider still accepts are
+preferred, including for conversations pinned to an extra-usage fallback; those
+conversations return to subscription quota when it recovers. Before using
+extra usage, the pool rechecks OAuth accounts at or above the switch threshold (at
+most every 30 seconds).
 Disabled, spent, or unobserved extra usage does not override subscription limits.
 This does not enable extra usage or change spending limits on Claude.
 `account list` and `status` show an Extra usage column; JSON and the corresponding

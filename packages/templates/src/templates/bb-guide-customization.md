@@ -173,18 +173,17 @@ it for that provider, and `default` removes the override. It applies to
 existing threads too, including `bb thread log`. Settings → Providers has the
 same per-provider switch.
 
-Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
-experiment (Settings → Experiments). `applicationLinks` enables explicit
-Markdown links to apps such as Linear and Reflect, with confirmation on the
-viewing device unless that scheme was previously allowed. It defaults on for early adopters.
-Choose Always allow to save an approval on that device. Settings → General →
-Application link approvals can revoke one or all approvals. All clients store
+App links: explicit Markdown links to apps such as Linear and Reflect open on
+the viewing device, with confirmation unless that scheme was previously
+allowed. Choose Always allow to save an approval on that device. Settings →
+General → Links → App links can revoke approvals. All clients store
 approvals locally for the current BB site and device profile. They do not sync
 across devices or server addresses. The Plugin SDK can list and revoke the
 viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
-`changelogPreview` shows the latest
-release notes as a dismissible card on Settings → Updates. Experiments that
+
+Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
+experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
 `timelinePush` sends an open thread's timeline updates over the live
@@ -192,9 +191,15 @@ connection as row deltas instead of reloading the latest window after each
 update. `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`sidebarMultiSelect` lets the built-in thread list sidebar select several threads with
-Cmd/Ctrl+Shift-click and Shift-click for bulk actions and drag; Cmd/Ctrl-click
-still opens a thread in a split.
+`narrowPluginCss` serves each plugin a stylesheet that matches only that
+plugin's own UI, which makes style updates cheaper with many plugins; it
+applies after a reload.
+`resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
+machine restart cut off, and wakes idle threads whose background work it
+stopped, a few seconds after the machine's daemon comes back; see `bb guide
+thread-lifecycle`.
+`dismissReadNotifications` removes a thread's push, web, and desktop
+notifications once the thread is read on any client.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
 `skipFocusedThreadNotifications` skips the web and desktop system notification
@@ -202,21 +207,19 @@ for a thread open in a visible, focused bb window or tab. It defaults on for
 early adopters.
 `threadContextCard` moves a running thread's changes, pull request, and parent
 and child threads into a card at the upper-right of its pane, opened or pinned from
-the header. It defaults on for early adopters.
+the header.
 `threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
-request number.
-`unreadDividerAtAnswer` places the NEW divider of an unread thread before the
-final assistant message of a turn that finished while you were away, instead of
-before its first tool call. It defaults on for early adopters.
-`websocketCompression` compresses large realtime messages (such as timeline
-pushes) on the app's live connection; it applies when the app reconnects.
+request number. It defaults on for early adopters.
+`updateWhenIdle` adds a "Restart and update bb automatically" switch to
+Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
+every hour and restart into a new version once no thread is running, and
+enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`applicationLinks`, `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
-`sidebarMultiSelect`, `skipFocusedThreadNotifications`, `threadContextCard`,
-`unreadDividerAtAnswer`, and `websocketCompression`; an experiment you set
-yourself keeps your value.
+`timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`; an
+experiment you set yourself keeps your value.
 
 Launcher settings
 

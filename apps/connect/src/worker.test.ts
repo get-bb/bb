@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
+import {
+  MAX_CHUNK_BYTES,
+  decodeFrame,
+  encodeFrame,
+  type Frame,
+} from "@bb/tunnel-contract";
 import {
   GATE_OAUTH_CLIENT_HEADER,
   GATE_OAUTH_GRANT_HEADER,
@@ -173,11 +178,21 @@ vi.mock("./cache.js", async () => {
   };
 });
 
-vi.mock("drizzle-orm/d1", () => ({
-  drizzle: vi.fn(() => ({})),
+vi.mock("@bb/connect-db-pg", () => ({
+  openConnectDb: vi.fn(() => ({
+    db: {},
+    close: async () => {},
+  })),
 }));
 
-import { drizzle } from "drizzle-orm/d1";
+import { openConnectDb } from "@bb/connect-db-pg";
+
+function mockConnectDb(db: unknown): void {
+  vi.mocked(openConnectDb).mockReturnValue({
+    db,
+    close: async () => {},
+  } as never);
+}
 
 import {
   invalidateSessionCookie,
@@ -197,7 +212,10 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
-import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
+import {
+  RESP_HEAD_MAX_WAIT_MS,
+  RESP_HEAD_TIMEOUT_MS,
+} from "./response-head-timeout.js";
 import { RELAY_HEADER } from "./protocol-headers.js";
 import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
@@ -286,7 +304,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
       },
       get: () => stub,
     },
-    DB: {} as D1Database,
+    HYPERDRIVE: {} as Hyperdrive,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
     GATE_EVENTS: { writeDataPoint: vi.fn() },
@@ -1182,6 +1200,103 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: response-head)");
+  });
+
+  describe("a relayed request whose head outlasts the deadline", () => {
+    function relayedRequest(status: () => Response | Promise<Response>) {
+      const socket = new SilentRelaySocket();
+      const { env, ctx } = makeEnv((request) =>
+        isStatusCheck(request) ? status() : relayUpgrade(socket),
+      );
+      let settled = false;
+      const pending = worker
+        .fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+          ctx,
+        )
+        .then((response) => {
+          settled = true;
+          return response;
+        });
+      return { socket, env, ctx, pending, settled: () => settled };
+    }
+
+    function tunnelStatus(lastHeartbeatAgeMs: number) {
+      return () =>
+        Response.json(
+          { connected: true, lastHeartbeatAgeMs },
+          { headers: { "x-bb-tunnel-status": "1" } },
+        );
+    }
+
+    function deliver(socket: SilentRelaySocket, frame: Frame) {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: frameBuffer(frame) });
+      socket.dispatchEvent(event);
+    }
+
+    it("keeps waiting while the tunnel heartbeat is fresh", async () => {
+      const { socket, env, pending, settled } = relayedRequest(
+        tunnelStatus(5_000),
+      );
+      await vi.advanceTimersByTimeAsync(70_000);
+      expect(settled()).toBe(false);
+      deliver(socket, {
+        type: "resp-head",
+        streamId: 0,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      });
+      deliver(socket, {
+        type: "body-chunk",
+        streamId: 0,
+        data: new TextEncoder().encode("ok"),
+      });
+      deliver(socket, { type: "body-end", streamId: 0 });
+      const response = await pending;
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe("ok");
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledTimes(1);
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blobs: expect.arrayContaining(["slow", "response-head"]),
+          doubles: [RESP_HEAD_TIMEOUT_MS, 1, -1],
+        }),
+      );
+    });
+
+    it("answers 504 and closes the relay when the tunnel heartbeat is stale", async () => {
+      const { socket, pending } = relayedRequest(tunnelStatus(60_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
+
+    it("answers 504 when the tunnel object does not report its status", async () => {
+      const { pending, settled } = relayedRequest(
+        () => new Promise<Response>(() => {}),
+      );
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect((await pending).status).toBe(504);
+    });
+
+    it("answers 504 at the ten minute cap even with a fresh heartbeat", async () => {
+      const { socket, pending, settled } = relayedRequest(tunnelStatus(5_000));
+      await vi.advanceTimersByTimeAsync(RESP_HEAD_MAX_WAIT_MS - 1_000);
+      expect(settled()).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      expect(await response.text()).toContain("(stage: response-head)");
+      expect(socket.closes).toEqual([1000]);
+    });
   });
 
   it.each(["HTTP", "WebSocket"])(
@@ -2325,7 +2440,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
 function makeDoEnv() {
   return {
     TUNNEL_DO: {} as DurableObjectNamespace,
-    DB: {} as D1Database,
+    HYPERDRIVE: {} as Hyperdrive,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
     GATE_EVENTS: { writeDataPoint: vi.fn() },
@@ -2359,11 +2474,10 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("bumps machine.lastSeenAt when a machine-label tunnel is connected", async () => {
-    const run = vi.fn(async () => {});
-    const where = vi.fn(() => ({ run }));
+    const where = vi.fn(async () => {});
     const set = vi.fn(() => ({ where }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ machineId: "machine-air", protocolVersion: 1 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
@@ -2373,15 +2487,15 @@ describe("TunnelDO machine presence", () => {
 
     expect(update).toHaveBeenCalledWith(machine);
     expect(set).toHaveBeenCalledWith({ lastSeenAt: expect.any(Date) });
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 
-  it("schedules the next presence alarm before a slow D1 write settles", async () => {
-    const run = vi.fn(() => new Promise<void>(() => {}));
+  it("schedules the next presence alarm before a slow database write settles", async () => {
+    const write = vi.fn(() => new Promise<void>(() => {}));
     const update = vi.fn(() => ({
-      set: () => ({ where: () => ({ run }) }),
+      set: () => ({ where: write }),
     }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    mockConnectDb({ update });
     const state = mockDoState({ serverId: "srv", protocolVersion: 1 });
     const setAlarm = vi.fn(async (_at: number) => {});
     state.api.storage.setAlarm = setAlarm;
@@ -2391,7 +2505,7 @@ describe("TunnelDO machine presence", () => {
 
     const before = Date.now();
     void dob.alarm();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
 
     expect(setAlarm).toHaveBeenCalledTimes(1);
     const at = setAlarm.mock.calls[0]![0];
@@ -2400,11 +2514,11 @@ describe("TunnelDO machine presence", () => {
   });
 
   it("spreads presence alarms across the interval instead of a fixed period", async () => {
-    vi.mocked(drizzle).mockReturnValue({
+    mockConnectDb({
       update: () => ({
-        set: () => ({ where: () => ({ run: async () => {} }) }),
+        set: () => ({ where: async () => {} }),
       }),
-    } as never);
+    });
     const offsets: number[] = [];
     for (const roll of [0, 0.5, 0.999]) {
       const random = vi.spyOn(Math, "random").mockReturnValue(roll);
@@ -2531,78 +2645,46 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
   return frame.streamId;
 }
 
-describe("TunnelDO voice transcription response head", () => {
-  async function voicePost() {
+describe("TunnelDO request body", () => {
+  it("coalesces small body reads into full-size frames", async () => {
     const sent: Uint8Array[] = [];
     const state = mockDoState({ protocolVersion: 1 });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
     const tunnel = fakeTunnelSocket(captureSent(sent));
     state.addSocket(tunnel, ["tunnel"]);
-    let settled = false;
-    const pending = Promise.resolve(
-      dob.fetch(
-        new Request("https://do.internal/api/v1/system/voice-transcription", {
-          method: "POST",
-          body: "audio",
-        }),
-      ),
-    ).then((response) => {
-      settled = true;
-      return response;
-    });
-    return {
-      dob,
-      tunnel,
-      pending,
-      streamId: openHttpStreamId(sent, 0),
-      settled: () => settled,
-    };
-  }
+    const readBytes = 4 * 1024;
+    const bytes = new Uint8Array(2 * MAX_CHUNK_BYTES + readBytes).map(
+      (_, index) => index % 251,
+    );
 
-  it("relays a transcript whose head arrives after 85 seconds", async () => {
-    vi.useFakeTimers();
-    try {
-      const { dob, tunnel, pending, streamId, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(85_000);
-      expect(settled()).toBe(false);
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "resp-head",
-          streamId,
-          status: 200,
-          headers: [["content-type", "application/json"]],
+    void dob.fetch(
+      new Request("https://do.internal/upload", {
+        method: "POST",
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += readBytes) {
+              controller.enqueue(bytes.slice(offset, offset + readBytes));
+            }
+            controller.close();
+          },
         }),
-      );
-      dob.webSocketMessage(
-        tunnel,
-        frameBuffer({
-          type: "body-chunk",
-          streamId,
-          data: new TextEncoder().encode('{"text":"a long note"}'),
-        }),
-      );
-      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
-      const response = await pending;
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ text: "a long note" });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        duplex: "half",
+      } as RequestInit),
+    );
 
-  it("answers 504 after 90 seconds without a head", async () => {
-    vi.useFakeTimers();
-    try {
-      const { pending, settled } = await voicePost();
-      await vi.advanceTimersByTimeAsync(89_999);
-      expect(settled()).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect((await pending).status).toBe(504);
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.waitFor(() =>
+      expect(decodeFrame(sent.at(-1)!).type).toBe("body-end"),
+    );
+    const chunks = sent
+      .map(decodeFrame)
+      .flatMap((frame) => (frame.type === "body-chunk" ? [frame.data] : []));
+    expect(chunks.map((chunk) => chunk.length)).toEqual([
+      MAX_CHUNK_BYTES,
+      MAX_CHUNK_BYTES,
+      readBytes,
+    ]);
+    expect(Buffer.concat(chunks).equals(bytes)).toBe(true);
   });
 });
 
@@ -3378,7 +3460,7 @@ describe("gate error response", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveLabel.mockRejectedValue(
-      new Error("D1_ERROR: D1 DB is overloaded. Requests queued for too long."),
+      new Error("Connection terminated unexpectedly"),
     );
   });
 
@@ -3400,8 +3482,7 @@ describe("gate error response", () => {
       expect.objectContaining({
         method: "GET",
         path: "/api/v1/threads/thr_x/child-summary",
-        error:
-          "Error: D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
+        error: "Error: Connection terminated unexpectedly",
       }),
     );
     logged.mockRestore();
@@ -3646,11 +3727,11 @@ describe("TunnelDO worker-held relay", () => {
 
 describe("TunnelDO status and on-change presence", () => {
   function presenceDb() {
-    const run = vi.fn(async () => {});
-    const set = vi.fn(() => ({ where: () => ({ run }) }));
+    const write = vi.fn(async () => {});
+    const set = vi.fn(() => ({ where: write }));
     const update = vi.fn(() => ({ set }));
-    vi.mocked(drizzle).mockReturnValue({ update } as never);
-    return { run, set, update };
+    mockConnectDb({ update });
+    return { write, set, update };
   }
 
   it("reports whether a tunnel socket is connected without touching the tunnel", async () => {
@@ -3705,7 +3786,7 @@ describe("TunnelDO status and on-change presence", () => {
   });
 
   it("writes last-seen when the tunnel closes and spaces the alarm to half an hour in on-change mode", async () => {
-    const { run } = presenceDb();
+    const { write } = presenceDb();
     const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
     const setAlarm = vi.fn(async (_at: number) => {});
     state.api.storage.setAlarm = setAlarm;
@@ -3722,15 +3803,15 @@ describe("TunnelDO status and on-change presence", () => {
     const delayMs = setAlarm.mock.calls[0]![0] - before;
     expect(delayMs).toBeGreaterThanOrEqual(25 * 60_000);
     expect(delayMs).toBeLessThan(35 * 60_000 + 1_000);
-    expect(run).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
 
     (tunnel as unknown as { readyState: number }).readyState = 3;
     dob.webSocketClose(tunnel, 1006, "");
-    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(2));
   });
 
   it("leaves last-seen to the periodic alarm when on-change mode is off", async () => {
-    const { run } = presenceDb();
+    const { write } = presenceDb();
     const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
     const dob = new TunnelDO(state.api, makeDoEnv());
     await state.restore;
@@ -3740,7 +3821,7 @@ describe("TunnelDO status and on-change presence", () => {
     (tunnel as unknown as { readyState: number }).readyState = 3;
     dob.webSocketClose(tunnel, 1006, "");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(run).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });
 

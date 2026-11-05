@@ -121,31 +121,6 @@ afterEach(() => {
 });
 
 describe("DiffHost", () => {
-  it("skips BB's renderer and passes full-file contents when a replacement never delegates", async () => {
-    registerDiffRenderer((props) => {
-      receivedProps.push(props);
-      return <div data-testid="plugin-diff">plugin diff</div>;
-    });
-
-    render(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={FULL_FILE_CONTENTS}
-        view="split"
-      />,
-    );
-
-    expect(await screen.findByTestId("plugin-diff")).toBeDefined();
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(bbDiff.lastProps).toBeNull();
-    expect(receivedProps.at(-1)?.experimental_fullFileContents).toBe(
-      FULL_FILE_CONTENTS,
-    );
-  });
-
   it("hands the replacement resolved semantic props, not BB's host-only inputs", async () => {
     registerDiffRenderer((props) => {
       receivedProps.push(props);
@@ -165,6 +140,10 @@ describe("DiffHost", () => {
     );
 
     await screen.findByTestId("plugin-diff");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(bbDiff.lastProps).toBeNull();
     const props = receivedProps.at(-1);
     expect(props?.patch).toBe(PATCH);
     expect(props?.path).toBe("src/app.ts");

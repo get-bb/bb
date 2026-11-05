@@ -146,6 +146,7 @@ describe("desktop context menu", () => {
       dictionarySuggestions: ["the", "tech"],
     });
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params,
     });
@@ -161,6 +162,7 @@ describe("desktop context menu", () => {
   it("can add a misspelled word to the spellchecker dictionary", () => {
     const webContents = createFakeWebContents();
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params: createContextMenuParams({
         isEditable: true,
@@ -185,6 +187,7 @@ describe("desktop context menu", () => {
   it("keeps standard edit actions in editable context menus", () => {
     const webContents = createFakeWebContents();
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params: createContextMenuParams({
         isEditable: true,
@@ -213,6 +216,7 @@ describe("desktop context menu", () => {
   it("opens or copies a web link target", () => {
     const url = "https://example.com/device";
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents: createFakeWebContents(),
       params: createContextMenuParams({
         linkURL: url,
@@ -240,6 +244,7 @@ describe("desktop context menu", () => {
     ],
   ])("offers only Copy Link for non-web link %s", (linkURL, pageURL) => {
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents: createFakeWebContents(),
       params: createContextMenuParams({ linkURL, pageURL }),
     });
@@ -253,6 +258,7 @@ describe("desktop context menu", () => {
     const webContents = createFakeWebContents();
     const srcURL = "blob:http://localhost:38886/3f0c";
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params: createContextMenuParams({
         x: 120,
@@ -277,6 +283,7 @@ describe("desktop context menu", () => {
 
   it("offers link and image actions for a linked image", () => {
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents: createFakeWebContents(),
       params: createContextMenuParams({
         linkURL: "https://example.com/full.png",
@@ -298,6 +305,7 @@ describe("desktop context menu", () => {
   it("groups selected-text actions together", () => {
     const webContents = createFakeWebContents();
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params: createContextMenuParams({
         selectionText: "device authorization",
@@ -318,6 +326,7 @@ describe("desktop context menu", () => {
   it("preserves selected-text actions for links", () => {
     const webContents = createFakeWebContents();
     const template = buildDesktopContextMenuTemplate({
+      allowSameOriginLinks: false,
       webContents,
       params: createContextMenuParams({
         linkURL: "https://example.com/device",
@@ -344,6 +353,7 @@ describe("desktop context menu", () => {
 
     expect(
       buildDesktopContextMenuTemplate({
+        allowSameOriginLinks: false,
         webContents,
         params: createContextMenuParams(),
       }),

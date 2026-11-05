@@ -106,6 +106,23 @@ function httpStatusOf(error: unknown): number | null {
     : null;
 }
 
+export async function requireGitEnvironment(
+  bb: BbPluginApi,
+  environmentId: string,
+): Promise<Environment> {
+  try {
+    return await bb.sdk.environments.get({ environmentId });
+  } catch (error) {
+    if (httpStatusOf(error) === 404) {
+      throw new experimental_PluginRpcRefusal({
+        code: "not_found",
+        message: `Environment not found: ${environmentId}`,
+      });
+    }
+    throw error;
+  }
+}
+
 const KEY_SEPARATOR = "\u0000";
 
 function createReadMemo<T extends { outcome: string }>() {
@@ -219,26 +236,10 @@ export function createGitReads(
   const statusCache = createReadMemo<GitStatusResult>();
   const filesCache = createReadMemo<GitFilesResult>();
 
-  async function requireEnvironment(
-    environmentId: string,
-  ): Promise<Environment> {
-    try {
-      return await bb.sdk.environments.get({ environmentId });
-    } catch (error) {
-      if (httpStatusOf(error) === 404) {
-        throw new experimental_PluginRpcRefusal({
-          code: "not_found",
-          message: `Environment not found: ${environmentId}`,
-        });
-      }
-      throw error;
-    }
-  }
-
   async function requireReady(
     environmentId: string,
   ): Promise<ReadyGitEnvironment | null> {
-    const environment = await requireEnvironment(environmentId);
+    const environment = await requireGitEnvironment(bb, environmentId);
     const path = requireWorkspacePath(environment);
     if (!environment.isGitRepo) return null;
     return { environment, hostId: environment.hostId, path };
@@ -341,7 +342,7 @@ export function createGitReads(
       return { outcome: "available", patches };
     },
     async fileSide(environmentId, query) {
-      const environment = await requireEnvironment(environmentId);
+      const environment = await requireGitEnvironment(bb, environmentId);
       const rootPath = requireWorkspacePath(environment);
       const relativePath = query.path.replace(/^\/+/u, "");
       const path =
@@ -380,7 +381,7 @@ export function createGitReads(
       }
     },
     async branches({ environmentId, query, limit, selectedBranch }) {
-      const environment = await requireEnvironment(environmentId);
+      const environment = await requireGitEnvironment(bb, environmentId);
       const path = requireWorkspacePath(environment);
       return host.call(
         "branches",

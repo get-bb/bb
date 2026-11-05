@@ -145,6 +145,7 @@ describe("getProviderIconInfo", () => {
 
   it("renders a generic fallback for a provider known only by id", () => {
     const info = getProviderIconInfo("agent", "codex");
+    expect(info.ariaLabel).toBe("codex");
     const view = render(createElement(info.icon));
     expect(view.container.querySelector('[data-icon="Code"]')).not.toBeNull();
     act(() =>
@@ -209,65 +210,6 @@ describe("getProviderIconInfo", () => {
       bothView.container.querySelector("[data-provider-logo]"),
     ).not.toBeNull();
     bothView.unmount();
-
-    expect(
-      getProviderIconInfo("agent", "echo-agent", { logoUrl: null }),
-    ).toBeDefined();
-  });
-
-  it("lets a plugin-registered component win, and falls back when it goes away", () => {
-    const iconInfo = getProviderIconInfo("agent", "codex", {
-      logoUrl: "/api/v1/system/providers/codex/logo",
-    });
-    if (iconInfo === undefined) {
-      throw new Error("Expected icon info for codex");
-    }
-    const view = render(createElement(iconInfo.icon, { className: "size-4" }));
-    expect(view.container.querySelector("[data-testid]")).toBeNull();
-    expect(view.container.querySelector("[data-provider-logo]")).not.toBeNull();
-
-    act(() => {
-      setPluginSlotRegistrations("provider-codex", {
-        ...EMPTY_REGISTRATIONS,
-        providerIcons: [
-          { providerKind: "agent", providerId: "codex", icon: PluginCodexIcon },
-        ],
-      });
-    });
-
-    const pluginMark = view.container.querySelector(
-      '[data-testid="plugin-codex-icon"]',
-    );
-    expect(pluginMark).not.toBeNull();
-    expect(view.container.querySelector("[data-provider-logo]")).toBeNull();
-
-    act(() => {
-      removePluginSlotRegistrations("provider-codex");
-    });
-    expect(
-      view.container.querySelector('[data-testid="plugin-codex-icon"]'),
-    ).toBeNull();
-    expect(view.container.querySelector("[data-provider-logo]")).not.toBeNull();
-    view.unmount();
-  });
-
-  it("renders a plugin icon for a provider that has no vendored mark", () => {
-    setPluginSlotRegistrations("provider-thing", {
-      ...EMPTY_REGISTRATIONS,
-      providerIcons: [
-        { providerKind: "agent", providerId: "thing", icon: PluginCodexIcon },
-      ],
-    });
-    const iconInfo = getProviderIconInfo("agent", "thing");
-    if (iconInfo === undefined) {
-      throw new Error("Expected plugin icon info for thing");
-    }
-    expect(iconInfo.ariaLabel).toBe("thing");
-    const view = render(createElement(iconInfo.icon, {}));
-    expect(
-      view.container.querySelector('[data-testid="plugin-codex-icon"]'),
-    ).not.toBeNull();
-    view.unmount();
   });
 
   it("keeps the first plugin by id when two claim one provider", () => {
@@ -316,6 +258,8 @@ describe("getProviderIconInfo", () => {
     expect(byFamily.ariaLabel).toBe("ACP provider");
     familyView.unmount();
 
-    expect(getProviderIconInfo("agent", "acp-unregistered")).toBeDefined();
+    expect(getProviderIconInfo("agent", "acp-unregistered").ariaLabel).toBe(
+      "acp-unregistered",
+    );
   });
 });

@@ -8,9 +8,9 @@ import {
 import type { PluginKvStorage, PluginLogger } from "@get-bb/plugin-sdk";
 import type {
   AccountClient,
-  AccountStatus,
   SharedCredential,
-} from "./account-client.js";
+} from "bb-plugin-bb-account/src/client.js";
+import type { AccountStatus } from "bb-plugin-bb-account/src/schemas.js";
 
 export const CREDENTIAL_COPY_KV_KEY = "credential";
 export const COPY_MARKER_KV_KEY = "credentialCopyOf";

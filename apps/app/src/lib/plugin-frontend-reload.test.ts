@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
 import { HOST_TAILWIND_VERSION } from "@bb/plugin-build/host-tailwind-version";
-import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
-import { QueryClient } from "@tanstack/react-query";
-import { createElement } from "react";
+import type {
+  PluginComposerThreadRowStatus,
+  PluginContentScriptContext,
+  PluginContentScriptRegistration,
+} from "@get-bb/plugin-sdk";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { act } from "@testing-library/react";
@@ -46,6 +50,11 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
+import { appQueryClient } from "./app-query-client";
+import { defaultExperiments } from "@bb/domain";
+import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
   pluginId: string,
@@ -80,13 +89,43 @@ function pluginModule(sectionTitle: string): Record<string, unknown> {
   };
 }
 
-function contentScriptModule(
-  setup: Parameters<typeof definePluginApp>[0],
-): Record<string, unknown> {
-  return { default: definePluginApp(setup) };
+function versionedSectionModule(url: string): Record<string, unknown> {
+  const pluginId = /plugins\/([^/]+)\//.exec(url)?.[1] ?? "unknown";
+  const version = /[?&]h=([^&]+)/.exec(url)?.[1] ?? "unknown";
+  return {
+    default: definePluginApp((app) => {
+      app.slots.homepageSection({
+        id: "section",
+        title: version,
+        component: () => createElement("div", null, `${pluginId} ${version}`),
+      });
+    }),
+  };
 }
 
+function contentScriptModule(
+  ...registrations: PluginContentScriptRegistration[]
+): Record<string, unknown> {
+  return {
+    default: definePluginApp((app) => {
+      for (const registration of registrations) {
+        app.contentScripts.register(registration);
+      }
+    }),
+  };
+}
+
+type ThreadRowStatusSetter =
+  PluginContentScriptContext["experimental_setThreadRowStatus"];
+
+function runningStatus(label: string): PluginComposerThreadRowStatus {
+  return { icon: "AiContentGenerator01", label, tone: "running" };
+}
+
+const cleanups: Array<() => void> = [];
+
 afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   resetPluginThreadRowStatusesForTest();
@@ -94,6 +133,18 @@ afterEach(() => {
   resetPluginCssForTest();
   uninstallForeignDomMutationGuardForTest();
 });
+
+function renderIntoBody(element: ReactElement): HTMLDivElement {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => root.render(element));
+  cleanups.push(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+  return container;
+}
 
 function MountedHomepageSections() {
   const { homepageSections } = usePluginSlots();
@@ -112,10 +163,7 @@ function MountedHomepageSections() {
   );
 }
 
-function autoLoadPluginStylesheets(): {
-  loaded: string[];
-  stop: () => void;
-} {
+function autoLoadPluginStylesheets(): { loaded: string[]; stop: () => void } {
   const loaded: string[] = [];
   const observer = new MutationObserver((records) => {
     for (const record of records) {
@@ -136,12 +184,67 @@ function autoLoadPluginStylesheets(): {
     }
   });
   observer.observe(document.head, { childList: true });
-  return { loaded, stop: () => observer.disconnect() };
+  const stop = () => observer.disconnect();
+  cleanups.push(stop);
+  return { loaded, stop };
+}
+
+function cssLinks(pluginId: string): HTMLLinkElement[] {
+  return [
+    ...document.head.querySelectorAll<HTMLLinkElement>(
+      `link[data-bb-plugin-css="${pluginId}"]`,
+    ),
+  ];
+}
+
+function cssPreloads(pluginId: string): HTMLLinkElement[] {
+  return [
+    ...document.head.querySelectorAll<HTMLLinkElement>(
+      `link[data-bb-plugin-css-preload="${pluginId}"]`,
+    ),
+  ];
+}
+
+function cssHrefs(pluginId: string): Array<string | null> {
+  return cssLinks(pluginId).map((link) => link.getAttribute("href"));
+}
+
+function pluginSheet(pluginId: string, version: string): string {
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
+}
+
+function fireLoad(link: Element | null | undefined): void {
+  link?.dispatchEvent(new Event("load"));
 }
 
 async function flushAsyncWork(): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+function newQueryClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+function jsonResponse(body: object, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function accountPoolListResponse(
+  overrides: Parameters<typeof makeInstalledPlugin>[0] = {},
+): Response {
+  return jsonResponse({
+    plugins: [
+      makeInstalledPlugin({
+        id: "account-pool",
+        app: { hasApp: true, bundle: candidate("account-pool", "v1").bundle },
+        ...overrides,
+      }),
+    ],
   });
 }
 
@@ -157,10 +260,10 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
-    importRetryDelaysMs: [] as readonly number[],
+    importRetryDelaysMs: [],
     applyCss: vi.fn(),
     prefetchCss: vi.fn(),
     prefetchModule: vi.fn(),
@@ -172,67 +275,156 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
-    mountTimeoutMs: undefined as number | undefined,
   };
+}
+
+interface ReconcileHarnessOptions {
+  realCss?: boolean;
+  realSlots?: boolean;
+}
+
+function reconcileHarness(
+  initial: PluginFrontendCandidate[],
+  options: ReconcileHarnessOptions = {},
+) {
+  const state = createPluginFrontendReconcileState();
+  const deps = makeDeps(initial);
+  if (options.realCss) {
+    deps.applyCss = applyPluginCss;
+    deps.retainCss = retainPluginCss;
+  }
+  if (options.realSlots) {
+    deps.setRegistrations = vi.fn(setPluginSlotRegistrations);
+    deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
+  }
+  const reconcile = (next?: PluginFrontendCandidate[]): Promise<void> => {
+    if (next) deps.fetchCandidates.mockResolvedValue(next);
+    return reconcilePluginFrontends(state, deps);
+  };
+  return { state, deps, reconcile };
+}
+
+async function loadHelloThenFetchInventory(
+  fetchInventory: () => Promise<Response>,
+) {
+  const harness = reconcileHarness([candidate("hello", "v1")]);
+  await harness.reconcile();
+  harness.deps.removeRegistrations.mockClear();
+  vi.mocked(harness.deps.applyCss).mockClear();
+  const queryClient = newQueryClient();
+  vi.stubGlobal("fetch", vi.fn(fetchInventory));
+  harness.deps.fetchCandidates = vi.fn(() =>
+    fetchFrontendCandidates(queryClient),
+  );
+  return harness;
+}
+
+function renderReactOwnedLink(testId: string) {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  installForeignDomMutationGuard();
+  const container = renderIntoBody(
+    createElement(
+      "a",
+      { href: "?path=src/app.ts", "data-testid": testId },
+      "src/app.ts",
+    ),
+  );
+  const link = container.querySelector(`[data-testid='${testId}']`);
+  expect(link).toBeInstanceOf(HTMLAnchorElement);
+  return { container, link, reactParent: link?.parentNode };
+}
+
+function wrapLinkInButtonGroup(testId: string): void {
+  const control = document.querySelector(`[data-testid='${testId}']`);
+  if (!(control instanceof HTMLElement) || control.parentNode === null) {
+    return;
+  }
+  const group = document.createElement("span");
+  const button = document.createElement("button");
+  control.parentNode.insertBefore(group, control);
+  group.append(control, button);
 }
 
 describe("reconcilePluginFrontends", () => {
   it.each(["running", "needs-configuration", "degraded"] as const)(
     "loads frontend candidates for a plugin with %s status",
     async (status) => {
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
       vi.stubGlobal(
         "fetch",
-        vi.fn(
-          async () =>
-            new Response(
-              JSON.stringify({
-                plugins: [
-                  makeInstalledPlugin({
-                    id: "account-pool",
-                    status,
-                    app: {
-                      hasApp: true,
-                      bundle: candidate("account-pool", "v1").bundle,
-                    },
-                  }),
-                ],
-              }),
-              { headers: { "content-type": "application/json" } },
-            ),
-        ),
+        vi.fn(async () => accountPoolListResponse({ status })),
       );
 
-      await expect(fetchFrontendCandidates(queryClient)).resolves.toEqual([
+      await expect(fetchFrontendCandidates(newQueryClient())).resolves.toEqual([
         candidate("account-pool", "v1"),
       ]);
     },
   );
 
+  it.each([
+    {
+      cancelledBy: "its last observer unmounting",
+      start: (queryClient: QueryClient) => {
+        const observer = new QueryObserver(
+          queryClient,
+          pluginListQueryOptions({ enabled: true }),
+        );
+        const unsubscribe = observer.subscribe(() => {});
+        return () => unsubscribe();
+      },
+    },
+    {
+      cancelledBy: "cancelQueries",
+      start: (queryClient: QueryClient) => () =>
+        void queryClient.cancelQueries(),
+    },
+  ])(
+    "fetches frontend candidates again when the shared plugin list fetch is cancelled by $cancelledBy",
+    async ({ start }) => {
+      const queryClient = newQueryClient();
+      const fetchMock = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            if (fetchMock.mock.calls.length === 1) {
+              init?.signal?.addEventListener("abort", () =>
+                reject(new DOMException("Aborted", "AbortError")),
+              );
+              return;
+            }
+            resolve(accountPoolListResponse());
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const cancel = start(queryClient);
+      const candidates = fetchFrontendCandidates(queryClient);
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      cancel();
+
+      await expect(candidates).resolves.toEqual([
+        candidate("account-pool", "v1"),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it("re-imports a plugin exactly once when its bundle hash changes, replacing registrations wholesale", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([
+    const other = candidate("other", "s1", { cssUrl: null });
+    const { deps, reconcile } = reconcileHarness([
       candidate("hello", "aaa"),
-      candidate("other", "s1", { cssUrl: null }),
+      other,
     ]);
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(deps.importModule).toHaveBeenCalledTimes(2);
     expect(deps.setRegistrations).toHaveBeenCalledTimes(2);
 
     deps.importModule.mockClear();
     deps.setRegistrations.mockClear();
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(deps.importModule).not.toHaveBeenCalled();
     expect(deps.setRegistrations).not.toHaveBeenCalled();
 
-    deps.fetchCandidates.mockResolvedValue([
-      candidate("hello", "bbb"),
-      candidate("other", "s1", { cssUrl: null }),
-    ]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([candidate("hello", "bbb"), other]);
     expect(deps.importModule).toHaveBeenCalledTimes(1);
     expect(deps.importModule).toHaveBeenCalledWith(
       "/api/v1/plugins/hello/assets/app.js?h=bbb",
@@ -252,8 +444,7 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("waits for the stylesheet before publishing registrations", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "aaa")]);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "aaa")]);
     const cssGate: { release: (() => void) | null } = { release: null };
     vi.mocked(deps.applyCss).mockImplementation(
       () =>
@@ -262,7 +453,7 @@ describe("reconcilePluginFrontends", () => {
         }),
     );
 
-    const done = reconcilePluginFrontends(state, deps);
+    const done = reconcile();
     for (let tick = 0; tick < 20; tick++) await Promise.resolve();
     expect(deps.applyCss).toHaveBeenCalledWith(
       "hello",
@@ -279,35 +470,13 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("reloading twice leaves exactly one homepage section registered (design §9 exit criterion)", async () => {
-    resetPluginSlotStoreForTest();
-    const state = createPluginFrontendReconcileState();
-    const fetchCandidates = vi.fn(
-      async (): Promise<PluginFrontendCandidate[]> => [
-        candidate("hello", "v1"),
-      ],
-    );
-    const deps: PluginFrontendReconcileDeps = {
-      fetchCandidates,
-      importModule: async () => pluginModule("hello"),
-      importRetryDelaysMs: [],
-      applyCss: vi.fn(),
-      prefetchCss: vi.fn(),
-      prefetchModule: vi.fn(),
-      retainCss: vi.fn(() => vi.fn()),
-      resetCrashedSlots: vi.fn(),
-      setRegistrations: setPluginSlotRegistrations,
-      removeRegistrations: removePluginSlotRegistrations,
-      beginSlotBatch: () => () => {},
-      flushSlotBatch: () => {},
-      warn: vi.fn(),
-      priorityPluginIds: () => [],
-    };
+    const { reconcile } = reconcileHarness([candidate("hello", "v1")], {
+      realSlots: true,
+    });
 
-    await reconcilePluginFrontends(state, deps);
-    fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
-    await reconcilePluginFrontends(state, deps);
-    fetchCandidates.mockResolvedValue([candidate("hello", "v3")]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
+    await reconcile([candidate("hello", "v2")]);
+    await reconcile([candidate("hello", "v3")]);
 
     const snapshot = getPluginSlotSnapshot();
     expect(snapshot.homepageSections).toHaveLength(1);
@@ -316,18 +485,15 @@ describe("reconcilePluginFrontends", () => {
       id: "section",
       generation: 3,
     });
-    resetPluginSlotStoreForTest();
   });
 
   it("loads CSS before a cold deep-link panel registration can render", async () => {
-    const state = createPluginFrontendReconcileState();
     const stylesheets = autoLoadPluginStylesheets();
     const loadedDuringRender = vi.fn();
-    const deps = makeDeps([candidate("hello", "cold")]);
-    deps.applyCss = applyPluginCss;
-    deps.retainCss = retainPluginCss;
-    deps.setRegistrations = vi.fn(setPluginSlotRegistrations);
-    deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "cold")], {
+      realCss: true,
+      realSlots: true,
+    });
     deps.importModule.mockResolvedValue({
       default: definePluginApp((app) => {
         app.slots.navPanel({
@@ -342,168 +508,123 @@ describe("reconcilePluginFrontends", () => {
         });
       }),
     });
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => {
-      root.render(
+    const container = renderIntoBody(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ["/plugins/hello/panel/notes/today.md"] },
         createElement(
-          MemoryRouter,
-          { initialEntries: ["/plugins/hello/panel/notes/today.md"] },
-          createElement(
-            Routes,
-            null,
-            createElement(Route, {
-              path: PLUGIN_PANEL_ROUTE_PATH,
-              element: createElement(PluginPanelView, {
-                pluginId: "hello",
-                panelPath: "panel",
-                subPath: "notes/today.md",
-              }),
+          Routes,
+          null,
+          createElement(Route, {
+            path: PLUGIN_PANEL_ROUTE_PATH,
+            element: createElement(PluginPanelView, {
+              pluginId: "hello",
+              panelPath: "panel",
+              subPath: "notes/today.md",
             }),
-          ),
+          }),
         ),
-      );
-    });
+      ),
+    );
 
     await act(async () => {
-      await reconcilePluginFrontends(state, deps);
+      await reconcile();
     });
 
     expect(loadedDuringRender).toHaveBeenCalledWith([
-      `/api/v1/plugins/hello/assets/app.css?h=cold&host-tailwind=${HOST_TAILWIND_VERSION}`,
+      pluginSheet("hello", "cold"),
     ]);
     expect(container.textContent).toContain("cold panel body:notes/today.md");
-    expect(
-      document.head.querySelector('link[data-bb-plugin-css="hello"]'),
-    ).not.toBeNull();
-
-    act(() => root.unmount());
-    container.remove();
-    stylesheets.stop();
+    expect(cssLinks("hello")).not.toHaveLength(0);
   });
 
   it("retains CSS for a content script's whole generation, including cleanup", async () => {
-    const state = createPluginFrontendReconcileState();
-    const stylesheets = autoLoadPluginStylesheets();
-    const deps = makeDeps([candidate("shell-owner", "v1")]);
+    autoLoadPluginStylesheets();
+    const { deps, reconcile } = reconcileHarness(
+      [candidate("shell-owner", "v1")],
+      { realCss: true },
+    );
     const events: string[] = [];
-    const stylesheetIsActive = () =>
-      document.head.querySelector('link[data-bb-plugin-css="shell-owner"]') !==
-      null;
-    deps.applyCss = applyPluginCss;
-    deps.retainCss = retainPluginCss;
+    const stylesheetIsActive = () => cssLinks("shell-owner").length > 0;
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "shell-dom",
-          mount() {
-            events.push(`mount:${stylesheetIsActive()}`);
-            return () => {
-              events.push(`dispose:${stylesheetIsActive()}`);
-            };
-          },
-        });
+      contentScriptModule({
+        id: "shell-dom",
+        mount() {
+          events.push(`mount:${stylesheetIsActive()}`);
+          return () => {
+            events.push(`dispose:${stylesheetIsActive()}`);
+          };
+        },
       }),
     );
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(events).toEqual(["mount:true"]);
     expect(stylesheetIsActive()).toBe(true);
 
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([]);
     expect(events).toEqual(["mount:true", "dispose:true"]);
     expect(stylesheetIsActive()).toBe(false);
-    stylesheets.stop();
   });
 
   it("keeps the previous generation and its sheet on screen until the replacement stylesheet settles", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    deps.applyCss = applyPluginCss;
-    deps.retainCss = retainPluginCss;
-    deps.setRegistrations = vi.fn(setPluginSlotRegistrations);
-    deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
-    deps.importModule.mockImplementation(async (url: string) => {
-      const version = /[?&]h=([^&]+)/.exec(url)?.[1] ?? "unknown";
-      return {
-        default: definePluginApp((app) => {
-          app.slots.homepageSection({
-            id: "section",
-            title: version,
-            component: () =>
-              createElement("div", null, `generation ${version}`),
-          });
-        }),
-      };
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "v1")], {
+      realCss: true,
+      realSlots: true,
     });
-    const sheet = (version: string) =>
-      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
-    const links = () => [
-      ...document.head.querySelectorAll<HTMLLinkElement>(
-        'link[data-bb-plugin-css="hello"]',
-      ),
-    ];
-    const hrefs = () => links().map((link) => link.getAttribute("href"));
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => root.render(createElement(MountedHomepageSections)));
+    deps.importModule.mockImplementation(async (url) =>
+      versionedSectionModule(url),
+    );
+    const sheet = (version: string) => pluginSheet("hello", version);
+    const container = renderIntoBody(createElement(MountedHomepageSections));
 
-    const bootV1 = reconcilePluginFrontends(state, deps);
+    const bootV1 = reconcile();
     await flushAsyncWork();
     expect(deps.setRegistrations).not.toHaveBeenCalled();
-    document.head
-      .querySelector('link[data-bb-plugin-css-preload="hello"]')
-      ?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     await act(async () => {
       await bootV1;
     });
-    expect(container.textContent).toContain("generation v1");
-    links()[0]?.dispatchEvent(new Event("load"));
+    expect(container.textContent).toContain("hello v1");
+    fireLoad(cssLinks("hello")[0]);
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
-    const reloadV2 = reconcilePluginFrontends(state, deps);
+    const reloadV2 = reconcile([candidate("hello", "v2")]);
     await flushAsyncWork();
-    expect(hrefs()).toEqual([sheet("v1"), sheet("v2")]);
+    expect(cssHrefs("hello")).toEqual([sheet("v1"), sheet("v2")]);
     expect(deps.setRegistrations).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("generation v1");
+    expect(container.textContent).toContain("hello v1");
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    links()[1]?.dispatchEvent(new Event("error"));
+    cssLinks("hello")[1]?.dispatchEvent(new Event("error"));
     await act(async () => {
       await reloadV2;
     });
     warn.mockRestore();
-    expect(container.textContent).toContain("generation v2");
-    expect(hrefs()).toEqual([sheet("v1"), sheet("v2")]);
+    expect(container.textContent).toContain("hello v2");
+    expect(cssHrefs("hello")).toEqual([sheet("v1"), sheet("v2")]);
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v3")]);
-    const reloadV3 = reconcilePluginFrontends(state, deps);
+    const reloadV3 = reconcile([candidate("hello", "v3")]);
     await flushAsyncWork();
-    expect(hrefs()).toEqual([sheet("v1"), sheet("v3")]);
-    expect(container.textContent).toContain("generation v2");
-    links()[1]?.dispatchEvent(new Event("load"));
+    expect(cssHrefs("hello")).toEqual([sheet("v1"), sheet("v3")]);
+    expect(container.textContent).toContain("hello v2");
+    fireLoad(cssLinks("hello")[1]);
     await act(async () => {
       await reloadV3;
     });
-    expect(hrefs()).toEqual([sheet("v3")]);
-    expect(container.textContent).toContain("generation v3");
-
-    act(() => root.unmount());
-    container.remove();
+    expect(cssHrefs("hello")).toEqual([sheet("v3")]);
+    expect(container.textContent).toContain("hello v3");
   });
 
   it("publishes the replacement anyway when its stylesheet never settles within the timeout", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     deps.cssReadyTimeoutMs = 20;
     vi.mocked(deps.applyCss).mockImplementation(
       () => new Promise<void>(() => {}),
     );
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(deps.setRegistrations).toHaveBeenCalledWith(
       "hello",
       expect.anything(),
@@ -515,155 +636,107 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("swaps the sheet later when a timed-out replacement stylesheet finally loads", async () => {
-    const state = createPluginFrontendReconcileState();
     const stylesheets = autoLoadPluginStylesheets();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    deps.applyCss = applyPluginCss;
-    deps.retainCss = retainPluginCss;
-    deps.setRegistrations = vi.fn(setPluginSlotRegistrations);
-    deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "v1")], {
+      realCss: true,
+      realSlots: true,
+    });
     deps.cssReadyTimeoutMs = 20;
-    deps.importModule.mockImplementation(async (url: string) => {
-      const version = /[?&]h=([^&]+)/.exec(url)?.[1] ?? "unknown";
-      return {
-        default: definePluginApp((app) => {
-          app.slots.homepageSection({
-            id: "section",
-            title: version,
-            component: () =>
-              createElement("div", null, `generation ${version}`),
-          });
-        }),
-      };
-    });
-    const sheet = (version: string) =>
-      `/api/v1/plugins/hello/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
-    const hrefs = () =>
-      [
-        ...document.head.querySelectorAll<HTMLLinkElement>(
-          'link[data-bb-plugin-css="hello"]',
-        ),
-      ].map((link) => link.getAttribute("href"));
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => root.render(createElement(MountedHomepageSections)));
+    deps.importModule.mockImplementation(async (url) =>
+      versionedSectionModule(url),
+    );
+    const container = renderIntoBody(createElement(MountedHomepageSections));
     await act(async () => {
-      await reconcilePluginFrontends(state, deps);
+      await reconcile();
     });
-    expect(container.textContent).toContain("generation v1");
+    expect(container.textContent).toContain("hello v1");
     stylesheets.stop();
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
     await act(async () => {
-      await reconcilePluginFrontends(state, deps);
+      await reconcile([candidate("hello", "v2")]);
     });
     expect(deps.warn).toHaveBeenCalledWith(
       expect.stringContaining("did not load within 20ms"),
     );
-    expect(container.textContent).toContain("generation v2");
-    expect(hrefs()).toEqual([sheet("v1"), sheet("v2")]);
+    expect(container.textContent).toContain("hello v2");
+    expect(cssHrefs("hello")).toEqual([
+      pluginSheet("hello", "v1"),
+      pluginSheet("hello", "v2"),
+    ]);
 
-    document.head
-      .querySelector('link[data-bb-plugin-css="hello"][href*="h=v2"]')
-      ?.dispatchEvent(new Event("load"));
-    expect(hrefs()).toEqual([sheet("v2")]);
-
-    act(() => root.unmount());
-    container.remove();
+    fireLoad(
+      document.head.querySelector(
+        'link[data-bb-plugin-css="hello"][href*="h=v2"]',
+      ),
+    );
+    expect(cssHrefs("hello")).toEqual([pluginSheet("hello", "v2")]);
   });
 
   it("publishes a replacement the moment its sheet loads while another plugin's sheet is still pending in the slot batch", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("alpha", "v1"), candidate("beta", "v1")]);
-    deps.applyCss = applyPluginCss;
-    deps.retainCss = retainPluginCss;
-    deps.setRegistrations = vi.fn(setPluginSlotRegistrations);
-    deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
+    const { deps, reconcile } = reconcileHarness(
+      [candidate("alpha", "v1"), candidate("beta", "v1")],
+      { realCss: true, realSlots: true },
+    );
     deps.beginSlotBatch = () => beginPluginSlotBatch({ maxHoldMs: 150 });
     deps.flushSlotBatch = flushPluginSlotChanges;
-    deps.importModule.mockImplementation(async (url: string) => {
-      const pluginId = /plugins\/([^/]+)\//.exec(url)?.[1] ?? "unknown";
-      const version = /[?&]h=([^&]+)/.exec(url)?.[1] ?? "unknown";
-      return {
-        default: definePluginApp((app) => {
-          app.slots.homepageSection({
-            id: "section",
-            title: version,
-            component: () =>
-              createElement("div", null, `${pluginId} ${version}`),
-          });
-        }),
-      };
-    });
-    const sheet = (pluginId: string, version: string) =>
-      `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}`;
-    const links = (pluginId: string) => [
-      ...document.head.querySelectorAll<HTMLLinkElement>(
-        `link[data-bb-plugin-css="${pluginId}"]`,
-      ),
-    ];
-    const hrefs = (pluginId: string) =>
-      links(pluginId).map((link) => link.getAttribute("href"));
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => root.render(createElement(MountedHomepageSections)));
+    deps.importModule.mockImplementation(async (url) =>
+      versionedSectionModule(url),
+    );
+    const container = renderIntoBody(createElement(MountedHomepageSections));
 
-    const boot = reconcilePluginFrontends(state, deps);
+    const boot = reconcile();
     await flushAsyncWork();
     for (const preload of document.head.querySelectorAll(
       "link[data-bb-plugin-css-preload]",
     )) {
-      preload.dispatchEvent(new Event("load"));
+      fireLoad(preload);
     }
     await act(async () => {
       await boot;
     });
     expect(container.textContent).toContain("alpha v1");
     expect(container.textContent).toContain("beta v1");
-    links("alpha")[0]?.dispatchEvent(new Event("load"));
-    links("beta")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssLinks("alpha")[0]);
+    fireLoad(cssLinks("beta")[0]);
 
-    deps.fetchCandidates.mockResolvedValue([
+    const reload = reconcile([
       candidate("alpha", "v2"),
       candidate("beta", "v2"),
     ]);
-    const reload = reconcilePluginFrontends(state, deps);
     await flushAsyncWork();
-    expect(hrefs("alpha")).toEqual([
-      sheet("alpha", "v1"),
-      sheet("alpha", "v2"),
+    expect(cssHrefs("alpha")).toEqual([
+      pluginSheet("alpha", "v1"),
+      pluginSheet("alpha", "v2"),
     ]);
-    expect(hrefs("beta")).toEqual([sheet("beta", "v1"), sheet("beta", "v2")]);
+    expect(cssHrefs("beta")).toEqual([
+      pluginSheet("beta", "v1"),
+      pluginSheet("beta", "v2"),
+    ]);
 
     await act(async () => {
-      links("alpha")[1]?.dispatchEvent(new Event("load"));
+      fireLoad(cssLinks("alpha")[1]);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(hrefs("alpha")).toEqual([sheet("alpha", "v2")]);
+    expect(cssHrefs("alpha")).toEqual([pluginSheet("alpha", "v2")]);
     expect(container.textContent).toContain("alpha v2");
     expect(container.textContent).toContain("beta v1");
 
     await act(async () => {
-      links("beta")[1]?.dispatchEvent(new Event("load"));
+      fireLoad(cssLinks("beta")[1]);
       await reload;
     });
     expect(container.textContent).toContain("beta v2");
-    expect(hrefs("beta")).toEqual([sheet("beta", "v2")]);
-
-    act(() => root.unmount());
-    container.remove();
+    expect(cssHrefs("beta")).toEqual([pluginSheet("beta", "v2")]);
   });
 
   it("drops registrations, CSS, and record when a plugin disappears from the inventory", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    await reconcilePluginFrontends(state, deps);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
+    await reconcile();
     expect(state.records.get("hello")?.status).toBe("loaded");
 
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([]);
     expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
     expect(state.records.has("hello")).toBe(false);
@@ -673,31 +746,15 @@ describe("reconcilePluginFrontends", () => {
   it.each([401, 403])(
     "removes active frontends when plugin inventory access fails with %s",
     async (status) => {
-      const state = createPluginFrontendReconcileState();
-      const deps = makeDeps([candidate("hello", "v1")]);
-      await reconcilePluginFrontends(state, deps);
-      deps.removeRegistrations.mockClear();
-      vi.mocked(deps.applyCss).mockClear();
-
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false } },
-      });
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(
-          async () =>
-            new Response(
-              JSON.stringify({ code: "unauthorized", message: "Unauthorized" }),
-              {
-                status,
-                headers: { "content-type": "application/json" },
-              },
-            ),
-        ),
+      const { state, deps, reconcile } = await loadHelloThenFetchInventory(
+        async () =>
+          jsonResponse(
+            { code: "unauthorized", message: "Unauthorized" },
+            status,
+          ),
       );
-      deps.fetchCandidates = vi.fn(() => fetchFrontendCandidates(queryClient));
 
-      await reconcilePluginFrontends(state, deps);
+      await reconcile();
 
       expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
       expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
@@ -707,26 +764,13 @@ describe("reconcilePluginFrontends", () => {
   );
 
   it("preserves active frontends when the plugin inventory request fails", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    await reconcilePluginFrontends(state, deps);
-    deps.removeRegistrations.mockClear();
-    vi.mocked(deps.applyCss).mockClear();
-
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
+    const { state, deps, reconcile } = await loadHelloThenFetchInventory(
+      async () => {
         throw new TypeError("offline");
-      }),
+      },
     );
-    deps.fetchCandidates = vi.fn(() => fetchFrontendCandidates(queryClient));
 
-    await expect(reconcilePluginFrontends(state, deps)).rejects.toThrow(
-      "offline",
-    );
+    await expect(reconcile()).rejects.toThrow("offline");
     expect(state.records.get("hello")?.status).toBe("loaded");
     expect(state.appliedHashes.get("hello")).toBe("v1");
     expect(deps.removeRegistrations).not.toHaveBeenCalled();
@@ -734,13 +778,13 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("deactivates stale UI when a replacement import fails or needs an SDK update", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    await reconcilePluginFrontends(state, deps);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
+    await reconcile();
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
     deps.importModule.mockRejectedValueOnce(new Error("SyntaxError"));
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([candidate("hello", "v2")]);
     expect(state.records.get("hello")).toMatchObject({ status: "failed" });
     expect(deps.removeRegistrations).toHaveBeenCalledWith("hello");
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
@@ -752,10 +796,9 @@ describe("reconcilePluginFrontends", () => {
     });
 
     deps.removeRegistrations.mockClear();
-    deps.fetchCandidates.mockResolvedValue([
+    await reconcile([
       candidate("hello", "v3", { compatible: false, sdkMajor: 9 }),
     ]);
-    await reconcilePluginFrontends(state, deps);
     expect(state.records.get("hello")).toMatchObject({
       status: "needs-update",
     });
@@ -764,13 +807,14 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("uses a fresh module URL when retrying a failed unchanged bundle", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     deps.importModule.mockRejectedValueOnce(new Error("blocked by client"));
 
-    await reconcilePluginFrontends(state, deps);
-    await reconcilePluginFrontends(state, deps);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
+    await reconcile();
+    await reconcile();
 
     expect(deps.importModule).toHaveBeenCalledTimes(2);
     expect(deps.importModule).toHaveBeenNthCalledWith(
@@ -785,18 +829,18 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("retries a failed import with a fresh module URL within the same reconcile", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     deps.importRetryDelaysMs = [0, 0];
+    const networkError = new TypeError(
+      "Failed to fetch dynamically imported module",
+    );
     deps.importModule
-      .mockRejectedValueOnce(
-        new TypeError("Failed to fetch dynamically imported module"),
-      )
-      .mockRejectedValueOnce(
-        new TypeError("Failed to fetch dynamically imported module"),
-      );
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError);
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
 
     expect(deps.importModule.mock.calls.map(([url]) => url)).toEqual([
       "/api/v1/plugins/hello/assets/app.js?h=v1",
@@ -811,200 +855,159 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("mounts once, skips repeated reconciliation, and disposes exactly once on reload and removal", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "v1")]);
     const events: string[] = [];
     deps.importModule.mockImplementation(async (url: string) => {
       const version = url.includes("h=v2") ? "v2" : "v1";
-      return contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "enhance",
-          mount({ pluginId, generation, signal }) {
-            events.push(`${version}:mount:${pluginId}:${generation}`);
-            signal.addEventListener(
-              "abort",
-              () => events.push(`${version}:abort`),
-              { once: true },
-            );
-            return () => {
-              events.push(`${version}:dispose`);
-            };
-          },
-        });
+      return contentScriptModule({
+        id: "enhance",
+        mount({ pluginId, generation, signal }) {
+          events.push(`${version}:mount:${pluginId}:${generation}`);
+          signal.addEventListener(
+            "abort",
+            () => events.push(`${version}:abort`),
+            { once: true },
+          );
+          return () => {
+            events.push(`${version}:dispose`);
+          };
+        },
       });
     });
 
-    await reconcilePluginFrontends(state, deps);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
+    await reconcile();
     expect(events).toEqual(["v1:mount:hello:1"]);
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
-    await reconcilePluginFrontends(state, deps);
-    expect(events).toEqual([
+    await reconcile([candidate("hello", "v2")]);
+    const reloaded = [
       "v1:mount:hello:1",
       "v1:abort",
       "v1:dispose",
       "v2:mount:hello:2",
-    ]);
+    ];
+    expect(events).toEqual(reloaded);
 
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
-    await reconcilePluginFrontends(state, deps);
-    expect(events).toEqual([
-      "v1:mount:hello:1",
-      "v1:abort",
-      "v1:dispose",
-      "v2:mount:hello:2",
-      "v2:abort",
-      "v2:dispose",
-    ]);
+    await reconcile([]);
+    await reconcile();
+    expect(events).toEqual([...reloaded, "v2:abort", "v2:dispose"]);
   });
 
   it("keeps content-script thread statuses across routes and clears them on deactivation", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    const { deps, reconcile } = reconcileHarness([
+      candidate("prompt-shaper", "v1"),
+    ]);
+    const status = runningStatus("Improve Prompt is improving the draft");
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "thread-status",
-          mount({ experimental_setThreadRowStatus }) {
-            experimental_setThreadRowStatus?.("thr_source", {
-              icon: "AiContentGenerator01",
-              label: "Improve Prompt is improving the draft",
-              tone: "running",
-            });
-          },
-        });
+      contentScriptModule({
+        id: "thread-status",
+        mount({ experimental_setThreadRowStatus }) {
+          experimental_setThreadRowStatus?.("thr_source", status);
+        },
       }),
     );
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(getPluginThreadRowStatus("thr_source")).toEqual({
       icon: "AiContentGenerator01",
       label: "Improve Prompt is improving the draft",
       tone: "running",
     });
 
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([]);
     expect(getPluginThreadRowStatus("thr_source")).toBeNull();
   });
 
   it("rolls back a status from a partially mounted generation and rejects its retained setter", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
-    let retainedSetter:
-      | ((
-          threadId: string,
-          status: PluginComposerThreadRowStatus | null,
-        ) => void)
-      | undefined;
+    const { deps, reconcile } = reconcileHarness([
+      candidate("prompt-shaper", "v1"),
+    ]);
+    let retainedSetter: ThreadRowStatusSetter;
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
+      contentScriptModule(
+        {
           id: "thread-status",
           mount({ experimental_setThreadRowStatus }) {
             retainedSetter = experimental_setThreadRowStatus;
-            retainedSetter?.("thr_source", {
-              icon: "AiContentGenerator01",
-              label: "Partial generation",
-              tone: "running",
-            });
+            retainedSetter?.("thr_source", runningStatus("Partial generation"));
           },
-        });
-        app.contentScripts.register({
+        },
+        {
           id: "broken",
           mount() {
             throw new Error("later mount failed");
           },
-        });
-      }),
+        },
+      ),
     );
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
     expect(getPluginThreadRowStatus("thr_source")).toBeNull();
 
-    retainedSetter?.("thr_source", {
-      icon: "AiContentGenerator01",
-      label: "Stale callback",
-      tone: "running",
-    });
+    retainedSetter?.("thr_source", runningStatus("Stale callback"));
     expect(getPluginThreadRowStatus("thr_source")).toBeNull();
   });
 
   it("does not let a retained old-generation setter overwrite its replacement", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
-    let oldSetter:
-      | ((
-          threadId: string,
-          status: PluginComposerThreadRowStatus | null,
-        ) => void)
-      | undefined;
+    const { deps, reconcile } = reconcileHarness([
+      candidate("prompt-shaper", "v1"),
+    ]);
+    let oldSetter: ThreadRowStatusSetter;
     deps.importModule.mockImplementation(async (url: string) =>
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "thread-status",
-          mount({ experimental_setThreadRowStatus }) {
-            if (url.includes("h=v1")) {
-              oldSetter = experimental_setThreadRowStatus;
-            }
-            experimental_setThreadRowStatus?.("thr_source", {
-              icon: "AiContentGenerator01",
-              label: url.includes("h=v1")
+      contentScriptModule({
+        id: "thread-status",
+        mount({ experimental_setThreadRowStatus }) {
+          if (url.includes("h=v1")) {
+            oldSetter = experimental_setThreadRowStatus;
+          }
+          experimental_setThreadRowStatus?.(
+            "thr_source",
+            runningStatus(
+              url.includes("h=v1")
                 ? "Old generation"
                 : "Replacement generation",
-              tone: "running",
-            });
-          },
-        });
+            ),
+          );
+        },
       }),
     );
 
-    await reconcilePluginFrontends(state, deps);
-    deps.fetchCandidates.mockResolvedValue([candidate("prompt-shaper", "v2")]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
+    await reconcile([candidate("prompt-shaper", "v2")]);
     expect(getPluginThreadRowStatus("thr_source")?.label).toBe(
       "Replacement generation",
     );
 
-    oldSetter?.("thr_source", {
-      icon: "AiContentGenerator01",
-      label: "Late old generation",
-      tone: "running",
-    });
+    oldSetter?.("thr_source", runningStatus("Late old generation"));
     expect(getPluginThreadRowStatus("thr_source")?.label).toBe(
       "Replacement generation",
     );
   });
 
   it("warns and ignores non-string and blank content-script thread ids", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("prompt-shaper", "v1")]);
+    const { deps, reconcile } = reconcileHarness([
+      candidate("prompt-shaper", "v1"),
+    ]);
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "thread-status",
-          mount({ experimental_setThreadRowStatus }) {
-            const setStatus = experimental_setThreadRowStatus as
-              | ((threadId: unknown, status: unknown) => void)
-              | undefined;
-            setStatus?.(42, {
-              icon: "AiContentGenerator01",
-              label: "Invalid number id",
-            });
-            setStatus?.("   ", {
-              icon: "AiContentGenerator01",
-              label: "Invalid blank id",
-            });
-          },
-        });
+      contentScriptModule({
+        id: "thread-status",
+        mount({ experimental_setThreadRowStatus }) {
+          const setStatus = experimental_setThreadRowStatus as
+            | ((threadId: unknown, status: unknown) => void)
+            | undefined;
+          setStatus?.(42, {
+            icon: "AiContentGenerator01",
+            label: "Invalid number id",
+          });
+          setStatus?.("   ", {
+            icon: "AiContentGenerator01",
+            label: "Invalid blank id",
+          });
+        },
       }),
     );
 
-    await expect(
-      reconcilePluginFrontends(state, deps),
-    ).resolves.toBeUndefined();
+    await expect(reconcile()).resolves.toBeUndefined();
     expect(getPluginThreadRowStatus("42")).toBeNull();
     expect(deps.warn).toHaveBeenCalledTimes(2);
     expect(deps.warn).toHaveBeenCalledWith(
@@ -1013,56 +1016,51 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("disposes the old generation and rolls back a failed multi-script candidate in reverse order", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     const events: string[] = [];
     let oldSignal: AbortSignal | undefined;
+    const tracked = (id: string): PluginContentScriptRegistration => ({
+      id,
+      mount() {
+        events.push(`${id}:mount`);
+        return () => {
+          events.push(`${id}:dispose`);
+        };
+      },
+    });
     deps.importModule.mockResolvedValueOnce(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "old",
-          mount({ signal }) {
-            oldSignal = signal;
-            events.push("old:mount");
-            return () => {
-              events.push("old:dispose");
-            };
-          },
-        });
+      contentScriptModule({
+        id: "old",
+        mount(context) {
+          oldSignal = context.signal;
+          return tracked("old").mount(context);
+        },
       }),
     );
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
     deps.importModule.mockResolvedValueOnce(
-      contentScriptModule((app) => {
-        for (const id of ["first", "second"] as const) {
-          app.contentScripts.register({
-            id,
-            mount() {
-              events.push(`${id}:mount`);
-              return () => {
-                events.push(`${id}:dispose`);
-              };
-            },
-          });
-        }
-        app.contentScripts.register({
+      contentScriptModule(
+        tracked("first"),
+        tracked("second"),
+        {
           id: "broken",
           mount() {
             events.push("broken:mount");
             throw new Error("candidate exploded");
           },
-        });
-        app.contentScripts.register({
+        },
+        {
           id: "never",
           mount() {
             events.push("never:mount");
           },
-        });
-      }),
+        },
+      ),
     );
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([candidate("hello", "v2")]);
 
     expect(events).toEqual([
       "old:mount",
@@ -1088,8 +1086,9 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("activates a plugin that still passes experimental_sidebarAccessory and warns about it", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     function Panel() {
       return null;
     }
@@ -1106,7 +1105,7 @@ describe("reconcilePluginFrontends", () => {
       }),
     });
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
 
     expect(state.appliedHashes.has("hello")).toBe(true);
     expect(state.diagnostics.get("hello")?.lastFailure).toBeNull();
@@ -1122,26 +1121,21 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("contains a throwing replacement setup and deactivates the stale generation", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     const cleanup = vi.fn();
     deps.importModule.mockResolvedValueOnce(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "old",
-          mount: () => cleanup,
-        });
-      }),
+      contentScriptModule({ id: "old", mount: () => cleanup }),
     );
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
 
-    deps.fetchCandidates.mockResolvedValue([candidate("hello", "v2")]);
-    deps.importModule.mockResolvedValueOnce(
-      contentScriptModule(() => {
+    deps.importModule.mockResolvedValueOnce({
+      default: definePluginApp(() => {
         throw new Error("setup failed");
       }),
-    );
-    await reconcilePluginFrontends(state, deps);
+    });
+    await reconcile([candidate("hello", "v2")]);
 
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(state.appliedHashes.has("hello")).toBe(false);
@@ -1152,26 +1146,21 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("times out a stuck async mount without preventing another plugin from activating", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("stuck", "v1"), candidate("fine", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("stuck", "v1"),
+      candidate("fine", "v1"),
+    ]);
     deps.mountTimeoutMs = 1;
     deps.importModule.mockImplementation(async (url: string) =>
       url.includes("/stuck/")
-        ? contentScriptModule((app) => {
-            app.contentScripts.register({
-              id: "never-settles",
-              mount: () => new Promise<void>(() => {}),
-            });
+        ? contentScriptModule({
+            id: "never-settles",
+            mount: () => new Promise<void>(() => {}),
           })
-        : contentScriptModule((app) => {
-            app.contentScripts.register({
-              id: "fine",
-              mount: () => {},
-            });
-          }),
+        : contentScriptModule({ id: "fine", mount: () => {} }),
     );
 
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
 
     expect(state.diagnostics.get("stuck")).toMatchObject({
       status: "failed",
@@ -1189,30 +1178,26 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("aborts async work before cleanup and contains async disposer failures", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "v1")]);
     const events: string[] = [];
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "async-work",
-          async mount({ signal }) {
-            events.push("mount");
-            signal.addEventListener("abort", () => events.push("abort"), {
-              once: true,
-            });
-            await Promise.resolve();
-            return async () => {
-              events.push(`dispose:${signal.aborted}`);
-              throw new Error("cleanup rejected");
-            };
-          },
-        });
+      contentScriptModule({
+        id: "async-work",
+        async mount({ signal }) {
+          events.push("mount");
+          signal.addEventListener("abort", () => events.push("abort"), {
+            once: true,
+          });
+          await Promise.resolve();
+          return async () => {
+            events.push(`dispose:${signal.aborted}`);
+            throw new Error("cleanup rejected");
+          };
+        },
       }),
     );
-    await reconcilePluginFrontends(state, deps);
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile();
+    await reconcile([]);
 
     expect(events).toEqual(["mount", "abort", "dispose:true"]);
     expect(deps.warn).toHaveBeenCalledWith(
@@ -1221,87 +1206,66 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("keeps independent instances per app window and tears each down once", async () => {
-    const stateA = createPluginFrontendReconcileState();
-    const stateB = createPluginFrontendReconcileState();
     const signals: AbortSignal[] = [];
     const cleanup = vi.fn();
-    const module = contentScriptModule((app) => {
-      app.contentScripts.register({
-        id: "per-window",
-        mount({ signal }) {
-          signals.push(signal);
-          return cleanup;
-        },
-      });
+    const module = contentScriptModule({
+      id: "per-window",
+      mount({ signal }) {
+        signals.push(signal);
+        return cleanup;
+      },
     });
-    const depsA = makeDeps([candidate("hello", "v1")]);
-    const depsB = makeDeps([candidate("hello", "v1")]);
-    depsA.importModule.mockResolvedValue(module);
-    depsB.importModule.mockResolvedValue(module);
+    const windowA = reconcileHarness([candidate("hello", "v1")]);
+    const windowB = reconcileHarness([candidate("hello", "v1")]);
+    windowA.deps.importModule.mockResolvedValue(module);
+    windowB.deps.importModule.mockResolvedValue(module);
 
-    await Promise.all([
-      reconcilePluginFrontends(stateA, depsA),
-      reconcilePluginFrontends(stateB, depsB),
-    ]);
+    await Promise.all([windowA.reconcile(), windowB.reconcile()]);
     expect(signals).toHaveLength(2);
     expect(signals[0]).not.toBe(signals[1]);
 
-    await disposePluginFrontends(stateA, depsA);
-    await disposePluginFrontends(stateA, depsA);
+    await disposePluginFrontends(windowA.state, windowA.deps);
+    await disposePluginFrontends(windowA.state, windowA.deps);
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
     expect(cleanup).toHaveBeenCalledTimes(1);
 
-    await disposePluginFrontends(stateB, depsB);
+    await disposePluginFrontends(windowB.state, windowB.deps);
     expect(signals[1]?.aborted).toBe(true);
     expect(cleanup).toHaveBeenCalledTimes(2);
   });
 
   it("aborts a pending mount on app teardown and never commits it afterward", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
+    const { state, deps, reconcile } = reconcileHarness([
+      candidate("hello", "v1"),
+    ]);
     const cleanup = vi.fn();
     let resolveMount: ((dispose: () => void) => void) | undefined;
-    let retainedSetter:
-      | ((
-          threadId: string,
-          status: PluginComposerThreadRowStatus | null,
-        ) => void)
-      | undefined;
+    let retainedSetter: ThreadRowStatusSetter;
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "pending",
-          mount: ({ experimental_setThreadRowStatus }) => {
-            retainedSetter = experimental_setThreadRowStatus;
-            retainedSetter?.("thr_pending", {
-              icon: "AiContentGenerator01",
-              label: "Pending activation",
-              tone: "running",
-            });
-            return new Promise<() => void>((resolve) => {
-              resolveMount = resolve;
-            });
-          },
-        });
+      contentScriptModule({
+        id: "pending",
+        mount: ({ experimental_setThreadRowStatus }) => {
+          retainedSetter = experimental_setThreadRowStatus;
+          retainedSetter?.("thr_pending", runningStatus("Pending activation"));
+          return new Promise<() => void>((resolve) => {
+            resolveMount = resolve;
+          });
+        },
       }),
     );
 
-    const reconcile = reconcilePluginFrontends(state, deps);
+    const pending = reconcile();
     await vi.waitFor(() => expect(resolveMount).toBeTypeOf("function"));
     expect(getPluginThreadRowStatus("thr_pending")?.label).toBe(
       "Pending activation",
     );
     await disposePluginFrontends(state, deps);
     expect(getPluginThreadRowStatus("thr_pending")).toBeNull();
-    retainedSetter?.("thr_pending", {
-      icon: "AiContentGenerator01",
-      label: "Late pending activation",
-      tone: "running",
-    });
+    retainedSetter?.("thr_pending", runningStatus("Late pending activation"));
     expect(getPluginThreadRowStatus("thr_pending")).toBeNull();
     resolveMount?.(cleanup);
-    await reconcile;
+    await pending;
 
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(deps.setRegistrations).not.toHaveBeenCalled();
@@ -1310,155 +1274,89 @@ describe("reconcilePluginFrontends", () => {
   });
 
   it("removes a stale CSS link when the new bundle ships no CSS", async () => {
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("hello", "v1")]);
-    await reconcilePluginFrontends(state, deps);
+    const { deps, reconcile } = reconcileHarness([candidate("hello", "v1")]);
+    await reconcile();
     expect(deps.applyCss).toHaveBeenCalledWith(
       "hello",
       "/api/v1/plugins/hello/assets/app.css?h=v1",
     );
 
-    deps.fetchCandidates.mockResolvedValue([
-      candidate("hello", "v2", { cssUrl: null }),
-    ]);
-    await reconcilePluginFrontends(state, deps);
+    await reconcile([candidate("hello", "v2", { cssUrl: null })]);
     expect(deps.applyCss).toHaveBeenLastCalledWith("hello", null);
   });
 
   it("does not let a content script steal a React-owned host node", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    installForeignDomMutationGuard();
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => {
-      root.render(
-        createElement(
-          "a",
-          { href: "?path=src/app.ts", "data-testid": "file-link" },
-          "src/app.ts",
-        ),
-      );
-    });
-    const link = container.querySelector("[data-testid='file-link']");
-    expect(link).toBeInstanceOf(HTMLAnchorElement);
-    const reactParent = link!.parentNode;
-
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("file-reveal", "v1")]);
+    const { container, link, reactParent } = renderReactOwnedLink("file-link");
+    const { deps, reconcile } = reconcileHarness([
+      candidate("file-reveal", "v1"),
+    ]);
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "file-reveal-buttons",
-          mount() {
-            const control = document.querySelector("[data-testid='file-link']");
-            if (
-              !(control instanceof HTMLElement) ||
-              control.parentNode === null
-            ) {
-              return;
-            }
-            const group = document.createElement("span");
-            const button = document.createElement("button");
-            control.parentNode.insertBefore(group, control);
-            group.append(control, button);
-          },
-        });
+      contentScriptModule({
+        id: "file-reveal-buttons",
+        mount() {
+          wrapLinkInButtonGroup("file-link");
+        },
       }),
     );
 
-    await reconcilePluginFrontends(state, deps);
-    expect(link!.parentNode).toBe(reactParent);
+    await reconcile();
+    expect(link?.parentNode).toBe(reactParent);
     expect(container.querySelector("button")).not.toBeNull();
-
-    act(() => root.unmount());
-    container.remove();
   });
 
   it("does not let an async content-script mount steal a React-owned node", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    installForeignDomMutationGuard();
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => {
-      root.render(
-        createElement(
-          "a",
-          { href: "?path=src/app.ts", "data-testid": "async-file-link" },
-          "src/app.ts",
-        ),
-      );
-    });
-    const link = container.querySelector("[data-testid='async-file-link']");
-    expect(link).toBeInstanceOf(HTMLAnchorElement);
-    const reactParent = link!.parentNode;
-
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("file-reveal", "v1")]);
+    const { link, reactParent } = renderReactOwnedLink("async-file-link");
+    const { deps, reconcile } = reconcileHarness([
+      candidate("file-reveal", "v1"),
+    ]);
     deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "file-reveal-buttons",
-          async mount() {
-            await Promise.resolve();
-            const control = document.querySelector(
-              "[data-testid='async-file-link']",
-            );
-            if (
-              !(control instanceof HTMLElement) ||
-              control.parentNode === null
-            ) {
-              return;
-            }
-            const group = document.createElement("span");
-            const button = document.createElement("button");
-            control.parentNode.insertBefore(group, control);
-            group.append(control, button);
-          },
-        });
+      contentScriptModule({
+        id: "file-reveal-buttons",
+        async mount() {
+          await Promise.resolve();
+          wrapLinkInButtonGroup("async-file-link");
+        },
       }),
     );
 
-    await reconcilePluginFrontends(state, deps);
-    expect(link!.parentNode).toBe(reactParent);
-
-    act(() => root.unmount());
-    container.remove();
+    await reconcile();
+    expect(link?.parentNode).toBe(reactParent);
   });
 });
 
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
-  function links(pluginId: string): HTMLLinkElement[] {
-    return [
-      ...document.head.querySelectorAll<HTMLLinkElement>(
-        `link[data-bb-plugin-css="${pluginId}"]`,
-      ),
-    ];
-  }
+  const sheet = (hash: string) =>
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}`;
 
-  function preloads(pluginId: string): HTMLLinkElement[] {
-    return [
-      ...document.head.querySelectorAll<HTMLLinkElement>(
-        `link[data-bb-plugin-css-preload="${pluginId}"]`,
-      ),
-    ];
-  }
+  it.each([
+    [false, sheet("aaa")],
+    [true, `${sheet("aaa")}&css-scope=owned-root-v1`],
+  ])(
+    "requests the narrow stylesheet only when narrowPluginCss is %s",
+    (narrowPluginCss, href) => {
+      appQueryClient.setQueryData(
+        systemConfigQueryKey(),
+        makeSystemConfig({
+          experiments: { ...defaultExperiments, narrowPluginCss },
+        }),
+      );
+      retainPluginCss("hello");
+      applyPluginCss("hello", "/assets/app.css?h=aaa");
+      expect(cssHrefs("hello")[0]).toBe(href);
+    },
+  );
 
   it("keeps the same element for an unchanged URL and removes it on null", () => {
     retainPluginCss("hello");
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    const first = links("hello")[0];
-    expect(first?.getAttribute("href")).toBe(
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    );
+    const first = cssLinks("hello")[0];
+    expect(first?.getAttribute("href")).toBe(sheet("aaa"));
     prefetchPluginCss("/assets/prefetched.css");
     expect(
       document
@@ -1466,15 +1364,15 @@ describe("applyPluginCss", () => {
         ?.getAttribute("href"),
     ).toBe(`/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}`);
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    expect(links("hello")[0]).toBe(first);
+    expect(cssLinks("hello")[0]).toBe(first);
 
     applyPluginCss("hello", null);
-    expect(links("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
   });
 
   it("settles once the sheet loads, fails, or is cleared", async () => {
     const preloaded = applyPluginCss("idle", "/assets/app.css?h=p");
-    preloads("idle")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("idle")[0]);
     await preloaded;
 
     retainPluginCss("hello");
@@ -1485,29 +1383,27 @@ describe("applyPluginCss", () => {
     });
     await Promise.resolve();
     expect(firstSettled).toBe(false);
-    links("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssLinks("hello")[0]);
     await first;
     await applyPluginCss("hello", "/assets/app.css?h=aaa");
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const failed = applyPluginCss("hello", "/assets/app.css?h=bbb");
-    links("hello")[1]?.dispatchEvent(new Event("error"));
+    cssLinks("hello")[1]?.dispatchEvent(new Event("error"));
     await failed;
     warn.mockRestore();
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssHrefs("hello")).toEqual([sheet("aaa")]);
 
     const cleared = applyPluginCss("hello", "/assets/app.css?h=ccc");
     await applyPluginCss("hello", null);
     await cleared;
-    expect(links("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
   });
 
   it("keeps a newer sheet gated when a superseded link fires late", async () => {
     retainPluginCss("hello");
     const first = applyPluginCss("hello", "/assets/app.css?h=aaa");
-    const superseded = links("hello")[0];
+    const superseded = cssLinks("hello")[0];
     let firstSettled = false;
     void first.then(() => {
       firstSettled = true;
@@ -1522,14 +1418,12 @@ describe("applyPluginCss", () => {
     expect(firstSettled).toBe(true);
     expect(superseded?.isConnected).toBe(false);
 
-    superseded?.dispatchEvent(new Event("load"));
+    fireLoad(superseded);
     await Promise.resolve();
     expect(secondSettled).toBe(false);
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssHrefs("hello")).toEqual([sheet("bbb")]);
 
-    links("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssLinks("hello")[0]);
     await second;
   });
 
@@ -1537,14 +1431,14 @@ describe("applyPluginCss", () => {
     retainPluginCss("hello");
     const first = applyPluginCss("hello", "/assets/app.css?h=aaa");
     const again = applyPluginCss("hello", "/assets/app.css?h=aaa");
-    expect(links("hello")).toHaveLength(1);
-    links("hello")[0]?.dispatchEvent(new Event("load"));
+    expect(cssLinks("hello")).toHaveLength(1);
+    fireLoad(cssLinks("hello")[0]);
     await Promise.all([first, again]);
 
     const idle = applyPluginCss("other", "/assets/app.css?h=p");
     const idleAgain = applyPluginCss("other", "/assets/app.css?h=p");
-    expect(preloads("other")).toHaveLength(1);
-    preloads("other")[0]?.dispatchEvent(new Event("load"));
+    expect(cssPreloads("other")).toHaveLength(1);
+    fireLoad(cssPreloads("other")[0]);
     await Promise.all([idle, idleAgain]);
   });
 
@@ -1558,201 +1452,178 @@ describe("applyPluginCss", () => {
     });
     release();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello")).toHaveLength(1);
-    expect(preloads("hello")[0]?.fetchPriority).toBe("low");
+    expect(cssLinks("hello")).toHaveLength(0);
+    expect(cssPreloads("hello")).toHaveLength(1);
+    expect(cssPreloads("hello")[0]?.fetchPriority).toBe("low");
     expect(settled).toBe(false);
 
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     await pending;
   });
 
   it("preloads inactive CSS and removes the sheet only after its final consumer releases", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    expect(preloads("hello")).toHaveLength(1);
-    expect(preloads("hello")[0]?.fetchPriority).not.toBe("low");
-    expect(preloads("hello")[0]?.getAttribute("href")).toBe(
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    );
-    expect(links("hello")).toHaveLength(0);
+    expect(cssPreloads("hello")).toHaveLength(1);
+    expect(cssPreloads("hello")[0]?.fetchPriority).not.toBe("low");
+    expect(cssPreloads("hello")[0]?.getAttribute("href")).toBe(sheet("aaa"));
+    expect(cssLinks("hello")).toHaveLength(0);
 
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
-    expect(preloads("hello")).toHaveLength(0);
+    fireLoad(cssPreloads("hello")[0]);
+    expect(cssPreloads("hello")).toHaveLength(0);
     const releaseFirst = retainPluginCss("hello");
     const releaseSecond = retainPluginCss("hello");
-    expect(links("hello")).toHaveLength(1);
+    expect(cssLinks("hello")).toHaveLength(1);
 
     releaseFirst();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(1);
+    expect(cssLinks("hello")).toHaveLength(1);
     releaseSecond();
     await vi.advanceTimersByTimeAsync(0);
-    expect(links("hello")).toHaveLength(1);
+    expect(cssLinks("hello")).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
+    expect(cssPreloads("hello")).toHaveLength(0);
   });
 
   it("keeps the same sheet when a consumer retains within the grace window", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
-    const first = links("hello")[0];
+    const first = cssLinks("hello")[0];
     expect(first).toBeDefined();
-    first?.dispatchEvent(new Event("load"));
+    fireLoad(first);
 
     releaseFirst();
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(links("hello")[0]).toBe(first);
+    expect(cssLinks("hello")[0]).toBe(first);
     const releaseSecond = retainPluginCss("hello");
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(links("hello")).toHaveLength(1);
-    expect(links("hello")[0]).toBe(first);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(1);
+    expect(cssLinks("hello")[0]).toBe(first);
+    expect(cssPreloads("hello")).toHaveLength(0);
 
     releaseSecond();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
   });
 
   it("reattaches the sheet when its load completes during the grace and a consumer retains", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
-    const first = links("hello")[0];
+    const first = cssLinks("hello")[0];
     expect(first).toBeDefined();
 
     releaseFirst();
     await vi.advanceTimersByTimeAsync(200);
-    first?.dispatchEvent(new Event("load"));
-    expect(links("hello")[0]).toBe(first);
+    fireLoad(first);
+    expect(cssLinks("hello")[0]).toBe(first);
     await vi.advanceTimersByTimeAsync(300);
     const releaseSecond = retainPluginCss("hello");
-    expect(links("hello")).toHaveLength(1);
-    expect(links("hello")[0]).toBe(first);
+    expect(cssLinks("hello")).toHaveLength(1);
+    expect(cssLinks("hello")[0]).toBe(first);
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(links("hello")).toHaveLength(1);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(1);
+    expect(cssPreloads("hello")).toHaveLength(0);
 
     releaseSecond();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
   });
 
   it("adopts a changed URL that finishes loading during the grace and reuses it on retain", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     const releaseFirst = retainPluginCss("hello");
-    links("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssLinks("hello")[0]);
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
-    const fresh = links("hello")[1];
-    expect(fresh?.getAttribute("href")).toBe(
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    );
+    const fresh = cssLinks("hello")[1];
+    expect(fresh?.getAttribute("href")).toBe(sheet("bbb"));
     releaseFirst();
     await vi.advanceTimersByTimeAsync(200);
-    fresh?.dispatchEvent(new Event("load"));
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    fireLoad(fresh);
+    expect(cssHrefs("hello")).toEqual([sheet("bbb")]);
     await vi.advanceTimersByTimeAsync(300);
     const releaseSecond = retainPluginCss("hello");
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
-    expect(links("hello")[0]).toBe(fresh);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssHrefs("hello")).toEqual([sheet("bbb")]);
+    expect(cssLinks("hello")[0]).toBe(fresh);
+    expect(cssPreloads("hello")).toHaveLength(0);
     expect(vi.getTimerCount()).toBe(0);
 
     releaseSecond();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
   });
 
   it("applies a URL that is republished after a flip-flop discarded its in-flight sheet", async () => {
     vi.useFakeTimers();
     retainPluginCss("hello");
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    links("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssLinks("hello")[0]);
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
-    const inflight = links("hello")[1];
-    expect(inflight?.getAttribute("href")).toBe(
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    );
+    const inflight = cssLinks("hello")[1];
+    expect(inflight?.getAttribute("href")).toBe(sheet("bbb"));
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    inflight?.dispatchEvent(new Event("load"));
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    fireLoad(inflight);
+    expect(cssHrefs("hello")).toEqual([sheet("aaa")]);
 
     applyPluginCss("hello", "/assets/app.css?h=bbb");
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}`,
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssHrefs("hello")).toEqual([sheet("aaa"), sheet("bbb")]);
     retainPluginCss("hello");
-    expect(links("hello")).toHaveLength(2);
-    links("hello")
-      .find(
-        (l) =>
-          l.getAttribute("href") ===
-          `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-      )
-      ?.dispatchEvent(new Event("load"));
-    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssLinks("hello")).toHaveLength(2);
+    fireLoad(
+      cssLinks("hello").find((l) => l.getAttribute("href") === sheet("bbb")),
+    );
+    expect(cssHrefs("hello")).toEqual([sheet("bbb")]);
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it("removes the sheet at once and cancels the timer when the URL is cleared during the grace", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     const release = retainPluginCss("hello");
-    expect(links("hello")).toHaveLength(1);
+    expect(cssLinks("hello")).toHaveLength(1);
 
     release();
     expect(vi.getTimerCount()).toBe(1);
     applyPluginCss("hello", null);
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
+    expect(cssPreloads("hello")).toHaveLength(0);
     expect(vi.getTimerCount()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello")).toHaveLength(0);
+    expect(cssLinks("hello")).toHaveLength(0);
+    expect(cssPreloads("hello")).toHaveLength(0);
   });
 
   it("swaps to one preload of the new URL when it changes during the grace", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
-    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    fireLoad(cssPreloads("hello")[0]);
     const release = retainPluginCss("hello");
-    links("hello")[0]?.dispatchEvent(new Event("load"));
-    expect(links("hello")).toHaveLength(1);
+    fireLoad(cssLinks("hello")[0]);
+    expect(cssLinks("hello")).toHaveLength(1);
 
     release();
     applyPluginCss("hello", "/assets/app.css?h=bbb");
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssLinks("hello")).toHaveLength(0);
+    const preloadHrefs = () =>
+      cssPreloads("hello").map((l) => l.getAttribute("href"));
+    expect(preloadHrefs()).toEqual([sheet("bbb")]);
     expect(vi.getTimerCount()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("hello")).toHaveLength(0);
-    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
-      `/assets/app.css?h=bbb&host-tailwind=${HOST_TAILWIND_VERSION}`,
-    ]);
+    expect(cssLinks("hello")).toHaveLength(0);
+    expect(preloadHrefs()).toEqual([sheet("bbb")]);
   });
 
   it("never ties app-wide bb.themes palette CSS to plugin UI mounts", async () => {
@@ -1763,15 +1634,15 @@ describe("applyPluginCss", () => {
     expect(palette?.textContent).toBe(paletteCss);
 
     applyPluginCss("palette-owner", "/assets/app.css?h=palette-owner");
-    preloads("palette-owner")[0]?.dispatchEvent(new Event("load"));
-    expect(links("palette-owner")).toHaveLength(0);
+    fireLoad(cssPreloads("palette-owner")[0]);
+    expect(cssLinks("palette-owner")).toHaveLength(0);
     expect(document.getElementById("bb-app-theme")).toBe(palette);
     expect(palette?.textContent).toBe(paletteCss);
 
     const release = retainPluginCss("palette-owner");
     release();
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(links("palette-owner")).toHaveLength(0);
+    expect(cssLinks("palette-owner")).toHaveLength(0);
     expect(document.getElementById("bb-app-theme")).toBe(palette);
     expect(palette?.textContent).toBe(paletteCss);
 

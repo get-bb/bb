@@ -33,8 +33,8 @@
  * STALL_MS is answered with a generic success, and a child past the end of its
  * segment answers everything generically. Both are logged on stderr.
  */
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
-import { Socket } from "node:net";
+import { existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import { connect } from "node:net";
 import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
 
@@ -159,15 +159,15 @@ const DIALECTS = {
    * `pi --mode rpc`: commands carry `{ id, type }`, responses are
    * `{ id, type: "response", command, success }`, and every other line is a
    * raw AgentSessionEvent (or an `extension_ui_request`). The bb extension's
-   * channel (fd 3 child → bridge, fd 4 bridge → child) is recorded on the
-   * same lanes wrapped as `{ bbChannel: <message> }`; this dialect routes
-   * those back onto the channel fds.
+   * channel (the socket the bridge names in `BB_PI_BRIDGE_CHANNEL`) is
+   * recorded on the same lanes wrapped as `{ bbChannel: <message> }`; this
+   * dialect routes those back onto that socket.
    */
   "pi-rpc": {
     channel: {
       key: "bbChannel",
-      childToBridgeFd: 3,
-      bridgeToChildFd: 4,
+      addressEnv: "BB_PI_BRIDGE_CHANNEL",
+      tokenEnv: "BB_PI_BRIDGE_CHANNEL_TOKEN",
     },
     classify(message) {
       const channel = message.bbChannel;
@@ -353,6 +353,14 @@ function readNewlineDelimitedLines(input, onLine) {
   });
 }
 
+function connectChannel(channel) {
+  const socket = connect(process.env[channel.addressEnv]);
+  socket.on("error", () => {});
+  socket.unref();
+  socket.write(`${process.env[channel.tokenEnv]}\n`);
+  return socket;
+}
+
 // ---------------------------------------------------------------------------
 // Player
 // ---------------------------------------------------------------------------
@@ -381,14 +389,11 @@ function servePiCatalog(entries) {
       }
     }
   }
-  const channelOut = createWriteStream(null, { fd: 3 });
-  const channelIn = new Socket({ fd: 4, readable: true, writable: false });
-  channelIn.on("error", () => {});
-  channelIn.unref();
-  readNewlineDelimitedLines(channelIn, (line) => {
+  const channel = connectChannel(DIALECTS["pi-rpc"].channel);
+  readNewlineDelimitedLines(channel, (line) => {
     const message = parseLine(line);
     if (message?.kind !== "request" || message.method !== "model-scope") return;
-    channelOut.write(
+    channel.write(
       `${JSON.stringify({
         kind: "reply",
         id: message.id,
@@ -471,10 +476,10 @@ function main() {
   let emitTimer = null;
 
   const channel = dialect.channel ?? null;
-  const channelOut = channel ? createWriteStream(null, { fd: channel.childToBridgeFd }) : null;
+  const channelSocket = channel ? connectChannel(channel) : null;
   function emit(message) {
     if (channel && typeof message[channel.key] === "object" && message[channel.key] !== null) {
-      channelOut.write(`${JSON.stringify(message[channel.key])}\n`);
+      channelSocket.write(`${JSON.stringify(message[channel.key])}\n`);
       return;
     }
     process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -710,13 +715,7 @@ function main() {
     process.exit(0);
   });
   if (channel) {
-    // The bridge's channel writes (tool results, fork requests) arrive on
-    // their own fd; wrap them the way the recorder did so they match. A
-    // net.Socket reads the pipe non-blockingly, as the real extension does.
-    const channelIn = new Socket({ fd: channel.bridgeToChildFd, readable: true, writable: false });
-    channelIn.on("error", () => {});
-    channelIn.unref();
-    readNewlineDelimitedLines(channelIn, (line) => {
+    readNewlineDelimitedLines(channelSocket, (line) => {
       const message = parseLine(line);
       if (message !== null) onLiveMessage({ [channel.key]: message });
     });

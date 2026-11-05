@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import {
   getEnvironmentFilePreviewSourceAtRef,
-  type HostFileTabState,
   type ThreadStorageFileTabState,
   type WorkspaceFileTabState,
 } from "@bb/client-core";
@@ -35,10 +34,6 @@ interface UsePanelFilesArgs {
 
 export interface PanelFiles {
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
-  openHostFile: (
-    file: HostFileTabState,
-    options?: PanelFileOpenOptions,
-  ) => void;
   openStorageFile: (
     file: ThreadStorageFileTabState,
     options?: PanelFileOpenOptions,
@@ -53,7 +48,10 @@ function livePreviewRequest(
   intent: AppFilePreviewIntent,
   scope: PanelFileScope | null,
 ): OpenSecondaryPanelTabRequest | null {
-  const normalized = normalizeExperimentalFileOpenOptions(intent);
+  const normalized = normalizeExperimentalFileOpenOptions({
+    target: intent.target,
+    location: intent.location,
+  });
   if (normalized === null) return null;
   const { target } = normalized;
   const lineRange = toFilePreviewLineRange(normalized.location);
@@ -118,16 +116,23 @@ export function usePanelFiles({
     },
     [openTab],
   );
-  const openHostFile = useCallback(
-    (file: HostFileTabState, options?: PanelFileOpenOptions) => {
-      openTab({ kind: "host-file-preview", tab: file }, options);
-    },
-    [openTab],
-  );
+  const hasScope = scope !== null;
+  const scopeThreadId = scope?.threadId ?? null;
+  const scopeEnvironmentId = scope?.environmentId ?? null;
+  const scopeHostId = scope?.hostId ?? null;
   const openFilePreview = useCallback(
     (intent: AppFilePreviewIntent) => {
       if (!available) return false;
-      const request = livePreviewRequest(intent, scope);
+      const request = livePreviewRequest(
+        intent,
+        hasScope
+          ? {
+              threadId: scopeThreadId,
+              environmentId: scopeEnvironmentId,
+              hostId: scopeHostId,
+            }
+          : null,
+      );
       if (request === null) return false;
       const tab = openTab(
         request,
@@ -137,7 +142,15 @@ export function usePanelFiles({
       reveal();
       return true;
     },
-    [available, openTab, reveal, scope],
+    [
+      available,
+      hasScope,
+      openTab,
+      reveal,
+      scopeEnvironmentId,
+      scopeHostId,
+      scopeThreadId,
+    ],
   );
-  return { openFilePreview, openHostFile, openStorageFile, openWorkspaceFile };
+  return { openFilePreview, openStorageFile, openWorkspaceFile };
 }

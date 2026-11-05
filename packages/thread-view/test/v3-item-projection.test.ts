@@ -439,6 +439,43 @@ describe("v3 item projection", () => {
     expect(plainTitle(row)).toContain("(Outside of sandbox)");
   });
 
+  it("carries a command description from the started item onto the row title", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const rendered = renderTimelineFixture({
+      events: [
+        event.turnStarted({ turnId: "turn-1", createdAt: 0 }),
+        event.commandStarted({
+          turnId: "turn-1",
+          itemId: "cmd-1",
+          command: "pnpm test",
+          description: "Run the test suite",
+          presentation: SANDBOX_ESCAPED_COMMAND_PRESENTATION,
+          createdAt: 1_000,
+        }),
+        event.commandCompleted({
+          turnId: "turn-1",
+          itemId: "cmd-1",
+          command: "pnpm test",
+          presentation: SANDBOX_ESCAPED_COMMAND_PRESENTATION,
+          status: "failed",
+          exitCode: 127,
+          createdAt: 2_000,
+        }),
+      ],
+      projectionOptions: { threadStatus: "idle", turnMessageDetail: "full" },
+    });
+
+    const row = workRow(rendered.rows, "command", "cmd-1");
+    expect(row).toMatchObject({
+      command: "pnpm test",
+      description: "Run the test suite",
+      exitCode: 127,
+    });
+    expect(plainTitle(row)).toBe(
+      "Run the test suite (Outside of sandbox) (error)",
+    );
+  });
+
   it("groups v3 exploration rows into one exploration bundle like legacy reads", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const rendered = renderTimelineFixture({

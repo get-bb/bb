@@ -5,23 +5,17 @@ import {
 } from "../services/environments/environment-engine.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import {
-  clearDiffViewedFiles,
-  countLiveThreadsInEnvironment,
-  listDiffViewedFiles,
+  environmentHasLiveThreads,
   listEnvironments,
-  markDiffViewedFile,
   updateEnvironmentMetadata,
-  type DiffViewedFileScope,
 } from "@bb/db";
 import {
   environmentStatusValues,
   type EnvironmentStatus,
-  type WorkspaceDiffTarget,
 } from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
-  type EnvironmentDiffQuery,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
@@ -80,76 +74,18 @@ async function mapNoChangesTo409<TResult>(
   }
 }
 
-function toWorkspaceDiffTarget(query: EnvironmentDiffQuery) {
-  switch (query.target) {
-    case "uncommitted":
-      return { type: "uncommitted" as const };
-    case "branch_committed":
-      return {
-        type: "branch_committed" as const,
-        mergeBaseBranch: query.mergeBaseBranch,
-      };
-    case "all":
-      return {
-        type: "all" as const,
-        mergeBaseBranch: query.mergeBaseBranch,
-      };
-    case "commit":
-      return {
-        type: "commit" as const,
-        sha: query.sha,
-      };
-    default: {
-      const _exhaustive: never = query;
-      return _exhaustive;
-    }
-  }
-}
-
-function diffViewedTargetKey(target: WorkspaceDiffTarget): string {
-  switch (target.type) {
-    case "uncommitted":
-      return "uncommitted";
-    case "branch_committed":
-    case "all":
-      return `${target.type}:${target.mergeBaseBranch}`;
-    case "commit":
-      return `commit:${target.sha.toLowerCase()}`;
-    default: {
-      const _exhaustive: never = target;
-      return _exhaustive;
-    }
-  }
-}
-
-function resolveDiffViewedScope(
-  deps: AppDeps,
-  environmentId: string,
-  target: WorkspaceDiffTarget,
-): DiffViewedFileScope {
-  const environment = requireEnvironment(deps.db, environmentId);
-  return {
-    environmentId: environment.id,
-    targetKey: diffViewedTargetKey(target),
-  };
-}
-
 export function registerEnvironmentRoutes(
   app: Hono,
   deps: AppDeps,
   plugins: GitPluginRpc,
 ): void {
-  const { del, get, patch, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.environments;
   post(routes.cleanup, async (context, query) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
-    if (
-      countLiveThreadsInEnvironment(deps.db, {
-        environmentId: environment.id,
-      }) > 0
-    )
+    if (environmentHasLiveThreads(deps.db, environment.id))
       throw new ApiError(
         409,
         "invalid_request",
@@ -196,11 +132,7 @@ export function registerEnvironmentRoutes(
 
   del(routes.delete, (context) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
-    if (
-      countLiveThreadsInEnvironment(deps.db, {
-        environmentId: environment.id,
-      }) > 0
-    ) {
+    if (environmentHasLiveThreads(deps.db, environment.id)) {
       throw new ApiError(
         409,
         "invalid_request",
@@ -252,52 +184,6 @@ export function registerEnvironmentRoutes(
       ok: true,
       archivedThreadIds,
     });
-  });
-
-  get(routes.diffViewed, (context, query) => {
-    const scope = resolveDiffViewedScope(
-      deps,
-      context.req.param("id"),
-      toWorkspaceDiffTarget(query),
-    );
-    return context.json({ files: listDiffViewedFiles(deps.db, scope, null) });
-  });
-
-  post(routes.queryDiffViewed, (context, payload) => {
-    const scope = resolveDiffViewedScope(
-      deps,
-      context.req.param("id"),
-      toWorkspaceDiffTarget(payload),
-    );
-    return context.json({
-      files: listDiffViewedFiles(deps.db, scope, payload.paths),
-    });
-  });
-
-  put(routes.markDiffViewed, (context, payload) => {
-    const scope = resolveDiffViewedScope(
-      deps,
-      context.req.param("id"),
-      payload.target,
-    );
-    markDiffViewedFile(deps.db, {
-      ...scope,
-      path: payload.path,
-      revision: payload.revision,
-    });
-    deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
-    return context.json({ ok: true as const });
-  });
-
-  del(routes.clearDiffViewed, (context, payload) => {
-    const scope = resolveDiffViewedScope(
-      deps,
-      context.req.param("id"),
-      payload.target,
-    );
-    clearDiffViewedFiles(deps.db, { ...scope, path: payload.path ?? null });
-    deps.hub.notifyEnvironment(scope.environmentId, ["diff-viewed-changed"]);
-    return context.json({ ok: true as const });
   });
 
   get(routes.paths, async (context, query) => {

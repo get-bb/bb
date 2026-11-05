@@ -136,14 +136,17 @@ embedded browser session is not implemented by this cache.
 
 ## bb Connect Gate Events
 
-The gate answers every proxied request within the response-head timeout (30 s,
-90 s for voice transcription) from when the Worker receives it; a miss gets a
-504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`,
-`response-head`, or `finishing`. Workers Logs keeps only about 1% of gate
+The gate answers every proxied request within the response-head timeout (30 s)
+from when the Worker receives it; a miss gets a 504 naming the stuck stage:
+`routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`.
+A relayed request still waiting in `response-head` at the deadline gets another
+30 s while the tunnel object reports a heartbeat under 45 s old, up to 10
+minutes from arrival. Workers Logs keeps only about 1% of gate
 requests, so the gate also writes these to the Analytics Engine dataset
 `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging):
 
-- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s);
+- `blob1` `stall` (a 504) or `slow` (a tunnel dial unanswered after 3 s, or a
+  relayed request first extended past the response-head timeout);
   `blob2` stage, `blob3` method, `blob4` host, `blob5` path; `double1` elapsed
   ms; `double2` tunnel-object attempts (above 1 means the object restarted and
   the dial was replayed).
@@ -437,13 +440,33 @@ pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-m
 ## Local Cloud
 
 Run the Cloud dashboard, the Connect worker, and the AI gateway against one
-local D1 database:
+local Postgres database:
 
 ```bash
 pnpm cloud:dev
 ```
 
-The command applies migrations and prints the dashboard URL. Create a local
+Nothing needs to be installed first. The command opens a PGlite database in
+`connect-db-pglite` under the state directory (`.wrangler/cloud-dev`, or
+`BB_CLOUD_DEV_STATE_DIR`), applies the migrations, serves it over the Postgres
+wire protocol on a loopback port derived from the worktree's dev ports, and
+points the three workers' `HYPERDRIVE` binding at it. The startup log prints
+the connection string, so `psql` or a `pg` script can inspect the data while it
+runs. The PGlite server
+runs one statement batch at a time; a client's open transaction holds the
+database until it commits, rolls back, disconnects, or idles for 60 seconds.
+
+`BB_CLOUD_DEV_DATABASE_URL` uses another Postgres instead, for example a
+container:
+
+```bash
+docker run -d --name bb-connect-pg -p 5432:5432 \
+  -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect \
+  postgres:17
+BB_CLOUD_DEV_DATABASE_URL=postgresql://bb:bb@localhost:5432/bb_connect pnpm cloud:dev
+```
+
+The command prints the dashboard URL when it is ready. Create a local
 email/password account, claim a handle, create a pairing code, and run the
 displayed `bb account login --code` command against a bb started with
 `pnpm dev` (`bb connect --code` does the same and also turns remote access
@@ -467,7 +490,7 @@ For bb connect next, `pnpm cloud:dev` sets the Connect worker's and bb-web's
 `NEXT_BASE_DOMAIN` to `next.bb.localhost`. `BB_CLOUD_DEV_GATE_SECRET` sets the
 worker's `GATE_SECRET` (the account API answers 404 without it),
 `BB_CLOUD_DEV_GATE_PUBLIC_KEYS` sets bb-web's `GATE_PUBLIC_KEYS`, and
-`BB_CLOUD_DEV_STATE_DIR` moves the local D1 and Durable Object state away from
+`BB_CLOUD_DEV_STATE_DIR` moves the local Durable Object state away from
 `.wrangler/cloud-dev`. `apps/connect-next/scripts/e2e-local.sh` uses all three;
 see [connect-next.md](connect-next.md#local-end-to-end-run).
 
@@ -484,8 +507,10 @@ staging key with `wrangler secret put OPENROUTER_API_KEY --env staging` from
 `apps/ai-gateway`. Use a dedicated OpenRouter key with account-wide zero data
 retention and a daily credit limit.
 
-Ctrl-C stops the local services. Local D1 state is kept under
-`.wrangler/cloud-dev`.
+Ctrl-C stops the local services. Account data and Durable Object state are
+kept under `.wrangler/cloud-dev` (or `BB_CLOUD_DEV_STATE_DIR`); delete that
+directory to start over. With `BB_CLOUD_DEV_DATABASE_URL`, account data stays
+in that database.
 
 To test a source bb against the deployed staging Cloud instead, start it with
 `pnpm dev --staging`. bb account and Connect then sign in, redeem codes, open
@@ -852,7 +877,9 @@ While on, the server logs database operations of at least 25 ms, API requests
 of at least 100 ms, and event-loop stalls of at least 100 ms. Every five
 seconds `Server performance sample` records process and main-thread CPU, loop
 utilization and delay, GC, and memory; CPU values are interval totals, not
-per-request attribution. A 1 ms V8 CPU profile is saved every 30 seconds to
+per-request attribution. Its `maxDelayMs` and `p99DelayMs` are gaps of the
+shared 50 ms event-loop timer (`delayResolutionMs`), so an idle loop reports
+about 50 ms. A V8 CPU profile sampled every 10 ms is saved every 30 seconds to
 `$BB_DATA_DIR/logs/performance/` (`Server CPU profile saved` logs its path,
 PID, and UTC window). Profiles are kept for up to 12 hours and 1 GB total,
 oldest first, so copy the ones you need. They use private permissions and
@@ -922,16 +949,17 @@ applied chunk.
    `longestSynchronousWork` and its wall/CPU times with the profile instead.
    `stallAttribution` is `candidate`, with the operation in
    `stallCauseCandidate`, when a measured synchronous operation is long enough
-   (within one 20 ms sample) to explain the maximum delay, and `unattributed`
+   (within one 50 ms timer interval) to explain the maximum delay, and `unattributed`
    otherwise. A candidate is not a confirmed cause: both fall somewhere in the
    five-second window. Profile processing runs in a worker and no longer emits
    the historical `cpu-profile:*` synchronous-work labels.
 2. With performance diagnostics enabled, look for `Event loop stall attribution`
    records for the same PID and UTC window. They are emitted at the next CPU
    profile rotation (normally within 30 seconds), or on diagnostics shutdown,
-   even if the profile file is discarded for exceeding its size limit. A
-   separate 20 ms timer records individual gaps of at least 100 ms; the
-   five-second histogram's observation time is not the stall's end time.
+   even if the profile file is discarded for exceeding its size limit. The
+   same 50 ms timer that feeds the stall monitor records individual gaps of at
+   least 100 ms, so every stall of 100 ms or more is caught; the five-second
+   histogram's observation time is not the stall's end time.
    `stacks` ranks the top five sampled leaf stacks in each gap, with up to 12
    caller frames, including GC, plugin functions, native writes, and database
    callers. Frame coordinates are one-based; cached Node source maps are used
@@ -939,7 +967,7 @@ applied chunk.
    generated code. Profile scanning and stack formatting run in that worker;
    the main thread only collects and transfers bounded timing windows.
    `sampledMs` is elapsed sampling coverage, not CPU time; native frames can
-   include waiting. Each sample contributes at most 10 ms so a long sampling
+   include waiting. Each sample contributes at most 20 ms so a long sampling
    gap cannot be blamed on one frame. `unobservedMs` reports missing coverage,
    including profile boundaries. The window includes up to one timer interval
    of ordinary work; ranked stacks are evidence, not proof of a single cause.
@@ -1061,6 +1089,15 @@ query value matches the server's generated version. Missing or mismatched
 values receive the original CSS, so a tab retained across a server update
 keeps working with its old host styles. Compressed responses are cached
 separately for the original and stripped variants.
+
+While the `narrowPluginCss` experiment is on, the app also adds
+`css-scope=owned-root-v1`. When a plugin's `app.js` never sets
+`data-bb-plugin-root` without a nearby `data-bb-plugin`, both routes then
+drop the `[data-bb-plugin-root]:not([data-bb-plugin])` alternative from that
+plugin's utility selectors, so its rules cannot match outside its own roots and
+restyles of the rest of the page stay cheap. The server checks the bundle when
+it loads the plugin; any id-less root keeps that plugin on the original CSS, and
+`bb plugin build` warns about it. Authored CSS is never rewritten.
 
 To reproduce version skew, load the production main app in Chrome, restart
 the same isolated server on the branch without reloading the tab, and open

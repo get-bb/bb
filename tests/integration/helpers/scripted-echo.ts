@@ -89,3 +89,40 @@ export function findSessionConstruction(
   }
   return undefined;
 }
+
+const SCRIPTED_ECHO_PROCESS_LOG_PATH_ENV = "SCRIPTED_ECHO_PROCESS_LOG_PATH";
+
+export interface ScriptedEchoProcessLog {
+  backgroundTaskOwnerPid(threadId: string): Promise<number | null>;
+  dispose(): Promise<void>;
+}
+
+export async function recordScriptedEchoProcesses(): Promise<ScriptedEchoProcessLog> {
+  const dir = await mkdtemp(path.join(tmpdir(), "bb-scripted-echo-process-"));
+  const logPath = path.join(dir, "process.log");
+  const previous = process.env[SCRIPTED_ECHO_PROCESS_LOG_PATH_ENV];
+  process.env[SCRIPTED_ECHO_PROCESS_LOG_PATH_ENV] = logPath;
+  return {
+    async backgroundTaskOwnerPid(threadId) {
+      let raw: string;
+      try {
+        raw = await readFile(logPath, "utf8");
+      } catch {
+        return null;
+      }
+      const owner = raw
+        .split("\n")
+        .map((line) => /^bg_task\/open:(\d+):(.+)$/u.exec(line))
+        .find((match) => match?.[2] === threadId);
+      return owner?.[1] === undefined ? null : Number(owner[1]);
+    },
+    async dispose() {
+      if (previous === undefined) {
+        delete process.env[SCRIPTED_ECHO_PROCESS_LOG_PATH_ENV];
+      } else {
+        process.env[SCRIPTED_ECHO_PROCESS_LOG_PATH_ENV] = previous;
+      }
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}

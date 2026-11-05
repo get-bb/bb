@@ -66,6 +66,7 @@ export interface PluginListItem {
   category?: string;
   publisherLabel: string | null;
   sourceDisplay: string;
+  sourceNotice: string | null;
   updateState: PluginUpdateState;
 }
 
@@ -127,6 +128,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     category: plugin.category,
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
+    sourceNotice: plugin.sourceNotice,
     updateState: {
       outcome: state.outcome ?? null,
       detail: state.detail ?? null,

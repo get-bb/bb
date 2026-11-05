@@ -3,6 +3,7 @@ import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import clsx from "clsx";
 import { Icon } from "@bb/shared-ui/icon";
+import { RUNTIME_SLOT_BY_SPECIFIER } from "@bb/plugin-build/runtime-shims";
 import {
   createPluginFrontendPageLifecycle,
   installPluginRuntime,
@@ -106,6 +107,7 @@ describe("loadPluginFrontend", () => {
 });
 
 describe("installPluginRuntime", () => {
+  const LAZY_RUNTIME_SLOTS = new Set(["pierreDiffs", "pierreDiffsReact"]);
   type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: unknown };
 
   afterEach(() => {
@@ -118,32 +120,11 @@ describe("installPluginRuntime", () => {
       string,
       unknown
     >;
-    expect(Object.keys(runtime).sort()).toEqual([
-      "classVarianceAuthority",
-      "clsx",
-      "jsxDevRuntime",
-      "jsxRuntime",
-      "pluginSdkApp",
-      "questionFormHost",
-      "radixAlertDialog",
-      "radixContextMenu",
-      "radixDialog",
-      "radixDropdownMenu",
-      "radixHoverCard",
-      "radixMenubar",
-      "radixNavigationMenu",
-      "radixPopover",
-      "radixSelect",
-      "radixTooltip",
-      "react",
-      "reactDom",
-      "reactDomClient",
-      "sharedUiIcon",
-      "sonner",
-      "tailwindMerge",
-      "vaul",
-      "voiceInputTextarea",
-    ]);
+    expect(Object.keys(runtime).sort()).toEqual(
+      [...new Set(Object.values(RUNTIME_SLOT_BY_SPECIFIER))]
+        .filter((slot) => !LAZY_RUNTIME_SLOTS.has(slot))
+        .sort(),
+    );
     expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
     expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);
     expect((runtime.react as { useState: unknown }).useState).toBe(
@@ -163,7 +144,10 @@ describe("installPluginRuntime", () => {
   it("provides @pierre/diffs only to bundles that import it, downloading the bundle meanwhile", async () => {
     const pierreSlots = () =>
       Object.keys(
-        (globalThis as RuntimeHost).__bbPluginRuntime as Record<string, unknown>,
+        (globalThis as RuntimeHost).__bbPluginRuntime as Record<
+          string,
+          unknown
+        >,
       ).filter((slot) => slot.startsWith("pierre"));
     const slotsAtImport: string[][] = [];
     const importModule = vi.fn(async () => {

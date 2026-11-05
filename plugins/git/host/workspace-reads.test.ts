@@ -429,6 +429,53 @@ describe.concurrent("WorkspaceReads", () => {
     ]);
   });
 
+  it("totals all changes from the merge base to the working tree like the all-changes diff", async ({
+    onTestFinished,
+  }) => {
+    const repoPath = await copyRepository(
+      await makeTempDir(onTestFinished, "bb-workspace-repo-"),
+    );
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "README.md"), "a\nb\nc\n", "utf8");
+    await runGit(["add", "README.md"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature commit"], { cwd: repoPath });
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "a\nB\nc\nd\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
+
+    const workspace = new WorkspaceReads(repoPath, tmpdir());
+    const [status, allDiff] = await Promise.all([
+      workspace.getStatus({
+        freshness: fresh(),
+        mergeBaseBranch: "main",
+        maxUntrackedLineStatFiles: 10,
+        maxUntrackedLineStatBytes: 1024 * 1024,
+      }),
+      workspace.diffFiles({
+        freshness: fresh(),
+        target: { type: "all", mergeBaseBranch: "main" },
+        maxFiles: 100,
+        ignoreWhitespace: false,
+      }),
+    ]);
+
+    expect(status.workingTree.state).toBe("dirty_and_committed_unmerged");
+    expect({
+      filesCount: status.allChanges.fileCount,
+      insertions: status.allChanges.insertions,
+      deletions: status.allChanges.deletions,
+    }).toEqual(parseShortstat(allDiff.shortstat));
+    expect(status.allChanges).toEqual({
+      fileCount: 2,
+      insertions: 6,
+      deletions: 1,
+      lineStatsComplete: true,
+    });
+  });
+
   it("reports branches that are only behind their merge base as clean", async ({
     onTestFinished,
   }) => {

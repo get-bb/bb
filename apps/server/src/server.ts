@@ -17,7 +17,6 @@ import {
   INSTALL_MACHINE_SCRIPT_PATH,
   INSTALL_MACHINE_WINDOWS_SCRIPT_PATH,
 } from "./install-machine-asset.js";
-import { getExperiments } from "@bb/db";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
   declineWebSocketCompression,
@@ -60,6 +59,7 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { setPathPluginPreserver } from "./services/plugins/path-plugin-preservation.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   setEnvironmentProviderRecheckHandler,
@@ -87,11 +87,12 @@ import {
 } from "./internal/auth.js";
 import {
   captureTrustedRemoteAddress,
+  resolveRequestAccessRoute,
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runEventLoopWork } from "./services/system/event-loop-work.js";
 import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
-import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
+import { runWithTelemetryRequest } from "./services/system/telemetry.js";
 import {
   onClientSocketClose,
   onClientSocketMessage,
@@ -531,7 +532,13 @@ export function createApp(
   });
   app.use("*", async (context, next) => {
     captureTrustedRemoteAddress(context);
-    return runWithTelemetryAppSurface(resolveRequestAppSurface(context), next);
+    return runWithTelemetryRequest(
+      {
+        appSurface: resolveRequestAppSurface(context),
+        accessRoute: resolveRequestAccessRoute(context),
+      },
+      next,
+    );
   });
   app.use("*", async (context, next) => {
     const path = context.req.path;
@@ -838,6 +845,9 @@ export function createApp(
   });
   setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
+  setPathPluginPreserver(deps.db, (directory) =>
+    pluginService.preservePathPluginsInside(directory),
+  );
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);
@@ -994,9 +1004,6 @@ export function createApp(
     "/ws",
     upgradeWebSocket((context) => {
       assertBrowserWebSocketAllowed(context);
-      if (!getExperiments(deps.db).websocketCompression) {
-        declineWebSocketCompression(context);
-      }
       return {
         onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
         onMessage: (event, socket) =>

@@ -216,6 +216,7 @@ export const installedPluginSchema = z.object({
   catalogMarketplaceName: z.string().optional(),
   publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
+  sourceNotice: z.string().nullable().default(null),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
   description: z.string().nullable(),

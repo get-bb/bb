@@ -84,6 +84,13 @@ const SYSTEM_ROWS: readonly SystemRowFixture[] = [
     text: "Migrate sessions table was unassigned from you.",
   },
   {
+    label: "ownership-batch",
+    hint: "several children assigned or unassigned within one window — count in the title, threads in the body",
+    systemMessageKind: "ownership-batch",
+    systemMessageSubject: { kind: "thread-batch", count: 3 },
+    text: "These threads are now children of this thread:\n\n- Migrate sessions table\n\nThese threads are no longer children of this thread:\n\n- Codex worker\n- Rebuild threaded comments from main",
+  },
+  {
     label: "environment-directory-updated (title-only)",
     hint: "next turn started automatically after update_environment_directory",
     systemMessageKind: "environment-directory-updated",
@@ -342,7 +349,6 @@ export function MarkdownBody() {
             <ThreadTimelineRows
               projectId="proj_demo"
               threadRuntimeDisplayStatus="idle"
-              workspaceRootPath={undefined}
               initialExpanded={new Set([row.id])}
               timelineRows={[row]}
             />

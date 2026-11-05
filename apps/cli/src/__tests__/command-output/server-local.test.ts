@@ -673,6 +673,26 @@ describe("bb server unlock", () => {
     });
   });
 
+  it("refuses while the new server is activating this move", async () => {
+    const dataDir = await makeTempDir("bb-cli-server-lock-");
+    await writeServerMovedFile(dataDir, movedLock());
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      healthResponse(200, {
+        ok: true,
+        serverMove: { state: "activating", moveId: "move-1" },
+      }),
+    );
+
+    await expect(
+      runCommand(
+        ["server", "unlock", "--data-dir", dataDir, "--yes"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(await readServerMovedFile(dataDir)).not.toBeNull();
+  });
+
   it("--force unlocks without probing the new server", async () => {
     const dataDir = await makeTempDir("bb-cli-server-lock-");
     await writeServerMovedFile(dataDir, movedLock());

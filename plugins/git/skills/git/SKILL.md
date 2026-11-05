@@ -37,7 +37,8 @@ bb git viewed list|mark|unmark|clear <environment-id> --target <target> ...
   `--revision`; `viewed list --path` takes up to 500 paths. Mutations print
   `{ "ok": true }` with `--json`.
 - The old `bb environment status|diff|diff-files|diff-file|diff-patch|branches|diff-viewed`
-  commands still run and print the `bb git` command that replaced them.
+  commands still run and print the `bb git` command that replaced them. So do
+  the deprecated `bb thread show --work-status|--git-diff` flags.
 
 `showGitChanges` (default true) shows the composer's changed-files segment;
 turn it off with `bb plugin config bb--git set showGitChanges false`.

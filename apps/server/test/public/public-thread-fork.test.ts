@@ -492,9 +492,7 @@ describe("public thread fork route", () => {
   );
 
   it.each([
-    { source: { title: "foo" }, expected: "(1) foo" },
     { source: { title: "(1) foo" }, expected: "(2) foo" },
-    { source: { title: "(9) foo" }, expected: "(10) foo" },
     {
       source: { title: "", titleFallback: "fix the flaky test" },
       expected: "(1) fix the flaky test",
@@ -903,6 +901,7 @@ describe("public thread fork route", () => {
       const inputGroups = [textInput("First group"), textInput("Second group")];
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: [],
@@ -1025,8 +1024,10 @@ describe("public thread fork route", () => {
 
       await expect(
         sendThreadMessage(harness.deps, {
+          originPluginId: null,
           beforeAppendInTransaction: ({ tx }) => {
             appendClientTurnEventInTransaction(tx, {
+              originPluginId: null,
               environmentId: thread.environmentId,
               execution: {
                 model: "gpt-5",

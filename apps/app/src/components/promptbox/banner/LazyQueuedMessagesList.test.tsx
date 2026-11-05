@@ -36,6 +36,7 @@ afterEach(() => {
 });
 
 const noop = () => {};
+const noopAsync = async () => {};
 
 function Queue({
   queuedMessages,
@@ -50,6 +51,7 @@ function Queue({
       attachedToComposer
       queuedMessages={queuedMessages}
       sendAction="send-now"
+      threadStatus="active"
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
@@ -58,6 +60,7 @@ function Queue({
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
+      onChangeSendTime={noopAsync}
       onDelete={noop}
       expanded={expanded}
       onExpandedChange={setExpanded}

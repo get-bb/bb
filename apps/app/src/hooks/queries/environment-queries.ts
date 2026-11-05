@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { Environment } from "@bb/domain";
 import type { WorkspacePathListResponse } from "@bb/server-contract";
 import type {
@@ -9,6 +9,7 @@ import { loadFilePreview } from "@/lib/api";
 import { buildEnvironmentFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
+import { keepNewerByUpdatedAt } from "@/hooks/cache-owners/cache-effect-utils";
 import {
   environmentFilePreviewQueryKey,
   environmentPathsQueryKey,
@@ -43,15 +44,28 @@ export function useEnvironment(
   const enabled = (options?.enabled ?? true) && Boolean(environmentId);
   useEnvironmentDetailRealtimeSubscription(environmentId, { enabled });
 
-  return useQuery<Environment>({
-    queryKey: environmentQueryKey(environmentId),
-    queryFn: ({ signal }) =>
-      sdk.environments.get({
-        environmentId: requireEnvironmentId(environmentId, "useEnvironment"),
-        signal,
-      }),
+  return useQuery({
+    ...environmentQueryOptions(environmentId),
     enabled,
     staleTime: options?.staleTime,
+  });
+}
+
+export function environmentQueryOptions(
+  environmentId: string | null | undefined,
+) {
+  return queryOptions<Environment>({
+    queryKey: environmentQueryKey(environmentId),
+    queryFn: async ({ client, queryKey, signal }) => {
+      const environment = await sdk.environments.get({
+        environmentId: requireEnvironmentId(environmentId, "useEnvironment"),
+        signal,
+      });
+      return keepNewerByUpdatedAt(
+        client.getQueryData<Environment>(queryKey),
+        environment,
+      );
+    },
   });
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import type { ThreadQueuedMessage } from "@bb/domain";
+import type { ThreadQueuedMessage, ThreadStatus } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatQueuedMessagePreview } from "@bb/client-core";
 import { queuedMessageFallbackTitle } from "@/lib/queued-message-wait";
@@ -10,6 +10,7 @@ import {
 import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
 import {
   getQueuedMessagesDrawerHeight,
+  useWindowHeight,
   QUEUED_MESSAGES_COLLAPSED_HEIGHT,
 } from "@/components/promptbox/banner/queued-messages-layout";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
@@ -27,6 +28,12 @@ export interface QueuedMessageGroupBoundaryRequest {
 export interface QueuedMessageEditRequest {
   queuedMessageId: string;
   queuedMessageIndex: number;
+}
+
+export interface QueuedMessageSendTimeRequest {
+  expectedUpdatedAt: number;
+  queuedMessageId: string;
+  sendAt: number | null;
 }
 
 export interface QueuedMessageInlineEditor {
@@ -50,9 +57,11 @@ export interface QueuedMessagesListProps {
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
+  onChangeSendTime: (request: QueuedMessageSendTimeRequest) => Promise<void>;
   onDelete: (id: string) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  threadStatus: ThreadStatus;
 }
 
 function QueuedMessagesCardFrame({
@@ -102,13 +111,14 @@ function isAttachedToComposer({
 }
 
 function QueuedMessagesListLoading(props: QueuedMessagesListProps) {
+  const windowHeight = useWindowHeight();
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
       expanded={props.expanded}
       height={
         props.expanded
-          ? getQueuedMessagesDrawerHeight(props)
+          ? getQueuedMessagesDrawerHeight({ ...props, windowHeight })
           : QUEUED_MESSAGES_COLLAPSED_HEIGHT
       }
       queuedMessageCount={props.queuedMessages.length}
@@ -137,11 +147,12 @@ function QueuedMessagesListFailure({
   retry,
   ...props
 }: QueuedMessagesListProps & { retry: () => void }) {
+  const windowHeight = useWindowHeight();
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
       expanded
-      height={getQueuedMessagesDrawerHeight(props)}
+      height={getQueuedMessagesDrawerHeight({ ...props, windowHeight })}
       queuedMessageCount={props.queuedMessages.length}
     >
       <SplitLoadFailure retry={retry} />

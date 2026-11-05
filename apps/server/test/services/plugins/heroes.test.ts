@@ -10,6 +10,7 @@ import {
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedTurnStarted,
 } from "../../helpers/seed.js";
 import {
   createTestAppHarness,
@@ -215,6 +216,12 @@ describe("hero plugin: slack-bot", () => {
       applyLoggedThreadLifecycleEvent(lifecycleDeps, {
         threadId: threadId as string,
         event: { type: "run.started" },
+      });
+      seedTurnStarted(server.deps, {
+        threadId: threadId as string,
+        environmentId: threadRow?.environmentId ?? null,
+        providerThreadId: "provider-slack-1",
+        turnId: "turn-1",
       });
       seedEvent(server.deps, {
         threadId: threadId as string,

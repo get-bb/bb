@@ -464,6 +464,7 @@ function PromptLibraryPopup() {
       composer.insert(insertParts(prompt));
     }
     composer.experimental_closePopup();
+    void rpc.call("recordInsertion").catch(() => {});
   };
 
   const activate = (row: Row) => {

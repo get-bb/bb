@@ -106,6 +106,13 @@ interface RegisterTestHostRpcCaptureArgs {
   onInspectGitSource?: (
     command: Extract<HostDaemonRpcCommand, { type: "host.inspect_git_source" }>,
   ) => void;
+  gitCheckoutInspectionResult?: HostDaemonOnlineRpcResult<"host.inspect_git_checkout">;
+  onInspectGitCheckout?: (
+    command: Extract<
+      HostDaemonRpcCommand,
+      { type: "host.inspect_git_checkout" }
+    >,
+  ) => void;
 }
 
 export interface TestHostRpcSocket {
@@ -289,11 +296,6 @@ function nextTestRpcCursor(
   return nextCursor;
 }
 
-/**
- * Registers the capturing daemon socket for a host and returns it, so a test
- * that reconnects a host can hand the same socket to the real
- * `onDaemonSocketOpen` instead of replacing the capture with a stub.
- */
 export function registerTestHostRpcCapture(
   deps: Pick<TestAppHarness, "db" | "hub">,
   args: RegisterTestHostRpcCaptureArgs,
@@ -434,6 +436,22 @@ export function registerTestHostRpcCapture(
         });
         return;
       }
+      if (command.type === "host.inspect_git_checkout") {
+        args.onInspectGitCheckout?.(command);
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: args.gitCheckoutInspectionResult ?? {
+              checkout: buildDefaultGitSourceInspectionResult().checkout,
+            },
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
       if (command.type === "host.inspect_git_source") {
         args.onInspectGitSource?.(command);
         deps.hub.recordHostOnlineRpcResponse({
@@ -496,6 +514,12 @@ function isCapturedRpcForHarness(
       .where(eq(hostDaemonSessions.hostId, queued.row.hostId))
       .get() !== undefined
   );
+}
+
+export function forgetQueuedCommand(queued: QueuedCommand): void {
+  if (queued.rpcRequest) {
+    removePendingHostRpcRequest(queued.rpcRequest.requestId);
+  }
 }
 
 export async function waitForQueuedCommand(

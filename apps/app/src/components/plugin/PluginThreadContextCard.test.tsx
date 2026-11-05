@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -24,6 +25,7 @@ import {
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
   resolveThreadContextCardLayout,
+  useThreadContextCardContentInset,
   useThreadContextKind,
   WithoutThreadContextCard,
   type CoreThreadContextCardRow,
@@ -47,6 +49,16 @@ function OpenDiffRow() {
       label="Open diff"
       onClick={() => {}}
     />
+  );
+}
+
+function Empty() {
+  return null;
+}
+
+function Inset() {
+  return (
+    <output aria-label="Inset">{useThreadContextCardContentInset()}</output>
   );
 }
 
@@ -77,10 +89,14 @@ function renderPane({
   enabled = true,
   paneWidth = 1600,
   threadIds = ["thr_1"],
+  coreRows = CORE,
+  coreSections = CORE_SECTIONS,
 }: {
   enabled?: boolean;
   paneWidth?: number;
   threadIds?: readonly string[];
+  coreRows?: readonly CoreThreadContextCardRow[];
+  coreSections?: readonly CoreThreadContextCardSection[];
 } = {}) {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
     paneWidth,
@@ -93,8 +109,8 @@ function renderPane({
             <ThreadContextCardProvider
               key={threadId}
               enabled={enabled}
-              coreRows={CORE}
-              coreSections={CORE_SECTIONS}
+              coreRows={coreRows}
+              coreSections={coreSections}
               threadId={threadId}
               projectId="proj_1"
               environment={null}
@@ -102,6 +118,7 @@ function renderPane({
               <header>
                 <ThreadContextCardHeaderButton />
               </header>
+              <Inset />
               <div data-scroll-overlay="">
                 <ThreadContextCard />
               </div>
@@ -126,8 +143,8 @@ describe("resolveThreadContextCardLayout", () => {
     [1384, "gutter"],
     [1383, "shift"],
     [1072, "shift"],
-    [1071, "overlay"],
-    [390, "overlay"],
+    [1071, "banner"],
+    [390, "banner"],
   ] as const)("lays out a %ipx pane as %s", (width, layout) => {
     expect(resolveThreadContextCardLayout(width)).toBe(layout);
   });
@@ -237,6 +254,45 @@ describe("thread context card", () => {
     ).toBe("false");
   });
 
+  it("shows an empty card from the header without changing the pin preference", async () => {
+    renderPane({
+      paneWidth: 1200,
+      coreRows: CORE.map((row) => ({ ...row, component: Empty })),
+      coreSections: CORE_SECTIONS.map((entry) => ({
+        ...entry,
+        component: Empty,
+      })),
+    });
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+    expect(screen.getByLabelText("Inset").textContent).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin thread context" }));
+    expect(
+      screen.getByRole("group", { name: "Thread context" }).textContent,
+    ).toContain("Nothing to show yet");
+    expect(screen.getByLabelText("Inset").textContent).not.toBe("0");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Unpin thread context" }),
+    );
+    expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
+
+    act(() => {
+      setPluginSlotRegistrations(
+        "first",
+        makePluginRegistrationSet({
+          threadContextCardRows: [
+            { id: "branch", group: "3_git", component: section("Branch") },
+          ],
+        }),
+      );
+    });
+    expect(
+      (await screen.findByRole("group", { name: "Thread context" }))
+        .textContent,
+    ).toContain("Branch for thr_1");
+  });
+
   it("opens the card from the header in a narrow pane and closes it when a row runs", () => {
     setPluginSlotRegistrations(
       "first",
@@ -267,7 +323,10 @@ describe("useThreadContextKind", () => {
     }).result.current;
   }
 
-  function pane(enabled: boolean, children: ReactNode) {
+  function pane(enabled: boolean, paneWidth: number, children: ReactNode) {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
+      paneWidth,
+    );
     return (
       <ThreadContextCardProvider
         enabled={enabled}
@@ -277,18 +336,38 @@ describe("useThreadContextKind", () => {
         projectId="proj_1"
         environment={null}
       >
+        <div data-scroll-overlay="">
+          <ThreadContextCard />
+        </div>
         {children}
       </ThreadContextCardProvider>
     );
   }
 
   it.each([
-    ["a pane with the card", (c: ReactNode) => pane(true, c), "card"],
-    ["a pane with the card off", (c: ReactNode) => pane(false, c), "banner"],
+    [
+      "a wide pane with the card",
+      (c: ReactNode) => pane(true, 1600, c),
+      "card",
+    ],
+    [
+      "a pane too narrow for the card",
+      (c: ReactNode) => pane(true, 900, c),
+      "banner",
+    ],
+    [
+      "a pane with the card off",
+      (c: ReactNode) => pane(false, 1600, c),
+      "banner",
+    ],
     [
       "a thread nested in a card pane's panel",
       (c: ReactNode) =>
-        pane(true, <WithoutThreadContextCard>{c}</WithoutThreadContextCard>),
+        pane(
+          true,
+          1600,
+          <WithoutThreadContextCard>{c}</WithoutThreadContextCard>,
+        ),
       "banner",
     ],
     ["no thread pane", (c: ReactNode) => c, "banner"],

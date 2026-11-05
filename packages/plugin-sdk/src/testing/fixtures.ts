@@ -334,6 +334,7 @@ export function makeQueueEntry(
     },
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt: 0,
     updatedAt: 0,
@@ -359,6 +360,7 @@ export function makeTurnFailedEvent(
     inputAccepted: true,
     rateLimits: null,
     attemptNumber: 1,
+    originPluginId: null,
     ...overrides,
   };
 }

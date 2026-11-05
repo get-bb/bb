@@ -188,7 +188,11 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     }
   }
 
-  type ViewRead = { path: string; url: string | null; refresh: boolean };
+  type ViewRead = {
+    path: string;
+    known: { url: string; branchName: string | null } | null;
+    refresh: boolean;
+  };
   type PreparedLoad =
     | { kind: "done"; result: EnvironmentPullRequest }
     | { kind: "view"; hostId: string; read: ViewRead };
@@ -229,31 +233,31 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
             message: `${machine.name} isn't available. Start the machine and try again.`,
           },
         };
-      const refs = await host.call(
-        "upstream",
-        { path: environment.path },
-        { hostId: environment.hostId },
-      );
-      if (
-        url !== null &&
-        store.currentUrl(environmentId) === url &&
-        lookedUpBranches.has(environmentId) &&
-        lookedUpBranches.get(environmentId) !== refs.branchName
-      )
-        url = null;
-      lookedUpBranches.set(environmentId, refs.branchName);
-      upstreams.set(environmentId, refs.oid);
-      return {
-        kind: "view",
-        hostId: environment.hostId,
-        read: { path: environment.path, url, refresh },
-      };
     } catch (error) {
       return {
         kind: "done",
         result: { outcome: "unavailable", message: errorMessage(error) },
       };
     }
+    const rediscover =
+      url !== null &&
+      store.currentUrl(environmentId) === url &&
+      store.isSettled(environmentId);
+    return {
+      kind: "view",
+      hostId: environment.hostId,
+      read: {
+        path: environment.path,
+        known:
+          url === null || rediscover
+            ? null
+            : {
+                url,
+                branchName: lookedUpBranches.get(environmentId) ?? null,
+              },
+        refresh,
+      },
+    };
   }
 
   function toEnvironmentPullRequest(
@@ -287,21 +291,25 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     batch: readonly { read: ViewRead; load: QueuedLoad }[],
   ): Promise<void> {
     try {
-      const lookups = await host.call(
+      const results = await host.call(
         "views",
         { reads: batch.map((entry) => entry.read) },
         { hostId },
       );
       batch.forEach((entry, index) => {
-        const lookup = lookups[index];
-        entry.load.resolve(
-          lookup === undefined
-            ? {
-                outcome: "unavailable",
-                message: "The machine returned no pull request result",
-              }
-            : toEnvironmentPullRequest(lookup),
-        );
+        const view = results[index];
+        if (view === undefined) {
+          entry.load.resolve({
+            outcome: "unavailable",
+            message: "The machine returned no pull request result",
+          });
+          return;
+        }
+        if (view.refs !== null) {
+          lookedUpBranches.set(entry.load.environmentId, view.refs.branchName);
+          upstreams.set(entry.load.environmentId, view.refs.oid);
+        }
+        entry.load.resolve(toEnvironmentPullRequest(view.lookup));
       });
     } catch (error) {
       for (const entry of batch)

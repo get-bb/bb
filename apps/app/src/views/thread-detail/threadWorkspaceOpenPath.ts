@@ -1,5 +1,4 @@
 import type { Environment } from "@bb/domain";
-import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type { ExperimentalFileOpenOptions } from "@get-bb/plugin-sdk";
 import type { LiveFileRoot } from "@/hooks/useResolvedLiveFileTarget";
 
@@ -7,12 +6,6 @@ interface ResolveThreadWorkspaceOpenPathArgs {
   canOpenWorkspace: boolean;
   environment: Environment | null | undefined;
   hasWorkspaceOpenTargets: boolean;
-}
-
-interface ResolveEnvironmentOpenContextArgs {
-  environment: Environment | null | undefined;
-  serverOrigin: string;
-  threadEnvironmentIsLocal: boolean;
 }
 
 interface BuildOpenFileExternallyHandlerArgs {
@@ -37,22 +30,6 @@ export function buildOpenFileExternallyHandler(
           ? null
           : { kind: "line", line: lineNumber, column: null },
     });
-  };
-}
-
-export function resolveEnvironmentOpenContext(
-  args: ResolveEnvironmentOpenContextArgs,
-): OpenInTargetContext | null {
-  if (!args.environment) {
-    return null;
-  }
-  if (args.threadEnvironmentIsLocal) {
-    return { kind: "local" };
-  }
-  return {
-    kind: "remote-ssh",
-    serverOrigin: args.serverOrigin,
-    hostId: args.environment.hostId,
   };
 }
 

@@ -181,7 +181,7 @@ describe("queued message dispatch hook", () => {
           mode: "auto",
         }),
       ).rejects.toMatchObject({
-        body: { code: "queued_message_claim_lost" },
+        body: { code: "thread_not_writable" },
       });
 
       expect(
@@ -225,7 +225,7 @@ describe("queued message dispatch hook", () => {
           mode: "auto",
         }),
       ).rejects.toMatchObject({
-        body: { code: "queued_message_claim_lost" },
+        body: { code: "thread_not_writable" },
       });
 
       expect(
@@ -294,6 +294,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("telemetry user send"),
@@ -335,6 +336,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("automation run into an existing thread"),
@@ -374,6 +376,7 @@ describe("user message telemetry", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("telemetry agent send"),
@@ -1154,6 +1157,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("failed steer"),
@@ -1210,6 +1214,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("late failed steer"),
@@ -1274,6 +1279,7 @@ describe("turn submit failure settlement", () => {
       if (!activeThread) throw new Error("Expected an active thread");
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("accepted steer"),
@@ -1319,6 +1325,273 @@ describe("turn submit failure settlement", () => {
   });
 });
 
+async function postProviderEvents(
+  harness: TestAppHarness,
+  sessionId: string,
+  events: ThreadEvent[],
+) {
+  const response = await harness.app.request("/internal/session/events", {
+    method: "POST",
+    headers: internalAuthHeaders(harness),
+    body: JSON.stringify({
+      sessionId,
+      eventGroups: groupHostDaemonEvents(
+        events.map((event) => ({ threadId: event.threadId, event })),
+      ),
+    }),
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+}
+
+describe("unconfirmed steers", () => {
+  async function steerIntoActiveTurn(harness: TestAppHarness, value: number) {
+    const fixture = seedProviderThreadFixture({
+      harness,
+      status: "active",
+      value,
+    });
+    seedTurnStarted(harness.deps, {
+      environmentId: fixture.environment.id,
+      providerThreadId: `provider-send-dispatch-${value}`,
+      sequence: 3,
+      threadId: fixture.thread.id,
+      turnId: "turn-active",
+    });
+    const activeThread = getThread(harness.db, fixture.thread.id);
+    if (!activeThread) throw new Error("Expected an active thread");
+    await sendThreadMessage(harness.deps, {
+      originPluginId: null,
+      environment: fixture.environment,
+      payload: {
+        input: textInput("steer while the provider is unresponsive"),
+        mode: "steer",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: activeThread,
+      trigger: "user",
+    });
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "turn.submit" &&
+        candidate.command.threadId === fixture.thread.id,
+    );
+    if (queued.command.type !== "turn.submit") {
+      throw new Error("Expected a turn.submit command");
+    }
+    await reportQueuedCommandError(harness, queued, {
+      errorCode: "steer_unconfirmed",
+      errorMessage:
+        "The agent did not confirm the steer for turn turn-active before the request timed out",
+    });
+    return { ...fixture, requestId: queued.command.requestId };
+  }
+
+  it("keeps the turn running and accepts the steer when the provider confirms it late", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, sessionId, thread } = await steerIntoActiveTurn(
+        harness,
+        71,
+      );
+
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).map(
+          (event) => event.type,
+        ),
+      ).not.toEqual(
+        expect.arrayContaining(["client/turn/rejected", "system/error"]),
+      );
+
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/input/accepted",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-71",
+          scope: turnScope("turn-active"),
+          clientRequestId: requestId,
+        },
+        {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-71",
+          scope: turnScope("turn-active"),
+          status: "completed",
+        },
+      ]);
+
+      const eventTypes = listEvents(harness.db, { threadId: thread.id }).map(
+        (event) => event.type,
+      );
+      expect(eventTypes).not.toContain("client/turn/rejected");
+      expect(eventTypes).not.toContain("system/error");
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it("marks the steer failed without failing the thread when its turn ends unconfirmed", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, sessionId, thread } = await steerIntoActiveTurn(
+        harness,
+        72,
+      );
+
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-72",
+          scope: turnScope("turn-active"),
+          status: "completed",
+        },
+      ]);
+
+      const events = listEvents(harness.db, { threadId: thread.id });
+      const rejections = events.filter(
+        (event) => event.type === "client/turn/rejected",
+      );
+      expect(rejections.map((event) => JSON.parse(event.data))).toEqual([
+        {
+          requestId,
+          reason: "steer_unconfirmed",
+          message: "The turn ended before the agent confirmed this steer",
+        },
+      ]);
+      expect(events.some((event) => event.type === "system/error")).toBe(false);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+});
+
+describe("unconfirmed turn starts", () => {
+  async function startTurnOnIdleThread(harness: TestAppHarness, value: number) {
+    const fixture = seedProviderThreadFixture({ harness, value });
+    await sendThreadMessage(harness.deps, {
+      originPluginId: null,
+      environment: fixture.environment,
+      payload: {
+        input: textInput("start while the provider is unresponsive"),
+        mode: "start",
+        model: "gpt-5",
+        permissionMode: "full",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+      },
+      thread: fixture.thread,
+      trigger: "user",
+    });
+    const queued = await waitForQueuedCommand(
+      harness,
+      (candidate) =>
+        candidate.command.type === "turn.submit" &&
+        candidate.command.threadId === fixture.thread.id,
+    );
+    if (queued.command.type !== "turn.submit") {
+      throw new Error("Expected a turn.submit command");
+    }
+    await reportQueuedCommandError(harness, queued, {
+      errorCode: "turn_start_unconfirmed",
+      errorMessage: `The agent did not confirm the turn start for thread ${fixture.thread.id} before the request timed out`,
+    });
+    return { ...fixture, requestId: queued.command.requestId };
+  }
+
+  it("keeps the thread active and runs the turn when the provider starts it late", async () => {
+    await withTestHarness(async (harness) => {
+      const { requestId, sessionId, thread } = await startTurnOnIdleThread(
+        harness,
+        81,
+      );
+
+      expect(getThread(harness.db, thread.id)?.status).toBe("active");
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).map(
+          (event) => event.type,
+        ),
+      ).not.toEqual(
+        expect.arrayContaining(["client/turn/rejected", "system/error"]),
+      );
+
+      await postProviderEvents(harness, sessionId, [
+        {
+          type: "turn/started",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-81",
+          scope: turnScope("turn-late"),
+        },
+        {
+          type: "turn/input/accepted",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-81",
+          scope: turnScope("turn-late"),
+          clientRequestId: requestId,
+        },
+        {
+          type: "turn/completed",
+          threadId: thread.id,
+          providerThreadId: "provider-send-dispatch-81",
+          scope: turnScope("turn-late"),
+          status: "completed",
+        },
+      ]);
+
+      const eventTypes = listEvents(harness.db, { threadId: thread.id }).map(
+        (event) => event.type,
+      );
+      expect(eventTypes).not.toContain("client/turn/rejected");
+      expect(eventTypes).not.toContain("system/error");
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it.each([
+    { code: "provider_process_exited", value: 82 },
+    { code: "provider_turn_start_failed", value: 83 },
+  ])(
+    "marks the message failed when $code settles a turn that never started",
+    async ({ code, value }) => {
+      await withTestHarness(async (harness) => {
+        const { requestId, sessionId, thread } = await startTurnOnIdleThread(
+          harness,
+          value,
+        );
+
+        await postProviderEvents(harness, sessionId, [
+          {
+            type: "system/error",
+            threadId: thread.id,
+            scope: threadScope(),
+            code,
+            message: "The provider lost the turn start",
+          },
+        ]);
+
+        const events = listEvents(harness.db, { threadId: thread.id });
+        expect(
+          events
+            .filter((event) => event.type === "client/turn/rejected")
+            .map((event) => JSON.parse(event.data)),
+        ).toEqual([
+          {
+            requestId,
+            reason: "turn_start_unconfirmed",
+            message: "The agent did not start a turn for this message",
+          },
+        ]);
+        expect(
+          events
+            .filter((event) => event.type === "system/error")
+            .map((event) => JSON.parse(event.data).code),
+        ).toEqual([code]);
+        expect(getThread(harness.db, thread.id)?.status).toBe("error");
+      });
+    },
+  );
+});
+
 describe("idle cold-start activation", () => {
   it("activates an idle thread immediately when it does a cold thread.start", async () => {
     await withTestHarness(async (harness) => {
@@ -1328,6 +1601,7 @@ describe("idle cold-start activation", () => {
       });
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment,
         payload: {
           input: textInput("cold start from idle"),
@@ -1409,6 +1683,7 @@ describe("idle cold-start activation", () => {
       }
 
       await sendThreadMessage(harness.deps, {
+        originPluginId: null,
         environment: targetEnvironment,
         payload: {
           input: textInput("start after switch"),
@@ -1829,6 +2104,7 @@ describe("competing turn refusals", () => {
     fixture: IdleThreadFixture,
   ) {
     await sendThreadMessage(harness.deps, {
+      originPluginId: null,
       environment: fixture.environment,
       payload: {
         input: textInput("send while the daemon runs a turn"),

@@ -243,7 +243,15 @@ async function refresh(
     return;
   }
   harness.deps.hub.notifyThread(threadId, ["events-appended"]);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await expect
+    .poll(
+      () =>
+        socket.messages.some(
+          (message) => JSON.parse(message).type === "thread-timeline",
+        ),
+      { timeout: 2_000 },
+    )
+    .toBe(true);
   const signals = socket.messages
     .splice(0)
     .map((message) => JSON.parse(message))

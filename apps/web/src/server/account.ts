@@ -10,6 +10,7 @@ import {
   sha256Hex,
   user,
   validateLabel,
+  first,
 } from "@bb/connect-db";
 import {
   type CreateServerError,
@@ -76,15 +77,17 @@ export async function getAccountMe(
 ): Promise<OkResult<AccountMe> | ErrorResult<401, "unauthorized">> {
   const resolved = await resolveServerCredential(deps.db, credential);
   if (!resolved) return { status: 401, body: { error: "unauthorized" } };
-  const account = await deps.db
-    .select({
-      name: user.name,
-      image: user.image,
-      githubLogin: user.githubLogin,
-    })
-    .from(user)
-    .where(eq(user.id, resolved.userId))
-    .get();
+  const account = await first(
+    deps.db
+      .select({
+        name: user.name,
+        image: user.image,
+        githubLogin: user.githubLogin,
+      })
+      .from(user)
+      .where(eq(user.id, resolved.userId))
+      .limit(1),
+  );
   if (!account) return { status: 401, body: { error: "unauthorized" } };
   const prof = await findProfile(deps.db, resolved.userId);
   const serverUrl = serverUrlForLabel(
@@ -185,7 +188,7 @@ async function pruneExpiredLinkRequests(
     )
     .limit(LINK_EXPIRED_ROW_PRUNE_LIMIT);
   try {
-    await db.delete(connectCode).where(inArray(connectCode.code, stale)).run();
+    await db.delete(connectCode).where(inArray(connectCode.code, stale));
   } catch (error) {
     console.error("bb account: pruning expired link requests failed", error);
   }
@@ -234,8 +237,7 @@ export async function startServerLink(
         expiresAt: new Date(expiresAt),
         createdAt: new Date(now),
       })
-      .onConflictDoNothing({ target: connectCode.code })
-      .run();
+      .onConflictDoNothing({ target: connectCode.code });
     if (rowsChanged(inserted) === 0) continue;
     return {
       status: 200,
@@ -278,16 +280,18 @@ export async function pollServerLink(
     typeof rawDeviceCode === "string" ? rawDeviceCode.trim() : "";
   if (!deviceCode) return { status: 404, body: { error: "invalid-code" } };
   const deviceCodeHash = await sha256Hex(deviceCode);
-  const row = await deps.db
-    .select()
-    .from(connectCode)
-    .where(
-      and(
-        eq(connectCode.deviceCodeHash, deviceCodeHash),
-        eq(connectCode.purpose, LINK_PURPOSE),
-      ),
-    )
-    .get();
+  const row = await first(
+    deps.db
+      .select()
+      .from(connectCode)
+      .where(
+        and(
+          eq(connectCode.deviceCodeHash, deviceCodeHash),
+          eq(connectCode.purpose, LINK_PURPOSE),
+        ),
+      )
+      .limit(1),
+  );
   if (!row) return { status: 404, body: { error: "invalid-code" } };
 
   const polled = await deps.db
@@ -301,8 +305,7 @@ export async function pollServerLink(
           lte(connectCode.polledAt, new Date(now - LINK_POLL_INTERVAL_MS)),
         ),
       ),
-    )
-    .run();
+    );
   if (rowsChanged(polled) === 0) {
     return { status: 429, body: { error: "slow-down" } };
   }
@@ -325,11 +328,9 @@ async function deliverLinkCredential(
   row: LinkRow & { approvedAt: Date; serverId: string },
   now: number,
 ): Promise<OkResult<LinkPollResponse> | LinkPollError> {
-  const target = await deps.db
-    .select()
-    .from(server)
-    .where(eq(server.id, row.serverId))
-    .get();
+  const target = await first(
+    deps.db.select().from(server).where(eq(server.id, row.serverId)).limit(1),
+  );
   if (!target) return { status: 404, body: { error: "invalid-code" } };
   if (
     target.revokedAt !== null &&
@@ -359,8 +360,7 @@ async function deliverLinkCredential(
           isNull(connectCode.deniedAt),
           gt(connectCode.expiresAt, new Date(now - LINK_DELIVERY_GRACE_MS)),
         ),
-      )
-      .run();
+      );
     if (rowsChanged(claimed) === 0) {
       return { status: 409, body: { error: "already-used" } };
     }
@@ -372,8 +372,7 @@ async function deliverLinkCredential(
           eq(server.id, target.id),
           or(isNull(server.revokedAt), lt(server.revokedAt, row.approvedAt)),
         ),
-      )
-      .run();
+      );
     if (rowsChanged(minted) === 0) {
       return { status: 403, body: { error: "denied" } };
     }
@@ -399,16 +398,14 @@ async function deliverLinkCredential(
           eq(server.credentialHash, row.deliveredCredentialHash),
           isNull(server.revokedAt),
         ),
-      )
-      .run();
+      );
     if (rowsChanged(rotated) === 0) {
       return { status: 409, body: { error: "already-used" } };
     }
     await deps.db
       .update(connectCode)
       .set({ deliveredCredentialHash: credentialHash })
-      .where(eq(connectCode.code, row.code))
-      .run();
+      .where(eq(connectCode.code, row.code));
   }
   if (target.credentialHash !== null) {
     try {
@@ -500,13 +497,15 @@ async function findLinkRow(
 ): Promise<LinkRow | undefined> {
   const code = normalizeUserCode(rawCode);
   if (!code) return undefined;
-  return deps.db
-    .select()
-    .from(connectCode)
-    .where(
-      and(eq(connectCode.code, code), eq(connectCode.purpose, LINK_PURPOSE)),
-    )
-    .get();
+  return first(
+    deps.db
+      .select()
+      .from(connectCode)
+      .where(
+        and(eq(connectCode.code, code), eq(connectCode.purpose, LINK_PURPOSE)),
+      )
+      .limit(1),
+  );
 }
 
 export async function getLinkRequestView(
@@ -519,11 +518,13 @@ export async function getLinkRequestView(
   const row = await findLinkRow(deps, rawCode);
   if (!row) return { state: "invalid" };
   if (row.approvedAt !== null && row.userId === userId && row.serverId) {
-    const approved = await deps.db
-      .select({ subdomain: server.subdomain })
-      .from(server)
-      .where(eq(server.id, row.serverId))
-      .get();
+    const approved = await first(
+      deps.db
+        .select({ subdomain: server.subdomain })
+        .from(server)
+        .where(eq(server.id, row.serverId))
+        .limit(1),
+    );
     if (approved) {
       return {
         state: "approved",
@@ -549,11 +550,13 @@ export async function getLinkRequestView(
   };
   const prof = await findProfile(deps.db, userId);
   if (!prof) {
-    const account = await deps.db
-      .select({ githubLogin: user.githubLogin })
-      .from(user)
-      .where(eq(user.id, userId))
-      .get();
+    const account = await first(
+      deps.db
+        .select({ githubLogin: user.githubLogin })
+        .from(user)
+        .where(eq(user.id, userId))
+        .limit(1),
+    );
     return {
       state: "claim-handle",
       request,
@@ -564,8 +567,7 @@ export async function getLinkRequestView(
   const rows = await deps.db
     .select()
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
   const servers = await listServerSummaries(deps, rows, prof.handle, now);
   return {
     state: "choose-server",
@@ -646,16 +648,18 @@ export async function approveServerLink(
     subdomain = result.server.subdomain;
     created = true;
   } else {
-    const existing = await deps.db
-      .select({
-        id: server.id,
-        subdomain: server.subdomain,
-        credentialHash: server.credentialHash,
-        revokedAt: server.revokedAt,
-      })
-      .from(server)
-      .where(and(eq(server.id, target.serverId), eq(server.userId, userId)))
-      .get();
+    const existing = await first(
+      deps.db
+        .select({
+          id: server.id,
+          subdomain: server.subdomain,
+          credentialHash: server.credentialHash,
+          revokedAt: server.revokedAt,
+        })
+        .from(server)
+        .where(and(eq(server.id, target.serverId), eq(server.userId, userId)))
+        .limit(1),
+    );
     if (!existing) return { error: "not-found" };
     const linked =
       existing.credentialHash !== null && existing.revokedAt === null;
@@ -675,11 +679,10 @@ export async function approveServerLink(
   const approved = await deps.db
     .update(connectCode)
     .set({ userId, serverId, approvedAt: new Date(now) })
-    .where(pendingLinkCondition(row.code, now))
-    .run();
+    .where(pendingLinkCondition(row.code, now));
   if (rowsChanged(approved) === 0) {
     if (created) {
-      await deps.db.delete(server).where(eq(server.id, serverId)).run();
+      await deps.db.delete(server).where(eq(server.id, serverId));
     }
     return { error: await linkDecisionFailure(deps, row.code, now) };
   }
@@ -699,8 +702,7 @@ export async function denyServerLink(
   const denied = await deps.db
     .update(connectCode)
     .set({ deniedAt: new Date(now) })
-    .where(pendingLinkCondition(row.code, now))
-    .run();
+    .where(pendingLinkCondition(row.code, now));
   if (rowsChanged(denied) === 0) {
     return { error: await linkDecisionFailure(deps, row.code, now) };
   }

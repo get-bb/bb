@@ -31,7 +31,9 @@ signatures (see "Looking up the exact API" in distribution.md).
   `interactions` (`get` `list` `cancel` `resolve` `respond`), `queue`
   (`list`), `queuedMessages` (`create` `list` `update` `delete` `send`
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
-  `experimental_releaseEditHold`), `tabs` (`get` `update`)
+  `experimental_releaseEditHold`; `update` takes any of `input`, `sendAt`,
+  `model`, `reasoningLevel`, `permissionMode`, `serviceTier`),
+  `tabs` (`get` `update`)
 - `threadSections`: `list` `create` `update` `delete`
 - `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
   `files` `fileContent` `branches` `commands` `defaultExecutionOptions`
@@ -42,8 +44,6 @@ signatures (see "Looking up the exact API" in distribution.md).
 - `experimental_promptHistory`: `list`
 - `environments`: `list` `listProviders` `get` `update` `delete` `paths`
   `commit` `archiveThreads` `experimental_cleanup`
-  `experimental_diffViewed` `experimental_markDiffViewed`
-  `experimental_clearDiffViewed`
 - `hosts`: `list` `get` `update` `delete` `directory` `pathsExist`
   `pickFolder` `cloneDefaultPath` `providerCliStatus` `installProviderCli`
   `retryUpdate` `experimental_listProviders` `experimental_create`
@@ -191,6 +191,11 @@ a thread moves to a new parent or loses its parent (a `threads.update` of
 and `previousParentThreadId`. Threads below it move with it and get no event of
 their own. Push notifications uses all three: a parent's level limits every
 thread below it.
+
+`bb.events.on("experimental_thread.read", handler)` fires with `thread` after a
+thread becomes read: a client opened it or marked it read, or the user sent it
+a turn. Marking a thread unread does not fire it, and a thread that was already
+read can fire it again when a client re-marks it, so keep the handler cheap.
 
 Every `bb.agents.configure` callback receives its plugin's current namespace as
 a deep-frozen snapshot at top-level `context.pluginMetadata`, or `{}` when it
@@ -349,9 +354,8 @@ mimeType? })`; `clientFile` accepts `Uint8Array`, `ArrayBuffer`, `Blob`, or a
 File-like value (bare bytes/Blob require `filename`). The SDK sends multipart
 bytes and returns the stable uploaded-attachment DTO whose relative `path` can
 be used in `localFile`/`localImage` prompt input. Read an existing attachment
-with `bb.sdk.projects.attachments.read({ projectId, path })`. Image MIME types
-cap at 10 MB and other files at 25 MB. There is no attachment list or
-per-attachment remove operation.
+with `bb.sdk.projects.attachments.read({ projectId, path })`. Uploads cap at
+35 MB per file. There is no attachment list or per-attachment remove operation.
 
 For filesystem-backed products that need a tree or mutations,
 `bb.sdk.files.listPaths({ path, includeFiles, includeDirectories, ... })`

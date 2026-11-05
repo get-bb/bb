@@ -57,13 +57,14 @@ export function beginSplitDrag(config: SplitDragConfig): void {
     if (config.cancelSidebarReorderOnEngage) {
       cancelingSidebarReorder = true;
       try {
-        document.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Escape",
-            code: "Escape",
-            bubbles: true,
-          }),
-        );
+        const cancelReorder = new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+          cancelable: true,
+        });
+        cancelReorder.preventDefault();
+        document.dispatchEvent(cancelReorder);
       } finally {
         cancelingSidebarReorder = false;
       }

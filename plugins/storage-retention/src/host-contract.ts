@@ -83,6 +83,7 @@ export const hostStorageContract = defineRpcContract({
     input: z
       .object({
         repositoryPaths: z.array(absolutePathSchema).min(1).max(100),
+        ownedPaths: z.array(absolutePathSchema),
       })
       .strict(),
     output: z.object({

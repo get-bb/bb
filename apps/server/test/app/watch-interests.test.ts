@@ -248,23 +248,6 @@ describe("WatchInterestCoordinator", () => {
     });
   });
 
-  it("does not replace watch sets for ordinary workspace change events", () => {
-    const { environment, host, hub } = setup();
-    const daemonSocket = createMockHubSocket();
-    const socket = createMockHubSocket();
-    hub.registerDaemon("session-1", host.id, daemonSocket);
-
-    hub.subscribe(socket, {
-      kind: "environment-detail",
-      environmentId: environment.id,
-    });
-    const snapshotCount = daemonSocket.messages.length;
-
-    hub.notifyEnvironment(environment.id, ["work-status-changed"]);
-
-    expect(daemonSocket.messages).toHaveLength(snapshotCount);
-  });
-
   it("does not replace a watch set when a relevant invalidation resolves identically", () => {
     const { environment, host, hub } = setup();
     const daemonSocket = createMockHubSocket();

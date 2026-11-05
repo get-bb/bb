@@ -66,7 +66,10 @@ export const SETTINGS_SEARCH_INDEX: Record<
           "native apps",
           "linear",
           "reflect",
+          "slack",
           "application links",
+          "deep links",
+          "URL schemes",
           "approvals",
           "permissions",
         ],
@@ -253,17 +256,6 @@ export const SETTINGS_SEARCH_INDEX: Record<
     keywords: ["beta", "preview", "labs", "feature flags"],
     settings: [
       { title: "Early adopter", keywords: ["beta", "opt in", "preview"] },
-      {
-        title: "App links",
-        keywords: [
-          "application links",
-          "deep links",
-          "linear",
-          "slack",
-          "URL schemes",
-        ],
-      },
-      { title: "Changelog preview", keywords: ["release notes", "updates"] },
       {
         title: "Server performance diagnostics",
         keywords: ["cpu profile", "logs"],

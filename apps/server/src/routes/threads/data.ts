@@ -56,7 +56,7 @@ import {
 } from "../../services/threads/thread-timeline-windows.js";
 import {
   findThreadEvent,
-  getLastThreadOutput,
+  getLatestTurnFinalOutput,
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
@@ -154,7 +154,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const timelineWindows = createThreadTimelineWindows(deps);
   const conversationOutlineCache = new Map<
     string,
-    ThreadConversationOutlineResponse["items"]
+    { key: string; items: ThreadConversationOutlineResponse["items"] }
   >();
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
   const resolveConversationRowsOptions = (thread: Thread) => {
@@ -277,17 +277,21 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         outlineOptions,
       ),
     ]);
-    const cached = conversationOutlineCache.get(cacheKey);
-    if (cached !== undefined) {
-      conversationOutlineCache.delete(cacheKey);
-      conversationOutlineCache.set(cacheKey, cached);
-      return context.json({ items: selectItems(cached), maxSeq });
+    const cached = conversationOutlineCache.get(thread.id);
+    if (cached !== undefined && cached.key === cacheKey) {
+      conversationOutlineCache.delete(thread.id);
+      conversationOutlineCache.set(thread.id, cached);
+      return context.json({ items: selectItems(cached.items), maxSeq });
     }
     const response = loadThreadConversationOutline(deps.db, thread, {
       ...outlineOptions,
       outlineSequence,
     });
-    conversationOutlineCache.set(cacheKey, response.items);
+    conversationOutlineCache.delete(thread.id);
+    conversationOutlineCache.set(thread.id, {
+      key: cacheKey,
+      items: response.items,
+    });
     while (
       conversationOutlineCache.size > CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES
     ) {
@@ -349,7 +353,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.output, (context) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json({
-      output: getLastThreadOutput(deps.db, context.req.param("id")),
+      output: getLatestTurnFinalOutput(deps.db, context.req.param("id")),
     });
   });
 

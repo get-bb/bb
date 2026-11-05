@@ -22,6 +22,17 @@ function isInsideDataDirChild(args: {
   );
 }
 
+export function isThreadStoragePath(args: {
+  dataDir: string;
+  path: string;
+}): boolean {
+  return isInsideDataDirChild({
+    dataDir: args.dataDir,
+    name: "thread-storage",
+    path: args.path,
+  });
+}
+
 export function isBbManagedWorkspacePath(args: {
   dataDir: string;
   path: string;

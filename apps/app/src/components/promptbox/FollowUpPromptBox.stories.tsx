@@ -48,7 +48,7 @@ import {
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import {
   selectWorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../../../../../plugins/git/ui/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   GitSegmentFixtureProvider,
@@ -81,6 +81,7 @@ export default {
 };
 
 const noop = () => {};
+const noopAsync = async () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 const baseExecution = makeExecutionControlsProps({
@@ -420,6 +421,12 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     headSha: null,
   },
   mergeBase: null,
+  allChanges: {
+    insertions: 128,
+    deletions: 24,
+    lineStatsComplete: true,
+    fileCount: 3,
+  },
 };
 
 const dirtyContextBannerSection =
@@ -735,6 +742,7 @@ function Row({
         queuedMessages={storyQueuedMessages}
         inlineEditor={inlineEditor}
         sendAction="send-now"
+        threadStatus="active"
         sendDisabled={false}
         actionDisabled={false}
         processingMessageId={null}
@@ -747,6 +755,7 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        onChangeSendTime={noopAsync}
         expanded={queueExpanded}
         onExpandedChange={setQueueExpanded}
         onDelete={(id) =>

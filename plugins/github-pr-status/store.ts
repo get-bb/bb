@@ -203,7 +203,11 @@ export function createPullRequestStore(options: {
           const snapshot = snapshots.get(url);
           if (snapshot !== undefined) snapshot.fetchedAt = fetchedAt;
         }
-        if (url === null || currentUrl(environmentId) === url) {
+        if (
+          url === null ||
+          (currentUrl(environmentId) === url &&
+            result.outcome !== "unavailable")
+        ) {
           lookups.set(environmentId, {
             lookup:
               result.outcome === "available"
@@ -237,13 +241,15 @@ export function createPullRequestStore(options: {
     return task;
   }
 
-  function staleAfterMs(environmentId: string, entry: Entry): number {
-    if (entry.lookup.outcome === "absent") return ABSENT_STALE_MS;
+  function isSettled(environmentId: string): boolean {
     const url = currentUrl(environmentId);
     const state = url === null ? null : snapshots.get(url)?.pullRequest.state;
-    return state === "merged" || state === "closed"
-      ? SETTLED_STALE_MS
-      : OPEN_STALE_MS;
+    return state === "merged" || state === "closed";
+  }
+
+  function staleAfterMs(environmentId: string, entry: Entry): number {
+    if (entry.lookup.outcome === "absent") return ABSENT_STALE_MS;
+    return isSettled(environmentId) ? SETTLED_STALE_MS : OPEN_STALE_MS;
   }
 
   async function read(
@@ -271,6 +277,7 @@ export function createPullRequestStore(options: {
   return {
     read,
     currentUrl,
+    isSettled,
     hasPullRequest(environmentId: string) {
       return currentUrl(environmentId) !== null;
     },

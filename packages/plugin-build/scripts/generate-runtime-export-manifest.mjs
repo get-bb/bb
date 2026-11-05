@@ -12,7 +12,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { RUNTIME_SHIM_NPM_SPECIFIERS } from "../src/runtime-shims.mjs";
+import {
+  RUNTIME_SHIM_NPM_SPECIFIERS,
+  VERSIONED_RUNTIME_SLOT_BY_SPECIFIER,
+} from "../src/runtime-shims.mjs";
 
 // Node 20 does not expose the browser-compatible Navigator global added in
 // later Node releases. Some shared browser runtimes (currently @pierre/diffs)
@@ -165,6 +168,12 @@ pushEntry(
 for (const id of RUNTIME_MODULE_IDS) {
   pushEntry(id, await namedExportsOf(id));
 }
+const versionChunks = [];
+for (const id of Object.keys(VERSIONED_RUNTIME_SLOT_BY_SPECIFIER)) {
+  pushEntry(id, await namedExportsOf(id));
+  const { version } = appRequire(`${id}/package.json`);
+  versionChunks.push(`  ${JSON.stringify(id)}: ${JSON.stringify(version)},`);
+}
 for (const [id, entryPoint] of Object.entries(RUNTIME_SOURCE_MODULES)) {
   pushEntry(id, await sourceModuleExports(entryPoint));
 }
@@ -183,6 +192,10 @@ const output = `// GENERATED FILE — do not edit by hand.
 
 export const RUNTIME_EXPORT_MANIFEST: Record<string, readonly string[]> = {
 ${entries}
+};
+
+export const RUNTIME_PACKAGE_VERSIONS: Record<string, string> = {
+${versionChunks.join("\n")}
 };
 `;
 

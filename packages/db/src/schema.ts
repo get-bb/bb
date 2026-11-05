@@ -10,7 +10,10 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
-import { queuedMessageStateValues } from "@bb/domain/queued-message-lifecycle";
+import {
+  queuedMessageDeliveryModeValues,
+  queuedMessageStateValues,
+} from "@bb/domain/queued-message-lifecycle";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
 import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
@@ -615,6 +618,7 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    statusChangedAt: integer("status_changed_at").notNull().default(0),
     startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
@@ -1028,6 +1032,13 @@ export const queuedThreadMessages = sqliteTable(
     retryOfTurnRequestId: text("retry_of_turn_request_id"),
     retryAttempt: integer("retry_attempt"),
     retryReason: text("retry_reason"),
+    deliveryMode: text("delivery_mode", {
+      enum: queuedMessageDeliveryModeValues,
+    })
+      .notNull()
+      .default("steer"),
+    coalesceKey: text("coalesce_key"),
+    coalesceState: text("coalesce_state"),
     claimedAt: integer("claimed_at"),
     claimToken: text("claim_token"),
     editHeldUntil: integer("edit_held_until"),
@@ -1056,6 +1067,9 @@ export const queuedThreadMessages = sqliteTable(
       table.nextAttemptAt,
       table.id,
     ),
+    index("queued_thread_messages_coalesce_idx")
+      .on(table.threadId, table.coalesceKey)
+      .where(sql`${table.coalesceKey} IS NOT NULL`),
     index("queued_thread_messages_wait_holder_idx")
       .on(table.waitHolder, table.id)
       .where(sql`${table.waitHolder} IS NOT NULL`),
@@ -1145,24 +1159,6 @@ export const providerModelCatalogs = sqliteTable(
   (table) => [
     primaryKey({
       columns: [table.hostId, table.providerId, table.scopeKey],
-    }),
-  ],
-);
-
-export const diffViewedFiles = sqliteTable(
-  "diff_viewed_files",
-  {
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
-    targetKey: text("target_key").notNull(),
-    path: text("path").notNull(),
-    revision: text("revision").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.environmentId, table.targetKey, table.path],
     }),
   ],
 );
