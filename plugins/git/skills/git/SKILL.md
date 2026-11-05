@@ -19,8 +19,10 @@ bb git viewed list|mark|unmark|clear <environment-id> --target <target> ...
 ```
 
 - `bb git branches` lists the refs already in the repository and starts a
-  background fetch of its remotes (at most once every 30 seconds per
-  repository), so newly fetched remote branches show up on a later call. The
+  background fetch of `origin`, or of the only remote when there is no
+  `origin` (at most once every 30 seconds per repository), so newly fetched
+  remote branches show up on a later call. Branches on other remotes refresh
+  only when you fetch them yourself. The
   branch pickers start the same fetch when they open, through the
   `fetchRemoteBranches` RPC; the `branches` RPC itself never fetches.
 - `<target>` is `uncommitted`, `branch_committed`, `all` or `commit`.

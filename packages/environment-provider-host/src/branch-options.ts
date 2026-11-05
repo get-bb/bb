@@ -36,10 +36,11 @@ interface BranchRefsWithDefaults {
 
 async function fetchRemoteBranchesNonInteractively(
   cwd: string,
+  remote: string,
   options: GitTimeoutOptions,
 ): Promise<FetchRemoteBranchesResult> {
   try {
-    await runGit(["fetch", "--all", "--prune", "--quiet"], {
+    await runGit(["fetch", "--prune", "--quiet", remote], {
       cwd,
       ...options,
       priority: "background",
@@ -68,22 +69,28 @@ export async function fetchRemoteBranches(
     ...options,
     allowFailure: true,
   });
-  if (
-    remotes.exitCode !== 0 ||
-    remotes.stdout
-      .split("\n")
-      .map((remote) => remote.trim())
-      .filter(Boolean).length === 0
-  ) {
+  const remoteNames =
+    remotes.exitCode === 0
+      ? remotes.stdout
+          .split("\n")
+          .map((remote) => remote.trim())
+          .filter(Boolean)
+      : [];
+  const remote = remoteNames.includes("origin")
+    ? "origin"
+    : remoteNames.length === 1
+      ? remoteNames[0]
+      : undefined;
+  if (remote === undefined) {
     return { status: "skipped" };
   }
 
   if (!interactive) {
-    return fetchRemoteBranchesNonInteractively(cwd, options);
+    return fetchRemoteBranchesNonInteractively(cwd, remote, options);
   }
 
   try {
-    const result = await runGit(["fetch", "--all", "--prune", "--quiet"], {
+    const result = await runGit(["fetch", "--prune", "--quiet", remote], {
       cwd,
       ...options,
       allowFailure: true,

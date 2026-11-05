@@ -128,7 +128,7 @@ export const gitRpcContract = defineRpcContract({
   },
   fetchRemoteBranches: {
     experimental_description:
-      "Start a background fetch of remote branches for an environment's repository, at most once every 30 seconds per repository. Refreshed branches arrive through branches.",
+      "Start a background fetch of origin, or of the only remote when there is no origin, for an environment's repository, at most once every 30 seconds per repository. Refreshed branches arrive through branches.",
     input: environmentInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
