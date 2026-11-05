@@ -765,6 +765,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const current = threadOperationCounts.get(threadId);
     if (current === undefined || current <= 1) {
       threadOperationCounts.delete(threadId);
+      resolveTurnWaitersIfSettled(threadId);
       retryBridgeRestartOnIdle(threadId);
       return;
     }
@@ -794,6 +795,20 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function threadHasInFlightOperation(threadId: string): boolean {
     return threadOperationCounts.has(threadId);
+  }
+
+  function threadMayStartTurn(threadId: string): boolean {
+    return (
+      turnState.getActiveTurnId(threadId) !== null ||
+      pendingTurnStarts.has(threadId) ||
+      threadHasInFlightOperation(threadId)
+    );
+  }
+
+  function resolveTurnWaitersIfSettled(threadId: string): void {
+    if (!threadMayStartTurn(threadId)) {
+      turnState.resolveWaitersWithoutTurn(threadId);
+    }
   }
 
   async function runThreadOperation<TResult>(
@@ -869,12 +884,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     if (event.type === "turn/completed") {
       pendingTurnStarts.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
+      resolveTurnWaitersIfSettled(event.threadId);
       return;
     }
 
     if (event.type === "provider/error" && event.willRetry !== true) {
       pendingTurnStarts.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
+      resolveTurnWaitersIfSettled(event.threadId);
     }
   }
 
@@ -2563,10 +2580,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     waitForActiveTurn(threadId, args) {
-      if (
-        turnState.getActiveTurnId(threadId) === null &&
-        !pendingTurnStarts.has(threadId)
-      ) {
+      if (!threadMayStartTurn(threadId)) {
         return Promise.resolve(null);
       }
       return turnState.waitForActiveTurn({

@@ -974,6 +974,75 @@ describe("createAgentRuntime lifecycle", () => {
       }
     });
 
+    it("waits for a turn whose runTurn call has not reached the provider yet", async () => {
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: (event) => events.push(event),
+        },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        const run = runtime.runTurn({
+          clientRequestId: "creq_222222224e",
+          threadId: "t1",
+          input: [promptTextInput({ text: "delay:500" })],
+          options: fullRuntimeOptions,
+        });
+        const awaitedTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 5_000,
+        });
+        await run;
+        const { turnId } = await waitForThreadTurnStarted({
+          events,
+          providerId: "fake",
+          runtime,
+          threadId: "t1",
+        });
+
+        await expect(awaitedTurnId).resolves.toBe(turnId);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("resolves waitForActiveTurn with null once an in-flight operation ends without a turn", async () => {
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: () => {},
+        },
+      });
+
+      try {
+        const start = runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        const startedAt = performance.now();
+        const awaitedTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 60_000,
+        });
+        await start;
+
+        await expect(awaitedTurnId).resolves.toBeNull();
+        expect(performance.now() - startedAt).toBeLessThan(5_000);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
     it("keeps waiting for the active turn while a turn start is pending", async () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {
