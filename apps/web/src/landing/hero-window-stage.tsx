@@ -16,36 +16,32 @@ import {
   BookIcon,
   ChevronDown,
   ChevronRight,
-  CircleCheckIcon,
   ClockIcon,
   CloseIcon,
   Ellipsis,
   FileCodeGlyph as FileIcon,
-  FileEditGlyph as EditIcon,
-  FolderGitIcon,
-  FolderIcon,
   GearIcon,
-  GitBranchIcon as BranchIcon,
   HomeIcon,
-  MessageIcon,
-  MicIcon,
   NewThreadIcon,
   PanelRightIcon,
-  PaperPlane as SentGlyph,
   PhoneIcon,
   PinGlyph,
-  PlusIcon,
   PluginsIcon,
   PullRequestIcon as PrIcon,
-  ReturnIcon,
   SearchIcon,
   Spinner,
-  TerminalIcon as TermIcon,
   TestIcon,
   ThreadStatus,
   BugIcon,
   QuestionIcon,
+  MockChildEvent,
+  MockComposer,
+  MockStepContent,
+  MockTurnHeader,
+  MockUserBubble,
+  MockWorkingRow,
   type MockIcon as IconComp,
+  type MockStep,
   type ThreadState as Status,
 } from "./app-mock-parts";
 
@@ -75,19 +71,7 @@ type Flag =
   | "strip"
   | "grouped";
 
-type StepKind = "plugin" | "cmd" | "file" | "work";
-type Step = {
-  kind: StepKind;
-  plugin?: string;
-  verb: string;
-  em?: string;
-  file?: string;
-  diff?: [number, number];
-  dur?: string;
-  spin?: boolean;
-
-  doneAs?: Step;
-};
+type Step = MockStep & { doneAs?: Step };
 type Post = { step: Step } | { reply: ReactNode };
 type Scene = {
   id: string;
@@ -95,7 +79,6 @@ type Scene = {
 
   prompt?: string;
 
-  context?: { prompt: string; worked: string; reply: ReactNode };
   steps: Step[];
 
   post?: Post[];
@@ -137,14 +120,13 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new sentry-charts",
-        dur: "0.4s",
       },
       { kind: "file", verb: "Created", file: "page.tsx", diff: [142, 0] },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-sentry-charts --yes",
-        dur: "2.2s",
+        dur: "2s",
       },
     ],
     post: [
@@ -180,8 +162,7 @@ const SCENES: Scene[] = [
       {
         kind: "cmd",
         verb: "Ran",
-        em: 'bb thread spawn --project checkout-web --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
-        dur: "0.8s",
+        em: 'bb thread spawn --project $BB_PROJECT_ID --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
       },
       {
         kind: "file",
@@ -220,7 +201,6 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new linear-issues",
-        dur: "0.4s",
       },
       { kind: "file", verb: "Created", file: "panel.tsx", diff: [96, 0] },
       { kind: "file", verb: "Created", file: "server.ts", diff: [54, 0] },
@@ -228,7 +208,7 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-linear-issues --yes",
-        dur: "2.1s",
+        dur: "2s",
       },
     ],
     post: [
@@ -312,7 +292,6 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new github-issues",
-        dur: "0.4s",
       },
       {
         kind: "file",
@@ -324,7 +303,7 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-github-issues --yes",
-        dur: "1.9s",
+        dur: "2s",
       },
     ],
     post: [
@@ -354,7 +333,7 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install collapsible-navigation --yes",
-        dur: "5.1s",
+        dur: "5s",
       },
     ],
     post: [
@@ -380,14 +359,13 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new status-sidebar",
-        dur: "0.4s",
       },
       { kind: "file", verb: "Created", file: "sidebar.tsx", diff: [88, 0] },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-status-sidebar --yes",
-        dur: "2.0s",
+        dur: "2s",
       },
     ],
     post: [
@@ -422,8 +400,6 @@ const NOTE_GAP = 1.4;
 const CLICK_GAP = 1.8;
 const KID_AFTER_CLICK = 0.75;
 const BEAT = 0.3;
-const STATUS_BEAT = 0.2;
-const CHECK_LEAD = 1.68;
 
 const PANEL_OPEN = 0.7;
 const RAIL_IN = 0.4;
@@ -441,10 +417,12 @@ const REST_AFTER_CLOSE = 1.4;
 const MUTE_AFTER = 0.35;
 const MUTE_FOR = 0.35;
 const SWAP_FOR = 0.3;
-const FURL_GAP = 0.2;
 const FURL_FOR = 0.3;
 const FURL_BEAT = 0.6;
 const ARRIVE_FOR = 0.42;
+const REPLY_AFTER = FURL_FOR + 0.1;
+const STATUS_AFTER = REPLY_AFTER + 0.45;
+const TURN_GAP = 0.9;
 
 type TurnRow = { step: Step; at: number; muteAt: number | null };
 type TurnPlan = { rows: TurnRow[]; furlAt: number | null; readyAt: number };
@@ -467,9 +445,7 @@ function planTurn(
   const greyAt =
     Math.max(...planned.map((r) => r.muteAt ?? Infinity)) + MUTE_FOR;
   let furlAt =
-    done == null || !Number.isFinite(greyAt)
-      ? null
-      : Math.max(greyAt, done + SWAP_FOR) + FURL_GAP;
+    done == null || !Number.isFinite(greyAt) ? null : Math.max(greyAt, done);
   for (const at of [...arrivals].sort((a, b) => a - b))
     if (furlAt != null && at > furlAt - ARRIVE_FOR && at < furlAt + FURL_FOR)
       furlAt = at + ARRIVE_FOR + 0.05;
@@ -515,13 +491,22 @@ function timing(scene: Scene, tablet = false) {
   let end = lastAt + scene.hold;
   if (scene.id === "composer") end = Math.max(end, changeAt + 5.1);
 
-  let then: null | { at: number; notes: number[] } = null;
+  let then: null | {
+    at: number;
+    notes: number[];
+    work: number;
+    workDone: number;
+  } = null;
   if (scene.then) {
     const at = lastAt + ROW_GAP;
-    const notes = [0, 1, 2].map((i) => at + NOTE_GAP + i * NOTE_GAP);
+    const finished = at + NOTE_GAP;
+    const work = finished + TURN_GAP;
+    const sent = work + TURN_GAP;
+    const workDone = sent + TURN_GAP;
+    const notes = [finished, sent, workDone + FURL_FOR + BEAT];
     doneAt = at;
-    end = (notes.at(-1) ?? at) + scene.hold;
-    then = { at, notes };
+    end = notes[2] + scene.hold;
+    then = { at, notes, work, workDone };
   }
   const turn = planTurn(
     [
@@ -533,10 +518,8 @@ function timing(scene: Scene, tablet = false) {
     doneAt,
     [changeAt, ...postAt, ...(then ? [then.at, ...then.notes] : [])],
   );
-  const statusAt =
-    doneAt == null || !Number.isFinite(turn.readyAt)
-      ? null
-      : turn.readyAt + STATUS_BEAT;
+  const replyAt = doneAt == null ? null : doneAt + REPLY_AFTER;
+  const statusAt = doneAt == null ? null : doneAt + STATUS_AFTER;
   const chartAt = scene.flags.includes("chart")
     ? Math.max(
         (postAt.at(-1) ?? changeAt) + ROW_GAP,
@@ -557,7 +540,9 @@ function timing(scene: Scene, tablet = false) {
     const user = (chartAt ?? postAt.at(-1) ?? changeAt) + 2.8;
     const steps = F.steps.map((_, i) => user + FIRST_ROW + i * WORK_ROW_GAP);
     const reply = (steps.at(-1) ?? user) + ROW_GAP;
-    const cards = F.fixes.map((_, i) => reply + ROW_GAP + i * ROW_GAP);
+    const cards = F.fixes.map(
+      (_, i) => reply + REPLY_AFTER + ROW_GAP + i * ROW_GAP,
+    );
     const lastCard = cards.at(-1) ?? reply;
     const clicks = F.clicks.map((_, i) => lastCard + 1.0 + i * CLICK_GAP);
     end = (clicks.at(-1) ?? lastCard) + scene.hold;
@@ -575,6 +560,7 @@ function timing(scene: Scene, tablet = false) {
     end += ready + FURL_BEAT - leaves;
   return {
     chartAt,
+    replyAt,
     statusAt,
     collapseAt,
     userAt,
@@ -595,7 +581,7 @@ const THREADS: { title: string; status: Status }[] = [
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
 
-const CHILD = { icon: OpenAiIcon, title: "Team invites API" };
+const CHILD = { icon: OpenAiIcon, label: "Team invites API" };
 
 const LINEAR_TASKS = [
   {
@@ -771,40 +757,6 @@ function PanelBar({ name, meta }: { name: string; meta?: string }) {
   );
 }
 
-function StepIcon({ kind }: { kind: StepKind }) {
-  if (kind === "plugin")
-    return <PluginsIcon className="rhb-step-ic is-plugin" />;
-  if (kind === "cmd") return <TermIcon className="rhb-step-ic" />;
-  if (kind === "file") return <EditIcon className="rhb-step-ic" />;
-  return <SearchIcon className="rhb-step-ic" />;
-}
-
-function WorkRowContent({ step }: { step: Step }) {
-  return (
-    <>
-      <StepIcon kind={step.kind} />
-      <span className="rhb-work-text">
-        {step.plugin ? <span className="rhb-em">{step.plugin} </span> : null}
-        <span className={step.spin ? "rhb-verb rhb-shimmer-text" : "rhb-verb"}>
-          {step.verb}
-        </span>
-        {step.em ? <span className="rhb-em"> {step.em}</span> : null}
-        {step.file ? <span className="rhb-file"> {step.file}</span> : null}
-      </span>
-      {step.diff ? (
-        <span className="rhb-diff">
-          <span className="is-add">+{step.diff[0]}</span>
-          {step.diff[1] ? (
-            <span className="is-del">-{step.diff[1]}</span>
-          ) : null}
-        </span>
-      ) : null}
-      {step.dur ? <span className="rhb-dur">{step.dur}</span> : null}
-      {step.spin ? <Spinner className="trun rhb-work-spin" /> : null}
-    </>
-  );
-}
-
 function Swap({
   at,
   a,
@@ -854,87 +806,37 @@ function WorkRow({
         <Swap
           className="rhb-work-swap"
           at={doneAt}
-          a={<WorkRowContent step={step} />}
-          b={<WorkRowContent step={step.doneAs} />}
+          a={<MockStepContent step={step} />}
+          b={<MockStepContent step={step.doneAs} />}
         />
       ) : (
-        <WorkRowContent step={step} />
+        <MockStepContent step={step} />
       )}
     </div>
   );
 }
 
-function TurnHeader({
-  worked,
-  doneAt,
-  furlAt = null,
-  style,
+function StatusTrack({
+  phases,
 }: {
-  worked: string;
-  doneAt: number | null;
-  furlAt?: number | null;
-  style?: CSSProperties;
+  phases: { at: number; status: Status | "unread" }[];
 }) {
-  const stackRef = useRef<HTMLSpanElement>(null);
-  const swaps = doneAt != null && doneAt !== 0;
-  useLayoutEffect(() => {
-    const stack = stackRef.current;
-    if (!stack || !swaps) return;
-    const [a, b] = Array.from(stack.children);
-    const measure = () => {
-      const wa = box(a).width;
-      if (!wa) return;
-      stack.style.setProperty("--rhb-wa", `${wa}px`);
-      stack.style.setProperty("--rhb-wb", `${box(b).width}px`);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(a);
-    ro.observe(b);
-    return () => ro.disconnect();
-  }, [swaps]);
+  const [first, ...rest] = phases;
   return (
-    <div
-      className={
-        furlAt == null
-          ? "rhb-turn customize-msg"
-          : "rhb-turn customize-msg is-furling"
-      }
-      style={
-        furlAt == null
-          ? style
-          : ({ ...style, "--rhb-furl-at": `${furlAt}s` } as CSSProperties)
-      }
-    >
-      <span
-        ref={stackRef}
-        className={swaps ? "rhb-turn-stack is-swap" : "rhb-turn-stack"}
-        style={swaps ? { animationDelay: `${doneAt}s` } : undefined}
-      >
-        {doneAt === 0 ? null : (
-          <span
-            className={doneAt == null ? "rhb-turn-w is-live" : "rhb-turn-w"}
-            style={
-              doneAt == null ? undefined : { animationDelay: `${doneAt}s` }
-            }
-          >
-            <span className="rhb-turn-label rhb-shimmer-text">Working</span>
-          </span>
-        )}
-        {doneAt == null ? null : (
-          <span
-            className="rhb-turn-d"
-            style={
-              doneAt ? { animationDelay: `${doneAt}s` } : { animation: "none" }
-            }
-          >
-            <span className="rhb-turn-label">Worked for</span>
-            <span className="rhb-dur">{worked}</span>
-          </span>
-        )}
+    <span className="rhb-swap rhb-status-swap">
+      <span>
+        <ThreadStatus status={first.status} />
       </span>
-      <ChevronDown className="rhb-chev" />
-    </div>
+      {rest.map((p) => (
+        <span
+          className="rhb-swap-b"
+          key={p.at}
+          style={{ animationDelay: `${p.at}s` }}
+        >
+          <ThreadStatus status={p.status} />
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -949,15 +851,6 @@ function CursorGlyph({ style }: { style?: CSSProperties }) {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function ThreadPill({ icon: Icon, label }: { icon: IconComp; label: string }) {
-  return (
-    <span className="rhb-pill">
-      <Icon className="rhb-pill-ic" />
-      <span className="rhb-pill-text">{label}</span>
-    </span>
   );
 }
 
@@ -1023,7 +916,7 @@ function freeze(src: HTMLElement): HTMLElement {
   clone.style.boxSizing = rootStyle.boxSizing;
 
   const sel =
-    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-stack, .rhb-turn-w, .rhb-turn-d, .rhb-typing, .rhb-kids, .rhb-turn-fold, .rhb-turn > .rhb-chev, .rhb-work.is-muting";
+    ".rhb-page, .plugin-panel-bar, .plugin-task, .customize-msg, .rhb-reveal, .rhb-swap-a, .rhb-swap-b, .rhb-turn-head, .rhb-working, .rhb-typing, .rhb-kids, .rhb-turn-fold, .rhb-work.is-muting";
   const from = src.querySelectorAll<HTMLElement>(sel);
   const to = clone.querySelectorAll<HTMLElement>(sel);
   from.forEach((el, i) => {
@@ -1032,14 +925,12 @@ function freeze(src: HTMLElement): HTMLElement {
     if (!c) return;
     if (cs.display === "none") c.style.display = "none";
     c.style.opacity = cs.opacity;
-    if (el.matches(".rhb-turn-stack")) c.style.width = cs.width;
-    if (el.matches(".rhb-turn-fold"))
+    if (el.matches(".rhb-turn-fold, .rhb-turn-head, .rhb-working"))
       Object.assign(c.style, {
         gridTemplateRows: cs.gridTemplateRows,
         marginBottom: cs.marginBottom,
         clipPath: cs.clipPath,
       });
-    if (el.matches(".rhb-chev")) c.style.rotate = cs.rotate;
     const part = el.matches(".rhb-work") ? el.firstElementChild : null;
     if (part)
       c.style.setProperty(
@@ -1629,7 +1520,7 @@ const LinearPanel = memo(function LinearPanel() {
       </div>
       <div className="rhb-card rhb-card-panel">
         <div className="plugin-panel rhb-side-panel">
-          <PanelBar name="Linear issues" meta="bb · 6 open" />
+          <PanelBar name="Linear issues" meta="checkout-web · 6 open" />
           <div className="plugin-panel-rows">
             {LINEAR_TASKS.map((task) => (
               <div className="plugin-task" key={task.key}>
@@ -1650,17 +1541,17 @@ const LinearPanel = memo(function LinearPanel() {
 
 const GLIDE_RATE = 0.02;
 const GROW_FOR = 420;
-const ROOM_RATE = 0.011;
 
 type FeedProps = {
   scene: Scene;
   reduced: boolean;
   out?: boolean;
   pre?: boolean;
+  swap?: boolean;
   onIn?: () => void;
 };
 
-function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
+function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
   const tablet = useMedia(TABLET_QUERY);
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1730,7 +1621,13 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       if (room < 1) return false;
       growing++;
       const anim = el.animate(
-        [{ marginBottom: `${mb - room}px` }, { marginBottom: `${mb}px` }],
+        [
+          {
+            marginBottom: `${mb - room}px`,
+            clipPath: `inset(0 -100vw ${room}px -100vw)`,
+          },
+          { marginBottom: `${mb}px`, clipPath: "inset(0 -100vw 0 -100vw)" },
+        ],
         { duration: GROW_FOR, easing: EASE_OUT },
       );
       const done = () => {
@@ -1806,44 +1703,26 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
         });
       }
     });
-    const makeRoom = (start: HTMLElement) => {
-      const host = feed.parentElement;
-      if (!host) return;
-      const ghost = feed.cloneNode(true);
-      if (!(ghost instanceof HTMLElement)) return;
-      ghost.classList.add("is-measure");
-      ghost.style.width = `${feed.offsetWidth}px`;
-      host.appendChild(ghost);
-      const mark = ghost.querySelector("[data-room]");
-      const extent = mark
-        ? ghost.getBoundingClientRect().bottom -
-          mark.getBoundingClientRect().top
-        : 0;
-      ghost.remove();
-      const at =
-        start.getBoundingClientRect().top - feed.getBoundingClientRect().top;
-      feed.style.minHeight = `${Math.ceil(at + extent)}px`;
-      const ft = feed.offsetTop;
-      const fd = self.top - ft;
-      self.top = ft;
-      if (Math.abs(fd) < 0.5) return;
-      self.off += fd;
-      self.w = ROOM_RATE;
-      apply(feed, self.off);
-      if (!raf) raf = requestAnimationFrame(tick);
-    };
+    const FOLDS = new Set(["rhb-furl", "rhb-turn-open", "rhb-working-end"]);
     const onAnimation = (e: AnimationEvent) => {
-      if (
-        e.type === "animationstart" &&
-        e.animationName === "rhb-reveal" &&
-        e.target instanceof HTMLElement &&
-        e.target.hasAttribute("data-room")
-      ) {
-        makeRoom(e.target);
-        return;
-      }
-      if (e.animationName !== "rhb-furl") return;
+      if (!FOLDS.has(e.animationName)) return;
+      if (e.type === "animationstart" && !furling)
+        feed.style.minHeight = `${Math.max(
+          feed.offsetHeight,
+          parseFloat(feed.style.minHeight) || 0,
+        )}px`;
       furling = Math.max(0, furling + (e.type === "animationstart" ? 1 : -1));
+      if (furling) return;
+      const ft = feed.offsetTop;
+      self.top = ft;
+      for (const child of Array.from(feed.children) as HTMLElement[]) {
+        const o = offs.get(child);
+        if (o)
+          o.top =
+            child.offsetParent === feed
+              ? child.offsetTop
+              : child.offsetTop - ft;
+      }
     };
     const animationEvents = [
       "animationstart",
@@ -1864,9 +1743,12 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
 
   return (
     <div
-      className={`rhb-feed-layer rhb-fl-${scene.id}${pre ? " is-pre" : out ? " is-out" : ""}`}
+      className={`rhb-feed-layer rhb-fl-${scene.id}${pre ? " is-pre" : out ? " is-out" : ""}${swap ? " is-swap" : ""}`}
       onAnimationEnd={(e) => {
-        if (e.target === e.currentTarget && e.animationName === "rhb-feed-in")
+        if (
+          e.target === e.currentTarget &&
+          e.animationName === "rhb-feed-swap-in"
+        )
           onIn?.();
       }}
     >
@@ -1881,42 +1763,31 @@ function Turn({
   worked,
   plan,
   head,
-  doneAt,
   reduced,
+  working = true,
 }: {
   worked: string;
   plan: TurnPlan;
   head: number;
-  doneAt: number | null;
   reduced: boolean;
+  working?: boolean;
 }) {
   const sec = (s: number) => (reduced ? "0s" : `${s}s`);
   const furlAt = plan.furlAt;
+  const done = furlAt != null;
   return (
     <>
-      <TurnHeader
-        worked={worked}
-        doneAt={
-          reduced
-            ? doneAt == null
-              ? null
-              : 0
-            : doneAt == null
-              ? null
-              : Math.max(0.01, doneAt - head)
-        }
-        furlAt={furlAt == null ? null : reduced ? 0 : furlAt - head}
-        style={{ animationDelay: sec(head) }}
-      />
+      {done ? (
+        <MockTurnHeader worked={worked} openAt={reduced ? null : sec(furlAt)} />
+      ) : null}
       <div
         className={
-          furlAt == null
-            ? "rhb-turn-fold rhb-reveal"
-            : "rhb-turn-fold rhb-reveal is-furling"
+          done
+            ? "rhb-turn-fold rhb-reveal is-furling"
+            : "rhb-turn-fold rhb-reveal"
         }
         style={{
-          animationDelay:
-            furlAt == null ? sec(head) : `${sec(head)}, ${sec(furlAt)}`,
+          animationDelay: done ? `${sec(head)}, ${sec(furlAt)}` : sec(head),
         }}
       >
         <div className="rhb-turn-body">
@@ -1925,13 +1796,6 @@ function Turn({
               step={row.step}
               key={i}
               style={{ animationDelay: sec(row.at - head) }}
-              doneAt={
-                reduced
-                  ? 0.001
-                  : doneAt == null
-                    ? null
-                    : Math.max(0.01, doneAt - row.at)
-              }
               muteAt={
                 row.muteAt == null ? null : reduced ? 0 : row.muteAt - row.at
               }
@@ -1939,6 +1803,9 @@ function Turn({
           ))}
         </div>
       </div>
+      {working && !(reduced && done) ? (
+        <MockWorkingRow at={sec(head)} endAt={done ? sec(furlAt) : null} />
+      ) : null}
     </>
   );
 }
@@ -1959,27 +1826,17 @@ const FeedBody = memo(function FeedBody({
     animationDelay: reduced ? "0s" : `${sec}s`,
   });
   const head = t.stepAt[0] ?? t.userAt + 0.4;
+  const replyIdx = (scene.post ?? []).findIndex((p) => "reply" in p);
   return (
     <>
-      {scene.context ? (
-        <>
-          <div className="rhb-user">{scene.context.prompt}</div>
-          <TurnHeader
-            worked={scene.context.worked}
-            doneAt={0}
-            style={{ animation: "none", opacity: 1 }}
-          />
-          <div className="rhb-say">{scene.context.reply}</div>
-        </>
-      ) : null}
-      {scene.prompt ? <div className="rhb-user">{scene.prompt}</div> : null}
+      {scene.prompt ? <MockUserBubble>{scene.prompt}</MockUserBubble> : null}
       {scene.steps.length > 0 ? (
         <Turn
           worked={then ? then.worked : scene.worked}
           plan={t.turn}
           head={head}
-          doneAt={t.doneAt}
           reduced={reduced}
+          working={!scene.running}
         />
       ) : null}
       {(scene.post ?? []).map((p, i) =>
@@ -1987,49 +1844,54 @@ const FeedBody = memo(function FeedBody({
           <div
             className="rhb-say customize-msg"
             key={`r${i}`}
-            style={delay(t.postAt[i])}
+            style={delay(
+              i === replyIdx && t.replyAt != null ? t.replyAt : t.postAt[i],
+            )}
           >
             {p.reply}
           </div>
         ) : null,
       )}
+      {scene.running && !reduced ? (
+        <MockWorkingRow at={`${head}s`} endAt={null} />
+      ) : null}
 
       {then ? (
         <>
-          <div className="rhb-say customize-msg" style={delay(then.at)}>
+          <div
+            className="rhb-say customize-msg"
+            style={delay(then.at + REPLY_AFTER)}
+          >
             {then.reply}
           </div>
           <div className="rhb-notes">
-            <div className="rhb-gen customize-msg" style={delay(then.notes[0])}>
-              <span className="rhb-gen-head">
-                <CircleCheckIcon className="rhb-gen-ic" />
-                <span className="rhb-gen-subject">{CHILD.title}</span>
-                <span className="rhb-gen-verb">finished</span>
-              </span>
-              <span className="rhb-gen-body">
-                Invite API and email are in: create, accept, expire.
-              </span>
-            </div>
-            <div className="rhb-gen customize-msg" style={delay(then.notes[1])}>
-              <span className="rhb-gen-head">
-                <SentGlyph className="rhb-gen-ic" />
-                <span className="rhb-gen-verb">Sent to</span>
-                <ThreadPill icon={CHILD.icon} label={CHILD.title} />
-              </span>
-              <span className="rhb-gen-body">
-                The screen sends email and role, then lists pending invites.
-              </span>
-            </div>
-            <div className="rhb-gen customize-msg" style={delay(then.notes[2])}>
-              <span className="rhb-gen-head">
-                <MessageIcon className="rhb-gen-ic" />
-                <span className="rhb-gen-verb">Message from</span>
-                <ThreadPill icon={CHILD.icon} label={CHILD.title} />
-              </span>
-              <span className="rhb-gen-body">
-                Tested it end to end. Both sides match.
-              </span>
-            </div>
+            <MockChildEvent
+              kind="finished"
+              thread={CHILD}
+              className="customize-msg"
+              style={delay(then.notes[0])}
+              body="Invite API and email are in: create, accept, expire."
+            />
+            {reduced ? null : (
+              <MockWorkingRow
+                at={`${then.work}s`}
+                endAt={`${then.workDone}s`}
+              />
+            )}
+            <MockChildEvent
+              kind="sent"
+              thread={CHILD}
+              className="customize-msg"
+              style={delay(then.notes[1])}
+              body="The screen sends email and role, then lists pending invites."
+            />
+            <MockChildEvent
+              kind="message"
+              thread={CHILD}
+              className="customize-msg"
+              style={delay(then.notes[2])}
+              body="Tested it end to end. Both sides match."
+            />
           </div>
         </>
       ) : null}
@@ -2041,10 +1903,6 @@ const FeedBody = memo(function FeedBody({
         >
           <span className="rhb-chart-head">
             <span className="rhb-chart-title">Flaky tests by package</span>
-            <span className="rhb-plugin-tag">
-              <PluginsIcon className="rhb-tag-ic" />
-              Generative UI
-            </span>
           </span>
           <span className="rhb-chart-sub">Last 7 days · 22 flaky runs</span>
           <span className="rhb-chart-rows">
@@ -2069,21 +1927,19 @@ const FeedBody = memo(function FeedBody({
 
       {f ? (
         <>
-          <div
-            className="rhb-user customize-msg"
-            data-room=""
-            style={delay(f.at.user)}
-          >
+          <MockUserBubble className="customize-msg" style={delay(f.at.user)}>
             {f.prompt}
-          </div>
+          </MockUserBubble>
           <Turn
             worked={f.worked}
             plan={f.at.turn}
             head={f.at.steps[0]}
-            doneAt={f.at.reply}
             reduced={reduced}
           />
-          <div className="rhb-say customize-msg" style={delay(f.at.reply)}>
+          <div
+            className="rhb-say customize-msg"
+            style={delay(f.at.reply + REPLY_AFTER)}
+          >
             {f.reply}
           </div>
           {f.fixes.map((x, i) => {
@@ -2098,10 +1954,6 @@ const FeedBody = memo(function FeedBody({
                 <span className="rhb-fix-text">
                   <span className="rhb-fix-head">
                     <span className="rhb-fix-title">{x.title}</span>
-                    <span className="rhb-plugin-tag">
-                      <PluginsIcon className="rhb-tag-ic" />
-                      Impromptu UI
-                    </span>
                   </span>
                   <span className="rhb-fix-sub">{x.sub}</span>
                 </span>
@@ -2381,7 +2233,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
       rows: [
         {
           title: "Refactor the timeline cache",
-          sub: "bb · main",
+          sub: "checkout-web · main",
           age: "5m",
           status: "waiting",
         },
@@ -2395,7 +2247,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
           : [
               {
                 title: scene.title,
-                sub: "bb · main",
+                sub: "checkout-web · main",
                 age: "now",
                 status: "running" as Status,
                 active: true,
@@ -2404,14 +2256,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         ...(chartF
           ? chartF.clicks.map((fi) => ({
               title: chartF.fixes[fi].title,
-              sub: "bb · ci",
+              sub: "checkout-web · ci",
               age: "3m",
               status: "running" as Status,
             }))
           : []),
         {
           title: "Sentry errors",
-          sub: "checkout-web",
+          sub: "checkout-web · main",
           age: "9m",
           status: "running",
         },
@@ -2422,7 +2274,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
       rows: [
         {
           title: "Nightly changelog",
-          sub: "site · main",
+          sub: "checkout-web · main",
           age: "1h",
           status: "unread",
         },
@@ -2435,7 +2287,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         .reverse()
         .map((sc) => ({
           title: sc.title,
-          sub: "bb · main",
+          sub: "checkout-web · main",
           age: "8m",
           status: "done" as Status,
         })),
@@ -2525,11 +2377,23 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             return tk.statusAt == null ? (
                               <ThreadStatus status="running" />
                             ) : (
-                              <Swap
-                                className="rhb-status-swap"
-                                at={tk.statusAt}
-                                a={<ThreadStatus status="running" />}
-                                b={<ThreadStatus status={statusOf(k)} />}
+                              <StatusTrack
+                                phases={[
+                                  { at: 0, status: "running" },
+                                  { at: tk.statusAt, status: statusOf(k) },
+                                  ...(tk.then
+                                    ? [
+                                        {
+                                          at: tk.then.work,
+                                          status: "running" as const,
+                                        },
+                                        {
+                                          at: tk.then.workDone + FURL_FOR,
+                                          status: statusOf(k),
+                                        },
+                                      ]
+                                    : []),
+                                ]}
                               />
                             );
                           })()
@@ -2546,16 +2410,18 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         >
                           <div className="rhb-row rhb-kid">
                             <CHILD.icon className="rhb-kid-ic" />
-                            <span className="rhb-row-title">{CHILD.title}</span>
+                            <span className="rhb-row-title">{CHILD.label}</span>
                             {k === idx && then && !reduced ? (
-                              <Swap
-                                className="rhb-status-swap"
-                                at={then.notes[0] - CHECK_LEAD}
-                                a={<ThreadStatus status="running" />}
-                                b={<ThreadStatus status="done" />}
+                              <StatusTrack
+                                phases={[
+                                  { at: 0, status: "running" },
+                                  { at: then.notes[0], status: "unread" },
+                                  { at: then.notes[1], status: "running" },
+                                  { at: then.notes[2], status: "unread" },
+                                ]}
                               />
                             ) : (
-                              <ThreadStatus status="done" />
+                              <ThreadStatus status="unread" />
                             )}
                           </div>
                         </div>
@@ -2596,10 +2462,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                 </div>
                 {uses("grouped") ? (
                   <div className="rhb-list rhb-list-grouped">
-                    <div className="rhb-plugin-tag">
-                      <PluginsIcon className="rhb-tag-ic" />
-                      Grouped by status
-                    </div>
                     {groups.map((g) => (
                       <div key={g.name}>
                         <div className="rhb-label" data-k={`g:${g.name}`}>
@@ -2674,56 +2536,23 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                   reduced={reduced}
                   out={k < idx}
                   pre={k > idx}
+                  swap={k > 0}
                   onIn={k === idx ? clearOut : undefined}
                 />
               ))}
             </div>
 
-            <div className="rhb-dock-wrap">
-              <div className="rhb-box">
-                <div className="rhb-input">
-                  <ComposerText
-                    demo={scene.id === "composer" && n === 1}
-                    leaving={
-                      outgoing != null && SCENES[outgoing].id === "composer"
-                    }
-                  />
-                </div>
-                <div className="rhb-box-row">
-                  <PlusIcon className="rhb-ic" />
-                  <span className="rhb-model">
-                    <ClaudeIcon className="rhb-model-ic" />
-                    <span className="rhb-model-name">Opus 5.5</span>{" "}
-                    <span className="rhb-model-sub">Medium</span>
-                    <ChevronDown className="rhb-chev" />
-                  </span>
-                  <span className="rhb-box-end">
-                    <MicIcon className="rhb-ic" />
-                    <span className="rhb-send">
-                      <ReturnIcon className="rhb-send-ic" />
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="rhb-context">
-                <span className="rhb-ctx">
-                  <FolderIcon className="rhb-ctx-ic" />
-                  checkout-web
-                </span>
-                <span className="rhb-ctx">
-                  <FolderGitIcon className="rhb-ctx-ic" />
-                  Worktree
-                </span>
-                <span className="rhb-ctx">
-                  <BranchIcon className="rhb-ctx-ic" />
-                  main
-                </span>
-                <span className="rhb-perm">
-                  Full Access
-                  <ChevronDown className="rhb-chev" />
-                </span>
-              </div>
-            </div>
+            <MockComposer
+              project="checkout-web"
+              input={
+                <ComposerText
+                  demo={scene.id === "composer" && n === 1}
+                  leaving={
+                    outgoing != null && SCENES[outgoing].id === "composer"
+                  }
+                />
+              }
+            />
           </div>
         </div>
 

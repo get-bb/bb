@@ -65,7 +65,9 @@ export function HeroWindow({
   return (
     <section
       ref={ref}
-      className={paused ? "mockup-wrap rhb is-paused" : "mockup-wrap rhb"}
+      className={
+        paused ? "mockup-wrap mock-ui rhb is-paused" : "mockup-wrap mock-ui rhb"
+      }
     >
       <div
         ref={winRef}

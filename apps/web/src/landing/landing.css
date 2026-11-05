@@ -3873,3 +3873,411 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-self: stretch;
   }
 }
+
+.mock-ui {
+  font-size: 13px;
+}
+
+.mock-ui .rhb-user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 9px 15px;
+  border: 1px solid
+    var(--rhb-seam, color-mix(in oklch, var(--ink) 9.5%, var(--bg)));
+  border-radius: 12px;
+  background: var(--surface-recessed);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.mock-ui .rhb-work {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  line-height: 20px;
+  color: var(--dim);
+}
+
+.mock-ui .rhb-step-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 0;
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-step-ic.is-plugin {
+  color: var(--accent);
+}
+
+.mock-ui .rhb-work-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mock-ui .rhb-work-plugin .rhb-work-text {
+  color: var(--ink);
+}
+
+.mock-ui .rhb-work-spin {
+  width: 14px;
+  height: 14px;
+  margin-top: 0;
+}
+
+.mock-ui .rhb-verb {
+  color: var(--dim);
+}
+
+.mock-ui .rhb-em {
+  font-weight: 500;
+  color: color-mix(in oklch, var(--ink) 78%, var(--bg));
+}
+
+.mock-ui .rhb-file {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.mock-ui .rhb-diff {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.mock-ui .rhb-diff .is-add {
+  color: var(--add);
+}
+
+.mock-ui .rhb-diff .is-del {
+  color: var(--del);
+}
+
+.mock-ui .rhb-dur {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--subtle);
+  opacity: 0.75;
+}
+
+.mock-ui .rhb-box {
+  padding: 11px 13px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-lift);
+}
+
+.mock-ui .rhb-input {
+  position: relative;
+  min-height: 42px;
+  overflow: visible;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+}
+
+.mock-ui .rhb-placeholder {
+  display: block;
+  overflow: hidden;
+  color: var(--subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mock-ui .rhb-input .rhb-placeholder {
+  position: absolute;
+  inset: 0 0 auto;
+}
+
+.mock-ui .rhb-box-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  margin-top: 6px;
+}
+
+.mock-ui .rhb-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.mock-ui .rhb-model-sub {
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-model-ic {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.mock-ui .rhb-box-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-md);
+  margin-left: auto;
+}
+
+.mock-ui .rhb-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--ink) 35%, var(--bg));
+  color: var(--bg);
+}
+
+.mock-ui .rhb-send-ic {
+  width: 15px;
+  height: 15px;
+}
+
+.mock-ui .rhb-context {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: var(--text-label-small);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.mock-ui .rhb-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mock-ui .rhb-ctx-ic {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  margin-left: auto;
+  color: var(--dim);
+}
+
+.mock-ui .rhb-gen {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+}
+
+.mock-ui .rhb-gen-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.mock-ui .rhb-gen-ic {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.mock-ui .rhb-gen-subject {
+  overflow: hidden;
+  font-weight: 500;
+  color: var(--ink);
+  text-overflow: ellipsis;
+}
+
+.mock-ui .rhb-gen-verb {
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.mock-ui .rhb-gen-body {
+  position: relative;
+  margin: 4px 0 2px;
+  padding-left: 20px;
+  overflow: hidden;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mock-ui .rhb-gen-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 6px;
+  width: 1px;
+  background: var(--rhb-seam, color-mix(in oklch, var(--ink) 9.5%, var(--bg)));
+}
+
+.mock-ui .rhb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface-recessed) 50%, transparent);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink);
+}
+
+.mock-ui .rhb-pill-ic {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.mock-ui .rhb-turn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 0;
+  line-height: 20px;
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-shimmer-text {
+  background: linear-gradient(
+      90deg,
+      var(--dim) 0%,
+      var(--dim) 40%,
+      var(--ink) 50%,
+      var(--dim) 60%,
+      var(--dim) 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: var(--dim);
+  -webkit-text-fill-color: transparent;
+  animation: rhb-shimmer 2s linear infinite;
+}
+
+@keyframes rhb-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+.mock-ui .rhb-gen-head {
+  min-width: 0;
+}
+
+.mock-ui .rhb-pill {
+  min-width: 0;
+}
+
+.mock-ui .rhb-pill-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@keyframes rhb-reveal {
+  from {
+    display: none;
+  }
+}
+
+.mock-ui .rhb-turn-head {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.mock-ui .rhb-turn-head > .rhb-turn {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mock-ui .rhb-turn-head.is-opening {
+  animation: rhb-turn-open 0.3s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes rhb-turn-open {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: -6px;
+    opacity: 0;
+  }
+}
+
+.mock-ui .rhb-working {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: rhb-reveal 0s linear backwards;
+}
+
+.mock-ui .rhb-working-label {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 8px;
+  line-height: 20px;
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-working.is-ending {
+  animation:
+    rhb-reveal 0s linear backwards,
+    rhb-working-end 0.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes rhb-working-end {
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: calc(-1 * var(--rhb-feed-gap, 12px));
+    opacity: 0;
+  }
+}
+
+.mock-ui .rhb-turn .rhb-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mock-ui .rhb-shimmer-text {
+    animation: none;
+    background: none;
+    color: var(--dim);
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .mock-ui .rhb-turn-head.is-opening,
+  .mock-ui .rhb-working.is-ending {
+    animation: none;
+  }
+}
