@@ -541,20 +541,7 @@ function AgentStepContainer({
                 <AgentSignInInstruction
                   agentName={health.displayName}
                   view={view}
-                  alternate={
-                    signIn.hasAlternateMethod
-                      ? signIn.method === "local"
-                        ? "code"
-                        : "browser"
-                      : null
-                  }
                   onOpenUrl={openUrlInExternalBrowser}
-                  onUseAlternate={() =>
-                    void startSignIn(
-                      health.providerId,
-                      signIn.method === "local" ? "remote" : "local",
-                    )
-                  }
                 />
               ) : undefined,
             state: resolveAgentSetupState({
