@@ -1134,7 +1134,7 @@ describe("environment providers are asked inside provisioning", () => {
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
-        onInspectGitSource: () => {
+        onInspectGitCheckout: () => {
           if (ownerThreadId === null) return;
           refreshAssignments.push({
             preparationAttached:
@@ -1394,21 +1394,18 @@ describe("environment providers are asked inside provisioning", () => {
       registerTestHostRpcCapture(harness, {
         hostId: host.id,
         sessionId: session.id,
-        gitSourceInspectionResult: {
-          isWorktree: false,
+        gitCheckoutInspectionResult: {
           checkout: {
             kind: "branch",
             branchName: "release",
             headSha: "def456",
           },
-          defaultBranch: "main",
-          defaultBranchRelation: "local-ahead",
-          hasUncommittedChanges: false,
-          operation: { kind: "none" },
-          originDefaultBranch: "origin/main",
+        },
+        onInspectGitCheckout: (command) => {
+          inspected.push(`${command.type} ${command.path}`);
         },
         onInspectGitSource: (command) => {
-          inspected.push(command.path);
+          inspected.push(`${command.type} ${command.path}`);
         },
       });
       installTarget({
@@ -1432,8 +1429,11 @@ describe("environment providers are asked inside provisioning", () => {
       expect(getThread(harness.db, created.id)?.environmentId).toBe(
         attached.id,
       );
-      expect(inspected).toEqual(["/tmp/environment-providers-refresh-branch"]);
+      expect(inspected).toEqual([
+        "host.inspect_git_checkout /tmp/environment-providers-refresh-branch",
+      ]);
       expect(getEnvironment(harness.db, attached.id)).toMatchObject({
+        defaultBranch: attached.defaultBranch,
         environmentProviderInstanceKey: attached.environmentProviderInstanceKey,
         environmentProviderSelection: attached.environmentProviderSelection,
       });
@@ -1465,18 +1465,12 @@ describe("environment providers are asked inside provisioning", () => {
         registerTestHostRpcCapture(harness, {
           hostId: host.id,
           sessionId: session.id,
-          gitSourceInspectionResult: {
-            isWorktree: false,
+          gitCheckoutInspectionResult: {
             checkout: {
               kind: "branch",
               branchName: "bb/next-thread",
               headSha: "def456",
             },
-            defaultBranch: "main",
-            defaultBranchRelation: "local-ahead",
-            hasUncommittedChanges: false,
-            operation: { kind: "none" },
-            originDefaultBranch: "origin/main",
           },
         });
         installTarget({
