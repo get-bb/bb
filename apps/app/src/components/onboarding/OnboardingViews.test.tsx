@@ -757,13 +757,13 @@ describe("RedesignedDevicesStep", () => {
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
 
-  it("shows only the machine section when bb connect contributes nothing", () => {
+  it("adds no row of its own when bb connect contributes nothing", () => {
     render(
       <TooltipProvider>
         <RedesignedDevicesStep
           hostName="bee"
           connectSection={null}
-          showMachines
+          showMachines={false}
           addMachinePanel={null}
           onAddMachine={vi.fn()}
           onCloseAddMachine={vi.fn()}
@@ -773,6 +773,31 @@ describe("RedesignedDevicesStep", () => {
 
     expect(screen.queryByText("Where you use bb")).toBeNull();
     expect(screen.queryByText(/turned off on this server/u)).toBeNull();
-    screen.getByText("Add another machine");
+    expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.queryByText("Get the mobile app")).toBeNull();
+  });
+
+  it("puts bb connect above Add another machine once it is on", () => {
+    render(
+      <TooltipProvider>
+        <RedesignedDevicesStep
+          hostName="bee"
+          connectSection={<li>bb connect</li>}
+          showMachines
+          addMachinePanel={null}
+          onAddMachine={vi.fn()}
+          onCloseAddMachine={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    const connect = screen.getByText("bb connect");
+    const machines = screen.getByText("Add another machine");
+    expect(
+      connect.compareDocumentPosition(machines) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText("Get the mobile app")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

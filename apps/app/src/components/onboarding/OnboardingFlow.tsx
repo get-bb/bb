@@ -1096,7 +1096,7 @@ function DevicesStepContainer({
   const connectContributesSection = usePluginSlots().setupGuideSections.some(
     (section) => section.pluginId === CONNECT_PLUGIN_ID,
   );
-  const showMachines = devicesShowMachines(connect, connectContributesSection);
+  const showMachines = devicesShowMachines(connect);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
