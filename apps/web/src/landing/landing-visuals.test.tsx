@@ -341,7 +341,8 @@ describe("DelegationTree", () => {
     expect(html.match(/rhb-gen-verb">finished/g)).toHaveLength(2);
     expect(html).not.toContain("Child thread updates");
     expect(html.match(/class="bw-toast"/g)).toHaveLength(1);
-    expect(html).toContain("Review the diff needs your approval");
+    expect(html).toContain(">Waiting for your input<");
+    expect(html).toContain('class="bw-toast-title">Review the diff<');
   });
 });
 

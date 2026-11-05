@@ -2977,6 +2977,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-lead .leaving .bw-toast {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  left: calc(var(--bw-fit-slice) - 360px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 344px;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: var(--shadow-pop);
+  animation: bw-toast 0.7s var(--ease-out-expo) var(--fw-at, 0s) both;
+}
+
+.leaving .bw-toast {
   animation-delay: 0s;
 }
 
@@ -3082,27 +3099,46 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-toast-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius);
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
 }
 
 .bw-toast-text {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
+  font-size: var(--text-body-sm);
   line-height: 1.35;
+  color: var(--ink);
 }
 
-.bw-toast-app {
+.bw-toast-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bw-toast-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bw-toast-time {
+  flex-shrink: 0;
   font-size: var(--text-label-small);
   color: var(--subtle);
 }
 
 .bw-toast-body {
-  font-size: var(--text-body-sm);
-  font-weight: 500;
-  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .bw-group {
@@ -3131,8 +3167,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     clamp(0.74, var(--mock-slice-ratio, 1) * 1.25, 1) * var(--bw-phone-size)
   );
   --bw-drop: clamp(0, (0.968 - var(--mock-slice-ratio, 1)) * 1000, 1);
+  --bw-phone-down: calc((1 - var(--bw-drop)) * 56px);
   --bw-stage-pad: calc(
-    (1 - var(--bw-drop)) * 24px + var(--bw-drop) *
+    (1 - var(--bw-drop)) * 24px + var(--bw-phone-down) + var(--bw-drop) *
       (656px * var(--bw-overlay-scale) - 150px)
   );
   position: relative;
@@ -3164,7 +3201,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 50px;
   background: var(--phone-body);
   box-shadow: var(--shadow-phone);
-  transform: scale(var(--bw-overlay-scale));
+  transform: translateY(var(--bw-phone-down)) scale(var(--bw-overlay-scale));
   transform-origin: right bottom;
 }
 
@@ -3300,7 +3337,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-say {
-  padding: 4px 8px;
+  padding: 4px 8px 4px 0;
   font-size: var(--mock-text-lg);
   line-height: 24px;
   color: var(--ink);
@@ -3316,7 +3353,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-feed .bw-step {
-  padding: 0 8px;
+  padding: 0 8px 0 0;
   font-size: var(--mock-text-lg);
   line-height: 20px;
 }
@@ -3370,7 +3407,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-m-working {
   min-height: 28px;
   margin-top: 16px;
-  padding: 0 8px;
+  padding: 0 8px 0 0;
   font-size: var(--mock-text-lg);
   line-height: 28px;
   color: var(--dim);
