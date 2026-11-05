@@ -746,7 +746,7 @@ describe("createHostDaemonApp", () => {
         contributedEnv: [],
       },
       method: "listModels",
-      waitsForFreshShellEnv: true,
+      waitsForFreshShellEnv: false,
     },
     {
       command: {
@@ -755,7 +755,7 @@ describe("createHostDaemonApp", () => {
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       },
       method: "providerHealth",
-      waitsForFreshShellEnv: true,
+      waitsForFreshShellEnv: false,
     },
     {
       command: {
@@ -779,6 +779,7 @@ describe("createHostDaemonApp", () => {
   ];
 
   async function createExpiredShellEnvApp(args: {
+    providerInstallationRun?: AgentRuntime["providerInstallationRun"];
     resolvedAtMs: number | null;
   }) {
     const dataDir = await makeTempDir("bb-host-daemon-app-expired-env-");
@@ -808,7 +809,7 @@ describe("createHostDaemonApp", () => {
       ),
       providerInstallationRun: recordCall(
         "providerInstallationRun",
-        runtime.providerInstallationRun,
+        args.providerInstallationRun ?? runtime.providerInstallationRun,
       ),
     };
     const app = await createHostDaemonApp({
@@ -886,6 +887,54 @@ describe("createHostDaemonApp", () => {
       }
     },
   );
+
+  it("re-reads the shell env after an installation so the next health check sees it", async () => {
+    const { app, calls, resolveRuntimeShellEnv, runtimeOptions } =
+      await createExpiredShellEnvApp({
+        providerInstallationRun: async () => ({
+          available: false,
+          message: "Installed outside the runtime",
+        }),
+        resolvedAtMs: 1_000,
+      });
+    resolveRuntimeShellEnv
+      .mockResolvedValueOnce({ PATH: "/before-install/bin:/usr/bin" })
+      .mockResolvedValueOnce({ PATH: "/after-install/bin:/usr/bin" });
+    try {
+      await expect(
+        app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: "install-then-health-install",
+          command: {
+            type: "provider.installation.run",
+            providerId: "codex",
+            action: "install",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(2);
+
+      await expect(
+        app.router.handleOnlineRpcRequest({
+          type: "host-rpc.request",
+          requestId: "install-then-health-health",
+          command: {
+            type: "provider.health",
+            providerId: "codex",
+            bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(calls).toEqual(["providerInstallationRun", "providerHealth"]);
+      expect(resolveRuntimeShellEnv).toHaveBeenCalledTimes(2);
+      expect(runtimeOptions.current?.env).toEqual({
+        PATH: "/after-install/bin:/usr/bin",
+      });
+    } finally {
+      await app.daemon.shutdown("test", 0);
+    }
+  });
 
   it("waits for the first shell env resolution before listing commands", async () => {
     const {

@@ -19,6 +19,7 @@ export interface RuntimeShellEnvRefreshArgs {
 
 export interface RuntimeShellEnvCache {
   refresh(args: RuntimeShellEnvRefreshArgs): Promise<RuntimeShellEnv>;
+  reload(): Promise<void>;
 }
 
 export function createRuntimeShellEnvCache(
@@ -26,7 +27,7 @@ export function createRuntimeShellEnvCache(
 ): RuntimeShellEnvCache {
   const resolveShellEnv = options.resolveShellEnv;
   let hasResolvedEnv = options.resolvedAtMs !== undefined;
-  const startupFreshUntil =
+  let startupFreshUntil =
     options.resolvedAtMs === undefined
       ? -Infinity
       : options.resolvedAtMs + options.ttlMs;
@@ -36,7 +37,7 @@ export function createRuntimeShellEnvCache(
     maxEntries: 1,
   });
 
-  return {
+  const shellEnvCache: RuntimeShellEnvCache = {
     async refresh({ allowStale }) {
       if (!resolveShellEnv || options.now() < startupFreshUntil) {
         return options.readShellEnv();
@@ -57,5 +58,13 @@ export function createRuntimeShellEnvCache(
       }
       return resolved;
     },
+    async reload() {
+      startupFreshUntil = -Infinity;
+      cache.clear();
+      await shellEnvCache
+        .refresh({ allowStale: false })
+        .catch(options.onRefreshError);
+    },
   };
+  return shellEnvCache;
 }

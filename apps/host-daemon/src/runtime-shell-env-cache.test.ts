@@ -167,4 +167,21 @@ describe("createRuntimeShellEnvCache", () => {
       PATH: "/new/bin",
     });
   });
+
+  it("reload resolves again inside the refresh window and keeps the last environment on failure", async () => {
+    const fixture = createFixture({ resolvedAtMs: 0, startupPath: "/old/bin" });
+    const failure = new Error("login shell timed out");
+    fixture.resolveShellEnv
+      .mockResolvedValueOnce({ PATH: "/installed/bin" })
+      .mockRejectedValueOnce(failure);
+    fixture.setTime(10);
+
+    await fixture.cache.reload();
+    expect(fixture.readAppliedPath()).toBe("/installed/bin");
+
+    await expect(fixture.cache.reload()).resolves.toBeUndefined();
+    expect(fixture.onRefreshError).toHaveBeenCalledWith(failure);
+    expect(fixture.readAppliedPath()).toBe("/installed/bin");
+    expect(fixture.resolveShellEnv).toHaveBeenCalledTimes(2);
+  });
 });

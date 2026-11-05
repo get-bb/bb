@@ -732,7 +732,7 @@ export async function createHostDaemonApp(
     onRefreshError: (error) => {
       options.logger.warn(
         { err: error },
-        "Background login-shell environment refresh failed",
+        "Login-shell environment refresh failed",
       );
     },
     readShellEnv: () => runtimeManager.getShellEnv(),
@@ -848,7 +848,7 @@ export async function createHostDaemonApp(
       }),
     runtimeManager,
     listModels: (args) =>
-      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
         runtime.listModels(args),
       ),
     listCommands: (args) =>
@@ -856,7 +856,7 @@ export async function createHostDaemonApp(
         runtime.listCommands(args),
       ),
     providerHealth: (args) =>
-      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
+      withMaintenanceRuntime({ allowStale: true }, (runtime) =>
         runtime.providerHealth(args),
       ),
     providerUsage: (args) =>
@@ -867,10 +867,14 @@ export async function createHostDaemonApp(
       withMaintenanceRuntime({ allowStale: false }, (runtime) =>
         runtime.providerInstallationStatus(args),
       ),
-    providerInstallationRun: (args) =>
-      withMaintenanceRuntime({ allowStale: false }, (runtime) =>
-        runtime.providerInstallationRun(args),
-      ),
+    providerInstallationRun: async (args) => {
+      const result = await withMaintenanceRuntime(
+        { allowStale: false },
+        (runtime) => runtime.providerInstallationRun(args),
+      );
+      await runtimeShellEnvCache.reload();
+      return result;
+    },
     refreshShellEnv: async (args) => {
       await runtimeShellEnvCache.refresh(args);
     },
