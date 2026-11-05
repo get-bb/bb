@@ -180,7 +180,7 @@ const SCENES: Scene[] = [
       {
         kind: "cmd",
         verb: "Ran",
-        em: 'bb thread spawn --project shop --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
+        em: 'bb thread spawn --project checkout-web --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
         dur: "0.8s",
       },
       {
@@ -423,7 +423,7 @@ const CLICK_GAP = 1.8;
 const KID_AFTER_CLICK = 0.75;
 const BEAT = 0.3;
 const STATUS_BEAT = 0.2;
-const NOTE_SETTLE = 0.55;
+const CHECK_LEAD = 1.68;
 
 const PANEL_OPEN = 0.7;
 const RAIL_IN = 0.4;
@@ -2550,7 +2550,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             {k === idx && then && !reduced ? (
                               <Swap
                                 className="rhb-status-swap"
-                                at={then.notes[0] + NOTE_SETTLE}
+                                at={then.notes[0] - CHECK_LEAD}
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status="done" />}
                               />
