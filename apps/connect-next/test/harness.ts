@@ -348,6 +348,15 @@ export async function startOrigin(options: OriginOptions) {
       response.end(body);
       return;
     }
+    if (path === "/fake-offline") {
+      response.writeHead(503, {
+        "content-type": "text/plain",
+        "x-bb-gate-offline": "1",
+        "x-bb-gate-anything": "1",
+      });
+      response.end("the bb itself answered 503");
+      return;
+    }
     if (path === "/set-cookies") {
       response.writeHead(200, {
         "content-type": "text/plain",

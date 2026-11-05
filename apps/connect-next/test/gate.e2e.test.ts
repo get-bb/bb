@@ -1258,7 +1258,37 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       expect((await mcp("tok-good", {})).status).toBe(200);
     });
 
+    it("strips platform cookies both ways and never passes the bb's own x-bb-gate-* answer headers on", async () => {
+      const before = origin.seen.length;
+      await forwardedGet("/echo?forwarded-cookies", {
+        cookie: `${SESSION}=sess-owner; theme=dark; ${DESKTOP}=x; __Secure-better-auth.session_data=y`,
+        "x-bb-gate-auth": "machine",
+        [GATE_ASSERTION_HEADER]: "forged.assertion",
+      });
+      const seen = origin.seen
+        .slice(before)
+        .find((entry) => entry.url === "/echo?forwarded-cookies");
+      expect(seen?.assertion?.ok).toBe(true);
+      expect(seen?.headers.cookie).toBe("theme=dark");
+      expect(seen?.headers["x-bb-gate-auth"]).toBe("session");
+      const cookies = await forwardedGet("/set-cookies");
+      expect(cookies.headers["set-cookie"]).toEqual(["kept=1; Path=/"]);
+
+      const reached = origin.seen.length;
+      const fake = await forwardedGet("/fake-offline", {
+        [GATE_FAST_OFFLINE_HEADER]: "1",
+      });
+      expect(origin.seen.length).toBe(reached + 1);
+      expect(fake.status).toBe(503);
+      expect(fake.text).toBe("the bb itself answered 503");
+      expect(fake.headers[GATE_OFFLINE_HEADER]).toBeUndefined();
+      expect(fake.headers["x-bb-gate-anything"]).toBeUndefined();
+      const direct = await get("/fake-offline");
+      expect(direct.headers[GATE_OFFLINE_HEADER]).toBeUndefined();
+    });
+
     it("answers fast offline at once, before reading the body, only when asked by an authenticated forward", async () => {
+      const reachedBefore = origin.seen.length;
       const wasp = `wasp.${BASE_DOMAIN}`;
       const waspForward = {
         ...FORWARDED,
@@ -1271,6 +1301,7 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       expect(fast.status).toBe(503);
       expect(fast.headers[GATE_OFFLINE_HEADER]).toBe("1");
       expect(fast.headers["content-type"]).toContain("text/plain");
+      expect(origin.seen.length).toBe(reachedBefore);
       expect(fast.text).not.toContain("<html");
       const ignored = await visit(gate.webPort, wasp, "/", {
         headers: {

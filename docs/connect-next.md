@@ -9,14 +9,14 @@ connect Postgres database (PlanetScale, reached through Hyperdrive); only the da
 
 ## Pieces
 
-| Piece          | Where                                                                       | Owns                                                                                                                                                                                                                       |
-| -------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)         | Names, wire types, gate assertion signing and verification                                                                                                                                                                 |
+| Piece          | Where                                                                       | Owns                                                                                                                                                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)         | Names, wire types, gate assertion signing and verification                                                                                                                                                                                                  |
 | Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                              | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN`; KV `CONNECT_DB_FLAGS` (Rollout) |
-| Gate keys      | `apps/web` (getbb.app apex)                                                 | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth           |
-| Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                             | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                   |
-| Server ingress | `apps/server/src/services/connect-next`                                     | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                              |
-| Plugin         | `plugins/connect-next` (builtin id `bb--connect-next`, disabled by default) | Downloads, verifies, configures and supervises `frpc`; settings, status, RPC, CLI                                                                                                                                          |
+| Gate keys      | `apps/web` (getbb.app apex)                                                 | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth                                            |
+| Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                             | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                                                    |
+| Server ingress | `apps/server/src/services/connect-next`                                     | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                                                               |
+| Plugin         | `plugins/connect-next` (builtin id `bb--connect-next`, disabled by default) | Downloads, verifies, configures and supervises `frpc`; settings, status, RPC, CLI                                                                                                                                                                           |
 
 ## Request path and checks
 
@@ -384,11 +384,11 @@ Forward (Worker → gate). The Worker sends the request (method, path and query,
 headers unchanged; WebSocket upgrades too) to `https://<sub>.<NEXT_BASE_DOMAIN><path>`, where `<sub>`
 is `<label>` or `<label>--<port>`, with:
 
-| Header                                                | Value                                                                                            |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `x-bb-gate-forwarded-host` (`GATE_FORWARDED_HOST_HEADER`) | The visitor's public host, `<sub>.<BASE_DOMAIN>` (`bee.getbb.app`; a port only in local runs)    |
-| `x-bb-gate-forwarded-auth` (`GATE_FORWARDED_AUTH_HEADER`) | `Bearer <GATE_SECRET>`, the secret the gate already sends to the account API                     |
-| `x-bb-gate-fast-offline` (`GATE_FAST_OFFLINE_HEADER`)     | Optional, `1`: answer offline at once instead of waiting, so the Worker can fall back            |
+| Header                                                    | Value                                                                                         |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `x-bb-gate-forwarded-host` (`GATE_FORWARDED_HOST_HEADER`) | The visitor's public host, `<sub>.<BASE_DOMAIN>` (`bee.getbb.app`; a port only in local runs) |
+| `x-bb-gate-forwarded-auth` (`GATE_FORWARDED_AUTH_HEADER`) | `Bearer <GATE_SECRET>`, the secret the gate already sends to the account API                  |
+| `x-bb-gate-fast-offline` (`GATE_FAST_OFFLINE_HEADER`)     | Optional, `1`: answer offline at once instead of waiting, so the Worker can fall back         |
 
 Gate checks (`src/forwarded.ts`, before anything else, on HTTP and WebSocket upgrades):
 
@@ -422,6 +422,18 @@ A forwarded visit's public origin is `<PUBLIC_SCHEME>://<forwarded host>` instea
   tokens do not.
 - The sign-in page's `returnTo`, and the machine page's share address (`<label>--<port>.getbb.app`).
 
+Cookies and headers are handled as on a direct visit, which matters because the Worker returns Fly's
+response unchanged and no longer filters it: platform cookies (`better-auth.*`, `bb-connect.*`, with
+or without `__Secure-`) are dropped from the request before frps, and platform cookies, `Domain=`
+cookies and combined cookie lines are dropped from the bb's responses; the only platform cookies a
+visitor receives are the ones the gate sets itself (session and desktop-session renewals). The gate
+also drops every `x-bb-gate-*` header from the bb's responses, so a bb or a shared dev server cannot
+answer `x-bb-gate-offline` and make the Worker replay a request it already handled.
+
+`cf-connecting-ip`, `x-forwarded-for` and similar client-address headers are passed through as the
+Worker sent them (and frps adds its own `X-Forwarded-For`). Neither the gate nor the bb server reads
+them for anything; nothing may trust them, since a direct visitor can send the same headers.
+
 `Host` upstream stays the next host (frps routes on it) and frps itself sets `X-Forwarded-Host` to it,
 so the bb server cannot tell a forwarded visit from a direct one; anything it builds from the request
 host (`/api/v1/system` `serverUrl` without `BB_APP_URL`) names the next address.
@@ -430,7 +442,10 @@ Fast offline. On a forwarded visit with `x-bb-gate-fast-offline: 1`, when the la
 held by any gate machine after the normal lookup (local, then peers, up to 1.5 s), the gate answers
 at once `503` with `x-bb-gate-offline: 1` (`GATE_OFFLINE_HEADER`), `cache-control: no-store` and a
 plain-text body: no 15 s reconnect wait and no HTML page. It decides before reading the request body,
-which it then discards. A label held by another gate machine is still replayed with `fly-replay` (or
+which it then discards. `x-bb-gate-offline: 1` therefore means the request reached no bb: it is
+set only on this reply (route found no holder, or a holder's peer listener answered
+`x-bb-gate-peer-miss` without passing the request to its frps), and stripped from every answer that
+came from a bb, so the Worker may replay the request on its Cloudflare tunnel. A label held by another gate machine is still replayed with `fly-replay` (or
 proxied over the private network for a large body); the target re-checks the forward headers, which
 Fly's replay keeps, and answers fast offline itself if the label is gone there too. The header is
 ignored on a direct visit and on a forward with any other value; a peer miss on a forwarded
@@ -527,26 +542,26 @@ chunk by chunk. Logs are JSON lines on stdout without cookies, tokens, credentia
 
 Environment (`fly.toml` sets the non-secret ones):
 
-| Variable                                            | Default                | Meaning                                                                                                            |
-| --------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `BASE_DOMAIN`                                       | `next.getbb.app`       | Visitor hosts are `<label>[--<port>].<BASE_DOMAIN>`, the tunnel host `tunnel.<BASE_DOMAIN>`                        |
-| `FORWARDED_BASE_DOMAIN`                             | `BASE_DOMAIN` minus `next.` | Public domain of forwarded visits (see Serving getbb.app addresses)                                      |
-| `ACCOUNT_API_URL`                                   | required               | Origin of the account API, `https://connect.getbb.app` (staging `https://connect.vibecodethis.site`)               |
-| `ACCOUNT_APP_URL`                                   | `https://getbb.app`    | Sign-in, reserved-handle redirects, OAuth authorization server, session refresh                                    |
-| `PUBLIC_SCHEME`                                     | `https`                | `http` only for local runs; it also switches to the non-`__Secure-` cookie names                                   |
-| `PORT`, `BIND_HOST`                                 | `8080`, `0.0.0.0`      | Gate listener                                                                                                      |
-| `FRP_BIND_PORT`, `FRP_VHOST_PORT`, `FRP_HOOKS_PORT` | `7001`, `7080`, `7090` | Loopback ports of `frps` and its hooks                                                                             |
-| `FRP_TCP_PORT`                                      | unset                  | Also accept frp's plain TCP transport on this port (for a Fly `tls` service on 7000, which needs a dedicated IPv4) |
-| `FRPS`, `FRP_LOG_LEVEL`                             | `frps`, `info`         | `frps` binary and log level                                                                                        |
-| `FLY_REGION`, `FLY_MACHINE_ID`                      | `local`                | Set by Fly; reported with presence and used as this machine's identity between peers                               |
-| `FLY_APP_NAME`                                      | required with peers    | Set by Fly; peers are the `AAAA` records of `<FLY_APP_NAME>.internal`                                              |
-| `INTERNAL_PORT`                                     | `7100`                 | Peer listener; reachable on the private network only, no `fly.toml` service exposes it                             |
-| `INTERNAL_BIND_HOST`                                | `fly-local-6pn`        | Address of the peer listener (this machine's 6PN address)                                                          |
-| `PEER_REFRESH_MS`                                   | `30000`                | How often peers are rediscovered over internal DNS                                                                 |
-| `CACHE_MAX_BYTES`, `CACHE_MAX_ENTRY_BYTES`          | 256 MiB, 8 MiB         | Asset cache bounds                                                                                                 |
-| `PRESENCE_REFRESH_MS`                               | `240000`               | Presence refresh interval while a label is held (each label at a jittered point in it)                             |
-| `OPEN_FILES_LIMIT`                                  | `65536` (image)        | Open-file limit set before the gate starts                                                                         |
-| `ASSETLINKS_SHA256_FINGERPRINTS`                    | empty                  | Android app links, as on the Cloudflare gate                                                                       |
+| Variable                                            | Default                     | Meaning                                                                                                            |
+| --------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `BASE_DOMAIN`                                       | `next.getbb.app`            | Visitor hosts are `<label>[--<port>].<BASE_DOMAIN>`, the tunnel host `tunnel.<BASE_DOMAIN>`                        |
+| `FORWARDED_BASE_DOMAIN`                             | `BASE_DOMAIN` minus `next.` | Public domain of forwarded visits (see Serving getbb.app addresses)                                                |
+| `ACCOUNT_API_URL`                                   | required                    | Origin of the account API, `https://connect.getbb.app` (staging `https://connect.vibecodethis.site`)               |
+| `ACCOUNT_APP_URL`                                   | `https://getbb.app`         | Sign-in, reserved-handle redirects, OAuth authorization server, session refresh                                    |
+| `PUBLIC_SCHEME`                                     | `https`                     | `http` only for local runs; it also switches to the non-`__Secure-` cookie names                                   |
+| `PORT`, `BIND_HOST`                                 | `8080`, `0.0.0.0`           | Gate listener                                                                                                      |
+| `FRP_BIND_PORT`, `FRP_VHOST_PORT`, `FRP_HOOKS_PORT` | `7001`, `7080`, `7090`      | Loopback ports of `frps` and its hooks                                                                             |
+| `FRP_TCP_PORT`                                      | unset                       | Also accept frp's plain TCP transport on this port (for a Fly `tls` service on 7000, which needs a dedicated IPv4) |
+| `FRPS`, `FRP_LOG_LEVEL`                             | `frps`, `info`              | `frps` binary and log level                                                                                        |
+| `FLY_REGION`, `FLY_MACHINE_ID`                      | `local`                     | Set by Fly; reported with presence and used as this machine's identity between peers                               |
+| `FLY_APP_NAME`                                      | required with peers         | Set by Fly; peers are the `AAAA` records of `<FLY_APP_NAME>.internal`                                              |
+| `INTERNAL_PORT`                                     | `7100`                      | Peer listener; reachable on the private network only, no `fly.toml` service exposes it                             |
+| `INTERNAL_BIND_HOST`                                | `fly-local-6pn`             | Address of the peer listener (this machine's 6PN address)                                                          |
+| `PEER_REFRESH_MS`                                   | `30000`                     | How often peers are rediscovered over internal DNS                                                                 |
+| `CACHE_MAX_BYTES`, `CACHE_MAX_ENTRY_BYTES`          | 256 MiB, 8 MiB              | Asset cache bounds                                                                                                 |
+| `PRESENCE_REFRESH_MS`                               | `240000`                    | Presence refresh interval while a label is held (each label at a jittered point in it)                             |
+| `OPEN_FILES_LIMIT`                                  | `65536` (image)             | Open-file limit set before the gate starts                                                                         |
+| `ASSETLINKS_SHA256_FINGERPRINTS`                    | empty                       | Android app links, as on the Cloudflare gate                                                                       |
 
 Secrets (`fly secrets set` on `bb-connect-next`; the gate holds no database or better-auth secret):
 

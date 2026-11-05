@@ -1,13 +1,11 @@
 import {
   NEXT_TUNNEL_WRITE_INTERVAL_MS,
-  machine,
   mcpResourceForOrigin,
-  server,
   sha256Hex,
   type ConnectDb,
   executedRows,
 } from "@bb/connect-db";
-import { type SQL, and, inArray, isNotNull, sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import {
   GATE_PRESENCE_BATCH_MAX,
   GATE_RESOLVE_BATCH_MAX,
@@ -374,64 +372,18 @@ function rolloutFor(env: Env): Promise<NextRollout> {
   );
 }
 
-function rolloutKey(resolved: ResolvedLabel): string {
-  return resolved.kind === "server"
-    ? `server:${resolved.server.id}`
-    : `machine:${resolved.machine.id}`;
-}
-
-export async function labelsThatUsedNext(
-  resolved: readonly ResolvedLabel[],
-  db: ConnectDb,
-): Promise<Set<string>> {
-  const serverIds = resolved.flatMap((entry) =>
-    entry.kind === "server" ? [entry.server.id] : [],
-  );
-  const machineIds = resolved.flatMap((entry) =>
-    entry.kind === "machine" ? [entry.machine.id] : [],
-  );
-  const [servers, machines] = await Promise.all([
-    serverIds.length === 0
-      ? []
-      : db
-          .select({ id: server.id })
-          .from(server)
-          .where(
-            and(inArray(server.id, serverIds), isNotNull(server.nextTunnelAt)),
-          ),
-    machineIds.length === 0
-      ? []
-      : db
-          .select({ id: machine.id })
-          .from(machine)
-          .where(
-            and(
-              inArray(machine.id, machineIds),
-              isNotNull(machine.nextTunnelAt),
-            ),
-          ),
-  ]);
-  return new Set([
-    ...servers.map((row) => `server:${row.id}`),
-    ...machines.map((row) => `machine:${row.id}`),
-  ]);
-}
-
 async function resolveNextEnabled(
   label: string,
   resolved: ResolvedLabel | null,
   rollout: NextRollout,
-  usedNext: ReadonlySet<string> | undefined,
-  db: ConnectDb,
 ): Promise<boolean> {
   if (resolved === null) return false;
-  const id =
-    resolved.kind === "server" ? resolved.server.id : resolved.machine.id;
-  if (await inNextRollout(rollout, { label, id, usedNext: false })) {
-    return true;
-  }
-  const used = usedNext ?? (await labelsThatUsedNext([resolved], db));
-  return used.has(rolloutKey(resolved));
+  const owner = resolved.kind === "server" ? resolved.server : resolved.machine;
+  return inNextRollout(rollout, {
+    label,
+    id: owner.id,
+    usedNext: owner.nextTunnelAt != null,
+  });
 }
 
 async function resolveOne(
@@ -439,11 +391,11 @@ async function resolveOne(
   env: Env,
   db: ConnectDb,
   ctx: ExecutionContext,
-  preloaded?: { label: ResolvedLabel | null; usedNext: ReadonlySet<string> },
+  preloaded?: ResolvedLabel | null,
 ): Promise<GateResolveResponse> {
   const resolved =
     preloaded !== undefined
-      ? preloaded.label
+      ? preloaded
       : await resolveLabel(
           parsed.label,
           db,
@@ -512,8 +464,6 @@ async function resolveOne(
             parsed.label,
             resolved,
             await rolloutFor(env),
-            preloaded?.usedNext,
-            db,
           ),
   };
 }
@@ -550,36 +500,16 @@ export async function handleGateResolveBatch(
     requests.map((parsed) => parsed.label),
     db,
   ).catch(() => null);
-  const rollout = await rolloutFor(env);
-  const credentialLabels =
-    labels === null || rollout.percent >= 100
-      ? []
-      : requests.flatMap((parsed) => {
-          const resolved = labels.get(parsed.label);
-          return parsed.credential !== null && resolved != null
-            ? [resolved]
-            : [];
-        });
-  const usedNext =
-    credentialLabels.length === 0
-      ? new Set<string>()
-      : await labelsThatUsedNext(credentialLabels, db).catch(() => null);
   const answers = await Promise.all(
     requests.map((parsed) =>
-      resolveOne(
-        parsed,
-        env,
-        db,
-        ctx,
-        labels === null || usedNext === null
-          ? undefined
-          : { label: labels.get(parsed.label) ?? null, usedNext },
-      ).catch((error: unknown) => {
-        console.error("bb connect: gate resolve batch entry failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      }),
+      resolveOne(parsed, env, db, ctx, labels?.get(parsed.label)).catch(
+        (error: unknown) => {
+          console.error("bb connect: gate resolve batch entry failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        },
+      ),
     ),
   );
   const body: GateResolveBatchResponse = { answers };
