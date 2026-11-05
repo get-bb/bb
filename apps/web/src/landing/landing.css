@@ -667,7 +667,7 @@ html:has(.nav-sticky) {
   white-space: nowrap;
 }
 
-[data-download-area="test"] .btn {
+[data-download-area="test"] .btn:not(.cmd-btn) {
   font-family: var(--font-sans);
 }
 
