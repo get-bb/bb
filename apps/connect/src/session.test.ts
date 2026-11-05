@@ -348,7 +348,9 @@ describe("resolveLabel — label → server row (multi-server)", () => {
         .update(machine)
         .set({ subdomain: "collision" })
         .where(eq(machine.id, "machine-collision")),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
 
     const resolved = await resolveLabel("collision", db, { fresh: true });
     expect(resolved?.kind).toBe("server");

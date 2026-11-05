@@ -1004,7 +1004,9 @@ describe("dashboard machine recovery", () => {
         .update(machine)
         .set({ subdomain: "shared-machine" })
         .where(eq(machine.id, "machine-b")),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
   });
 
   it("retries a failed machine close during the reachable account-state sweep", async () => {
@@ -1091,7 +1093,9 @@ describe("dashboard machine recovery", () => {
         .update(machine)
         .set({ subdomain: "shared-machine" })
         .where(eq(machine.id, "machine-b")),
-    ).rejects.toThrow(/unique constraint/iu);
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/unique constraint/iu) },
+    });
 
     confirmClose?.();
     await expect(revocation).resolves.toEqual({ ok: true });

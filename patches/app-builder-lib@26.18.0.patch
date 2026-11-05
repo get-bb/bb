@@ -1,4 +1,5 @@
 diff --git a/out/targets/appimage/appImageUtil.js b/out/targets/appimage/appImageUtil.js
+index 401e5f83b8c6a549b7cb54e13e473090a9426c83..a8cea6494767a1de90209b92913c2a9600e23127 100644
 --- a/out/targets/appimage/appImageUtil.js
 +++ b/out/targets/appimage/appImageUtil.js
 @@ -19,6 +19,7 @@ async function buildStaticRuntimeAppImage(appimageToolVersion, opts) {

@@ -17,14 +17,14 @@
   },
   "dependencies": {
     "@bb/tunnel-contract": "workspace:*",
-    "ws": "^8.18.0"
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
-    "@types/ws": "^8.18.1",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.12"
   }
 }

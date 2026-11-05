@@ -22,19 +22,19 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.7.0",
+    "@agentclientprotocol/sdk": "1.9.0",
     "@bb/domain": "workspace:*",
+    "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
-    "zod": "^4.3.6",
-    "@bb/process-utils": "workspace:*"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@types/node": "^22.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^22.20.5",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

@@ -1,8 +1,8 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index e1987cae24a24d0f89bc5aea0669df0a28468c4f..46492da959084cf371d8d5e732860baf27bdd0e1 100644
+index 24e26d1a10804456581f7bbc943eeb3784db5175..000e723109aff86b0ea0442269edb67b22e3c2bd 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -1718,14 +1718,18 @@ async function validateApiKey({ key, ctx, lookupOpts, configurations, schema, pe
+@@ -1719,14 +1719,18 @@ async function validateApiKey({ key, ctx, lookupOpts, configurations, schema, pe
  async function claimUsageInDatabase({ ctx, apiKey, opts, hashedKey }) {
  	let row = apiKey;
  	if (apiKey.remaining !== null) row = await consumeRemaining(ctx, apiKey);
