@@ -1722,16 +1722,16 @@ const PLAN_THREAD = { label: "Plan the fix" };
 const BUILD_THREAD = { label: "Build it" };
 const REVIEW_THREAD = { label: "Review the diff" };
 
-const DELEGATION_PING = "Review the diff needs your approval";
+const DELEGATION_PING = "Waiting for your input";
 
 const LEAD_STATUS: readonly StatusStep[] = [
-  { status: "done", at: 4.22 },
+  { status: "done", at: 3.72 },
   { status: "running", at: 7.1 },
-  { status: "done", at: 10.94 },
+  { status: "done", at: 10.44 },
   { status: "running", at: 13.7 },
-  { status: "done", at: 18.24 },
+  { status: "done", at: 17.74 },
   { status: "running", at: 21 },
-  { status: "done", at: 24.84 },
+  { status: "done", at: 24.34 },
 ];
 
 function NeedsAttention({ label }: { label: string }) {
@@ -1764,7 +1764,7 @@ export function DelegationTree() {
       ref={ref}
       className="bw bw-lead"
       role="img"
-      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows a short note from the lead between each child's update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
+      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows a short note from the lead between each child's update, and it answers a question from Build it on its own. One notification reaches you: Review the diff, waiting for your input."
     >
       <div className="mock bw-window mock-ui">
         <WindowBar title={DELEGATION_LEAD} />
@@ -1822,7 +1822,7 @@ export function DelegationTree() {
                     Claude Code is planning the fix.
                   </div>
                 </Reveal>
-                <Reveal at={0.84} fadeAt={3.72} until={6.06}>
+                <Reveal at={0.2} fadeAt={3.72} until={6.06}>
                   <MockWorkingRow />
                 </Reveal>
                 <Reveal at={6.06}>
@@ -1849,7 +1849,7 @@ export function DelegationTree() {
                     The plan has three steps. Cursor is building it now.
                   </div>
                 </Reveal>
-                <Reveal at={7.56} fadeAt={10.44} until={12.66}>
+                <Reveal at={7.1} fadeAt={10.44} until={12.66}>
                   <MockWorkingRow />
                 </Reveal>
                 <Reveal at={12.66}>
@@ -1871,7 +1871,7 @@ export function DelegationTree() {
                     Told Build it to make the timeout configurable.
                   </div>
                 </Reveal>
-                <Reveal at={14.16} fadeAt={17.74} until={19.96}>
+                <Reveal at={13.7} fadeAt={17.74} until={19.96}>
                   <MockWorkingRow />
                 </Reveal>
                 <Reveal at={19.96}>
@@ -1892,7 +1892,7 @@ export function DelegationTree() {
                     The fix is in. Codex is reviewing the diff.
                   </div>
                 </Reveal>
-                <Reveal at={21.46} fadeAt={24.34} until={26.56}>
+                <Reveal at={21} fadeAt={24.34} until={26.56}>
                   <MockWorkingRow />
                 </Reveal>
                 <Reveal at={26.56}>
@@ -1915,7 +1915,10 @@ export function DelegationTree() {
           <div className="bw-toast" style={at(27.6)}>
             <BbGlyph className="bw-toast-mark" />
             <span className="bw-toast-text">
-              <span className="bw-toast-app">bb · now</span>
+              <span className="bw-toast-head">
+                <span className="bw-toast-title">{REVIEW_THREAD.label}</span>
+                <span className="bw-toast-time">now</span>
+              </span>
               <span className="bw-toast-body">{DELEGATION_PING}</span>
             </span>
           </div>
