@@ -137,6 +137,7 @@ import {
   type ThreadHandoffCreateSeed,
 } from "@bb/client-core";
 import {
+  continuePromptInput,
   emptyPromptDraftState,
   promptDraftToInput,
   type PromptDraftAttachment,
@@ -278,6 +279,7 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
         compactPromptPlaceholder: options.compactPromptPlaceholder,
         promptPlaceholder: options.promptPlaceholder,
         canModifierSubmit: options.canModifierSubmit,
+        sendsEmptyDraft: false,
         steerActiveThreadOnEnter: false,
         submitMode: options.submitMode,
         threadRuntimeDisplayStatus: options.threadRuntimeDisplayStatus,
@@ -993,6 +995,7 @@ export function ThreadDetailPromptArea({
     isStopRequested,
     runtimeDisplayStatus,
   ]);
+  const sendsEmptyDraft = !isHandoffSelection && submitMode.kind === "ready";
   const promptPlaceholder = getFollowUpPromptPlaceholder(
     isStopRequested ? "stopping" : runtimeDisplayStatus,
   );
@@ -1246,7 +1249,11 @@ export function ThreadDetailPromptArea({
   const submitFollowUpDraft = useCallback(
     async ({ sendAt, pluginSubmission }: ComposerSubmitExtras = {}) => {
       const submittedDraft = promptDraft.getCurrent();
-      const submittedInput = promptDraftToInput(submittedDraft);
+      const draftInput = promptDraftToInput(submittedDraft);
+      const submittedInput =
+        draftInput.length === 0 && sendsEmptyDraft
+          ? continuePromptInput()
+          : draftInput;
       if (isHandoffSelection) {
         if (effectiveSelectedModel.length === 0) {
           throw new Error("The selected model is still loading.");
@@ -1328,6 +1335,7 @@ export function ThreadDetailPromptArea({
       setBottomAttachmentError,
       thread.id,
       runtimeDisplayStatus,
+      sendsEmptyDraft,
     ],
   );
   const handleSend = useCallback(
@@ -1491,6 +1499,7 @@ export function ThreadDetailPromptArea({
       compactPromptPlaceholder,
       promptPlaceholder,
       canModifierSubmit: canSubmitModifierShortcut,
+      sendsEmptyDraft,
       steerActiveThreadOnEnter,
       submitMode,
       threadRuntimeDisplayStatus: runtimeDisplayStatus,
@@ -1508,6 +1517,7 @@ export function ThreadDetailPromptArea({
       restoreHistoryDraft,
       promptDraft.setTextAndMentions,
       runtimeDisplayStatus,
+      sendsEmptyDraft,
       steerActiveThreadOnEnter,
       submitMode,
       thread.id,

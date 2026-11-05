@@ -143,6 +143,7 @@ export interface FollowUpComposerProps {
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
+  sendsEmptyDraft: boolean;
   steerActiveThreadOnEnter: boolean;
   submitMode: FollowUpSubmitMode;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -755,27 +756,32 @@ function FollowUpPromptBoxWithComposer({
                 : undefined,
           onModifierSubmit,
           queuesDraft: submitMode.kind === "queue",
+          sendsEmptyDraft: composer.sendsEmptyDraft,
           swapSubmitActions: steerOnPrimarySubmit,
           showModifierSubmitAction: submitMode.kind === "queue",
           title: composer.isFollowUpSubmitting
             ? "Submitting..."
             : canSubmit && compactBeforeSend?.compactFirst
               ? `Compact ${formatCompactTokenCount(compactBeforeSend.tokens)} tokens, then send (Enter)`
-              : canSubmit && composer.submitTitle !== undefined
-                ? composer.submitTitle
-                : isStopping
-                  ? "Queue for after the stop (Enter)"
-                  : canQueueFollowUp
-                    ? steerOnPrimarySubmit
-                      ? isSteeringWhenReady
-                        ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
-                        : `Steer current run (Enter)${modifierSubmitHint("queue")}`
-                      : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
-                    : isLoadingExecutionOptions
-                      ? "Loading models..."
-                      : isUnavailable
-                        ? "Unavailable"
-                        : "Submit (Enter)",
+              : composer.sendsEmptyDraft &&
+                  composer.message.trim().length === 0 &&
+                  attachmentCount === 0
+                ? "Ask the agent to continue (Enter)"
+                : canSubmit && composer.submitTitle !== undefined
+                  ? composer.submitTitle
+                  : isStopping
+                    ? "Queue for after the stop (Enter)"
+                    : canQueueFollowUp
+                      ? steerOnPrimarySubmit
+                        ? isSteeringWhenReady
+                          ? `Steer when ready (Enter)${modifierSubmitHint("queue")}`
+                          : `Steer current run (Enter)${modifierSubmitHint("queue")}`
+                        : `Queue follow-up (Enter)${modifierSubmitHint("steer")}`
+                      : isLoadingExecutionOptions
+                        ? "Loading models..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

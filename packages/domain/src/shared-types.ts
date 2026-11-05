@@ -242,6 +242,12 @@ export const promptInputSchema = z.discriminatedUnion("type", [
 ]);
 export type PromptInput = z.infer<typeof promptInputSchema>;
 
+export function isBlankPromptInput(input: readonly PromptInput[]): boolean {
+  return input.every(
+    (item) => item.type === "text" && item.text.trim().length === 0,
+  );
+}
+
 export function flattenPromptInputGroups(
   inputGroups: readonly PromptInput[][],
 ): PromptInput[] {

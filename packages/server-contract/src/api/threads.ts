@@ -280,6 +280,11 @@ export const forkThreadRequestSchema = z
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
 const sendMessageRequestFieldsSchema = z.object({
+  /**
+   * Input made only of blank text asks the agent to continue: the provider
+   * receives an agent-only "Please continue." and the timeline shows no user
+   * message for it.
+   */
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),

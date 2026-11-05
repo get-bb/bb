@@ -236,6 +236,10 @@ export function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
+export function continuePromptInput(): PromptInput[] {
+  return [{ type: "text", text: "", mentions: [] }];
+}
+
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
 

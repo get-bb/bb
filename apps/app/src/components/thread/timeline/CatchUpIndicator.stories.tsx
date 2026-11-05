@@ -143,6 +143,7 @@ export function Overview() {
                 compactPromptPlaceholder: "Ask for a follow-up",
                 promptPlaceholder: "Ask for a follow-up",
                 canModifierSubmit: false,
+                sendsEmptyDraft: false,
                 steerActiveThreadOnEnter: false,
                 submitMode: isRunning
                   ? { kind: "queue", onStop: noop }

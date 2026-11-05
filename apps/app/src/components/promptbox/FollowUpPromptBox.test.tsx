@@ -292,6 +292,7 @@ function createFollowUpPromptBoxProps(
       compactPromptPlaceholder: "Ask a follow-up",
       promptPlaceholder: "Ask for a follow-up",
       canModifierSubmit: true,
+      sendsEmptyDraft: false,
       steerActiveThreadOnEnter: false,
       submitMode,
       threadRuntimeDisplayStatus:
