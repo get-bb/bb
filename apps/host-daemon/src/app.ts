@@ -493,11 +493,10 @@ export async function createHostDaemonApp(
       runtimeManager.refreshEnvironmentWorkspace(args),
     shellEnv: () => runtimeManager.getShellEnv(),
     threadStorageRootPath,
-    onThreadStorageChanged: ({ environmentId }) => {
+    onThreadStorageChanged: ({ threadId }) => {
       sendServerMessage({
-        type: "environment-change",
-        environmentId,
-        change: "thread-storage-changed",
+        type: "thread-storage-change",
+        threadId,
       });
     },
     onThreadStorageWatchError: ({ error }) => {

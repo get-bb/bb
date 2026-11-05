@@ -18,7 +18,6 @@ const MIN_FLUSH_INTERVAL_MS = 1_000;
 
 const CACHE_KEEPING_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set([
   "metadata-changed",
-  "thread-storage-changed",
 ]);
 
 export function tagsForEnvironmentChanges(
@@ -83,7 +82,10 @@ export function createCoalescedInvalidator(
       (lastFlushAt.get(environmentId) ?? Number.NEGATIVE_INFINITY) +
         MIN_FLUSH_INTERVAL_MS,
     );
-    entry.timer = setTimeout(() => flush(environmentId), Math.max(0, at - now()));
+    entry.timer = setTimeout(
+      () => flush(environmentId),
+      Math.max(0, at - now()),
+    );
   }
 
   return {

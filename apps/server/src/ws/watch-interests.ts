@@ -363,7 +363,6 @@ export class WatchInterestCoordinator {
       const rows = this.deps.db
         .select({
           id: threads.id,
-          environmentId: environments.id,
           hostId: environments.hostId,
         })
         .from(threads)
@@ -388,7 +387,6 @@ export class WatchInterestCoordinator {
           {
             hostId: thread.hostId,
             threadStorageTarget: {
-              environmentId: thread.environmentId,
               threadId: thread.id,
             },
           },

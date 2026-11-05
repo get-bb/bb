@@ -84,7 +84,6 @@ export type HostDaemonWatchSetWorkspaceTarget = z.infer<
 
 const hostDaemonWatchSetThreadStorageTargetSchema = z
   .object({
-    environmentId: z.string().min(1),
     threadId: z.string().min(1),
   })
   .strict();
@@ -384,11 +383,7 @@ export type HostDaemonEventBatchResponse = z.infer<
 
 const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
-  .extract([
-    "work-status-changed",
-    "git-refs-changed",
-    "thread-storage-changed",
-  ]);
+  .extract(["work-status-changed", "git-refs-changed"]);
 export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
@@ -795,6 +790,13 @@ const hostDaemonEnvironmentChangeMessageSchema =
     })
     .strict();
 
+const hostDaemonThreadStorageChangeMessageSchema = z
+  .object({
+    type: z.literal("thread-storage-change"),
+    threadId: z.string().min(1),
+  })
+  .strict();
+
 const hostDaemonEnvironmentMetadataChangeMessageSchema =
   hostDaemonEnvironmentMetadataChangePayloadSchema
     .extend({
@@ -911,6 +913,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonMachineShutdownAckMessageSchema,
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
+  hostDaemonThreadStorageChangeMessageSchema,
   hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   hostDaemonConnectNextStatusMessageSchema,

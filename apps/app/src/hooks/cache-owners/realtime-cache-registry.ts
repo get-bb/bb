@@ -46,7 +46,6 @@ import {
   allThreadStoragePathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allSystemThemesQueryKeyPrefix,
-  allThreadQueryKeyPrefix,
   allTerminalsQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   hostsQueryKey,
@@ -89,11 +88,6 @@ import {
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 import { isCachedThreadTimelinePushEnabled } from "./thread-timeline-push-owner";
-
-interface CollectCachedThreadIdsForEnvironmentArgs {
-  environmentId: string;
-  queryClient: QueryClient;
-}
 
 interface TimelineInvalidationQueryKeysArgs {
   queryClient: QueryClient;
@@ -445,6 +439,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [dirtyThreadTerminalQueries],
   },
+  "storage-changed": {
+    flush: "debounced",
+    dirty: [dirtyThreadStorageContentQueries],
+  },
 } satisfies ThreadChangeRegistry;
 
 export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
@@ -479,9 +477,6 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
   },
   "git-refs-changed": {
     dirty: [],
-  },
-  "thread-storage-changed": {
-    dirty: [dirtyThreadStorageQueriesForEnvironment],
   },
 } satisfies EnvironmentChangeRegistry;
 
@@ -611,7 +606,6 @@ export function createFlushOncePredicate(): (key: string) => boolean {
 
 interface EnvironmentRealtimeDirtyContext extends RealtimeDirtyContext {
   environmentId: string;
-  getCachedThreadIdsForEnvironment: () => string[];
 }
 
 interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
@@ -720,30 +714,6 @@ export function partitionThreadChangesByFlushPriority(
     }
   }
   return { debounced, immediate };
-}
-
-export function collectCachedThreadIdsForEnvironment({
-  environmentId,
-  queryClient,
-}: CollectCachedThreadIdsForEnvironmentArgs): string[] {
-  const threadIds = new Set<string>();
-  for (const [, thread] of queryClient.getQueriesData<ThreadWithRuntime>({
-    queryKey: allThreadQueryKeyPrefix(),
-  })) {
-    if (thread?.environmentId === environmentId) {
-      threadIds.add(thread.id);
-    }
-  }
-  for (const { data } of getCachedThreadLists(queryClient, {
-    queryKey: threadsQueryKey(),
-  })) {
-    for (const thread of iterateThreadListCacheEntries(data)) {
-      if (thread.environmentId === environmentId) {
-        threadIds.add(thread.id);
-      }
-    }
-  }
-  return Array.from(threadIds);
 }
 
 function dirtyThreadListQueries(context: ThreadRealtimeDirtyContext): void {
@@ -1102,16 +1072,21 @@ function dirtyEnvironmentThreadListQueries({
   return queryKeys;
 }
 
-function dirtyThreadStorageQueriesForEnvironment({
-  getCachedThreadIdsForEnvironment,
-}: EnvironmentRealtimeDirtyContext): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-  for (const threadId of getCachedThreadIdsForEnvironment()) {
-    queryKeys.push(threadStorageFilesForThreadQueryKeyPrefix(threadId));
-    queryKeys.push(threadStoragePathsForThreadQueryKeyPrefix(threadId));
-    queryKeys.push(threadStorageFilePreviewQueryKeyPrefix(threadId));
+function dirtyThreadStorageContentQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  if (!threadId) {
+    return [
+      allThreadStorageFilesQueryKeyPrefix(),
+      allThreadStoragePathsQueryKeyPrefix(),
+      allThreadStorageFilePreviewQueryKeyPrefix(),
+    ];
   }
-  return queryKeys;
+  return [
+    threadStorageFilesForThreadQueryKeyPrefix(threadId),
+    threadStoragePathsForThreadQueryKeyPrefix(threadId),
+    threadStorageFilePreviewQueryKeyPrefix(threadId),
+  ];
 }
 
 function dirtyAllThreadStorageQueries(): QueryKey[] {
