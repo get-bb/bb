@@ -150,6 +150,7 @@ interface ResolveAgentSetupStateArgs {
   signingIn: boolean;
   signInFailed: boolean;
   installInfoPending: boolean;
+  whileInstallInfoPending: "checking" | "offerInstall";
 }
 
 export function resolveAgentSetupState({
@@ -160,6 +161,7 @@ export function resolveAgentSetupState({
   signingIn,
   signInFailed,
   installInfoPending,
+  whileInstallInfoPending,
 }: ResolveAgentSetupStateArgs): AgentSetupState {
   if (health.status === "ready") {
     const detail = [health.accountEmail, health.planLabel]
@@ -173,19 +175,22 @@ export function resolveAgentSetupState({
       update: health.status === "unsupported_version",
     };
   }
+  const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
   const canInstall =
-    cliStatus?.installAction !== null && cliStatus?.installAction !== undefined;
+    (awaitingInstallInfo && whileInstallInfoPending === "offerInstall") ||
+    (cliStatus?.installAction !== null && cliStatus?.installAction !== undefined);
   if (installFailure !== null) {
     return { status: "installFailed", message: installFailure, canInstall };
   }
-  const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
+  const checking =
+    awaitingInstallInfo && whileInstallInfoPending === "checking";
   switch (health.status) {
     case "not_installed":
-      return awaitingInstallInfo
+      return checking
         ? { status: "checking" }
         : { status: "install", canInstall };
     case "unsupported_version":
-      if (awaitingInstallInfo) return { status: "checking" };
+      if (checking) return { status: "checking" };
       return {
         status: "update",
         detail:

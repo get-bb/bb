@@ -8,11 +8,17 @@ const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
   useSystemConfig: vi.fn(),
   useSetupGuideAssignment: vi.fn(),
+  useHostProviderCliStatus: vi.fn(),
+  usePrimaryHost: vi.fn(),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: mocks.useSystemConfig,
   useSetupGuideAssignment: mocks.useSetupGuideAssignment,
+  useHostProviderCliStatus: mocks.useHostProviderCliStatus,
+}));
+vi.mock("@/hooks/queries/host-queries", () => ({
+  usePrimaryHost: mocks.usePrimaryHost,
 }));
 vi.mock("@/hooks/mutations/settings-mutations", () => ({
   useUpdateGeneralSettings: () => ({ mutate: mocks.mutate }),
@@ -53,6 +59,7 @@ function renderGate() {
 
 beforeEach(() => {
   window.localStorage.clear();
+  mocks.usePrimaryHost.mockReturnValue({ id: "host-1" });
   mocks.useSetupGuideAssignment.mockReturnValue({
     isPending: false,
     data: { variant: "control", featuredPluginEntryIds: null },
@@ -195,6 +202,22 @@ describe("OnboardingGate", () => {
 
     expect(mocks.useSetupGuideAssignment).toHaveBeenLastCalledWith({
       enabled: false,
+    });
+  });
+
+  it("starts loading agent install info while the guide is still opening", () => {
+    configWith({ onboardingCompletedAt: null });
+    mocks.useSetupGuideAssignment.mockReturnValue({
+      isPending: true,
+      data: undefined,
+    });
+
+    renderGate();
+
+    expect(screen.queryByText(/Setup guide/u)).toBeNull();
+    expect(mocks.useHostProviderCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host-1",
+      enabled: true,
     });
   });
 

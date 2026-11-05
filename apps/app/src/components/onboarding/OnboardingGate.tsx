@@ -1,7 +1,9 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import {
+  useHostProviderCliStatus,
   useSetupGuideAssignment,
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
@@ -45,6 +47,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const settings = configQuery.data?.generalSettings;
   const completedAt = settings?.onboardingCompletedAt;
   const setupGuideQuery = useSetupGuideAssignment({
+    enabled: completedAt === null,
+  });
+  const primaryHost = usePrimaryHost({ enabled: completedAt === null });
+  useHostProviderCliStatus({
+    hostId: primaryHost?.id ?? null,
     enabled: completedAt === null,
   });
   useEffect(() => {

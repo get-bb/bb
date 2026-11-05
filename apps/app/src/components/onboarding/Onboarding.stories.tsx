@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { SystemProviderState } from "@bb/server-contract";
 import {
   AgentInstallErrorDetails,
   AgentSignInGuide,
@@ -20,6 +21,7 @@ import {
 } from "./OnboardingViews";
 import {
   STEP_COPY,
+  resolveAgentSetupState,
   type AgentSetupState,
   type OnboardingStepId,
 } from "./onboarding-model";
@@ -1088,15 +1090,17 @@ function RedesignAgentFrame({
   signingIn,
   pi = null,
   installError = false,
+  states = {},
 }: {
   signingIn: RedesignSignInStory | null;
   pi?: PiStage | null;
   installError?: boolean;
+  states?: Partial<Record<AgentId, AgentSetupState>>;
 }) {
   const signInAgentId = signingIn === "codex-browser" ? "codex" : signingIn;
   const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
     const signingInHere = signingIn !== null && agent.id === signInAgentId;
-    const state: AgentSetupState = signingInHere
+    const state: AgentSetupState = states[agent.id] ?? (signingInHere
       ? { status: "signingIn" }
       : installError && agent.id === "claude-code"
         ? {
@@ -1110,7 +1114,7 @@ function RedesignAgentFrame({
             : pi === "failed"
               ? { status: "signIn", reason: "failed", canSignIn: true }
               : { status: "signingIn" }
-          : SIGNED_OUT;
+          : SIGNED_OUT);
     return {
       id: agent.id,
       name: agent.name,
@@ -1203,6 +1207,63 @@ export function RedesignAgentPiSignInFailed() {
   return (
     <div className="flex h-screen flex-col">
       <RedesignAgentFrame signingIn={null} pi="failed" />
+    </div>
+  );
+}
+
+function storyHealth(
+  id: AgentId,
+  status: SystemProviderState["status"],
+): SystemProviderState {
+  const agent = AGENT_BASE.find((candidate) => candidate.id === id);
+  return {
+    providerId: id,
+    displayName: agent?.name ?? id,
+    status,
+    statusMessage: null,
+    accountEmail: null,
+    planLabel: null,
+    installedVersion: null,
+    minimumSupportedVersion: null,
+    canInstall: true,
+    canUpdate: true,
+    loginCommand: null,
+    localLoginCommand: null,
+  };
+}
+
+export function RedesignAgentJustOpened() {
+  const pending = {
+    cliStatus: undefined,
+    installing: false,
+    installFailure: null,
+    signingIn: false,
+    signInFailed: false,
+    installInfoPending: true,
+    whileInstallInfoPending: "offerInstall" as const,
+  };
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame
+        signingIn={null}
+        states={{
+          "claude-code": resolveAgentSetupState({
+            ...pending,
+            health: storyHealth("claude-code", "not_installed"),
+          }),
+          codex: resolveAgentSetupState({
+            ...pending,
+            health: {
+              ...storyHealth("codex", "unsupported_version"),
+              minimumSupportedVersion: "0.50.0",
+            },
+          }),
+          pi: resolveAgentSetupState({
+            ...pending,
+            health: storyHealth("pi", "not_installed"),
+          }),
+        }}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   isActiveTerminalSessionStatus,
   mobileAppDownloads,
 } from "@bb/domain";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import {
@@ -47,6 +48,7 @@ import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { terminalOutputTailQueryKey } from "@/hooks/queries/query-keys";
 import {
+  hostProviderCliStatusQueryOptions,
   useHostProviderCliStatus,
   useSystemConfig,
   useSystemProviderStates,
@@ -373,6 +375,7 @@ function AgentStepContainer({
     hostId === null ? { enabled: false } : { hostId },
   );
   const cliStatusQuery = useHostProviderCliStatus({ hostId });
+  const queryClient = useQueryClient();
   const installRunner = useProviderCliInstallRunner();
   const { isLocalDaemonHost } = useHostDaemon();
   const createTerminal = useCreateTerminal();
@@ -453,9 +456,36 @@ function AgentStepContainer({
     return () => window.clearInterval(poll);
   }, [refetchStates, settlingCount]);
 
-  const startInstall = (providerId: string) => {
-    const status = cliStatusQuery.data?.[providerId];
-    if (hostId === null || status === undefined) return;
+  const [awaitingInstallInfoIds, setAwaitingInstallInfoIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const loadInstallInfo = async (
+    targetHostId: string,
+    providerId: string,
+  ): Promise<ProviderCliStatusResponse | undefined> => {
+    setAwaitingInstallInfoIds((ids) => new Set(ids).add(providerId));
+    try {
+      return await queryClient.fetchQuery(
+        hostProviderCliStatusQueryOptions({ hostId: targetHostId }),
+      );
+    } catch {
+      return undefined;
+    } finally {
+      setAwaitingInstallInfoIds((ids) => {
+        const next = new Set(ids);
+        next.delete(providerId);
+        return next;
+      });
+    }
+  };
+
+  const startInstall = async (providerId: string) => {
+    if (hostId === null) return;
+    const installInfo =
+      cliStatusQuery.data ??
+      (redesign ? await loadInstallInfo(hostId, providerId) : undefined);
+    const status = installInfo?.[providerId];
+    if (status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
     if (issue === null || !hasProviderCliAction(issue)) return;
     installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
@@ -528,6 +558,7 @@ function AgentStepContainer({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
+                awaitingInstallInfoIds.has(health.providerId) ||
                 installRunner.runningJobKey === jobKey ||
                 installRunner.queuedJobKeys.has(jobKey) ||
                 (settlingJobKeys.has(jobKey) &&
@@ -542,6 +573,7 @@ function AgentStepContainer({
               signingIn,
               signInFailed: signIns.failedProviderIds.has(health.providerId),
               installInfoPending: cliStatusQuery.isPending,
+              whileInstallInfoPending: redesign ? "offerInstall" : "checking",
             }),
             expanded:
               signingIn && signIn !== null ? (
@@ -606,7 +638,7 @@ function AgentStepContainer({
         machineName={hostName}
         agents={agents}
         onSignIn={(providerId) => void startSignIn(providerId)}
-        onInstall={startInstall}
+        onInstall={(providerId) => void startInstall(providerId)}
         onViewInstallLog={viewInstallLog}
         onCancelSignIn={(providerId) => signIns.end(providerId)}
         onRecheck={() => {

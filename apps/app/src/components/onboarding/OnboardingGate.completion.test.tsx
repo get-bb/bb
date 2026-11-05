@@ -29,6 +29,9 @@ const guide = vi.hoisted(() => ({ mounts: 0 }));
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    hosts: {
+      list: vi.fn(() => Promise.resolve([])),
+    },
     system: {
       config: vi.fn(),
       updateGeneralSettings: vi.fn(),
