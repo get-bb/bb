@@ -103,7 +103,7 @@ export function useOnboardingPluginChange({
     installed: boolean;
   };
   trackInstall: TrackPluginInstall;
-}): (enabled: boolean) => Promise<void> {
+}): (enabled: boolean) => Promise<string | null> {
   const queryClient = useQueryClient();
   const setPluginEnabled = useSetPluginEnabled();
   const { pluginId, entryId, marketplace, installed } = plugin;
@@ -132,10 +132,11 @@ export function useOnboardingPluginChange({
           });
           applyPluginInstallJob({ queryClient, job });
           trackInstall(job.id, pluginId);
-        } else {
-          await setPluginEnabled(pluginId, enabled);
-          record("succeeded");
+          return job.id;
         }
+        await setPluginEnabled(pluginId, enabled);
+        record("succeeded");
+        return null;
       } catch (error) {
         record("failed", operationFailureReason(error));
         throw error;

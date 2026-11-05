@@ -1306,6 +1306,55 @@ export function RedesignAgentInstallError() {
   );
 }
 
+function RedesignPluginsFrame({
+  enabledIds,
+  pendingIds = new Set<string>(),
+}: {
+  enabledIds: ReadonlySet<string>;
+  pendingIds?: ReadonlySet<string>;
+}) {
+  return (
+    <TooltipProvider>
+      <OnboardingLayout
+        step="plugins"
+        composition="centered"
+        showSkipAll={false}
+        width="wide"
+        {...STEP_COPY.new.plugins}
+        onPrimary={noop}
+        onBack={noop}
+        onSelectStep={noop}
+        onSkipAll={noop}
+      >
+        <OnboardingPluginGrid compact={false} showHelp={false}>
+          {PLUGINS.map((plugin) => (
+            <OnboardingPluginCard
+              key={plugin.id}
+              density="compact"
+              showStateLabel={false}
+              name={plugin.name}
+              description={plugin.description}
+              icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
+              enabled={enabledIds.has(plugin.id)}
+              pending={pendingIds.has(plugin.id)}
+              unavailableReason={null}
+              onToggle={noop}
+            />
+          ))}
+        </OnboardingPluginGrid>
+      </OnboardingLayout>
+    </TooltipProvider>
+  );
+}
+
+export function RedesignPluginJustTurnedOn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignPluginsFrame enabledIds={new Set(["browser-automation"])} />
+    </div>
+  );
+}
+
 export function RedesignProjects() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     new Set(DEFAULT_REPO_IDS),

@@ -121,6 +121,10 @@ import {
   useOnboardingPluginInstallOutcomes,
   type TrackPluginInstall,
 } from "./useOnboardingPluginChange";
+import {
+  useOnboardingPluginSwitches,
+  type OnboardingPluginSwitches,
+} from "./useOnboardingPluginSwitches";
 import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useRefetchOnUpdateNeeded } from "./useRefetchOnUpdateNeeded";
@@ -906,6 +910,7 @@ function PluginCardContainer({
   entry,
   compact,
   enabled,
+  switches,
   onChanged,
   onSelected,
   onDeselected,
@@ -915,6 +920,7 @@ function PluginCardContainer({
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
+  switches: OnboardingPluginSwitches | null;
   onChanged: () => Promise<void>;
   onSelected: () => void;
   onDeselected: () => void;
@@ -941,9 +947,26 @@ function PluginCardContainer({
     return () => window.clearTimeout(timer);
   }, [busy, settling]);
 
+  const showFailure = (error: unknown) =>
+    appToast.error(
+      error instanceof Error
+        ? error.message
+        : `Failed to update ${entry.displayName}.`,
+    );
+
   const toggle = async (next: boolean) => {
     if (next) onSelected();
     else onDeselected();
+    if (switches !== null) {
+      switches.set({
+        pluginId: entry.pluginId,
+        enabled: next,
+        serverEnabled: enabled,
+        apply: changePlugin,
+        onFailed: showFailure,
+      });
+      return;
+    }
     setTarget(next);
     setWorking(true);
     try {
@@ -951,11 +974,7 @@ function PluginCardContainer({
       await onChanged();
     } catch (error) {
       setTarget(null);
-      appToast.error(
-        error instanceof Error
-          ? error.message
-          : `Failed to update ${entry.displayName}.`,
-      );
+      showFailure(error);
     } finally {
       setWorking(false);
     }
@@ -972,8 +991,12 @@ function PluginCardContainer({
         iconUrl: entry.iconUrl,
         iconTinted: entry.iconTinted,
       }}
-      enabled={target ?? enabled}
-      pending={busy || settling}
+      enabled={
+        switches === null
+          ? (target ?? enabled)
+          : switches.shown(entry.pluginId, enabled)
+      }
+      pending={switches === null && (busy || settling)}
       unavailableReason={
         entry.installed || entry.compatible
           ? null
@@ -989,6 +1012,7 @@ function PluginsStepContainer({
   setupGuide,
   entry: onboardingEntry,
   trackInstall,
+  switches,
   onBack,
   onContinue,
   onSkip,
@@ -997,6 +1021,7 @@ function PluginsStepContainer({
   setupGuide: SetupGuide;
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
+  switches: OnboardingPluginSwitches;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -1043,6 +1068,8 @@ function PluginsStepContainer({
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
+  const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
+    redesign ? switches.shown(entry.pluginId, isEnabled(entry)) : isEnabled(entry);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
@@ -1082,7 +1109,7 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (!(entries ?? []).some(isEnabled)) onSkip();
+        if (!(entries ?? []).some(isShownEnabled)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}
@@ -1100,6 +1127,7 @@ function PluginsStepContainer({
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
+              switches={redesign ? switches : null}
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
@@ -1323,6 +1351,7 @@ export function OnboardingFlow({
     });
   }, [entry, step]);
   const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
+  const pluginSwitches = useOnboardingPluginSwitches();
   const finishedRef = useRef(false);
   useOnboardingLeftTelemetry({ entry, step, finishedRef });
   useOnboardingErrorStep(step);
@@ -1412,6 +1441,7 @@ export function OnboardingFlow({
           setupGuide={setupGuide}
           entry={entry}
           trackInstall={trackPluginInstall}
+          switches={pluginSwitches}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}
