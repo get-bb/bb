@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -404,6 +403,7 @@ function RowStateControl({
           label={[srLabel, actionLabel].filter(Boolean).join(" · ")}
           tooltipLabel={actionTooltip ?? actionLabel ?? presentation.label}
           icon={icon}
+          className={state === "up-to-date" ? "text-input" : undefined}
           loading={loading}
           onClick={onClick}
         />
@@ -534,8 +534,14 @@ export function BbAppUpdateRows({
     );
   const settledStatus = isChecking ? (
     <RowStateControl live state="in-progress" />
-  ) : (
+  ) : onRetryAppCheck === null ? (
     <RowStateControl state="up-to-date" />
+  ) : (
+    <RowStateControl
+      state="up-to-date"
+      actionLabel="Check for updates"
+      onClick={onRetryAppCheck}
+    />
   );
   const unavailableCheckControl =
     onRetryAppCheck === null ? null : (
@@ -2124,6 +2130,11 @@ export function UpdatesSettingsSection() {
 
   function handleCheckForUpdates(): void {
     startAppUpdateCheck(async () => {
+      const providerCliRefreshes = Promise.all(
+        connectedHostIds.map((hostId) =>
+          refreshHostProviderCliStatus({ queryClient, hostId }),
+        ),
+      );
       const [appCheck, appUpdateCheck, desktopCheck] = await Promise.allSettled(
         [
           sdk.system.version({ force: true }),
@@ -2134,31 +2145,18 @@ export function UpdatesSettingsSection() {
       if (appUpdateCheck.status === "fulfilled") {
         hydrateAppUpdateStatus({ queryClient, status: appUpdateCheck.value });
       }
+      if (appCheck.status === "fulfilled") {
+        hydrateSystemVersionCache({ queryClient, version: appCheck.value });
+      }
+      await providerCliRefreshes;
       if (appCheck.status === "rejected") {
         throw appCheck.reason;
       }
-      hydrateSystemVersionCache({ queryClient, version: appCheck.value });
       if (desktopCheck.status === "rejected") {
         throw desktopCheck.reason;
       }
-      await Promise.all(
-        connectedHostIds.map((hostId) =>
-          refreshHostProviderCliStatus({ queryClient, hostId }),
-        ),
-      );
     });
   }
-
-  const hostsSettled = !inventory.isLoading;
-  const checkedOnLoad = useRef(false);
-  useEffect(() => {
-    if (checkedOnLoad.current || !hostsSettled) {
-      return;
-    }
-    checkedOnLoad.current = true;
-    handleCheckForUpdates();
-    // oxlint-disable-next-line react/exhaustive-deps
-  }, [hostsSettled]);
 
   const appUpdateVisible =
     desktopInfo?.updateAvailable === true ||

@@ -80,6 +80,9 @@ vi.mock("@/lib/sdk", async () => {
           makeSystemConfig({ primaryHostId: "host_primary" }),
         ),
       },
+      hosts: {
+        providerCliStatus: vi.fn(async () => ({})),
+      },
       providers: {
         list: vi.fn(async () => [
           makeProviderInfo({ id: "codex", displayName: "Codex" }),
@@ -418,9 +421,10 @@ afterEach(() => {
 });
 
 describe("UpdatesSettingsSection", () => {
-  it("checks for updates once when the view mounts", async () => {
+  it("shows the last known status on mount and forces every check together on click", async () => {
+    const checkForUpdates = vi.fn(() => new Promise<never>(() => {}));
     useDesktopUpdateInfoMock.mockReturnValue({
-      desktopApi: null,
+      desktopApi: { checkForUpdates } as unknown as BbDesktopApi,
       desktopInfo: null,
       isDesktop: false,
     });
@@ -428,17 +432,29 @@ describe("UpdatesSettingsSection", () => {
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({ machines: [makeMachine({ host })] }),
     );
-    vi.mocked(sdk.system.version).mockResolvedValue(
-      makeInventory({}).systemVersion!,
-    );
+    vi.mocked(sdk.system.version).mockReturnValue(new Promise(() => {}));
+    vi.mocked(sdk.system.appUpdate).mockReturnValue(new Promise(() => {}));
 
     renderSection();
 
-    expect(screen.queryByRole("button", { name: /check/i })).toBeNull();
-    await waitFor(() => {
-      expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
+    const check = await screen.findByRole("button", {
+      name: "Up to date · Check for updates",
     });
-    expect(sdk.system.version).toHaveBeenCalledTimes(1);
+    expect(sdk.system.version).not.toHaveBeenCalledWith({ force: true });
+    expect(sdk.system.appUpdate).not.toHaveBeenCalledWith({ force: true });
+    expect(checkForUpdates).not.toHaveBeenCalled();
+    expect(sdk.hosts.providerCliStatus).not.toHaveBeenCalled();
+
+    fireEvent.click(check);
+
+    await waitFor(() => {
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ hostId: "host_1", refresh: true }),
+      );
+    });
+    expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
+    expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
+    expect(checkForUpdates).toHaveBeenCalledOnce();
   });
 
   it("places fleet-wide Update all beside the Provider CLIs heading", () => {
@@ -861,13 +877,11 @@ The published lede.
 
     renderSection();
 
-    await waitFor(() => {
-      expect(
-        screen
-          .getAllByText("Up to date")
-          .every((label) => label.className.includes("sr-only")),
-      ).toBe(true);
+    const check = screen.getByRole("button", {
+      name: "Up to date · Check for updates",
     });
+    expect(check.textContent).toBe("");
+    expect(check.className).toContain("text-input");
     expect(screen.queryByText("2 up to date")).toBeNull();
     expect(
       screen.getByText("Nothing to update on all 2 machines."),
@@ -880,34 +894,12 @@ The published lede.
     expect(screen.queryByText(/ago$/)).toBeNull();
     expect(screen.queryByText(/^In sync$/)).toBeNull();
     expect(screen.queryByText("workstation, studio-mac")).toBeNull();
-    expect(screen.queryByRole("button", { name: /check/i })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /check/i })).toEqual([check]);
     expect(screen.queryByRole("heading", { name: "Updates" })).toBeNull();
     expect(
       document.querySelector('[data-updates-domain="changelog"]'),
     ).toBeNull();
-
-    const settledRows = screen.getAllByText(/^Up to date/);
-    expect(
-      settledRows.every(
-        (settled) =>
-          settled.parentElement?.querySelector(".bg-success") === null,
-      ),
-    ).toBe(true);
     expect(document.querySelector(".bg-success")).toBeNull();
-    expect(
-      document
-        .querySelector(
-          '[data-update-state="up-to-date"] [data-icon="CircleCheck"]',
-        )
-        ?.getAttribute("class"),
-    ).toContain("text-input");
-    expect(
-      document
-        .querySelector(
-          '[data-update-state="up-to-date"] [data-icon="CircleCheck"]',
-        )
-        ?.getAttribute("class"),
-    ).not.toContain("opacity-");
   });
 
   it("does not claim up to date when the latest version is unknown", async () => {
@@ -978,9 +970,9 @@ The published lede.
     expect(
       within(row as HTMLElement).queryByRole("button", { name: "homelab" }),
     ).toBeNull();
-    await waitFor(() => {
-      expect(screen.getByText(/^Up to date/)).toBeDefined();
-    });
+    expect(
+      screen.getByRole("button", { name: "Up to date · Check for updates" }),
+    ).toBeDefined();
   });
 
   it("lists only machines that need attention and folds the rest into the footer", () => {
@@ -1795,7 +1787,7 @@ The published lede.
     );
   });
 
-  it("forces the web update check and shows the upgrade command inline", async () => {
+  it("shows the web upgrade command inline", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -1836,13 +1828,9 @@ The published lede.
       within(updateSurface as HTMLElement).getByText("Server"),
     ).toBeDefined();
     expect(screen.queryByText(/^Update available/)).toBeNull();
-
-    await waitFor(() => {
-      expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
-    });
   });
 
-  it("checks for desktop updates through the desktop bridge", async () => {
+  it("relaunches the desktop through the desktop bridge", async () => {
     const desktopInfo: BbDesktopInfo = {
       downloadState: "downloaded",
       lastCheckedAt: null,
@@ -1877,11 +1865,7 @@ The published lede.
     expect(relaunch.className).toContain("border");
     fireEvent.click(relaunch);
     expect(installUpdate).toHaveBeenCalledOnce();
-
-    await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledTimes(1);
-    });
-    expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
+    expect(checkForUpdates).not.toHaveBeenCalled();
   });
 
   it("explains an unknown desktop release and retries through the desktop bridge", async () => {
@@ -1904,16 +1888,13 @@ The published lede.
     useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
 
     renderSection();
-    await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledTimes(1);
-      expect(
-        (
-          screen.getByRole("button", {
-            name: /Retry the desktop release check/,
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false);
-    });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /Retry the desktop release check/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     expect(
       screen.getByText("Couldn't determine the latest desktop release."),
     ).toBeTruthy();
@@ -1929,7 +1910,7 @@ The published lede.
       screen.getByRole("button", { name: /Retry the desktop release check/ }),
     );
     await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(
         (
           screen.getByRole("button", {
@@ -1996,15 +1977,12 @@ The published lede.
     useUpdateInventoryMock.mockReturnValue(makeInventory({ desktopInfo }));
 
     renderSection();
-    await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledTimes(1);
-    });
     fireEvent.click(
       screen.getByRole("button", { name: "Failed · Retry the download" }),
     );
 
     await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2328,7 +2306,6 @@ The published lede.
       });
     });
     expect(await screen.findByText("Downloading bb-app 0.0.6")).toBeDefined();
-    expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
   });
 
   it("asks before an update interrupts running threads", async () => {
@@ -2874,7 +2851,7 @@ The published lede.
   }
 
   it("updates a server the desktop does not own from its own Server row", async () => {
-    const { checkForUpdates } = useDesktopApp();
+    useDesktopApp();
     hostDaemon.localDaemonHostId = "host_laptop";
     useUpdateInventoryMock.mockReturnValue(desktopFleet());
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
@@ -2902,10 +2879,6 @@ The published lede.
       expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
         confirmInterruptingThreads: false,
       });
-    });
-    await waitFor(() => {
-      expect(checkForUpdates).toHaveBeenCalledOnce();
-      expect(sdk.system.appUpdate).toHaveBeenCalledWith({ force: true });
     });
   });
 
@@ -3003,7 +2976,11 @@ The published lede.
       useSeparateDesktop({ latestVersion: "0.47.1", pendingVersion: "0.47.0" });
       const bbCard = await renderBbCard();
 
-      expect(notesButton(bbCard, "0.0.6")).toBeDefined();
+      expect(
+        await within(bbCard).findByRole("button", {
+          name: "Changelog for bb 0.0.6",
+        }),
+      ).toBeDefined();
       fireEvent.click(notesButton(bbCard, "0.47.0"));
 
       const panel = within(bbCard).getByRole("region", {
@@ -3061,7 +3038,7 @@ The published lede.
   it.each(["host_laptop", null])(
     "shows a desktop-hosted server's own version when the viewing host is %s",
     async (localHostId) => {
-      const { checkForUpdates } = useDesktopApp();
+      useDesktopApp();
       hostDaemon.localDaemonHostId = localHostId;
       const inventory = desktopFleet();
       const serverVersion = {
@@ -3084,7 +3061,7 @@ The published lede.
       renderSection();
 
       const bbCard = screen.getByRole("region", { name: "bb" });
-      await waitFor(() => expect(checkForUpdates).toHaveBeenCalledOnce());
+      await waitFor(() => expect(sdk.system.appUpdate).toHaveBeenCalled());
       expect(within(bbCard).getByText("Server")).toBeDefined();
       expect(within(bbCard).getByText("0.0.4")).toBeDefined();
       expect(within(bbCard).queryByText("Desktop")).toBeNull();
@@ -3096,7 +3073,6 @@ The published lede.
           name: /Copy the upgrade command|Relaunch bb|Download the update/,
         }),
       ).toBeNull();
-      expect(sdk.system.version).toHaveBeenCalledWith({ force: true });
     },
   );
   it.each(["host_primary", "host_laptop", null])(
