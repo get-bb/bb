@@ -5,14 +5,15 @@ import { GuidePage } from "./guide-page";
 import { GUIDES } from "./guides";
 
 describe("guide page hero", () => {
-  it("offers the Mac download on desktop and the send link on touch", () => {
+  it("shows the download button on every device and no send link", () => {
     const guide = GUIDES[0];
     expect(guide).toBeDefined();
     const html = renderToStaticMarkup(<GuidePage guide={guide!} />);
-    expect(html).toContain(
-      'class="btn btn-ghost desktop-only" href="/download/macos?placement=hero"',
+    const start = html.indexOf('<header class="hero cmp-hero gd-hero">');
+    const hero = html.slice(start, html.indexOf("</header>", start));
+    expect(hero).toContain(
+      'class="btn btn-ghost" href="/download/macos?placement=hero"',
     );
-    expect(html).toContain('class="btn btn-ghost install-send touch-only"');
-    expect(html).toContain("Send download link");
+    expect(hero).not.toContain("install-send");
   });
 });
