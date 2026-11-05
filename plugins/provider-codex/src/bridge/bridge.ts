@@ -317,12 +317,20 @@ const CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN = /\brollout at .+ is empty\b/i;
 const CODEX_RENAME_RETRY_DELAYS_MS = [50, 200] as const;
 const CODEX_AUTH_REQUIRED_TEXT_PATTERN =
   /\b(?:40[13]|auth(?:entication|orization)?|unauthori[sz]ed)\b/i;
+const CODEX_CREDENTIALS_UNAVAILABLE_TEXT_PATTERN =
+  /\bfailed to load (?:aws )?credentials\b/i;
 const CODEX_RATE_LIMITED_TEXT_PATTERN =
   /\b(?:429|credits?|quota|rate[-\s]?limit(?:ed)?|usage limit)\b/i;
 
 function classifyTerminalAccountError(
   delta: Extract<ThreadDelta, { kind: "provider.error" }>,
-): "authRequired" | "rateLimited" | null {
+): "authRequired" | "credentialsUnavailable" | "rateLimited" | null {
+  const text = [delta.message, delta.detail]
+    .filter((part) => part !== undefined)
+    .join("\n");
+  if (CODEX_CREDENTIALS_UNAVAILABLE_TEXT_PATTERN.test(text)) {
+    return "credentialsUnavailable";
+  }
   const category = delta.errorInfo?.category;
   if (category === "unauthorized") {
     return "authRequired";
@@ -333,9 +341,6 @@ function classifyTerminalAccountError(
   if (category !== undefined && category !== "unknown") {
     return null;
   }
-  const text = [delta.message, delta.detail]
-    .filter((part) => part !== undefined)
-    .join("\n");
   if (CODEX_AUTH_REQUIRED_TEXT_PATTERN.test(text)) {
     return "authRequired";
   }
@@ -788,6 +793,15 @@ async function handleChildNotification(
   }
 }
 
+const TERMINAL_ACCOUNT_ERROR_REBUILD_REASONS = {
+  authRequired:
+    "codex session restarted after an authentication failure so a new login can take effect.",
+  credentialsUnavailable:
+    "codex session restarted after it failed to load provider credentials so they are reloaded. If this repeats, refresh the provider login (for example `aws sso login`).",
+  rateLimited:
+    "codex session restarted after a rate limit so a refreshed account state can take effect.",
+} as const;
+
 function emitTerminalAccountErrorHint(
   session: CodexBridgeSession,
   delta: Extract<ThreadDelta, { kind: "provider.error" }>,
@@ -798,12 +812,10 @@ function emitTerminalAccountErrorHint(
   }
   const message = delta.detail ?? delta.message;
   session.rebuildBeforeNextTurnReason =
-    kind === "authRequired"
-      ? "codex session restarted after an authentication failure so a new login can take effect."
-      : "codex session restarted after a rate limit so a refreshed account state can take effect.";
+    TERMINAL_ACCOUNT_ERROR_REBUILD_REASONS[kind];
   sendNotification(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
     threadId: session.bbThreadId,
-    kind,
+    kind: kind === "rateLimited" ? "rateLimited" : "authRequired",
     message,
     retryable: false,
   });

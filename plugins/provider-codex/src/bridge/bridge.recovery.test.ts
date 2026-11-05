@@ -37,6 +37,34 @@ const UNAUTHORIZED_TURN = [
   },
 ];
 
+function failedTurn(turnId: string, error: Record<string, unknown>) {
+  return [
+    {
+      method: "turn/started",
+      params: { threadId: "x", turn: { id: turnId, status: "inProgress" } },
+    },
+    {
+      method: "error",
+      params: { threadId: "x", turnId, error, willRetry: false },
+    },
+    {
+      method: "turn/completed",
+      params: { threadId: "x", turn: { id: turnId, status: "failed" } },
+    },
+  ];
+}
+
+const AWS_CREDENTIALS_TURN = failedTurn("turn-aws", {
+  message:
+    "stream disconnected before completion: failed to load AWS credentials: an error occurred while loading credentials",
+  codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
+});
+
+const STREAM_DISCONNECTED_TURN = failedTurn("turn-stream", {
+  message: "stream disconnected before completion: connection reset by peer",
+  codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
+});
+
 const OK_TURN = [
   {
     method: "turn/started",
@@ -185,6 +213,84 @@ it("raises authRequired on a terminal 401 and rebuilds the child before the next
   expect(
     notifications(BRIDGE_NOTIFICATION_METHODS.providerRecovery),
   ).toHaveLength(1);
+}, 30_000);
+
+async function waitForTerminalTurnBoundaries(count: number): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const terminal = threadDeltas().filter(
+      (delta) =>
+        (delta as { kind?: string }).kind === "turn.boundary" &&
+        (delta as { status?: string }).status !== "started",
+    );
+    if (terminal.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${count} terminal turn boundaries`);
+}
+
+async function resumeAndRunTurns(texts: string[]): Promise<void> {
+  harness = createBridgeJsonRpcTestHarness(handleLine);
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: PROVIDER_THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+  for (const [index, text] of texts.entries()) {
+    const requestId = index + 2;
+    harness.sendRequest(requestId, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+      clientRequestId: `creq_cdxawscrd${index + 2}`,
+      input: [{ type: "text", text, mentions: [] }],
+      options: { ...FULL_ACCESS_SESSION_OPTIONS },
+    });
+    expect((await harness.waitForResponse(requestId)).error).toBeUndefined();
+    await waitForTerminalTurnBoundaries(index + 1);
+  }
+}
+
+it("rebuilds the child after a stream disconnect caused by failing to load AWS credentials", async () => {
+  stubFakeAppServer({
+    turns: [AWS_CREDENTIALS_TURN, OK_TURN],
+    turnCursorPath: join(workspaceDir, "turn-cursor"),
+  });
+  await resumeAndRunTurns(["first", "after credentials refresh"]);
+
+  expect(notifications(BRIDGE_NOTIFICATION_METHODS.providerRecovery)).toEqual([
+    {
+      threadId: THREAD_ID,
+      kind: "authRequired",
+      message: expect.stringContaining("failed to load AWS credentials"),
+      retryable: false,
+    },
+  ]);
+  expect(notifications(BRIDGE_NOTIFICATION_METHODS.sessionReplaced)).toEqual([
+    expect.objectContaining({
+      threadId: THREAD_ID,
+      providerThreadId: PROVIDER_THREAD_ID,
+      reason: expect.stringContaining("failed to load provider credentials"),
+      contextLost: false,
+    }),
+  ]);
+}, 30_000);
+
+it("does not rebuild the child after an ordinary stream disconnect", async () => {
+  stubFakeAppServer({
+    turns: [STREAM_DISCONNECTED_TURN, OK_TURN],
+    turnCursorPath: join(workspaceDir, "turn-cursor"),
+  });
+  await resumeAndRunTurns(["first", "second"]);
+
+  expect(notifications(BRIDGE_NOTIFICATION_METHODS.providerRecovery)).toEqual(
+    [],
+  );
+  expect(notifications(BRIDGE_NOTIFICATION_METHODS.sessionReplaced)).toEqual(
+    [],
+  );
 }, 30_000);
 
 it("retries a rename inside the bridge while the rollout is not ready", async () => {
