@@ -201,6 +201,166 @@ describe("CompactLongPressMenu", () => {
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 
+  it("does not open when the press catches a moving list or the list scrolls the row away, but ignores settling scrolls", () => {
+    vi.useFakeTimers();
+    const onOpenChange = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <div data-testid="sidebar-scroller">
+          <CompactLongPressMenu
+            label="Thread actions"
+            onOpenChange={onOpenChange}
+            items={<DropdownMenuItem>Rename</DropdownMenuItem>}
+          >
+            <a href="#thread" data-testid="row">
+              Thread row
+            </a>
+          </CompactLongPressMenu>
+        </div>
+        <div data-testid="timeline-scroller" />
+      </CompactViewportOverrideProvider>,
+    );
+    const row = screen.getByTestId("row");
+    const sidebarScroller = screen.getByTestId("sidebar-scroller");
+    const timelineScroller = screen.getByTestId("timeline-scroller");
+    const scrollTo = (scroller: HTMLElement, top: number) => {
+      Object.defineProperty(scroller, "scrollTop", {
+        configurable: true,
+        value: top,
+      });
+      fireEvent.scroll(scroller);
+    };
+    const liftFinger = () =>
+      fireEvent.pointerUp(row, { pointerId: 1, pointerType: "touch" });
+
+    scrollTo(sidebarScroller, 0);
+    act(() => vi.advanceTimersByTime(16));
+    scrollTo(sidebarScroller, 20);
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    liftFinger();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(500));
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS / 2));
+    const rowRect = vi
+      .spyOn(row, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, -30, 100, 40));
+    scrollTo(sidebarScroller, 50);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    liftFinger();
+    rowRect.mockRestore();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(500));
+    scrollTo(timelineScroller, 0);
+    act(() => vi.advanceTimersByTime(16));
+    scrollTo(timelineScroller, 40);
+    scrollTo(sidebarScroller, 50);
+    act(() => vi.advanceTimersByTime(16));
+    scrollTo(sidebarScroller, 50.5);
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS / 2));
+    scrollTo(sidebarScroller, 50.5);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it("does not open when the row is no longer under the finger, as when the sidebar opens or closes mid-press", () => {
+    vi.useFakeTimers();
+    const { row, onOpenChange } = renderRow();
+    const coveringView = document.createElement("main");
+    document.body.appendChild(coveringView);
+
+    const elementFromPoint = vi
+      .spyOn(document, "elementFromPoint")
+      .mockReturnValue(coveringView);
+
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    elementFromPoint.mockRestore();
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    coveringView.remove();
+  });
+
+  it("applies the touch guards to the browser's own long-press contextmenu", () => {
+    vi.useFakeTimers();
+    const onOpenChange = vi.fn();
+    const onRowClick = vi.fn();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <div data-testid="sidebar-scroller">
+          <CompactLongPressMenu
+            label="Thread actions"
+            onOpenChange={onOpenChange}
+            items={<DropdownMenuItem>Rename</DropdownMenuItem>}
+          >
+            <a href="#thread" onClick={onRowClick} data-testid="row">
+              Thread row
+            </a>
+          </CompactLongPressMenu>
+        </div>
+      </CompactViewportOverrideProvider>,
+    );
+    const row = screen.getByTestId("row");
+    const sidebarScroller = screen.getByTestId("sidebar-scroller");
+    const scrollTo = (top: number) => {
+      Object.defineProperty(sidebarScroller, "scrollTop", {
+        configurable: true,
+        value: top,
+      });
+      fireEvent.scroll(sidebarScroller);
+    };
+    const longPressContextMenu = () => {
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      fireEvent(row, event);
+      return event;
+    };
+    const liftFinger = () =>
+      fireEvent.pointerUp(row, { pointerId: 1, pointerType: "touch" });
+
+    scrollTo(0);
+    act(() => vi.advanceTimersByTime(16));
+    scrollTo(20);
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(500));
+    expect(longPressContextMenu().defaultPrevented).toBe(true);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    liftFinger();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(500));
+    touchPointerDown(row);
+    const coveringView = document.createElement("main");
+    document.body.appendChild(coveringView);
+    const elementFromPoint = vi
+      .spyOn(document, "elementFromPoint")
+      .mockReturnValue(coveringView);
+    act(() => vi.advanceTimersByTime(500));
+    expect(longPressContextMenu().defaultPrevented).toBe(true);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    liftFinger();
+    elementFromPoint.mockRestore();
+    coveringView.remove();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    touchPointerDown(row);
+    act(() => vi.advanceTimersByTime(500));
+    longPressContextMenu();
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    liftFinger();
+    fireEvent.click(row);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
   it("lets only the innermost menu open when menus nest (thread row inside a project section)", () => {
     vi.useFakeTimers();
     const onProjectOpenChange = vi.fn();

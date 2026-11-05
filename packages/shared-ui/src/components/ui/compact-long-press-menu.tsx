@@ -10,6 +10,12 @@ import {
 } from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { DropdownMenu, DropdownMenuContent } from "./dropdown-menu";
+import {
+  beginLongPress,
+  isLongPressIntact,
+  trackLongPressScrolls,
+  type LongPressOrigin,
+} from "./long-press-guards";
 
 const LONG_PRESS_MS = 700;
 const LONG_PRESS_MOVE_SLOP_PX = 10;
@@ -50,10 +56,11 @@ export function CompactLongPressMenu({
   const [open, setOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const timerRef = useRef<number | null>(null);
-  const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(
-    null,
-  );
+  const pressRef = useRef<
+    (LongPressOrigin & { pointerId: number }) | null
+  >(null);
   const suppressClickRef = useRef(false);
+  const blockedTouchPressRef = useRef(false);
 
   const clearPress = useCallback(() => {
     if (timerRef.current !== null) {
@@ -63,7 +70,10 @@ export function CompactLongPressMenu({
     pressRef.current = null;
   }, []);
 
-  useEffect(() => clearPress, [clearPress]);
+  useEffect(() => {
+    trackLongPressScrolls(window);
+    return clearPress;
+  }, [clearPress]);
 
   useEffect(() => {
     if (disabled || dragging) {
@@ -96,6 +106,7 @@ export function CompactLongPressMenu({
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       suppressClickRef.current = false;
+      blockedTouchPressRef.current = false;
       if (disabled || dragging) {
         return;
       }
@@ -110,17 +121,26 @@ export function CompactLongPressMenu({
       }
       claimPressEvent(event.nativeEvent);
       clearPress();
-      pressRef.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
+      const origin = beginLongPress(
+        event.currentTarget,
+        event.clientX,
+        event.clientY,
+      );
+      if (origin === null) {
+        blockedTouchPressRef.current = true;
+        return;
+      }
+      pressRef.current = { ...origin, pointerId: event.pointerId };
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
-        if (pressRef.current === null) {
+        const press = pressRef.current;
+        if (press === null) {
           return;
         }
         pressRef.current = null;
+        if (!isLongPressIntact(press)) {
+          return;
+        }
         suppressClickRef.current = true;
         openMenu();
       }, LONG_PRESS_MS);
@@ -146,6 +166,7 @@ export function CompactLongPressMenu({
 
   const handlePointerEnd = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      blockedTouchPressRef.current = false;
       if (pressRef.current?.pointerId === event.pointerId) {
         clearPress();
       }
@@ -163,12 +184,20 @@ export function CompactLongPressMenu({
         return;
       }
       event.preventDefault();
-      if (pressRef.current !== null) {
+      const press = pressRef.current;
+      if (
+        blockedTouchPressRef.current ||
+        (press !== null && !isLongPressIntact(press))
+      ) {
+        clearPress();
+        return;
+      }
+      if (press !== null) {
         suppressClickRef.current = true;
       }
       openMenu();
     },
-    [disabled, dragging, openMenu],
+    [clearPress, disabled, dragging, openMenu],
   );
 
   const handleClickCapture = useCallback(
