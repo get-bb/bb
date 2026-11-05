@@ -15,11 +15,25 @@ import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import type { OnboardingStepId } from "./onboarding-model";
 import { OnboardingFlow } from "./OnboardingFlow";
 
-vi.mock("@/lib/sdk", () => {
-  const pending = () => new Promise<never>(() => {});
-  const area = new Proxy({}, { get: () => pending });
-  return { sdk: new Proxy({}, { get: () => area }) };
-});
+const sdkCalls = vi.hoisted(() => [] as string[]);
+
+vi.mock("@/lib/sdk", () => ({
+  sdk: new Proxy(
+    {},
+    {
+      get: (_sdk, area) =>
+        new Proxy(
+          {},
+          {
+            get: (_area, method) => () => {
+              sdkCalls.push(`${String(area)}.${String(method)}`);
+              return new Promise<never>(() => {});
+            },
+          },
+        ),
+    },
+  ),
+}));
 vi.mock("@/hooks/useRealtimeSubscription", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return Object.fromEntries(
@@ -66,9 +80,14 @@ function button(name: RegExp): HTMLButtonElement {
   return element;
 }
 
+function providerStateRequests(): number {
+  return sdkCalls.filter((call) => call === "system.providerStates").length;
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  sdkCalls.length = 0;
 });
 
 describe("OnboardingFlow", () => {
@@ -103,7 +122,9 @@ describe("OnboardingFlow", () => {
     ).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
 
+    const requestsBeforeRetry = providerStateRequests();
     fireEvent.click(button(/^Retry$/u));
+    expect(providerStateRequests()).toBe(requestsBeforeRetry + 1);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(button(/Continue/u).disabled).toBe(true);
 
