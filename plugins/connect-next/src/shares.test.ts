@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createSharesClient, watchServerShares } from "./shares.js";
-import { FakeConnectShares } from "./testing/fake-connect.js";
+import { FakeConnect } from "./testing/fake-connect.js";
 
 const log = { debug() {}, info() {}, warn() {}, error() {} };
 
-function client(connect: FakeConnectShares) {
+function client(connect: FakeConnect) {
   return createSharesClient(
     () =>
       ({
@@ -23,7 +23,7 @@ async function until(check: () => boolean): Promise<void> {
 
 describe("watchServerShares", () => {
   it("follows connect's shares and treats a stopped connect plugin as no shares", async () => {
-    const connect = new FakeConnectShares();
+    const connect = new FakeConnect();
     connect.setPorts([5173]);
     const seen: number[][] = [];
     const controller = new AbortController();

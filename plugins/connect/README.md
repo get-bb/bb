@@ -91,13 +91,25 @@ to the client RPCs and answered only when the caller is that plugin:
   answers once `revision` passes `afterRevision`, or after 25 s with the
   current value. `revision` increases on every expose, unexpose and prune.
 
+`src/remote-access-feed.ts` serves the Remote access setting to
+`bb--connect-next` the same way, so the next tunnel runs only while remote
+access is on:
+
+- `connect.internal_DO_NOT_USE.remoteAccess` (`null` input) answers
+  `{ revision, enabled }`.
+- `connect.internal_DO_NOT_USE.waitForRemoteAccessChange({ afterRevision })`
+  long-polls like `waitForServerSharesChange` (25 s). `revision` increases
+  whenever `remoteAccess` changes (setting, `bb connect on|off`, RPC). Disposing
+  the plugin sets it to off and releases waiting long-polls with an error, so a
+  disabled connect plugin turns the next tunnel off at once.
+
 Connect asks `bb--connect-next`'s `status` RPC (2 s timeout; a disabled
-plugin counts as off) whenever it builds a share listing. While that status is
-`enabled` with a `url`, server-machine listings carry
+plugin counts as off) whenever it builds a share listing. While that status has
+a `url` and its state is neither `off` nor `waiting`, server-machine listings carry
 `nextUrl = <scheme>://<label>--<port>.<next domain>` and other machines'
 listings `nextUrl = <scheme>://<machine-label>--<port>.<next domain>` (the
-machine label from `bb.hosts.ensureSharedPortTunnel`); `bb connect expose`
-prints it on a second line, `bb connect shares` and `bb connect status` after
-the first URL, and the remote-access agent instructions mention it. A machine
+machine label from `bb.hosts.ensureSharedPortTunnel`). Only `--json` and RPC
+listings show it; `bb connect expose`, `bb connect shares`, `bb connect status`
+and the remote-access agent instructions give the bb connect URL alone. A machine
 enrolled through the next address already has `url` on the next domain, so its
 listing has no `nextUrl` and the address is printed once.

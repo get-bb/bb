@@ -9,7 +9,7 @@ import {
   nextMachineSharePublicUrl,
   nextSharePublicUrl,
 } from "./next-address.js";
-import { ShareChanges } from "./server-shares.js";
+import { RevisionFeed } from "./server-shares.js";
 import { FakeAccount, type FakeRpcArgs } from "./testing/fake-account.js";
 import type { ConnectStatus, ShareListing } from "./types.js";
 
@@ -21,7 +21,7 @@ const CONNECT_NEXT = { kind: "plugin", pluginId: "bb--connect-next" } as const;
 interface Loaded {
   host: FakePluginHost;
   account: FakeAccount;
-  next: { status: { enabled: boolean; url: string | null } | null };
+  next: { status: { state: string; url: string | null } | null };
   service: { controller: AbortController; done: Promise<void> };
 }
 
@@ -43,10 +43,7 @@ async function load(): Promise<Loaded> {
     if (next.status === null) {
       throw Object.assign(new Error("HTTP 404"), { status: 404 });
     }
-    return args.outputSchema.parse({
-      ...next.status,
-      state: "connected",
-    });
+    return args.outputSchema.parse(next.status);
   };
   const host = createFakePluginHost({
     pluginId: "connect",
@@ -177,7 +174,7 @@ describe("connect.internal_DO_NOT_USE.serverShares", () => {
 });
 
 describe("share URLs on the next address", () => {
-  it("adds the next URL for every share while connect next is on", async () => {
+  it("adds the next URL to listings, not to the printed address, while connect next serves them", async () => {
     const current = await load();
     const { harness } = current.host;
 
@@ -187,13 +184,12 @@ describe("share URLs on the next address", () => {
     });
 
     current.next.status = {
-      enabled: true,
+      state: "connected",
       url: "https://sawyer.next.getbb.app",
     };
     expect(await harness.runCli(["expose", "5173"])).toMatchObject({
       exitCode: 0,
-      stdout:
-        "https://sawyer--5173.getbb.app\nhttps://sawyer--5173.next.getbb.app\n",
+      stdout: "https://sawyer--5173.getbb.app\n",
     });
     const remote = JSON.parse(
       (
@@ -210,9 +206,8 @@ describe("share URLs on the next address", () => {
     expect(remote.nextUrl).toBe("https://sawyer-air--4000.next.getbb.app");
 
     const listed = await harness.runCli(["shares"]);
-    expect(listed.stdout).toContain(
-      "https://sawyer--5173.getbb.app  https://sawyer--5173.next.getbb.app",
-    );
+    expect(listed.stdout).toContain("https://sawyer--5173.getbb.app");
+    expect(listed.stdout).not.toContain(".next.");
     const rpcListed = (await harness.callRpc("listShares")) as ShareListing[];
     expect(rpcListed.find((share) => share.port === 5173)).toMatchObject({
       url: "https://sawyer--5173.getbb.app",
@@ -223,12 +218,13 @@ describe("share URLs on the next address", () => {
       nextUrl: "https://sawyer-air--4000.next.getbb.app",
     });
 
-    current.next.status = {
-      enabled: false,
-      url: "https://sawyer.next.getbb.app",
-    };
-    const off = await harness.runCli(["shares"]);
-    expect(off.stdout).not.toContain(".next.");
+    for (const state of ["off", "waiting"]) {
+      current.next.status = { state, url: "https://sawyer.next.getbb.app" };
+      const unserved = (await harness.callRpc("listShares")) as ShareListing[];
+      expect(unserved.find((share) => share.port === 5173)).not.toHaveProperty(
+        "nextUrl",
+      );
+    }
   });
 });
 
@@ -237,7 +233,7 @@ describe("shares of a machine enrolled through the next address", () => {
     const current = await load();
     const { harness } = current.host;
     current.next.status = {
-      enabled: true,
+      state: "connected",
       url: "https://sawyer.next.getbb.app",
     };
     const listing = JSON.parse(
@@ -299,9 +295,9 @@ describe("nextSharePublicUrl", () => {
   });
 });
 
-describe("ShareChanges", () => {
+describe("RevisionFeed", () => {
   it("wakes every waiter on a change and none for an older revision", async () => {
-    const changes = new ShareChanges();
+    const changes = new RevisionFeed();
     const first = changes.wait(0, 60_000);
     const second = changes.wait(0, 60_000);
     changes.bump();

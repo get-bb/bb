@@ -84,6 +84,7 @@ const STATE_FOR: Record<FrpcSupervisorStatus["state"], ConnectNextState> = {
   connecting: "connecting",
   connected: "connected",
   refused: "refused",
+  waiting: "waiting",
   offline: "offline",
   error: "error",
   halted: "signed-out",
@@ -92,6 +93,7 @@ const STATE_FOR: Record<FrpcSupervisorStatus["state"], ConnectNextState> = {
 export class NextTunnel {
   private identity: ServerIdentity | null = null;
   private enabled: boolean;
+  private remoteAccess = false;
   private running = false;
   private generation = 0;
   private session: Session | null = null;
@@ -107,6 +109,7 @@ export class NextTunnel {
 
   start(): Promise<void> {
     this.running = true;
+    this.remoteAccess = false;
     return this.reconcile();
   }
 
@@ -118,6 +121,12 @@ export class NextTunnel {
   setEnabled(enabled: boolean): Promise<void> {
     if (this.enabled === enabled) return this.work;
     this.enabled = enabled;
+    return this.reconcile();
+  }
+
+  setRemoteAccess(remoteAccess: boolean): Promise<void> {
+    if (this.remoteAccess === remoteAccess) return this.work;
+    this.remoteAccess = remoteAccess;
     return this.reconcile();
   }
 
@@ -153,6 +162,10 @@ export class NextTunnel {
     return this.session?.supervisor.childPid() ?? null;
   }
 
+  private wanted(): boolean {
+    return this.enabled && this.remoteAccess;
+  }
+
   private serverFor(identity: ServerIdentity): TunnelServer {
     return (
       this.options.serverOverride ??
@@ -162,7 +175,7 @@ export class NextTunnel {
 
   status(): ConnectNextStatus {
     const supervised = this.session?.supervisor.status() ?? null;
-    const state: ConnectNextState = !this.enabled
+    const state: ConnectNextState = !this.wanted()
       ? "off"
       : this.identity === null
         ? "signed-out"
@@ -175,6 +188,7 @@ export class NextTunnel {
         : this.serverFor(this.identity);
     return {
       enabled: this.enabled,
+      remoteAccess: this.remoteAccess,
       state,
       label: this.identity?.label ?? null,
       url:
@@ -226,7 +240,7 @@ export class NextTunnel {
   private syncMachineTunnels(): void {
     const identity = this.identity;
     const config: InternalDoNotUsePluginNextTunnelConfig | null =
-      this.running && this.enabled && identity !== null
+      this.running && this.wanted() && identity !== null
         ? {
             domain: nextSiteForAccount(identity.baseUrl).domain,
             server: this.serverFor(identity),
@@ -268,7 +282,7 @@ export class NextTunnel {
       if (generation !== this.generation) return;
       this.syncMachineTunnels();
       const identity = this.identity;
-      if (!this.running || !this.enabled || identity === null) {
+      if (!this.running || !this.wanted() || identity === null) {
         this.publish();
         return;
       }
@@ -284,6 +298,7 @@ export class NextTunnel {
           prepare: () => this.prepare(session),
           proxies: () => this.proxiesFor(session),
           log: {
+            debug: (message) => this.options.log.debug(message),
             info: (message) => this.options.log.info(message),
             warn: (message) =>
               this.options.log.warn(`connect next: ${message}`),

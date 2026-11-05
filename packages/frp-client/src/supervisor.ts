@@ -14,6 +14,7 @@ import {
 import { cleanFrpcLine, parseFrpcLine } from "./log.js";
 
 export interface FrpcLogger {
+  debug(message: string): void;
   info(message: string): void;
   warn(message: string): void;
 }
@@ -23,6 +24,7 @@ export type FrpcState =
   | "connecting"
   | "connected"
   | "refused"
+  | "waiting"
   | "offline"
   | "error"
   | "halted";
@@ -59,6 +61,7 @@ export interface FrpcTiming {
   restartMaxMs: number;
   stableMs: number;
   refusedRetryMs: number;
+  pausedRetryMs: number;
   stopGraceMs: number;
   reloadTimeoutMs: number;
 }
@@ -68,9 +71,18 @@ export const DEFAULT_FRPC_TIMING: FrpcTiming = {
   restartMaxMs: 30_000,
   stableMs: 10_000,
   refusedRetryMs: 5 * 60_000,
+  pausedRetryMs: 10 * 60_000,
   stopGraceMs: 3_000,
   reloadTimeoutMs: 5_000,
 };
+
+const PAUSED_RETRY_JITTER = 0.2;
+
+export function pausedRetryDelay(baseMs: number, random: number): number {
+  return Math.round(
+    baseMs * (1 - PAUSED_RETRY_JITTER + 2 * PAUSED_RETRY_JITTER * random),
+  );
+}
 
 export type FrpcReloadRequest = (
   admin: FrpcAdmin,
@@ -376,7 +388,7 @@ export class FrpcSupervisor {
       entry.state = "pending";
       entry.error = null;
     }
-    this.setState("connecting", this.lastError);
+    if (this.state !== "waiting") this.setState("connecting", this.lastError);
     const secrets = [setup.launch.credential, setup.admin.password];
     for (const stream of [child.stdout, child.stderr]) {
       if (stream === null) continue;
@@ -401,9 +413,13 @@ export class FrpcSupervisor {
 
   private onLine(launch: number, running: Running, line: string): void {
     if (line === "") return;
-    this.options.log.info(`frpc: ${line}`);
-    if (!this.current(launch) || this.running !== running) return;
     const event = parseFrpcLine(line);
+    if (event?.kind === "paused" || this.state === "waiting") {
+      this.options.log.debug(`frpc: ${line}`);
+    } else {
+      this.options.log.info(`frpc: ${line}`);
+    }
+    if (!this.current(launch) || this.running !== running) return;
     if (event === null) return;
     const primary = this.options.primaryProxy;
     switch (event.kind) {
@@ -458,7 +474,19 @@ export class FrpcSupervisor {
       case "refused":
         this.onRefused(running, event.reason);
         return;
+      case "paused":
+        this.onPaused(running);
+        return;
     }
+  }
+
+  private onPaused(running: Running): void {
+    this.running = null;
+    this.setState("waiting", null);
+    void this.killChild(running.child);
+    this.scheduleRelaunch(
+      pausedRetryDelay(this.timing.pausedRetryMs, Math.random()),
+    );
   }
 
   private onRefused(running: Running, reason: string): void {

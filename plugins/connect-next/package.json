@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Beta: also reach this bb at https://<label>.next.<your bb account's domain> through bb's Fly gate, next to bb connect.",
+  "description": "Serves bb connect from the region nearest you. Follows bb connect's Remote access setting.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.67"
   },
   "bb": {
-    "name": "bb connect next (beta)",
-    "description": "Beta: also reach this bb at https://<label>.next.<your bb account's domain> through bb's Fly gate, next to bb connect.",
+    "name": "bb connect regions",
+    "description": "Serves bb connect from the region nearest you. Follows bb connect's Remote access setting.",
     "branding": {
       "icon": "ComputerCloud"
     },
@@ -27,7 +27,6 @@
   },
   "dependencies": {
     "@bb/frp-client": "workspace:*",
-    "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
     "bb-plugin-bb-account": "workspace:*",
     "zod": "^4.3.6"

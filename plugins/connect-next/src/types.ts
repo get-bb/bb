@@ -8,6 +8,7 @@ export const connectNextStateSchema = z.enum([
   "connecting",
   "connected",
   "refused",
+  "waiting",
   "offline",
   "error",
 ]);
@@ -35,6 +36,7 @@ export const connectNextMachineSchema = z
       "connecting",
       "connected",
       "refused",
+      "waiting",
       "offline",
       "error",
     ]),
@@ -50,6 +52,7 @@ export type ConnectNextMachine = z.infer<typeof connectNextMachineSchema>;
 export const connectNextStatusSchema = z
   .object({
     enabled: z.boolean(),
+    remoteAccess: z.boolean(),
     state: connectNextStateSchema,
     label: z.string().nullable(),
     url: z.string().nullable(),

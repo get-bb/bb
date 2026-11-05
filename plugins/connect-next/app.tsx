@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  UrlLink,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import { cn } from "@bb/shared-ui/lib/utils";
 import type { connectNextRpcContract } from "./src/rpc.js";
 import {
   CONNECT_NEXT_REALTIME_CHANNEL,
@@ -23,100 +21,22 @@ function asStatus(value: unknown): ConnectNextStatus | null {
   return parsed.success ? parsed.data : null;
 }
 
-type Tone = "ok" | "warn" | "bad" | "muted";
-
-const STATE_COPY: Record<
-  ConnectNextStatus["state"],
-  { label: string; tone: Tone }
+const STATE_LABEL: Record<
+  ConnectNextStatus["state"] | ConnectNextStatus["machines"][number]["state"],
+  string
 > = {
-  off: { label: "Off", tone: "muted" },
-  "signed-out": { label: "Waiting for a bb account sign-in", tone: "muted" },
-  connecting: { label: "Connecting…", tone: "warn" },
-  connected: { label: "Connected", tone: "ok" },
-  refused: { label: "The gate refused this bb's credential", tone: "bad" },
-  offline: { label: "Can't reach the gate", tone: "warn" },
-  error: { label: "Couldn't start the tunnel", tone: "bad" },
+  off: "Off",
+  idle: "Idle",
+  "signed-out": "Waiting for bb account sign-in",
+  connecting: "Connecting…",
+  connected: "Connected",
+  refused: "Credential refused",
+  waiting: "Not yet available for this bb",
+  offline: "Can't reach the gate",
+  error: "Couldn't start",
 };
 
-const SHARE_TONE: Record<ConnectNextStatus["shares"][number]["state"], Tone> = {
-  active: "ok",
-  pending: "warn",
-  refused: "bad",
-};
-
-function StatusDot({ tone }: { tone: Tone }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-2 shrink-0 rounded-full",
-        tone === "ok" && "bg-success",
-        tone === "warn" && "animate-pulse bg-warning",
-        tone === "bad" && "bg-destructive",
-        tone === "muted" && "bg-muted-foreground/50",
-      )}
-    />
-  );
-}
-
-const MACHINE_STATE_COPY: Record<
-  ConnectNextStatus["machines"][number]["state"],
-  { label: string; tone: Tone }
-> = {
-  idle: { label: "Idle", tone: "muted" },
-  connecting: { label: "Connecting…", tone: "warn" },
-  connected: { label: "Connected", tone: "ok" },
-  refused: { label: "Credential refused", tone: "bad" },
-  offline: { label: "Can't reach the gate", tone: "warn" },
-  error: { label: "Couldn't start the tunnel", tone: "bad" },
-};
-
-function ShareList({
-  title,
-  label,
-  shares,
-}: {
-  title: string | null;
-  label: string;
-  shares: ConnectNextStatus["shares"];
-}) {
-  return (
-    <div className="space-y-1">
-      {title === null ? null : (
-        <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      )}
-      <ul className="space-y-1" aria-label={label}>
-        {shares.map((share) => (
-          <li key={share.port} className="flex items-center gap-2">
-            <StatusDot tone={SHARE_TONE[share.state]} />
-            <span className="shrink-0 font-mono text-xs tabular-nums">
-              :{share.port}
-            </span>
-            {share.state === "active" ? (
-              <UrlLink
-                href={share.url}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 truncate font-mono text-xs text-muted-foreground hover:underline"
-              >
-                {share.url}
-              </UrlLink>
-            ) : (
-              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                {share.url}
-              </span>
-            )}
-            {share.error !== null ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                {share.error}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+const TROUBLE: ReadonlySet<string> = new Set(["refused", "offline", "error"]);
 
 function useConnectNextStatus() {
   const rpc = useRpc<typeof connectNextRpcContract>();
@@ -169,78 +89,33 @@ function ConnectNextSettingsSection() {
   if (loadError !== null) {
     return (
       <p role="alert" className="text-sm text-destructive-text">
-        Failed to load connect next status: {loadError}
+        {loadError}
       </p>
     );
   }
-  if (status === null) {
-    return <p className="text-sm text-muted-foreground">Loading...</p>;
-  }
+  if (status === null) return null;
 
-  const copy = STATE_COPY[status.state];
+  const machines = status.machines.filter((machine) =>
+    TROUBLE.has(machine.state),
+  );
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2" role="status">
-        <StatusDot tone={copy.tone} />
-        <span className="text-sm font-medium">{copy.label}</span>
-      </div>
-      {status.url !== null && status.state === "connected" ? (
-        <UrlLink
-          href={status.url}
-          target="_blank"
-          rel="noreferrer"
-          className="block truncate font-mono text-sm text-foreground hover:underline"
-        >
-          {status.url}
-        </UrlLink>
-      ) : status.url !== null ? (
-        <p className="truncate font-mono text-sm text-muted-foreground">
-          {status.url}
-        </p>
-      ) : null}
-      {!status.enabled ? (
+    <div className="space-y-1">
+      <p role="status" className="text-sm">
+        {STATE_LABEL[status.state]}
+      </p>
+      {status.enabled && !status.remoteAccess ? (
         <p className="text-xs text-muted-foreground">
-          Turn on the switch above, or run <code>bb connect-next on</code>.
+          Remote access is off in bb connect.
         </p>
       ) : null}
-      {status.lastError !== null && status.state !== "connected" ? (
+      {status.lastError !== null && TROUBLE.has(status.state) ? (
         <p className="text-xs text-muted-foreground">{status.lastError}</p>
       ) : null}
-      {status.shares.length > 0 ? (
-        <ShareList
-          title="Shared ports"
-          label="Shared ports on the next address"
-          shares={status.shares}
-        />
-      ) : null}
-      {status.machines.map((machine) => (
-        <div key={machine.hostId} className="space-y-1">
-          <div className="flex items-center gap-2">
-            <StatusDot tone={MACHINE_STATE_COPY[machine.state].tone} />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {machine.hostName}
-            </span>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {MACHINE_STATE_COPY[machine.state].label}
-            </span>
-          </div>
-          {machine.lastError !== null && machine.state !== "connected" ? (
-            <p className="text-xs text-muted-foreground">{machine.lastError}</p>
-          ) : null}
-          {machine.shares.length > 0 ? (
-            <ShareList
-              title={null}
-              label={`Shared ports from ${machine.hostName} on the next address`}
-              shares={machine.shares}
-            />
-          ) : null}
-        </div>
+      {machines.map((machine) => (
+        <p key={machine.hostId} className="text-xs text-muted-foreground">
+          {machine.hostName}: {STATE_LABEL[machine.state]}
+        </p>
       ))}
-      <p className="text-xs text-muted-foreground">
-        Your bb connect address keeps working; both answer at once. Ports you
-        share with <code>bb connect expose</code>, from this bb's machine or
-        another enrolled machine, answer on the next address too.
-      </p>
     </div>
   );
 }
@@ -248,8 +123,6 @@ function ConnectNextSettingsSection() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "connect-next",
-    description:
-      "Beta: a second way in to this bb, through bb's new Fly gate at next.<your bb account's domain>.",
     component: ConnectNextSettingsSection,
   });
 });

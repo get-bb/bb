@@ -46,7 +46,7 @@ export function createSharesClient(
   };
 }
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const finish = () => {
       clearTimeout(timer);
@@ -59,7 +59,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-function httpStatusOf(error: unknown): number | null {
+export function httpStatusOf(error: unknown): number | null {
   if (typeof error !== "object" || error === null || !("status" in error)) {
     return null;
   }

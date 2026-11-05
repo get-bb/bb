@@ -1,4 +1,7 @@
-import { FRP_LOGIN_REFUSED_REASON } from "@bb/tunnel-contract/next";
+import {
+  FRP_LOGIN_PAUSED_REASON,
+  FRP_LOGIN_REFUSED_REASON,
+} from "@bb/tunnel-contract/next";
 
 export type FrpcLogEvent =
   | { kind: "connecting" }
@@ -7,7 +10,8 @@ export type FrpcLogEvent =
   | { kind: "proxy-refused"; proxy: string; reason: string }
   | { kind: "proxy-removed"; proxy: string }
   | { kind: "offline"; reason: string }
-  | { kind: "refused"; reason: string };
+  | { kind: "refused"; reason: string }
+  | { kind: "paused" };
 
 const ANSI_PATTERN = /\u001b\[[0-9;]*m/gu;
 const PREFIX_PATTERN =
@@ -54,6 +58,7 @@ export function parseFrpcLine(line: string): FrpcLogEvent | null {
   const loginError = LOGIN_ERROR.exec(message);
   if (loginError !== null) {
     const reason = loginError[1] ?? "";
+    if (reason === FRP_LOGIN_PAUSED_REASON) return { kind: "paused" };
     return reason === FRP_LOGIN_REFUSED_REASON
       ? { kind: "refused", reason }
       : { kind: "offline", reason };

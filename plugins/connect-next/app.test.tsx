@@ -15,187 +15,97 @@ afterEach(() => {
 
 function status(overrides: Partial<ConnectNextStatus> = {}): ConnectNextStatus {
   return {
-    enabled: false,
-    state: "off",
+    enabled: true,
+    remoteAccess: true,
+    state: "connected",
     label: "sawyer",
     url: "https://sawyer.next.getbb.app",
     server: "wss://tunnel.next.getbb.app/~!frp",
     lastError: null,
     nextRetryAt: null,
     since: 1_700_000_000_000,
-    shares: [],
+    shares: [
+      {
+        port: 5173,
+        url: "https://sawyer--5173.next.getbb.app",
+        state: "active",
+        error: null,
+      },
+    ],
     machines: [],
     ...overrides,
   };
 }
 
+function render(initial: ConnectNextStatus) {
+  return renderSlot(
+    app.settingsSections[0]!,
+    {},
+    { openUrl: () => true, rpc: { status: () => initial } },
+  );
+}
+
 describe("connect next settings section", () => {
-  it("lists the shared ports on the next address", async () => {
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        openUrl: () => true,
-        rpc: {
-          status: () =>
-            status({
-              enabled: true,
-              state: "connected",
-              shares: [
-                {
-                  port: 5173,
-                  url: "https://sawyer--5173.next.getbb.app",
-                  state: "active",
-                  error: null,
-                },
-                {
-                  port: 8080,
-                  url: "https://sawyer--8080.next.getbb.app",
-                  state: "refused",
-                  error: "a server may only claim its own label",
-                },
-              ],
-            }),
-        },
-      },
-    );
-    await slot.findByText("Shared ports");
-    expect(
-      slot.getByRole("link", { name: "https://sawyer--5173.next.getbb.app" }),
-    ).toBeTruthy();
-    expect(
-      slot.queryByRole("link", { name: "https://sawyer--8080.next.getbb.app" }),
-    ).toBeNull();
-    slot.getByText("a server may only claim its own label");
-  });
-
-  it("shows the state and the address, and follows realtime updates", async () => {
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      { openUrl: () => true, rpc: { status: () => status() } },
-    );
+  it("shows one line of state without the next address, and follows realtime updates", async () => {
+    const slot = render(status({ enabled: false, state: "off" }));
     await slot.findByText("Off");
-    slot.getByText("bb connect-next on");
-    slot.getByText("https://sawyer.next.getbb.app");
-
     await slot.emitRealtime(
       CONNECT_NEXT_REALTIME_CHANNEL,
-      status({ enabled: true, state: "connecting" }),
+      status({ state: "connecting" }),
     );
     await slot.findByText("Connecting…");
-
-    await slot.emitRealtime(
-      CONNECT_NEXT_REALTIME_CHANNEL,
-      status({ enabled: true, state: "connected" }),
-    );
+    await slot.emitRealtime(CONNECT_NEXT_REALTIME_CHANNEL, status());
     await slot.findByText("Connected");
-    expect(
-      slot.getByRole("link", { name: "https://sawyer.next.getbb.app" }),
-    ).toBeTruthy();
+    expect(slot.container.textContent).not.toContain(".next.");
+    expect(slot.queryAllByRole("link")).toEqual([]);
+    expect(slot.container.querySelector(".rounded-full")).toBeNull();
   });
 
-  it("lists each machine's next tunnel and its shares", async () => {
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        openUrl: () => true,
-        rpc: {
-          status: () =>
-            status({
-              enabled: true,
-              state: "connected",
-              machines: [
-                {
-                  hostId: "host-laptop",
-                  hostName: "laptop",
-                  label: "laptop",
-                  state: "connected",
-                  lastError: null,
-                  nextRetryAt: null,
-                  since: 1_700_000_000_000,
-                  shares: [
-                    {
-                      port: 3000,
-                      url: "https://laptop--3000.next.getbb.app",
-                      state: "active",
-                      error: null,
-                    },
-                  ],
-                },
-                {
-                  hostId: "host-box",
-                  hostName: "box",
-                  label: "box",
-                  state: "refused",
-                  lastError: "bb connect refused this server credential",
-                  nextRetryAt: null,
-                  since: 1_700_000_000_000,
-                  shares: [],
-                },
-              ],
-            }),
-        },
-      },
-    );
-    await slot.findByText("laptop");
-    expect(
-      slot.getByRole("link", { name: "https://laptop--3000.next.getbb.app" }),
-    ).toBeTruthy();
-    slot.getByRole("list", {
-      name: "Shared ports from laptop on the next address",
-    });
-    slot.getByText("box");
-    slot.getByText("Credential refused");
-    slot.getByText("bb connect refused this server credential");
+  it("says why it is off when bb connect's remote access is off", async () => {
+    const slot = render(status({ remoteAccess: false, state: "off" }));
+    await slot.findByText("Off");
+    slot.getByText("Remote access is off in bb connect.");
   });
 
-  it("names no fixed domain and shows the address derived from the account", async () => {
-    expect(app.settingsSections[0]!.description).toContain(
-      "next.<your bb account's domain>",
+  it("shows the rollout wait quietly, without an error", async () => {
+    const slot = render(
+      status({ state: "waiting", nextRetryAt: 1_700_000_600_000 }),
     );
-    expect(app.settingsSections[0]!.description).not.toContain("getbb.app");
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        openUrl: () => true,
-        rpc: {
-          status: () =>
-            status({
-              enabled: true,
-              state: "connected",
-              url: "https://sawyer.next.vibecodethis.site",
-              server: "wss://tunnel.next.vibecodethis.site/~!frp",
-            }),
-        },
-      },
-    );
-    await slot.findByText("Connected");
-    expect(
-      slot.getByRole("link", { name: "https://sawyer.next.vibecodethis.site" }),
-    ).toBeTruthy();
-    expect(slot.container.textContent).not.toContain("getbb.app");
+    await slot.findByText("Not yet available for this bb");
+    expect(slot.container.textContent).toBe("Not yet available for this bb");
+    expect(slot.queryByRole("alert")).toBeNull();
   });
 
   it("explains a refused credential", async () => {
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        openUrl: () => true,
-        rpc: {
-          status: () =>
-            status({
-              enabled: true,
-              state: "refused",
-              lastError: "bb connect refused this server credential",
-            }),
-        },
-      },
+    const slot = render(
+      status({
+        state: "refused",
+        lastError: "bb connect refused this server credential",
+      }),
     );
-    await slot.findByText("The gate refused this bb's credential");
+    await slot.findByText("Credential refused");
     slot.getByText("bb connect refused this server credential");
+  });
+
+  it("names only machines whose tunnel has a problem", async () => {
+    const machine = {
+      label: null,
+      lastError: null,
+      nextRetryAt: null,
+      since: 1_700_000_000_000,
+      shares: [],
+    };
+    const slot = render(
+      status({
+        machines: [
+          { ...machine, hostId: "h1", hostName: "laptop", state: "connected" },
+          { ...machine, hostId: "h2", hostName: "studio", state: "waiting" },
+          { ...machine, hostId: "h3", hostName: "box", state: "refused" },
+        ],
+      }),
+    );
+    await slot.findByText("box: Credential refused");
+    expect(slot.container.textContent).not.toContain("laptop");
+    expect(slot.container.textContent).not.toContain("studio");
   });
 });

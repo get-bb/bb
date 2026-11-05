@@ -8,22 +8,15 @@ import {
 import type { ConnectNextControls } from "./rpc.js";
 import type { ConnectNextStatus } from "./types.js";
 
-const NEXT_ADDRESS = "https://<label>.next.<account domain>";
-
 const DESCRIPTION = [
-  `Beta: also reach this bb at ${NEXT_ADDRESS} through bb's Fly gate.`,
-  "The domain follows the bb account this bb is signed in to: https://<label>.next.getbb.app for getbb.app.",
-  "bb connect (https://<label>.getbb.app) keeps working; both addresses answer at once.",
+  "Debug bb connect's nearest-region tunnel (Fly gate, bb connect next).",
+  "It runs while this bb is signed in to your bb account and bb connect's remote access is on",
+  "(`bb connect on|off`). This bb then also answers at https://<label>.next.<account domain>.",
   "",
-  "It is on as soon as this plugin is enabled and this bb is signed in to your bb account",
-  "(bb account login).",
-  "",
-  "`bb connect-next off` closes the connect next tunnel and leaves bb connect alone;",
-  "`bb connect-next on` opens it again.",
-  "Ports shared from the bb server's machine with `bb connect expose <port>` also answer at",
-  "https://<label>--<port>.next.<account domain> (owner only); `bb connect-next status` lists them.",
-  "Ports shared from other enrolled machines with `bb connect expose <port> --host <machine>` answer at",
-  "https://<machine-label>--<port>.next.<account domain>; each machine's daemon runs its own tunnel.",
+  "`bb connect-next off` closes this tunnel and leaves bb connect alone; `bb connect-next on` opens it again.",
+  "`bb connect-next status` prints the address, the state, each port shared with",
+  "`bb connect expose` (https://<label>--<port>.next.<account domain>) and each machine's tunnel",
+  "(https://<machine-label>--<port>.next.<account domain>).",
 ].join("\n");
 
 const JSON_OPTION = {
@@ -39,6 +32,7 @@ const MACHINE_STATE_TEXT: Record<
   connecting: "connecting",
   connected: "connected",
   refused: "credential refused",
+  waiting: "not yet enabled for this server",
   offline: "offline",
   error: "error",
 };
@@ -49,15 +43,17 @@ const STATE_TEXT: Record<ConnectNextStatus["state"], string> = {
   connecting: "connecting",
   connected: "connected",
   refused: "credential refused",
+  waiting: "not yet enabled for this server",
   offline: "offline",
   error: "error",
 };
 
 export function formatStatus(status: ConnectNextStatus): string {
   if (!status.enabled) {
-    return status.url === null
-      ? "connect next is off. Run `bb connect-next on` to also reach this bb at its next address."
-      : `connect next is off. Run \`bb connect-next on\` to also reach this bb at ${status.url}.`;
+    return "connect next is off. Run `bb connect-next on` to turn it back on.";
+  }
+  if (!status.remoteAccess) {
+    return "connect next is off because bb connect's remote access is off. Run `bb connect on` to turn both on.";
   }
   if (status.label === null) {
     return "connect next is on, but this bb isn't signed in to a bb account. Run `bb account login`; the tunnel starts once it is.";
@@ -116,7 +112,7 @@ export function registerConnectNextCli(
   bb.cli.register(
     defineCli({
       name: "connect-next",
-      summary: `Beta: also reach this bb at ${NEXT_ADDRESS}`,
+      summary: "Debug bb connect's nearest-region tunnel",
       description: DESCRIPTION,
       commands: {
         status: cliCommand({
@@ -134,7 +130,7 @@ export function registerConnectNextCli(
             }),
         }),
         on: cliCommand({
-          summary: `Reach this bb at ${NEXT_ADDRESS} as well`,
+          summary: "Turn the nearest-region tunnel back on",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {
@@ -144,15 +140,12 @@ export function registerConnectNextCli(
               }
               return {
                 exitCode: 0,
-                stdout:
-                  status.url === null
-                    ? "connect next is on. Run `bb account login` to sign in; the tunnel starts once you do.\n"
-                    : `connect next is on — this bb will answer at ${status.url}\n`,
+                stdout: `${formatStatus(status)}\n`,
               };
             }),
         }),
         off: cliCommand({
-          summary: "Close the connect next tunnel; bb connect is unaffected",
+          summary: "Close the nearest-region tunnel; bb connect is unaffected",
           options: { json: JSON_OPTION },
           run: (input) =>
             attempt(async () => {

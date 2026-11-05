@@ -1067,7 +1067,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(261);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(262);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1088,7 +1088,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(258)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -1128,6 +1129,13 @@ describe("host-daemon command schemas", () => {
         status,
       }),
     ).toEqual({ type: "connect-next.status", status });
+    const waiting = { ...status, state: "waiting", shares: [] };
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "connect-next.status",
+        status: waiting,
+      }),
+    ).toEqual({ type: "connect-next.status", status: waiting });
     expect(
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "connect-next.status",

@@ -157,6 +157,7 @@ export function ownsSubdomain(user: string, subdomain: unknown): boolean {
 export async function startGateHooks(
   acceptedCredential: () => string,
   canClaim: (user: string, subdomain: unknown) => boolean = ownsSubdomain,
+  loginRejection: () => string | null = () => null,
 ) {
   const calls: GateHookCall[] = [];
   const server = http.createServer((request, response) => {
@@ -170,7 +171,11 @@ export async function startGateHooks(
       let reject: string | null = null;
       if (parsed.op === "Login") {
         const metas = parsed.content.metas as Record<string, string> | null;
-        if (metas?.[FRP_CREDENTIAL_META] !== acceptedCredential()) {
+        reject = loginRejection();
+        if (
+          reject === null &&
+          metas?.[FRP_CREDENTIAL_META] !== acceptedCredential()
+        ) {
           reject = GATE_REFUSAL_REASON;
         }
       } else if (parsed.op === "NewProxy") {

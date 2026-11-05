@@ -142,6 +142,7 @@ export const hostDaemonConnectNextStateSchema = z.enum([
   "connecting",
   "connected",
   "refused",
+  "waiting",
   "offline",
   "error",
 ]);

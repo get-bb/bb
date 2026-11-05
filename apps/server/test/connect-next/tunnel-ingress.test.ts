@@ -795,6 +795,7 @@ describe("bb connect next tunnel ingress", () => {
     });
     try {
       await tunnel.start();
+      await tunnel.setRemoteAccess(true);
       await tunnel.setIdentity({
         serverId: "srv_ingress",
         label: "sawyer",

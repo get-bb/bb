@@ -4,9 +4,11 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { FRP_LOGIN_PAUSED_REASON } from "@bb/tunnel-contract/next";
 import {
   FrpcSupervisor,
   frpProxyDiff,
+  pausedRetryDelay,
   type FrpProxy,
   type FrpcReloadRequest,
   type FrpcSupervisorStatus,
@@ -32,6 +34,7 @@ let frps: RunningFrps;
 let main: Awaited<ReturnType<typeof startOrigin>>;
 let devServer: Awaited<ReturnType<typeof startDevServer>>;
 let refusedSubdomain: string | null = null;
+let pausedLogin = false;
 
 function listenOn(server: http.Server): Promise<number> {
   return new Promise((resolve) => {
@@ -129,6 +132,7 @@ beforeAll(async () => {
     () => CREDENTIAL,
     (user, subdomain) =>
       subdomain !== refusedSubdomain && ownsSubdomain(user, subdomain),
+    () => (pausedLogin ? FRP_LOGIN_PAUSED_REASON : null),
   );
   frps = await startFrps(binaries.frps, workDir, hooks.port);
   main = await startOrigin();
@@ -148,6 +152,7 @@ const supervisors: FrpcSupervisor[] = [];
 afterEach(async () => {
   for (const supervisor of supervisors.splice(0)) await supervisor.stop();
   refusedSubdomain = null;
+  pausedLogin = false;
 });
 
 function proxy(name: string, subdomain: string, port: number): FrpProxy {
@@ -166,7 +171,11 @@ function shareProxy(port: number): FrpProxy {
 
 async function supervise(
   mainPort: number,
-  options: { requestReload?: FrpcReloadRequest } = {},
+  options: {
+    requestReload?: FrpcReloadRequest;
+    until?: FrpcSupervisorStatus["state"];
+    pausedRetryMs?: number;
+  } = {},
 ) {
   const frpDir = await fs.mkdtemp(path.join(workDir, "frp-"));
   let desired: FrpProxy[] = [proxy("bb", LABEL, mainPort)];
@@ -175,6 +184,7 @@ async function supervise(
     return supervisor.proxiesChanged();
   };
   const logs: string[] = [];
+  const debugLogs: string[] = [];
   const statuses: FrpcSupervisorStatus[] = [];
   const supervisor = new FrpcSupervisor({
     frpDir,
@@ -193,20 +203,31 @@ async function supervise(
     }),
     proxies: () => desired,
     log: {
+      debug: (message) => debugLogs.push(message),
       info: (message) => logs.push(message),
       warn: (message) => logs.push(message),
     },
     onStatusChange: (status) => statuses.push(status),
-    timing: { restartMinMs: 100, restartMaxMs: 500, stopGraceMs: 2_000 },
-    ...options,
+    timing: {
+      restartMinMs: 100,
+      restartMaxMs: 500,
+      stopGraceMs: 2_000,
+      ...(options.pausedRetryMs === undefined
+        ? {}
+        : { pausedRetryMs: options.pausedRetryMs }),
+    },
+    ...(options.requestReload === undefined
+      ? {}
+      : { requestReload: options.requestReload }),
   });
   supervisors.push(supervisor);
   supervisor.start();
+  const until = options.until ?? "connected";
   await waitFor(
     () => supervisor.status().state,
-    (state) => state === "connected",
+    (state) => state === until,
   );
-  return { supervisor, setProxies, logs, statuses, frpDir };
+  return { supervisor, setProxies, logs, debugLogs, statuses, frpDir };
 }
 
 function proxyState(supervisor: FrpcSupervisor, name: string) {
@@ -233,7 +254,40 @@ describe("frpProxyDiff", () => {
   });
 });
 
+describe("pausedRetryDelay", () => {
+  it("spreads retries within 20% of the base delay", () => {
+    expect(pausedRetryDelay(600_000, 0)).toBe(480_000);
+    expect(pausedRetryDelay(600_000, 0.5)).toBe(600_000);
+    expect(pausedRetryDelay(600_000, 1)).toBe(720_000);
+  });
+});
+
 describe("FrpcSupervisor with real frpc and frps", () => {
+  it("waits quietly while the gate has not enabled this server, then connects", async () => {
+    pausedLogin = true;
+    const startedAt = Date.now();
+    const { supervisor, logs, debugLogs } = await supervise(main.port, {
+      until: "waiting",
+      pausedRetryMs: 1_000,
+    });
+    const waiting = supervisor.status();
+    expect(waiting.lastError).toBeNull();
+    expect(waiting.nextRetryAt).toBeGreaterThanOrEqual(startedAt + 800);
+    await waitFor(
+      () => supervisor.childPid(),
+      (pid) => pid === null,
+    );
+    expect(debugLogs.join("\n")).toContain(FRP_LOGIN_PAUSED_REASON);
+    expect(logs.join("\n")).not.toContain(FRP_LOGIN_PAUSED_REASON);
+
+    pausedLogin = false;
+    await waitFor(
+      () => supervisor.status().state,
+      (state) => state === "connected",
+    );
+    expect((await vhostGet(frps.vhostPort, LABEL, "/after")).status).toBe(200);
+  }, 90_000);
+
   it("adds and removes a proxy by hot reload without dropping the main proxy's connection", async () => {
     const stream = await startStream();
     try {

@@ -8,6 +8,7 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { createConnectNextPlugin } from "./plugin.js";
 import { FakeAccount } from "./testing/fake-account.js";
+import { FakeConnect, routeRpc } from "./testing/fake-connect.js";
 import { waitFor } from "@bb/frp-client/testing";
 import type { NextTunnel } from "./tunnel.js";
 import type { ConnectNextStatus } from "./types.js";
@@ -30,12 +31,13 @@ async function load(
   env: NodeJS.ProcessEnv = {},
 ) {
   const account = new FakeAccount();
+  const connect = new FakeConnect();
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "connect-next-"));
   const host = createFakePluginHost({
     pluginId: "bb--connect-next",
     dataDir,
     settings,
-    sdk: { plugins: { callRpc: account.callRpc as never } },
+    sdk: { plugins: { callRpc: routeRpc({ account, connect }) as never } },
   });
   let tunnel: NextTunnel | null = null;
   const fakeFrpc = path.join(dataDir, "frpc-never-run");
@@ -51,7 +53,7 @@ async function load(
   const service = host.harness.runService("tunnel");
   hosts.push({ host, service });
   if (tunnel === null) throw new Error("no tunnel");
-  return { host, account, tunnel: tunnel as NextTunnel };
+  return { host, account, connect, tunnel: tunnel as NextTunnel };
 }
 
 async function status(host: FakePluginHost): Promise<ConnectNextStatus> {
@@ -147,7 +149,12 @@ describe("connect-next plugin wiring", () => {
 
   it("is on once the plugin is enabled and only reports the address once signed in", async () => {
     const { host, account } = await load();
-    expect(await status(host)).toMatchObject({
+    expect(
+      await waitFor(
+        () => status(host),
+        (current) => current.remoteAccess,
+      ),
+    ).toMatchObject({
       enabled: true,
       state: "signed-out",
       label: null,
@@ -166,7 +173,6 @@ describe("connect-next plugin wiring", () => {
     await host.harness.runCli(["off"]);
     const text = await host.harness.runCli(["status"]);
     expect(text.stdout).toContain("connect next is off");
-    expect(text.stdout).toContain("https://sawyer.next.getbb.app");
   });
 
   it("derives the address and the tunnel server from the account's base URL", async () => {
@@ -235,6 +241,10 @@ describe("connect-next plugin wiring", () => {
 
   it("turns on through RPC, persists the setting, and waits for sign-in", async () => {
     const { host } = await load();
+    await waitFor(
+      () => status(host),
+      (current) => current.remoteAccess,
+    );
     const result = (await host.harness.callRpc("setEnabled", {
       enabled: true,
     })) as ConnectNextStatus;
@@ -309,21 +319,21 @@ describe("connect-next plugin wiring", () => {
     expect(ingresses[0]?.closed).toBe(true);
   });
 
-  it("describes the address without naming one domain", async () => {
+  it("reads as part of bb connect, without beta or next-address wording", async () => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "connect-next-"));
     const host = createFakePluginHost({
       pluginId: "bb--connect-next",
       dataDir,
       sdk: { plugins: { callRpc: new FakeAccount().callRpc as never } },
     });
-    const descriptions: string[] = [];
+    const texts: string[] = [];
     const define = host.bb.settings.define.bind(host.bb.settings);
     host.bb.settings.define = ((
-      schema: Record<string, { description?: string }>,
+      schema: Record<string, { label?: string; description?: string }>,
     ) => {
       for (const field of Object.values(schema)) {
-        if (field.description !== undefined)
-          descriptions.push(field.description);
+        if (field.label !== undefined) texts.push(field.label);
+        if (field.description !== undefined) texts.push(field.description);
       }
       return define(schema as never);
     }) as typeof host.bb.settings.define;
@@ -331,13 +341,13 @@ describe("connect-next plugin wiring", () => {
     await host.harness.dispose();
     const manifest = JSON.parse(
       await fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
-    ) as { description: string; bb: { description: string } };
-    descriptions.push(manifest.description, manifest.bb.description);
-    expect(descriptions).toHaveLength(3);
-    for (const description of descriptions) {
-      expect(description).toContain("next.<your bb account's domain>");
-      expect(description).not.toContain("getbb.app");
+    ) as { description: string; bb: { name: string; description: string } };
+    texts.push(manifest.description, manifest.bb.name, manifest.bb.description);
+    expect(texts).toHaveLength(5);
+    for (const text of texts) {
+      expect(text).not.toMatch(/beta|next|getbb\.app/iu);
     }
+    expect(manifest.bb.name).toMatch(/^bb connect/u);
   });
 
   it("prints help for the command group", async () => {

@@ -19,18 +19,23 @@ server machine) and meant for the host daemon (other machines).
   the supervisor always writes `roots.pem` for `wss`.
 - `cleanFrpcLine` (colour codes stripped, secrets redacted) and `parseFrpcLine`
   (`connecting`, `logged-in`, `proxy-started`, `proxy-refused`,
-  `proxy-removed`, `offline`, and `refused` when the Login hook answered
-  exactly `FRP_LOGIN_REFUSED_REASON`).
+  `proxy-removed`, `offline`, `refused` when the Login hook answered
+  exactly `FRP_LOGIN_REFUSED_REASON`, and `paused` for exactly
+  `FRP_LOGIN_PAUSED_REASON`).
 - `FrpcSupervisor`: give it `frpDir`, `primaryProxy` (the proxy whose start
   means `connected`, or `null` for "logged in"), `resolveBinary`,
   `trustedCertificates`, `prepare()` (server, user, credential, or
-  `{ kind: "halt", reason }`), `proxies()` (the proxies wanted now), a logger and
-  `onStatusChange`. `start()` launches and keeps `frpc` running (backoff 1 s
-  doubling to 30 s, reset after 10 s up; 5 minutes after a refusal); `stop()`
-  ends it. `status()` gives the state (`idle`, `connecting`, `connected`,
-  `refused`, `offline`, `error`, `halted`), the last error, the next retry and
+  `{ kind: "halt", reason }`), `proxies()` (the proxies wanted now), a logger
+  (`debug`, `info`, `warn`) and `onStatusChange`. `start()` launches and keeps
+  `frpc` running (backoff 1 s doubling to 30 s, reset after 10 s up; 5 minutes
+  after a refusal; `pausedRetryMs`, 10 minutes ± 20%, after a paused login);
+  `stop()` ends it. `status()` gives the state (`idle`, `connecting`,
+  `connected`, `refused`, `waiting`, `offline`, `error`, `halted`), the last
+  error, the next retry and
   each proxy's state (`pending`, `active`, or `refused` with the gate's reason).
   A refused primary proxy stops `frpc`; a refused other proxy is only reported.
+  A paused login stops `frpc` too, but reports `waiting` with no error and
+  sends frpc's lines to `debug` until it connects.
 - Proxy changes without a restart: call `proxiesChanged()` after `proxies()`
   changes. Each `frpc` gets an admin server on `127.0.0.1` with a random port,
   user and password (only in the 0600 config, redacted from the log); the
