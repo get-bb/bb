@@ -3,10 +3,10 @@ import type { PluginInstallJob } from "@bb/server-contract";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { isActivePluginInstallJob } from "@/hooks/queries/plugin-install-job-queries";
 import {
-  allPluginCatalogSearchQueryKeyPrefix,
-  allPluginListQueryKeyPrefix,
-  pluginInstallJobsQueryKey,
-} from "@/hooks/queries/query-keys";
+  invalidatePluginCatalogSearch,
+  invalidatePluginList,
+} from "@/hooks/cache-owners/plugin-cache-owner";
+import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
 
 export type PluginSwitchApply = (enabled: boolean) => Promise<string | null>;
 
@@ -68,20 +68,10 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
     setDesired(new Map(desiredRef.current));
   }, []);
 
-  const refresh = useCallback(
-    () =>
-      Promise.all([
-        queryClient.refetchQueries({
-          queryKey: allPluginListQueryKeyPrefix(),
-          type: "all",
-        }),
-        queryClient.refetchQueries({
-          queryKey: allPluginCatalogSearchQueryKeyPrefix(),
-          type: "all",
-        }),
-      ]).catch(() => undefined),
-    [queryClient],
-  );
+  const refresh = useCallback(async () => {
+    invalidatePluginCatalogSearch({ queryClient });
+    await invalidatePluginList({ queryClient }).catch(() => undefined);
+  }, [queryClient]);
 
   const drive = useCallback(
     async (pluginId: string) => {
