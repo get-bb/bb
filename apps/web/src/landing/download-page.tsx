@@ -129,7 +129,7 @@ export function DownloadPage() {
               platform={platform}
               className="btn btn-primary btn-install desktop-only"
             />
-            <SendToComputerButton placement={PLACEMENT} />
+            <SendToComputerButton placement={PLACEMENT} link="page" />
             {note ? (
               <span className="install-note desktop-only">{note}</span>
             ) : null}
