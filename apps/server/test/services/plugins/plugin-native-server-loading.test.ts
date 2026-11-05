@@ -7,7 +7,11 @@ import { promisify } from "node:util";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 
-const run = promisify(execFile);
+const run = promisify((...args: Parameters<typeof execFile>) => {
+  const child = execFile(...args);
+  child.stderr?.pipe(process.stderr);
+  return child;
+});
 
 describe("native plugin server loading", () => {
   const tempDirs: string[] = [];
@@ -80,7 +84,9 @@ import { createPluginService } from ${JSON.stringify(runtimeUrl)};
 import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
 import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
 const [rootDir, dataDir] = process.argv.slice(1);
+process.stderr.write("imports " + process.uptime() + "\\n");
 const db = createMigratedConnection();
+process.stderr.write("database " + process.uptime() + "\\n");
 upsertInstalledPlugin(db, {
   id: "native-externals",
   source: "git:github.com/acme/bb-plugin-native-externals@v1",
@@ -117,7 +123,9 @@ const service = createPluginService({
   appVersion: "0.9.0",
   loadTimeoutMs: 2000
 });
+process.stderr.write("service " + process.uptime() + "\\n");
 await service.reload("native-externals");
+process.stderr.write("reload " + process.uptime() + "\\n");
 const entry = service.list().find((plugin) => plugin.id === "native-externals");
 const result = {
   status: entry?.status,
@@ -125,10 +133,11 @@ const result = {
   types: globalThis.__nativeExternalTypes
 };
 await service.stop();
+process.stderr.write("stop " + process.uptime() + "\\n");
 process.stdout.write(JSON.stringify(result));
 `;
 
-    const { stdout } = await run(
+    const { stdout, stderr } = await run(
       process.execPath,
       [
         "--conditions=source",
@@ -143,6 +152,7 @@ process.stdout.write(JSON.stringify(result));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
+    process.stderr.write(stderr);
     expect(JSON.parse(stdout)).toEqual({
       status: "running",
       statusDetail: null,
@@ -200,7 +210,9 @@ import { createPluginService } from ${JSON.stringify(serviceUrl)};
 import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
 import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
 const [rootDir, dataDir] = process.argv.slice(1);
+process.stderr.write("imports " + process.uptime() + "\\n");
 const db = createMigratedConnection();
+process.stderr.write("database " + process.uptime() + "\\n");
 const service = createPluginService({
   aiServices: createAiServiceRegistry(),
   telemetry: createNoopTelemetryService(),
@@ -222,10 +234,11 @@ const result = {
   value: globalThis.__nativeSourceResult
 };
 await service.stop();
+process.stderr.write("stop " + process.uptime() + "\\n");
 process.stdout.write(JSON.stringify(result));
 `;
 
-    const { stdout } = await run(
+    const { stdout, stderr } = await run(
       process.execPath,
       [
         "--conditions=source",
@@ -240,6 +253,7 @@ process.stdout.write(JSON.stringify(result));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
+    process.stderr.write(stderr);
     expect(JSON.parse(stdout)).toEqual({
       status: "running",
       statusDetail: null,
@@ -320,7 +334,9 @@ import { createPluginService } from ${JSON.stringify(serviceUrl)};
 import { createAiServiceRegistry } from ${JSON.stringify(aiRegistryUrl)};
 import { createNoopTelemetryService } from ${JSON.stringify(telemetryUrl)};
 const [importedDir, importerDir, dataDir] = process.argv.slice(1);
+process.stderr.write("imports " + process.uptime() + "\\n");
 const db = createMigratedConnection();
+process.stderr.write("database " + process.uptime() + "\\n");
 const service = createPluginService({
   aiServices: createAiServiceRegistry(),
   telemetry: createNoopTelemetryService(),
@@ -343,10 +359,11 @@ await writeFile(join(importedDir, "shared.js"), 'export const value = "after";\\
 await service.reload("imported");
 const after = await read();
 await service.stop();
+process.stderr.write("stop " + process.uptime() + "\\n");
 process.stdout.write(JSON.stringify({ before, after }));
 `;
 
-    const { stdout } = await run(
+    const { stdout, stderr } = await run(
       process.execPath,
       [
         "--conditions=source",
@@ -362,6 +379,7 @@ process.stdout.write(JSON.stringify({ before, after }));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
+    process.stderr.write(stderr);
     expect(JSON.parse(stdout)).toEqual({ before: "before", after: "after" });
   });
 });
