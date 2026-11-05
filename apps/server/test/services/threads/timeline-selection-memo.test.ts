@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
@@ -12,6 +13,7 @@ import {
   deleteThreadEventSuffixInTransaction,
   getLatestThreadSequence,
   noopNotifier,
+  threads,
 } from "@bb/db";
 import { pruneThreadEventHistory } from "../../../src/services/system/event-pruning.js";
 import {
@@ -697,10 +699,23 @@ function planStepsRow(turnId: string, id: string, step: string): RowSpec {
   });
 }
 
+function advanceSettledThreadPruning(
+  testThread: TestThread,
+  policy: "resolved-items" | "usage",
+) {
+  testThread.db
+    .update(threads)
+    .set({ status: "idle" })
+    .where(eq(threads.id, testThread.thread.id))
+    .run();
+  return advanceThreadPruning(testThread.db, policy);
+}
+
 function pruneUsageSnapshots(testThread: TestThread): void {
   for (let pass = 0; pass < 100; pass += 1) {
     if (
-      advanceThreadPruning(testThread.db, "usage").action === "cycle-complete"
+      advanceSettledThreadPruning(testThread, "usage").action ===
+      "cycle-complete"
     )
       return;
   }
@@ -1146,7 +1161,7 @@ describe("latest timeline selection memo", () => {
     {
       name: "resolved deltas are pruned",
       rewrite: (testThread: TestThread) =>
-        advanceThreadPruning(testThread.db, "resolved-items").removed,
+        advanceSettledThreadPruning(testThread, "resolved-items").removed,
     },
     {
       name: "another connection deletes a delta",

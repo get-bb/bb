@@ -2,8 +2,6 @@ import { performance } from "node:perf_hooks";
 import {
   advanceThreadPruning,
   getNextThreadPruningPolicy,
-  getDatabaseMaintenanceActivity,
-  isDatabaseMaintenanceIdle,
   THREAD_PRUNING_POLICIES,
 } from "@bb/db";
 import type { AppDeps } from "../../types.js";
@@ -37,15 +35,6 @@ export async function runThreadPruningSweep(
       performance.now() - startedAt < limits.elapsedBudgetMs &&
       completed.size < THREAD_PRUNING_POLICIES.length
     ) {
-      const activity = getDatabaseMaintenanceActivity(deps.db);
-      if (!isDatabaseMaintenanceIdle(activity)) {
-        reason = "busy";
-        deps.logger.debug(
-          { activity, advances },
-          "Thread pruning skipped while app work is active",
-        );
-        break;
-      }
       const policy = getNextThreadPruningPolicy(deps.db, completed);
       if (policy === null) break;
       const advanceStartedAt = performance.now();
