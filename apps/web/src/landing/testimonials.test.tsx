@@ -50,6 +50,22 @@ describe("Testimonials", () => {
     act(() => root.unmount());
   });
 
+  it("shows each X author's handle from their post link, and the site for other sources", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<Testimonials />));
+
+    for (const card of container.querySelectorAll(".tm-card")) {
+      const href =
+        card.querySelector<HTMLAnchorElement>("a.tm-card-link")!.href;
+      const byline = card.querySelector(".tm-byline")?.textContent;
+      const handle = href.match(/^https:\/\/x\.com\/([^/]+)\/status\//)?.[1];
+      expect(byline).toBe(handle ? `@${handle}` : new URL(href).hostname);
+    }
+    act(() => root.unmount());
+  });
+
   it("quotes every post in full, cutting only Hemanth's and Swair's off-topic sentences", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -68,11 +84,12 @@ describe("Testimonials", () => {
         (c) => c.textContent,
       ),
     ).toEqual(["bb"]);
-    const repoLink = container.querySelector<HTMLAnchorElement>(
-      ".tm-quote a.tm-quote-link",
-    );
-    expect(repoLink?.href).toBe("https://github.com/get-bb/bb");
-    expect(repoLink?.textContent).toBe("github.com/get-bb/bb");
+    expect(container.querySelector(".tm-quote a")).toBeNull();
+    expect(
+      [...container.querySelectorAll(".tm-col")].map(
+        (column) => column.querySelector(".tm-name")?.textContent,
+      ),
+    ).toEqual(["Ben Tossell", "Tobi Lütke", "Alana Goyal", "Rob Haisfield"]);
     act(() => root.unmount());
   });
 });

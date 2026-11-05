@@ -25,7 +25,6 @@ type Testimonial = {
   source: TestimonialSource;
   url: string;
   quote: string;
-  link?: { text: string; href: string };
 };
 
 const SOURCE_ICON = {
@@ -37,7 +36,7 @@ const SOURCE_ICON = {
 const TESTIMONIALS: readonly Testimonial[] = [
   {
     author: "Ben Tossell",
-    byline: "Founder, Ben’s Bites",
+    byline: "@bentossell",
     avatar: tossellAvatar,
     source: "x",
     url: "https://x.com/bentossell/status/2085300851824787550",
@@ -45,7 +44,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
   {
     author: "Tobi Lütke",
-    byline: "CEO, Shopify",
+    byline: "@tobi",
     avatar: lutkeAvatar,
     source: "x",
     url: "https://x.com/tobi/status/2111930824035836020",
@@ -53,20 +52,16 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
   {
     author: "Alana Goyal",
-    byline: "Investor",
+    byline: "@alanaagoyal",
     avatar: goyalAvatar,
     source: "x",
     url: "https://x.com/alanaagoyal/status/2085121395361828929",
     quote:
-      "truly one of the craziest pieces of software i've used in the past six months\n\ngive it a try: github.com/get-bb/bb",
-    link: {
-      text: "github.com/get-bb/bb",
-      href: "https://github.com/get-bb/bb",
-    },
+      "truly one of the craziest pieces of software i've used in the past six months",
   },
   {
     author: "Rob Haisfield",
-    byline: "Cofounder, websim",
+    byline: "@RobertHaisfield",
     avatar: haisfieldAvatar,
     source: "x",
     url: "https://x.com/RobertHaisfield/status/2118133290460995727",
@@ -93,7 +88,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
   {
     author: "Scott Sunarto",
-    byline: "CEO, Argus Labs",
+    byline: "@smsunarto",
     avatar: sunartoAvatar,
     source: "x",
     url: "https://x.com/smsunarto/status/2087277136952578498",
@@ -137,7 +132,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
   {
     author: "ishan",
-    byline: "Engineer, NVIDIA",
+    byline: "@0xishand",
     avatar: ishanAvatar,
     source: "x",
     url: "https://x.com/0xishand/status/2098304763368767697",
@@ -146,26 +141,27 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
 ];
 
-function QuoteText({ t }: { t: Testimonial }) {
-  return t.quote.split("`").map((part, i) => {
-    if (i % 2 === 1) return <code key={i}>{part}</code>;
-    if (!t.link || !part.includes(t.link.text)) return part;
-    const [before, after] = part.split(t.link.text);
-    return (
-      <span key={i}>
-        {before}
-        <a
-          className="tm-quote-link"
-          href={t.link.href}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t.link.text}
-        </a>
-        {after}
-      </span>
-    );
-  });
+const COLUMNS: readonly (readonly string[])[] = [
+  ["Ben Tossell", "Hemanth Soni", "Swair"],
+  ["Tobi Lütke", "Scott Sunarto", "Bruno Bornsztein"],
+  ["Alana Goyal", "Chris Banes", "ishan"],
+  ["Rob Haisfield", "David Ondrej", "Can Duruk"],
+];
+
+function testimonialBy(author: string): Testimonial {
+  const found = TESTIMONIALS.find((t) => t.author === author);
+  if (!found) {
+    throw new Error(`No testimonial for ${author}`);
+  }
+  return found;
+}
+
+const COLUMN_CARDS = COLUMNS.map((column) => column.map(testimonialBy));
+
+function QuoteText({ text }: { text: string }) {
+  return text
+    .split("`")
+    .map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part));
 }
 
 function initials(name: string): string {
@@ -196,7 +192,7 @@ function TestimonialCard({ t }: { t: Testimonial }) {
           }
         />
         <blockquote className="tm-quote">
-          <QuoteText t={t} />
+          <QuoteText text={t.quote} />
         </blockquote>
         <span className="tm-author">
           {t.avatar ? (
@@ -233,11 +229,19 @@ export function Testimonials() {
       <h2 id="testimonials-title" className="sec-title">
         A daily driver for builders.
       </h2>
-      <ul className="tm-grid">
-        {TESTIMONIALS.map((t) => (
-          <TestimonialCard key={t.url} t={t} />
+      <div className="tm-grid">
+        {[COLUMN_CARDS.slice(0, 2), COLUMN_CARDS.slice(2)].map((pair, p) => (
+          <div className="tm-pair" key={p}>
+            {pair.map((column) => (
+              <ul className="tm-col" key={column[0].url}>
+                {column.map((t) => (
+                  <TestimonialCard key={t.url} t={t} />
+                ))}
+              </ul>
+            ))}
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   );
 }

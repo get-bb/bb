@@ -4142,16 +4142,40 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .tm-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  list-style: none;
+  display: flex;
+  gap: var(--gap-md);
   text-align: left;
 }
 
+.tm-pair {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--gap-md);
+  min-width: 0;
+}
+
+.tm-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  min-width: 0;
+  list-style: none;
+}
+
+.tm-pair > .tm-col:last-child,
+.tm-col > .tm-item:last-child {
+  flex-grow: 1;
+}
+
 @media (min-width: 960px) {
-  .tm-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .tm-pair {
+    flex: 2 1 0;
+    flex-direction: row;
+  }
+
+  .tm-pair > .tm-col {
+    flex: 1 1 0;
   }
 }
 
@@ -4195,13 +4219,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   outline: none;
 }
 
-.tm-quote-link {
-  position: relative;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .tm-quote {
   color: var(--ink);
   font-size: 14px;
@@ -4219,7 +4236,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: auto;
   min-width: 0;
 }
 
@@ -4283,24 +4299,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 @media (max-width: 767px) {
   .tm-grid {
-    display: flex;
-    gap: 10px;
-    margin: 0 calc(-1 * var(--wrap-gutter));
-    padding: 0 var(--wrap-gutter) 4px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: var(--wrap-gutter);
-    scrollbar-width: none;
+    flex-direction: column;
   }
 
-  .tm-grid::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tm-item {
-    flex: 0 0 min(300px, 82%);
-    scroll-snap-align: start;
+  .tm-pair > .tm-col:last-child,
+  .tm-col > .tm-item:last-child {
+    flex-grow: 0;
   }
 }
 
