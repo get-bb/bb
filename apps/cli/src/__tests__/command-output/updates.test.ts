@@ -607,7 +607,10 @@ describe("bb updates app command output", () => {
     const schedule = vi.fn(async () =>
       appUpdateStatus({
         runningThreadCount: 2,
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
     );
     stubServerApi({
@@ -628,12 +631,15 @@ describe("bb updates app command output", () => {
     ]);
   });
 
-  it("bb updates app shows a scheduled update", async () => {
+  it("bb updates app shows how long an automatic update waits for idle", async () => {
     stubServerApi({
       "v1.system.app-update.$get": vi.fn(async () =>
         appUpdateStatus({
           runningThreadCount: 1,
-          scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+          scheduled: {
+            requestedAt: "2026-10-23T00:00:00.000Z",
+            requiredIdleMs: 15 * 60_000,
+          },
         }),
       ),
     });
@@ -642,7 +648,7 @@ describe("bb updates app command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "bb-app 0.0.32 -> 0.0.33",
-      "bb will update to 0.0.33 when all threads are idle (1 running).",
+      "bb will update to 0.0.33 once no thread has run for 15 minutes (1 running).",
       "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
     ]);
   });
@@ -658,7 +664,10 @@ describe("bb updates app command output", () => {
           step: "Downloading bb-app 0.0.33",
           targetVersion: "0.0.33",
         },
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
       appUpdateStatus(),
     ];
@@ -697,9 +706,9 @@ describe("bb updates app command output", () => {
       [{ json: { enabled: false } }],
     ]);
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running.",
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes.",
       "Automatic updates are off.",
-      "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running.",
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes.",
     ]);
   });
 
@@ -710,7 +719,10 @@ describe("bb updates app command output", () => {
     });
     const waiting = appUpdateStatus({
       runningThreadCount: 1,
-      scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+      scheduled: {
+        requestedAt: "2026-10-23T00:00:00.000Z",
+        requiredIdleMs: 5_000,
+      },
     });
     const statuses = [
       appUpdateStatus(),
@@ -722,7 +734,10 @@ describe("bb updates app command output", () => {
           step: "Downloading bb-app 0.0.33",
           targetVersion: "0.0.33",
         },
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
       waiting,
     ];
