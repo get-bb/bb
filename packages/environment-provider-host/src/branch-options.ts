@@ -6,15 +6,15 @@ import type {
   GitBranchRefClassification,
 } from "./git-types.js";
 import {
-  detectGitRepoKind,
   ensureGitRepo,
-  getGitCommonDir,
+  readGitRepo,
   readLocalBranches,
   readOriginHeadBranchName,
   resolvePreferredLocalDefaultBranch,
   runGit,
   WorkspaceError,
   type GitProcessOptions,
+  type GitRepo,
   type GitTimeoutOptions,
 } from "./workspace-git.js";
 import { withGitRefMutationLock } from "./process-local-lock.js";
@@ -328,11 +328,11 @@ function classifySelectedBranch({
 }
 
 export async function refreshRemoteBranches(
-  cwd: string,
+  repo: GitRepo,
   options: GitProcessOptions,
   mode: RemoteRefreshMode,
 ): Promise<void> {
-  const commonDir = await getGitCommonDir(cwd, options);
+  const { commonDir, path: cwd } = repo;
   const interactive = mode === "blocking";
   const existingState = remoteBranchFetchStateByCommonDir.get(commonDir);
   if (existingState?.inFlight) {
@@ -428,7 +428,8 @@ export async function listBranchOptions(
     ...(readArgs.shellPath === undefined ? {} : { shellPath: readArgs.shellPath }),
     ...(readArgs.priority === undefined ? {} : { priority: readArgs.priority }),
   };
-  if ((await detectGitRepoKind(readArgs.path, processOptions)) === "none") {
+  const repo = await readGitRepo(readArgs.path, processOptions);
+  if (repo === null) {
     return {
       branches: [],
       branchesTruncated: false,
@@ -442,11 +443,9 @@ export async function listBranchOptions(
     };
   }
   if (remoteRefresh === "background") {
-    void refreshRemoteBranches(
-      readArgs.path,
-      processOptions,
-      "background",
-    ).catch(() => undefined);
+    void refreshRemoteBranches(repo, processOptions, "background").catch(
+      () => undefined,
+    );
   }
   return readBranchOptions(readArgs);
 }
