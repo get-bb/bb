@@ -53,6 +53,26 @@ function AttentionGlyph({ kind }: { kind: "blocked" | "running" }) {
   );
 }
 
+function pullRequestNumberClassName(pullRequest: PullRequest): string {
+  if (pullRequest.state === "draft") return "text-subtle-foreground";
+  const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  if (pullRequest.state !== "open") return state.className;
+  switch (pullRequest.attention) {
+    case "changes_requested":
+    case "conflicts":
+    case "blocked":
+      return "text-destructive-text";
+  }
+  switch (getPullRequestGithubCheckStatus(pullRequest)) {
+    case "failure":
+      return "text-warning-text";
+    case "pending":
+      return "text-timeline-accent";
+    default:
+      return state.className;
+  }
+}
+
 export function PullRequestBadge({
   pullRequest,
 }: {
@@ -87,13 +107,7 @@ export function PullRequestBadge({
       className="flex shrink-0 items-center gap-1 text-xs leading-3.5 tabular-nums"
       onPointerEnter={hovered ? undefined : () => setHovered(true)}
     >
-      <span
-        className={
-          pullRequest.state === "draft"
-            ? "text-subtle-foreground"
-            : state.className
-        }
-      >
+      <span className={pullRequestNumberClassName(pullRequest)}>
         #{pullRequest.number}
       </span>
       {glyph === null ? null : <AttentionGlyph kind={glyph} />}
