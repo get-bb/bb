@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SystemProviderState, TerminalSession } from "@bb/server-contract";
-import type { AgentSignInView } from "./OnboardingViews";
 import {
   operationFailureReason,
   resolveSignInCommand,
+  type AgentSignInView,
   type OperationFailureReason,
 } from "./onboarding-model";
 import {
