@@ -50,19 +50,25 @@ function renderSignIns(
   const terminals = fakeTerminals();
   const refetchStates = vi.fn();
   const view = renderHook(
-    (props: { states: SystemProviderState[] }) =>
+    (props: { states: SystemProviderState[]; statesSettledAt: number }) =>
       useAgentSignIns({
         concurrent,
+        failUnreadyExits: concurrent,
         entry: "first_run",
         hostId: "host_1",
         states: props.states,
+        statesSettledAt: props.statesSettledAt,
         isLocalHost: () => true,
         terminals,
         refetchStates,
       }),
-    { initialProps: { states } },
+    { initialProps: { states, statesSettledAt: 0 } },
   );
-  return { ...view, terminals };
+  return { ...view, terminals, refetchStates };
+}
+
+function settledAfterNow(): number {
+  return Date.now() + 1;
 }
 
 afterEach(() => {
@@ -155,6 +161,7 @@ describe("useAgentSignIns", () => {
 
     rerender({
       states: [provider("codex", { status: "ready" }), provider("claude-code")],
+      statesSettledAt: 0,
     });
 
     expect([...result.current.signIns.keys()]).toEqual(["claude-code"]);
@@ -201,15 +208,88 @@ describe("useAgentSignIns", () => {
   });
 
   it("keeps another agent's failed sign-in in the redesign", async () => {
-    const { result } = renderSignIns(true);
+    const states = [provider("codex"), provider("claude-code")];
+    const { result, rerender } = renderSignIns(true, states);
     await act(async () => {
       await result.current.start("codex");
     });
     act(() => result.current.handleExit("codex", 1));
+    rerender({ states, statesSettledAt: settledAfterNow() });
 
     await act(async () => {
       await result.current.start("claude-code");
     });
     expect([...result.current.failedProviderIds]).toEqual(["codex"]);
+  });
+
+  it.each([0, 1, null])(
+    "shows the failed state when the sign-in exits with %s before the agent is ready",
+    async (exitCode) => {
+      const states = [provider("pi")];
+      const { result, rerender, terminals, refetchStates } = renderSignIns(
+        true,
+        states,
+      );
+      await act(async () => {
+        await result.current.start("pi");
+      });
+
+      act(() => result.current.handleExit("pi", exitCode));
+      act(() => result.current.handleExit("pi", exitCode));
+      expect(result.current.signIns.has("pi")).toBe(true);
+      expect(result.current.failedProviderIds.size).toBe(0);
+      expect(refetchStates).toHaveBeenCalledTimes(1);
+
+      rerender({ states, statesSettledAt: 0 });
+      expect(result.current.signIns.has("pi")).toBe(true);
+
+      rerender({ states, statesSettledAt: settledAfterNow() });
+      expect(result.current.signIns.size).toBe(0);
+      expect([...result.current.failedProviderIds]).toEqual(["pi"]);
+      expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
+    },
+  );
+
+  it("ends as ready when the agent is ready once its sign-in exits", async () => {
+    const { result, rerender } = renderSignIns(true, [provider("codex")]);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+
+    act(() => result.current.handleExit("codex", 0));
+    rerender({
+      states: [provider("codex", { status: "ready" })],
+      statesSettledAt: settledAfterNow(),
+    });
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(result.current.failedProviderIds.size).toBe(0);
+  });
+
+  it("shows no failure when the user cancels with X as the sign-in exits", async () => {
+    const states = [provider("codex")];
+    const { result, rerender } = renderSignIns(true, states);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+
+    act(() => result.current.handleExit("codex", 0));
+    act(() => result.current.end("codex"));
+    rerender({ states, statesSettledAt: settledAfterNow() });
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(result.current.failedProviderIds.size).toBe(0);
+  });
+
+  it("keeps today's quiet return to Sign in after a clean exit in the control guide", async () => {
+    const { result } = renderSignIns(false);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+
+    act(() => result.current.handleExit("codex", 0));
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(result.current.failedProviderIds.size).toBe(0);
   });
 });
