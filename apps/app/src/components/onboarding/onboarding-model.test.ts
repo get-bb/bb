@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
+  agentSignInView,
   connectAccessUrl,
   devicesShowMachines,
   connectFlowFailed,
@@ -16,6 +17,7 @@ import {
   hasReadyAgent,
   parseSignInOutput,
   projectsPrimaryAction,
+  parsesSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
@@ -719,5 +721,82 @@ describe("signInSiteName", () => {
   it("returns null when the URL has no usable host", () => {
     expect(signInSiteName("not a url")).toBeNull();
     expect(signInSiteName("file:///tmp/sign-in")).toBeNull();
+  });
+});
+
+describe("agentSignInView", () => {
+  const DEVICE_OUTPUT =
+    "Open https://auth.example.com/device and enter code ABCD-1234\r\n";
+
+  it("parses a sign-in link and code only for Claude Code, Codex and Cursor", () => {
+    for (const id of ["claude-code", "codex", "acp-cursor"]) {
+      expect(parsesSignInOutput(id)).toBe(true);
+    }
+    for (const id of [
+      "pi",
+      "acp-omp",
+      "acp-grok",
+      "acp-hermes-agent",
+      "acp-opencode",
+      "acp-registry-agent",
+    ]) {
+      expect(parsesSignInOutput(id)).toBe(false);
+    }
+  });
+
+  it("opens the terminal without a parsed link for other agents once it prints", () => {
+    const base = {
+      parsed: false,
+      connect: false,
+      fallbackDue: false,
+      terminalChoice: null,
+    };
+    expect(agentSignInView({ ...base, outputText: null })).toEqual({
+      guide: null,
+      terminalVisible: true,
+      started: false,
+    });
+    expect(agentSignInView({ ...base, outputText: "" }).started).toBe(false);
+    expect(agentSignInView({ ...base, outputText: DEVICE_OUTPUT })).toEqual({
+      guide: null,
+      terminalVisible: true,
+      started: true,
+    });
+    expect(
+      agentSignInView({
+        ...base,
+        outputText: DEVICE_OUTPUT,
+        terminalChoice: false,
+      }).terminalVisible,
+    ).toBe(false);
+  });
+
+  it("keeps Pi's terminal panel open from the start", () => {
+    expect(
+      agentSignInView({
+        parsed: false,
+        connect: true,
+        outputText: null,
+        fallbackDue: false,
+        terminalChoice: null,
+      }),
+    ).toEqual({ guide: null, terminalVisible: true, started: true });
+  });
+
+  it("lifts the link and code out of a parsed agent's output with the terminal hidden", () => {
+    expect(
+      agentSignInView({
+        parsed: true,
+        connect: false,
+        outputText: DEVICE_OUTPUT,
+        fallbackDue: false,
+        terminalChoice: null,
+      }),
+    ).toEqual({
+      guide: parseSignInOutput(DEVICE_OUTPUT),
+      terminalVisible: false,
+      started: true,
+    });
+    expect(parseSignInOutput(DEVICE_OUTPUT).url).not.toBeNull();
   });
 });

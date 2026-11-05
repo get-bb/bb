@@ -39,6 +39,7 @@ import {
   signInSiteName,
   stripTerminalSequences,
   type AgentSetupState,
+  type AgentSignInView,
   type OnboardingStepId,
   type SignInGuide,
 } from "./onboarding-model";
@@ -1347,12 +1348,6 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
       </InlinePanel>
     </div>
   );
-}
-
-export interface AgentSignInView {
-  guide: SignInGuide | null;
-  terminalVisible: boolean;
-  started: boolean;
 }
 
 type SignInAlternate = "browser" | "code" | null;

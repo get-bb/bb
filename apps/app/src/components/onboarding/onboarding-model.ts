@@ -47,6 +47,16 @@ export function terminalConnectFlow(
   return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
 }
 
+const PARSED_SIGN_IN_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  "claude-code",
+  "codex",
+  "acp-cursor",
+]);
+
+export function parsesSignInOutput(providerId: string): boolean {
+  return PARSED_SIGN_IN_PROVIDER_IDS.has(providerId);
+}
+
 export type SetupGuide = SystemSetupGuideResponse;
 
 interface StepCopy {
@@ -178,7 +188,8 @@ export function resolveAgentSetupState({
   const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
   const canInstall =
     (awaitingInstallInfo && whileInstallInfoPending === "offerInstall") ||
-    (cliStatus?.installAction !== null && cliStatus?.installAction !== undefined);
+    (cliStatus?.installAction !== null &&
+      cliStatus?.installAction !== undefined);
   if (installFailure !== null) {
     return { status: "installFailed", message: installFailure, canInstall };
   }
@@ -328,6 +339,41 @@ export interface SignInGuide {
   url: string | null;
   userCode: string | null;
   acceptsPastedCode: boolean;
+}
+
+export interface AgentSignInView {
+  guide: SignInGuide | null;
+  terminalVisible: boolean;
+  started: boolean;
+}
+
+export function agentSignInView({
+  parsed,
+  connect,
+  outputText,
+  fallbackDue,
+  terminalChoice,
+}: {
+  parsed: boolean;
+  connect: boolean;
+  outputText: string | null;
+  fallbackDue: boolean;
+  terminalChoice: boolean | null;
+}): AgentSignInView {
+  const guide =
+    parsed && outputText !== null ? parseSignInOutput(outputText) : null;
+  const hasOutput = outputText !== null && outputText.length > 0;
+  return {
+    guide,
+    terminalVisible:
+      terminalChoice ?? (!parsed || (fallbackDue && guide?.url == null)),
+    started:
+      guide?.url != null ||
+      fallbackDue ||
+      terminalChoice !== null ||
+      connect ||
+      (!parsed && hasOutput),
+  };
 }
 
 const TERMINAL_OSC_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu;

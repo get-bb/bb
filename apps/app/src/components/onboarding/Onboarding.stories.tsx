@@ -21,6 +21,8 @@ import {
 } from "./OnboardingViews";
 import {
   STEP_COPY,
+  agentSignInView,
+  parsesSignInOutput,
   resolveAgentSetupState,
   type AgentSetupState,
   type OnboardingStepId,
@@ -28,6 +30,7 @@ import {
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
+import grokLogoUrl from "../../../../../plugins/provider-acp/icons/grok.svg";
 
 export default {
   title: "onboarding/First run",
@@ -1086,37 +1089,90 @@ function RedesignPiSignInPanel() {
   );
 }
 
+const GROK_LOGIN_OUTPUT = [
+  "Opening your browser to sign in to xAI…",
+  "If it didn't open, visit https://accounts.x.ai/device",
+  "and enter code: WDJB-MJHT",
+  "Waiting for authorization…",
+].join("\n");
+
+function grokSigningInAgent(): OnboardingAgent {
+  const view = agentSignInView({
+    parsed: parsesSignInOutput("acp-grok"),
+    connect: false,
+    outputText: GROK_LOGIN_OUTPUT,
+    fallbackDue: false,
+    terminalChoice: null,
+  });
+  return {
+    id: "acp-grok",
+    name: "Grok Build",
+    provider: { id: "acp-grok", logoUrl: grokLogoUrl },
+    setup: "signIn",
+    state: { status: "signingIn" },
+    subline: (
+      <AgentSignInInstruction
+        agentName="Grok Build"
+        view={view}
+        alternate={null}
+        onOpenUrl={noop}
+        onUseAlternate={noop}
+      />
+    ),
+    expanded: (
+      <AgentSignInPanel
+        connect={false}
+        agentName="Grok Build"
+        view={view}
+        code=""
+        codeSubmitted={false}
+        terminal={
+          <FakeTerminal command="grok login" output={GROK_LOGIN_OUTPUT} />
+        }
+        onCodeChange={noop}
+        onSubmitCode={noop}
+        onCopy={noop}
+        onToggleTerminal={noop}
+      />
+    ),
+  };
+}
+
 function RedesignAgentFrame({
   signingIn,
   pi = null,
   installError = false,
   states = {},
   expanded = {},
+  extraAgents = [],
 }: {
   signingIn: RedesignSignInStory | null;
   pi?: PiStage | null;
   installError?: boolean;
   states?: Partial<Record<AgentId, AgentSetupState>>;
   expanded?: Partial<Record<AgentId, ReactNode>>;
+  extraAgents?: readonly OnboardingAgent[];
 }) {
   const signInAgentId = signingIn === "codex-browser" ? "codex" : signingIn;
-  const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
+  const baseAgents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
     const signingInHere = signingIn !== null && agent.id === signInAgentId;
-    const state: AgentSetupState = states[agent.id] ?? (signingInHere
-      ? { status: "signingIn" }
-      : installError && agent.id === "claude-code"
-        ? {
-            status: "installFailed",
-            message: "Couldn't install. Check your connection and retry.",
-            canInstall: true,
-          }
-        : agent.id === "pi"
-          ? pi === null
-            ? INSTALL
-            : pi === "failed"
-              ? { status: "signIn", reason: "failed", canSignIn: true }
-              : { status: "signingIn" }
-          : SIGNED_OUT);
+    const state: AgentSetupState =
+      states[agent.id] ??
+      (signingInHere
+        ? { status: "signingIn" }
+        : installError && agent.id === "claude-code"
+          ? {
+              status: "installFailed",
+              message: "Couldn't install. Check your connection and retry.",
+              canInstall: true,
+            }
+          : agent.id === "pi"
+            ? pi === null
+              ? INSTALL
+              : pi === "failed"
+                ? { status: "signIn", reason: "failed", canSignIn: true }
+                : { status: "signingIn" }
+            : SIGNED_OUT);
     return {
       id: agent.id,
       name: agent.name,
@@ -1148,6 +1204,7 @@ function RedesignAgentFrame({
         ) : undefined),
     };
   });
+  const agents = [...baseAgents, ...extraAgents];
   return (
     <TooltipProvider>
       <OnboardingLayout
@@ -1202,6 +1259,17 @@ export function RedesignAgentPiSignIn() {
   return (
     <div className="flex h-screen flex-col">
       <RedesignAgentFrame signingIn={null} pi="signingIn" />
+    </div>
+  );
+}
+
+export function RedesignAgentGrokSignIn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame
+        signingIn={null}
+        extraAgents={[grokSigningInAgent()]}
+      />
     </div>
   );
 }
@@ -1267,9 +1335,9 @@ export function RedesignAgentSignInJustClickedCodex() {
     <div className="flex h-screen flex-col">
       <RedesignAgentFrame
         signingIn={null}
-        states={{ "codex": { status: "signingIn" } }}
+        states={{ codex: { status: "signingIn" } }}
         expanded={{
-          "codex": (
+          codex: (
             <AgentSignInPanel
               connect={false}
               agentName="Codex"
