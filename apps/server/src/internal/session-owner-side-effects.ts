@@ -119,6 +119,7 @@ export async function handleHostSessionOpened(
   if (replacedSession && !sameDaemonInstance) {
     const continuations = planRestartResumes(deps, {
       hostId: args.hostId,
+      ownerStoppedSinceMs: replacedSession.createdAt,
     });
     interruptEnvironmentProvisioningForHost(deps, {
       hostId: args.hostId,

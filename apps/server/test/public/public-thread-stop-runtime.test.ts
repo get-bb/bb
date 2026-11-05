@@ -796,6 +796,9 @@ describe("thread runtime stop", () => {
       expect(JSON.parse(taskCompletions[0]!.data)).toMatchObject({
         item: { status: "interrupted", taskStatus: "stopped" },
       });
+      expect(JSON.parse(taskCompletions[0]!.data)).not.toHaveProperty(
+        "item.ownerStopped",
+      );
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
       expect(
         listEvents(harness.db, { threadId: thread.id }).filter(

@@ -231,6 +231,7 @@ describe("RuntimeBackgroundWorkState", () => {
         item: {
           ...task("task-1"),
           summary: "still watching CI",
+          ownerStopped: true,
           status: "interrupted",
           taskStatus: "stopped",
         },

@@ -1438,6 +1438,18 @@ export interface ListOpenBackgroundTaskItemRowsForHostArgs {
   hostId: string;
 }
 
+export interface ListOwnerStoppedBackgroundTaskRowsForHostArgs {
+  hostId: string;
+  settledSinceMs: number;
+}
+
+export interface OwnerStoppedBackgroundTaskRow {
+  data: string;
+  itemId: string;
+  sequence: number;
+  threadId: string;
+}
+
 export interface ListOpenBackgroundTaskItemRowsForThreadArgs {
   threadId: string;
 }
@@ -3231,7 +3243,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineLifecycleWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineLifecycleWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const completedConversationRows = db
@@ -3240,7 +3255,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineCompletedWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineCompletedWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const structuralRows = db
@@ -4974,6 +4992,43 @@ export function listOpenBackgroundTaskItemRowsForHost(
             AND latest.item_id = ${events.itemId}
             AND latest.type IN (${startedType}, ${progressType})
         )`,
+      ),
+    )
+    .orderBy(events.threadId, events.sequence)
+    .all();
+
+  return rows.flatMap((row) =>
+    row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],
+  );
+}
+
+export function listOwnerStoppedBackgroundTaskRowsForHost(
+  db: DbQueryConnection,
+  args: ListOwnerStoppedBackgroundTaskRowsForHostArgs,
+): OwnerStoppedBackgroundTaskRow[] {
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const rows = db
+    .select({
+      data: events.data,
+      itemId: events.itemId,
+      sequence: events.sequence,
+      threadId: events.threadId,
+    })
+    .from(events)
+    .innerJoin(threads, eq(events.threadId, threads.id))
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        inArray(threads.status, ["active", "idle"]),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        sql`${events.itemKind} = 'backgroundTask'`,
+        eq(events.type, completedType),
+        isNotNull(events.itemId),
+        gte(events.createdAt, args.settledSinceMs),
+        sql`json_extract(${events.data}, '$.item.ownerStopped') = 1`,
       ),
     )
     .orderBy(events.threadId, events.sequence)
