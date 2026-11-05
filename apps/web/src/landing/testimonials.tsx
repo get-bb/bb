@@ -108,7 +108,8 @@ const TESTIMONIALS: readonly Testimonial[] = [
     avatar: swairAvatar,
     source: "x",
     url: "https://x.com/swairshah/status/2095643295020122216",
-    quote: "Only good malleable software I’ve used in the LLM era is bb…",
+    quote:
+      "Only good malleable software I’ve used in the LLM era is bb… So good I could get the codex voice integration to be much more powerful in bb than in codex.",
   },
   {
     author: "Bruno Bornsztein",
@@ -135,7 +136,7 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/0xishand/status/2098304763368767697",
     quote:
-      "bb is one of the most impressive tools I’ve used in a very long time. With a few prompts you can completely generate your own in-IDE tooling for anything. This is exactly how adaptive UIs should act and feel. Well done @sawyerhood",
+      "bb is one of the most impressive tools I’ve used in a very long time. With a few prompts you can completely generate your own in-IDE tooling for anything. This is exactly how adaptive UIs should act and feel.",
   },
 ];
 
