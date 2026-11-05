@@ -163,7 +163,7 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "fs-native-extensions": "1.5.3",
+    "fs-native-extensions": "1.5.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
