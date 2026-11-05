@@ -3,14 +3,14 @@ import Link01Icon from "@hugeicons/core-free-icons/Link01Icon";
 import NewTwitterIcon from "@hugeicons/core-free-icons/NewTwitterIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
 
+import goyalAvatar from "../assets/testimonials/alana-goyal.jpg";
 import banesAvatar from "../assets/testimonials/chris-banes.jpg";
 import durukAvatar from "../assets/testimonials/can-duruk.jpg";
 import ishanAvatar from "../assets/testimonials/ishan.jpg";
 import bornszteinAvatar from "../assets/testimonials/bruno-bornsztein.jpg";
-import ajiboyeAvatar from "../assets/testimonials/timi-ajiboye.jpg";
 import lutkeAvatar from "../assets/testimonials/tobi-lutke.jpg";
 import ondrejAvatar from "../assets/testimonials/david-ondrej.jpg";
-import frostAvatar from "../assets/testimonials/steve-frost.jpg";
+import haisfieldAvatar from "../assets/testimonials/rob-haisfield.jpg";
 import sunartoAvatar from "../assets/testimonials/scott-sunarto.jpg";
 import swairAvatar from "../assets/testimonials/swair.jpg";
 import tossellAvatar from "../assets/testimonials/ben-tossell.jpg";
@@ -25,6 +25,7 @@ type Testimonial = {
   source: TestimonialSource;
   url: string;
   quote: string;
+  link?: { text: string; href: string };
 };
 
 const SOURCE_ICON = {
@@ -49,6 +50,28 @@ const TESTIMONIALS: readonly Testimonial[] = [
     source: "x",
     url: "https://x.com/tobi/status/2111930824035836020",
     quote: "bb is really great",
+  },
+  {
+    author: "Alana Goyal",
+    byline: "Investor",
+    avatar: goyalAvatar,
+    source: "x",
+    url: "https://x.com/alanaagoyal/status/2085121395361828929",
+    quote:
+      "truly one of the craziest pieces of software i’ve used in the past six months\n\ngive it a try: github.com/get-bb/bb",
+    link: {
+      text: "github.com/get-bb/bb",
+      href: "https://github.com/get-bb/bb",
+    },
+  },
+  {
+    author: "Rob Haisfield",
+    byline: "Cofounder, websim",
+    avatar: haisfieldAvatar,
+    source: "x",
+    url: "https://x.com/RobertHaisfield/status/2118133290460995727",
+    quote:
+      "bb is the best agent orchestrator out there, for software engineers, product managers, operations, literally anyone who works heavily with agents can trivially customize it to their needs and workflows and it comes with my HIGHEST recommendations.",
   },
   {
     author: "David Ondrej",
@@ -87,14 +110,6 @@ const TESTIMONIALS: readonly Testimonial[] = [
       "this is the most interesting agentic dev environment ive used so far.",
   },
   {
-    author: "Timi Ajiboye",
-    byline: "@timigod",
-    avatar: ajiboyeAvatar,
-    source: "x",
-    url: "https://x.com/timigod/status/2087664204744450515",
-    quote: "It’s just been 15 mins but it feels like bb might be the one.",
-  },
-  {
     author: "Hemanth Soni",
     byline: "hem.so",
     source: "blog",
@@ -116,18 +131,9 @@ const TESTIMONIALS: readonly Testimonial[] = [
     byline: "@brunotorious",
     avatar: bornszteinAvatar,
     source: "x",
-    url: "https://x.com/brunotorious/status/2114326460852842598",
+    url: "https://x.com/brunotorious/status/2098491369895428369",
     quote:
-      "@get_bb_app is my daily driver for the same reasons: open source, multi provider, natively multi-machine and remote, and extensible.",
-  },
-  {
-    author: "Steve Frost",
-    byline: "GitHub discussion",
-    avatar: frostAvatar,
-    source: "github",
-    url: "https://github.com/get-bb/bb/discussions/5562",
-    quote:
-      "How is `bb` everything I’ve ever wanted from codex? Customizable like pi, first-class css overrides, the ability to make internal plugins for internal bots, processes, etc.\n\nWhere can I support the project? I never want this to end. 😆",
+      "Holy shit @get_bb_app is really good.\n\nAnd I’ve tried everything. claude, codex, t3, delta, tembo and any number of others (including building my own @taskyoudev TUI which is still my go to).\n\nThis is the first thing I’ve seen in a while that really blows me away.",
   },
   {
     author: "ishan",
@@ -140,10 +146,26 @@ const TESTIMONIALS: readonly Testimonial[] = [
   },
 ];
 
-function QuoteText({ text }: { text: string }) {
-  return text
-    .split("`")
-    .map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part));
+function QuoteText({ t }: { t: Testimonial }) {
+  return t.quote.split("`").map((part, i) => {
+    if (i % 2 === 1) return <code key={i}>{part}</code>;
+    if (!t.link || !part.includes(t.link.text)) return part;
+    const [before, after] = part.split(t.link.text);
+    return (
+      <span key={i}>
+        {before}
+        <a
+          className="tm-quote-link"
+          href={t.link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t.link.text}
+        </a>
+        {after}
+      </span>
+    );
+  });
 }
 
 function initials(name: string): string {
@@ -159,20 +181,22 @@ function TestimonialCard({ t }: { t: Testimonial }) {
   const source = SOURCE_ICON[t.source];
   return (
     <li className="tm-item">
-      <a
-        className="tm-card"
-        href={t.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() =>
-          trackLandingEvent({
-            name: "landing_testimonial_clicked",
-            properties: { source: t.source },
-          })
-        }
-      >
+      <div className="tm-card">
+        <a
+          className="tm-card-link"
+          href={t.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`${t.author}: read the post`}
+          onClick={() =>
+            trackLandingEvent({
+              name: "landing_testimonial_clicked",
+              properties: { source: t.source },
+            })
+          }
+        />
         <blockquote className="tm-quote">
-          <QuoteText text={t.quote} />
+          <QuoteText t={t} />
         </blockquote>
         <span className="tm-author">
           {t.avatar ? (
@@ -193,7 +217,7 @@ function TestimonialCard({ t }: { t: Testimonial }) {
             aria-label={source.label}
           />
         </span>
-      </a>
+      </div>
     </li>
   );
 }
