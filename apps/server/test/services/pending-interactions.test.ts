@@ -13,7 +13,11 @@ import {
 } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import { toPendingInteraction } from "../../src/services/interactions/pending-interaction-serialization.js";
-import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
+import {
+  PROVIDER_USER_QUESTION_TIMEOUT_MS,
+  PROVIDER_USER_QUESTION_TIMEOUT_REASON,
+  PendingInteractionLifecycle,
+} from "../../src/services/interactions/pending-interactions.js";
 import type { AppDeps } from "../../src/types.js";
 import {
   seedEnvironment,
@@ -634,6 +638,254 @@ describe("pending interaction lifecycle", () => {
           interactionId: corrupt.interaction.id,
         }),
       ).toThrow("Stored pending interaction resolution is invalid");
+    });
+  });
+
+  describe("provider question timeout", () => {
+    function seedQuestionThread(harness: TestAppHarness, suffix: string) {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: `host-pending-interaction-question-timeout-${suffix}`,
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+      return { host, session, thread };
+    }
+
+    function registerQuestion(
+      harness: TestAppHarness,
+      lifecycle: PendingInteractionLifecycle,
+      threadId: string,
+      suffix: string,
+    ) {
+      const created = registerPendingInteraction(harness.deps, lifecycle, {
+        threadId,
+        turnId: `turn-question-timeout-${suffix}`,
+        providerId: "claude-code",
+        providerThreadId: `provider-thread-question-timeout-${suffix}`,
+        providerRequestId: `request-question-timeout-${suffix}`,
+        payload: createUserQuestionPayload(),
+      });
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+      return created.interaction;
+    }
+
+    function readRow(harness: TestAppHarness, interactionId: string) {
+      return harness.db
+        .select()
+        .from(pendingInteractionTable)
+        .where(eq(pendingInteractionTable.id, interactionId))
+        .get();
+    }
+
+    it("closes an unanswered provider question after the timeout and ends the daemon's wait", async () => {
+      await withTestHarness(async (harness) => {
+        const { host, session, thread } = seedQuestionThread(
+          harness,
+          "unanswered",
+        );
+        const socket = createMockHubSocket();
+        harness.deps.hub.registerDaemon(session.id, host.id, socket);
+        vi.useFakeTimers();
+        try {
+          const interaction = registerQuestion(
+            harness,
+            harness.deps.pendingInteractions,
+            thread.id,
+            "unanswered",
+          );
+          expect(interaction.expiresAt).toBe(
+            Date.now() + PROVIDER_USER_QUESTION_TIMEOUT_MS,
+          );
+
+          await vi.advanceTimersByTimeAsync(
+            PROVIDER_USER_QUESTION_TIMEOUT_MS - 1,
+          );
+          expect(readRow(harness, interaction.id)?.status).toBe("pending");
+
+          await vi.advanceTimersByTimeAsync(1);
+          expect(readRow(harness, interaction.id)).toMatchObject({
+            status: "interrupted",
+            statusReason: PROVIDER_USER_QUESTION_TIMEOUT_REASON,
+          });
+          expect(
+            harness.deps.pendingInteractions.listPendingThreadInteractions(
+              thread.id,
+            ),
+          ).toEqual([]);
+          expect(
+            socket.messages
+              .map((message) => JSON.parse(message) as { type: string })
+              .filter((message) => message.type === "interactive-requests.end"),
+          ).toEqual([
+            {
+              type: "interactive-requests.end",
+              requests: [
+                {
+                  threadId: thread.id,
+                  providerId: "claude-code",
+                  providerThreadId:
+                    "provider-thread-question-timeout-unanswered",
+                  providerRequestId: "request-question-timeout-unanswered",
+                },
+              ],
+              reason: PROVIDER_USER_QUESTION_TIMEOUT_REASON,
+            },
+          ]);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("leaves an answered question alone when its timeout elapses", async () => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedQuestionThread(harness, "answered");
+        vi.useFakeTimers();
+        try {
+          const interaction = registerQuestion(
+            harness,
+            harness.deps.pendingInteractions,
+            thread.id,
+            "answered",
+          );
+          const resolution = createUserAnswerResolution();
+          harness.deps.pendingInteractions.resolvePendingInteraction({
+            threadId: thread.id,
+            interactionId: interaction.id,
+            resolution,
+          });
+
+          await vi.advanceTimersByTimeAsync(
+            PROVIDER_USER_QUESTION_TIMEOUT_MS + 1,
+          );
+          expect(readRow(harness, interaction.id)).toMatchObject({
+            status: "resolving",
+            resolution: JSON.stringify(resolution),
+            statusReason: null,
+          });
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("holds a question's timeout while the server is moving", async () => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedQuestionThread(harness, "frozen");
+        vi.useFakeTimers();
+        try {
+          const interaction = registerQuestion(
+            harness,
+            harness.deps.pendingInteractions,
+            thread.id,
+            "frozen",
+          );
+          setServerMoveFrozen(harness.db, true);
+          await vi.advanceTimersByTimeAsync(
+            PROVIDER_USER_QUESTION_TIMEOUT_MS + SERVER_MOVE_FROZEN_RETRY_MS,
+          );
+          expect(readRow(harness, interaction.id)?.status).toBe("pending");
+
+          setServerMoveFrozen(harness.db, false);
+          await vi.advanceTimersByTimeAsync(SERVER_MOVE_FROZEN_RETRY_MS);
+          expect(readRow(harness, interaction.id)?.status).toBe("interrupted");
+        } finally {
+          setServerMoveFrozen(harness.db, false);
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("re-arms persisted question timeouts when the server starts", async () => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedQuestionThread(harness, "restart");
+        const interaction = registerQuestion(
+          harness,
+          harness.deps.pendingInteractions,
+          thread.id,
+          "restart",
+        );
+        harness.db
+          .update(pendingInteractionTable)
+          .set({ expiresAt: Date.now() - 1 })
+          .where(eq(pendingInteractionTable.id, interaction.id))
+          .run();
+        const restarted = new PendingInteractionLifecycle({
+          config: harness.deps.config,
+          db: harness.db,
+          hub: harness.hub,
+          lifecycleDedupers: harness.deps.lifecycleDedupers,
+          logger: harness.deps.logger,
+          machineAuth: harness.deps.machineAuth,
+          providerRegistry: harness.deps.providerRegistry,
+          aiServices: harness.deps.aiServices,
+          pluginHostArtifacts: harness.deps.pluginHostArtifacts,
+          skillTreeRegistry: harness.deps.skillTreeRegistry,
+          telemetry: harness.deps.telemetry,
+          terminalSessions: harness.deps.terminalSessions,
+        });
+        vi.useFakeTimers();
+        try {
+          restarted.start();
+          expect(readRow(harness, interaction.id)?.status).toBe("pending");
+          await vi.advanceTimersByTimeAsync(0);
+          expect(readRow(harness, interaction.id)).toMatchObject({
+            status: "interrupted",
+            statusReason: PROVIDER_USER_QUESTION_TIMEOUT_REASON,
+          });
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    it("gives approvals no timeout", async () => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedQuestionThread(harness, "approval");
+        vi.useFakeTimers();
+        try {
+          const created = registerPendingInteraction(
+            harness.deps,
+            harness.deps.pendingInteractions,
+            {
+              threadId: thread.id,
+              turnId: "turn-question-timeout-approval",
+              providerId: "claude-code",
+              providerThreadId: "provider-thread-question-timeout-approval",
+              providerRequestId: "request-question-timeout-approval",
+              payload: createCommandApprovalPayload(),
+            },
+          );
+          if (created.outcome === "rejected") {
+            throw new Error(
+              `Expected interaction registration to succeed: ${created.reason}`,
+            );
+          }
+          expect(created.interaction.expiresAt).toBeNull();
+          await vi.advanceTimersByTimeAsync(
+            PROVIDER_USER_QUESTION_TIMEOUT_MS + 1,
+          );
+          expect(readRow(harness, created.interaction.id)?.status).toBe(
+            "pending",
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
   });
 

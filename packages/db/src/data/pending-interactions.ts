@@ -200,6 +200,23 @@ export function listActiveProviderPendingInteractionsForHost(
     .map((row) => row.interaction);
 }
 
+export function listExpiringProviderPendingInteractions(
+  db: PendingInteractionReadConnection,
+): PendingInteractionRow[] {
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        eq(pendingInteractions.originKind, "provider"),
+        eq(pendingInteractions.status, "pending"),
+        isNotNull(pendingInteractions.expiresAt),
+      ),
+    )
+    .orderBy(pendingInteractions.expiresAt)
+    .all();
+}
+
 export function listActivePluginPendingInteractions(
   db: PendingInteractionReadConnection,
 ): PendingInteractionRow[] {
