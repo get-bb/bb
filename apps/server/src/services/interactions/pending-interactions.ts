@@ -11,6 +11,7 @@ import {
   interruptPendingInteractionsForThreads,
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
+  listPendingProviderQuestions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolved,
@@ -153,6 +154,7 @@ interface PluginInteractionWaiter {
 }
 
 const DESCRIBE_SUBMISSION_TIMEOUT_MS = 2_000;
+const NATIVE_QUESTION_WAIT_MS = 30 * 60 * 1000;
 
 async function runDescribeSubmission(args: {
   describeSubmission: DescribePluginSubmission | null;
@@ -337,6 +339,10 @@ function notifyInteractionChanged({
 export class PendingInteractionLifecycle {
   private readonly deps: CreateLifecycleDeps;
   private readonly pluginWaiters = new Map<string, PluginInteractionWaiter>();
+  private readonly questionTimeouts = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly answersAwaitingDaemon = new Set<string>();
   private readonly redeliveredAnswers = new Set<string>();
   private pluginDirectory: PendingInteractionPluginDirectory | null = null;
@@ -370,6 +376,11 @@ export class PendingInteractionLifecycle {
       return;
     }
     this.started = true;
+    for (const interaction of this.parseListRows(
+      listPendingProviderQuestions(this.deps.db),
+    )) {
+      this.scheduleQuestionTimeout(interaction);
+    }
     this.settleInterruptedRows(
       listActivePluginPendingInteractions(this.deps.db).flatMap((row) => {
         const updated = setPendingInteractionInterrupted(this.deps.db, {
@@ -507,6 +518,7 @@ export class PendingInteractionLifecycle {
     }
 
     const pendingInteraction = toPendingInteraction(registered.row);
+    this.scheduleQuestionTimeout(pendingInteraction);
 
     if (registered.outcome === "created") {
       appendPendingInteractionTimelineEvent(this.deps, pendingInteraction);
@@ -521,6 +533,61 @@ export class PendingInteractionLifecycle {
       outcome: registered.outcome,
       interaction: pendingInteraction,
     };
+  }
+
+  private scheduleQuestionTimeout(interaction: PendingInteraction): void {
+    if (
+      interaction.origin?.kind !== "provider" ||
+      interaction.payload.kind !== "user_question" ||
+      interaction.status !== "pending"
+    ) {
+      return;
+    }
+    this.clearQuestionTimeout(interaction.id);
+    const expire = () => {
+      this.questionTimeouts.delete(interaction.id);
+      try {
+        const row = getPendingInteraction(this.deps.db, interaction.id);
+        if (row === null || row.status !== "pending") return;
+        if (isServerMoveFrozen(this.deps.db)) {
+          this.questionTimeouts.set(
+            interaction.id,
+            setTimeout(expire, SERVER_MOVE_FROZEN_RETRY_MS).unref(),
+          );
+          return;
+        }
+        const interrupted = setPendingInteractionInterrupted(this.deps.db, {
+          id: interaction.id,
+          statusReason:
+            "No answer was received within 30 minutes. Proceed using your best judgment; ask again if necessary.",
+        });
+        if (interrupted) {
+          this.settleInteractionTerminalState(
+            toPendingInteraction(interrupted),
+          );
+        }
+      } catch (error) {
+        this.deps.logger.warn(
+          { err: error, interactionId: interaction.id },
+          "Native question timeout failed",
+        );
+      }
+    };
+    const remainingMs = Math.max(
+      0,
+      interaction.createdAt + NATIVE_QUESTION_WAIT_MS - Date.now(),
+    );
+    this.questionTimeouts.set(
+      interaction.id,
+      setTimeout(expire, remainingMs).unref(),
+    );
+  }
+
+  private clearQuestionTimeout(interactionId: string): void {
+    const timer = this.questionTimeouts.get(interactionId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.questionTimeouts.delete(interactionId);
   }
 
   requestPluginInteraction(
@@ -1136,6 +1203,7 @@ export class PendingInteractionLifecycle {
   private settleInteractionTerminalState(
     interaction: PendingInteraction,
   ): void {
+    this.clearQuestionTimeout(interaction.id);
     this.endProviderWaitForInterruptedInteraction(interaction);
     appendPendingInteractionTimelineEvent(this.deps, interaction);
     notifyInteractionChanged({
@@ -1149,6 +1217,7 @@ export class PendingInteractionLifecycle {
     deps: PendingInteractionTransactionDeps,
     interaction: PendingInteraction,
   ): void {
+    this.clearQuestionTimeout(interaction.id);
     if (interaction.status === "interrupted") {
       queueMicrotask(() =>
         this.endProviderWaitForInterruptedInteraction(interaction),
