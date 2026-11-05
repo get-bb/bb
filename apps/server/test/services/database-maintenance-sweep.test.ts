@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -17,6 +17,7 @@ import {
   listDeferredLegacyTables,
   migrate,
   noopNotifier,
+  startWalCheckpointer,
   upsertHost,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -94,6 +95,30 @@ function createLegacyDatabaseFile(dbPath: string): void {
   }
 }
 
+function walRestartCount(dbPath: string): number {
+  const header = Buffer.alloc(16);
+  const fd = openSync(`${dbPath}-wal`, "r");
+  try {
+    readSync(fd, header, 0, header.length, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return header.readUInt32BE(12);
+}
+
+async function runSweepWithCheckpointer(
+  db: DbConnection,
+  logger: ServerLogger = testLogger,
+): Promise<void> {
+  const walCheckpointer = startWalCheckpointer({ logger });
+  walCheckpointer.attach(db.$client);
+  try {
+    await runDatabaseMaintenanceSweep({ db, logger, walCheckpointer });
+  } finally {
+    await walCheckpointer.stop();
+  }
+}
+
 function quoteSqlIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
 }
@@ -165,7 +190,7 @@ describe("runDatabaseMaintenanceSweep", () => {
       [...TEST_DEFERRED_LEGACY_TABLE_NAMES].sort(),
     );
 
-    await runDatabaseMaintenanceSweep({ db, logger: testLogger });
+    await runSweepWithCheckpointer(db);
 
     expect(listDeferredLegacyTables(db)).toEqual([]);
   });
@@ -174,7 +199,7 @@ describe("runDatabaseMaintenanceSweep", () => {
     const { db } = setupBusyDatabaseWithFreelist();
     createDeferredLegacyTables(db);
 
-    await runDatabaseMaintenanceSweep({ db, logger: testLogger });
+    await runSweepWithCheckpointer(db);
 
     expect(listDeferredLegacyTables(db)).toEqual(
       [...TEST_DEFERRED_LEGACY_TABLE_NAMES].sort(),
@@ -197,7 +222,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         const before = getDatabaseFreelistStats(db.$client);
         slowQueryLogger.clear();
 
-        await runDatabaseMaintenanceSweep({ db, logger: testLogger });
+        await runSweepWithCheckpointer(db);
 
         expect(getDatabaseAutoVacuumMode(db.$client)).toBe("none");
         expect(getDatabaseFreelistStats(db.$client)).toEqual(before);
@@ -221,12 +246,35 @@ describe("runDatabaseMaintenanceSweep", () => {
       yielded = true;
     });
 
-    await runDatabaseMaintenanceSweep({ db, logger: testLogger });
+    await runSweepWithCheckpointer(db);
 
     expect(yielded).toBe(true);
     expect(getDatabaseFreelistStats(db.$client).freelistCount).toBeLessThan(
       before.freelistCount - 256,
     );
+  });
+
+  it("lets the WAL restart between vacuum chunks without checkpointing on the main connection", async () => {
+    const tempDatabase = createTempDatabasePath();
+    try {
+      const { db } = setupBusyFileDatabaseWithFreelist(tempDatabase);
+      try {
+        const before = getDatabaseFreelistStats(db);
+        expect(before.freelistCount).toBeGreaterThan(256 * 4);
+        const restartsBefore = walRestartCount(tempDatabase.dbPath);
+
+        await runSweepWithCheckpointer(db);
+
+        expect(getDatabaseFreelistStats(db).freelistCount).toBe(0);
+        expect(
+          walRestartCount(tempDatabase.dbPath) - restartsBefore,
+        ).toBeGreaterThanOrEqual(3);
+      } finally {
+        db.$client.close();
+      }
+    } finally {
+      tempDatabase.cleanup();
+    }
   });
 
   it("does not wait on a WAL reader during incremental maintenance", async () => {
@@ -242,7 +290,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         const before = getDatabaseFreelistStats(db.$client);
         const startedAt = performance.now();
 
-        await runDatabaseMaintenanceSweep({ db, logger: testLogger });
+        await runSweepWithCheckpointer(db);
 
         const elapsedMs = performance.now() - startedAt;
         expect(elapsedMs).toBeLessThan(
@@ -276,7 +324,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         const { logger, warnMessages } = createCapturingServerLogger();
         const startedAt = performance.now();
 
-        await runDatabaseMaintenanceSweep({ db, logger });
+        await runSweepWithCheckpointer(db, logger);
 
         const elapsedMs = performance.now() - startedAt;
         expect(elapsedMs).toBeLessThan(
