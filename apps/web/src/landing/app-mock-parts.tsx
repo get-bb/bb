@@ -4,12 +4,14 @@ import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 import ArrowMoveDownLeftIcon from "@hugeicons/core-free-icons/ArrowMoveDownLeftIcon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import AttachmentIcon from "@hugeicons/core-free-icons/AttachmentIcon";
+import BookOpen01Icon from "@hugeicons/core-free-icons/BookOpen01Icon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import CommandLineIcon from "@hugeicons/core-free-icons/CommandLineIcon";
+import CornerDownLeftIcon from "@hugeicons/core-free-icons/CornerDownLeftIcon";
 import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
 import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
 import FlaskConicalIcon from "@hugeicons/core-free-icons/FlaskConicalIcon";
@@ -54,19 +56,21 @@ function glyph(icon: IconSvgElement): MockIcon {
   };
 }
 
-const PanelIcon = glyph(SidebarLeftIcon);
+export const PanelIcon = glyph(SidebarLeftIcon);
 export const PanelRightIcon = glyph(SidebarRightIcon);
 export const ChevronLeft = glyph(ArrowLeft01Icon);
 export const ChevronRight = glyph(ArrowRight01Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
 export const Ellipsis = glyph(MoreHorizontalIcon);
 export const NewThreadIcon = glyph(BubbleChatAddIcon);
-const HomeIcon = glyph(Home01Icon);
+export const HomeIcon = glyph(Home01Icon);
 export const SearchIcon = glyph(Search01Icon);
 export const PluginsIcon = glyph(Plug02Icon);
 const SkillsIcon = glyph(ZapIcon);
 const AutomationsIcon = glyph(RepeatIcon);
 export const ClockIcon = glyph(Clock01Icon);
+export const BookIcon = glyph(BookOpen01Icon);
+export const ReturnIcon = glyph(CornerDownLeftIcon);
 export const GearIcon = glyph(Settings01Icon);
 export const PhoneIcon = glyph(SmartPhone01Icon);
 export const BugIcon = glyph(Bug01Icon);
@@ -75,8 +79,8 @@ export const CircleCheckIcon = glyph(CheckmarkCircle02Icon);
 export const QuestionIcon = glyph(MessageQuestionIcon);
 export const PaperPlane = glyph(SentIcon);
 export const Paperclip = glyph(AttachmentIcon);
-const PlusIcon = glyph(PlusSignIcon);
-const FolderIcon = glyph(Folder01Icon);
+export const PlusIcon = glyph(PlusSignIcon);
+export const FolderIcon = glyph(Folder01Icon);
 export const FolderGitIcon = glyph(FolderGit2Icon);
 export const GitBranchIcon = glyph(GitBranchGlyph);
 export const GitMergeIcon = glyph(GitMergeGlyph);
@@ -112,7 +116,7 @@ export function ThreadStatus({ status }: { status: ThreadState | "unread" }) {
   );
 }
 
-function WindowDots() {
+export function WindowDots() {
   return (
     <span className="mock-dots" aria-hidden>
       <i />

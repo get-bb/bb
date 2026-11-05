@@ -10,31 +10,34 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import linearLogo from "../assets/company-logos/linear.svg";
+import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
+  BookIcon,
   ChevronDown,
   ChevronRight,
   CircleCheckIcon,
+  ClockIcon,
   CloseIcon,
-  ComposerBox,
-  ContextRow,
-  EditorButton,
   Ellipsis,
   FileCodeGlyph as FileIcon,
   FileEditGlyph as EditIcon,
+  FolderGitIcon,
+  FolderIcon,
+  GearIcon,
   GitBranchIcon as BranchIcon,
-  LaptopGlyph,
+  HomeIcon,
   MessageIcon,
   MicIcon,
-  NAV_ITEMS,
-  NavRail,
   NewThreadIcon,
   PanelRightIcon,
   PaperPlane as SentGlyph,
   PhoneIcon,
   PinGlyph,
+  PlusIcon,
   PluginsIcon,
   PullRequestIcon as PrIcon,
+  ReturnIcon,
   SearchIcon,
   Spinner,
   TerminalIcon as TermIcon,
@@ -99,6 +102,7 @@ type Scene = {
   post?: Post[];
   worked: string;
 
+  running?: boolean;
   flags: Flag[];
   sideView?: boolean;
 
@@ -129,24 +133,19 @@ const SCENES: Scene[] = [
     title: "Sentry errors",
     prompt: "Chart my Sentry errors for checkout-web next to this thread",
     steps: [
+      { kind: "work", verb: "Explored", em: "4 files, 1 search" },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new sentry-charts",
-        dur: "8.1s",
+        dur: "0.4s",
       },
-      { kind: "file", verb: "Edited", file: "app.tsx", diff: [142, 61] },
+      { kind: "file", verb: "Created", file: "page.tsx", diff: [142, 0] },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-sentry-charts --yes",
         dur: "2.2s",
-      },
-      {
-        kind: "cmd",
-        verb: "Ran",
-        em: 'bb plugin config sentry-charts set token "$SENTRY_AUTH_TOKEN"',
-        dur: "0.3s",
       },
     ],
     post: [
@@ -162,12 +161,13 @@ const SCENES: Scene[] = [
           <>
             It&rsquo;s open beside this thread. Errors jump at <b>v2.14.0</b>:{" "}
             <code>Cannot read properties of null</code> in the cart summary, 642
-            events. Want me to fix it?
+            events. Fixing it now.
           </>
         ),
       },
     ],
     worked: "1m 12s",
+    running: true,
     flags: ["sentry", "split"],
   },
   {
@@ -221,21 +221,15 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new linear-issues",
-        dur: "7.6s",
+        dur: "0.4s",
       },
-      { kind: "file", verb: "Edited", file: "app.tsx", diff: [96, 61] },
-      { kind: "file", verb: "Edited", file: "server.ts", diff: [54, 48] },
+      { kind: "file", verb: "Created", file: "panel.tsx", diff: [96, 0] },
+      { kind: "file", verb: "Created", file: "server.ts", diff: [54, 0] },
       {
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin install ./bb-plugin-linear-issues --yes",
         dur: "2.1s",
-      },
-      {
-        kind: "cmd",
-        verb: "Ran",
-        em: 'bb plugin config linear-issues set token "$LINEAR_API_KEY"',
-        dur: "0.3s",
       },
     ],
     post: [
@@ -257,12 +251,7 @@ const SCENES: Scene[] = [
     title: "Chart flaky tests",
     prompt: "Chart flaky tests by package",
     steps: [
-      {
-        kind: "cmd",
-        verb: "Ran",
-        em: "gh run list --workflow ci --limit 200",
-        dur: "2.4s",
-      },
+      { kind: "work", verb: "Explored", em: "38 files" },
       {
         kind: "plugin",
         plugin: "Generative UI",
@@ -274,7 +263,7 @@ const SCENES: Scene[] = [
       {
         reply: (
           <>
-            checkout has 9 of the 22 flaky runs this week, all of them timeouts
+            checkout has 9 of the 22 flaky runs this week, most of them timeouts
             on CI.
           </>
         ),
@@ -317,16 +306,26 @@ const SCENES: Scene[] = [
     id: "composer",
     replyFirst: true,
     hold: 2,
-    title: "Mention Linear issues",
-    prompt: "Let me type # to mention my Linear issues",
+    title: "Mention GitHub issues",
+    prompt: "Let me type # to mention GitHub issues from this repo",
     steps: [
-      { kind: "work", verb: "Explored", em: "3 files" },
-      { kind: "file", verb: "Edited", file: "server.ts", diff: [74, 2] },
       {
         kind: "cmd",
         verb: "Ran",
-        em: "bb plugin reload linear-issues",
-        dur: "0.6s",
+        em: "bb plugin new github-issues",
+        dur: "0.4s",
+      },
+      {
+        kind: "file",
+        verb: "Created",
+        file: "issue-mentions.ts",
+        diff: [74, 0],
+      },
+      {
+        kind: "cmd",
+        verb: "Ran",
+        em: "bb plugin install ./bb-plugin-github-issues --yes",
+        dur: "1.9s",
       },
     ],
     post: [
@@ -334,7 +333,7 @@ const SCENES: Scene[] = [
         step: {
           kind: "plugin",
           verb: "Loaded open issues from",
-          em: "Linear",
+          em: "get-bb/bb",
         },
       },
       {
@@ -382,9 +381,9 @@ const SCENES: Scene[] = [
         kind: "cmd",
         verb: "Ran",
         em: "bb plugin new status-sidebar",
-        dur: "7.9s",
+        dur: "0.4s",
       },
-      { kind: "file", verb: "Edited", file: "app.tsx", diff: [88, 61] },
+      { kind: "file", verb: "Created", file: "sidebar.tsx", diff: [88, 0] },
       {
         kind: "cmd",
         verb: "Ran",
@@ -415,7 +414,7 @@ const RAIL: Record<string, string> = {
 };
 const CLOSES = new Set<string>(["sentry", "linear"]);
 
-const FINAL_STATUS: Record<string, Status> = { sentry: "waiting" };
+const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
 const USER_AT = 0.35;
 const ROW_GAP = 0.65;
@@ -493,7 +492,11 @@ function timing(scene: Scene, tablet = false) {
   const lastAt = replyFirst ? changeAt : Math.max(changeAt, postAt.at(-1) ?? 0);
 
   const replyIdx = posts.findIndex((p) => "reply" in p);
-  let doneAt: number | null = replyIdx >= 0 ? postAt[replyIdx] : changeAt;
+  let doneAt: number | null = scene.running
+    ? null
+    : replyIdx >= 0
+      ? postAt[replyIdx]
+      : changeAt;
   let end = lastAt + scene.hold;
   if (scene.id === "composer") end = Math.max(end, changeAt + 5.1);
 
@@ -567,7 +570,7 @@ function timing(scene: Scene, tablet = false) {
 }
 
 const THREADS: { title: string; status: Status }[] = [
-  { title: "Bump React to 19", status: "running" },
+  { title: "Triage the Sentry spike", status: "running" },
   { title: "Nightly changelog", status: "done" },
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
@@ -576,37 +579,37 @@ const CHILD = { icon: OpenAiIcon, title: "Team invites API" };
 
 const LINEAR_TASKS = [
   {
-    key: "APP-412",
+    key: "APP-1",
     title: "Fix the login redirect loop",
     status: "in_progress",
     priority: "high",
   },
   {
-    key: "APP-409",
+    key: "APP-2",
     title: "Rate-limit file uploads",
     status: "todo",
     priority: "medium",
   },
   {
-    key: "APP-398",
+    key: "APP-3",
     title: "Add filters to search",
     status: "todo",
     priority: "low",
   },
   {
-    key: "APP-391",
+    key: "APP-4",
     title: "Draft the release notes",
     status: "in_progress",
     priority: "medium",
   },
   {
-    key: "APP-377",
+    key: "APP-5",
     title: "Triage flaky checkout tests",
     status: "backlog",
     priority: "high",
   },
   {
-    key: "APP-362",
+    key: "APP-6",
     title: "Port the billing page",
     status: "backlog",
     priority: "low",
@@ -730,6 +733,14 @@ function Spark({ values }: { values: number[] }) {
     </svg>
   );
 }
+
+const NAV: { icon: IconComp; label: string }[] = [
+  { icon: HomeIcon, label: "Home" },
+  { icon: SearchIcon, label: "Search" },
+  { icon: PluginsIcon, label: "Plugins" },
+  { icon: BookIcon, label: "Skills" },
+  { icon: ClockIcon, label: "Automations" },
+];
 
 function PanelBar({ name, meta }: { name: string; meta?: string }) {
   return (
@@ -954,7 +965,7 @@ const SENTRY_OPEN_MS = 1050;
 const SENTRY_CLOSE_MS = 850;
 const TOP = ".rhb-col-main, .rhb-col-page, .rhb-col-panel, .rhb-side";
 const KIDS =
-  ".rhb-side > :not(.rhb-xf), .rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
+  ".rhb-side > :not(.rhb-xf), .rhb-rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
 const XF = ".rhb-side > *, .rhb-feed, .rhb-dock-wrap";
 type Snap = {
   rects: Map<
@@ -1666,7 +1677,7 @@ const LinearPanel = memo(function LinearPanel() {
       </div>
       <div className="rhb-card rhb-card-panel">
         <div className="plugin-panel rhb-side-panel">
-          <PanelBar name="Linear issues" meta="shop · 6 open" />
+          <PanelBar name="Linear issues" meta="bb · 6 open" />
           <div className="plugin-panel-rows">
             {LINEAR_TASKS.map((task) => (
               <div className="plugin-task" key={task.key}>
@@ -2212,7 +2223,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
             <i className="rhb-caret" />
           </span>
           <div className="rhb-issue-picker">
-            <div className="rhb-issue-head">Linear issues</div>
+            <div className="rhb-issue-head">GitHub issues</div>
             <div className="rhb-issue-list">
               {ISSUES.map((x, i) => (
                 <div
@@ -2227,9 +2238,9 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
                     .join(" ")}
                 >
                   <IssueGlyph className="rhb-issue-ic" />
-                  <span className="rhb-issue-num">APP-{x.n}</span>
+                  <span className="rhb-issue-num">#{x.n}</span>
                   <span className="rhb-issue-title">{x.title}</span>
-                  <span className="rhb-issue-meta">todo</span>
+                  <span className="rhb-issue-meta">open</span>
                 </div>
               ))}
             </div>
@@ -2238,7 +2249,7 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
             <span className="rhb-issue-chip">
               <IssueGlyph className="rhb-issue-chip-ic" />
               <span className="rhb-issue-chip-text">
-                APP-491 CSV export times out
+                #491 CSV export times out
               </span>
             </span>
             <span className="rhb-issue-rest">fix this</span>
@@ -2303,15 +2314,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
 
   const stripItems: { icon: IconComp; label: string }[] = [
     { icon: NewThreadIcon, label: "New thread" },
-    NAV_ITEMS[0],
+    ...NAV.filter((x) => x.label === "Home"),
     ...(hasSet.has("rail-sentry")
       ? [{ icon: SentryGlyph as IconComp, label: "Sentry" }]
       : []),
     ...(hasSet.has("rail-linear")
       ? [{ icon: LinearGlyph as IconComp, label: "Linear" }]
       : []),
-    { icon: SearchIcon, label: "Search" },
-    ...NAV_ITEMS.slice(1),
+    ...NAV.filter((x) => x.label !== "Home"),
   ];
   const stripRef = useRef<HTMLSpanElement>(null);
   const [stripFit, setStripFit] = useState(stripItems.length);
@@ -2425,14 +2435,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
       name: "Needs my input",
       rows: [
         {
-          title: "Sentry errors",
-          sub: "shop · main",
-          age: "9m",
-          status: "waiting",
-        },
-        {
           title: "Refactor the timeline cache",
-          sub: "shop · main",
+          sub: "bb · main",
           age: "5m",
           status: "waiting",
         },
@@ -2446,7 +2450,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
           : [
               {
                 title: scene.title,
-                sub: "shop · main",
+                sub: "bb · main",
                 age: "now",
                 status: "running" as Status,
                 active: true,
@@ -2455,11 +2459,17 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         ...(chartF
           ? chartF.clicks.map((fi) => ({
               title: chartF.fixes[fi].title,
-              sub: "shop · main",
+              sub: "bb · ci",
               age: "3m",
               status: "running" as Status,
             }))
           : []),
+        {
+          title: "Sentry errors",
+          sub: "checkout-web",
+          age: "9m",
+          status: "running",
+        },
       ],
     },
     {
@@ -2480,7 +2490,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         .reverse()
         .map((sc) => ({
           title: sc.title,
-          sub: "shop · main",
+          sub: "bb · main",
           age: "8m",
           status: "done" as Status,
         })),
@@ -2493,14 +2503,32 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         <div className="rhb-left">
           <div className="rhb-band rhb-chrome-space" />
           <div className="rhb-left-body">
-            <NavRail>
-              <span className="rail-btn rhb-rail-new rhb-rail-sentry">
-                <SentryGlyph className="rail-ic" />
+            <nav className="rhb-rail">
+              {NAV.filter((x) => x.label !== "Search").map(
+                ({ icon: Icon, label }) => (
+                  <span
+                    className={
+                      label === "Home" ? "rhb-rail-btn is-on" : "rhb-rail-btn"
+                    }
+                    key={label}
+                  >
+                    <Icon className="rhb-ic" />
+                  </span>
+                ),
+              )}
+              <span className="rhb-rail-btn rhb-rail-new rhb-rail-sentry">
+                <SentryGlyph className="rhb-ic" />
               </span>
-              <span className="rail-btn rhb-rail-new rhb-rail-linear">
-                <LinearGlyph className="rail-ic rhb-logo" />
+              <span className="rhb-rail-btn rhb-rail-new rhb-rail-linear">
+                <LinearGlyph className="rhb-ic rhb-logo" />
               </span>
-            </NavRail>
+              <span className="rhb-rail-btn">
+                <Ellipsis className="rhb-ic" />
+              </span>
+              <span className="rhb-rail-btn rhb-rail-gear">
+                <GearIcon className="rhb-ic" />
+              </span>
+            </nav>
             <aside className="rhb-side">
               {uses("strip") ? (
                 <div className="rhb-strip">
@@ -2687,7 +2715,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </span>
             <Ellipsis className="rhb-ic" />
             <span className="rhb-band-end">
-              <EditorButton />
+              <span className="rhb-btn">
+                <img src={vscodeIcon} alt="" className="rhb-editor-ic" />
+                <ChevronDown className="rhb-chev" />
+              </span>
               <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
             </span>
           </div>
@@ -2712,27 +2743,49 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </div>
 
             <div className="rhb-dock-wrap">
-              <ComposerBox
-                attach="plus"
-                model={
-                  <>
+              <div className="rhb-box">
+                <div className="rhb-input">
+                  <ComposerText
+                    demo={scene.id === "composer" && n === 1}
+                    leaving={
+                      outgoing != null && SCENES[outgoing].id === "composer"
+                    }
+                  />
+                </div>
+                <div className="rhb-box-row">
+                  <PlusIcon className="rhb-ic" />
+                  <span className="rhb-model">
+                    <ClaudeIcon className="rhb-model-ic" />
                     <span className="rhb-model-name">Opus 5.5</span>{" "}
                     <span className="rhb-model-sub">Medium</span>
-                  </>
-                }
-              >
-                <ComposerText
-                  demo={scene.id === "composer" && n === 1}
-                  leaving={
-                    outgoing != null && SCENES[outgoing].id === "composer"
-                  }
-                />
-              </ComposerBox>
-              <ContextRow
-                project="shop"
-                place={{ icon: LaptopGlyph, label: "Local" }}
-                branch="main"
-              />
+                    <ChevronDown className="rhb-chev" />
+                  </span>
+                  <span className="rhb-box-end">
+                    <MicIcon className="rhb-ic" />
+                    <span className="rhb-send">
+                      <ReturnIcon className="rhb-send-ic" />
+                    </span>
+                  </span>
+                </div>
+              </div>
+              <div className="rhb-context">
+                <span className="rhb-ctx">
+                  <FolderIcon className="rhb-ctx-ic" />
+                  bb
+                </span>
+                <span className="rhb-ctx">
+                  <FolderGitIcon className="rhb-ctx-ic" />
+                  Worktree
+                </span>
+                <span className="rhb-ctx">
+                  <BranchIcon className="rhb-ctx-ic" />
+                  main
+                </span>
+                <span className="rhb-perm">
+                  Full Access
+                  <ChevronDown className="rhb-chev" />
+                </span>
+              </div>
             </div>
           </div>
         </div>
