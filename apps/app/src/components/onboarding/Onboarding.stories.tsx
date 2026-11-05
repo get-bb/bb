@@ -1262,6 +1262,33 @@ export function RedesignAgentSignInJustClicked() {
   );
 }
 
+export function RedesignAgentSignInJustClickedCodex() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame
+        signingIn={null}
+        states={{ "codex": { status: "signingIn" } }}
+        expanded={{
+          "codex": (
+            <AgentSignInPanel
+              connect={false}
+              agentName="Codex"
+              view={{ guide: null, terminalVisible: false, started: false }}
+              code=""
+              codeSubmitted={false}
+              terminal={null}
+              onCodeChange={noop}
+              onSubmitCode={noop}
+              onCopy={noop}
+              onToggleTerminal={noop}
+            />
+          ),
+        }}
+      />
+    </div>
+  );
+}
+
 export function RedesignAgentJustOpened() {
   const pending = {
     cliStatus: undefined,
