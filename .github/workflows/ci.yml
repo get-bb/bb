@@ -9,9 +9,6 @@ jobs:
       fail-fast: false
       matrix:
         mode: [focused, shard]
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -26,10 +23,15 @@ jobs:
       - name: Profile native child focused
         if: matrix.mode == 'focused'
         shell: cmd
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: pnpm exec turbo run test --filter=@bb/server --force -- test/services/plugins/plugin-native-server-loading.test.ts
       - name: Profile native child in full shard
         if: matrix.mode == 'shard'
         shell: cmd
         env:
           BB_CI_TEST_SHARD: '2/3'
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: pnpm exec turbo run test --filter=@bb/server --force --concurrency=4
