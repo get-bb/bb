@@ -3572,4 +3572,38 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     max-width: 420px;
   }
 
+  .dl-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name action"
+      "tag action";
+    row-gap: 2px;
+  }
+
+  .dl-row:has(.cmd-btn) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "tag"
+      "action";
+    row-gap: 6px;
+  }
+
+  .dl-row-name {
+    grid-area: name;
+  }
+
+  .dl-row-tag {
+    grid-area: tag;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .dl-row-action {
+    grid-area: action;
+  }
+
+  .dl-row:has(.cmd-btn) .dl-row-action {
+    justify-self: stretch;
+  }
 }
