@@ -429,27 +429,29 @@ describe("pull request lookup for differently named upstream branches", () => {
     expect(await gh.readCalls()).toHaveLength(2);
   });
 
-  it("runs ready, draft, and merge against the checked pull request URL", async () => {
-    const workspacePath = await createTrackedForkWorkspace();
-    const gh = await installFakeGh({});
-    const url = "https://github.com/upstream-owner/bb/pull/1236";
-
-    for (const action of [
-      { operation: "ready" },
-      { operation: "draft" },
+  it.each([
+    ["ready", { operation: "ready" }, ["pr", "ready"], []],
+    ["draft", { operation: "draft" }, ["pr", "ready"], ["--undo"]],
+    [
+      "merge",
       { operation: "merge", method: "squash" },
-    ] as const) {
+      ["pr", "merge"],
+      ["--squash"],
+    ],
+  ] as const)(
+    "runs %s against the checked pull request URL",
+    async (_label, action, command, flags) => {
+      const workspacePath = await createTrackedForkWorkspace();
+      const gh = await installFakeGh({});
+      const url = "https://github.com/upstream-owner/bb/pull/1236";
+
       await expect(
         harness.experimental_call("act", { path: workspacePath, url, action }),
       ).resolves.toEqual({ ok: true });
-    }
 
-    expect(await gh.readCalls()).toEqual([
-      ["pr", "ready", url],
-      ["pr", "ready", url, "--undo"],
-      ["pr", "merge", url, "--squash"],
-    ]);
-  });
+      expect(await gh.readCalls()).toEqual([[...command, url, ...flags]]);
+    },
+  );
 
   it("returns none when gh genuinely finds no PR for the qualified upstream", async () => {
     const workspacePath = await createTrackedForkWorkspace();
