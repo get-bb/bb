@@ -51,10 +51,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const setupGuideQuery = useSetupGuideAssignment({
     enabled: completedAt === null,
   });
-  const primaryHost = usePrimaryHost({ enabled: completedAt === null });
+  const prefetchInstallInfo =
+    completedAt === null && setupGuideQuery.data?.variant === "new";
+  const primaryHost = usePrimaryHost({ enabled: prefetchInstallInfo });
   useHostProviderCliStatus({
     hostId: primaryHost?.id ?? null,
-    enabled: completedAt === null,
+    enabled: prefetchInstallInfo,
   });
   useEffect(() => {
     if (typeof completedAt === "string") rememberOnboardingSeen();

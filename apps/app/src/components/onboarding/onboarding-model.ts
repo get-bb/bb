@@ -51,6 +51,16 @@ export function terminalConnectFlow(
   return TERMINAL_CONNECT_FLOWS[providerId] ?? null;
 }
 
+export function agentRowSetup({
+  connect,
+  awaitingSession,
+}: {
+  connect: boolean;
+  awaitingSession: boolean;
+}): "signIn" | "connect" {
+  return connect && !awaitingSession ? "connect" : "signIn";
+}
+
 const PARSED_SIGN_IN_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "claude-code",
   "codex",

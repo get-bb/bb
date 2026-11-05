@@ -8,6 +8,7 @@ import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
+  agentRowSetup,
   agentSignInView,
   connectAccessUrl,
   devicesShowMachines,
@@ -616,6 +617,18 @@ describe("Pi's sign-in", () => {
       userCode: null,
       acceptsPastedCode: true,
     });
+  });
+
+  it("shows Pi's row like every other agent's until its sign-in terminal exists", () => {
+    expect(agentRowSetup({ connect: true, awaitingSession: true })).toBe(
+      "signIn",
+    );
+    expect(agentRowSetup({ connect: true, awaitingSession: false })).toBe(
+      "connect",
+    );
+    expect(agentRowSetup({ connect: false, awaitingSession: false })).toBe(
+      "signIn",
+    );
   });
 
   it("sees a failed sign-in although Pi keeps running at its prompt", () => {
