@@ -67,7 +67,6 @@ const SentryGlyph: IconComp = ({ className }) => (
 
 type Flag =
   | "sentry"
-  | "split"
   | "spawn"
   | "messages"
   | "panel"
@@ -131,7 +130,7 @@ const SCENES: Scene[] = [
     hold: 2.5,
     beat: 1.3,
     title: "Sentry errors",
-    prompt: "Chart my Sentry errors for checkout-web next to this thread",
+    prompt: "Make a plugin that charts my Sentry errors",
     steps: [
       { kind: "work", verb: "Explored", em: "4 files, 1 search" },
       {
@@ -168,14 +167,14 @@ const SCENES: Scene[] = [
     ],
     worked: "1m 12s",
     running: true,
-    flags: ["sentry", "split"],
+    flags: ["sentry"],
   },
   {
     id: "spawn",
     hold: 2.5,
     title: "Team invites",
     prompt:
-      "Add team invites. You build the invite screen, have Codex build the invite API and emails.",
+      "Add team invites to checkout-web. You build the invite screen, have Codex build the invite API and emails.",
     steps: [
       { kind: "work", verb: "Explored", em: "4 files" },
       {
@@ -215,7 +214,7 @@ const SCENES: Scene[] = [
     id: "linear",
     hold: 2,
     title: "Linear issues panel",
-    prompt: "Add a side panel with my open Linear issues",
+    prompt: "Make a plugin that shows my open Linear issues in a side panel",
     steps: [
       {
         kind: "cmd",
@@ -249,7 +248,7 @@ const SCENES: Scene[] = [
     id: "chart",
     hold: 2.5,
     title: "Chart flaky tests",
-    prompt: "Chart flaky tests by package",
+    prompt: "Chart checkout-web's flaky tests by package",
     steps: [
       { kind: "work", verb: "Explored", em: "38 files" },
       {
@@ -307,7 +306,7 @@ const SCENES: Scene[] = [
     replyFirst: true,
     hold: 2,
     title: "Mention GitHub issues",
-    prompt: "Let me type # to mention GitHub issues from this repo",
+    prompt: "Let me type # in the composer to mention my GitHub issues",
     steps: [
       {
         kind: "cmd",
@@ -333,7 +332,7 @@ const SCENES: Scene[] = [
         step: {
           kind: "plugin",
           verb: "Loaded open issues from",
-          em: "get-bb/bb",
+          em: "GitHub",
         },
       },
       {
@@ -416,10 +415,25 @@ const CLOSES = new Set<string>(["sentry", "linear"]);
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
-const USER_AT = 0.35;
-const ROW_GAP = 0.65;
-const WORK_ROW_GAP = 0.38;
-const FIRST_ROW = 0.6;
+const ROW_GAP = 0.9;
+const WORK_ROW_GAP = 0.53;
+const FIRST_ROW = 0.85;
+const NOTE_GAP = 1.4;
+const CLICK_GAP = 1.8;
+const KID_AFTER_CLICK = 0.75;
+const BEAT = 0.3;
+const STATUS_BEAT = 0.2;
+const NOTE_SETTLE = 0.55;
+
+const PANEL_OPEN = 0.7;
+const RAIL_IN = 0.4;
+const RAIL_AT = PANEL_OPEN + 0.25;
+const CHROME_FOR: Record<string, number> = {
+  sentry: RAIL_AT + RAIL_IN,
+  linear: RAIL_AT + RAIL_IN,
+  nav: 1.75,
+  grouped: 0.7,
+};
 
 const REST = 1.1;
 const REST_AFTER_CLOSE = 1.4;
@@ -430,7 +444,7 @@ const SWAP_FOR = 0.3;
 const FURL_GAP = 0.2;
 const FURL_FOR = 0.3;
 const FURL_BEAT = 0.6;
-const ARRIVE_FOR = 0.3;
+const ARRIVE_FOR = 0.42;
 
 type TurnRow = { step: Step; at: number; muteAt: number | null };
 type TurnPlan = { rows: TurnRow[]; furlAt: number | null; readyAt: number };
@@ -468,7 +482,7 @@ function planTurn(
 
 function timing(scene: Scene, tablet = false) {
   const posts = scene.post ?? [];
-  const userAt = scene.prompt ? USER_AT : 0;
+  const userAt = 0;
   const stepAt = scene.steps.map(
     (_, i) => userAt + FIRST_ROW + i * WORK_ROW_GAP,
   );
@@ -481,8 +495,9 @@ function timing(scene: Scene, tablet = false) {
     changeAt = (postAt.at(-1) ?? lastStep) + ROW_GAP;
   } else {
     changeAt = scene.prompt ? lastStep + ROW_GAP + (scene.beat ?? 0) : 0.6;
-    const settle = scene.id === "sentry" ? (SENTRY_OPEN_MS - 650) / 1000 : 0;
-    postAt = posts.map((_, i) => changeAt + settle + ROW_GAP + i * ROW_GAP);
+    const chrome = CHROME_FOR[scene.id];
+    const first = chrome == null ? ROW_GAP : chrome + BEAT;
+    postAt = posts.map((_, i) => changeAt + first + i * ROW_GAP);
   }
   const collapseAt = scene.id === "linear" && tablet ? changeAt : null;
   if (collapseAt !== null) {
@@ -503,7 +518,7 @@ function timing(scene: Scene, tablet = false) {
   let then: null | { at: number; notes: number[] } = null;
   if (scene.then) {
     const at = lastAt + ROW_GAP;
-    const notes = [0, 1, 2].map((i) => at + 1.0 + i * 1.0);
+    const notes = [0, 1, 2].map((i) => at + NOTE_GAP + i * NOTE_GAP);
     doneAt = at;
     end = (notes.at(-1) ?? at) + scene.hold;
     then = { at, notes };
@@ -516,15 +531,18 @@ function timing(scene: Scene, tablet = false) {
       ),
     ],
     doneAt,
-    [
-      changeAt,
-      ...postAt,
-      ...(then ? [then.at, ...then.notes] : []),
-      ...(scene.flags.includes("chart")
-        ? [(postAt.at(-1) ?? changeAt) + ROW_GAP]
-        : []),
-    ],
+    [changeAt, ...postAt, ...(then ? [then.at, ...then.notes] : [])],
   );
+  const statusAt =
+    doneAt == null || !Number.isFinite(turn.readyAt)
+      ? null
+      : turn.readyAt + STATUS_BEAT;
+  const chartAt = scene.flags.includes("chart")
+    ? Math.max(
+        (postAt.at(-1) ?? changeAt) + ROW_GAP,
+        (statusAt ?? turn.readyAt) + BEAT + 0.1,
+      )
+    : null;
   let f: null | {
     user: number;
     steps: number[];
@@ -536,12 +554,12 @@ function timing(scene: Scene, tablet = false) {
   if (scene.follow) {
     const F = scene.follow;
 
-    const user = (postAt.at(-1) ?? changeAt) + ROW_GAP + 2.8;
+    const user = (chartAt ?? postAt.at(-1) ?? changeAt) + 2.8;
     const steps = F.steps.map((_, i) => user + FIRST_ROW + i * WORK_ROW_GAP);
     const reply = (steps.at(-1) ?? user) + ROW_GAP;
     const cards = F.fixes.map((_, i) => reply + ROW_GAP + i * ROW_GAP);
     const lastCard = cards.at(-1) ?? reply;
-    const clicks = F.clicks.map((_, i) => lastCard + 1.0 + i * 1.0);
+    const clicks = F.clicks.map((_, i) => lastCard + 1.0 + i * CLICK_GAP);
     end = (clicks.at(-1) ?? lastCard) + scene.hold;
     const fTurn = planTurn(
       F.steps.map((step, i) => ({ step, at: steps[i] })),
@@ -556,6 +574,8 @@ function timing(scene: Scene, tablet = false) {
   if (Number.isFinite(ready) && leaves < ready + FURL_BEAT)
     end += ready + FURL_BEAT - leaves;
   return {
+    chartAt,
+    statusAt,
     collapseAt,
     userAt,
     stepAt,
@@ -746,7 +766,6 @@ function PanelBar({ name, meta }: { name: string; meta?: string }) {
   return (
     <div className="plugin-panel-bar">
       <span className="plugin-panel-name">{name}</span>
-      <span className="plugin-panel-badge">Plugin</span>
       {meta ? <span className="rhb-bar-meta">{meta}</span> : null}
     </div>
   );
@@ -961,8 +980,6 @@ function useMedia(query: string) {
 }
 
 const EASE_OUT = "cubic-bezier(0.22, 0.61, 0.36, 1)";
-const SENTRY_OPEN_MS = 1050;
-const SENTRY_CLOSE_MS = 850;
 const TOP = ".rhb-col-main, .rhb-col-page, .rhb-col-panel, .rhb-side";
 const KIDS =
   ".rhb-side > :not(.rhb-xf), .rhb-rail > *, .rhb-feed, .rhb-dock-wrap, .rhb-col > .rhb-band > *";
@@ -1198,15 +1215,7 @@ function snapLayout(root: HTMLElement, reshapes: boolean): Snap {
 }
 
 function flipLayout(root: HTMLElement, first: Snap) {
-  const sentryOpens = root.matches(".rhb-scene-sentry.rhb-has-sentry");
-  const sentryCloses = root.matches(".rhb-scene-sentry:not(.rhb-has-sentry)");
-  const drawer =
-    (sentryOpens || sentryCloses) && !window.matchMedia(TABLET_QUERY).matches;
-  const dur = sentryOpens
-    ? SENTRY_OPEN_MS
-    : sentryCloses
-      ? SENTRY_CLOSE_MS
-      : 650;
+  const dur = 650;
   const finals = new Map<Element, { b: DOMRect; pb?: DOMRect }>();
   root.querySelectorAll(KIDS).forEach((el) => {
     if (!el.closest(".rhb-frozen"))
@@ -1224,11 +1233,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
       const old = s.clone;
       pin(old, a, first.root, "4");
       root.appendChild(old);
-      const dx = el.matches(".rhb-col-panel")
-        ? a.width
-        : sentryCloses
-          ? first.root.left - a.right
-          : -a.width;
+      const dx = el.matches(".rhb-col-panel") ? a.width : -a.width;
       const anim = old.animate(
         [
           { opacity: 1, transform: "none" },
@@ -1244,20 +1249,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
       return;
     }
     if (
-      (a.width < 2 || a.height < 2) &&
-      b.width >= 2 &&
-      b.height >= 2 &&
-      sentryOpens &&
-      el.matches(".rhb-col-page")
-    ) {
-      const dx = first.root.left - b.right;
-      moved.set(el, { x: dx, y: 0 });
-      glide(
-        el,
-        [{ transform: `translateX(${dx}px)` }, { transform: "none" }],
-        dur,
-      );
-    } else if (
       (a.width < 2 || a.height < 2) &&
       b.width >= 2 &&
       b.height >= 2 &&
@@ -1305,27 +1296,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
           pointerEvents: "none",
         });
         el.insertBefore(fill, card);
-        if (drawer) {
-          const cs = getComputedStyle(card);
-          Object.assign(fill.style, {
-            borderTop: cs.borderTop,
-            borderRight: cs.borderRight,
-            borderBottom: cs.borderBottom,
-            borderRadius: `0 ${cs.borderTopRightRadius} ${cs.borderBottomRightRadius} 0`,
-          });
-          Object.assign(card.style, {
-            borderRightColor: "transparent",
-            borderTopRightRadius: "0",
-            borderBottomRightRadius: "0",
-          });
-          window.setTimeout(() => {
-            [
-              "border-right-color",
-              "border-top-right-radius",
-              "border-bottom-right-radius",
-            ].forEach((x) => card.style.removeProperty(x));
-          }, dur + 30);
-        }
         const clips = [
           ...el.querySelectorAll<HTMLElement>(".rhb-scroll, .rhb-feed-layer"),
         ];
@@ -1346,7 +1316,6 @@ function flipLayout(root: HTMLElement, first: Snap) {
   });
   root.querySelectorAll(KIDS).forEach((el) => {
     if (el.closest(".rhb-frozen")) return;
-    if (drawer && el.closest(".rhb-col-page")) return;
     const col = el.closest(TOP);
     if (col && entering.has(col)) return;
     const s = first.rects.get(el);
@@ -1402,7 +1371,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
           pb,
           (top && moved.get(top)) || { x: 0, y: 0 },
           s.pad,
-          drawer || el.matches(".rhb-feed"),
+          el.matches(".rhb-feed"),
           dur,
         );
       else if (s.r.width < 2) glide(el, [{ opacity: 0 }, { opacity: 1 }], 250);
@@ -1424,18 +1393,11 @@ function flipLayout(root: HTMLElement, first: Snap) {
     const ghost = freeze(keep && side ? side : leftBody);
     pin(ghost, keep && sideWas ? sideWas : first.left, first.root, "0");
     root.appendChild(ghost);
-    const out = drawer ? first.root.left - first.left.right : 0;
-    const a = ghost.animate(
-      [
-        { opacity: 1, transform: "none" },
-        { opacity: drawer ? 1 : 0, transform: `translateX(${out}px)` },
-      ],
-      {
-        duration: drawer ? dur : 450,
-        easing: EASE_OUT,
-        fill: "forwards",
-      },
-    );
+    const a = ghost.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: 450,
+      easing: EASE_OUT,
+      fill: "forwards",
+    });
     a.onfinish = () => ghost.remove();
   } else if (
     leftBody &&
@@ -1444,16 +1406,7 @@ function flipLayout(root: HTMLElement, first: Snap) {
     now.width - first.left.width > 40
   ) {
     const side = leftBody.querySelector(":scope > .rhb-side");
-    if (drawer)
-      glide(
-        leftBody,
-        [
-          { transform: `translateX(${first.root.left - now.right}px)` },
-          { transform: "none" },
-        ],
-        dur,
-      );
-    else if (first.left.width >= 2 && side)
+    if (first.left.width >= 2 && side)
       glide(side, [{ opacity: 0 }, { opacity: 1 }], 450);
     else
       glide(
@@ -1598,7 +1551,6 @@ const SentryPage = memo(function SentryPage() {
       <div className="rhb-band">
         <SentryGlyph className="rhb-ic rhb-page-ic" />
         <span className="rhb-title">Sentry</span>
-        <span className="plugin-panel-badge">Plugin</span>
         <span className="rhb-band-end">
           <CloseIcon className="rhb-ic" />
         </span>
@@ -1606,7 +1558,7 @@ const SentryPage = memo(function SentryPage() {
       <div className="rhb-card rhb-card-page">
         <div className="rhb-page">
           <div className="rhb-page-head">
-            <span className="rhb-page-title">checkout-web</span>
+            <span className="rhb-page-title">All projects</span>
             <span className="rhb-bar-meta">Last 24h · production</span>
           </div>
           <div className="rhb-sentry-stats">
@@ -1697,6 +1649,7 @@ const LinearPanel = memo(function LinearPanel() {
 });
 
 const GLIDE_RATE = 0.02;
+const GROW_FOR = 420;
 const ROOM_RATE = 0.011;
 
 type FeedProps = {
@@ -1778,7 +1731,7 @@ function FeedLayer({ scene, reduced, out, pre, onIn }: FeedProps) {
       growing++;
       const anim = el.animate(
         [{ marginBottom: `${mb - room}px` }, { marginBottom: `${mb}px` }],
-        { duration: 300, easing: EASE_OUT },
+        { duration: GROW_FOR, easing: EASE_OUT },
       );
       const done = () => {
         growing--;
@@ -2019,11 +1972,7 @@ const FeedBody = memo(function FeedBody({
           <div className="rhb-say">{scene.context.reply}</div>
         </>
       ) : null}
-      {scene.prompt ? (
-        <div className="rhb-user customize-msg" style={delay(t.userAt)}>
-          {scene.prompt}
-        </div>
-      ) : null}
+      {scene.prompt ? <div className="rhb-user">{scene.prompt}</div> : null}
       {scene.steps.length > 0 ? (
         <Turn
           worked={then ? then.worked : scene.worked}
@@ -2088,7 +2037,7 @@ const FeedBody = memo(function FeedBody({
       {scene.flags.includes("chart") ? (
         <div
           className="customize-msg rhb-chart"
-          style={delay((t.postAt.at(-1) ?? t.changeAt) + ROW_GAP)}
+          style={delay(t.chartAt ?? t.changeAt)}
         >
           <span className="rhb-chart-head">
             <span className="rhb-chart-title">Flaky tests by package</span>
@@ -2295,14 +2244,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
         sc.flags.forEach((x) => hasSet.add(x));
     }
   });
-  if (scene.id === "sentry" && (n === 5 || n === 1)) hasSet.add("collapsed");
   if (scene.id === "linear" && tablet && (n === 5 || n === 1 || n === 3))
     hasSet.add("panel-collapsed");
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
-  const spawnStep = SCENES[spawnIdx].steps.findIndex((x) =>
-    x.em?.startsWith("bb thread spawn"),
-  );
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
   const chart = SCENES[chartIdx];
   const chartF =
@@ -2348,7 +2293,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   if (flips && rootRef.current && !firstSnap.current) {
     firstSnap.current = snapLayout(
       rootRef.current,
-      scene.flags.includes("split") || scene.flags.includes("panel"),
+      scene.flags.includes("panel"),
     );
     rowSnap.current = snapRows(rootRef.current);
   }
@@ -2577,12 +2522,12 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         {k === idx && !reduced ? (
                           (() => {
                             const tk = timing(sc, tablet);
-                            return tk.doneAt == null ? (
+                            return tk.statusAt == null ? (
                               <ThreadStatus status="running" />
                             ) : (
                               <Swap
                                 className="rhb-status-swap"
-                                at={tk.doneAt}
+                                at={tk.statusAt}
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status={statusOf(k)} />}
                               />
@@ -2597,13 +2542,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                           className={
                             k === idx ? "rhb-kids rhb-kids-late" : "rhb-kids"
                           }
-                          style={
-                            k === idx
-                              ? delay(
-                                  (t.stepAt[spawnStep] ?? t.changeAt) + 0.35,
-                                )
-                              : undefined
-                          }
+                          style={k === idx ? delay(t.changeAt) : undefined}
                         >
                           <div className="rhb-row rhb-kid">
                             <CHILD.icon className="rhb-kid-ic" />
@@ -2611,10 +2550,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             {k === idx && then && !reduced ? (
                               <Swap
                                 className="rhb-status-swap"
-                                at={
-                                  then.notes[0] -
-                                  ((t.stepAt[spawnStep] ?? t.changeAt) + 0.35)
-                                }
+                                at={then.notes[0] + NOTE_SETTLE}
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status="done" />}
                               />
@@ -2635,7 +2571,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                               key={fi}
                               style={
                                 k === idx && f
-                                  ? delay(f.at.clicks[c] + 0.3)
+                                  ? delay(f.at.clicks[c] + KID_AFTER_CLICK)
                                   : undefined
                               }
                             >
@@ -2701,8 +2637,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </aside>
           </div>
         </div>
-
-        <SentryPage />
 
         <div className="rhb-col rhb-col-main">
           <div className="rhb-band">
@@ -2774,7 +2708,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
               <div className="rhb-context">
                 <span className="rhb-ctx">
                   <FolderIcon className="rhb-ctx-ic" />
-                  bb
+                  checkout-web
                 </span>
                 <span className="rhb-ctx">
                   <FolderGitIcon className="rhb-ctx-ic" />
@@ -2792,6 +2726,8 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </div>
           </div>
         </div>
+
+        <SentryPage />
 
         <LinearPanel />
       </div>
