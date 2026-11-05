@@ -105,7 +105,7 @@ describe("hero window first frame", () => {
   });
 
   it.each(["control", "test"])(
-    "exposes the %s arm when the hero is first seen, before the stage loads",
+    "leaves the %s arm's exposure to the hero test, which counts it when the hero renders",
     async (arm) => {
       delayChunk();
       vi.resetModules();
@@ -140,7 +140,7 @@ describe("hero window first frame", () => {
           <ExperimentsProvider
             value={{
               distinctID: "id",
-              featureFlags: { "homepage-hero-window": arm },
+              featureFlags: { "homepage-hero": arm },
               preview: false,
             }}
           >
@@ -158,10 +158,7 @@ describe("hero window first frame", () => {
         }
       });
       expect(container.querySelector(".rhb-stage")).toBeNull();
-      expect(exposeExperiment).toHaveBeenCalledExactlyOnceWith(
-        "homepage-hero-window",
-        "desktop",
-      );
+      expect(exposeExperiment).not.toHaveBeenCalled();
       await act(async () => root.unmount());
     },
   );

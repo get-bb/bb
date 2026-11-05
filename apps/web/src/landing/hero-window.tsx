@@ -9,10 +9,7 @@ import {
 } from "react";
 import type { ReactNode, Ref } from "react";
 
-import {
-  useExperiment,
-  useExperimentExposure,
-} from "../experiments/use-experiment";
+import { useExperiment } from "../experiments/use-experiment";
 import {
   ChevronLeft,
   ChevronRight,
@@ -34,10 +31,9 @@ export function HeroWindowSlot({
 }: {
   control: (ref: Ref<HTMLElement>) => ReactNode;
 }) {
-  const arm = useExperiment("homepage-hero-window");
-  const { ref, seen, active } =
+  const arm = useExperiment("homepage-hero");
+  const { ref, active } =
     useActiveWhileVisible<HTMLElement>("0px 0px -20% 0px");
-  useExperimentExposure("homepage-hero-window", "desktop", seen);
   return arm === "test" ? (
     <HeroWindow ref={ref} active={active} />
   ) : (
