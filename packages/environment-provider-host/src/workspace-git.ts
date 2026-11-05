@@ -691,15 +691,15 @@ export function createGitQueries(run: GitQueryRunner) {
     cwd: string,
     options: GitProcessOptions = {},
   ): Promise<GitOperationState> {
-    const [gitDir, status] = await Promise.all([
-      getAbsoluteGitDir(cwd, options),
-      readPorcelainStatus(cwd, options),
-    ]);
-    const hasConflicts = hasPorcelainConflict(status);
+    const gitDir = await getAbsoluteGitDir(cwd, options);
     for (const marker of GIT_OPERATION_MARKERS) {
       for (const markerName of marker.markerNames) {
         if (await pathExists(path.join(gitDir, markerName))) {
-          return { kind: marker.kind, hasConflicts };
+          const status = await readPorcelainStatus(cwd, options);
+          return {
+            kind: marker.kind,
+            hasConflicts: hasPorcelainConflict(status),
+          };
         }
       }
     }
