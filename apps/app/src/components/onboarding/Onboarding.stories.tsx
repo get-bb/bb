@@ -351,6 +351,7 @@ function AgentFrame({
       <AgentStep
         machineName={machineName}
         agents={loading ? null : buildAgents(states, signInVariant)}
+        loadFailedMessage={null}
         onSignIn={onSignIn}
         onInstall={onInstall}
         onViewInstallLog={onViewInstallLog}
@@ -1208,6 +1209,7 @@ function RedesignAgentFrame({
           quiet
           machineName={MACHINE_NAME}
           agents={agents}
+          loadFailedMessage={null}
           onSignIn={noop}
           onInstall={noop}
           onViewInstallLog={noop}

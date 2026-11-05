@@ -33,7 +33,14 @@ function renderAgents(agents: OnboardingAgent[]) {
     onCancelSignIn: vi.fn(),
     onRecheck: vi.fn(),
   };
-  render(<AgentStep machineName="bee" agents={agents} {...handlers} />);
+  render(
+    <AgentStep
+      machineName="bee"
+      agents={agents}
+      loadFailedMessage={null}
+      {...handlers}
+    />,
+  );
   return handlers;
 }
 
@@ -89,6 +96,7 @@ describe("AgentStep in the redesigned guide", () => {
             }),
             agent("claude-code", { status: "signingIn" }),
           ]}
+          loadFailedMessage={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onViewInstallLog={vi.fn()}
@@ -302,9 +310,7 @@ describe("AgentSignInInstruction", () => {
 
   it("links the browser when the URL has no website", () => {
     const url = "file:///tmp/sign-in";
-    expect(renderInstruction(url).textContent).toBe(
-      "Sign in in your browser.",
-    );
+    expect(renderInstruction(url).textContent).toBe("Sign in in your browser.");
     expect(
       screen.getByRole("link", { name: "your browser" }).getAttribute("href"),
     ).toBe(url);
@@ -467,7 +473,13 @@ function renderQuiet(agents: OnboardingAgent[]) {
   };
   const view = render(
     <TooltipProvider>
-      <AgentStep quiet machineName="bee" agents={agents} {...handlers} />
+      <AgentStep
+        quiet
+        machineName="bee"
+        agents={agents}
+        loadFailedMessage={null}
+        {...handlers}
+      />
     </TooltipProvider>,
   );
   return { ...view, handlers };
@@ -560,6 +572,7 @@ describe("AgentStep progress in the redesign", () => {
           quiet
           machineName="bee"
           agents={[agent("codex", { status: "installing", update: false })]}
+          loadFailedMessage={null}
           onSignIn={vi.fn()}
           onInstall={vi.fn()}
           onViewInstallLog={vi.fn()}
@@ -697,6 +710,7 @@ describe("Agent step header and install details in the redesign", () => {
               installQueued: true,
             },
           ]}
+          loadFailedMessage={null}
           {...handlers}
         />
       </TooltipProvider>,

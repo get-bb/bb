@@ -77,48 +77,55 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   }
 
   const firstRun = settings.onboardingCompletedAt === null && !firstRunClosed;
-  if (!firstRun) return children;
+  if (!firstRun && !firstRunClosed) return children;
   if (setupGuideQuery.isPending) return null;
   const setupGuide = setupGuideQuery.data ?? CONTROL_SETUP_GUIDE;
   const entry = seenBefore ? "replay" : "first_run";
 
   return (
-    <TooltipProvider delayDuration={300} disableHoverableContent>
-      <div className="flex h-dvh w-full flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]">
-        <OnboardingErrorTelemetry entry={entry} initialStep="agent">
-          <Suspense fallback={null}>
-            <OnboardingFlow
-              initialStep="agent"
-              setupGuide={setupGuide}
-              entry={entry}
-              onClose={(lastStep) => {
-                setFirstRunClosed(true);
-                updateSettings.mutate(
-                  {
-                    ...settings,
-                    onboardingCompletedAt: new Date().toISOString(),
-                  },
-                  {
-                    onError: (error) => {
-                      recordTelemetryEvent({
-                        name: "onboarding_operation",
-                        properties: {
-                          entry,
-                          step: lastStep,
-                          operation: "finish",
-                          outcome: "failed",
-                          failure_reason: operationFailureReason(error),
-                        },
-                      });
-                      setFirstRunClosed(false);
+    <>
+      {firstRunClosed ? children : null}
+      <TooltipProvider delayDuration={300} disableHoverableContent>
+        <div
+          hidden={firstRunClosed}
+          className="flex h-dvh w-full flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
+        >
+          <OnboardingErrorTelemetry entry={entry} initialStep="agent">
+            <Suspense fallback={null}>
+              <OnboardingFlow
+                initialStep="agent"
+                setupGuide={setupGuide}
+                entry={entry}
+                closing={firstRunClosed}
+                onClose={(lastStep) => {
+                  setFirstRunClosed(true);
+                  updateSettings.mutate(
+                    {
+                      ...settings,
+                      onboardingCompletedAt: new Date().toISOString(),
                     },
-                  },
-                );
-              }}
-            />
-          </Suspense>
-        </OnboardingErrorTelemetry>
-      </div>
-    </TooltipProvider>
+                    {
+                      onError: (error) => {
+                        recordTelemetryEvent({
+                          name: "onboarding_operation",
+                          properties: {
+                            entry,
+                            step: lastStep,
+                            operation: "finish",
+                            outcome: "failed",
+                            failure_reason: operationFailureReason(error),
+                          },
+                        });
+                        setFirstRunClosed(false);
+                      },
+                    },
+                  );
+                }}
+              />
+            </Suspense>
+          </OnboardingErrorTelemetry>
+        </div>
+      </TooltipProvider>
+    </>
   );
 }
