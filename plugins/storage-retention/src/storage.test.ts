@@ -1408,6 +1408,7 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
   let releaseRemoval = () => {};
   let removalCompleted = (_paths: string[]) => {};
   let scanMeasured = () => {};
+  const hostListedPaths: string[] = [];
   const host = createFakePluginHost({
     pluginId: "storage-retention",
     experimental_hostEntry: true,
@@ -1436,11 +1437,19 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
         removalCompleted(input.paths);
         return result;
       }
-      for (const method of [
-        "capacity",
-        "listGitWorktrees",
-        "inspectGitWorktree",
-      ] as const)
+      if (call.method === "listGitWorktrees") {
+        const result = await worker.experimental_call(
+          "listGitWorktrees",
+          hostStorageContract.listGitWorktrees.input.parse(call.input),
+        );
+        hostListedPaths.push(
+          ...result.repositories.flatMap((repository) =>
+            repository.worktrees.map((entry) => entry.path),
+          ),
+        );
+        return result;
+      }
+      for (const method of ["capacity", "inspectGitWorktree"] as const)
         if (call.method === method)
           return worker.experimental_call(
             method,
@@ -1543,6 +1552,9 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
       ]),
     );
     expect(scanned.externalWorktrees).toHaveLength(4);
+    expect(hostListedPaths.sort()).toEqual(
+      [clean, detached, dirty, locked].sort(),
+    );
     expect(
       scanned.externalWorktrees.find((entry) => entry.path === clean)!
         .sizeBytes,
