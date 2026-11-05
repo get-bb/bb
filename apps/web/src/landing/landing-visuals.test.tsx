@@ -151,7 +151,7 @@ describe("StartAnywhere", () => {
   it("shows bb desktop grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
-      "Hand this off to bb: fix the checkout bug",
+      "Fix the checkout bug: payments hang on slow networks",
       "src/checkout/pay.ts",
       "linux-box",
       ">server<",
@@ -169,6 +169,13 @@ describe("StartAnywhere", () => {
     expect(html.match(/class="mock bw-window"/g)).toHaveLength(1);
     expect(html.match(/class="bw-phone"/g)).toHaveLength(1);
     expect(html).not.toMatch(/bb spawn|fw-arrow|fw-auto|bw-chat/);
+  });
+
+  it("opens the thread with its prompt already in place on both screens", () => {
+    const html = renderToStaticMarkup(<StartAnywhere />);
+    const still =
+      /<div class="bw-reveal bw-reveal-still"><div class="bw-reveal-inner"><div class="(msg-user|bw-m-user)">Fix the checkout bug: payments hang on slow networks</g;
+    expect(html.match(still)).toHaveLength(2);
   });
 
   it("shows the thread on its own, with no side panel open", () => {
@@ -229,14 +236,16 @@ describe("PluginMorph", () => {
     expect(root.dataset.scene).toBe("stock");
 
     FakeObserver.instances[0]!.show(true);
-    act(() => vi.advanceTimersByTime(1_500));
+    act(() => vi.advanceTimersByTime(1_050));
     expect(root.dataset.scene).toBe("files");
     expect(root.className).toContain("mx-collapsed");
     expect(layer(".mx-center > .main:nth-child(2)")).toContain("is-entering");
     expect(layer(".mx-center > .main:nth-child(1)")).toContain("is-under");
     expect(layer(".mx-side-threads")).toContain("is-under");
 
-    act(() => vi.advanceTimersByTime(1_100));
+    act(() => vi.advanceTimersByTime(2_500));
+    expect(layer(".mx-center > .main:nth-child(1)")).toContain("is-under");
+    act(() => vi.advanceTimersByTime(50));
     expect(layer(".mx-center > .main:nth-child(1)")).not.toContain("is-under");
     expect(layer(".mx-side-threads")).not.toContain("is-on");
 
@@ -244,11 +253,11 @@ describe("PluginMorph", () => {
     expect(root.dataset.scene).toBe("graph");
     expect(root.querySelector(".bar-toggle.active")).not.toBeNull();
 
-    act(() => vi.advanceTimersByTime(3_700));
+    act(() => vi.advanceTimersByTime(4_370));
     expect(root.dataset.scene).toBe("taskboard");
     expect(root.querySelector(".bar-toggle.active")).toBeNull();
 
-    act(() => vi.advanceTimersByTime(3_700));
+    act(() => vi.advanceTimersByTime(4_370));
     expect(root.dataset.scene).toBe("shelves");
     expect(root.className).not.toContain("mx-collapsed");
     expect(layer(".mx-side-shelves")).toContain("is-entering");
@@ -279,7 +288,7 @@ describe("PluginMorph", () => {
       ].join("|");
     seen.push(layout());
     for (let step = 0; step < 5; step += 1) {
-      act(() => vi.advanceTimersByTime(3_700));
+      act(() => vi.advanceTimersByTime(4_370));
       seen.push(layout());
     }
     for (let step = 1; step < seen.length; step += 1) {
@@ -315,7 +324,8 @@ describe("DelegationTree", () => {
     ]) {
       expect(html).toContain(text);
     }
-    expect(html.match(/Child thread updates/g)).toHaveLength(4);
+    expect(html.match(/class="bw-update"/g)).toHaveLength(4);
+    expect(html).not.toContain("Child thread updates");
     expect(html.match(/class="bw-toast"/g)).toHaveLength(1);
     expect(html).toContain("Review the diff needs your approval");
   });

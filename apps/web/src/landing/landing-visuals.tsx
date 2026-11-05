@@ -755,14 +755,17 @@ function Reveal({
   className,
   children,
 }: {
-  at: number;
+  at?: number;
   className?: string;
   children: ReactNode;
 }) {
+  const classes = ["bw-reveal"];
+  if (seconds === undefined) classes.push("bw-reveal-still");
+  if (className) classes.push(className);
   return (
     <div
-      className={className ? `bw-reveal ${className}` : "bw-reveal"}
-      style={at(seconds)}
+      className={classes.join(" ")}
+      style={seconds === undefined ? undefined : at(seconds)}
     >
       <div className="bw-reveal-inner">{children}</div>
     </div>
@@ -883,9 +886,9 @@ const MORPH_SCENES: readonly MorphScene[] = [
   "shelves",
 ];
 const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
-const MORPH_FIRST_HOLD_MS = 1500;
-const MORPH_HOLD_MS = 2600;
-const MORPH_CHANGE_MS = 1100;
+const MORPH_FIRST_HOLD_MS = 1050;
+const MORPH_HOLD_MS = 1820;
+const MORPH_CHANGE_MS = 2550;
 
 type MorphCenter = "thread" | "files" | "taskboard";
 type MorphSide = "threads" | "shelves" | null;
@@ -961,9 +964,10 @@ function morphLayer<T extends string>(
   changing: boolean,
 ) {
   if (key === current) {
-    return changing && previous !== key
-      ? `${base} mx-layer is-on is-entering`
-      : `${base} mx-layer is-on`;
+    if (!changing) return `${base} mx-layer is-on`;
+    return previous === key
+      ? `${base} mx-layer is-on is-staying`
+      : `${base} mx-layer is-on is-entering`;
   }
   if (changing && key === previous) return `${base} mx-layer is-under`;
   return `${base} mx-layer`;
@@ -1579,6 +1583,8 @@ export function PluginMorph() {
   const before = previous === null ? null : MORPH_CENTER[previous];
   const sideBefore = previous === null ? null : MORPH_SIDE[previous];
   const titles = [...new Set(Object.values(MORPH_TITLES))];
+  const centerLayer = (key: MorphCenter) =>
+    morphLayer("main", key, center, before, changing);
   return (
     <div
       ref={ref}
@@ -1647,25 +1653,13 @@ export function PluginMorph() {
             </aside>
           </div>
           <div className="mx-center">
-            <div
-              className={morphLayer("main", "thread", center, before, changing)}
-            >
+            <div className={centerLayer("thread")}>
               <MorphThread />
             </div>
-            <div
-              className={morphLayer("main", "files", center, before, changing)}
-            >
+            <div className={centerLayer("files")}>
               <MorphFiles />
             </div>
-            <div
-              className={morphLayer(
-                "main",
-                "taskboard",
-                center,
-                before,
-                changing,
-              )}
-            >
+            <div className={centerLayer("taskboard")}>
               <MorphTaskboard />
             </div>
           </div>
@@ -1686,24 +1680,24 @@ const DELEGATION_CHILDREN = [
   {
     icon: ClaudeIcon,
     title: "Plan the fix",
-    landsAt: 0.8,
-    then: [{ status: "done", at: 2.2 }],
+    landsAt: 1.84,
+    then: [{ status: "done", at: 4.9 }],
   },
   {
     icon: CursorIcon,
     title: "Build it",
-    landsAt: 3.4,
+    landsAt: 9.12,
     then: [
-      { status: "waiting", at: 4.8 },
-      { status: "running", at: 6.4 },
-      { status: "done", at: 7.8 },
+      { status: "waiting", at: 11.6 },
+      { status: "running", at: 14.74 },
+      { status: "done", at: 16.4 },
     ],
   },
   {
     icon: OpenAiIcon,
     title: "Review the diff",
-    landsAt: 9,
-    then: [{ status: "waiting", at: 10.4 }],
+    landsAt: 20.66,
+    then: [{ status: "waiting", at: 23.1 }],
   },
 ] as const;
 
@@ -1725,7 +1719,6 @@ function ChildUpdate({
 }) {
   return (
     <div className="bw-update">
-      <span className="bw-update-head">Child thread updates</span>
       <span className="bw-update-body">
         <Icon className="bw-update-ic" />
         <span>{children}</span>
@@ -1738,18 +1731,22 @@ const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(14800, 700, active);
+  const { cycle, leaving, paused } = useCycle(28000, 800, active);
   return (
     <div
       ref={ref}
       className="bw bw-lead"
       role="img"
-      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows each Child thread update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
+      aria-label="The bb app with the lead thread Ship the checkout fix, running in Grok Build. It starts Plan the fix in Claude Code, Build it in Cursor and Review the diff in Codex, which nest under it in the sidebar. Its timeline shows a short note from the lead between each child's update, and it answers a question from Build it on its own. One notification reaches you: Review the diff needs your approval."
     >
       <div className="mock bw-window">
         <WindowBar title={DELEGATION_LEAD} />
         <div
-          className={stageClass("mock-body bw-body", leaving, paused)}
+          className={stageClass(
+            `mock-body bw-body${cycle > 1 ? " bw-reopen" : ""}`,
+            leaving,
+            paused,
+          )}
           key={cycle}
         >
           <Sidebar>
@@ -1786,48 +1783,71 @@ export function DelegationTree() {
             />
           </Sidebar>
           <div className="main">
-            <div className="feed bw-feed bw-feed-live">
-              <div className="msg-user">
-                Ship the checkout timeout fix. Plan it, build it and get it
-                reviewed.
-              </div>
-              <Reveal at={0.6}>
-                <SpawnLine title="Plan the fix" provider="Claude Code" />
-              </Reveal>
-              <Reveal at={2.4}>
-                <ChildUpdate icon={ClaudeIcon}>
-                  <strong>Plan the fix</strong> finished: three steps in{" "}
-                  <code>plan.md</code>
-                </ChildUpdate>
-              </Reveal>
-              <Reveal at={3.2}>
-                <SpawnLine title="Build it" provider="Cursor" />
-              </Reveal>
-              <Reveal at={5}>
-                <ChildUpdate icon={CursorIcon}>
-                  <strong>Build it</strong> asked: keep the 30s timeout, or make
-                  it configurable?
-                </ChildUpdate>
-              </Reveal>
-              <Reveal at={6.2}>
-                <div className="msg-say">
-                  Replied to <strong>Build it</strong>: make it configurable,
-                  default 30s.
+            <div className="bw-feed-scroll">
+              <div className="feed bw-feed">
+                <div className="msg-user">
+                  Ship the checkout timeout fix. Plan it, build it and get it
+                  reviewed.
                 </div>
-              </Reveal>
-              <Reveal at={8}>
-                <ChildUpdate icon={CursorIcon}>
-                  <strong>Build it</strong> finished: PR #482 is open
-                </ChildUpdate>
-              </Reveal>
-              <Reveal at={8.8}>
-                <SpawnLine title="Review the diff" provider="Codex" />
-              </Reveal>
-              <Reveal at={10.6}>
-                <ChildUpdate icon={OpenAiIcon}>
-                  <strong>Review the diff</strong> is waiting on your approval
-                </ChildUpdate>
-              </Reveal>
+                <Reveal at={0.84}>
+                  <SpawnLine title="Plan the fix" provider="Claude Code" />
+                </Reveal>
+                <Reveal at={2.64}>
+                  <div className="msg-say">
+                    Claude Code is planning the fix.
+                  </div>
+                </Reveal>
+                <Reveal at={5.36}>
+                  <ChildUpdate icon={ClaudeIcon}>
+                    <strong>Plan the fix</strong> finished: three steps in{" "}
+                    <code>plan.md</code>
+                  </ChildUpdate>
+                </Reveal>
+                <Reveal at={7}>
+                  <div className="msg-say">
+                    The plan has three steps. Handing the build to Cursor.
+                  </div>
+                </Reveal>
+                <Reveal at={8.12}>
+                  <SpawnLine title="Build it" provider="Cursor" />
+                </Reveal>
+                <Reveal at={9.92}>
+                  <div className="msg-say">Cursor is building it now.</div>
+                </Reveal>
+                <Reveal at={12.06}>
+                  <ChildUpdate icon={CursorIcon}>
+                    <strong>Build it</strong> asked: keep the 30s timeout, or
+                    make it configurable?
+                  </ChildUpdate>
+                </Reveal>
+                <Reveal at={13.74}>
+                  <div className="msg-say">
+                    Replied to <strong>Build it</strong>: make it configurable,
+                    default 30s.
+                  </div>
+                </Reveal>
+                <Reveal at={16.86}>
+                  <ChildUpdate icon={CursorIcon}>
+                    <strong>Build it</strong> finished: PR #482 is open
+                  </ChildUpdate>
+                </Reveal>
+                <Reveal at={18.54}>
+                  <div className="msg-say">
+                    The fix is in. Handing the review to Codex.
+                  </div>
+                </Reveal>
+                <Reveal at={19.66}>
+                  <SpawnLine title="Review the diff" provider="Codex" />
+                </Reveal>
+                <Reveal at={21.46}>
+                  <div className="msg-say">Codex is reviewing the diff.</div>
+                </Reveal>
+                <Reveal at={23.56}>
+                  <ChildUpdate icon={OpenAiIcon}>
+                    <strong>Review the diff</strong> is waiting on your approval
+                  </ChildUpdate>
+                </Reveal>
+              </div>
             </div>
             <WindowComposer
               placeholder="Ask for a follow-up"
@@ -1835,7 +1855,7 @@ export function DelegationTree() {
               modelIcon={GrokIcon}
             />
           </div>
-          <div className="bw-toast" style={at(11.4)}>
+          <div className="bw-toast" style={at(24.6)}>
             <BbGlyph className="bw-toast-mark" />
             <span className="bw-toast-text">
               <span className="bw-toast-app">bb · now</span>
@@ -1848,7 +1868,7 @@ export function DelegationTree() {
   );
 }
 
-const START_PROMPT = "Hand this off to bb: fix the checkout bug";
+const START_PROMPT = "Fix the checkout bug: payments hang on slow networks";
 
 type StartStep =
   | { at: number; say: string }
@@ -1862,15 +1882,15 @@ type StartStep =
     };
 
 const START_STEPS: readonly StartStep[] = [
-  { at: 2.4, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
-  { at: 2.9, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
+  { at: 1.8, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
+  { at: 2.5, icon: FileReadIcon, verb: "Read", object: "src/checkout/pay.ts" },
   {
-    at: 3.5,
+    at: 3.34,
     say: "The payment call has no timeout, so slow networks hang checkout. Adding a 10s timeout with one retry.",
   },
-  { at: 4.4, icon: EditFileIcon, verb: "Edited", object: "2 files" },
+  { at: 4.6, icon: EditFileIcon, verb: "Edited", object: "2 files" },
   {
-    at: 5.2,
+    at: 5.72,
     icon: CommandIcon,
     verb: "Running",
     object: "pnpm test checkout",
@@ -1915,13 +1935,13 @@ function PhoneStatusBar() {
 
 export function StartAnywhere() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(11800, 700, active);
+  const { cycle, leaving, paused } = useCycle(12600, 800, active);
   return (
     <div
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
+      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug because payments hang on slow networks, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
@@ -1936,7 +1956,7 @@ export function StartAnywhere() {
                 linux-box
                 <span className="bw-chip">server</span>
               </div>
-              <Reveal at={1.4}>
+              <Reveal at={1}>
                 <ThreadRow
                   title="Fix the checkout bug"
                   icon={OpenAiIcon}
@@ -1944,14 +1964,14 @@ export function StartAnywhere() {
                   active
                 />
               </Reveal>
-              <Reveal at={6.4}>
+              <Reveal at={7.2}>
                 <ThreadRow
                   title="Fix CI on main"
                   icon={TerminalIcon}
                   status="running"
                 />
               </Reveal>
-              <Reveal at={7.6}>
+              <Reveal at={8.4}>
                 <ThreadRow
                   title="Daily changelog"
                   icon={ClockIcon}
@@ -1975,7 +1995,7 @@ export function StartAnywhere() {
             </Sidebar>
             <div className="main">
               <div className="feed bw-feed">
-                <Reveal at={1.8}>
+                <Reveal>
                   <div className="msg-user">{START_PROMPT}</div>
                 </Reveal>
                 {START_STEPS.map((step) => (
@@ -2010,7 +2030,7 @@ export function StartAnywhere() {
                 <PanelRightIcon className="bw-m-head-ic bw-m-head-end" />
               </div>
               <div className="bw-m-feed">
-                <Reveal at={1.8}>
+                <Reveal>
                   <div className="bw-m-user">{START_PROMPT}</div>
                 </Reveal>
                 {START_STEPS.map((step) => (
@@ -2032,7 +2052,7 @@ export function StartAnywhere() {
                     )}
                   </Reveal>
                 ))}
-                <div className="bw-m-working bw-fade" style={at(5.6)}>
+                <div className="bw-m-working bw-fade" style={at(6.28)}>
                   Working...
                 </div>
               </div>

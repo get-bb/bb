@@ -2834,6 +2834,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
+.bw .msg-user {
+  align-self: flex-end;
+  width: fit-content;
+  margin-left: auto;
+}
+
 .bw-feed {
   gap: 0;
   padding: 18px 16px;
@@ -2851,10 +2857,25 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   padding-top: 14px;
 }
 
-.bw-feed-live {
+.bw-feed > .bw-reveal,
+.bw-m-feed > .bw-reveal {
+  animation-duration: 0.84s;
+}
+
+.bw-feed-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   justify-content: flex-end;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 48px);
-  mask-image: linear-gradient(to bottom, transparent, #000 48px);
+  min-height: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent, #000 18px);
+}
+
+.bw-feed-scroll > .feed {
+  flex: 1 0 auto;
+  overflow: visible;
 }
 
 .bw-reveal {
@@ -2869,8 +2890,30 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow: hidden;
 }
 
-.leaving .bw-reveal {
-  animation: bw-collapse var(--dur-slow) var(--ease-out-expo) forwards;
+.bw-reveal.bw-reveal-still {
+  animation: none;
+}
+
+.bw-reopen .bw-feed {
+  animation: fw-fade-in 0.4s var(--ease-out) both;
+}
+
+.leaving .bw-feed {
+  animation: fw-fade-out 0.3s ease forwards;
+}
+
+.bw-start .leaving .bw-feed,
+.bw-start .leaving .bw-m-feed {
+  animation: none;
+}
+
+.bw-start .leaving .bw-feed > :not(.bw-reveal-still),
+.bw-start .leaving .bw-m-feed > :not(.bw-reveal-still) {
+  animation: fw-fade-out 0.3s ease forwards;
+}
+
+.leaving .side .bw-reveal {
+  animation: bw-collapse 0.35s var(--ease-out-expo) 0.4s forwards;
 }
 
 @keyframes bw-reveal {
@@ -2891,10 +2934,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: fw-fade-in var(--dur-med) ease var(--fw-at, 0s) both;
 }
 
-.leaving .bw-fade {
-  animation: fw-fade-out var(--dur-slow) ease forwards;
-}
-
 .bw-phases {
   display: inline-grid;
 }
@@ -2908,18 +2947,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-phase-first {
   opacity: 0;
-  animation: bw-hide var(--dur-quick) ease var(--fw-out, 0s) both;
+  animation: bw-hide 0.26s var(--ease-out) var(--fw-out, 0s) both;
 }
 
 .bw-phase-mid {
   opacity: 0;
   animation:
-    bw-show var(--dur-quick) ease var(--fw-at, 0s) both,
-    bw-hide var(--dur-quick) ease var(--fw-out, 0s) forwards;
+    bw-show 0.26s var(--ease-out) var(--fw-at, 0s) both,
+    bw-hide 0.26s var(--ease-out) var(--fw-out, 0s) forwards;
 }
 
 .bw-phase-last {
-  animation: bw-show var(--dur-quick) ease var(--fw-at, 0s) both;
+  animation: bw-show 0.26s var(--ease-out) var(--fw-at, 0s) both;
 }
 
 @keyframes bw-show {
@@ -2976,11 +3015,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--ink-strong);
 }
 
-.bw-update-head {
-  font-size: var(--text-label-small);
-  color: var(--subtle);
-}
-
 .bw-update-body {
   display: flex;
   align-items: flex-start;
@@ -3028,23 +3062,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .leaving .bw-toast {
-  animation: fw-fade-out var(--dur-slow) ease forwards;
-}
-
-.bw-lead .leaving .bw-feed > .bw-reveal,
-.bw-lead .leaving .bw-feed > .msg-user {
-  animation: fw-fade-out var(--dur-slow) ease forwards;
-}
-
-.bw-lead .bw-feed > .msg-user {
-  animation: bw-msg-in 0.7s var(--ease-out-expo) both;
-}
-
-@keyframes bw-msg-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
+  animation: fw-fade-out 0.35s ease 0.4s forwards;
 }
 
 @keyframes bw-toast {
@@ -3335,12 +3353,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   -webkit-mask-size: 300% 100%;
   mask-size: 300% 100%;
   animation:
-    fw-fade-in var(--dur-med) ease var(--fw-at, 0s) both,
+    fw-fade-in 0.7s ease var(--fw-at, 0s) both,
     bw-m-sweep 1s linear infinite;
-}
-
-.leaving .bw-m-working {
-  animation: fw-fade-out var(--dur-slow) ease forwards;
 }
 
 @keyframes bw-m-sweep {
@@ -4734,8 +4748,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-light);
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
-  --mx-color-ms: 1s;
-  --mx-move: 0.9s var(--ease-in-out);
+  --mx-color-ms: 1.35s;
+  --mx-move: 1.35s var(--ease-in-out);
   transition:
     --mx-canvas var(--mx-color-ms) ease,
     --mx-ink var(--mx-color-ms) ease,
@@ -4749,6 +4763,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     --mx-line var(--mx-color-ms) ease,
     --mx-side-w var(--mx-move),
     --mx-panel-w var(--mx-move);
+  transition-delay: 0.45s;
 }
 
 .dark .bw-morph.mx-stock {
@@ -4849,7 +4864,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-window .bar-left {
   width: calc(44px + max(var(--mx-side-w), 128px));
-  transition: border-color var(--dur-med) ease;
+  transition: border-color 0.75s ease 0.45s;
 }
 
 .mx-collapsed .mx-window .bar-left {
@@ -4859,8 +4874,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-window .bar-toggle,
 .mx-window .rail-btn {
   transition:
-    background var(--dur-med) ease,
-    color var(--dur-med) ease;
+    background 0.75s ease 0.45s,
+    color 0.75s ease 0.45s;
 }
 
 .mx-titles {
@@ -4873,12 +4888,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.375s ease 0.45s;
 }
 
 .mx-title.is-on {
   opacity: 1;
-  transition: opacity var(--dur-quick) ease 0.3s;
+  transition: opacity 0.525s ease 0.9s;
 }
 
 .mx-rail-plugin {
@@ -4887,10 +4902,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   opacity: 0;
   overflow: hidden;
   transition:
-    height var(--mx-move),
-    margin var(--mx-move),
-    opacity 0.4s ease,
-    background var(--dur-med) ease;
+    height var(--mx-move) 0.45s,
+    margin var(--mx-move) 0.45s,
+    opacity 0.6s ease 0.45s,
+    background 0.75s ease 0.45s;
 }
 
 .mx-rail-plugin.is-on {
@@ -4898,10 +4913,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: 0;
   opacity: 1;
   transition:
-    height var(--mx-move),
-    margin var(--mx-move),
-    opacity var(--dur-med) ease 0.3s,
-    background var(--dur-med) ease;
+    height var(--mx-move) 0.45s,
+    margin var(--mx-move) 0.45s,
+    opacity 0.75s ease 0.9s,
+    background 0.75s ease 0.45s;
 }
 
 .mx-side-slot,
@@ -4921,6 +4936,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-center {
   flex: 1;
   min-width: 0;
+  background: var(--bg);
 }
 
 .mx-panel-slot {
@@ -4937,6 +4953,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mx-layer.is-under {
   z-index: 1;
   visibility: visible;
+  animation: mx-leave 0.4s ease both;
 }
 
 .mx-layer.is-on {
@@ -4945,11 +4962,31 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-layer.is-entering {
-  animation: mx-enter var(--dur-med) ease 0.1s both;
+  animation: mx-enter 0.6s ease 1.9s both;
+}
+
+.mx-layer.is-staying {
+  animation: mx-stay 2.5s ease both;
 }
 
 @keyframes mx-enter {
   from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes mx-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes mx-stay {
+  16% {
+    opacity: 0;
+  }
+  76% {
     opacity: 0;
     transform: translateY(8px);
   }
@@ -5523,6 +5560,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 440px;
   border-left: 1px solid var(--border-soft);
   background: var(--bg);
+}
+
+.mx-panel > .mx-ag {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.bw-morph.mx-graph .mx-panel > .mx-ag {
+  opacity: 1;
+  transition: opacity 0.6s ease 1.9s;
 }
 
 .mx-ag {
