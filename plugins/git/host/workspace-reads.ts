@@ -27,6 +27,8 @@ import {
 import { ByteBudgetCache } from "./byte-budget-cache.js";
 import {
   readCommitChanges,
+  readCommitsTouchingPaths,
+  longestPath,
   readCommitPatchIds,
   readPatchEquivalentCommits,
   readSquashRangePatchId,
@@ -1707,16 +1709,24 @@ export class WorkspaceReads {
     if (branch.exitCode !== 0) return null;
     const branchEntries = parseRawDiffEntriesZ(branch.stdout);
     if (branchEntries.length === 0) return true;
-    const scanned = behindCommits.slice(0, SQUASH_MERGE_MAX_METADATA_COMMITS);
-    const complete = behindCommits.length <= SQUASH_MERGE_MAX_METADATA_COMMITS;
-    const changes = await readCommitChanges(run, scanned);
-    if (!changes) return null;
-    const branchSignature = squashChangeSignature(branchEntries);
     const requiredPaths = branchEntries
       .filter((entry) => !/[^!-~]|["\\]/u.test(entry.path))
       .map((entry) => entry.path);
+    const scanned = behindCommits.slice(0, SQUASH_MERGE_MAX_METADATA_COMMITS);
+    const complete = behindCommits.length <= SQUASH_MERGE_MAX_METADATA_COMMITS;
+    const touching = await readCommitsTouchingPaths(
+      run,
+      scanned,
+      requiredPaths.length > 0
+        ? [longestPath(requiredPaths)]
+        : branchEntries.map((entry) => entry.path),
+    );
+    if (!touching) return null;
+    const changes = await readCommitChanges(run, touching);
+    if (!changes) return null;
+    const branchSignature = squashChangeSignature(branchEntries);
     const candidates: string[] = [];
-    for (const commit of scanned) {
+    for (const commit of touching) {
       const entries = changes.get(commit) ?? [];
       if (entries.length === 0) continue;
       const paths = new Set(
