@@ -154,6 +154,44 @@ describe("Workspace", () => {
         upstreamSnapshot.fingerprintFor("main"),
       );
 
+      await runGit(["update-ref", "refs/remotes/fork/feature", "HEAD"], {
+        cwd: repoPath,
+      });
+      const forkSnapshot = await workspace.getSharedGitRefsSnapshot();
+      await runGit(["update-ref", "refs/remotes/fork/feature", movedOid], {
+        cwd: repoPath,
+      });
+      const forkMovedSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(forkMovedSnapshot.fingerprintFor("feature")).not.toBe(
+        forkSnapshot.fingerprintFor("feature"),
+      );
+      expect(forkMovedSnapshot.fingerprintFor("main")).toBe(
+        forkSnapshot.fingerprintFor("main"),
+      );
+
+      await runGit(["remote", "add", "fork", repoPath], { cwd: repoPath });
+      await runGit(["config", "branch.feature.pushRemote", "fork"], {
+        cwd: repoPath,
+      });
+      await runGit(
+        ["config", "remote.fork.push", "refs/heads/feature:refs/heads/pr"],
+        { cwd: repoPath },
+      );
+      await runGit(["update-ref", "refs/remotes/fork/pr", "HEAD"], {
+        cwd: repoPath,
+      });
+      const pushSnapshot = await workspace.getSharedGitRefsSnapshot();
+      await runGit(["update-ref", "refs/remotes/fork/pr", movedOid], {
+        cwd: repoPath,
+      });
+      const pushMovedSnapshot = await workspace.getSharedGitRefsSnapshot();
+      expect(pushMovedSnapshot.fingerprintFor("feature")).not.toBe(
+        pushSnapshot.fingerprintFor("feature"),
+      );
+      expect(pushMovedSnapshot.fingerprintFor("main")).toBe(
+        pushSnapshot.fingerprintFor("main"),
+      );
+
       await runGit(["update-ref", "refs/heads/main", movedOid], {
         cwd: repoPath,
       });

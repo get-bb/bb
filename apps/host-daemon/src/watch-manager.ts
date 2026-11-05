@@ -118,7 +118,7 @@ export class WatchManager {
   private readonly workspaceEntries = new Map<string, WorkspaceWatchEntry>();
   private readonly pendingSharedGitRefsReads = new Map<
     string,
-    Promise<SharedGitRefsSnapshot>
+    { reader: HostWorkspace; snapshot: Promise<SharedGitRefsSnapshot> }
   >();
   private latestAppliedWatchSetGeneration = -1;
   private watchSetMutationTail: Promise<void> = Promise.resolve();
@@ -533,16 +533,23 @@ export class WatchManager {
     const commonDir = workspace.gitCommonDir;
     if (commonDir === null) return workspace.getSharedGitRefsSnapshot();
     const pending = this.pendingSharedGitRefsReads.get(commonDir);
-    if (pending !== undefined) return pending;
-    const read = new Promise<void>((resolve) => {
-      setTimeout(resolve, SHARED_GIT_REFS_JOIN_MS);
-    }).then(() => {
-      if (this.pendingSharedGitRefsReads.get(commonDir) === read)
-        this.pendingSharedGitRefsReads.delete(commonDir);
-      return workspace.getSharedGitRefsSnapshot();
-    });
+    if (pending !== undefined) {
+      return pending.reader === workspace
+        ? pending.snapshot
+        : pending.snapshot.catch(() => workspace.getSharedGitRefsSnapshot());
+    }
+    const read = {
+      reader: workspace,
+      snapshot: new Promise<void>((resolve) => {
+        setTimeout(resolve, SHARED_GIT_REFS_JOIN_MS);
+      }).then(() => {
+        if (this.pendingSharedGitRefsReads.get(commonDir) === read)
+          this.pendingSharedGitRefsReads.delete(commonDir);
+        return workspace.getSharedGitRefsSnapshot();
+      }),
+    };
     this.pendingSharedGitRefsReads.set(commonDir, read);
-    return read;
+    return read.snapshot;
   }
 
   private async stopWorkspaceWatch(entry: WorkspaceWatchEntry): Promise<void> {

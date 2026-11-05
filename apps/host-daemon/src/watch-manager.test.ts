@@ -539,6 +539,74 @@ describe("WatchManager", () => {
     await manager.shutdown();
   });
 
+  it("falls back to each worktree's own ref read when the shared read fails", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+    }
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const onWorkspaceStatusWatchError = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: async ({ path }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+      onWorkspaceStatusWatchError,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+      })),
+      threadStorageTargets: [],
+    });
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    workspaces[0]!.setSharedGitRefsFingerprintError(
+      new Error("worktree removed"),
+    );
+    workspaces[1]!.setSharedGitRefsFingerprint("refs:/tmp/worktree-b:changed");
+    for (const watch of watches) {
+      watch.onChange({
+        kind: "workspace-status-changed",
+        environmentId: watch.environmentId,
+        changeKinds: ["shared-git-refs-changed"],
+        changedPaths: ["/tmp/repo/.git/refs/heads/main"],
+      });
+    }
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-1",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusWatchError).toHaveBeenCalledTimes(1),
+    );
+    expect(onWorkspaceStatusWatchError.mock.calls[0]?.[0].error).toMatchObject({
+      environmentId: "env-0",
+      message: "worktree removed",
+    });
+    await manager.shutdown();
+  });
+
   it("starts a fresh shared ref read for changes that arrive after a read began", async () => {
     const workspaces = [
       createFakeWorkspace("/tmp/worktree-a"),

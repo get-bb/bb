@@ -112,20 +112,24 @@ export async function readSharedGitRefsSnapshot(
   const refs = await runGit(
     [
       "for-each-ref",
-      "--format=%(refname)%00%(objectname)%00%(symref)%00%(upstream)",
+      "--format=%(refname)%00%(objectname)%00%(symref)%00%(upstream)%00%(push)",
       "refs/heads",
       "refs/remotes",
     ],
     { cwd, ...options },
   );
-  const refRecords = new Map<string, { oid: string; upstream: string }>();
+  const refRecords = new Map<
+    string,
+    { oid: string; upstream: string; push: string }
+  >();
   const names = createHash("sha1");
   const localBranches: string[] = [];
   let listedOriginHead: string | undefined;
   for (const line of refs.stdout.split("\n")) {
     if (line.length === 0) continue;
-    const [name = "", oid = "", symref = "", upstream = ""] = line.split("\0");
-    refRecords.set(name, { oid, upstream });
+    const [name = "", oid = "", symref = "", upstream = "", push = ""] =
+      line.split("\0");
+    refRecords.set(name, { oid, upstream, push });
     names.update(`${name}\0`);
     if (name === "refs/remotes/origin/HEAD") listedOriginHead = symref;
     if (name.startsWith("refs/heads/"))
@@ -149,14 +153,21 @@ export async function readSharedGitRefsSnapshot(
     fingerprintFor(branchName) {
       const watched = new Set(["refs/remotes/origin/HEAD"]);
       if (originHead) watched.add(originHead);
-      for (const branch of [defaultBranch, branchName]) {
-        if (branch === null) continue;
-        watched.add(`refs/heads/${branch}`);
-        watched.add(`refs/remotes/origin/${branch}`);
+      if (defaultBranch !== null) {
+        watched.add(`refs/heads/${defaultBranch}`);
+        watched.add(`refs/remotes/origin/${defaultBranch}`);
       }
       if (branchName !== null) {
-        const upstream = refRecords.get(`refs/heads/${branchName}`)?.upstream;
-        if (upstream) watched.add(upstream);
+        const head = `refs/heads/${branchName}`;
+        watched.add(head);
+        const record = refRecords.get(head);
+        if (record?.upstream) watched.add(record.upstream);
+        if (record?.push) watched.add(record.push);
+        const remoteSuffix = `/${branchName}`;
+        for (const name of refRecords.keys()) {
+          if (name.startsWith("refs/remotes/") && name.endsWith(remoteSuffix))
+            watched.add(name);
+        }
       }
       return JSON.stringify({
         refNames,
