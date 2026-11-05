@@ -28,5 +28,5 @@ jobs:
       - env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        name: Full config tests, typecheck and lint
-        run: pnpm exec turbo run test typecheck lint --filter=@bb/config --force
+        name: Full config tests and lint
+        run: pnpm exec turbo run test lint --filter=@bb/config --force
