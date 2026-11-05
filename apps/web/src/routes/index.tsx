@@ -1207,7 +1207,7 @@ const SUBHEAD_COPY = {
   control:
     "bb can control, customize, and automate itself, laying the groundwork for your own software factory.",
   test: "Run all your coding agents in one programmable workspace. Change almost anything with a plugin or a prompt.",
-} as const satisfies Record<ExperimentVariant<"homepage-subhead-text">, string>;
+} as const satisfies Record<ExperimentVariant<"homepage-hero">, string>;
 
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
@@ -1215,8 +1215,8 @@ function LandingPage() {
   const companyProofRef = useRef<HTMLElement>(null);
   const qaCheck = useExperiment("homepage-qa-check");
   useExperimentExposure("homepage-qa-check", "all");
-  const subhead = useExperiment("homepage-subhead-text");
-  useExperimentExposure("homepage-subhead-text", "desktop");
+  const subhead = useExperiment("homepage-hero");
+  useExperimentExposure("homepage-hero", "desktop");
   useScrollReveal();
   useSectionViews();
   useConstructMock();
