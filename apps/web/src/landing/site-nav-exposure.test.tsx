@@ -73,6 +73,14 @@ describe("nav experiment exposure", () => {
         preview: true,
       },
     ],
+    [
+      "an unknown variant",
+      {
+        distinctID: "id",
+        featureFlags: { "homepage-download-path": "holdout-12" },
+        preview: false,
+      },
+    ],
   ])("stays silent for %s", (_name, bootstrap) => {
     renderNav(bootstrap);
     expect(exposeExperiment).not.toHaveBeenCalled();
