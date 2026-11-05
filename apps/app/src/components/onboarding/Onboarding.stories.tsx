@@ -1091,11 +1091,13 @@ function RedesignAgentFrame({
   pi = null,
   installError = false,
   states = {},
+  expanded = {},
 }: {
   signingIn: RedesignSignInStory | null;
   pi?: PiStage | null;
   installError?: boolean;
   states?: Partial<Record<AgentId, AgentSetupState>>;
+  expanded?: Partial<Record<AgentId, ReactNode>>;
 }) {
   const signInAgentId = signingIn === "codex-browser" ? "codex" : signingIn;
   const agents: OnboardingAgent[] = AGENT_BASE.map((agent) => {
@@ -1132,7 +1134,8 @@ function RedesignAgentFrame({
           />
         ) : undefined,
       expanded:
-        signingInHere && signingIn !== null ? (
+        expanded[agent.id] ??
+        (signingInHere && signingIn !== null ? (
           <RedesignSignInPanel story={signingIn} />
         ) : agent.id === "pi" && pi === "signingIn" ? (
           <RedesignPiSignInPanel />
@@ -1142,7 +1145,7 @@ function RedesignAgentFrame({
               "npm ERR! code ECONNRESET\nnpm ERR! network request to https://registry.npmjs.org failed"
             }
           />
-        ) : undefined,
+        ) : undefined),
     };
   });
   return (
@@ -1230,6 +1233,33 @@ function storyHealth(
     loginCommand: null,
     localLoginCommand: null,
   };
+}
+
+export function RedesignAgentSignInJustClicked() {
+  return (
+    <div className="flex h-screen flex-col">
+      <RedesignAgentFrame
+        signingIn={null}
+        states={{ "claude-code": { status: "signingIn" } }}
+        expanded={{
+          "claude-code": (
+            <AgentSignInPanel
+              connect={false}
+              agentName="Claude Code"
+              view={{ guide: null, terminalVisible: false, started: false }}
+              code=""
+              codeSubmitted={false}
+              terminal={null}
+              onCodeChange={noop}
+              onSubmitCode={noop}
+              onCopy={noop}
+              onToggleTerminal={noop}
+            />
+          ),
+        }}
+      />
+    </div>
+  );
 }
 
 export function RedesignAgentJustOpened() {

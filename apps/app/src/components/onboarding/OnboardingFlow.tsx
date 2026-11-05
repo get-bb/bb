@@ -137,6 +137,8 @@ const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
 
+function noop() {}
+
 function stepCopy(redesign: boolean, step: OnboardingStepId) {
   return STEP_COPY[redesign ? "new" : "control"][step];
 }
@@ -509,7 +511,9 @@ function AgentStepContainer({
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signIn = signIns.signIns.get(health.providerId) ?? null;
-          const signingIn = signIn !== null;
+          const starting =
+            redesign && signIns.startingProviderIds.has(health.providerId);
+          const signingIn = signIn !== null || starting;
           const installFailure = installRunner.failuresByJobKey.get(jobKey);
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
@@ -525,10 +529,6 @@ function AgentStepContainer({
             ...(redesign && installFailure !== undefined
               ? { installLog: installFailure.logDialogState.log }
               : {}),
-            busy:
-              redesign &&
-              (signIns.startingProviderIds.has(health.providerId) ||
-                (signingIn && connectFlow === null && !instructionReady)),
             subline:
               redesign &&
               connectFlow === null &&
@@ -576,7 +576,26 @@ function AgentStepContainer({
               whileInstallInfoPending: redesign ? "offerInstall" : "checking",
             }),
             expanded:
-              signingIn && signIn !== null ? (
+              signIn === null ? (
+                starting ? (
+                  <AgentSignInPanel
+                    connect={connectFlow !== null}
+                    agentName={health.displayName}
+                    view={{
+                      guide: null,
+                      terminalVisible: connectFlow !== null,
+                      started: false,
+                    }}
+                    code=""
+                    codeSubmitted={false}
+                    terminal={null}
+                    onCodeChange={noop}
+                    onSubmitCode={noop}
+                    onCopy={noop}
+                    onToggleTerminal={noop}
+                  />
+                ) : undefined
+              ) : (
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}
@@ -607,7 +626,7 @@ function AgentStepContainer({
                     signIns.setView(health.providerId, nextView)
                   }
                 />
-              ) : undefined,
+              ),
           };
         });
 

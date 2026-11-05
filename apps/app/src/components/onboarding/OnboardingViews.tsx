@@ -292,7 +292,6 @@ export interface OnboardingAgent {
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
   setup?: "signIn" | "connect";
-  busy?: boolean;
   installQueued?: boolean;
   installLog?: string;
   subline?: ReactNode;
@@ -483,7 +482,6 @@ function AgentRow({
   const inProgress =
     state.status === "checking" ||
     (state.status === "signingIn" && hasQuietSubtitle);
-  const busy = agent.busy === true;
   const signInLabel = "Sign in";
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
@@ -559,16 +557,15 @@ function AgentRow({
               </span>
             )
           ) : null}
-          {quiet &&
-          ((state.status === "signIn" && state.canSignIn) ||
-            (state.status === "signingIn" && busy)) ? (
-            <AgentActionButton
-              agent={agent}
-              label={signInLabel}
-              busyLabel="Starting…"
-              busy={busy}
+          {quiet && state.status === "signIn" && state.canSignIn ? (
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => onSignIn(agent.id)}
-            />
+            >
+              <AgentActionIcon agent={agent} quiet />
+              {signInLabel}
+            </Button>
           ) : null}
           {!quiet && state.status === "signIn" && state.canSignIn ? (
             <Button
@@ -622,7 +619,7 @@ function AgentRow({
               {installActionLabel(state)}
             </Button>
           ) : null}
-          {state.status === "signingIn" && !busy ? (
+          {state.status === "signingIn" ? (
             quiet ? (
               <RowDismissButton
                 label={`Cancel signing in to ${agent.name}`}
@@ -1450,7 +1447,6 @@ export function AgentSignInPanel({
   const url = view.guide?.url ?? null;
   const userCode = view.guide?.userCode ?? null;
   const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
-  const starting = !view.started;
   const variant: SignInPanelVariant = connect
     ? { kind: "waiting" }
     : url !== null && userCode !== null
@@ -1469,7 +1465,6 @@ export function AgentSignInPanel({
             onSubmit: onSubmitCode,
           }
         : { kind: "waiting" };
-  if (starting && !connect) return null;
   return (
     <div className="mt-3">
       <SignInPanel

@@ -325,25 +325,6 @@ describe("AgentSignInInstruction", () => {
 });
 
 describe("AgentSignInPanel", () => {
-  it("stays hidden while sign-in is still starting", () => {
-    const { container } = render(
-      <AgentSignInPanel
-        connect={false}
-        agentName="Cursor"
-        view={{ guide: null, terminalVisible: false, started: false }}
-        code=""
-        codeSubmitted={false}
-        terminal={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onCopy={vi.fn()}
-        onToggleTerminal={vi.fn()}
-      />,
-    );
-
-    expect(container.textContent).toBe("");
-  });
-
   it("keeps the terminal toggle once the terminal was hidden after showing", () => {
     render(
       <AgentSignInPanel
@@ -564,57 +545,43 @@ describe("AgentStep progress in the redesign", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows Starting… in the button until the sign-in instruction is ready", () => {
-    const { rerender, handlers } = renderQuiet([
+  it("switches to the signing-in layout as soon as Sign in is clicked", () => {
+    renderQuiet([
       {
-        ...agent("claude-code", {
-          status: "signIn",
-          reason: "signedOut",
-          canSignIn: true,
-        }),
-        busy: true,
+        ...agent("claude-code", { status: "signingIn" }),
+        expanded: (
+          <AgentSignInPanel
+            connect={false}
+            agentName="claude-code"
+            view={{ guide: null, terminalVisible: false, started: false }}
+            code=""
+            codeSubmitted={false}
+            terminal={null}
+            onCodeChange={vi.fn()}
+            onSubmitCode={vi.fn()}
+            onCopy={vi.fn()}
+            onToggleTerminal={vi.fn()}
+          />
+        ),
       },
     ]);
-    const starting = screen.getByRole("button", { name: "Starting…" });
-    expect((starting as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(starting);
-    expect(handlers.onSignIn).not.toHaveBeenCalled();
 
-    rerender(
-      <TooltipProvider>
-        <AgentStep
-          quiet
-          machineName="bee"
-          agents={[
-            { ...agent("claude-code", { status: "signingIn" }), busy: true },
-          ]}
-          {...handlers}
-        />
-      </TooltipProvider>,
-    );
-    screen.getByRole("button", { name: "Starting…" });
-    expect(
-      screen.queryByRole("button", { name: /Cancel signing in/u }),
-    ).toBeNull();
-    expect(hasSubtitle("claude-code")).toBe(false);
-
-    rerender(
-      <TooltipProvider>
-        <AgentStep
-          quiet
-          machineName="bee"
-          agents={[
-            {
-              ...agent("claude-code", { status: "signingIn" }),
-              subline: "Finish signing in on claude.ai.",
-            },
-          ]}
-          {...handlers}
-        />
-      </TooltipProvider>,
-    );
-    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
+    within(rowOf("claude-code")).getByRole("button", {
+      name: "Cancel signing in to claude-code",
+    });
+    within(rowOf("claude-code")).getByText("Show terminal");
     expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
+    expect(hasSubtitle("claude-code")).toBe(false);
+  });
+
+  it("spins beside the sign-in line once it is known", () => {
+    renderQuiet([
+      {
+        ...agent("claude-code", { status: "signingIn" }),
+        subline: "Finish signing in on claude.ai.",
+      },
+    ]);
+    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
     const subtitle = screen.getByText("Finish signing in on claude.ai.");
     expect(
       subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
