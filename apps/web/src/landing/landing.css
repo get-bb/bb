@@ -1721,13 +1721,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-.bw .tunread {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: color-mix(in oklab, var(--subtle) 60%, transparent);
-}
-
 .twait {
   width: 14px;
   height: 14px;
@@ -2904,6 +2897,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-feed > .bw-reveal.bw-reveal-until {
   animation:
     bw-reveal 0.84s var(--ease-out-expo) var(--fw-at, 0s) both,
+    fw-fade-out 0.3s ease var(--fw-fade, 0s) forwards,
     bw-collapse 0.84s var(--ease-out-expo) var(--fw-out, 0s) forwards;
 }
 
@@ -2947,8 +2941,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   justify-content: flex-end;
   min-height: 0;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18px);
-  mask-image: linear-gradient(to bottom, transparent, #000 18px);
 }
 
 .bw-feed-scroll > .feed {

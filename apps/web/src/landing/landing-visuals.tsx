@@ -1,3 +1,4 @@
+import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
@@ -25,7 +26,6 @@ import {
   BugIcon,
   ChevronDown,
   ChevronRight,
-  ClockIcon,
   CloseIcon as ClearGlyph,
   CommandIcon,
   ComposerBox,
@@ -59,7 +59,6 @@ import {
   SendIcon,
   Spinner,
   StatusGlyph,
-  TerminalIcon,
   useFitMock,
 } from "./app-mock-parts";
 import { trackLandingEvent } from "./analytics";
@@ -697,7 +696,7 @@ const BbGlyph = ({ className }: IconProps) => (
   <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
 
-type RowState = ThreadState | "unread";
+type RowState = ThreadState | "idle";
 
 type StatusStep = { status: RowState; at: number };
 
@@ -711,7 +710,7 @@ function RowStatus({
   if (then.length === 0) {
     return (
       <span className="tstatus" aria-hidden>
-        <StatusGlyph status={status} />
+        {status === "idle" ? null : <StatusGlyph status={status} />}
       </span>
     );
   }
@@ -728,7 +727,9 @@ function RowStatus({
             className={`bw-phase bw-phase-${role}`}
             style={phaseStyle(phase.at, next?.at)}
           >
-            <StatusGlyph status={phase.status} />
+            {phase.status === "idle" ? null : (
+              <StatusGlyph status={phase.status} />
+            )}
           </span>
         );
       })}
@@ -767,11 +768,13 @@ function stageClass(base: string, leaving: boolean, paused: boolean) {
 
 function Reveal({
   at: seconds,
+  fadeAt,
   until,
   className,
   children,
 }: {
   at?: number;
+  fadeAt?: number;
   until?: number;
   className?: string;
   children: ReactNode;
@@ -788,6 +791,7 @@ function Reveal({
         : ({
             "--fw-at": `${seconds}s`,
             "--fw-out": `${until}s`,
+            "--fw-fade": `${fadeAt ?? until}s`,
           } as CSSProperties);
   return (
     <div className={classes.join(" ")} style={style}>
@@ -1048,11 +1052,11 @@ function MorphThreads() {
         New thread
       </div>
       <div className="side-label">Threads</div>
-      <ThreadRow title={MORPH_THREAD} active />
-      <ThreadRow title="Signups by plan" />
-      <ThreadRow title="Bump the SDK" />
-      <ThreadRow title="Refactor auth" status="waiting" />
-      <ThreadRow title="Weekly changelog" />
+      <ThreadRow title={MORPH_THREAD} icon={ClaudeIcon} active />
+      <ThreadRow title="Signups by plan" icon={OpenAiIcon} />
+      <ThreadRow title="Bump the SDK" icon={ClaudeIcon} />
+      <ThreadRow title="Refactor auth" icon={CursorIcon} status="waiting" />
+      <ThreadRow title="Weekly changelog" icon={OpenAiIcon} />
       <div className="side-foot bw-side-foot" aria-hidden>
         <PhoneIcon className="bw-foot-ic" />
         <BugIcon className="bw-foot-ic" />
@@ -1699,23 +1703,23 @@ const DELEGATION_CHILDREN = [
     icon: ClaudeIcon,
     title: "Plan the fix",
     landsAt: 1.88,
-    then: [{ status: "unread", at: 6 }],
+    then: [{ status: "idle", at: 5.6 }],
   },
   {
     icon: CursorIcon,
     title: "Build it",
-    landsAt: 8.74,
+    landsAt: 8.6,
     then: [
-      { status: "waiting", at: 12.7 },
-      { status: "running", at: 17.04 },
-      { status: "unread", at: 18.6 },
+      { status: "idle", at: 12.2 },
+      { status: "running", at: 16.24 },
+      { status: "idle", at: 19.5 },
     ],
   },
   {
     icon: OpenAiIcon,
     title: "Review the diff",
-    landsAt: 21.34,
-    then: [{ status: "waiting", at: 25.2 }],
+    landsAt: 22.5,
+    then: [{ status: "waiting", at: 26.1 }],
   },
 ] as const;
 
@@ -1733,9 +1737,31 @@ const REVIEW_THREAD = { icon: OpenAiIcon, label: "Review the diff" };
 
 const DELEGATION_PING = "Review the diff needs your approval";
 
+const LEAD_STATUS: readonly StatusStep[] = [
+  { status: "idle", at: 4.22 },
+  { status: "running", at: 7.1 },
+  { status: "idle", at: 10.94 },
+  { status: "running", at: 13.7 },
+  { status: "idle", at: 18.24 },
+  { status: "running", at: 21 },
+  { status: "idle", at: 24.84 },
+];
+
+function NeedsAttention({ label }: { label: string }) {
+  return (
+    <div className="rhb-gen">
+      <span className="rhb-gen-head">
+        <HugeiconsIcon icon={Alert02Icon} className="rhb-gen-ic" />
+        <span className="rhb-gen-subject">{label}</span>
+        <span className="rhb-gen-verb">needs attention</span>
+      </span>
+    </div>
+  );
+}
+
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(30300, 2000, active);
+  const { cycle, leaving, paused } = useCycle(31000, 2000, active);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const view = scrollRef.current;
@@ -1766,6 +1792,7 @@ export function DelegationTree() {
               title={DELEGATION_LEAD}
               icon={GrokIcon}
               status="running"
+              then={LEAD_STATUS}
               active
             />
             <div className="thread-kids bw-kids">
@@ -1797,21 +1824,21 @@ export function DelegationTree() {
                 </MockUserBubble>
                 <LeadTurn
                   start={0.84}
-                  furl={3.2}
+                  furl={3.72}
                   worked="3s"
                   step={spawnStep(
                     '--provider claude-code --prompt "Plan the checkout timeout fix"',
                   )}
                 />
-                <Reveal at={0.84} until={3.9}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={3.9}>
+                <Reveal at={2.68}>
                   <div className="msg-say">
                     Claude Code is planning the fix.
                   </div>
                 </Reveal>
-                <Reveal at={6.46}>
+                <Reveal at={0.84} fadeAt={3.72} until={6.06}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={6.06}>
                   <MockChildEvent
                     kind="finished"
                     thread={PLAN_THREAD}
@@ -1823,39 +1850,44 @@ export function DelegationTree() {
                   />
                 </Reveal>
                 <LeadTurn
-                  start={7.7}
-                  furl={10}
+                  start={7.56}
+                  furl={10.44}
                   worked="4s"
                   step={spawnStep(
-                    '--provider cursor --prompt "Build the fix in plan.md"',
+                    '--provider acp-cursor --prompt "Build the fix in plan.md"',
                   )}
                 />
-                <Reveal at={7.7} until={10.7}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={10.7}>
+                <Reveal at={9.4}>
                   <div className="msg-say">
                     The plan has three steps. Cursor is building it now.
                   </div>
                 </Reveal>
-                <Reveal at={13.16}>
+                <Reveal at={7.56} fadeAt={10.44} until={12.66}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={12.66}>
                   <MockChildEvent
                     kind="message"
                     thread={BUILD_THREAD}
                     body="keep the 30s timeout, or make it configurable?"
                   />
                 </Reveal>
-                <Reveal at={14.4} until={16}>
-                  <MockWorkingRow />
-                </Reveal>
-                <Reveal at={16}>
+                <Reveal at={15.2}>
                   <MockChildEvent
                     kind="sent"
                     thread={BUILD_THREAD}
                     body="Make it configurable, default 30s."
                   />
                 </Reveal>
-                <Reveal at={19.06}>
+                <Reveal at={16.7}>
+                  <div className="msg-say">
+                    Told Build it to make the timeout configurable.
+                  </div>
+                </Reveal>
+                <Reveal at={14.16} fadeAt={17.74} until={19.96}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={19.96}>
                   <MockChildEvent
                     kind="finished"
                     thread={BUILD_THREAD}
@@ -1863,31 +1895,27 @@ export function DelegationTree() {
                   />
                 </Reveal>
                 <LeadTurn
-                  start={20.3}
-                  furl={22.6}
+                  start={21.46}
+                  furl={24.34}
                   worked="3s"
                   step={spawnStep('--provider codex --prompt "Review PR #482"')}
                 />
-                <Reveal at={20.3} until={23.3}>
-                  <MockWorkingRow />
-                </Reveal>
                 <Reveal at={23.3}>
                   <div className="msg-say">
                     The fix is in. Codex is reviewing the diff.
                   </div>
                 </Reveal>
-                <Reveal at={25.66}>
-                  <MockChildEvent
-                    kind="message"
-                    thread={REVIEW_THREAD}
-                    body="Review the diff is waiting on your approval"
-                  />
+                <Reveal at={21.46} fadeAt={24.34} until={26.56}>
+                  <MockWorkingRow />
+                </Reveal>
+                <Reveal at={26.56}>
+                  <NeedsAttention label={REVIEW_THREAD.label} />
                 </Reveal>
               </div>
             </div>
             <WindowComposer model="Grok Build" modelIcon={GrokIcon} />
           </div>
-          <div className="bw-toast" style={at(26.9)}>
+          <div className="bw-toast" style={at(27.6)}>
             <BbGlyph className="bw-toast-mark" />
             <span className="bw-toast-text">
               <span className="bw-toast-app">bb · now</span>
@@ -1945,14 +1973,7 @@ const START_STEPS: readonly StartStep[] = [
     kind: "work",
     icon: SearchIcon,
     verb: "Explored",
-    object: "4 files, 1 search",
-  },
-  {
-    at: 2.5,
-    kind: "work",
-    icon: FileReadIcon,
-    verb: "Read",
-    object: "src/checkout/pay.ts",
+    object: "5 files, 1 search",
   },
   {
     at: 3.34,
@@ -2033,25 +2054,23 @@ export function StartAnywhere() {
                 linux-box
                 <span className="bw-chip">server</span>
               </div>
-              <Reveal at={1}>
-                <ThreadRow
-                  title="Fix the checkout bug"
-                  icon={OpenAiIcon}
-                  status="running"
-                  active
-                />
-              </Reveal>
+              <ThreadRow
+                title="Fix the checkout bug"
+                icon={OpenAiIcon}
+                status="running"
+                active
+              />
               <Reveal at={7.2}>
                 <ThreadRow
                   title="Fix CI on main"
-                  icon={TerminalIcon}
+                  icon={ClaudeIcon}
                   status="running"
                 />
               </Reveal>
               <Reveal at={8.4}>
                 <ThreadRow
                   title="Daily changelog"
-                  icon={ClockIcon}
+                  icon={OpenAiIcon}
                   status="running"
                 />
               </Reveal>
@@ -2061,10 +2080,10 @@ export function StartAnywhere() {
               </div>
               <ThreadRow
                 title="Refactor auth"
-                icon={BbGlyph}
+                icon={CursorIcon}
                 status="waiting"
               />
-              <ThreadRow title="Fix flaky login test" icon={PhoneIcon} />
+              <ThreadRow title="Fix flaky login test" icon={ClaudeIcon} />
             </Sidebar>
             <div className="main">
               <div className="feed bw-feed">
@@ -2080,7 +2099,7 @@ export function StartAnywhere() {
                     )}
                   </Reveal>
                 ))}
-                <Reveal at={6.28}>
+                <Reveal at={0.2}>
                   <MockWorkingRow />
                 </Reveal>
               </div>
@@ -2111,7 +2130,7 @@ export function StartAnywhere() {
                     )}
                   </Reveal>
                 ))}
-                <div className="bw-m-working bw-fade" style={at(6.28)}>
+                <div className="bw-m-working bw-fade" style={at(0.2)}>
                   Working...
                 </div>
               </div>
