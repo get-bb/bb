@@ -1,4 +1,7 @@
-import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
+import {
+  requestQueuedMachineReadiness,
+  requestQueuedMessageDispatch,
+} from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
   isMachineWaitingForExecution,
@@ -6,6 +9,9 @@ import {
 import {
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getEnvironment,
+  getExperiments,
+  hasLiveQueuedRetry,
+  isAppUpdateSendHoldSet,
   type EnvironmentRow,
   getThread,
   isThreadQueueAutoSendPaused,
@@ -19,6 +25,7 @@ import {
   type PromptInput,
   type QueuedMessagePayload,
   type QueuedMessageDeliveryMode,
+  type QueuedMessageSystemNotice,
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
   startedOnBehalfOfSchema,
@@ -257,6 +264,7 @@ export interface DispatchAttemptArgs {
   /** What the queued row would carry; `retry` for a re-submitted failed turn. */
   queuePayload: QueuedMessagePayload;
   pluginSubmission: MessageDispatchHookContext["experimental_submission"];
+  systemNotice: QueuedMessageSystemNotice | null;
   /** Retry provenance, when this attempt re-submits a failed turn. */
   retryOf?: TurnRequestRetryMarker;
   origin: ThreadCreateOrigin | null;
@@ -399,13 +407,16 @@ async function runDispatchAttempt(
     targetThread: thread,
   });
 
+  const systemNotice = args.systemNotice;
   const interruptedStartupRequest =
+    systemNotice === null &&
     (thread.status === "error" || thread.status === "idle") &&
     thread.environmentId === null
       ? await restoreInterruptedThreadStartupRequest(deps, thread.id)
       : null;
   const firstDispatch =
-    thread.status === "pending" || interruptedStartupRequest !== null;
+    systemNotice === null &&
+    (thread.status === "pending" || interruptedStartupRequest !== null);
   const retryStartContext: PendingThreadStartContext | null =
     interruptedStartupRequest === null
       ? null
@@ -417,6 +428,7 @@ async function runDispatchAttempt(
         };
   const author = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
+    systemNotice: systemNotice !== null,
     senderThreadId,
     startedOnBehalfOf: args.startedOnBehalfOf,
   });
@@ -446,10 +458,13 @@ async function runDispatchAttempt(
     originPluginId: args.originPluginId,
     requestedBy: args.startedOnBehalfOf,
     payload: args.queuePayload,
-    systemNotice: null,
+    systemNotice,
     deliveryMode: run.deliveryMode,
   };
 
+  const retriesGoFirst = getExperiments(
+    deps.db,
+  ).resumeThreadsAfterRestart;
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,
@@ -457,6 +472,8 @@ async function runDispatchAttempt(
     const entry = recordQueuedMessageWait(deps, {
       thread,
       message: queuedMessage,
+      placement:
+        retriesGoFirst && args.queuePayload.kind === "retry" ? "front" : "back",
       waitingOn,
       sendAt,
       claimed,
@@ -490,6 +507,22 @@ async function runDispatchAttempt(
       return;
     }
 
+    if (isAppUpdateSendHoldSet(deps.db)) {
+      continued.outcome = waitOn({ kind: "app-update" }, null);
+      return;
+    }
+
+    if (
+      claimed !== null &&
+      !sendNow &&
+      args.queuePayload.kind !== "retry" &&
+      retriesGoFirst &&
+      hasLiveQueuedRetry(deps.db, thread.id)
+    ) {
+      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      return;
+    }
+
     if (thread.status === "stopping") {
       continued.outcome = waitOn({ kind: "stopping" }, null);
       return;
@@ -501,10 +534,16 @@ async function runDispatchAttempt(
     }
     if (
       currentThread.status !== thread.status ||
+      currentThread.environmentId !== thread.environmentId ||
       currentThread.archivedAt !== thread.archivedAt ||
       currentThread.deletedAt !== thread.deletedAt
     ) {
       continued.reattemptThread = currentThread;
+      return;
+    }
+
+    if (systemNotice !== null && thread.environmentId === null) {
+      continued.outcome = waitOn({ kind: "provisioning" }, null);
       return;
     }
 
@@ -605,6 +644,7 @@ async function runDispatchAttempt(
                 }),
               },
         respectManualStopPause,
+        retryOf: args.retryOf,
         startContext: args.startContext ?? retryStartContext,
         thread,
       });
@@ -674,6 +714,7 @@ async function runDispatchAttempt(
       args,
       continued.reattemptThread,
       run,
+      waitOn,
     );
   }
 
@@ -689,7 +730,13 @@ async function runDispatchAttempt(
       // for a thread that is gone. Reporting a dispatch here would tell the
       // caller their message went when it went nowhere.
       const current = getThread(deps.db, thread.id);
-      return reattemptDispatchForThreadChange(deps, args, current, run);
+      return reattemptDispatchForThreadChange(
+        deps,
+        args,
+        current,
+        run,
+        waitOn,
+      );
     }
     await launchAdmittedThread(deps, admission);
     return { kind: "dispatched" };
@@ -704,6 +751,7 @@ async function runDispatchAttempt(
       payload: resolvedPayload,
       thread,
       trigger: args.trigger,
+      ...(systemNotice !== null ? { systemNotice } : {}),
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       beforeAppendInTransaction: ({ tx }) => {
         if (getThread(tx, thread.id)?.status !== thread.status) {
@@ -727,6 +775,7 @@ async function runDispatchAttempt(
       args,
       getThread(deps.db, thread.id),
       run,
+      waitOn,
     );
   }
   if (claimed !== null) {
@@ -737,21 +786,35 @@ async function runDispatchAttempt(
 
 class DispatchThreadStatusChangedError extends Error {}
 
-function reattemptDispatchForThreadChange(
+async function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
   thread: Thread | null,
   run: DispatchAttemptRun,
+  waitOn: (
+    waitingOn: QueuedMessageWaitingOn,
+    sendAt: number | null,
+  ) => DispatchAttemptOutcome,
 ): Promise<DispatchAttemptOutcome> {
   if (thread === null) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
   if (run.reattempted) {
-    throw new ApiError(
-      500,
-      "internal_error",
-      `Thread ${thread.id} changed twice under one dispatch attempt`,
+    ensureThreadIsWritable(thread, true);
+    const outcome = waitOn({ kind: "thread-busy" }, null);
+    deps.logger.info(
+      {
+        queuedMessageId: outcome.kind === "queued" ? outcome.entry.id : null,
+        status: thread.status,
+        threadId: thread.id,
+      },
+      "Queued a message whose thread changed twice under its dispatch attempt",
     );
+    requestQueuedMessageDispatch(deps, {
+      kind: "thread-ready",
+      threadId: thread.id,
+    });
+    return outcome;
   }
   return runDispatchAttempt(
     deps,
@@ -790,6 +853,7 @@ interface AdmitPendingThreadArgs {
   originPluginId: string | null;
   payload: SendMessageRequest & { inputGroups?: PromptInput[][] };
   respectManualStopPause: boolean;
+  retryOf: TurnRequestRetryMarker | undefined;
   /** Creation's own record; null on a re-attempt, which reads it back. */
   startContext: PendingThreadStartContext | null;
   thread: Thread;
@@ -882,6 +946,7 @@ async function admitPendingThread(
           ...(startContext.providerInput === undefined
             ? {}
             : { providerInput: startContext.providerInput }),
+          ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
           startedOnBehalfOf: startContext.startedOnBehalfOf,
           titleProvided: startContext.titleProvided,
         });
@@ -979,6 +1044,7 @@ export async function compactThreadContext(
     source: { kind: "operation", environment },
     queuePayload: { kind: "inline" },
     pluginSubmission: null,
+    systemNotice: null,
     origin: null,
     originPluginId: null,
     startedOnBehalfOf: null,

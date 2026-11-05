@@ -86,6 +86,7 @@ function commandRow({
     callId,
     command,
     cwd: null,
+    description: null,
     source: null,
     output: "",
     exitCode: 0,

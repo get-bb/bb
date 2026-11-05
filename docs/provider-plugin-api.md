@@ -464,6 +464,15 @@ mark is the icon its plugin declared — a path or declared icon served as
 `logoUrl` and drawn as a `currentColor` mask, or a host glyph name; core
 vendors no brand marks.
 
+`bb.sdk.providers.models`, `bb provider models`, and
+`GET /api/v1/system/execution-options` wait for model discovery when no good
+catalog is cached, so a recent discovery failure such as a timeout is retried
+instead of answered from cache; a failure of that retry is reported in
+`modelLoadError`. Concurrent reads share one discovery request. Interactive
+pickers pass `preferCached: true` to answer immediately from the cache,
+including a recent model-load failure, while discovery refreshes in the
+background.
+
 ## 6. Distribution
 
 Bridges are delivered as content-addressed plugin artifacts. On install or

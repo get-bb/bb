@@ -174,6 +174,7 @@ describe("child outcomes without provider completion", () => {
         childThread: child,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
         interruption: {
           reason: "host-daemon-restarted",
           cause: "host-connection-lost",
@@ -183,11 +184,13 @@ describe("child outcomes without provider completion", () => {
         childThread: child,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
       });
       await queueChildThreadTurnNotificationBestEffort(harness.deps, {
         childThread: sibling,
         parentThreadId: parent.id,
         turnStatus: "interrupted",
+        turnId: null,
         interruption: { reason: "host-daemon-restarted" },
       });
       await vi.advanceTimersByTimeAsync(2_000);

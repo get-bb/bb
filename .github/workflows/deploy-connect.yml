@@ -7,6 +7,7 @@ on:
     paths:
       - "apps/connect/**"
       - "packages/connect-db/**"
+      - "packages/connect-db-pg/**"
       - "packages/tunnel-contract/**"
   workflow_dispatch:
 
@@ -17,10 +18,9 @@ env:
 permissions:
   contents: read
 
-# Shared group with deploy-web so the two never run `wrangler d1 migrations
-# apply` concurrently against the same prod D1: a parallel double-apply would
-# fail on already-applied SQL (e.g. 0005's CREATE TRIGGER). Serializing the
-# two workflows makes the second run's migrate step a tracked no-op.
+# Shared group with deploy-web so a migration lands once before either worker
+# ships. The migrator also holds a Postgres advisory lock, so an overlapping
+# run waits instead of double-applying.
 # cancel-in-progress:false so a queued deploy waits rather than being dropped.
 concurrency:
   group: connect-db-deploy-${{ github.ref }}
@@ -52,13 +52,12 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
 
       # Apply any pending connect-db migrations BEFORE the new worker ships so
-      # it never queries columns prod D1 doesn't have yet. The d1_migrations
-      # tracking table (seeded 2026-07-08 with the previously hand-applied
-      # chain) makes this a no-op when nothing is pending.
+      # it never queries columns Postgres doesn't have yet. The
+      # connect_db_migrations table makes this a no-op when nothing is pending.
       - name: Apply connect-db migrations
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+          CONNECT_DB_PG_MIGRATOR_URL: ${{ secrets.CONNECT_DB_PG_MIGRATOR_URL }}
+        run: pnpm --filter @bb/connect-db-pg run db:migrate
 
       # No build step: the gate is a single worker entry (src/worker.ts) and
       # wrangler's esbuild bundles its workspace deps (@bb/connect-db,

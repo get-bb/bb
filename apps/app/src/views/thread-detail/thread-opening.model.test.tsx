@@ -87,11 +87,7 @@ interface Pending {
 }
 
 function OpenedThread() {
-  const { unreadDividerState } = useThreadDetailThread(
-    THREAD_ID,
-    true,
-    "first-unread-row",
-  );
+  const { unreadDividerState } = useThreadDetailThread(THREAD_ID, true);
   const timeline = useThreadTimelineController({ threadId: THREAD_ID });
   return (
     <BottomAnchoredScrollBody
@@ -115,7 +111,6 @@ function OpenedThread() {
         timelineRows={timeline.timelineRows}
         unreadDividerAutoScroll={unreadDividerState.autoScroll}
         unreadDividerPlacement={unreadDividerState.placement}
-        workspaceRootPath={undefined}
       />
     </BottomAnchoredScrollBody>
   );
@@ -128,7 +123,18 @@ function Host({ shown }: { shown: boolean }) {
 let restoreLayout: (() => void) | null = null;
 
 function getScrollElement() {
-  return document.querySelector<HTMLElement>("[data-page-scroll-viewport]");
+  const elements = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT);
+  let element = elements.nextNode();
+  while (element !== null) {
+    if (
+      element instanceof Element &&
+      element.hasAttribute("data-page-scroll-viewport")
+    ) {
+      return element as HTMLElement;
+    }
+    element = elements.nextNode();
+  }
+  return null;
 }
 
 function installOpeningLayout(

@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
+  experimental_normalizeHostPath as normalizeHostPath,
+  experimental_resolveHostPath as resolveHostPath,
+  experimental_isHostPathWithin as isHostPathWithin,
   defineRpcContract,
   type BbPluginApi,
   type MarkdownProps,
@@ -42,10 +45,10 @@ function previewKind(file: string): PreviewKind {
 
 export function requireRelativePreviewFile(value: unknown): string {
   const file = requireNonEmptyString(value, "file");
-  if (path.isAbsolute(file)) {
-    throw new Error(`"file" must be source-relative, not absolute: ${file}`);
-  }
-  if (/^[a-zA-Z]:[\\/]/.test(file) || file.startsWith("\\\\")) {
+  if (
+    normalizeHostPath(file) !== null ||
+    resolveHostPath({ rootPath: "/", path: file }) === null
+  ) {
     throw new Error(`"file" must be source-relative, not absolute: ${file}`);
   }
   const slashNormalized = file.replace(/\\/g, "/");
@@ -70,17 +73,10 @@ export function resolveContainedPreviewPath(
   rootPath: string,
   relativeFile: string,
 ): string {
-  const pathApi =
-    path.win32.isAbsolute(rootPath) && !path.posix.isAbsolute(rootPath)
-      ? path.win32
-      : path.posix;
-  const root = pathApi.resolve(rootPath);
-  const absolute = pathApi.resolve(root, relativeFile);
-  const relative = pathApi.relative(root, absolute);
+  const absolute = resolveHostPath({ rootPath, path: relativeFile });
   if (
-    relative === ".." ||
-    relative.startsWith(`..${pathApi.sep}`) ||
-    pathApi.isAbsolute(relative)
+    absolute === null ||
+    !isHostPathWithin({ rootPath, candidatePath: absolute })
   ) {
     throw new Error(`"file" must not escape its source: ${relativeFile}`);
   }

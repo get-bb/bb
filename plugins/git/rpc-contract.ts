@@ -1,7 +1,6 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { gitBranchNameSchema, isValidGitBranchName } from "@bb/domain";
-import { diffViewedFileSchema } from "@bb/server-contract";
 import {
   GIT_DIFF_MAX_DIFF_BYTES,
   GIT_DIFF_MAX_FILE_LIST_BYTES,
@@ -18,6 +17,7 @@ import {
   gitStatusResultSchema,
   gitStatusRowSchema,
   gitStatusTag,
+  gitViewedFileSchema,
   gitViewedTag,
   workspaceDiffTargetSchema,
 } from "./contract.js";
@@ -138,7 +138,7 @@ export const gitRpcContract = defineRpcContract({
           .optional(),
       })
       .strict(),
-    output: z.object({ files: z.array(diffViewedFileSchema) }).strict(),
+    output: z.object({ files: z.array(gitViewedFileSchema) }).strict(),
     tags: ({ environmentId }) => [gitViewedTag(environmentId)],
   },
   markViewed: {

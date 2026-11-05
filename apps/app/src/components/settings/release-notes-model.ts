@@ -124,3 +124,30 @@ export function findReleaseEntry(
     findEntryCoveringRelease(version, bundledEntries)
   );
 }
+
+export interface SourceUpdateNotes {
+  from: string | null;
+  to: string;
+  commitCount: number;
+  subjects: readonly string[];
+}
+
+export function resolveSourceUpdateNotes(
+  appUpdate: SystemAppUpdateStatus | undefined,
+): SourceUpdateNotes | null {
+  const available = appUpdate?.available ?? null;
+  if (
+    appUpdate === undefined ||
+    available === null ||
+    available.channel !== "main" ||
+    available.commit === null
+  ) {
+    return null;
+  }
+  return {
+    from: appUpdate.current.commit,
+    to: available.commit,
+    commitCount: available.commitCount ?? available.subjects.length,
+    subjects: available.subjects,
+  };
+}

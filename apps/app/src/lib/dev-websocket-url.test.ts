@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildDevWebSocketUrl } from "./dev-websocket-url";
+import { buildBrowserWebSocketUrl } from "./dev-websocket-url";
 
 function installWindowLocation(url: string): void {
   const location = new URL(url);
@@ -13,7 +13,7 @@ function installWindowLocation(url: string): void {
   });
 }
 
-describe("buildDevWebSocketUrl", () => {
+describe("buildBrowserWebSocketUrl", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -23,9 +23,7 @@ describe("buildDevWebSocketUrl", () => {
     vi.stubGlobal("__BB_DEV_APP_BROWSER_HOST_PORT__", 15_802);
     installWindowLocation("http://devbox.local:15802/threads/thr_1");
 
-    expect(buildDevWebSocketUrl({ path: "/ws" })).toBe(
-      "ws://devbox.local:23802/ws",
-    );
+    expect(buildBrowserWebSocketUrl("/ws")).toBe("ws://devbox.local:23802/ws");
   });
 
   it("uses the proxied app origin for HTTPS bb connect shares", () => {
@@ -35,7 +33,7 @@ describe("buildDevWebSocketUrl", () => {
       "https://sawyer--15802.getbb.app/threads/thr_jew2ruik89",
     );
 
-    expect(buildDevWebSocketUrl({ path: "/ws" })).toBe(
+    expect(buildBrowserWebSocketUrl("/ws")).toBe(
       "wss://sawyer--15802.getbb.app/ws",
     );
   });
@@ -45,7 +43,7 @@ describe("buildDevWebSocketUrl", () => {
     vi.stubGlobal("__BB_DEV_APP_BROWSER_HOST_PORT__", 15_802);
     installWindowLocation("http://sawyer.localhost:35802/threads/thr_1");
 
-    expect(buildDevWebSocketUrl({ path: "/ws" })).toBe(
+    expect(buildBrowserWebSocketUrl("/ws")).toBe(
       "ws://sawyer.localhost:35802/ws",
     );
   });
@@ -55,14 +53,14 @@ describe("buildDevWebSocketUrl", () => {
     vi.stubGlobal("__BB_DEV_APP_BROWSER_HOST_PORT__", 15_802);
     installWindowLocation("https://dev.example.test:15802/threads/thr_1");
 
-    expect(buildDevWebSocketUrl({ path: "/ws/terminals/term_1" })).toBe(
+    expect(buildBrowserWebSocketUrl("/ws/terminals/term_1")).toBe(
       "wss://dev.example.test:15802/ws/terminals/term_1",
     );
   });
 
-  it("returns undefined outside the dev build", () => {
+  it("uses the page origin outside the dev build", () => {
     installWindowLocation("https://app.example.test/threads/thr_1");
 
-    expect(buildDevWebSocketUrl({ path: "/ws" })).toBeUndefined();
+    expect(buildBrowserWebSocketUrl("/ws")).toBe("wss://app.example.test/ws");
   });
 });

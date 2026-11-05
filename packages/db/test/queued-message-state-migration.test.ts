@@ -9,7 +9,8 @@ import {
 } from "../src/index.js";
 import {
   dropThreadParentNotificationsColumn,
-  dropQueuedMessageDeliveryModeColumn,
+  dropQueuedMessageDeliveryColumns,
+  dropThreadStatusChangedAtColumn,
   rewindQueuedMessageStateMigration,
 } from "./helpers/rewind.js";
 
@@ -58,7 +59,8 @@ function rewoundDatabase(): { db: DbConnection; threadId: string } {
   });
   rewindQueuedMessageStateMigration(db);
   dropThreadParentNotificationsColumn(db);
-  dropQueuedMessageDeliveryModeColumn(db);
+  dropQueuedMessageDeliveryColumns(db);
+  dropThreadStatusChangedAtColumn(db);
   return { db, threadId: thread.id };
 }
 

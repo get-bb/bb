@@ -246,6 +246,7 @@ export interface PluginThreadEventEmitter {
     previousParentThreadId: string | null,
   ): void;
   emitThreadDeleted(thread: Thread): void;
+  emitThreadRead(threadId: string): void;
   emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**
    * Queue lifecycle. The row is already in its new state when these fire; the

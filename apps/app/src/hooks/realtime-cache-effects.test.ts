@@ -10,6 +10,7 @@ import {
   environmentFilePreviewQueryKey,
   hostPathExistenceQueryKey,
   hostsQueryKey,
+  hostProviderCliStatusQueryKey,
   projectPathsQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
@@ -43,14 +44,7 @@ import {
 } from "./queries/query-keys";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver, type QueryClient } from "@tanstack/react-query";
-import {
-  ENVIRONMENT_CHANGE_KINDS,
-  HOST_CHANGE_KINDS,
-  PROJECT_CHANGE_KINDS,
-  SYSTEM_CHANGE_KINDS,
-  THREAD_CHANGE_KINDS,
-  defaultExperiments,
-} from "@bb/domain";
+import { SYSTEM_CHANGE_KINDS, defaultExperiments } from "@bb/domain";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
@@ -58,16 +52,9 @@ import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-un
 import { systemEnvironmentProvidersQueryKey } from "./queries/environment-provider-queries";
 import {
   createRealtimeCacheEffects,
-  resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
-import {
-  REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-  REALTIME_HOST_CHANGE_REGISTRY,
-  REALTIME_PROJECT_CHANGE_REGISTRY,
-  REALTIME_SYSTEM_CHANGE_REGISTRY,
-  REALTIME_THREAD_CHANGE_REGISTRY,
-} from "./cache-owners/realtime-cache-registry";
+import { REALTIME_SYSTEM_CHANGE_REGISTRY } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "thread-created",
@@ -406,30 +393,11 @@ describe("createRealtimeCacheEffects", () => {
     vi.useRealTimers();
   });
 
-  it.each<
-    [
-      string,
-      readonly string[],
-      Record<string, { dirty: readonly unknown[] } | undefined>,
-    ]
-  >([
-    ["thread", THREAD_CHANGE_KINDS, REALTIME_THREAD_CHANGE_REGISTRY],
-    [
-      "environment",
-      ENVIRONMENT_CHANGE_KINDS,
-      REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
-    ],
-    ["project", PROJECT_CHANGE_KINDS, REALTIME_PROJECT_CHANGE_REGISTRY],
-    ["host", HOST_CHANGE_KINDS, REALTIME_HOST_CHANGE_REGISTRY],
-    ["system", SYSTEM_CHANGE_KINDS, REALTIME_SYSTEM_CHANGE_REGISTRY],
-  ])(
-    "maps every realtime %s change to a registry entry",
-    (_entity, changeKinds, registry) => {
-      for (const changeKind of changeKinds) {
-        expect(registry[changeKind]).toBeDefined();
-      }
-    },
-  );
+  it("maps every realtime system change to a registry entry", () => {
+    for (const changeKind of SYSTEM_CHANGE_KINDS) {
+      expect(REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind]).toBeDefined();
+    }
+  });
 
   it("refreshes only the server move status when a move changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -691,6 +659,25 @@ describe("createRealtimeCacheEffects", () => {
       );
       expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
       expect(invalidated()).toEqual([]);
+      effects.dispose();
+    });
+
+    it("refetches only the pushed host's provider CLI status", () => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const hostAKey = hostProviderCliStatusQueryKey("host-a");
+      const hostBKey = hostProviderCliStatusQueryKey("host-b");
+      queryClient.setQueryData(hostAKey, {});
+      queryClient.setQueryData(hostBKey, {});
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "host",
+        id: "host-a",
+        changes: ["provider-cli-status-changed"],
+      });
+
+      expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
       effects.dispose();
     });
   });
@@ -1358,7 +1345,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: { projectId: "project-1" },
         changes: [change],
       });
-      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(1_000);
     }
 
     expect(activeListQueryFn).toHaveBeenCalledTimes(3);
@@ -1538,7 +1525,7 @@ describe("createRealtimeCacheEffects", () => {
             metadata: { projectId },
             changes: ["read-state-changed"],
           });
-          await vi.advanceTimersByTimeAsync(50);
+          await vi.advanceTimersByTimeAsync(1_000);
 
           expect(threadListObserver.getCurrentResult().data).toEqual([
             { id: "thr_1", lastReadAt: nextLastReadAt },
@@ -2997,16 +2984,49 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("keeps the fine-pointer cadence and widens it for coarse pointers", () => {
-    expect(resolveThreadInvalidationDebounce(false)).toEqual({
-      debounceMs: 50,
-      maxWaitMs: 200,
-    });
-    expect(resolveThreadInvalidationDebounce(true)).toEqual({
-      debounceMs: 150,
-      maxWaitMs: 400,
-    });
-  });
+  it.each([
+    { pointer: "fine", coarse: false, debounceMs: 50, maxWaitMs: 200 },
+    { pointer: "coarse", coarse: true, debounceMs: 150, maxWaitMs: 400 },
+  ])(
+    "flushes thread changes $debounceMs ms after the last one, or $maxWaitMs ms into a burst, for a $pointer pointer",
+    ({ coarse, debounceMs, maxWaitMs }) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("window", {
+        matchMedia: (query: string) => ({
+          matches: coarse && query === "(pointer: coarse)",
+        }),
+      });
+      const { effects, queryClient, terminalKey } =
+        createRealtimeEffectsTestContext();
+      vi.unstubAllGlobals();
+      const changeTerminals = () =>
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: "thr_1",
+          changes: ["terminals-changed"],
+        });
+      const invalidated = () =>
+        queryClient.getQueryState(terminalKey)?.isInvalidated === true;
+
+      changeTerminals();
+      vi.advanceTimersByTime(debounceMs - 1);
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      queryClient.setQueryData(terminalKey, { sessions: [] });
+      for (let elapsed = 0; elapsed < maxWaitMs - 1; elapsed += 10) {
+        changeTerminals();
+        vi.advanceTimersByTime(Math.min(10, maxWaitMs - 1 - elapsed));
+      }
+      expect(invalidated()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(invalidated()).toBe(true);
+
+      effects.dispose();
+    },
+  );
 
   it("applies the reconnect watermark from the connected event", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();

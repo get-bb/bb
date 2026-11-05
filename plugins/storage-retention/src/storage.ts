@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { ARCHIVE_UNDO_GRACE_MS } from "@bb/domain";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_getHostPathComparisonKey as getHostPathComparisonKey,
+  experimental_getRelativeHostPath as getRelativeHostPath,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   diskCapacitySchema,
@@ -113,43 +117,59 @@ const clearableArchived = (
   thread.archivedAt + ARCHIVE_UNDO_GRACE_MS <= Date.now() &&
   thread.pinnedAt === null &&
   !["starting", "active", "stopping"].includes(thread.status);
-const hostPath = (value: string) =>
-  value.replaceAll("\\", "/").replace(/\/$/, "");
+const hostPath = (value: string) => getHostPathComparisonKey(value);
+function ownedByBb(owned: Set<string>, path: string): boolean {
+  const key = hostPath(path);
+  return key === null || owned.has(key);
+}
 const liveEnvironment = (
   env: Environment,
 ): env is Environment & { path: string } =>
   env.path !== null &&
   env.status !== "destroyed" &&
   env.lifecycle.teardown?.status !== "removed";
+function bbOwnedPathList(
+  hostId: string,
+  environments: Environment[],
+  projects: Project[],
+) {
+  return [
+    ...environments.flatMap((env) => (liveEnvironment(env) ? [env.path] : [])),
+    ...projects.flatMap((project) =>
+      project.sources
+        .filter((source) => source.hostId === hostId)
+        .map((source) => source.path),
+    ),
+  ];
+}
 function bbOwnedPaths(
   hostId: string,
   environments: Environment[],
   projects: Project[],
 ) {
-  return new Set([
-    ...environments.flatMap((env) =>
-      liveEnvironment(env) ? [hostPath(env.path)] : [],
+  return new Set(
+    bbOwnedPathList(hostId, environments, projects).flatMap(
+      (path) => hostPath(path) ?? [],
     ),
-    ...projects.flatMap((project) =>
-      project.sources
-        .filter((source) => source.hostId === hostId)
-        .map((source) => hostPath(source.path)),
-    ),
-  ]);
+  );
 }
 function linkedThreads(
-  sourcePath: string,
+  path: string,
   environments: Environment[],
   threads: Thread[],
 ) {
+  const sourcePath = hostPath(path);
+  if (sourcePath === null) return [];
   const environmentIds = new Set(
     environments
       .filter((env) => env.path !== null && hostPath(env.path) === sourcePath)
       .map((env) => env.id),
   );
-  const encodedThreadId = sourcePath.match(
-    /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
-  )?.[1];
+  const encodedThreadId = sourcePath
+    .replaceAll("\\", "/")
+    .match(
+      /\/(?:worktrees|thread-storage)\/(thr_[a-zA-Z0-9]+)(?:-[^/]*)?\//,
+    )?.[1];
   return threads
     .filter(
       (thread) =>
@@ -167,16 +187,21 @@ function entriesHoldingWorkspaces(
   rootPath: string,
   environments: Environment[],
 ) {
-  const root = `${hostPath(rootPath)}/`;
   const workspaces = new Map<string, string>();
+  const key = (name: string) => hostPath(`${rootPath}/${name}`);
   for (const env of environments) {
     if (!liveEnvironment(env)) continue;
-    const envPath = hostPath(env.path);
-    if (!envPath.startsWith(root)) continue;
-    const [name] = envPath.slice(root.length).split("/");
-    if (name && !workspaces.has(name)) workspaces.set(name, env.path);
+    const relative = getRelativeHostPath({ rootPath, candidatePath: env.path });
+    const name = relative?.split("/")[0];
+    const entryKey = name ? key(name) : null;
+    if (entryKey !== null && !workspaces.has(entryKey))
+      workspaces.set(entryKey, env.path);
   }
-  return workspaces;
+  const get = (name: string) => {
+    const entryKey = key(name);
+    return entryKey === null ? undefined : workspaces.get(entryKey);
+  };
+  return { has: (name: string) => get(name) !== undefined, get };
 }
 const isStorageEntry = (name: string) =>
   /^(thr_[a-zA-Z0-9]+|\.bb-trash-[a-zA-Z0-9_-]+)$/.test(name);
@@ -229,9 +254,10 @@ export function createStorage(
   };
   function read(hostId: string): Scan | null {
     const row = db
-      .prepare<[string], { result_json: string }>(
-        "SELECT result_json FROM scans WHERE host_id = ?",
-      )
+      .prepare<
+        [string],
+        { result_json: string }
+      >("SELECT result_json FROM scans WHERE host_id = ?")
       .get(hostId);
     return row ? cachedScanSchema.parse(JSON.parse(row.result_json)) : null;
   }
@@ -329,10 +355,8 @@ export function createStorage(
     changed();
   }
   function isCurrentInstance(developerPath: string, name: string) {
-    return (
-      hostPath(`${developerPath}/${name}`) ===
-      hostPath(bb.server.experimental_dataDir)
-    );
+    const entry = hostPath(`${developerPath}/${name}`);
+    return entry !== null && entry === hostPath(bb.server.experimental_dataDir);
   }
   async function readEnvironments(hostId: string) {
     const environments: Environment[] = [];
@@ -433,14 +457,10 @@ export function createStorage(
     }
     const bbPaths = bbOwnedPaths(hostId, allEnvironments, projects);
     const externalWorktrees = scan.externalWorktrees
-      .filter((worktree) => !bbPaths.has(hostPath(worktree.path)))
+      .filter((worktree) => !ownedByBb(bbPaths, worktree.path))
       .map((worktree) => ({
         ...worktree,
-        threads: linkedThreads(
-          hostPath(worktree.path),
-          allEnvironments,
-          threads,
-        ),
+        threads: linkedThreads(worktree.path, allEnvironments, threads),
       }))
       .sort((a, b) => b.sizeBytes - a.sizeBytes);
     const externalCounts = new Map<string, { count: number; bytes: number }>();
@@ -573,11 +593,7 @@ export function createStorage(
               threads:
                 entry.sourcePath === null
                   ? []
-                  : linkedThreads(
-                      hostPath(entry.sourcePath),
-                      allEnvironments,
-                      threads,
-                    ),
+                  : linkedThreads(entry.sourcePath, allEnvironments, threads),
             })),
           }
         : null,
@@ -713,6 +729,7 @@ export function createStorage(
         if (source.hostId === hostId && !projectByRepository.has(source.path))
           projectByRepository.set(source.path, project.id);
     const repositoryPaths = [...projectByRepository.keys()];
+    const ownedPaths = bbOwnedPathList(hostId, environments, projects);
     const owned = bbOwnedPaths(hostId, environments, projects);
     const found = new Map<
       string,
@@ -721,12 +738,15 @@ export function createStorage(
     for (let offset = 0; offset < repositoryPaths.length; offset += 100) {
       const result = await worker.call(
         "listGitWorktrees",
-        { repositoryPaths: repositoryPaths.slice(offset, offset + 100) },
+        {
+          repositoryPaths: repositoryPaths.slice(offset, offset + 100),
+          ownedPaths,
+        },
         { hostId, timeoutMs: 10 * 60_000, signal: lifecycle.signal },
       );
       for (const repository of result.repositories)
         for (const worktree of repository.worktrees) {
-          if (owned.has(hostPath(worktree.path)) || found.has(worktree.path))
+          if (ownedByBb(owned, worktree.path) || found.has(worktree.path))
             continue;
           found.set(worktree.path, {
             projectId: projectByRepository.get(repository.repositoryPath)!,
@@ -743,8 +763,12 @@ export function createStorage(
     return [...found.values()];
   }
   async function scanHost({ hostId }: { hostId: string }) {
+    await startScan(hostId);
+    return host({ hostId });
+  }
+  async function startScan(hostId: string) {
     await requireHost(hostId, true);
-    if (scans.get(hostId)?.state === "scanning") return host({ hostId });
+    if (scans.get(hostId)?.state === "scanning") return;
     const removal: Removal = {
       entries: new Set(),
       largeFiles: new Set(),
@@ -817,13 +841,11 @@ export function createStorage(
           for (const target of result.targets)
             measured.set(target.path, target);
           for (const file of result.largeFiles) {
-            const [name] = file.path.slice(rootPath.length + 1).split(/[\\/]/);
-            if (
-              !file.path.startsWith(rootPath) ||
-              name === undefined ||
-              !isStorageEntry(name)
-            )
-              continue;
+            const name = getRelativeHostPath({
+              rootPath,
+              candidatePath: file.path,
+            })?.split("/")[0];
+            if (name === undefined || !isStorageEntry(name)) continue;
             const total = largeFiles.get(name) ?? { sizeBytes: 0, count: 0 };
             total.sizeBytes += file.sizeBytes;
             total.count++;
@@ -890,7 +912,6 @@ export function createStorage(
     })();
     jobs.add(job);
     void job.finally(() => jobs.delete(job));
-    return host({ hostId });
   }
   async function discard(
     hostId: string,
@@ -1282,7 +1303,7 @@ export function createStorage(
           if (next === undefined) return;
           pendingDevelopmentCleanups.delete(next);
           try {
-            if (read(next) === null) await scanHost({ hostId: next });
+            if (read(next) === null) await startScan(next);
             else await removeMissingDevelopment(next, await acquire(next));
           } catch (error) {
             if (!lifecycle.signal.aborted)
@@ -1333,6 +1354,17 @@ export function createStorage(
       if (!handedOff) release();
     }
   }
+  async function reconcileHostDevelopmentStorage(hostId: string) {
+    try {
+      if (lifecycle.signal.aborted || !(await devCleanupEnabled())) return;
+      await startScan(hostId);
+    } catch (error) {
+      if (!lifecycle.signal.aborted)
+        bb.log.warn(
+          `Could not reconcile development storage on ${hostId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+  }
   let reconcilingDevelopment = false;
   function reconcileDevelopmentStorage() {
     if (reconcilingDevelopment || lifecycle.signal.aborted)
@@ -1362,7 +1394,7 @@ export function createStorage(
         machine.status === "connected" &&
         scans.get(machine.id)?.state !== "scanning"
       )
-        await scanHost({ hostId: machine.id });
+        await startScan(machine.id);
     return hosts();
   }
   async function clearThread({ threadId }: { threadId: string }) {
@@ -1382,9 +1414,10 @@ export function createStorage(
       hostId = (await bb.sdk.threads.storageLocation({ threadId })).hostId;
     } else {
       const matches = db
-        .prepare<[string], { host_id: string }>(
-          "SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)",
-        )
+        .prepare<
+          [string],
+          { host_id: string }
+        >("SELECT host_id FROM scans WHERE EXISTS (SELECT 1 FROM json_each(scans.result_json, '$.entries') WHERE json_extract(value, '$.name') = ?)")
         .all(threadId);
       const match = matches[0];
       if (
@@ -1467,9 +1500,7 @@ export function createStorage(
       .prepare<
         [number],
         { thread_id: string; archived_at: number; failure_count: number }
-      >(
-        "SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at",
-      )
+      >("SELECT thread_id, archived_at, failure_count FROM archive_cleanup WHERE next_attempt_at <= ? ORDER BY archived_at")
       .all(Date.now());
     for (const entry of pending) {
       if (lifecycle.signal.aborted) return;
@@ -1604,7 +1635,7 @@ export function createStorage(
       });
       return { state: "started" as const };
     }
-    const reasons: ExternalWorktreeSkipReason[] = owned.has(hostPath(target))
+    const reasons: ExternalWorktreeSkipReason[] = ownedByBb(owned, target)
       ? ["inUseByBb"]
       : force
         ? []
@@ -1700,7 +1731,7 @@ export function createStorage(
       };
       const byRepository = new Map<string, typeof targets>();
       for (const worktree of targets) {
-        if (owned.has(hostPath(worktree.path))) {
+        if (ownedByBb(owned, worktree.path)) {
           response.skipped.push({
             path: worktree.path,
             reasons: ["inUseByBb"],
@@ -1859,6 +1890,7 @@ export function createStorage(
     scanHost,
     scanAll,
     reconcileDevelopmentStorage,
+    reconcileHostDevelopmentStorage,
     cleanDevelopmentStorage,
     removeOrphans,
     clearLargeFiles,

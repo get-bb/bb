@@ -381,7 +381,7 @@ function makeSubmission(
 
 const mixedPromptPillsFixture = buildPromptPillsFixture(
   [
-    "Use @apps/app/src/components/promptbox/ComposerBox.tsx with",
+    "Use @apps/app/src/components/promptbox/PromptBoxInternal.tsx with",
     "@apps/app/src/components/promptbox/mentions/ and @thread-storage:notes/status.md;",
     "then ask @thread:thr_prompt_pills before running /github:gh-fix-ci or /frontend:component.",
   ].join(" "),
@@ -701,7 +701,7 @@ function WithBlockquoteRow() {
 
 function WithMentionsRow() {
   const initialValue =
-    "Ask @thread:thr_parent to inspect @apps/app/src/components/promptbox/ComposerBox.tsx.";
+    "Ask @thread:thr_parent to inspect @apps/app/src/components/promptbox/PromptBoxInternal.tsx.";
   const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
     storyMention({
       text: initialValue,

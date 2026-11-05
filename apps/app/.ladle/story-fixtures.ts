@@ -35,6 +35,10 @@ import type {
   TypeaheadConfig,
 } from "../src/components/promptbox/ComposerBox";
 import type { WorkspaceStatus } from "bb-plugin-bb--git/contract";
+import {
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus as makeGitWorkspaceStatus,
+} from "bb-plugin-bb--git/testing";
 
 const noop = () => {};
 
@@ -603,16 +607,7 @@ export function makeEnvironment(
 export function makeWorkspaceStatus(
   overrides: Partial<WorkspaceStatus> = {},
 ): WorkspaceStatus {
-  const base: WorkspaceStatus = {
-    workingTree: {
-      hasUncommittedChanges: false,
-      state: "clean",
-      insertions: 0,
-      deletions: 0,
-      lineStatsComplete: true,
-      fileCount: 0,
-      files: [],
-    },
+  return makeGitWorkspaceStatus({
     branch: {
       currentBranch: BRANCH_NAMES.feature,
       defaultBranch: BRANCH_NAMES.default,
@@ -622,20 +617,10 @@ export function makeWorkspaceStatus(
       branchName: BRANCH_NAMES.feature,
       headSha: null,
     },
-    mergeBase: {
+    mergeBase: makeWorkspaceMergeBase({
       mergeBaseBranch: BRANCH_NAMES.default,
       baseRef: null,
-      aheadCount: 0,
-      behindCount: 0,
-      squashMergeCheckComplete: true,
-      hasCommittedUnmergedChanges: false,
-      commits: [],
-      insertions: 0,
-      deletions: 0,
-      lineStatsComplete: true,
-      fileCount: 0,
-      files: [],
-    },
-  };
-  return { ...base, ...overrides };
+    }),
+    ...overrides,
+  });
 }

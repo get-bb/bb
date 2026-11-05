@@ -250,7 +250,7 @@ describe("codexQuotaFromUsage", () => {
         },
       },
     };
-    expect(isQuotaExhausted(stale, "other", 0.9, 2_000)).toBe(true);
+    expect(isQuotaExhausted(stale, "other", 2_000)).toBe(true);
     const refreshed = codexQuotaFromUsage(
       ACCOUNT_ID,
       {
@@ -267,7 +267,7 @@ describe("codexQuotaFromUsage", () => {
       familyWeekly: { other: null },
     });
     if (refreshed === null) throw new Error("Expected a quota.");
-    expect(isQuotaExhausted(refreshed, "other", 0.9, 2_000)).toBe(false);
+    expect(isQuotaExhausted(refreshed, "other", 2_000)).toBe(false);
   });
 
   it("returns null for a payload without rate limits", () => {
@@ -296,7 +296,7 @@ describe("codex header quotas", () => {
         "other",
         3_000,
       );
-      expect(isQuotaExhausted(rejected, "other", 0.98, 3_000)).toBe(true);
+      expect(isQuotaExhausted(rejected, "other", 3_000)).toBe(true);
       expect(
         rejected.limitWindows.find((window) => window.slot === slot)?.resetAt,
       ).toBeNull();
@@ -311,7 +311,7 @@ describe("codex header quotas", () => {
         4_000,
       );
       if (recovered === null) throw new Error("Expected refreshed usage.");
-      expect(isQuotaExhausted(recovered, "other", 0.98, 4_000)).toBe(false);
+      expect(isQuotaExhausted(recovered, "other", 4_000)).toBe(false);
     },
   );
 
@@ -345,8 +345,8 @@ describe("codex header quotas", () => {
         source: "header",
       },
     ]);
-    expect(isQuotaExhausted(rejected, "other", 0.9, 2_000)).toBe(true);
-    expect(isQuotaExhausted(fromUsage, "other", 0.9, 2_000)).toBe(false);
+    expect(isQuotaExhausted(rejected, "other", 2_000)).toBe(true);
+    expect(isQuotaExhausted(fromUsage, "other", 2_000)).toBe(false);
   });
 
   it.each([

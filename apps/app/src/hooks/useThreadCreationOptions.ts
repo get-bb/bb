@@ -144,6 +144,10 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelCatalogIsVerified: boolean;
   modelCatalogIsSettled: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
+  resolveReasoningForModel: (
+    model: string,
+    preferredReasoningLevel: ReasoningLevel,
+  ) => ModelReasoningOptions;
   declaredSessionOptions: ThreadSessionOption[];
   sessionOptionSelections: SessionOptionSelections;
   setSessionOption: (optionId: string, value: SessionOptionValue) => void;
@@ -191,6 +195,11 @@ function resolveThreadCreationProviderRouting({
 }
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
+
+interface ModelReasoningOptions {
+  reasoningLevel: ReasoningLevel;
+  reasoningOptions: PickerOption<ReasoningLevel>[];
+}
 
 type InitialReadyProviderResolution =
   | { status: "unresolved" }
@@ -567,6 +576,36 @@ export function useThreadCreationOptions(
     ],
   );
 
+  const resolveReasoningForModel = useCallback(
+    (
+      model: string,
+      preferred: ReasoningLevel,
+    ): ModelReasoningOptions => {
+      const selection = resolveModelCatalogSelection({
+        models: executionOptionsQuery.data?.models ?? [],
+        selectedOnlyModels:
+          executionOptionsQuery.data?.selectedOnlyModels ?? [],
+        selectedModel: model,
+        preferredReasoningLevel: preferred,
+        sessionOptionSelections: requestedSessionOptionSelections,
+        provider: selectedProviderInfo,
+        catalogIsVerified: modelCatalogIsVerified,
+        formatModelLabel,
+      });
+      return {
+        reasoningLevel: selection.reasoningLevel,
+        reasoningOptions: selection.reasoningOptions,
+      };
+    },
+    [
+      executionOptionsQuery.data?.models,
+      executionOptionsQuery.data?.selectedOnlyModels,
+      modelCatalogIsVerified,
+      requestedSessionOptionSelections,
+      selectedProviderInfo,
+    ],
+  );
+
   const needsSelectedModelDiscovery =
     modelCatalogIsVerified &&
     baseCatalogSelection.activeModel?.reasoningDiscovery === "unknown";
@@ -745,10 +784,15 @@ export function useThreadCreationOptions(
   const environmentSelectionValue = rawEnvironmentSelectionValue;
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
+  const fellBackFromUnofferedProvider =
+    rawSelectedProviderId.length > 0 &&
+    effectiveProviderId.length > 0 &&
+    effectiveProviderId !== rawSelectedProviderId;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    canResolveReadyProvider &&
-    readyProviderId !== undefined &&
-    effectiveProviderId === readyProviderId
+    fellBackFromUnofferedProvider ||
+    (canResolveReadyProvider &&
+      readyProviderId !== undefined &&
+      effectiveProviderId === readyProviderId)
       ? "client-preference"
       : undefined;
   const executionInputSources = useMemo(
@@ -1117,6 +1161,7 @@ export function useThreadCreationOptions(
     modelCatalogIsVerified,
     modelCatalogIsSettled,
     reasoningOptions,
+    resolveReasoningForModel,
     declaredSessionOptions,
     sessionOptionSelections,
     setSessionOption,

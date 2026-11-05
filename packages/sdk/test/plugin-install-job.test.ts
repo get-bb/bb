@@ -12,6 +12,7 @@ const plugin = {
   isOrphanedBuiltin: false,
   publisherLabel: null,
   sourceDisplay: "npm · notes",
+  sourceNotice: null,
   updateState: {},
   enabled: true,
   description: null,

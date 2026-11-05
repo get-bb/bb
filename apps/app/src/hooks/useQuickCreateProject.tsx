@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -34,6 +35,7 @@ interface QuickCreateProjectController {
   isAvailable: boolean;
   isCreating: boolean;
   openCreateDialog: () => void;
+  openCreateDialogThen: (onCreated: (projectId: string) => void) => void;
   platform: HostPlatform | null;
   hostId: string | null;
   hostName: string | null;
@@ -56,6 +58,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   const location = useLocation();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const shouldReplaceRoute = location.pathname === APP_ROOT_ROUTE_PATH;
+  const onCreatedRef = useRef<((projectId: string) => void) | null>(null);
 
   const submit = useCallback(
     ({ path, hostId, target, closeDialog }: LocalPathSubmitParams) => {
@@ -71,6 +74,12 @@ export function useQuickCreateProject(): QuickCreateProjectController {
         {
           onSuccess: (project) => {
             closeDialog();
+            const onCreated = onCreatedRef.current;
+            onCreatedRef.current = null;
+            if (onCreated) {
+              onCreated(project.id);
+              return;
+            }
             setRootComposeProjectId(project.id);
             void navigate(getRootComposeRoutePath(), {
               replace: shouldReplaceRoute,
@@ -88,14 +97,24 @@ export function useQuickCreateProject(): QuickCreateProjectController {
   });
 
   const openCreateDialog = useCallback(() => {
+    onCreatedRef.current = null;
     controller.openPathEntry({ kind: "create" });
   }, [controller]);
+
+  const openCreateDialogThen = useCallback(
+    (onCreated: (projectId: string) => void) => {
+      onCreatedRef.current = onCreated;
+      controller.openPathEntry({ kind: "create" });
+    },
+    [controller],
+  );
 
   return useMemo(
     () => ({
       isAvailable: controller.isAvailable,
       isCreating: isPending,
       openCreateDialog,
+      openCreateDialogThen,
       platform: controller.platform,
       hostId: controller.hostId,
       hostName: controller.hostName,
@@ -103,7 +122,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
-    [controller, hosts, isPending, openCreateDialog],
+    [controller, hosts, isPending, openCreateDialog, openCreateDialogThen],
   );
 }
 

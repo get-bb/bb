@@ -28,6 +28,7 @@ function recordTurnFailedAnnouncements(): string[] {
     emitThreadFailed: () => {},
     emitThreadArchived: () => {},
     emitThreadDeleted: () => {},
+    emitThreadRead: () => {},
     emitInteractionPending: () => {},
     emitMessageQueued: () => {},
     emitMessageDispatched: () => {},
@@ -80,6 +81,7 @@ function openSession(
         localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: args.activeThreadIds.map((threadId) => ({ threadId })),
+        openThreadWork: [],
       }),
     }),
   );

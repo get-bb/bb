@@ -25,8 +25,7 @@ import {
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-const { forkSessionMock, queryMock, contextQueryMock } = vi.hoisted(() => ({
-  forkSessionMock: vi.fn(),
+const { queryMock, contextQueryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   contextQueryMock: vi.fn(),
 }));
@@ -38,7 +37,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
     args.options?.persistSession === false && args.options.forkSession === true
       ? contextQueryMock(args)
       : queryMock(args),
-  forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
@@ -685,7 +683,6 @@ describe("bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     contextQueryMock.mockImplementation(() => createControlledClaudeQuery());
-    forkSessionMock.mockResolvedValue({ sessionId: "forked-session-1" });
     queryMock.mockReturnValue({
       initializationResult: vi.fn().mockResolvedValue({
         account: {},
@@ -1235,10 +1232,6 @@ describe("bridge", () => {
   });
 
   it("forks a Claude session from the session config directory through the requested checkpoint", async () => {
-    const actualSdk = await vi.importActual<
-      typeof import("@anthropic-ai/claude-agent-sdk")
-    >("@anthropic-ai/claude-agent-sdk");
-    forkSessionMock.mockImplementation(actualSdk.forkSession);
     const root = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
     tempDirs.push(root);
     const hostConfigDir = join(root, "host-config");
@@ -5399,6 +5392,110 @@ describe("bridge", () => {
       });
       await bridge.flushWork();
       queries[1]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("settles a background command when the Claude SDK stream ends under it", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-sdk-ended-background-command";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
+          permissionEscalation: "ask",
+          instructions: "test",
+          providerOptions: {
+            workflowsEnabled: false,
+          },
+        },
+      });
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "Watch CI in the background" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      queries[0]?.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "b55rxfnlv",
+        description: "Watch CI, Build & Push and the deploy run in sequence",
+        task_type: "local_bash",
+        uuid: "00000000-0000-4000-8000-000000000002",
+        session_id: providerThreadId,
+      });
+      queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+      await bridge.flushWork();
+
+      queries[0]?.fail(
+        new Error("Claude Code process terminated by signal SIGKILL"),
+      );
+      await bridge.flushWork();
+
+      expect(
+        assembleCapturedThreadEvents(bridge.messages, "claude-code").flatMap(
+          (event) => {
+            const item =
+              event.type === "item/started" ||
+              event.type === "item/backgroundTask/completed"
+                ? event.item
+                : null;
+            return item?.type === "backgroundTask"
+              ? [
+                  {
+                    type: event.type,
+                    familyId: item.familyId,
+                    status: item.status,
+                    taskStatus: item.taskStatus,
+                  },
+                ]
+              : [];
+          },
+        ),
+      ).toEqual([
+        {
+          type: "item/started",
+          familyId: "b55rxfnlv",
+          status: "pending",
+          taskStatus: "running",
+        },
+        {
+          type: "item/backgroundTask/completed",
+          familyId: "b55rxfnlv",
+          status: "interrupted",
+          taskStatus: "stopped",
+        },
+      ]);
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
       await bridge.waitForResponse(3);
     } finally {
       bridge.restore();

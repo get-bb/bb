@@ -345,6 +345,7 @@ describe("public host management", () => {
           },
           body: JSON.stringify({
             activeThreads: [],
+            openThreadWork: [],
             dataDir: "/tmp/remote-bb",
             hasMachineCredential: true,
             hostId: issued.hostId,

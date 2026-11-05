@@ -173,7 +173,7 @@ describe("child outcome reconciliation", () => {
       expect(response.status).toBe(200);
       expect(getThread(harness.db, fixture.child.id)?.status).toBe("active");
 
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
 
       expect(getThread(harness.db, fixture.child.id)?.status).toBe("active");
       expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([]);
@@ -188,16 +188,17 @@ describe("child outcome reconciliation", () => {
           childThread: fixture.child,
           parentThreadId: fixture.parent.id,
           turnStatus: "failed",
+          turnId: null,
         });
       }
 
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
       await vi.waitFor(() => {
         expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([
           "child-failed",
         ]);
       });
-      await flushChildThreadNotifications();
+      await flushChildThreadNotifications(harness);
 
       expect(parentSystemMessageKinds(harness, fixture.parent.id)).toEqual([
         "child-failed",

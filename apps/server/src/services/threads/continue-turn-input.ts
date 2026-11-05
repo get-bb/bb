@@ -1,12 +1,12 @@
 import type { PromptInput } from "@bb/domain";
 
-const CONTINUE_TURN_TEXT = "Please continue.";
+export const CONTINUE_TURN_TEXT = "Please continue.";
 
-export function continueTurnInput(): PromptInput[] {
+export function continueTurnInput(text: string): PromptInput[] {
   return [
     {
       type: "text",
-      text: CONTINUE_TURN_TEXT,
+      text,
       mentions: [],
       visibility: "agent-only",
     },

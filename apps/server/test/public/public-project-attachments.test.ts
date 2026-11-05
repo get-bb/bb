@@ -158,6 +158,36 @@ describe("public project attachments", () => {
     });
   });
 
+  it("rejects an empty or malformed multipart body as invalid_request", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-project-attachment-malformed",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      for (const body of ["", "not a multipart body"]) {
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/attachments`,
+          {
+            body,
+            headers: {
+              "content-type":
+                "multipart/form-data; boundary=----WebKitFormBoundaryabc",
+            },
+            method: "POST",
+          },
+        );
+        expect(response.status).toBe(400);
+        await expect(readJson(response)).resolves.toEqual({
+          code: "invalid_request",
+          message: "Request body is not valid multipart form data",
+        });
+      }
+    });
+  });
+
   it("rejects HEIC/HEIF image uploads instead of storing an image nothing can render", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

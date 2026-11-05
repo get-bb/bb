@@ -10,7 +10,10 @@ import type {
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
-import { continueTurnInput } from "./continue-turn-input.js";
+import {
+  CONTINUE_TURN_TEXT,
+  continueTurnInput,
+} from "./continue-turn-input.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
@@ -35,7 +38,7 @@ export async function acceptThreadSendRequest(
   const request: Omit<SendMessageRequest, "compactFirst"> = isBlankPromptInput(
     submitted.input,
   )
-    ? { ...submitted, input: continueTurnInput() }
+    ? { ...submitted, input: continueTurnInput(CONTINUE_TURN_TEXT) }
     : submitted;
   if (isStandaloneBuiltinClearCommand(request.input)) {
     if (compactFirst) throwInvalidCompactFirst("cannot clear the context");
@@ -48,6 +51,7 @@ export async function acceptThreadSendRequest(
       source: { kind: "operation", environment },
       queuePayload: { kind: "inline" },
       pluginSubmission: null,
+      systemNotice: null,
       origin: null,
       originPluginId: null,
       startedOnBehalfOf: null,
@@ -81,6 +85,7 @@ export async function acceptThreadSendRequest(
         source: { kind: "inline" },
         queuePayload: { kind: "inline" },
         pluginSubmission: payload.pluginSubmission ?? null,
+        systemNotice: null,
         origin: payload.originPluginId === undefined ? null : "plugin",
         originPluginId: payload.originPluginId ?? null,
         startedOnBehalfOf: null,

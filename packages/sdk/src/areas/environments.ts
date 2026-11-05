@@ -11,10 +11,6 @@ import {
   updateEnvironmentRequestSchema,
   type CommitActionResponse,
   type EnvironmentArchiveThreadsResponse,
-  type EnvironmentDiffQuery,
-  type EnvironmentDiffViewedClearRequest,
-  type EnvironmentDiffViewedMarkRequest,
-  type EnvironmentDiffViewedResponse,
   type EnvironmentPathsQuery,
   type UpdateEnvironmentRequest,
   type WorkspacePathListResponse,
@@ -58,23 +54,9 @@ export type EnvironmentUpdateArgs = EnvironmentUpdateFields & {
   environmentId: string;
 };
 
-export type EnvironmentDiffArgs = EnvironmentDiffQuery & {
-  environmentId: string;
-  signal?: AbortSignal;
-};
-
 export interface EnvironmentCommitArgs {
   environmentId: string;
 }
-
-export type EnvironmentDiffViewedMarkArgs = EnvironmentDiffViewedMarkRequest & {
-  environmentId: string;
-};
-
-export type EnvironmentDiffViewedClearArgs =
-  EnvironmentDiffViewedClearRequest & {
-    environmentId: string;
-  };
 
 export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   environmentId: string;
@@ -83,7 +65,6 @@ export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
 
 export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
 export type EnvironmentCommitResult = CommitActionResponse;
-export type EnvironmentDiffViewedResult = EnvironmentDiffViewedResponse;
 export type EnvironmentGetResult = Environment;
 export type EnvironmentPathsResult = WorkspacePathListResponse;
 export type EnvironmentUpdateResult = Environment;
@@ -120,15 +101,6 @@ export interface EnvironmentsArea {
     args: EnvironmentActionArgs,
   ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
-  experimental_diffViewed(
-    args: EnvironmentDiffArgs & { paths?: string[] },
-  ): Promise<EnvironmentDiffViewedResult>;
-  experimental_markDiffViewed(
-    args: EnvironmentDiffViewedMarkArgs,
-  ): Promise<{ ok: true }>;
-  experimental_clearDiffViewed(
-    args: EnvironmentDiffViewedClearArgs,
-  ): Promise<{ ok: true }>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
   list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
@@ -150,18 +122,6 @@ function environmentUpdateJson(
     request.name = args.name;
   }
   return updateEnvironmentRequestSchema.parse(request);
-}
-
-function environmentDiffQuery(args: EnvironmentDiffArgs): EnvironmentDiffQuery {
-  switch (args.target) {
-    case "uncommitted":
-      return { target: args.target };
-    case "branch_committed":
-    case "all":
-      return { target: args.target, mergeBaseBranch: args.mergeBaseBranch };
-    case "commit":
-      return { target: args.target, sha: args.sha };
-  }
 }
 
 function environmentPathsQuery(
@@ -197,48 +157,6 @@ export function createEnvironmentsArea(
         }),
       );
       return commitActionResponseSchema.parse(body);
-    },
-    async experimental_diffViewed(input) {
-      if (input.paths !== undefined) {
-        return transport.readJson(
-          transport.api.v1.environments[":id"].diff.viewed.$post(
-            {
-              param: { id: input.environmentId },
-              json: { ...environmentDiffQuery(input), paths: input.paths },
-            },
-            ...signalRequestArgs(input.signal),
-          ),
-        );
-      }
-      return transport.readJson(
-        transport.api.v1.environments[":id"].diff.viewed.$get(
-          {
-            param: { id: input.environmentId },
-            query: environmentDiffQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async experimental_markDiffViewed(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"].diff.viewed.$put({
-          param: { id: input.environmentId },
-          json: {
-            target: input.target,
-            path: input.path,
-            revision: input.revision,
-          },
-        }),
-      );
-    },
-    async experimental_clearDiffViewed(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"].diff.viewed.$delete({
-          param: { id: input.environmentId },
-          json: { target: input.target, path: input.path },
-        }),
-      );
     },
     async list(input) {
       return transport.readJson(

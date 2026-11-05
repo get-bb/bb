@@ -1,6 +1,9 @@
 import path from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { createAccountClient, watchAccount } from "./account.js";
+import {
+  createAccountClient,
+  watchAccount,
+} from "bb-plugin-bb-account/src/client.js";
 import { registerConnectNextCli } from "./cli.js";
 import {
   NEXT_SERVER_OVERRIDE_ENV,
@@ -61,7 +64,7 @@ export function createConnectNextPlugin(
             ? {}
             : { download: options.download }),
         }),
-      readCredential: () => account.credential(),
+      readCredential: () => account.connectCredential(),
       openIngress: options.openIngress ?? serverTunnelIngress(bb.server),
       trustedCertificates:
         options.trustedCertificates ?? (() => defaultTrustedCertificates(env)),
@@ -108,8 +111,16 @@ export function createConnectNextPlugin(
               {
                 account,
                 log: bb.log,
-                onIdentity: (identity) => {
-                  void tunnel.setIdentity(identity);
+                onAccount: (next) => {
+                  void tunnel.setIdentity(
+                    next === null
+                      ? null
+                      : {
+                          serverId: next.serverId,
+                          label: next.serverLabel,
+                          baseUrl: next.baseUrl,
+                        },
+                  );
                 },
                 ...retry,
               },

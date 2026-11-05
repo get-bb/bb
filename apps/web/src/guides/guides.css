@@ -75,6 +75,7 @@
   background: var(--surface);
   font: inherit;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--heading);
   cursor: pointer;
   vertical-align: baseline;

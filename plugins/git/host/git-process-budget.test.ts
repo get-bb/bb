@@ -128,7 +128,7 @@ describe("git processes per workspace change", () => {
     await reads.dispose();
   });
 
-  it.skipIf(process.platform === "win32")("reads only status and its numstat for a tracked edit with Diff closed", async () => {
+  it.skipIf(process.platform === "win32")("reads only status and its working-tree and all-changes numstats for a tracked edit with Diff closed", async () => {
     const repo = await initPullRequestRepo();
     const reads = new WorkspaceReads(repo, tmpdir());
     await reads.getStatus({
@@ -145,7 +145,7 @@ describe("git processes per workspace change", () => {
       ...STATUS_BUDGET,
     });
     expect(await takeCalls()).toEqual(
-      ["diff --numstat", "status --porcelain=v2"].sort(),
+      ["diff --numstat", "diff --numstat", "status --porcelain=v2"].sort(),
     );
     await reads.dispose();
   });

@@ -425,7 +425,7 @@ describe("file content routes", () => {
     });
   });
 
-  it("maps Windows drive paths to the drive root and rejects backslash traversal", async () => {
+  it("maps Windows drive and network paths to their roots and rejects backslash traversal", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const commands = serveFiles(harness, {
@@ -435,6 +435,10 @@ describe("file content routes", () => {
           [
             "C:\\Users\\me\\chart.png",
             { bytes: Buffer.from([7, 8]), mimeType: "image/png" },
+          ],
+          [
+            "\\\\server\\share\\dir\\a b.png",
+            { bytes: Buffer.from([9]), mimeType: "image/png" },
           ],
         ]),
       });
@@ -446,6 +450,15 @@ describe("file content routes", () => {
       expect(commands[0]).toMatchObject({
         path: "C:\\Users\\me\\chart.png",
         rootPath: "C:\\",
+      });
+
+      const share = await harness.app.request(
+        `/api/v1/hosts/${host.id}/files/%5C%5Cserver/share/dir/a%20b.png`,
+      );
+      expect(share.status).toBe(200);
+      expect(commands.at(-1)).toMatchObject({
+        path: "\\\\server\\share\\dir\\a b.png",
+        rootPath: "\\\\server\\share\\",
       });
 
       const commandCount = commands.length;

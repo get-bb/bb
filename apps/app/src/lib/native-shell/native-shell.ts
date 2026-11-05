@@ -146,3 +146,9 @@ export function shellReportReady(path: string): void {
 export function shellReportPath(title: string, path: string): void {
   getNativeShell()?.post({ type: "title", title, path });
 }
+
+export function shellSetBadge(count: number): void {
+  const shell = getNativeShell();
+  if (shell === null || !shell.has("badge")) return;
+  shell.post({ type: "badge", count });
+}

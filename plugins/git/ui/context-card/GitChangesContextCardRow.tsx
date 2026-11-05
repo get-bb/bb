@@ -4,11 +4,9 @@ import {
   type ExperimentalThreadContextCardProps,
 } from "@get-bb/plugin-sdk/app";
 import {
-  CHANGED_FILES_KIND_PREFIX,
   formatChangeSummary,
-  selectWorkspaceChangedFilesSection,
   toChangeTally,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../workspace-change-summary.js";
 import { DiffStatsTally } from "@bb/shared-ui/diff-stats-tally";
 import { GIT_DIFF_TAB_ID } from "../../contract.js";
 import { useGitStatus, useShowGitChanges } from "../queries.js";
@@ -20,14 +18,13 @@ export function GitChangesContextCardRow({
   const { workspace } = useGitStatus(environmentId);
   const panel = useAppPanel();
   if (environmentId === null || !workspace) return null;
-  const section = selectWorkspaceChangedFilesSection(workspace);
-  if (section === null) return null;
-  const tally = toChangeTally(section.stats);
+  if (workspace.allChanges.fileCount === 0) return null;
+  const tally = toChangeTally(workspace.allChanges);
   return (
     <ThreadContextCardRow
       icon="FileDiff"
       label="Changes"
-      title={`${CHANGED_FILES_KIND_PREFIX[section.kind]}: ${formatChangeSummary(tally)}`}
+      title={`All changes: ${formatChangeSummary(tally)}`}
       trailing={
         <DiffStatsTally
           insertions={tally.insertions}

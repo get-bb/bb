@@ -9,6 +9,7 @@ import {
 } from "@bb/db";
 import {
   backgroundTaskItemStatus,
+  convertLegacyStoredThreadEvent,
   isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
   threadScope,
@@ -19,6 +20,11 @@ import { appendThreadEventsInTransaction } from "./thread-events.js";
 
 interface SettleDanglingBackgroundTasksArgs {
   hostId: string;
+  reason:
+    | "host-connection-lost"
+    | "host-daemon-no-longer-runs-task"
+    | "host-daemon-restarted"
+    | "host-removed";
 }
 
 type SettleDanglingBackgroundTasksDeps = Pick<AppDeps, "db" | "hub" | "logger">;
@@ -28,6 +34,8 @@ type SettleDanglingBackgroundTasksTransactionDeps = {
   logger: AppDeps["logger"];
 };
 
+const storedEventDataSchema = z.record(z.string(), z.unknown());
+
 const storedBackgroundTaskEventDataSchema = z.object({
   item: threadEventBackgroundTaskItemSchema,
 });
@@ -36,9 +44,15 @@ function parseStoredBackgroundTaskItem(
   row: OpenBackgroundTaskItemRow,
 ): ThreadEventBackgroundTaskItem | null {
   try {
-    const parsed = storedBackgroundTaskEventDataSchema.safeParse(
-      JSON.parse(row.data),
-    );
+    const data = storedEventDataSchema.safeParse(JSON.parse(row.data));
+    if (!data.success) {
+      return null;
+    }
+    const stored = convertLegacyStoredThreadEvent({
+      type: row.type,
+      data: data.data,
+    });
+    const parsed = storedBackgroundTaskEventDataSchema.safeParse(stored.data);
     return parsed.success ? parsed.data.item : null;
   } catch {
     return null;
@@ -49,9 +63,39 @@ export function settleDanglingBackgroundTasks(
   deps: SettleDanglingBackgroundTasksDeps,
   args: SettleDanglingBackgroundTasksArgs,
 ): void {
-  const rows = listOpenBackgroundTaskItemRowsForHost(deps.db, {
-    hostId: args.hostId,
-  });
+  settleBackgroundTaskRows(
+    deps,
+    args,
+    listOpenBackgroundTaskItemRowsForHost(deps.db, { hostId: args.hostId }),
+  );
+}
+
+export function settleBackgroundTasksTheDaemonNoLongerRuns(
+  deps: SettleDanglingBackgroundTasksDeps,
+  args: {
+    hostId: string;
+    openItemIdsByThreadId: ReadonlyMap<string, ReadonlySet<string>>;
+    unsettledThreadIds: ReadonlySet<string>;
+  },
+): void {
+  settleBackgroundTaskRows(
+    deps,
+    { hostId: args.hostId, reason: "host-daemon-no-longer-runs-task" },
+    listOpenBackgroundTaskItemRowsForHost(deps.db, {
+      hostId: args.hostId,
+    }).filter(
+      (row) =>
+        !args.unsettledThreadIds.has(row.threadId) &&
+        !args.openItemIdsByThreadId.get(row.threadId)?.has(row.itemId),
+    ),
+  );
+}
+
+function settleBackgroundTaskRows(
+  deps: SettleDanglingBackgroundTasksDeps,
+  args: SettleDanglingBackgroundTasksArgs,
+  rows: readonly OpenBackgroundTaskItemRow[],
+): void {
   if (rows.length === 0) {
     return;
   }
@@ -69,6 +113,17 @@ export function settleDanglingBackgroundTasks(
     { behavior: "immediate" },
   );
 
+  if (settledThreadIds.size === 0) {
+    return;
+  }
+  deps.logger.info(
+    {
+      hostId: args.hostId,
+      reason: args.reason,
+      threadIds: [...settledThreadIds],
+    },
+    "Settled background tasks left open on the host",
+  );
   for (const threadId of settledThreadIds) {
     deps.hub.notifyThread(threadId, ["events-appended"], {
       timelineSequence: getLatestThreadSequence(deps.db, {

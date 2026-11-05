@@ -11,8 +11,8 @@ const source = {
 const storageRootPath = "/remote-storage/thread-editor-test";
 const hostId = "remote-editor-host";
 
-async function setup() {
-  const storageLocation = vi.fn(() => ({ hostId, storageRootPath }));
+async function setup(root = storageRootPath) {
+  const storageLocation = vi.fn(() => ({ hostId, storageRootPath: root }));
   const read = vi.fn(() => ({
     content: "saved text",
     contentEncoding: "utf8",
@@ -55,6 +55,31 @@ describe("thread storage host routing", () => {
       absolutePath: `${storageRootPath}/notes/document.txt`,
       relativePath: "notes/document.txt",
     });
+  });
+
+  it.each([
+    [
+      "//server/share/storage",
+      "\\\\server\\share\\storage\\notes\\document.txt",
+    ],
+    ["C:", "C:\\notes\\document.txt"],
+  ])("reads and names files under %s", async (root, expected) => {
+    const { harness, read } = await setup(root);
+    try {
+      expect(
+        await harness.callRpc("read", { source, path: "notes/document.txt" }),
+      ).toMatchObject({
+        absolutePath: expected,
+        relativePath: "notes/document.txt",
+      });
+      expect(read).toHaveBeenCalledWith({
+        hostId,
+        rootPath: root,
+        path: expected,
+      });
+    } finally {
+      await harness.lifecycle.dispose();
+    }
   });
 
   it("lists the thread's storage host and root", async () => {

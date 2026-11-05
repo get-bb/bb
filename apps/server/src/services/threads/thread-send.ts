@@ -7,6 +7,7 @@ import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
 import type {
   ClientTurnRequestId,
   PromptInput,
+  QueuedMessageSystemNotice,
   ResolvedThreadExecutionOptions,
   Thread,
   ThreadTurnInitiator,
@@ -110,6 +111,7 @@ interface SendThreadMessageArgs {
   };
   originPluginId: string | null;
   payload: SendThreadMessagePayload;
+  systemNotice?: QueuedMessageSystemNotice;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
 }
@@ -166,6 +168,7 @@ interface AppendAndQueueSendThreadMessageArgs {
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
+  systemNotice: QueuedMessageSystemNotice | undefined;
   target: TurnRequestTarget;
   thread: Thread;
 }
@@ -421,6 +424,7 @@ function appendAndQueueSendThreadMessageInTransaction({
   queueInTransaction,
   requestId,
   senderThreadId,
+  systemNotice,
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
@@ -443,6 +447,12 @@ function appendAndQueueSendThreadMessageInTransaction({
             initiator,
             originPluginId,
             senderThreadId,
+            ...(systemNotice !== undefined
+              ? {
+                  systemMessageKind: systemNotice.kind,
+                  systemMessageSubject: systemNotice.subject,
+                }
+              : {}),
             requestMethod: "turn/start",
             source: "tell",
             target,
@@ -534,10 +544,10 @@ async function sendThreadMessageWithoutContextClear(
     input,
     ...(inputGroups !== undefined ? { inputGroups } : {}),
   }));
-  const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
-    deps.db,
-    thread.id,
-  );
+  const deferredFirstTurnContext =
+    args.retryOf === undefined
+      ? resolveDeferredFirstTurnContext(deps.db, thread.id)
+      : null;
   ({ input, inputGroups } = prependDeferredFirstTurnContext(
     { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
     deferredFirstTurnContext,
@@ -574,6 +584,7 @@ async function sendThreadMessageWithoutContextClear(
   // however many times the provider happened to be rate limited.
   const { initiator } = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
+    systemNotice: args.systemNotice !== undefined,
     senderThreadId,
     startedOnBehalfOf: null,
   });
@@ -591,7 +602,7 @@ async function sendThreadMessageWithoutContextClear(
   // A retry's model is provenance — the failed attempt's tuple, replayed —
   // not a fresh model choice, so it must not rewrite the thread's sticky
   // override the way an explicit user send's model does.
-  if (senderThreadId === null && args.retryOf === undefined) {
+  if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
       modelSource:
@@ -628,7 +639,14 @@ async function sendThreadMessageWithoutContextClear(
       input,
       inputGroups,
       originPluginId: args.originPluginId,
+      ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
       senderThreadId,
+      ...(args.systemNotice !== undefined
+        ? {
+            systemMessageKind: args.systemNotice.kind,
+            systemMessageSubject: args.systemNotice.subject,
+          }
+        : {}),
       thread,
     })
   ) {
@@ -730,6 +748,7 @@ async function sendThreadMessageWithoutContextClear(
       },
       requestId,
       senderThreadId,
+      systemNotice: args.systemNotice,
       target,
       thread,
     });
@@ -809,6 +828,7 @@ async function sendThreadMessageWithoutContextClear(
     },
     requestId,
     senderThreadId,
+    systemNotice: args.systemNotice,
     target,
     thread,
   });

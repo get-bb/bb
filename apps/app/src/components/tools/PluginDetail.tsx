@@ -127,10 +127,12 @@ export function pluginRemovalDescription(plugin: PluginListItem): string {
 
 function PluginLocalSource({
   path,
+  notice,
   openDisabled,
   onOpen,
 }: {
   path: string;
+  notice: string | null;
   openDisabled: boolean;
   onOpen: () => void;
 }) {
@@ -180,6 +182,15 @@ function PluginLocalSource({
           />
         </div>
       </div>
+      {notice === null ? null : (
+        <p
+          className="mt-2 flex items-start gap-1.5 text-2xs leading-snug text-subtle-foreground"
+          data-testid="plugin-source-notice"
+        >
+          <Icon name="Info" className="mt-0.5 size-3 shrink-0" aria-hidden />
+          <span className="min-w-0 break-words">{notice}</span>
+        </p>
+      )}
     </ResourceDefinitionSection>
   );
 }
@@ -548,6 +559,7 @@ export function PluginDetail({
         {canEditSource ? (
           <PluginLocalSource
             path={plugin.rootDir}
+            notice={plugin.sourceNotice}
             openDisabled={pending || openSourceDisabled}
             onOpen={() => onOpenSource(plugin)}
           />

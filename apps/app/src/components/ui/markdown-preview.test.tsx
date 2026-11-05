@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-import { defaultExperiments } from "@bb/domain";
-import { appQueryClient } from "@/lib/app-query-client";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { ApplicationUrlDialog } from "@/components/ApplicationUrlDialog";
 import { resolveApplicationUrlConfirmation } from "@/lib/application-url";
 import { LazyMarkdownHtml } from "./lazy-markdown-html";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  LOCAL_FILE_TEST_HOST_ID,
+  createMarkdownLocalFileHostTestWrapper,
+} from "@/test/fixtures/markdown-local-file-host";
 
 import {
   act,
@@ -30,6 +32,7 @@ const workspaceLinkRouting = {
     absoluteLinks: {
       kind: "trusted-host",
     },
+    hostId: null,
     relativeLinks: {
       baseDir: "/workspace",
       rootPath: "/workspace",
@@ -38,12 +41,18 @@ const workspaceLinkRouting = {
   },
 } satisfies MarkdownLinkRouting;
 
+const inlineCodeLinkRouting = {
+  localFile: {
+    ...workspaceLinkRouting.localFile,
+    hostId: LOCAL_FILE_TEST_HOST_ID,
+  },
+} satisfies MarkdownLinkRouting;
+
 beforeAll(() => LazyMarkdownHtml.preload());
 
 afterEach(() => {
   resolveApplicationUrlConfirmation("cancel");
   cleanup();
-  appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
   window.localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -370,15 +379,17 @@ describe("MarkdownPreview", () => {
     ["C:\\repo\\src\\app.ts:12:3", "C:\\repo\\src\\app.ts", 12],
   ])(
     "opens inline-code file reference %s at its line",
-    (reference, path, line) => {
+    async (reference, path, line) => {
+      const { wrapper } = createMarkdownLocalFileHostTestWrapper(() => true);
       render(
         <MarkdownPreview
           content={`Read \`${reference}\`.`}
-          linkRouting={workspaceLinkRouting}
+          linkRouting={inlineCodeLinkRouting}
         />,
+        { wrapper },
       );
 
-      const link = screen.getByRole("link", { name: reference });
+      const link = await screen.findByRole("link", { name: reference });
       expect(link.getAttribute("href")).toBe(
         `${path.startsWith("C:") ? "file:///C:/repo/src/app.ts" : `file://${path}`}${line === null ? "" : `#L${line}`}`,
       );
@@ -408,15 +419,62 @@ describe("MarkdownPreview", () => {
     "../outside.ts:4",
     "src/app.ts?raw",
   ])("keeps non-file inline code %s literal", (reference) => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      () => true,
+    );
     render(
       <MarkdownPreview
         content={`Read \`${reference}\`.`}
-        linkRouting={workspaceLinkRouting}
+        linkRouting={inlineCodeLinkRouting}
       />,
+      { wrapper },
     );
 
     expect(screen.queryByRole("link", { name: reference })).toBeNull();
     expect(screen.getByText(reference).tagName).toBe("CODE");
+    expect(pathsExist).not.toHaveBeenCalled();
+  });
+
+  it("links only inline-code file references that exist on the host, checked in one batch", async () => {
+    const { pathsExist, wrapper } = createMarkdownLocalFileHostTestWrapper(
+      (path) => path === "/workspace/src/app.ts",
+    );
+    render(
+      <MarkdownPreview
+        content="Edit `src/app.ts:4`, `scheduler.py`, `thread.idle`, and `bb.app`."
+        linkRouting={inlineCodeLinkRouting}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      (await screen.findByRole("link", { name: "src/app.ts:4" })).getAttribute(
+        "href",
+      ),
+    ).toBe("file:///workspace/src/app.ts#L4");
+    for (const reference of ["scheduler.py", "thread.idle", "bb.app"]) {
+      expect(screen.queryByRole("link", { name: reference })).toBeNull();
+      expect(screen.getByText(reference).tagName).toBe("CODE");
+    }
+    expect(pathsExist).toHaveBeenCalledOnce();
+    expect([...pathsExist.mock.calls[0]![0].paths].sort()).toEqual([
+      "/workspace/bb.app",
+      "/workspace/scheduler.py",
+      "/workspace/src/app.ts",
+      "/workspace/thread.idle",
+    ]);
+  });
+
+  it("keeps inline-code file references as code without a host to check them on", () => {
+    render(
+      <MarkdownPreview
+        content="Read `README.md`."
+        linkRouting={workspaceLinkRouting}
+      />,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("README.md").tagName).toBe("CODE");
   });
 
   it("preserves inline commands ending in Markdown paths as code", () => {
@@ -489,6 +547,7 @@ describe("MarkdownPreview", () => {
           content="See [notes](/workspace/notes/todo.md) and [app](/workspace/src/app.ts)."
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: vi.fn(() => true),
             },
@@ -676,6 +735,93 @@ describe("MarkdownPreview", () => {
     ).toBe(href);
   });
 
+  it("scrolls in-page fragment links to their target inside the same preview", () => {
+    const onOpenLink = vi.fn(() => true);
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(
+      function (this: Element) {
+        scrolled.push(this.id);
+      },
+    );
+    render(
+      <>
+        <MarkdownPreview
+          content="## Plain heading"
+          linkRouting={{ headingAnchors: true }}
+        />
+        <MarkdownPreview
+          allowHtml
+          content={
+            '[Heading](#plain-heading) [Anchor](#block-1) [Missing](#nowhere)\n\n## Plain heading\n\n## Plain heading\n\n<a id="block-1"></a>'
+          }
+          linkRouting={{ headingAnchors: true, onOpenLink }}
+        />
+      </>,
+    );
+
+    for (const name of ["Heading", "Anchor", "Missing"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link.getAttribute("target")).toBeNull();
+      expect(fireEvent.click(link)).toBe(false);
+    }
+
+    expect(scrolled).toEqual([
+      "user-content-plain-heading",
+      "user-content-block-1",
+    ]);
+    expect(
+      document.querySelectorAll('[id="user-content-plain-heading-1"]'),
+    ).toHaveLength(1);
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
+  it("shows in-page fragment links as text outside file previews", () => {
+    const onOpenLink = vi.fn(() => true);
+    const { container } = render(
+      <MarkdownPreview
+        content={"[Details](#details)\n\n## Details"}
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Details" })).toBeNull();
+    expect(container.querySelector("[id]")).toBeNull();
+  });
+
+  it("leaves modified clicks on web links to the platform", () => {
+    const onOpenLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[docs](https://example.com/docs)"
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "docs" });
+
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(onOpenLink).not.toHaveBeenCalled();
+
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
+  });
+
+  it("opens web links through the app navigation host when the surface has no link handler", () => {
+    const openUrl = vi.fn(() => true);
+    render(
+      <AppNavigationHostProvider capabilities={{ openUrl }}>
+        <MarkdownPreview content="[docs](https://example.com/docs)" />
+      </AppNavigationHostProvider>,
+    );
+
+    expect(fireEvent.click(screen.getByRole("link", { name: "docs" }))).toBe(
+      false,
+    );
+    expect(openUrl).toHaveBeenCalledWith({ url: "https://example.com/docs" });
+  });
+
   it("routes editor file links to the local file handler with their editor", () => {
     const onOpenLink = vi.fn(() => true);
     const onOpenLocalFileLink = vi.fn(() => true);
@@ -685,6 +831,7 @@ describe("MarkdownPreview", () => {
         content="Open [review](devin://file/Users/me/.bb/artifacts/thr_1/review.diff) or [cursor](Cursor://file/workspace/My%20App.ts:12:3)."
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -739,6 +886,7 @@ describe("MarkdownPreview", () => {
           content="[review](devin://file/tmp/review.diff:3) [app](vscode://file/tmp/app.ts) [plain](/tmp/notes.md)"
           linkRouting={{
             localFile: {
+              hostId: null,
               absoluteLinks: { kind: "trusted-host" },
               onOpenLink: () => true,
             },
@@ -770,6 +918,7 @@ describe("MarkdownPreview", () => {
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -804,6 +953,7 @@ describe("MarkdownPreview", () => {
         }
         linkRouting={{
           localFile: {
+            hostId: null,
             absoluteLinks: { kind: "trusted-host" },
             onOpenLink: onOpenLocalFileLink,
           },
@@ -1101,47 +1251,8 @@ describe("MarkdownPreview", () => {
 
 describe("application links", () => {
   it.each([false, true])(
-    "keeps application links inert until enabled and responds to disabling (HTML: %s)",
-    async (allowHtml) => {
-      const openApplicationUrl = vi.fn(async () => {});
-      vi.stubGlobal("bbDesktop", { openApplicationUrl });
-      render(
-        <MarkdownPreview
-          allowHtml={allowHtml}
-          content="[Review note](reflect://note/test) <kbd>Enter</kbd>"
-        />,
-      );
-      expect(screen.queryByRole("link", { name: "Review note" })).toBeNull();
-      fireEvent.click(screen.getByText("Review note"));
-      expect(openApplicationUrl).not.toHaveBeenCalled();
-      act(() => {
-        appQueryClient.setQueryData(systemConfigQueryKey(), {
-          experiments: { ...defaultExperiments, applicationLinks: true },
-        });
-      });
-      fireEvent.click(await screen.findByRole("link", { name: "Review note" }));
-      expect(openApplicationUrl).not.toHaveBeenCalled();
-      resolveApplicationUrlConfirmation("open");
-      await waitFor(() => expect(openApplicationUrl).toHaveBeenCalledOnce());
-      act(() => {
-        appQueryClient.setQueryData(systemConfigQueryKey(), {
-          experiments: defaultExperiments,
-        });
-      });
-      await waitFor(() =>
-        expect(screen.queryByRole("link", { name: "Review note" })).toBeNull(),
-      );
-      fireEvent.click(screen.getByText("Review note"));
-      expect(openApplicationUrl).toHaveBeenCalledOnce();
-    },
-  );
-
-  it.each([false, true])(
     "preserves explicit links without launching during rendering (HTML: %s)",
     async (allowHtml) => {
-      appQueryClient.setQueryData(systemConfigQueryKey(), {
-        experiments: { ...defaultExperiments, applicationLinks: true },
-      });
       const openApplicationUrl = vi.fn(async () => {});
       vi.stubGlobal("bbDesktop", { openApplicationUrl });
       const url = "reflect://note/Project%20X?tag=a%2Fb";
@@ -1172,9 +1283,6 @@ describe("application links", () => {
   );
 
   it("asks on every click in the browser and cancels without launching", async () => {
-    appQueryClient.setQueryData(systemConfigQueryKey(), {
-      experiments: { ...defaultExperiments, applicationLinks: true },
-    });
     render(
       <>
         <MarkdownPreview content="[Review note](reflect://note/Project%20X)" />

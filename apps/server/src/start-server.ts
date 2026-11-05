@@ -1,4 +1,12 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
+import {
+  AUTO_UPDATE_CHECK_MS,
+  createScheduledAppUpdateService,
+} from "./services/system/app-update-schedule.js";
+import {
+  createAppUpdateSendHold,
+  releaseSendsHeldAcrossRestart,
+} from "./services/system/app-update-send-hold.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
@@ -12,6 +20,11 @@ import { createLogger } from "@bb/logger";
 import {
   getAppSettings,
   getDisabledProviderIds,
+  getExperiments,
+  getAutoAppUpdate,
+  getSkippedAppUpdate,
+  setAutoAppUpdate,
+  setSkippedAppUpdate,
   listRunningThreads,
   setAppSettings,
 } from "@bb/db";
@@ -40,6 +53,7 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { installProviderModelCatalogPrewarm } from "./services/providers/provider-model-catalog-prewarm.js";
+import { installProviderCliStatusPrewarm } from "./services/system/provider-cli-status-prewarm.js";
 import {
   createProviderRegistryService,
   type ProviderRegistryService,
@@ -271,7 +285,28 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverConfig.BB_APP_SURFACE === "desktop"
       ? createDesktopUpdateChannel(process)
       : null;
-  const appUpdate =
+  const countRunningThreads = (): number => listRunningThreads(db).length;
+  const threadsResumeAfterRestart = (): boolean =>
+    getExperiments(db).resumeThreadsAfterRestart;
+  const sendHoldDeps = {
+    aiServices,
+    config: runtimeConfig,
+    db,
+    hub,
+    lifecycleDedupers,
+    logger,
+    machineAuth,
+    pendingInteractions,
+    pluginHostArtifacts,
+    providerRegistry,
+    skillTreeRegistry,
+    telemetry,
+    terminalSessions,
+  };
+  const sendHold = createAppUpdateSendHold(sendHoldDeps);
+  const notifyAppUpdateChanged = (): void =>
+    hub.notifySystem(["app-update-changed"]);
+  const appUpdateService =
     desktopUpdateChannel === null
       ? createAppUpdateService({
           currentCommit:
@@ -281,21 +316,42 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
           appSurface: serverConfig.BB_APP_SURFACE,
           appVersion,
           config: runtimeConfig,
-          countRunningThreads: () => listRunningThreads(db).length,
+          countRunningThreads,
           launcher:
             appUpdateMode === null ? null : createLauncherChannel(process),
           logger,
           mode: appUpdateMode,
-          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          notifyChanged: notifyAppUpdateChanged,
+          threadsResumeAfterRestart,
+          sendHold,
         })
       : createDesktopAppUpdateService({
           channel: desktopUpdateChannel,
           currentVersion: runtimeConfig.appVersion,
           dataDir: serverConfig.BB_DATA_DIR,
-          countRunningThreads: () => listRunningThreads(db).length,
-          notifyChanged: () => hub.notifySystem(["app-update-changed"]),
+          countRunningThreads,
+          notifyChanged: notifyAppUpdateChanged,
           logger,
+          threadsResumeAfterRestart,
+          sendHold,
         });
+  const appUpdate = createScheduledAppUpdateService({
+    autoCheckMs: AUTO_UPDATE_CHECK_MS,
+    countRunningThreads,
+    inner: appUpdateService,
+    isEnabled: () => getExperiments(db).updateWhenIdle,
+    logger,
+    notifyChanged: notifyAppUpdateChanged,
+    onChangedMessage: (listener) => hub.onChangedMessage(listener),
+    autoUpdate: {
+      get: () => getAutoAppUpdate(db),
+      set: (enabled) => setAutoAppUpdate(db, enabled),
+    },
+    skippedUpdate: {
+      get: () => getSkippedAppUpdate(db),
+      set: (key) => setSkippedAppUpdate(db, key),
+    },
+  });
   const cliCommand = createCliCommandService({
     env: process.env,
     homeDir: homedir(),
@@ -416,7 +472,12 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pendingServerMove === null
       ? installProviderModelCatalogPrewarm(sweepDeps)
       : null;
+  const providerCliStatusPrewarm =
+    pendingServerMove === null
+      ? installProviderCliStatusPrewarm(sweepDeps)
+      : null;
   if (pendingServerMove === null) {
+    releaseSendsHeldAcrossRestart(sweepDeps);
     await runStartupRecoverySweep(sweepDeps).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
@@ -489,6 +550,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();
+      providerCliStatusPrewarm?.stop();
       eventLoopStallMonitor.stop();
       await performanceDiagnostics.stop();
       stopDaemonLivenessChecks();

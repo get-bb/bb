@@ -1,3 +1,6 @@
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+
 type PanelToggleAction = "enter-full-screen" | "exit-full-screen";
 
 type PanelToggleIconName = "Maximize2" | "Minimize2";
@@ -47,6 +50,8 @@ export function resolveConversationCollapseControl({
 }
 
 export const RIGHT_PANEL_TOGGLE_ICON_NAME = "PanelRight";
+
+export const RIGHT_PANEL_TOGGLE_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
 export const RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS =
   "absolute right-0 top-full z-10 mt-1";

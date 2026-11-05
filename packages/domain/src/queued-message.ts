@@ -50,6 +50,9 @@ import {
  * - `plugin` — a plugin's dispatch gate returned `wait(reason)`. This is the
  *   only arm with an authored reason, because it is the only arm whose reason
  *   is not derivable from the kind (plus `sendAt`) by the renderer.
+ * - `superseded` — a retry of input the provider never accepted, overtaken by
+ *   a newer turn request. It is never sent automatically; the user sends or
+ *   deletes it.
  */
 export const queuedMessageWaitingOnKindValues = [
   "time",
@@ -59,7 +62,9 @@ export const queuedMessageWaitingOnKindValues = [
   "provisioning",
   "host-offline",
   "interaction",
+  "app-update",
   "plugin",
+  "superseded",
 ] as const;
 export const queuedMessageWaitingOnKindSchema = z.enum(
   queuedMessageWaitingOnKindValues,
@@ -96,11 +101,13 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
     hostName: queuedMessageWaitHostNameSchema,
   }),
   z.object({ kind: z.literal("interaction") }),
+  z.object({ kind: z.literal("app-update") }),
   z.object({
     kind: z.literal("plugin"),
     pluginId: pluginIdSchema,
     reason: queuedMessageWaitReasonSchema,
   }),
+  z.object({ kind: z.literal("superseded") }),
 ]);
 export type QueuedMessageWaitingOn = z.infer<
   typeof queuedMessageWaitingOnSchema
@@ -189,6 +196,8 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
+
+export const RESTART_RESUME_RETRY_REASON = "bb restarted";
 
 /**
  * Core's own taxonomy for a queued row that is a SYSTEM notice rather than

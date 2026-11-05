@@ -1,24 +1,27 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ProviderCliBanner } from "./ProviderCliBanner";
+
+afterEach(() => {
+  cleanup();
+});
 
 function renderBanner(
   props: Omit<ComponentProps<typeof ProviderCliBanner>, "onAction">,
 ) {
-  const markup = renderToStaticMarkup(
-    <ProviderCliBanner {...props} onAction={() => {}} />,
-  );
+  render(<ProviderCliBanner {...props} onAction={() => {}} />);
   return {
-    markup,
-    text: markup.replace(/<[^>]+>/g, ""),
-    button: markup.match(/<button([^>]*)>(.*?)<\/button>/),
+    text: screen.getByRole("alert").textContent,
+    button: screen.getByRole("button"),
   };
 }
 
 describe("ProviderCliBanner", () => {
   it("uses the selected provider's identity and update requirement", () => {
-    const { markup, text, button } = renderBanner({
+    const { text, button } = renderBanner({
       displayName: "Example Agent",
       installed: true,
       currentVersion: "0.135.0",
@@ -27,12 +30,14 @@ describe("ProviderCliBanner", () => {
       actionRunning: false,
     });
 
-    expect(markup).toContain('aria-label="Example Agent update required"');
+    expect(
+      screen.getByRole("region", { name: "Example Agent update required" }),
+    ).toBeTruthy();
     expect(text).toContain(
       "Update Example Agent before starting a thread. Installed 0.135.0; version 0.136.0 or newer is required.",
     );
-    expect(button?.[2]).toBe("Update Example Agent");
-    expect(button?.[1]).not.toContain('disabled=""');
+    expect(button.textContent).toBe("Update Example Agent");
+    expect(button.hasAttribute("disabled")).toBe(false);
   });
 
   it("shows update progress without repeating an ambiguous version fallback", () => {
@@ -46,12 +51,12 @@ describe("ProviderCliBanner", () => {
     });
 
     expect(text).toContain("Installed 0.135.0; a newer version is required.");
-    expect(button?.[2]).toContain("Updating…");
-    expect(button?.[1]).toContain('disabled=""');
+    expect(button.textContent).toContain("Updating…");
+    expect(button.hasAttribute("disabled")).toBe(true);
   });
 
   it("asks for an install instead of a version when the CLI is missing", () => {
-    const { markup, text, button } = renderBanner({
+    const { text, button } = renderBanner({
       displayName: "Claude Code",
       installed: false,
       currentVersion: null,
@@ -60,9 +65,11 @@ describe("ProviderCliBanner", () => {
       actionRunning: false,
     });
 
-    expect(markup).toContain('aria-label="Claude Code not installed"');
+    expect(
+      screen.getByRole("region", { name: "Claude Code not installed" }),
+    ).toBeTruthy();
     expect(text).toContain("Install Claude Code before starting a thread.");
     expect(text).not.toContain("version");
-    expect(button?.[2]).toBe("Install Claude Code");
+    expect(button.textContent).toBe("Install Claude Code");
   });
 });

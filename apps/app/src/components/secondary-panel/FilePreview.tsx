@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
+import { FilePreviewRenderPreviewContext } from "./filePreviewRenderPreviewContext";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -516,24 +517,38 @@ export function FilePreview({
     );
   }, [filePreviewLineRange, path, toggleKind]);
 
-  const usesIframeLayout = state.kind === "html" && viewMode === "preview";
+  const renderPreview = useContext(FilePreviewRenderPreviewContext);
   const bodyViewMode: FilePreviewViewMode =
     toggleKind === null ? "preview" : viewMode;
+  const customPreviewFile =
+    renderPreview !== null &&
+    toggleKind !== null &&
+    rawContents !== null &&
+    download !== null &&
+    bodyViewMode === "preview"
+      ? { content: rawContents, url: toAbsolutePreviewUrl(download.url) }
+      : null;
+  const usesCustomPreviewLayout = customPreviewFile !== null;
+  const usesIframeLayout =
+    state.kind === "html" && viewMode === "preview" && !usesCustomPreviewLayout;
   const usesCodeLayout = usesCodeViewLayout(state, bodyViewMode);
   const showLineOverflowToggle = usesCodeLayout;
   const usesMarkdownPreviewLayout =
     state.kind === "ready" &&
     state.textPreviewKind === "markdown" &&
-    bodyViewMode === "preview";
+    bodyViewMode === "preview" &&
+    !usesCustomPreviewLayout;
   const usesCsvPreviewLayout =
     state.kind === "ready" &&
     state.textPreviewKind === "csv" &&
-    bodyViewMode === "preview";
+    bodyViewMode === "preview" &&
+    !usesCustomPreviewLayout;
   const usesFullHeightLayout =
     usesIframeLayout ||
     usesCsvPreviewLayout ||
     usesCodeLayout ||
-    usesMarkdownPreviewLayout;
+    usesMarkdownPreviewLayout ||
+    usesCustomPreviewLayout;
 
   return (
     <div
@@ -579,15 +594,21 @@ export function FilePreview({
           onViewModeChange={setViewMode}
         />
       ) : null}
-      <FilePreviewBody
-        iframePreview={iframePreview}
-        state={state}
-        path={path}
-        lineOverflowMode={lineOverflowMode}
-        viewMode={bodyViewMode}
-        markdownLinkRouting={markdownLinkRouting}
-        onSelectionAddToChat={onSelectionAddToChat}
-      />
+      {renderPreview !== null && customPreviewFile !== null ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {renderPreview(customPreviewFile)}
+        </div>
+      ) : (
+        <FilePreviewBody
+          iframePreview={iframePreview}
+          state={state}
+          path={path}
+          lineOverflowMode={lineOverflowMode}
+          viewMode={bodyViewMode}
+          markdownLinkRouting={markdownLinkRouting}
+          onSelectionAddToChat={onSelectionAddToChat}
+        />
+      )}
     </div>
   );
 }
@@ -706,8 +727,9 @@ function FilePreviewHeader({
               ({statusLabel})
             </span>
           )}
-          {!isNarrow ? (
-            <TooltipProvider delayDuration={300}>
+          <TooltipProvider delayDuration={300}>
+            {!isNarrow ? (
+              <>
               {onRefresh ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -767,6 +789,8 @@ function FilePreviewHeader({
                   </TooltipContent>
                 </Tooltip>
               )}
+              </>
+            ) : null}
               {externalUrl === null ? null : (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -793,7 +817,7 @@ function FilePreviewHeader({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {onOpenInEditor ? (
+              {!isNarrow && onOpenInEditor ? (
                 <>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -817,8 +841,7 @@ function FilePreviewHeader({
                   <AppCommandShortcutHint shortcut={openShortcut} />
                 </>
               ) : null}
-            </TooltipProvider>
-          ) : null}
+          </TooltipProvider>
         </div>
         {showHeaderControls || isNarrow ? (
           <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -919,17 +942,6 @@ function FilePreviewHeader({
                     >
                       <Icon name="RotateCcw" aria-hidden />{" "}
                       {isRefreshing ? "Refreshing file" : "Refresh file"}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {externalUrl !== null ? (
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        openUrlInExternalBrowser(
-                          toAbsolutePreviewUrl(externalUrl),
-                        )
-                      }
-                    >
-                      <Icon name="Globe" aria-hidden /> Open in external browser
                     </DropdownMenuItem>
                   ) : null}
                   {onOpenInEditor ? (

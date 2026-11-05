@@ -21,7 +21,7 @@ describe("createAsyncTtlMemo", () => {
     const next = createDeferredPromise<string>();
     load.mockImplementation(() => next.promise);
     const refreshes = Array.from({ length: 10 }, () =>
-      cache.run("key", load, true),
+      cache.run("key", load, { refresh: true }),
     );
     expect(load).toHaveBeenCalledTimes(2);
     next.resolve("new");
@@ -101,15 +101,53 @@ describe("createAsyncTtlMemo", () => {
     await vi.waitFor(async () =>
       expect(await cache.run("key", load)).toBe("new"),
     );
+    now = 200;
+    expect(await cache.run("key", load, { revalidateStale: false })).toBe(
+      "new",
+    );
+    expect(load).toHaveBeenCalledTimes(2);
     now = 300;
     const forced = createDeferredPromise<string>();
     load.mockImplementation(() => forced.promise);
-    const refreshed = cache.run("key", load, true);
+    const refreshed = cache.run("key", load, { refresh: true });
     const waiting = cache.run("key", load);
     expect(load).toHaveBeenCalledTimes(3);
     forced.resolve("forced");
     expect(await refreshed).toBe("forced");
     expect(await waiting).toBe("forced");
+  });
+
+  it("reports replaced values and failed background refreshes, but not invalidated refreshes", async () => {
+    let now = 0;
+    const cache = createAsyncTtlMemo<string, string>({
+      ttlMs: 100,
+      now: () => now,
+      staleWhileRevalidate: true,
+    });
+    const onReplaced = vi.fn();
+    const onRevalidateError = vi.fn();
+    const options = { onReplaced, onRevalidateError };
+    await cache.run("key", async () => "old", options);
+    now = 100;
+    const failed = createDeferredPromise<string>();
+    expect(await cache.run("key", () => failed.promise, options)).toBe("old");
+    failed.reject(new Error("offline"));
+    await vi.waitFor(() =>
+      expect(onRevalidateError).toHaveBeenCalledWith(new Error("offline")),
+    );
+    const detached = createDeferredPromise<string>();
+    expect(await cache.run("key", () => detached.promise, options)).toBe("old");
+    cache.invalidateWhere(() => true);
+    detached.resolve("detached");
+    expect(await cache.run("key", async () => "fresh", options)).toBe("fresh");
+    expect(onReplaced).not.toHaveBeenCalled();
+    expect(
+      await cache.run("key", async () => "forced", {
+        ...options,
+        refresh: true,
+      }),
+    ).toBe("forced");
+    expect(onReplaced).toHaveBeenCalledExactlyOnceWith("fresh", "forced");
   });
 
   it("retries rejected and synchronously throwing lookups", async () => {

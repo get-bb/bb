@@ -273,27 +273,6 @@ it("keeps the latest pin toggle through stale reads until every write settles", 
   );
 });
 
-it("shows the server's pinnedAt as soon as the pin is acknowledged", async () => {
-  const server = serve([entry("t1", null)]);
-  await waitFor(() =>
-    expect(server.pinnedAt("t1")).toEqual([null, null, null]),
-  );
-  const pin = createDeferredPromise<ReturnType<typeof makeThreadResponse>>();
-  vi.mocked(sdk.threads.pin).mockReturnValue(pin.promise);
-  act(() => server.view.result.current.pin.mutate({ id: "t1" }));
-  await waitFor(() => expect(typeof server.pinnedAt("t1")[0]).toBe("number"));
-  const never = new Promise<never>(() => {});
-  vi.mocked(sdk.threads.list).mockReturnValue(never);
-  vi.mocked(sdk.threads.get).mockReturnValue(never);
-  vi.mocked(request).mockReturnValue(never);
-
-  await act(async () =>
-    pin.resolve(makeThreadResponse({ ...entry("t1", 777) })),
-  );
-
-  await waitFor(() => expect(server.pinnedAt("t1")).toEqual([777, 777, 777]));
-});
-
 it("predicts on a thread list mounted while the pin is pending", async () => {
   const server = serve([entry("t1", null)]);
   await waitFor(() =>

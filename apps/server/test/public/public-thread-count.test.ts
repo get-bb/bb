@@ -54,8 +54,6 @@ describe("GET /threads/count", () => {
         total: 3,
       });
       expect(await count(harness, "?status=active")).toEqual({ total: 2 });
-      // `none` is the unambiguous "root threads only" value; a thread id can
-      // never collide with it.
       expect(await count(harness, "?parentThreadId=none")).toEqual({
         total: 1,
       });
@@ -67,8 +65,6 @@ describe("GET /threads/count", () => {
       const grouped = await count(harness, "?groupBy=host");
       expect(grouped.total).toBe(2);
       expect(grouped.groups).toEqual([{ key: host.id, count: 2 }]);
-      // An ungrouped count has no group list at all, rather than one anonymous
-      // group.
       expect((await count(harness, "")).groups).toBeUndefined();
     });
   });

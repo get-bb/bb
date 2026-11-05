@@ -98,7 +98,6 @@ function SameThreadSearchNavigationHarness() {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />
     </>
   );
@@ -130,7 +129,6 @@ function EditActionAvailabilityHarness({
       timelineRows={rows}
       onEditMessage={onEditMessage}
       threadRuntimeDisplayStatus="active"
-      workspaceRootPath={undefined}
     />
   );
 }
@@ -182,7 +180,6 @@ function SearchOlderRowsHarness({
         setLoadedOlderRows(true);
       }}
       threadRuntimeDisplayStatus="idle"
-      workspaceRootPath={undefined}
     />
   );
 }
@@ -222,7 +219,6 @@ function SearchOlderRowsFailedLoadHarness({
           });
         }}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />
     </>
   );
@@ -297,7 +293,6 @@ describe("ThreadTimelineRows actions", () => {
         onForkMessage={vi.fn()}
         onMessageAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -340,7 +335,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onSelectionAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -396,7 +390,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onEditMessage={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -419,7 +412,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onEditMessage={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -454,7 +446,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onEditMessage={onEditMessage}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -500,7 +491,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onSelectionAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -546,7 +536,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -586,7 +575,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -614,7 +602,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="active"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -650,7 +637,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="active"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -672,7 +658,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onMessageAddToChat={onMessageAddToChat}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -703,7 +688,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         onMessageAddToChat={onMessageAddToChat}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -737,7 +721,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -768,7 +751,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -811,7 +793,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -835,7 +816,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -862,7 +842,6 @@ describe("ThreadTimelineRows actions", () => {
           ]}
           threadRuntimeDisplayStatus="idle"
           onSelectionAddToChat={onSelectionAddToChat}
-          workspaceRootPath={undefined}
         />,
       );
       const prose = container.querySelector("[data-sidebar-swipe-selectable]")!;
@@ -934,7 +913,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -978,7 +956,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
     const textNode = screen.getByText(
@@ -1020,7 +997,6 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         threadRuntimeDisplayStatus="idle"
         onSelectionAddToChat={onSelectionAddToChat}
-        workspaceRootPath={undefined}
       />,
     );
     const textNode = screen.getByText(
@@ -1045,11 +1021,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1065,7 +1039,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
       [
         {
@@ -1089,10 +1062,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1116,7 +1088,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
       [
         {
@@ -1162,10 +1133,9 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
       frames.delete(id);
     });
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const view = renderWithRouter(
       <ThreadTimelineRows
@@ -1181,7 +1151,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
       [
         {
@@ -1223,10 +1192,9 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
       frames.delete(id);
     });
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
     const onLoadOlderRows = vi.fn(() => page);
     const { container } = renderWithRouter(
       <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
@@ -1280,10 +1248,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
@@ -1375,7 +1342,6 @@ describe("ThreadTimelineRows actions", () => {
             }),
           ]}
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />
       </AppNavigationHostProvider>,
     );
@@ -1438,7 +1404,6 @@ describe("ThreadTimelineRows actions", () => {
           conversationRow({ role: "assistant", text: "An answer." }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
     expect(markup).not.toContain('aria-label="Summarize"');
@@ -1474,7 +1439,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -1522,7 +1486,6 @@ describe("ThreadTimelineRows actions", () => {
           },
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -1578,7 +1541,6 @@ describe("ThreadTimelineRows actions", () => {
           },
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -1638,7 +1600,6 @@ describe("ThreadTimelineRows actions", () => {
             }),
           ]}
           threadRuntimeDisplayStatus="idle"
-          workspaceRootPath={undefined}
         />,
       );
       expect(
@@ -1700,7 +1661,6 @@ describe("ThreadTimelineRows actions", () => {
           },
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Plugin link" }));
@@ -1742,7 +1702,6 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
     const textNode = screen.getByText("Select part of this answer.").firstChild;
@@ -1781,10 +1740,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <SameThreadSearchNavigationHarness />,
@@ -1859,7 +1817,6 @@ describe("ThreadTimelineRows shared message column width", () => {
         onForkMessage={vi.fn()}
         onMessageAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
 
@@ -1938,7 +1895,6 @@ describe("ThreadTimelineRows shared message column width", () => {
         onForkMessage={vi.fn()}
         onMessageAddToChat={vi.fn()}
         threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
       />,
     );
     const reportListWidth = (width: number) => {

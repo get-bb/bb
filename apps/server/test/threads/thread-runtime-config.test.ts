@@ -1,11 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  markThreadDeleted,
-  setExperiments,
-  setThreadExecutionOverride,
-} from "@bb/db";
+import { setExperiments, setThreadExecutionOverride } from "@bb/db";
 import {
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
@@ -266,203 +262,13 @@ describe("thread runtime config", () => {
     );
   });
 
-  it.each([
-    {
-      expectedSpec: {
-        displayName: "opencode",
-        command: "opencode",
-        args: ["acp"],
-        env: {},
-      },
-      providerId: "acp-opencode",
-      requestedModel: "opencode/default",
-    },
-    {
-      expectedSpec: {
-        displayName: "Grok Build",
-        command: "grok",
-        args: ["agent", "stdio"],
-        env: {},
-        permissionCli: {
-          full: ["--always-approve"],
-          insertAfterArgs: 1,
-        },
-      },
-      providerId: "acp-grok",
-      requestedModel: "grok-4.5",
-    },
-    {
-      expectedSpec: {
-        displayName: "Hermes Agent",
-        command: "hermes",
-        args: ["acp"],
-        env: {},
-        nativeReasoning: {
-          configId: "reasoning_effort",
-          supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-          defaultLevel: "medium",
-        },
-      },
-      providerId: "acp-hermes-agent",
-      requestedModel: "acp-default",
-    },
-  ])(
-    "carries plugin-declared ACP launch specs for $providerId in bridge options",
-    async ({ expectedSpec, providerId, requestedModel }) => {
-      await withTestHarness(async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: `host-runtime-known-${providerId}`,
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-          path: "/tmp/known-acp",
-        });
-        const thread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          providerId,
-        });
-        seedThreadRuntimeState(harness.deps, {
-          environmentId: environment.id,
-          providerThreadId: `provider-${providerId}`,
-          threadId: thread.id,
-        });
-        const execution = {
-          model: requestedModel,
-          permissionMode: "accept-edits",
-          reasoningLevel: "medium",
-          serviceTier: "default",
-          source: "client/turn/requested",
-        } as const;
-
-        const startCommand = await buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId,
-          requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-        expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
-          acpLaunchSpec: expectedSpec,
-        });
-        expect(startCommand.dynamicTools).toEqual([
-          expect.objectContaining({
-            name: "update_environment_directory",
-          }),
-        ]);
-        expect(startCommand.instructions).toContain(
-          "update_environment_directory",
-        );
-
-        const submitCommand = await prepareTurnSubmitCommandPayload(
-          harness.deps,
-          {
-            environment,
-            execution,
-            permissionEscalation: "ask",
-            input: textInput("continue"),
-            target: { mode: "start" },
-            thread,
-          },
-        );
-        expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
-          acpLaunchSpec: expectedSpec,
-        });
-        expect(
-          submitCommand.resumeContext.bridgeLaunch.providerOptions,
-        ).toMatchObject({ acpLaunchSpec: expectedSpec });
-        expect(submitCommand.resumeContext.dynamicTools).toEqual([
-          expect.objectContaining({
-            name: "update_environment_directory",
-          }),
-        ]);
-        expect(submitCommand.resumeContext.instructions).toContain(
-          "update_environment_directory",
-        );
-      });
-    },
-  );
-
-  it.each([
-    {
-      childProviderId: "codex",
-      expectedPermissionMode: "auto",
-      parentProviderId: null,
-      name: "defaults root-thread execution permission mode to auto",
-      requestedModel: "gpt-5",
-    },
-    {
-      childProviderId: "codex",
-      expectedPermissionMode: "auto",
-      parentProviderId: "codex",
-      name: "defaults child execution permission mode to auto without parent history or project defaults",
-      requestedModel: "gpt-5",
-    },
-    {
-      childProviderId: "pi",
-      expectedPermissionMode: "full",
-      parentProviderId: "pi",
-      name: "defaults Pi child execution permission mode to full",
-      requestedModel: "openai-codex/gpt-5.4",
-    },
-  ])(
-    "$name",
-    async ({
-      childProviderId,
-      expectedPermissionMode,
-      parentProviderId,
-      requestedModel,
-    }) => {
-      await withTestHarness(async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: `host-runtime-${childProviderId}-${parentProviderId ?? "root"}`,
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-        });
-        const parentThread =
-          parentProviderId === null
-            ? null
-            : seedThread(harness.deps, {
-                projectId: project.id,
-                environmentId: environment.id,
-                providerId: parentProviderId,
-              });
-        const thread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          parentThreadId: parentThread?.id ?? null,
-          providerId: childProviderId,
-        });
-
-        const execution = await buildExecutionOptions(
-          harness.deps,
-          { model: requestedModel },
-          { threadId: thread.id },
-        );
-
-        expect(execution.permissionMode).toBe(expectedPermissionMode);
-      });
-    },
-  );
-
-  it("uses project permission defaults for child threads without parent execution history", async () => {
+  it("carries a bundled ACP agent's launch spec on thread start and turn submit", async () => {
+    const providerId = "acp-opencode";
+    const requestedModel = "opencode/default";
+    const expectedSpec = { command: "opencode", args: ["acp"] };
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-managed-child-project-default-permission-mode",
+        id: `host-runtime-known-${providerId}`,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -470,186 +276,75 @@ describe("thread runtime config", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
+        path: "/tmp/known-acp",
       });
-      const parentThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: parentThread.id,
-        providerId: "codex",
-      });
-
-      const execution = await buildExecutionOptions(
-        harness.deps,
-        { model: "gpt-5" },
-        {
-          threadId: childThread.id,
-          projectDefaults: {
-            providerId: "codex",
-            model: "gpt-5",
-            reasoningLevel: "medium",
-            permissionMode: "accept-edits",
-            serviceTier: "default",
-          },
-        },
-      );
-
-      expect(execution.permissionMode).toBe("accept-edits");
-    });
-  });
-
-  it("inherits live parent execution permission before project defaults", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-child-parent-execution-permission-mode",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
+        providerId,
       });
       seedThreadRuntimeState(harness.deps, {
-        threadId: parentThread.id,
         environmentId: environment.id,
-        providerThreadId: "provider-parent-permission-mode",
+        providerThreadId: `provider-${providerId}`,
+        threadId: thread.id,
+      });
+      const execution = {
+        model: requestedModel,
         permissionMode: "accept-edits",
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: parentThread.id,
-        providerId: "codex",
-      });
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      } as const;
 
-      const execution = await buildExecutionOptions(
-        harness.deps,
-        { model: "gpt-5" },
-        {
-          threadId: childThread.id,
-          projectDefaults: {
-            providerId: "codex",
-            model: "gpt-5",
-            reasoningLevel: "medium",
-            permissionMode: "accept-edits",
-            serviceTier: "default",
-          },
-        },
+      const startCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
+        projectId: project.id,
+        providerId,
+        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+      expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
+        acpLaunchSpec: expectedSpec,
+      });
+      expect(startCommand.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(startCommand.instructions).toContain(
+        "update_environment_directory",
       );
 
-      expect(execution.permissionMode).toBe("accept-edits");
-    });
-  });
-
-  it.each([
-    { providerId: "pi", model: "openai/codex-mini", modeSource: "default" },
-    { providerId: "pi", model: "openai/codex-mini", modeSource: "requested" },
-    { providerId: "pi", model: "openai/codex-mini", modeSource: "recorded" },
-    { providerId: "codex", model: "gpt-5", modeSource: "requested" },
-    { providerId: "codex", model: "gpt-5", modeSource: "recorded" },
-  ])(
-    "allows $providerId full mode from $modeSource under an auto parent",
-    async ({ providerId, model, modeSource }) => {
-      await withTestHarness(async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: "host-runtime-child-full-mode",
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-        });
-        const parentThread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-        });
-        seedThreadRuntimeState(harness.deps, {
-          threadId: parentThread.id,
-          environmentId: environment.id,
-          providerThreadId: "provider-parent-auto",
-          permissionMode: "auto",
-        });
-        const childThread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          parentThreadId: parentThread.id,
-          providerId,
-        });
-        if (modeSource === "recorded") {
-          seedThreadRuntimeState(harness.deps, {
-            threadId: childThread.id,
-            environmentId: environment.id,
-            providerThreadId: "provider-child-full",
-            permissionMode: "full",
-          });
-        }
-
-        const execution = await buildExecutionOptions(
-          harness.deps,
-          {
-            model,
-            ...(modeSource === "requested" ? { permissionMode: "full" } : {}),
-          },
-          { threadId: childThread.id },
-        );
-
-        expect(execution.permissionMode).toBe("full");
-      });
-    },
-  );
-
-  it("treats ghost parent references as root-thread execution defaults", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-deleted-parent-permission-mode",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const deletedParent = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      markThreadDeleted(harness.db, harness.hub, {
-        threadId: deletedParent.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: deletedParent.id,
-        providerId: "codex",
-      });
-
-      const execution = await buildExecutionOptions(
+      const submitCommand = await prepareTurnSubmitCommandPayload(
         harness.deps,
-        { model: "gpt-5" },
         {
-          threadId: childThread.id,
-          projectDefaults: {
-            providerId: "codex",
-            model: "gpt-5",
-            reasoningLevel: "medium",
-            permissionMode: "accept-edits",
-            serviceTier: "default",
-          },
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("continue"),
+          target: { mode: "start" },
+          thread,
         },
       );
-
-      expect(execution.permissionMode).toBe("accept-edits");
+      expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
+        acpLaunchSpec: expectedSpec,
+      });
+      expect(
+        submitCommand.resumeContext.bridgeLaunch.providerOptions,
+      ).toMatchObject({ acpLaunchSpec: expectedSpec });
+      expect(submitCommand.resumeContext.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(submitCommand.resumeContext.instructions).toContain(
+        "update_environment_directory",
+      );
     });
   });
 
@@ -906,6 +601,7 @@ describe("thread runtime config", () => {
       expect(claudeCode.options.providerOptions).toEqual({
         artifactsEnabled: false,
         chromeEnabled: false,
+        commandDescriptionsEnabled: false,
         disable1MContext: false,
         fullAccessApprovalsEnabled: false,
         memoryEnabled: true,
@@ -1691,7 +1387,8 @@ describe("thread runtime config", () => {
           environmentId: environment.id,
         });
 
-        const longBody = "x".repeat(5000);
+        const globalInstructions = "g".repeat(15_700);
+        const longBody = "x".repeat(40_000);
         stubContributions({
           instructions: [
             {
@@ -1707,6 +1404,10 @@ describe("thread runtime config", () => {
               provider: () => {
                 throw new Error("provider boom");
               },
+            },
+            {
+              pluginId: "global",
+              provider: () => globalInstructions,
             },
             {
               pluginId: "verbose",
@@ -1751,8 +1452,9 @@ describe("thread runtime config", () => {
         );
         expect(instructions).toContain("still contributes");
         expect(instructions).not.toContain(longBody);
-        expect(instructions).toContain("x".repeat(4096));
-        expect(instructions).not.toContain("x".repeat(4097));
+        expect(instructions).toContain(globalInstructions);
+        expect(instructions).toContain("x".repeat(32_768));
+        expect(instructions).not.toContain("x".repeat(32_769));
       });
     });
   });

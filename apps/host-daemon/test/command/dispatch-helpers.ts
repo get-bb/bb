@@ -262,6 +262,7 @@ export function createFakeRuntime() {
       state.ranTurnClientRequestId = args.clientRequestId;
       state.ranTurnInput = args.input;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
+      return { status: "started" };
     },
     async steerTurn(args) {
       state.steeredTurnId = args.expectedTurnId;
@@ -318,6 +319,9 @@ export function createFakeRuntime() {
     },
     hasOpenBackgroundWork() {
       return false;
+    },
+    listOpenBackgroundWork() {
+      return [];
     },
     async listModels() {
       return {

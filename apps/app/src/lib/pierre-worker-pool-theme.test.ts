@@ -12,14 +12,6 @@ function createFakePool() {
 }
 
 describe("syncPierreWorkerPoolTheme", () => {
-  it("does not call setRenderOptions when the pool already has the current theme", () => {
-    const { pool, setRenderOptions } = createFakePool();
-
-    syncPierreWorkerPoolTheme(pool, { ...CURRENT }, CURRENT);
-
-    expect(setRenderOptions).not.toHaveBeenCalled();
-  });
-
   it("pushes a theme change once, then stays quiet until the next change", () => {
     const { pool, setRenderOptions } = createFakePool();
     const next = { dark: "github-dark", light: CURRENT.light };

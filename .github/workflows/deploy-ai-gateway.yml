@@ -8,6 +8,7 @@ on:
       - ".github/workflows/deploy-ai-gateway.yml"
       - "apps/ai-gateway/**"
       - "packages/connect-db/src/**"
+      - "packages/connect-db-pg/src/**"
   workflow_dispatch:
 
 env:

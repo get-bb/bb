@@ -287,6 +287,7 @@ export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("command"),
   callId: z.string(),
   command: z.string(),
+  description: z.string().nullable(),
   cwd: z.string().nullable(),
   source: z.string().nullable(),
   output: z.string(),

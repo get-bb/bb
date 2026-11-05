@@ -4,18 +4,23 @@ export interface IntakeField {
 }
 
 const AFTER_QUESTIONS = [
-  "Skip any I've answered. Then sum up the plan in three bullets and wait for my go. My answers override the steps below.",
+  "Skip any I've answered. Then sum up the plan in three bullets and wait for me to confirm it. My answers override the steps below.",
   "If a wait times out, wait again, up to three times.",
 ].join("\n");
 
 export function withIntake(fields: IntakeField[], prompt: string): string {
   const questions = fields.map((field) => `- ${field.label} (${field.hint})`);
+  const split = prompt.indexOf("\n\n");
+  const job = split === -1 ? prompt : prompt.slice(0, split);
+  const steps = split === -1 ? "" : prompt.slice(split + 2);
   return [
-    "Ask me about each of these, one at a time, with a suggested default:",
+    job,
+    "",
+    "First, tell me in a sentence or two what you're about to do. Then ask me about each of these, one at a time, with a suggested default:",
     ...questions,
     AFTER_QUESTIONS,
     "",
-    prompt,
+    steps,
   ].join("\n");
 }
 

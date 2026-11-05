@@ -403,6 +403,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     id: z.string(),
     command: z.string(),
     cwd: z.string(),
+    description: z.string().optional(),
     status: threadEventItemStatusSchema,
     approvalStatus: threadEventItemApprovalStatusSchema,
     aggregatedOutput: z.string().optional(),
