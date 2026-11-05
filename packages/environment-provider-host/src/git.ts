@@ -36,6 +36,17 @@ export async function readGitRepositoryState(
   if (!(await detectGitSource(cwd, options))) {
     return "not_git";
   }
+  const head = await runGit(
+    ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    {
+      cwd,
+      ...options,
+      allowFailure: true,
+    },
+  );
+  if (head.exitCode === 0) {
+    return "has_commits";
+  }
   const result = await runGit(["rev-list", "--all", "--max-count=1"], {
     cwd,
     ...options,
