@@ -1,8 +1,12 @@
+import { LAST_KNOWN_GITHUB_STARS } from "../server/github-stars";
+
 export const GITHUB_URL = "https://github.com/get-bb/bb";
 
-declare const __GITHUB_STARS__: number | null | undefined;
-export const GITHUB_STARS: number | null =
-  typeof __GITHUB_STARS__ === "number" ? __GITHUB_STARS__ : null;
+declare const __GITHUB_STARS__: number | undefined;
+export const GITHUB_STARS: number =
+  typeof __GITHUB_STARS__ === "number"
+    ? __GITHUB_STARS__
+    : LAST_KNOWN_GITHUB_STARS;
 
 export function formatStarCount(count: number): string {
   return new Intl.NumberFormat("en", {

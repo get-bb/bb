@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchGitHubStars } from "./github-stars.js";
+import { LAST_KNOWN_GITHUB_STARS, fetchGitHubStars } from "./github-stars.js";
 
 function respond(response: Response | Error) {
   return vi.fn(async () => {
@@ -31,8 +31,11 @@ describe("fetchGitHubStars", () => {
     ["a body that is not JSON", new Response("<html>")],
     ["a network failure", new TypeError("fetch failed")],
     ["a timeout", new DOMException("timed out", "TimeoutError")],
-  ])("falls back to no count on %s", async (_name, response) => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(await fetchGitHubStars({ fetch: respond(response) })).toBeNull();
+  ])("falls back to the last known count on %s", async (_name, response) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await fetchGitHubStars({ fetch: respond(response) })).toBe(
+      LAST_KNOWN_GITHUB_STARS,
+    );
+    expect(warn).toHaveBeenCalledOnce();
   });
 });
