@@ -2859,17 +2859,26 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: none;
 }
 
-.bw-reopen .bw-feed {
-  animation: fw-fade-in 0.4s var(--ease-out) both;
+.bw-lead .leaving .bw-feed {
+  animation: bw-scroll-top 0.6s var(--ease-in-out) 0.45s forwards;
 }
 
-.leaving .bw-feed {
-  animation: fw-fade-out 0.3s ease forwards;
+.bw-lead .leaving .bw-feed > :not(.msg-user) {
+  animation: fw-fade-out 0.3s ease 1.15s forwards;
 }
 
-.bw-start .leaving .bw-feed,
-.bw-start .leaving .bw-m-feed {
-  animation: none;
+.bw-lead .leaving .bw-toast {
+  animation-delay: 0s;
+}
+
+.bw-lead .leaving .side .bw-reveal {
+  animation-delay: 1.55s;
+}
+
+@keyframes bw-scroll-top {
+  to {
+    transform: translateY(var(--bw-scroll-back, 0px));
+  }
 }
 
 .bw-start .leaving .bw-feed > :not(.bw-reveal-still),
@@ -3093,6 +3102,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   );
   position: relative;
   padding-bottom: var(--bw-stage-pad);
+}
+
+.bw-lead .main {
+  padding-right: max(0px, var(--mock-width) - var(--bw-fit-slice));
 }
 
 .bw-start .main {

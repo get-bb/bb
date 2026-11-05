@@ -9,7 +9,13 @@ import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import RoboticIcon from "@hugeicons/core-free-icons/RoboticIcon";
 import WorkflowCircle03Icon from "@hugeicons/core-free-icons/WorkflowCircle03Icon";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { useExperiment } from "../experiments/use-experiment";
@@ -1727,7 +1733,17 @@ const DELEGATION_PING = "Review the diff needs your approval";
 
 export function DelegationTree() {
   const { ref, active } = useMockWindow();
-  const { cycle, leaving, paused } = useCycle(28000, 800, active);
+  const { cycle, leaving, paused } = useCycle(27000, 2000, active);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const view = scrollRef.current;
+    const feed = view?.firstElementChild;
+    if (!view || !(feed instanceof HTMLElement)) return;
+    const overflow = leaving
+      ? Math.max(0, feed.offsetHeight - view.clientHeight)
+      : 0;
+    view.style.setProperty("--bw-scroll-back", `${overflow}px`);
+  }, [leaving]);
   return (
     <div
       ref={ref}
@@ -1738,11 +1754,7 @@ export function DelegationTree() {
       <div className="mock bw-window">
         <WindowBar title={DELEGATION_LEAD} />
         <div
-          className={stageClass(
-            `mock-body bw-body${cycle > 1 ? " bw-reopen" : ""}`,
-            leaving,
-            paused,
-          )}
+          className={stageClass("mock-body bw-body", leaving, paused)}
           key={cycle}
         >
           <Sidebar>
@@ -1779,7 +1791,7 @@ export function DelegationTree() {
             />
           </Sidebar>
           <div className="main">
-            <div className="bw-feed-scroll">
+            <div ref={scrollRef} className="bw-feed-scroll">
               <div className="feed bw-feed">
                 <div className="msg-user">
                   Ship the checkout timeout fix. Plan it, build it and get it
