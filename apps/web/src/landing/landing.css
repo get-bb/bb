@@ -3353,7 +3353,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-sm);
-  background: var(--mock-active);
+  background: color-mix(in oklch, var(--ink) 9%, var(--bg));
 }
 
 .bw-m-stop i {
