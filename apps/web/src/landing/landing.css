@@ -81,7 +81,6 @@
     inset 0 0 0 1.5px var(--phone-edge),
     0 0 0 1px color-mix(in oklab, var(--shade) 18%, transparent),
     0 40px 80px -30px color-mix(in oklab, var(--shade) 55%, transparent);
-  --ring-soft: 0 0 0 1px var(--border-soft);
   --phone-body: #1b1b1d;
   --phone-edge: #3a3a3e;
   --phone-screen: #000;
@@ -2719,6 +2718,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw .rail-btn {
   position: relative;
+  color: var(--dim);
+}
+
+.bw .rail-btn.is-on {
+  background: color-mix(in oklch, var(--ink) 9%, var(--bg));
+  color: var(--ink);
+}
+
+.bw .rail-ic {
+  color: inherit;
 }
 
 .bw-side-foot {
@@ -2745,7 +2754,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw .trow.active,
 .bw .trow.active:hover {
-  background: var(--mock-active);
+  background: color-mix(in oklch, var(--ink) 7%, var(--bg));
 }
 
 .bw .bar-toggle {
@@ -3311,7 +3320,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg);
-  box-shadow: var(--shadow-lift);
+  box-shadow: 0 -4px 12px -4px color-mix(in oklab, var(--shade) 7%, transparent);
 }
 
 .bw-m-placeholder {
@@ -4788,7 +4797,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 18px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--mx-accent) 22%, var(--bg));
+  background: color-mix(
+    in oklch,
+    var(--mx-accent) 22%,
+    oklch(from var(--bg) l 0 none)
+  );
   color: var(--ink);
   font-size: 8.5px;
   font-weight: 600;
@@ -4814,7 +4827,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   background: var(--bg);
   color: var(--ink);
   font-weight: 500;
-  box-shadow: var(--ring-soft);
+  box-shadow: 0 0 0 1px var(--border-soft);
 }
 
 .mx-state {
@@ -4890,7 +4903,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   gap: 7px;
   padding: 9px 11px;
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 7px;
   background: var(--surface);
   font-size: var(--text-label-small);
 }
@@ -5032,7 +5045,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   height: 24px;
   padding-right: 6px;
   overflow: hidden;
-  border-radius: var(--radius-xs);
+  border-radius: 5px;
   color: var(--ink);
   white-space: nowrap;
 }
@@ -5218,7 +5231,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-direction: column;
   gap: 2px;
   padding: 7px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: 7px;
 }
 
 .mx-sh-card.is-active {
@@ -5288,10 +5301,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-sh-badge.is-run {
   color: var(--mx-cyan);
-}
-
-.mx-sh-badge.is-ok {
-  color: var(--mx-ok);
 }
 
 .mx-sh-badge.is-ask {
@@ -5364,7 +5373,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mx-ag-tools .mx-seg {
   background: var(--bg);
-  box-shadow: var(--ring-soft);
+  box-shadow: 0 0 0 1px var(--border-soft);
   font-size: var(--mock-text-xs);
 }
 
@@ -5419,8 +5428,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--mx-node) 16%, var(--bg));
+  border-radius: 5px;
+  background: color-mix(
+    in oklch,
+    var(--mx-node) 16%,
+    oklch(from var(--bg) l 0 none)
+  );
   color: var(--mx-node);
 }
 

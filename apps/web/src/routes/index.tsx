@@ -1205,8 +1205,8 @@ function RefreshedBelowFold() {
       >
         <p>
           Have Claude Code plan, Cursor implement, Codex review, and Grok
-          orchestrate them all. You can step in anytime, and only hear about
-          what needs you.
+          orchestrate them all. Step in anytime, and only hear about what needs
+          you.
         </p>
       </Band>
 
