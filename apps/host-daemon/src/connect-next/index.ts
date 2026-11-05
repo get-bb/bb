@@ -54,6 +54,7 @@ const STATE_FOR: Record<
   connecting: "connecting",
   connected: "connected",
   refused: "refused",
+  waiting: "waiting",
   offline: "offline",
   error: "error",
   halted: "error",
@@ -286,6 +287,7 @@ export class MachineNextTunnel {
       proxies: () =>
         this.label === null ? [] : machineShareProxies(this.label, this.ports),
       log: {
+        debug: (message) => this.options.logger.debug({}, message),
         info: (message) => this.options.logger.debug({}, message),
         warn: (message) =>
           this.options.logger.warn({}, `connect next: ${message}`),

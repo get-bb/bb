@@ -2110,10 +2110,19 @@ export interface InternalDoNotUsePluginHostNextTunnelStatus {
   /**
    * `idle` while the machine shares no port or next is off, `refused` when
    * the gate refused the machine credential (retried after five minutes),
+   * `waiting` while the gate has not enabled connect next for this server
+   * yet (retried about every ten minutes),
    * `offline` when the gate cannot be reached (retried with backoff),
    * `error` when the daemon could not start frpc or refused the configuration.
    */
-  state: "idle" | "connecting" | "connected" | "refused" | "offline" | "error";
+  state:
+    | "idle"
+    | "connecting"
+    | "connected"
+    | "refused"
+    | "waiting"
+    | "offline"
+    | "error";
   /** The machine's gate label, or null before the daemon learned it. */
   label: string | null;
   lastError: string | null;

@@ -4063,9 +4063,6 @@ importers:
       '@bb/frp-client':
         specifier: workspace:*
         version: link:../../packages/frp-client
-      '@bb/shared-ui':
-        specifier: workspace:*
-        version: link:../../packages/shared-ui
       '@bb/tunnel-contract':
         specifier: workspace:*
         version: link:../../packages/tunnel-contract

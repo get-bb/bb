@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { FRP_LOGIN_REFUSED_REASON } from "@bb/tunnel-contract/next";
+import {
+  FRP_LOGIN_PAUSED_REASON,
+  FRP_LOGIN_REFUSED_REASON,
+} from "@bb/tunnel-contract/next";
 import { cleanFrpcLine, parseFrpcLine } from "../src/log.js";
 
 describe("parseFrpcLine", () => {
@@ -31,6 +34,10 @@ describe("parseFrpcLine", () => {
     [
       `2026-10-20 17:31:29.350 [W] [client/service.go:323] connect to server error: ${FRP_LOGIN_REFUSED_REASON}`,
       { kind: "refused", reason: FRP_LOGIN_REFUSED_REASON },
+    ],
+    [
+      `2026-10-20 17:31:29.350 [W] [client/service.go:323] connect to server error: ${FRP_LOGIN_PAUSED_REASON}`,
+      { kind: "paused" },
     ],
     [
       "2026-10-20 17:31:29.350 [W] [client/service.go:323] connect to server error: the gate could not check this",

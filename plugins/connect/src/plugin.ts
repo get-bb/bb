@@ -22,9 +22,14 @@ import {
   createServerAccessRecheck,
   registerServerAccess,
 } from "./server-access.js";
-import { NextAddress, nextSharePublicUrl } from "./next-address.js";
+import { NextAddress } from "./next-address.js";
 import {
-  ShareChanges,
+  RemoteAccessFeed,
+  connectRemoteAccessRpcContract,
+  createRemoteAccessHandlers,
+} from "./remote-access-feed.js";
+import {
+  RevisionFeed,
   connectServerSharesRpcContract,
   createServerSharesHandlers,
 } from "./server-shares.js";
@@ -38,6 +43,7 @@ import {
 export interface ConnectPluginOptions {
   accountRetryMinMs?: number;
   serverSharesLongPollMs?: number;
+  remoteAccessLongPollMs?: number;
 }
 
 export function createConnectPlugin(options: ConnectPluginOptions = {}) {
@@ -69,7 +75,13 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
         process.env.BB_DEV_APP_PORT,
       ) ?? bb.server.loopbackBaseUrl;
 
-    const shareChanges = new ShareChanges();
+    const shareChanges = new RevisionFeed();
+    const remoteAccessFeed = new RemoteAccessFeed(currentSettings.remoteAccess);
+    bb.onDispose(() => {
+      remoteAccessFeed.set(false);
+      remoteAccessFeed.dispose();
+      shareChanges.dispose();
+    });
     const nextAddress = new NextAddress(() => bb.sdk);
     const shares = new ShareRegistry({
       kv: bb.storage.kv,
@@ -107,12 +119,14 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
     settings.onChange((next) => {
       currentSettings = next;
       tunnel.setEnabled(next.remoteAccess);
+      remoteAccessFeed.set(next.remoteAccess);
     });
 
     const remoteAccess: RemoteAccessSwitch = {
       async set(enabled) {
         await settings.experimental_set({ remoteAccess: enabled });
         tunnel.setEnabled(enabled);
+        remoteAccessFeed.set(enabled);
         return tunnel.refreshStatus();
       },
     };
@@ -141,6 +155,15 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
           : { longPollMs: options.serverSharesLongPollMs }),
       }),
     );
+    bb.rpc.register(
+      connectRemoteAccessRpcContract,
+      createRemoteAccessHandlers({
+        feed: remoteAccessFeed,
+        ...(options.remoteAccessLongPollMs === undefined
+          ? {}
+          : { longPollMs: options.remoteAccessLongPollMs }),
+      }),
+    );
     registerConnectCli({
       bb,
       tunnel,
@@ -160,14 +183,10 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
           Date.now() - status.lastRemoteActivityAt <
             REMOTE_ACTIVITY_INSTRUCTIONS_MS);
       if (!recent) return null;
-      const nextOrigin = nextAddress.current();
       return (
         `The user is currently viewing this bb remotely at ${status.url}. ` +
         "Port shares work from a thread on any enrolled host: when you start an HTTP server they should see, run `bb connect expose <port>` from that thread. " +
-        "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely." +
-        (nextOrigin === null
-          ? ""
-          : ` This bb is also reachable through bb connect next at ${nextOrigin}, so the command prints a second URL on the next address (${nextSharePublicUrl(nextOrigin, "<port>")} for ports on the bb server's machine, <machine-label>--<port> on the same domain for other machines); give the user both, or the one matching the address they use.`)
+        "The command returns the correct public URL for the thread's host; give it to them as a markdown link because a localhost URL will not work remotely."
       );
     });
 

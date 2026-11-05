@@ -18,6 +18,10 @@ import {
   createRpcHandlers,
   type ConnectNextControls,
 } from "./rpc.js";
+import {
+  createRemoteAccessClient,
+  watchRemoteAccess,
+} from "./remote-access.js";
 import { createSharesClient, watchServerShares } from "./shares.js";
 import { NextTunnel, type NextTunnelTiming } from "./tunnel.js";
 import { CONNECT_NEXT_REALTIME_CHANNEL } from "./types.js";
@@ -40,9 +44,9 @@ export function createConnectNextPlugin(
     const settings = bb.settings.define({
       enabled: {
         type: "boolean",
-        label: "Reach this bb at its next address (beta)",
+        label: "Nearest region",
         description:
-          "Also make this bb reachable at https://<label>.next.<your bb account's domain> through bb's new Fly gate while it is signed in to your bb account. Your bb connect address keeps working.",
+          "Serve remote access from the bb connect region nearest you. Off while bb connect's Remote access is off.",
         default: true,
       },
     });
@@ -52,6 +56,7 @@ export function createConnectNextPlugin(
       path.join(bb.server.experimental_dataDir, "plugins", bb.pluginId);
     const account = createAccountClient(() => bb.sdk);
     const sharesClient = createSharesClient(() => bb.sdk);
+    const remoteAccessClient = createRemoteAccessClient(() => bb.sdk);
     const tunnel = new NextTunnel({
       frpDir: path.join(dataDir(), "frp"),
       serverOverride,
@@ -121,6 +126,17 @@ export function createConnectNextPlugin(
                           baseUrl: next.baseUrl,
                         },
                   );
+                },
+                ...retry,
+              },
+              signal,
+            ),
+            watchRemoteAccess(
+              {
+                remoteAccess: remoteAccessClient,
+                log: bb.log,
+                onEnabled: (enabled) => {
+                  void tunnel.setRemoteAccess(enabled);
                 },
                 ...retry,
               },

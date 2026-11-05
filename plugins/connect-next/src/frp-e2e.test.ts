@@ -8,7 +8,10 @@ import {
   createFakePluginHost,
   type FakePluginHost,
 } from "@get-bb/plugin-sdk/testing";
-import { FRP_CREDENTIAL_META } from "@bb/tunnel-contract/next";
+import {
+  FRP_CREDENTIAL_META,
+  FRP_LOGIN_PAUSED_REASON,
+} from "@bb/tunnel-contract/next";
 import { createConnectNextPlugin } from "./plugin.js";
 import { FakeAccount } from "./testing/fake-account.js";
 import {
@@ -27,7 +30,7 @@ import {
   waitFor,
   type RunningFrps,
 } from "@bb/frp-client/testing";
-import { FakeConnectShares, routeRpc } from "./testing/fake-connect.js";
+import { FakeConnect, routeRpc } from "./testing/fake-connect.js";
 import { recordingIngress } from "./testing/recording-ingress.js";
 import type { NextTunnel } from "./tunnel.js";
 import type { ConnectNextStatus } from "./types.js";
@@ -43,6 +46,7 @@ let frps: RunningFrps;
 let origin: Awaited<ReturnType<typeof startOrigin>>;
 let acceptedCredential = CREDENTIAL;
 let claimableLabel: string | null = null;
+let pausedLogin = false;
 
 beforeAll(async () => {
   workDir = await fs.mkdtemp(path.join(os.tmpdir(), "connect-next-e2e-"));
@@ -53,6 +57,7 @@ beforeAll(async () => {
       claimableLabel === null
         ? ownsSubdomain(user, subdomain)
         : subdomain === claimableLabel,
+    () => (pausedLogin ? FRP_LOGIN_PAUSED_REASON : null),
   );
   frps = await startFrps(binaries.frps, workDir, hooks.port);
   origin = await startOrigin();
@@ -68,7 +73,7 @@ afterAll(async () => {
 interface Loaded {
   host: FakePluginHost;
   account: FakeAccount;
-  connect: FakeConnectShares;
+  connect: FakeConnect;
   tunnel: NextTunnel;
   ingress: ReturnType<typeof recordingIngress>;
   dataDir: string;
@@ -85,6 +90,7 @@ afterEach(async () => {
   }
   acceptedCredential = CREDENTIAL;
   claimableLabel = null;
+  pausedLogin = false;
 });
 
 async function load(options: {
@@ -93,7 +99,7 @@ async function load(options: {
   trustedCertificates?: () => Promise<string[]>;
 }): Promise<Loaded> {
   const account = new FakeAccount();
-  const connect = new FakeConnectShares();
+  const connect = new FakeConnect();
   const dataDir = await fs.mkdtemp(path.join(workDir, "data-"));
   const ingress = recordingIngress(() => origin.baseUrl);
   const host = createFakePluginHost({
@@ -118,6 +124,7 @@ async function load(options: {
       restartMinMs: 100,
       restartMaxMs: 500,
       refusedRetryMs: 60_000,
+      pausedRetryMs: 1_000,
       stopGraceMs: 2_000,
     },
     accountRetryMinMs: 50,
@@ -534,6 +541,122 @@ describe("connect next with real frpc and frps", () => {
     });
     expect(current.ingress.opened).toEqual([]);
     await current.host.harness.setSettings({ enabled: true });
+    await waitForState(current, "connected");
+  }, 60_000);
+});
+
+describe("connect next follows bb connect's remote access", () => {
+  async function connected(): Promise<{ current: Loaded; pid: number }> {
+    const current = await load({ server: localServer() });
+    current.account.signIn({
+      serverId: SERVER_ID,
+      label: LABEL,
+      credential: CREDENTIAL,
+    });
+    await waitForState(current, "connected");
+    const pid = current.tunnel.childPid();
+    if (pid === null) throw new Error("frpc is not running");
+    return { current, pid };
+  }
+
+  it("never dials while remote access is off at start", async () => {
+    const current = await load({ server: localServer() });
+    current.connect.setRemoteAccess(false);
+    current.account.signIn({
+      serverId: SERVER_ID,
+      label: LABEL,
+      credential: CREDENTIAL,
+    });
+    await waitFor(
+      () => rpcStatus(current),
+      (status) => status.label === LABEL,
+    );
+    await waitFor(
+      () => current.connect.calls,
+      (calls) =>
+        calls.includes("connect.internal_DO_NOT_USE.waitForRemoteAccessChange"),
+    );
+    expect(await rpcStatus(current)).toMatchObject({
+      enabled: true,
+      remoteAccess: false,
+      state: "off",
+    });
+    expect(current.ingress.opened).toEqual([]);
+    expect(current.tunnel.childPid()).toBeNull();
+    expect(
+      current.host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+    ).toBeNull();
+    const cli = await current.host.harness.runCli(["status"]);
+    expect(cli.stdout).toContain("remote access is off");
+  }, 60_000);
+
+  it("stops frpc and machine tunnels when remote access turns off, and reconnects when it is back on", async () => {
+    const { current, pid } = await connected();
+    expect(
+      current.host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+    ).not.toBeNull();
+
+    current.connect.setRemoteAccess(false);
+    await waitForState(current, "off");
+    await waitFor(
+      () => processAlive(pid),
+      (alive) => !alive,
+    );
+    expect(current.tunnel.childPid()).toBeNull();
+    expect(
+      current.host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+    ).toBeNull();
+    expect((await vhostGet(frps.vhostPort, LABEL, "/gone")).status).not.toBe(
+      200,
+    );
+
+    current.connect.setRemoteAccess(true);
+    await waitForState(current, "connected");
+    expect(
+      current.host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+    ).not.toBeNull();
+    expect((await vhostGet(frps.vhostPort, LABEL, "/back")).status).toBe(200);
+  }, 60_000);
+
+  it("treats a disabled connect plugin as remote access off", async () => {
+    const { current, pid } = await connected();
+    current.connect.disable();
+    await waitForState(current, "off");
+    await waitFor(
+      () => processAlive(pid),
+      (alive) => !alive,
+    );
+    expect(
+      current.host.harness.internal_DO_NOT_USE_nextTunnelConfig,
+    ).toBeNull();
+
+    current.connect.enable();
+    await waitForState(current, "connected");
+  }, 60_000);
+});
+
+describe("connect next before the gate enables this server", () => {
+  it("waits without an error and connects once the gate lets it in", async () => {
+    pausedLogin = true;
+    const current = await load({ server: localServer() });
+    current.account.signIn({
+      serverId: SERVER_ID,
+      label: LABEL,
+      credential: CREDENTIAL,
+    });
+    const waiting = await waitForState(current, "waiting");
+    expect(waiting.lastError).toBeNull();
+    expect(waiting.nextRetryAt).not.toBeNull();
+    const logged = current.host.harness.logEntries.filter(
+      (entry) =>
+        entry.level !== "debug" &&
+        entry.message.includes(FRP_LOGIN_PAUSED_REASON),
+    );
+    expect(logged).toEqual([]);
+    const cli = await current.host.harness.runCli(["status"]);
+    expect(cli.stdout).toContain("not yet enabled for this server");
+
+    pausedLogin = false;
     await waitForState(current, "connected");
   }, 60_000);
 });

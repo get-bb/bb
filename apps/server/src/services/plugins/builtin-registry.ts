@@ -78,7 +78,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "connect-next",
     pluginId: "bb--connect-next",
-    defaultEnabled: false,
+    defaultEnabled: true,
   },
   {
     name: "environment-project-checkout",

@@ -1,21 +1,22 @@
 # bb connect next (Fly)
 
-bb connect next is an opt-in second way in to a bb server, next to the Cloudflare gate (`apps/connect`).
-A server with the `connect-next` plugin enabled answers at `https://<label>.next.getbb.app` as well as
+bb connect next is a second way in to a bb server, next to the Cloudflare gate (`apps/connect`), and
+the first step of moving bb connect from Cloudflare to Fly. It is on by default and follows bb connect's
+Remote access setting. A server running it answers at `https://<label>.next.getbb.app` as well as
 `https://<label>.getbb.app` (staging: `https://<label>.next.vibecodethis.site`; the plugin derives the
 domain from its bb account, see Plugin). Accounts, servers, machines, credentials and OAuth grants stay in the
 connect Postgres database (PlanetScale, reached through Hyperdrive); only the data plane moves to Fly.
 
 ## Pieces
 
-| Piece          | Where                                                                       | Owns                                                                                                                                                                                                                       |
-| -------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)         | Names, wire types, gate assertion signing and verification                                                                                                                                                                 |
-| Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                              | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN` |
-| Gate keys      | `apps/web` (getbb.app apex)                                                 | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth           |
-| Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                             | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                   |
-| Server ingress | `apps/server/src/services/connect-next`                                     | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                              |
-| Plugin         | `plugins/connect-next` (builtin id `bb--connect-next`, disabled by default) | Downloads, verifies, configures and supervises `frpc`; settings, status, RPC, CLI                                                                                                                                          |
+| Piece          | Where                                                                      | Owns                                                                                                                                                                                                                       |
+| -------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)        | Names, wire types, gate assertion signing and verification                                                                                                                                                                 |
+| Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                             | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN` |
+| Gate keys      | `apps/web` (getbb.app apex)                                                | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth           |
+| Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                            | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                   |
+| Server ingress | `apps/server/src/services/connect-next`                                    | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                              |
+| Plugin         | `plugins/connect-next` (builtin id `bb--connect-next`, enabled by default) | Downloads, verifies, configures and supervises `frpc`; settings, status, RPC, CLI                                                                                                                                          |
 
 ## Request path and checks
 
@@ -172,10 +173,21 @@ is unchanged and still trusts local callers.
 
 ## Plugin
 
-`plugins/connect-next` ships as a builtin plugin that is disabled by default. Enabling it is the
-opt-in: its `enabled` setting ("Reach this bb at its next address (beta)") defaults to `true`, so the
-tunnel starts as soon as bb account is signed in. The setting (or `bb connect-next off`) turns the
-next address off without disabling the plugin.
+`plugins/connect-next` ships as a builtin plugin, "bb connect regions", that is enabled by default
+(`defaultEnabled: true` in `apps/server/src/services/plugins/builtin-registry.ts`). An install that
+never toggled it follows that default, so it turns on with the update that ships it; an install whose
+owner disabled the plugin stays off. Its `enabled` setting ("Nearest region") defaults to `true`; the
+setting (or `bb connect-next off`) turns the tunnel off without disabling the plugin.
+
+- **Remote access.** The tunnel, and the machine tunnels it configures, run only while bb connect's
+  Remote access setting (`connect`'s `remoteAccess`, `bb connect on|off`) is on. The plugin reads it with
+  `connect.internal_DO_NOT_USE.remoteAccess` and long-polls
+  `connect.internal_DO_NOT_USE.waitForRemoteAccessChange({ afterRevision })` (25 s); both answer
+  `{ revision, enabled }` and only to `bb--connect-next`. A toggle wakes the long-poll at once. Any failure
+  to read it counts as off: a disabled or stopped connect plugin (HTTP 404/503, or a long-poll released
+  when connect is disposed, which also sets the value to off first) closes frpc and the ingress and sends
+  machines `null`. Each start of the plugin's service begins from off until the first read answers.
+  The status carries `remoteAccess`; with it off the state is `off`.
 
 - **Identity.** It follows bb account (`bb-account.v1.status` / `waitForStatusChange`) for
   `serverId`, `serverLabel` and `baseUrl`, and reads the link credential with `bb-account.v1.connectCredential`,
@@ -200,9 +212,13 @@ next address off without disabling the plugin.
 - **Ingress.** `bb.server.internal_DO_NOT_USE_openTunnelIngress({ audience: gateAudienceForServer(id) })`,
   opened before frpc starts and closed when it stops (`plugins/connect-next/src/ingress.ts`). If it
   throws, the status is `error` and frpc is not started. The main loopback port is never exposed.
-- **Status.** `off`, `signed-out`, `connecting`, `connected`, `refused` (the Login hook
+- **Status.** `off` (the setting or bb connect's remote access is off), `signed-out`, `connecting`,
+  `connected`, `refused` (the Login hook
   answered exactly `FRP_LOGIN_REFUSED_REASON` from `@bb/tunnel-contract/next`, or a NewProxy hook
-  refused the proxy; retried after 5 minutes), `offline` (any other login failure, including
+  refused the proxy; retried after 5 minutes), `waiting` (the Login hook answered exactly
+  `FRP_LOGIN_PAUSED_REASON`: the gate has not enabled connect next for this server yet during the
+  rollout; frpc is stopped and retried after 10 minutes ± 20%, `lastError` stays `null`, and frpc's
+  lines are logged at debug until it connects), `offline` (any other login failure, including
   transport errors and "the gate could not check this"; frpc keeps retrying),
   `error` (ingress, download or spawn failed; retried with backoff). frpc is restarted with backoff
   when it exits. Its log goes to the plugin log with the credential redacted. Realtime channel
@@ -221,8 +237,11 @@ next address off without disabling the plugin.
   `<scheme>://<machine-label>--<port>.<next domain>` to other machines' listings (see Machine tunnels).
   A machine enrolled through the next address already has that address as its listing's `url`, so
   its listing carries no `nextUrl` and the CLI prints the address once.
-- **Surfaces.** The `enabled` setting's switch and a settings section with the state, address,
-  shared ports and each machine's tunnel; RPC `status` (with
+- **Surfaces.** The `enabled` setting's switch and a settings section with one line of state, why
+  it is off when bb connect's remote access is off, the last error for `refused`, `offline` and
+  `error`, and a line per machine in one of those states. It shows no address: the next address is an
+  implementation detail, and `bb connect expose` and `bb connect shares` print only the bb connect
+  URL (their `--json` listings still carry `nextUrl`). RPC `status` (with
   `shares: [{ port, url, state: pending | active | refused, error }]` and
   `machines: [{ hostId, hostName, label, state, lastError, nextRetryAt, since, shares }]`) and
   `setEnabled({ enabled })`; CLI `bb connect-next status|on|off [--json]` (`status` prints a
@@ -243,7 +262,7 @@ daemon through the same gate. The machine label root shows the gate's machine pa
 main proxy for a machine.
 
 - **Policy.** The plugin calls `bb.hosts.internal_DO_NOT_USE_setNextTunnels({ domain, server })` while its
-  own tunnel is wanted (on, signed in, service running) with the domain and tunnel server it dials
+  own tunnel is wanted (on, bb connect's remote access on, signed in, service running) with the domain and tunnel server it dials
   itself (`BB_CONNECT_NEXT_SERVER` included), and `null` otherwise. The server
   (`apps/server/src/ws/host-shared-ports.ts`) keeps that one config, owned by the plugin and cleared
   when it is disabled.
@@ -253,7 +272,9 @@ main proxy for a machine.
   (`hosts.connect_machine_id` set and `hasMachineCredential`); `config` is `null` for any other host.
   The daemon answers with `{ type: "connect-next.status", status: { state, label, lastError,
 nextRetryAt, since, shares: [{ port, state, error }] } }` whenever it changes and on every session
-  open; the server keeps the latest per session in memory and drops it with the session. The server
+  open; the server keeps the latest per session in memory and drops it with the session. `state`
+  is one of `idle`, `connecting`, `connected`, `refused`, `waiting` (added in protocol 262),
+  `offline`, `error`. The server
   accepts protocol 246 and 247 (`HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS`): a 246 daemon gets the
   old session-open response (no `connectNext`) and no `connect-next.*` message, so its Cloudflare
   machine tunnel works as before and it simply has no next tunnel.
@@ -269,7 +290,9 @@ nextRetryAt, since, shares: [{ port, state, error }] } }` whenever it changes an
   it restarts), daemon shutdown and machine removal stop it too, and so does losing the server
   session for 30 s (a machine that joined through the next address cannot hear `null` once next is
   off); the next session-open response starts it again. A Login refusal with the fixed
-  reason reports `refused` and retries after 5 minutes; other failures report `offline` and frpc
+  reason reports `refused` and retries after 5 minutes; `FRP_LOGIN_PAUSED_REASON` reports
+  `waiting` (protocol 262; no `lastError`, debug logging only) and retries after 10 minutes ± 20%;
+  other failures report `offline` and frpc
   keeps retrying; `error` covers download, spawn and a refused config. frpc's log goes to the
   daemon log at debug, with the credential redacted.
 - **Trust.** The daemon only sends its credential to the domain it enrolled with: the config's

@@ -21,7 +21,10 @@ import {
   waitFor,
   type RunningFrps,
 } from "@bb/frp-client/testing";
-import { FRP_CREDENTIAL_META } from "@bb/tunnel-contract/next";
+import {
+  FRP_CREDENTIAL_META,
+  FRP_LOGIN_PAUSED_REASON,
+} from "@bb/tunnel-contract/next";
 import type {
   HostDaemonConnectNextConfig,
   HostDaemonConnectNextStatus,
@@ -343,6 +346,7 @@ let binaries: Awaited<ReturnType<typeof installTestFrp>>;
 let hooks: Awaited<ReturnType<typeof startGateHooks>>;
 let frps: RunningFrps;
 let acceptedCredential = CREDENTIAL;
+let pausedLogin = false;
 const devServers: Array<{ close(): Promise<void> }> = [];
 const runners: MachineNextTunnel[] = [];
 
@@ -378,7 +382,11 @@ describe("MachineNextTunnel with real frpc and frps", () => {
   beforeAll(async () => {
     workDir = await fs.mkdtemp(path.join(os.tmpdir(), "machine-next-"));
     binaries = await installTestFrp(path.join(workDir, "bin"));
-    hooks = await startGateHooks(() => acceptedCredential);
+    hooks = await startGateHooks(
+      () => acceptedCredential,
+      undefined,
+      () => (pausedLogin ? FRP_LOGIN_PAUSED_REASON : null),
+    );
     frps = await startFrps(binaries.frps, workDir, hooks.port);
   }, 180_000);
 
@@ -386,6 +394,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
     for (const runner of runners.splice(0)) await runner.shutdown();
     for (const dev of devServers.splice(0)) await dev.close();
     acceptedCredential = CREDENTIAL;
+    pausedLogin = false;
   });
 
   afterAll(async () => {
@@ -428,6 +437,7 @@ describe("MachineNextTunnel with real frpc and frps", () => {
         restartMinMs: 100,
         restartMaxMs: 500,
         refusedRetryMs: 60_000,
+        pausedRetryMs: 1_000,
         stopGraceMs: 2_000,
       },
     });
@@ -551,6 +561,38 @@ describe("MachineNextTunnel with real frpc and frps", () => {
     expect(statuses.some((status) => status.state === "refused")).toBe(true);
     expect(lines.map((line) => line.message).join("\n")).not.toContain(
       CREDENTIAL,
+    );
+  }, 60_000);
+
+  it("waits quietly while the gate has not enabled this server, then connects", async () => {
+    pausedLogin = true;
+    const lines: LogLine[] = [];
+    const dev = await startDevServer();
+    const { runner } = await realRunner(lines);
+    await runner.setPorts([dev.port]);
+    const waiting = await waitFor(
+      () => runner.status(),
+      (status) => status.state === "waiting",
+    );
+    expect(waiting.lastError).toBeNull();
+    expect(waiting.nextRetryAt).not.toBeNull();
+    expect(
+      lines.filter(
+        (line) =>
+          line.level !== "debug" &&
+          line.message.includes(FRP_LOGIN_PAUSED_REASON),
+      ),
+    ).toEqual([]);
+    expect(
+      lines.filter((line) => line.level === "warn" || line.level === "error"),
+    ).toEqual([]);
+
+    pausedLogin = false;
+    await waitFor(
+      () => runner.status(),
+      (status) =>
+        status.state === "connected" &&
+        status.shares.every((share) => share.state === "active"),
     );
   }, 60_000);
 });

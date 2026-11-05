@@ -1,7 +1,8 @@
 # connect-next (`bb--connect-next`)
 
-Opt-in second way in to a bb server: `https://<label>.next.getbb.app`, served by
-the Fly gate (`apps/connect-next`) through frp. The domain follows the bb
+"bb connect regions": bb connect through the Fly gate (`apps/connect-next`) over
+frp, on by default. It also answers at `https://<label>.next.getbb.app` and runs
+only while bb connect's Remote access is on. The domain follows the bb
 account: `next.<host of the account's base URL>`, so a staging account
 (`https://vibecodethis.site`) gets `https://<label>.next.vibecodethis.site` and
 local Cloud (`http://bb.localhost:<port>`) `http://<label>.next.bb.localhost:<port>`. The design is in
@@ -24,9 +25,17 @@ local Cloud (`http://bb.localhost:<port>`) `http://<label>.next.bb.localhost:<po
 - `src/tunnel.ts` opens the tunnel ingress with `gateAudienceForServer(serverId)`
   and runs an `FrpcSupervisor` with the main proxy (`bb`, `subdomain = <label>`)
   pointing at it. The supervisor restarts `frpc` with backoff, parses its log
-  into `connecting`, `connected`, `refused`, or `offline`, waits five minutes
-  after a refusal before trying again, and the tunnel closes `frpc` and the
-  ingress on off, sign-out, and stop. Log lines are redacted of the credential.
+  into `connecting`, `connected`, `refused`, `waiting`, or `offline`, waits five
+  minutes after a refusal and about ten (± 20%) while the gate has not enabled
+  this server yet (`FRP_LOGIN_PAUSED_REASON`; no error, debug logging only)
+  before trying again, and the tunnel closes `frpc` and the ingress on off,
+  sign-out, remote access off, and stop. Log lines are redacted of the
+  credential.
+- `src/remote-access.ts` long-polls connect's Remote access setting:
+  `connect.internal_DO_NOT_USE.remoteAccess` and
+  `connect.internal_DO_NOT_USE.waitForRemoteAccessChange({ afterRevision })`
+  (25 s), both `{ revision, enabled }` and answered to `bb--connect-next` only.
+  Any failure, including a disabled or stopped connect plugin, counts as off.
 - `src/ingress.ts` is the only place that touches the server's ingress API,
   `bb.server.internal_DO_NOT_USE_openTunnelIngress({ audience })`. It is looked up at
   run time; a server without it reports the `error` state with a message
@@ -65,7 +74,8 @@ status lists each share with its URL and proxy state (`pending`, `active`,
 
 ## Machines
 
-While the plugin's tunnel is wanted (on, signed in, service running),
+While the plugin's tunnel is wanted (on, remote access on, signed in, service
+running),
 `src/tunnel.ts` calls `bb.hosts.internal_DO_NOT_USE_setNextTunnels({ domain, server })`
 with the same next domain and tunnel server it dials itself
 (`BB_CONNECT_NEXT_SERVER` included), and `null` otherwise. The server sends it
@@ -75,4 +85,5 @@ shared from it (see Machine tunnels in
 daemons' reports with `bb.hosts.internal_DO_NOT_USE_nextTunnelStatuses()`, republishes
 its status on `bb.hosts.internal_DO_NOT_USE_onNextTunnelStatusChange`, and lists every
 machine that is not idle, shares a port or reports an error under `machines`
-in `status`, the CLI and the settings section.
+in `status` and the CLI. The settings section names only machines whose
+tunnel is `refused`, `offline` or `error`.
