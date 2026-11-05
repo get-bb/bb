@@ -2808,6 +2808,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-left: auto;
 }
 
+.bw .bar-title {
+  font-weight: 400;
+}
+
 .bw .bw-dock {
   flex-shrink: 0;
   padding: 0 16px 8px;
@@ -2976,51 +2980,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .bw-fade {
   animation: fw-fade-in var(--dur-med) ease var(--fw-at, 0s) both;
-}
-
-.bw-phases {
-  display: inline-grid;
-}
-
-.bw-phase {
-  display: flex;
-  grid-area: 1 / 1;
-  align-items: center;
-  justify-content: center;
-}
-
-.bw-phase-first {
-  opacity: 0;
-  animation: bw-hide 0.26s var(--ease-out) var(--fw-out, 0s) both;
-}
-
-.bw-phase-mid {
-  opacity: 0;
-  animation:
-    bw-show 0.26s var(--ease-out) var(--fw-at, 0s) both,
-    bw-hide 0.26s var(--ease-out) var(--fw-out, 0s) forwards;
-}
-
-.bw-phase-last {
-  animation: bw-show 0.26s var(--ease-out) var(--fw-at, 0s) both;
-}
-
-@keyframes bw-show {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes bw-hide {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 .bw-row-meta {
