@@ -300,6 +300,7 @@ export interface OnboardingAgent {
 
 const AGENT_STATUS_COPY = {
   checking: "Checking…",
+  loading: "Loading…",
   signedIn: "Signed in",
   signInFailed: "Sign-in didn't finish · try again",
   updateNeeded: "Update needed",
@@ -376,7 +377,7 @@ function quietAgentSubline(
     case "signingIn":
       return setup === "connect"
         ? "Choose a provider and sign in below."
-        : null;
+        : AGENT_STATUS_COPY.loading;
     case "install":
     case "installing":
       return null;
@@ -960,10 +961,10 @@ export function ProjectsStep({
       )}
       <ul className={ONBOARDING_LIST_CLASS}>
         {selection === "header" ? (
-          <li>
+          <li className="flex items-center rounded-t-lg bg-surface-recessed text-xs text-muted-foreground">
             <label
               className={cn(
-                "flex items-center gap-3 rounded-t-lg bg-surface-recessed px-3 py-2 text-xs text-muted-foreground",
+                "flex min-w-0 flex-1 items-center gap-3 px-3 py-2",
                 selectableCount > 0 && "cursor-pointer hover:text-foreground",
               )}
             >
@@ -987,6 +988,9 @@ export function ProjectsStep({
               />
               Select all
             </label>
+            <span className="shrink-0 px-3 text-right tabular-nums">
+              Last active
+            </span>
           </li>
         ) : null}
         {repos.map((repo) => (
@@ -1465,6 +1469,7 @@ export function AgentSignInPanel({
             onSubmit: onSubmitCode,
           }
         : { kind: "waiting" };
+  if (!connect && !view.started) return null;
   return (
     <div className="mt-3">
       <SignInPanel
