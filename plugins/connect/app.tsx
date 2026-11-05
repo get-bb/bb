@@ -1964,42 +1964,29 @@ function ConnectOnSetupRow({
 function setupGuideLoginPanel(
   login: AccountLogin["login"],
   openUrl: (url: string) => boolean,
-  last: boolean,
 ): ReactNode {
   if (login?.state !== "pending") return null;
   return (
-    <div className="flex flex-col gap-3">
-      <p
-        role="status"
-        className={cn(
-          "flex items-center gap-1.5 text-xs text-muted-foreground",
-          SETUP_OPTION_ICON_GUTTER_CLASS,
-        )}
-      >
-        <Icon
-          name="Spinner"
-          aria-hidden
-          className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
-        />
-        <span>
-          Finish signing in on{" "}
-          <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
-            {hostOf(login.verificationUrl)}
-          </InlineTextLink>
-          .
-        </span>
-      </p>
-      <SignInPanel
-        flush
-        flushBottom={last}
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "bb connect sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
+    <p
+      role="status"
+      className={cn(
+        "flex items-center gap-1.5 text-xs text-muted-foreground",
+        SETUP_OPTION_ICON_GUTTER_CLASS,
+      )}
+    >
+      <Icon
+        name="Spinner"
+        aria-hidden
+        className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
       />
-    </div>
+      <span>
+        Finish signing in on{" "}
+        <InlineTextLink href={login.verificationUrl} onOpen={openUrl}>
+          {hostOf(login.verificationUrl)}
+        </InlineTextLink>
+        .
+      </span>
+    </p>
   );
 }
 
@@ -2095,7 +2082,7 @@ function ConnectSetupGuideSection({
       panel={
         connecting
           ? null
-          : setupGuideLoginPanel(login, navigate.openUrl, !showsContent)
+          : setupGuideLoginPanel(login, navigate.openUrl)
       }
       action={
         connecting || signingIn ? undefined : (

@@ -877,7 +877,7 @@ describe("connect setup guide section", () => {
     );
   });
 
-  it("starts sign-in from Set up, opens getbb.app, and shows the code without a Cancel", async () => {
+  it("starts sign-in from Set up, opens getbb.app, and shows only the getbb.app link without a code or a Cancel", async () => {
     const onSetupStarted = vi.fn();
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
@@ -894,7 +894,7 @@ describe("connect setup guide section", () => {
     );
 
     fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-    await slot.findByText("K7QP-2M4X");
+    await slot.findByRole("link", { name: "getbb.app" });
     expect(onSetupStarted).toHaveBeenCalledOnce();
     expect(slot.navigateCalls).toContainEqual({
       method: "openUrl",
@@ -909,6 +909,9 @@ describe("connect setup guide section", () => {
     expect(
       (slot.getByRole("link", { name: "getbb.app" }) as HTMLAnchorElement).href,
     ).toBe("https://getbb.app/link?code=K7QP-2M4X");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+    expect(slot.queryByText(/sign-in code/iu)).toBeNull();
+    expect(slot.queryByRole("button", { name: /copy/iu })).toBeNull();
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
   });
