@@ -690,13 +690,15 @@ const BbGlyph = ({ className }: IconProps) => (
   <span aria-hidden className={`bb-mark ${className ?? ""}`} />
 );
 
-type StatusStep = { status: ThreadState; at: number };
+type RowState = ThreadState | "unread";
+
+type StatusStep = { status: RowState; at: number };
 
 function RowStatus({
   status,
   then = [],
 }: {
-  status: ThreadState;
+  status: RowState;
   then?: readonly StatusStep[];
 }) {
   if (then.length === 0) {
@@ -837,7 +839,7 @@ function ThreadRow({
   meta,
 }: {
   title: string;
-  status?: ThreadState;
+  status?: RowState;
   then?: readonly StatusStep[];
   icon?: RowIcon;
   active?: boolean;
@@ -894,7 +896,9 @@ const MORPH_SCENES: readonly MorphScene[] = [
 const MORPH_STATIC_SCENE = MORPH_SCENES.indexOf("graph");
 const MORPH_FIRST_HOLD_MS = 1050;
 const MORPH_HOLD_MS = 1820;
-const MORPH_CHANGE_MS = 2550;
+const MORPH_OUT_MS = 500;
+const MORPH_GAP_MS = 100;
+const MORPH_IN_MS = 500;
 
 type MorphCenter = "thread" | "files" | "taskboard";
 type MorphSide = "threads" | "shelves" | null;
@@ -923,33 +927,36 @@ const MORPH_TITLES: Record<MorphCenter, string> = {
   taskboard: "Taskboard",
 };
 
-type MorphState = { scene: number; previous: number | null };
+type MorphState = { scene: number; hidden: boolean };
 
 function useMorphTimeline(active: boolean) {
   const [state, setState] = useState<MorphState>({
     scene: 0,
-    previous: null,
+    hidden: false,
   });
   useEffect(() => {
     if (!active) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setState({ scene: MORPH_STATIC_SCENE, previous: null });
+      setState({ scene: MORPH_STATIC_SCENE, hidden: false });
       return;
     }
     let timer = 0;
     let first = true;
     const hold = () => {
-      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_HOLD_MS;
+      const wait = first ? MORPH_FIRST_HOLD_MS : MORPH_IN_MS + MORPH_HOLD_MS;
       first = false;
       timer = window.setTimeout(() => {
-        setState((current) => ({
-          scene: (current.scene + 1) % MORPH_SCENES.length,
-          previous: current.scene,
-        }));
+        setState((current) => ({ ...current, hidden: true }));
         timer = window.setTimeout(() => {
-          setState((current) => ({ ...current, previous: null }));
-          hold();
-        }, MORPH_CHANGE_MS);
+          setState((current) => ({
+            scene: (current.scene + 1) % MORPH_SCENES.length,
+            hidden: true,
+          }));
+          timer = window.setTimeout(() => {
+            setState((current) => ({ ...current, hidden: false }));
+            hold();
+          }, MORPH_GAP_MS);
+        }, MORPH_OUT_MS);
       }, wait);
     };
     hold();
@@ -957,26 +964,13 @@ function useMorphTimeline(active: boolean) {
   }, [active]);
   return {
     scene: MORPH_SCENES[state.scene]!,
-    previous: state.previous === null ? null : MORPH_SCENES[state.previous]!,
+    hidden: state.hidden,
     paused: !active,
   };
 }
 
-function morphLayer<T extends string>(
-  base: string,
-  key: T,
-  current: T | null,
-  previous: T | null,
-  changing: boolean,
-) {
-  if (key === current) {
-    if (!changing) return `${base} mx-layer is-on`;
-    return previous === key
-      ? `${base} mx-layer is-on is-staying`
-      : `${base} mx-layer is-on is-entering`;
-  }
-  if (changing && key === previous) return `${base} mx-layer is-under`;
-  return `${base} mx-layer`;
+function morphLayer<T extends string>(base: string, key: T, current: T | null) {
+  return key === current ? `${base} mx-layer is-on` : `${base} mx-layer`;
 }
 
 const PLUGIN_MARKS = {
@@ -1013,11 +1007,11 @@ function MorphThreads() {
         New thread
       </div>
       <div className="side-label">Threads</div>
-      <ThreadRow title={MORPH_THREAD} status="done" active />
-      <ThreadRow title="Signups by plan" status="done" />
-      <ThreadRow title="Bump the SDK" status="done" />
+      <ThreadRow title={MORPH_THREAD} active />
+      <ThreadRow title="Signups by plan" />
+      <ThreadRow title="Bump the SDK" />
       <ThreadRow title="Refactor auth" status="waiting" />
-      <ThreadRow title="Weekly changelog" status="done" />
+      <ThreadRow title="Weekly changelog" />
       <div className="side-foot bw-side-foot" aria-hidden>
         <PhoneIcon className="bw-foot-ic" />
         <BugIcon className="bw-foot-ic" />
@@ -1582,19 +1576,15 @@ function MorphAgentGraph() {
 
 export function PluginMorph() {
   const { ref, active } = useMockWindow();
-  const { scene, previous, paused } = useMorphTimeline(active);
-  const changing = previous !== null;
+  const { scene, hidden, paused } = useMorphTimeline(active);
   const center = MORPH_CENTER[scene];
   const side = MORPH_SIDE[scene];
-  const before = previous === null ? null : MORPH_CENTER[previous];
-  const sideBefore = previous === null ? null : MORPH_SIDE[previous];
   const titles = [...new Set(Object.values(MORPH_TITLES))];
-  const centerLayer = (key: MorphCenter) =>
-    morphLayer("main", key, center, before, changing);
+  const centerLayer = (key: MorphCenter) => morphLayer("main", key, center);
   return (
     <div
       ref={ref}
-      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${paused ? " fw-paused" : ""}`}
+      className={`bw bw-morph mx-${scene}${side === null ? " mx-collapsed" : ""}${hidden ? " mx-hidden" : ""}${paused ? " fw-paused" : ""}`}
       data-scene={scene}
       role="img"
       aria-label="One bb window that keeps rearranging itself as plugins and themes change it. It starts as a plain thread with the thread list in bb's default theme. The thread list folds away to the icon rail and the Files plugin opens its own file tree and a README preview in Tokyo Night. Then the window splits: the thread on the left and the Agent Graph plugin's node graph on the right, in bb Monokai. The split closes into the Taskboard plugin's full-width kanban board in Ayu Light. Then the sidebar comes back wider as BB Sidebar, with project shelves and child threads, in Ayu Mirage, before it starts over."
@@ -1636,24 +1626,12 @@ export function PluginMorph() {
           </NavRail>
           <div className="mx-side-slot">
             <aside
-              className={morphLayer(
-                "side mx-side-threads",
-                "threads",
-                side,
-                sideBefore,
-                changing,
-              )}
+              className={morphLayer("side mx-side-threads", "threads", side)}
             >
               <MorphThreads />
             </aside>
             <aside
-              className={morphLayer(
-                "side mx-side-shelves",
-                "shelves",
-                side,
-                sideBefore,
-                changing,
-              )}
+              className={morphLayer("side mx-side-shelves", "shelves", side)}
             >
               <MorphShelves />
             </aside>
@@ -1687,7 +1665,7 @@ const DELEGATION_CHILDREN = [
     icon: ClaudeIcon,
     title: "Plan the fix",
     landsAt: 1.84,
-    then: [{ status: "done", at: 4.9 }],
+    then: [{ status: "unread", at: 4.9 }],
   },
   {
     icon: CursorIcon,
@@ -1696,7 +1674,7 @@ const DELEGATION_CHILDREN = [
     then: [
       { status: "waiting", at: 11.6 },
       { status: "running", at: 14.74 },
-      { status: "done", at: 16.4 },
+      { status: "unread", at: 16.4 },
     ],
   },
   {
@@ -1763,7 +1741,7 @@ export function DelegationTree() {
         >
           <Sidebar>
             <div className="side-label">Threads</div>
-            <ThreadRow title="Bump the SDK" icon={ClaudeIcon} status="done" />
+            <ThreadRow title="Bump the SDK" icon={ClaudeIcon} />
             <ThreadRow
               title={DELEGATION_LEAD}
               icon={GrokIcon}
@@ -1788,11 +1766,7 @@ export function DelegationTree() {
               icon={CursorIcon}
               status="waiting"
             />
-            <ThreadRow
-              title="Weekly changelog"
-              icon={OpenAiIcon}
-              status="done"
-            />
+            <ThreadRow title="Weekly changelog" icon={OpenAiIcon} />
           </Sidebar>
           <div className="main">
             <div ref={scrollRef} className="bw-feed-scroll">
@@ -1859,6 +1833,9 @@ export function DelegationTree() {
                     <strong>Review the diff</strong> is waiting on your approval
                   </ChildUpdate>
                 </Reveal>
+                <div className="bw-working bw-fade" style={at(0.3)}>
+                  Working...
+                </div>
               </div>
             </div>
             <WindowComposer
@@ -1882,16 +1859,29 @@ export function DelegationTree() {
 
 const START_PROMPT = "Fix the checkout bug: payments hang on slow networks";
 
-type StartStep =
-  | { at: number; say: string }
-  | {
-      at: number;
-      say?: undefined;
-      icon: RowIcon;
-      verb: string;
-      object: string;
-      live?: boolean;
-    };
+type StartWork = {
+  at: number;
+  say?: undefined;
+  icon: RowIcon;
+  verb: string;
+  object: string;
+  live?: boolean;
+};
+
+type StartStep = { at: number; say: string } | StartWork;
+
+function StepRow({ step }: { step: StartWork }) {
+  return (
+    <div className={step.live ? "bw-step is-live" : "bw-step"}>
+      <step.icon className="bw-step-ic" />
+      <span>{step.verb}</span>
+      <span className="bw-step-object">{step.object}</span>
+      {step.live ? (
+        <span className="bw-step-timer" style={at(step.at + 1)} />
+      ) : null}
+    </div>
+  );
+}
 
 const START_STEPS: readonly StartStep[] = [
   { at: 1.8, icon: SearchIcon, verb: "Explored", object: "4 files, 1 search" },
@@ -1999,11 +1989,7 @@ export function StartAnywhere() {
                 icon={BbGlyph}
                 status="waiting"
               />
-              <ThreadRow
-                title="Fix flaky login test"
-                icon={PhoneIcon}
-                status="done"
-              />
+              <ThreadRow title="Fix flaky login test" icon={PhoneIcon} />
             </Sidebar>
             <div className="main">
               <div className="feed bw-feed">
@@ -2015,13 +2001,13 @@ export function StartAnywhere() {
                     {step.say !== undefined ? (
                       <div className="msg-say">{step.say}</div>
                     ) : (
-                      <div className="msg-step">
-                        <ChevronRight className="step-chev" />
-                        {step.verb} {step.object}
-                      </div>
+                      <StepRow step={step} />
                     )}
                   </Reveal>
                 ))}
+                <div className="bw-working bw-fade" style={at(6.28)}>
+                  Working...
+                </div>
               </div>
               <WindowComposer
                 placeholder="Ask for a follow-up"
@@ -2050,17 +2036,7 @@ export function StartAnywhere() {
                     {step.say !== undefined ? (
                       <div className="bw-m-say">{step.say}</div>
                     ) : (
-                      <div
-                        className={step.live ? "bw-m-row is-live" : "bw-m-row"}
-                      >
-                        <step.icon className="bw-m-row-ic" />
-                        <span className="bw-m-verb">{step.verb}</span>
-                        <span className="bw-m-object">{step.object}</span>
-                        {step.live ? (
-                          <span className="bw-m-timer">14s</span>
-                        ) : null}
-                        <ChevronRight className="bw-m-chev" />
-                      </div>
+                      <StepRow step={step} />
                     )}
                   </Reveal>
                 ))}
