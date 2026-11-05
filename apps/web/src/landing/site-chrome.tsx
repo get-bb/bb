@@ -231,7 +231,6 @@ export function SiteNav({
   useExperimentExposure("homepage-header", "desktop");
   return (
     <nav className={newHeader ? "nav nav-sticky nav-centered" : "nav"}>
-      {}
       <a className="logo" href="/" aria-label="bb">
         <span className="bb-mark logo-mark" />
       </a>
