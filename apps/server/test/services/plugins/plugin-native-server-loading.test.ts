@@ -7,11 +7,12 @@ import { promisify } from "node:util";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 
-const run = promisify((...args: Parameters<typeof execFile>) => {
-  const child = execFile(...args);
-  child.stderr?.pipe(process.stderr);
-  return child;
-});
+const nativeRun = promisify(execFile);
+const run = (...args: Parameters<typeof nativeRun>) => {
+  const result = nativeRun(...args);
+  result.child.stderr?.pipe(process.stderr);
+  return result;
+};
 
 describe("native plugin server loading", () => {
   const tempDirs: string[] = [];
@@ -152,7 +153,7 @@ process.stdout.write(JSON.stringify(result));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
-    process.stderr.write(stderr);
+
     expect(JSON.parse(stdout)).toEqual({
       status: "running",
       statusDetail: null,
@@ -253,7 +254,7 @@ process.stdout.write(JSON.stringify(result));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
-    process.stderr.write(stderr);
+
     expect(JSON.parse(stdout)).toEqual({
       status: "running",
       statusDetail: null,
@@ -379,7 +380,7 @@ process.stdout.write(JSON.stringify({ before, after }));
       { cwd: resolve(import.meta.dirname, "../../..") },
     );
 
-    process.stderr.write(stderr);
+
     expect(JSON.parse(stdout)).toEqual({ before: "before", after: "after" });
   });
 });
