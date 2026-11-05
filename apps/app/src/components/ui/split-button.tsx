@@ -115,7 +115,10 @@ function SplitButton({
 
   return (
     <div className="inline-flex items-center">
-      <OptionalTooltip content={primaryTooltip}>
+      <OptionalTooltip
+        content={primaryTooltip}
+        wrapTrigger={primaryAction.disabled === true}
+      >
         {primaryButton}
       </OptionalTooltip>
       <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
