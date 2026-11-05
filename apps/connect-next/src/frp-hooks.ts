@@ -2,6 +2,7 @@ import * as http from "node:http";
 import { RESERVED_HANDLES } from "@bb/connect-db";
 import {
   FRP_CREDENTIAL_META,
+  FRP_LOGIN_PAUSED_REASON,
   FRP_LOGIN_REFUSED_REASON,
 } from "@bb/tunnel-contract/next";
 import type { AccountApi } from "./account-api.js";
@@ -119,7 +120,7 @@ export function createFrpHooks(options: FrpHookOptions) {
   const proxies = new Map<string, { label: string; subdomain: string }>();
   const pendingRoutes = new Map<string, NodeJS.Timeout>();
 
-  type Verdict = "linked" | "refused" | "unknown";
+  type Verdict = "linked" | "paused" | "refused" | "unknown";
 
   async function verify(user: HookUser): Promise<Verdict> {
     if (user.credential === null) return "refused";
@@ -139,7 +140,8 @@ export function createFrpHooks(options: FrpHookOptions) {
         answer.label !== null &&
         !answer.label.revoked &&
         answer.credential === true;
-      return linked ? "linked" : "refused";
+      if (!linked) return "refused";
+      return answer.nextEnabled === false ? "paused" : "linked";
     } catch (error) {
       log("warn", "frp_check_failed", {
         label: user.label,
@@ -164,6 +166,10 @@ export function createFrpHooks(options: FrpHookOptions) {
       if (verdict === "refused") {
         log("warn", "frp_login_refused", { label: user.label });
         return reject(FRP_LOGIN_REFUSED_REASON);
+      }
+      if (verdict === "paused") {
+        log("info", "frp_login_paused", { label: user.label });
+        return reject(FRP_LOGIN_PAUSED_REASON);
       }
       log("info", "frp_login", { label: user.label });
       if (call.clientAddress !== null) {

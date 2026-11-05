@@ -32,6 +32,12 @@ import {
   withoutHeaders,
   type HeaderPairs,
 } from "./headers.js";
+import {
+  checkForwarded,
+  fastOfflineReply,
+  forwardRefusedReply,
+  type ForwardedVisit,
+} from "./forwarded.js";
 import { errorText, type Log } from "./log.js";
 import { gateErrorReply, offlinePage, offlineText } from "./pages.js";
 import {
@@ -70,8 +76,14 @@ export interface GateDeadlines {
   maxWaitMs: number;
 }
 
+export interface GateForwarding {
+  baseDomain: string | null;
+  secret: string;
+}
+
 export interface GateOptions {
   policy: VisitorPolicy;
+  forwarding: GateForwarding;
   accounts: AccountApi;
   directory: TunnelDirectory;
   signingKey: GateSigningKey;
@@ -116,6 +128,7 @@ interface Exchange {
   auth: string | null;
   subdomain: string | null;
   progressAt: number;
+  forwarded: ForwardedVisit | null;
 }
 
 interface Upstream {
@@ -248,7 +261,10 @@ export function createGate(options: GateOptions) {
       signal: exchange.signal,
       fresh: replayed,
     });
-    if (located.kind === "offline") {
+    if (
+      located.kind === "offline" &&
+      exchange.forwarded?.fastOffline !== true
+    ) {
       located = await directory.awaitReturn(subdomain, exchange.signal);
     }
     if (exchange.signal.aborted) throw new Stalled();
@@ -328,7 +344,9 @@ export function createGate(options: GateOptions) {
   function offlineReply(
     forward: Forward,
     request: http.IncomingMessage,
+    exchange: Exchange,
   ): Reply {
+    if (exchange.forwarded?.fastOffline === true) return fastOfflineReply();
     if (!wantsHtml(request.headers)) return offlineText();
     const seen =
       forward.lastSeenAt === null ? null : new Date(forward.lastSeenAt);
@@ -363,7 +381,6 @@ export function createGate(options: GateOptions) {
       headers: request.headers,
       forward,
       upstreamHost: `${subdomain}.${policy.baseDomain}${hostPortSuffix(exchange.host)}`,
-      visitorHost: exchange.host,
       scheme: policy.scheme,
       assertion: await assertionFor(forward, method),
       acceptEncoding: encoding,
@@ -512,7 +529,7 @@ export function createGate(options: GateOptions) {
     startRefresh();
     if (routed.kind === "offline") {
       request.resume();
-      return preparedReply(offlineReply(forward, request));
+      return preparedReply(offlineReply(forward, request, exchange));
     }
     if (!forward.cacheable) {
       const answer = await upstreamFetch(
@@ -526,7 +543,7 @@ export function createGate(options: GateOptions) {
       );
       if (isPeerMiss(answer)) {
         answer.resume();
-        return preparedReply(offlineReply(forward, request));
+        return preparedReply(offlineReply(forward, request, exchange));
       }
       return (
         (await refusedAssertion(answer, forward, exchange)) ??
@@ -550,7 +567,7 @@ export function createGate(options: GateOptions) {
     );
     if (isPeerMiss(answer)) {
       answer.resume();
-      return preparedReply(offlineReply(forward, request));
+      return preparedReply(offlineReply(forward, request, exchange));
     }
     const refusal = await refusedAssertion(answer, forward, exchange);
     if (refusal !== null) return refusal;
@@ -760,7 +777,29 @@ export function createGate(options: GateOptions) {
       auth: null,
       subdomain: null,
       progressAt: now(),
+      forwarded: null,
     };
+  }
+
+  function admitForwarded(
+    request: http.IncomingMessage,
+    exchange: Exchange,
+  ): boolean {
+    const checked = checkForwarded(request.headers, exchange.host, {
+      baseDomain: policy.baseDomain,
+      forwardedBaseDomain: options.forwarding.baseDomain,
+      scheme: policy.scheme,
+      secret: options.forwarding.secret,
+    });
+    if (checked.kind === "refused") {
+      log("warn", "forward_refused", {
+        host: exchange.host,
+        reason: checked.reason,
+      });
+      return false;
+    }
+    exchange.forwarded = checked.kind === "forwarded" ? checked.visit : null;
+    return true;
   }
 
   async function assignMachineLabel(
@@ -820,6 +859,11 @@ export function createGate(options: GateOptions) {
       send(response, preparedReply(drainingReply()), exchange.method);
       return;
     }
+    if (!admitForwarded(request, exchange)) {
+      request.resume();
+      send(response, preparedReply(forwardRefusedReply()), exchange.method);
+      return;
+    }
     response.on("close", () => {
       if (!response.writableFinished) controller.abort();
     });
@@ -835,6 +879,7 @@ export function createGate(options: GateOptions) {
             url: exchange.url,
             headers: request.headers,
             websocket: false,
+            forwarded: exchange.forwarded,
           },
           policy,
           accounts,
@@ -881,6 +926,7 @@ export function createGate(options: GateOptions) {
       path: exchange.pathname,
       status: prepared.status,
       auth: exchange.auth,
+      forwarded: exchange.forwarded !== null,
       cache: prepared.cacheState,
       ms: now() - startedAt,
     });
@@ -957,6 +1003,7 @@ export function createGate(options: GateOptions) {
             url: scoped.url,
             headers: request.headers,
             websocket: true,
+            forwarded: scoped.forwarded,
           },
           policy,
           accounts,
@@ -972,14 +1019,16 @@ export function createGate(options: GateOptions) {
           return { kind: "reply", reply: replayReply(routed.header) };
         }
         if (routed.kind === "offline") {
-          return { kind: "reply", reply: offlineReply(forward, request) };
+          return {
+            kind: "reply",
+            reply: offlineReply(forward, request, scoped),
+          };
         }
         const { subdomain, upstream } = routed;
         const headers = upstreamHeaders({
           headers: request.headers,
           forward,
           upstreamHost: `${subdomain}.${policy.baseDomain}${hostPortSuffix(scoped.host)}`,
-          visitorHost: scoped.host,
           scheme: policy.scheme,
           assertion: await assertionFor(forward, scoped.method),
           acceptEncoding: null,
@@ -1035,7 +1084,7 @@ export function createGate(options: GateOptions) {
       const { answer } = outcome;
       if (isPeerMiss(answer)) {
         answer.resume();
-        writeRefusal(socket, offlineReply(outcome.forward, request));
+        writeRefusal(socket, offlineReply(outcome.forward, request, scoped));
         return;
       }
       if (answer.statusCode === 401) {
@@ -1108,6 +1157,10 @@ export function createGate(options: GateOptions) {
     }
     if (!isWebSocket) {
       writeRefusal(socket, text("bb connect: unsupported upgrade\n", 400));
+      return;
+    }
+    if (!admitForwarded(request, exchange)) {
+      writeRefusal(socket, forwardRefusedReply());
       return;
     }
     await upgradeVisitor(request, socket, head, exchange);

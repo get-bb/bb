@@ -153,6 +153,10 @@ export async function startConnectNext(
         : LOCAL_DESKTOP_SESSION_COOKIE,
       assetLinksFingerprints: config.assetLinksFingerprints,
     },
+    forwarding: {
+      baseDomain: config.forwardedBaseDomain,
+      secret: config.gateSecret,
+    },
     refreshSession: createSessionRefresher({
       accountAppUrl: config.accountAppUrl,
       sessionCookieName,

@@ -22,6 +22,7 @@ import {
 } from "@bb/tunnel-contract/next";
 
 export const BASE_DOMAIN = "next.test";
+export const PUBLIC_DOMAIN = "test";
 export const GATE_SECRET = "test-gate-secret";
 
 export async function freePort(): Promise<number> {
@@ -73,6 +74,7 @@ export interface AccountFixture {
     }
   >;
   refreshSetCookie: string;
+  paused?: string[];
 }
 
 const RESOLVE_KEYS = [
@@ -153,6 +155,10 @@ export async function startAccountApi(fixture: AccountFixture) {
         !label.revoked
           ? grant.grant
           : null,
+      nextEnabled:
+        asked.credential === null
+          ? null
+          : !(fixture.paused ?? []).includes(asked.label),
     };
   };
   const server = http.createServer(async (request, response) => {
@@ -340,6 +346,15 @@ export async function startOrigin(options: OriginOptions) {
         "content-length": String(Buffer.byteLength(body)),
       });
       response.end(body);
+      return;
+    }
+    if (path === "/fake-offline") {
+      response.writeHead(503, {
+        "content-type": "text/plain",
+        "x-bb-gate-offline": "1",
+        "x-bb-gate-anything": "1",
+      });
+      response.end("the bb itself answered 503");
       return;
     }
     if (path === "/set-cookies") {

@@ -45,6 +45,7 @@ const PRIVATE_HEADER_PREFIXES = [
   "x-bb-cloud-dev-",
   "x-bb-via-tunnel",
 ];
+const GATE_RESPONSE_HEADER_PREFIX = "x-bb-gate-";
 const COOKIE_DOMAIN = /;\s*domain\s*(?:=|;|$)/iu;
 const COMBINED_COOKIES = /,(?=\s*[^;,=\s]+\s*=)/u;
 
@@ -92,7 +93,6 @@ export interface UpstreamHeaderInput {
   headers: IncomingHttpHeaders;
   forward: Forward;
   upstreamHost: string;
-  visitorHost: string;
   scheme: string;
   assertion: string;
   acceptEncoding: string | null;
@@ -130,14 +130,15 @@ export function upstreamHeaders(
     delete headers.authorization;
     delete headers.cookie;
   }
-  if (
-    forward.target !== null &&
-    headers.origin === `${input.scheme}://${input.visitorHost}`
-  ) {
-    headers.origin = shareLoopbackOrigin(forward.target);
+  if (headers.origin === forward.publicOrigin) {
+    if (forward.target !== null) {
+      headers.origin = shareLoopbackOrigin(forward.target);
+    } else if (forward.forwarded) {
+      headers.origin = `${input.scheme}://${input.upstreamHost}`;
+    }
   }
   headers.host = input.upstreamHost;
-  headers["x-forwarded-host"] = input.visitorHost;
+  headers["x-forwarded-host"] = input.upstreamHost;
   headers["x-forwarded-proto"] = input.scheme;
   if (input.acceptEncoding !== null) {
     headers["accept-encoding"] = input.acceptEncoding;
@@ -164,10 +165,11 @@ export function visitorHeaders(
   installPath: string | null,
 ): HeaderPairs {
   let pairs = withoutHeaders(pairsFromRaw(rawHeaders), ...RESPONSE_HOP_HEADERS);
-  pairs = pairs.filter(
-    ([name, value]) =>
-      name.toLowerCase() !== "set-cookie" || isTenantSetCookie(value),
-  );
+  pairs = pairs.filter(([name, value]) => {
+    const lower = name.toLowerCase();
+    if (lower.startsWith(GATE_RESPONSE_HEADER_PREFIX)) return false;
+    return lower !== "set-cookie" || isTenantSetCookie(value);
+  });
   if (installPath === null) return pairs;
   pairs = setHeader(pairs, "x-content-type-options", "nosniff");
   pairs = setHeader(pairs, "content-security-policy", "sandbox");

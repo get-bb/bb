@@ -5,6 +5,12 @@ import {
   createLocalDirectory,
   type TunnelDirectory,
 } from "../src/directory.js";
+import {
+  GATE_FAST_OFFLINE_HEADER,
+  GATE_FORWARDED_AUTH_HEADER,
+  GATE_FORWARDED_HOST_HEADER,
+  GATE_OFFLINE_HEADER,
+} from "@bb/tunnel-contract/next";
 import { silentLog } from "../src/log.js";
 import { PEER_LOOKUP_TIMEOUT_MS, replayState } from "../src/regions.js";
 import { startConnectNext, type ConnectNext } from "../src/service.js";
@@ -13,6 +19,7 @@ import { frpBinaries, type FrpBinaries } from "./frp-binaries.js";
 import {
   BASE_DOMAIN,
   GATE_SECRET,
+  PUBLIC_DOMAIN,
   freePort,
   gateAudienceForServer,
   startAccountApi,
@@ -141,6 +148,7 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
     const gate = await startConnectNext(
       {
         baseDomain: BASE_DOMAIN,
+        forwardedBaseDomain: PUBLIC_DOMAIN,
         scheme: "http",
         accountApiUrl: account.url,
         gateSecret: GATE_SECRET,
@@ -320,6 +328,63 @@ describe.skipIf(!availability.ok)("connect-next across regions", () => {
     const local = await via("m-b", BEE, "/echo");
     expect(local.status).toBe(200);
     expect(fly.chains.at(-1)).toEqual(["m-b"]);
+    expect(fly.failures).toEqual([]);
+  });
+
+  it("replays a forwarded fast-offline visit to the holder and answers fast offline only where nobody holds the label", async () => {
+    const forwarded = {
+      [GATE_FORWARDED_HOST_HEADER]: `bee.${PUBLIC_DOMAIN}`,
+      [GATE_FORWARDED_AUTH_HEADER]: `Bearer ${GATE_SECRET}`,
+      [GATE_FAST_OFFLINE_HEADER]: "1",
+    };
+    const answer = await via("m-a", BEE, "/echo?forwarded-replay", {
+      method: "POST",
+      headers: {
+        ...forwarded,
+        origin: `http://bee.${PUBLIC_DOMAIN}`,
+        "content-type": "text/plain",
+      },
+      body: "x",
+    });
+    expect(answer.status).toBe(200);
+    expect(fly.chains.at(-1)).toEqual(["m-a", "m-b"]);
+    const seen = origin.seen.at(-1);
+    expect(seen?.url).toBe("/echo?forwarded-replay");
+    expect(seen?.headers.origin).toBe(`http://${BEE}`);
+    expect(seen?.headers.host).toBe(BEE);
+    expect(seen?.headers[GATE_FORWARDED_AUTH_HEADER]).toBeUndefined();
+    expect(seen?.headers[GATE_FORWARDED_HOST_HEADER]).toBeUndefined();
+    expect(seen?.headers[GATE_FAST_OFFLINE_HEADER]).toBeUndefined();
+
+    const big = "y".repeat(2 * 1024 * 1024);
+    const peered = await via("m-c", BEE, "/upload?forwarded", {
+      method: "POST",
+      headers: { ...forwarded, "content-type": "text/plain" },
+      body: big,
+    });
+    expect(peered.status).toBe(200);
+    expect(fly.chains.at(-1)).toEqual(["m-c"]);
+    expect(origin.seen.at(-1)?.body.length).toBe(big.length);
+
+    const forged = await via("m-a", BEE, "/echo?forged", {
+      headers: { ...forwarded, [GATE_FORWARDED_AUTH_HEADER]: "Bearer wrong" },
+    });
+    expect(forged.status).toBe(403);
+    expect(fly.chains.at(-1)).toEqual(["m-a"]);
+
+    const started = Date.now();
+    const offline = await via("m-a", `moth.${BASE_DOMAIN}`, "/", {
+      headers: {
+        ...forwarded,
+        [GATE_FORWARDED_HOST_HEADER]: `moth.${PUBLIC_DOMAIN}`,
+        accept: "text/html",
+      },
+    });
+    expect(offline.status).toBe(503);
+    expect(offline.headers[GATE_OFFLINE_HEADER]).toBe("1");
+    expect(offline.text).not.toContain("<html");
+    expect(Date.now() - started).toBeLessThan(PEER_LOOKUP_TIMEOUT_MS + 1_000);
+    expect(fly.chains.at(-1)).toEqual(["m-a"]);
     expect(fly.failures).toEqual([]);
   });
 

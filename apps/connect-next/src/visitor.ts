@@ -15,6 +15,7 @@ import {
   type GateResolveRequest,
 } from "@bb/tunnel-contract/next";
 import type { AccountApi } from "./account-api.js";
+import type { ForwardedVisit } from "./forwarded.js";
 import {
   headerSafeClientName,
   isMcpLocalPath,
@@ -45,10 +46,13 @@ export interface Visit {
   url: string;
   headers: IncomingHttpHeaders;
   websocket: boolean;
+  forwarded: ForwardedVisit | null;
 }
 
 export interface Forward {
   label: string;
+  publicOrigin: string;
+  forwarded: boolean;
   labelKind: "server" | "machine";
   lastSeenAt: number | null;
   routingKey: string;
@@ -159,7 +163,10 @@ export async function decideVisit(
   accounts: AccountApi,
 ): Promise<Decision> {
   const { method, host, headers } = visit;
-  const ownOrigin = `${policy.scheme}://${host}`;
+  const ownOrigin =
+    visit.forwarded?.publicOrigin ?? `${policy.scheme}://${host}`;
+  const publicBaseDomain =
+    visit.forwarded?.publicBaseDomain ?? policy.baseDomain;
   if (!visit.url.startsWith("/"))
     return reply(text("bb connect: bad request\n", 400));
   const url = new URL(visit.url, ownOrigin);
@@ -238,12 +245,14 @@ export async function decideVisit(
         label,
         owner.accountHandle,
         policy.accountAppUrl,
-        policy.baseDomain,
+        publicBaseDomain,
       ),
     );
   }
   const base: Omit<Forward, "subject" | "auth"> = {
     label,
+    publicOrigin: ownOrigin,
+    forwarded: visit.forwarded !== null,
     labelKind: owner.kind,
     lastSeenAt: owner.lastSeenAt,
     routingKey: owner.kind === "machine" ? owner.routingKey : label,

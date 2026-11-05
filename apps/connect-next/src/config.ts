@@ -1,4 +1,5 @@
 import { NEXT_BASE_DOMAIN } from "@bb/tunnel-contract/next";
+import { forwardedBaseDomainFor } from "./forwarded.js";
 
 export interface PeerConfig {
   secret: string;
@@ -10,6 +11,7 @@ export interface PeerConfig {
 
 export interface ConnectNextConfig {
   baseDomain: string;
+  forwardedBaseDomain: string | null;
   scheme: "http" | "https";
   accountApiUrl: string;
   gateSecret: string;
@@ -122,8 +124,16 @@ export function configFromEnv(env: Env): ConnectNextConfig {
     throw new Error("PUBLIC_SCHEME must be http or https");
   }
   const frpTcp = env.FRP_TCP_PORT?.trim();
+  const baseDomain = read(env, "BASE_DOMAIN", NEXT_BASE_DOMAIN).toLowerCase();
+  const forwardedBaseDomain =
+    env.FORWARDED_BASE_DOMAIN?.trim().toLowerCase() ||
+    forwardedBaseDomainFor(baseDomain);
+  if (forwardedBaseDomain === baseDomain) {
+    throw new Error("FORWARDED_BASE_DOMAIN must differ from BASE_DOMAIN");
+  }
   return {
-    baseDomain: read(env, "BASE_DOMAIN", NEXT_BASE_DOMAIN).toLowerCase(),
+    baseDomain,
+    forwardedBaseDomain,
     scheme,
     accountApiUrl: origin(env, "ACCOUNT_API_URL"),
     gateSecret: read(env, "GATE_SECRET"),

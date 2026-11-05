@@ -36,6 +36,13 @@ import { resolveConnectRuntime } from "./cloud-dev.js";
 import { jsonResponse, methodNotAllowed } from "./json-response.js";
 import type { Env } from "./tunnel-do.js";
 import { openGateDb } from "./connect-db.js";
+import {
+  CLOSED_ROLLOUT,
+  OPEN_ROLLOUT,
+  inNextRollout,
+  readNextRollout,
+  type NextRollout,
+} from "./next-rollout.js";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_RESOLVE_BATCH_BODY_BYTES = 256 * 1024;
@@ -297,16 +304,15 @@ async function resolveDesktopSession(
   };
 }
 
-function nextMcpOrigin(
+function mcpOriginFor(
   label: string,
   resource: string,
-  env: Env,
+  base: string,
+  localCloud: boolean,
 ): string | null {
-  const base = nextBaseDomain(env);
-  if (base === null) return null;
   const origin = `https://${label}.${base}`;
   if (resource === mcpResourceForOrigin(origin)) return origin;
-  if (!resolveConnectRuntime(env).localCloud) return null;
+  if (!localCloud) return null;
   let url: URL;
   try {
     url = new URL(resource);
@@ -320,6 +326,20 @@ function nextMcpOrigin(
     : null;
 }
 
+function gateMcpOrigin(
+  label: string,
+  resource: string,
+  env: Env,
+): string | null {
+  const next = nextBaseDomain(env);
+  if (next === null) return null;
+  const { localCloud } = resolveConnectRuntime(env);
+  return (
+    mcpOriginFor(label, resource, next, localCloud) ??
+    mcpOriginFor(label, resource, env.BASE_DOMAIN, localCloud)
+  );
+}
+
 async function resolveOAuth(
   label: string,
   presented: { token: string; resource: string },
@@ -329,7 +349,7 @@ async function resolveOAuth(
   ctx: ExecutionContext,
 ): Promise<GateAssertionOAuth | null> {
   if (resolved === null || resolved.kind !== "server") return null;
-  const origin = nextMcpOrigin(label, presented.resource, env);
+  const origin = gateMcpOrigin(label, presented.resource, env);
   if (origin === null) return null;
   const authorization = await authorizeMcpToken(presented.token, {
     origin,
@@ -343,6 +363,27 @@ async function resolveOAuth(
     ctx.waitUntil(authorization.recordUse());
   }
   return authorization.forward;
+}
+
+function rolloutFor(env: Env): Promise<NextRollout> {
+  return readNextRollout(
+    env,
+    resolveConnectRuntime(env).localCloud ? OPEN_ROLLOUT : CLOSED_ROLLOUT,
+  );
+}
+
+async function resolveNextEnabled(
+  label: string,
+  resolved: ResolvedLabel | null,
+  rollout: NextRollout,
+): Promise<boolean> {
+  if (resolved === null) return false;
+  const owner = resolved.kind === "server" ? resolved.server : resolved.machine;
+  return inNextRollout(rollout, {
+    label,
+    id: owner.id,
+    usedNext: owner.nextTunnelAt != null,
+  });
 }
 
 async function resolveOne(
@@ -415,6 +456,14 @@ async function resolveOne(
             env,
             db,
             ctx,
+          ),
+    nextEnabled:
+      parsed.credential === null
+        ? null
+        : await resolveNextEnabled(
+            parsed.label,
+            resolved,
+            await rolloutFor(env),
           ),
   };
 }
