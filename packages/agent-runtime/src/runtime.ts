@@ -2563,6 +2563,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     },
 
     waitForActiveTurn(threadId, args) {
+      if (
+        turnState.getActiveTurnId(threadId) === null &&
+        !pendingTurnStarts.has(threadId)
+      ) {
+        return Promise.resolve(null);
+      }
       return turnState.waitForActiveTurn({
         threadId,
         timeoutMs: args.timeoutMs,
