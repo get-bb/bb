@@ -13,10 +13,10 @@ import linearLogo from "../assets/company-logos/linear.svg";
 import vscodeIcon from "../assets/vscode.png";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
-  BookIcon,
+  AutomationsIcon,
   ChevronDown,
   ChevronRight,
-  ClockIcon,
+  SkillsIcon,
   CloseIcon,
   Ellipsis,
   FileCodeGlyph as FileIcon,
@@ -31,7 +31,8 @@ import {
   SearchIcon,
   Spinner,
   TestIcon,
-  ThreadStatus,
+  MockStatusTrack,
+  MockThreadStatus,
   BugIcon,
   QuestionIcon,
   MockChildEvent,
@@ -42,7 +43,7 @@ import {
   MockWorkingRow,
   type MockIcon as IconComp,
   type MockStep,
-  type ThreadState as Status,
+  type MockThreadStatusKind as Status,
 } from "./app-mock-parts";
 
 const LinearGlyph: IconComp = ({ className }) => (
@@ -88,7 +89,13 @@ type Scene = {
   flags: Flag[];
   sideView?: boolean;
 
-  then?: { id: string; worked: string; reply: ReactNode };
+  then?: {
+    id: string;
+    worked: string;
+    reply: ReactNode;
+    sentReply: ReactNode;
+    finalReply: ReactNode;
+  };
 
   hold: number;
   beat?: number;
@@ -96,6 +103,7 @@ type Scene = {
   replyFirst?: boolean;
 
   follow?: Follow;
+  project?: string;
 };
 type Follow = {
   prompt: string;
@@ -164,22 +172,11 @@ const SCENES: Scene[] = [
         verb: "Ran",
         em: 'bb thread spawn --project $BB_PROJECT_ID --parent-self --provider codex --prompt "Build the invite API: create, accept, expire, and the invite email"',
       },
-      {
-        kind: "file",
-        verb: "Created",
-        file: "InviteDialog.tsx",
-        diff: [122, 0],
-      },
-      { kind: "file", verb: "Edited", file: "MembersPage.tsx", diff: [35, 4] },
-      {
-        kind: "file",
-        verb: "Edited",
-        file: "PendingInvites.tsx",
-        diff: [61, 0],
-      },
+      { kind: "file", verb: "Edited", em: "3 files", diff: [218, 4] },
     ],
     worked: "52s",
     flags: ["spawn"],
+    project: "checkout-web",
     then: {
       id: "messages",
       worked: "52s",
@@ -189,6 +186,8 @@ const SCENES: Scene[] = [
           thread.
         </>
       ),
+      sentReply: <>Sent Codex the fields the invite screen uses.</>,
+      finalReply: <>Both halves are in. Team invites are ready to try.</>,
     },
   },
   {
@@ -202,8 +201,7 @@ const SCENES: Scene[] = [
         verb: "Ran",
         em: "bb plugin new linear-issues",
       },
-      { kind: "file", verb: "Created", file: "panel.tsx", diff: [96, 0] },
-      { kind: "file", verb: "Created", file: "server.ts", diff: [54, 0] },
+      { kind: "file", verb: "Created", em: "2 files", diff: [150, 0] },
       {
         kind: "cmd",
         verb: "Ran",
@@ -231,12 +229,7 @@ const SCENES: Scene[] = [
     prompt: "Chart checkout-web's flaky tests by package",
     steps: [
       { kind: "work", verb: "Explored", em: "38 files" },
-      {
-        kind: "plugin",
-        plugin: "Generative UI",
-        verb: "rendered",
-        em: "a bar chart",
-      },
+      { kind: "plugin", verb: "Rendered", em: "a bar chart" },
     ],
     post: [
       {
@@ -250,16 +243,12 @@ const SCENES: Scene[] = [
     ],
     worked: "21s",
     flags: ["chart"],
+    project: "checkout-web",
     follow: {
       prompt: "Which of these should we fix first?",
       steps: [
         { kind: "work", verb: "Explored", em: "12 files, 2 searches" },
-        {
-          kind: "plugin",
-          plugin: "Impromptu UI",
-          verb: "rendered",
-          em: "2 fixes",
-        },
+        { kind: "plugin", verb: "Rendered", em: "2 fixes" },
       ],
       worked: "16s",
       reply: (
@@ -389,13 +378,13 @@ const RAIL: Record<string, string> = {
   sentry: "rail-sentry",
   linear: "rail-linear",
 };
-const CLOSES = new Set<string>(["sentry", "linear"]);
+const CLOSES = new Set<string>();
 
 const FINAL_STATUS: Record<string, Status> = { sentry: "running" };
 
-const ROW_GAP = 0.9;
-const WORK_ROW_GAP = 0.53;
-const FIRST_ROW = 0.85;
+const ROW_GAP = 1.1;
+const WORK_ROW_GAP = 0.85;
+const FIRST_ROW = 1.3;
 const NOTE_GAP = 1.4;
 const CLICK_GAP = 1.8;
 const KID_AFTER_CLICK = 0.75;
@@ -496,6 +485,10 @@ function timing(scene: Scene, tablet = false) {
     notes: number[];
     work: number;
     workDone: number;
+    sentReplyAt: number;
+    work3: number;
+    workDone3: number;
+    finalReplyAt: number;
   } = null;
   if (scene.then) {
     const at = lastAt + ROW_GAP;
@@ -503,10 +496,23 @@ function timing(scene: Scene, tablet = false) {
     const work = finished + TURN_GAP;
     const sent = work + TURN_GAP;
     const workDone = sent + TURN_GAP;
-    const notes = [finished, sent, workDone + FURL_FOR + BEAT];
+    const sentReplyAt = workDone + REPLY_AFTER;
+    const message = sentReplyAt + NOTE_GAP;
+    const work3 = message + TURN_GAP;
+    const workDone3 = work3 + TURN_GAP * 1.5;
+    const finalReplyAt = workDone3 + REPLY_AFTER;
     doneAt = at;
-    end = notes[2] + scene.hold;
-    then = { at, notes, work, workDone };
+    end = finalReplyAt + scene.hold;
+    then = {
+      at,
+      notes: [finished, sent, message],
+      work,
+      workDone,
+      sentReplyAt,
+      work3,
+      workDone3,
+      finalReplyAt,
+    };
   }
   const turn = planTurn(
     [
@@ -577,7 +583,7 @@ function timing(scene: Scene, tablet = false) {
 
 const THREADS: { title: string; status: Status }[] = [
   { title: "Triage the Sentry spike", status: "running" },
-  { title: "Nightly changelog", status: "done" },
+  { title: "Nightly changelog", status: "unread" },
   { title: "Refactor the timeline cache", status: "waiting" },
 ];
 
@@ -744,8 +750,8 @@ const NAV: { icon: IconComp; label: string }[] = [
   { icon: HomeIcon, label: "Home" },
   { icon: SearchIcon, label: "Search" },
   { icon: PluginsIcon, label: "Plugins" },
-  { icon: BookIcon, label: "Skills" },
-  { icon: ClockIcon, label: "Automations" },
+  { icon: SkillsIcon, label: "Skills" },
+  { icon: AutomationsIcon, label: "Automations" },
 ];
 
 function PanelBar({ name, meta }: { name: string; meta?: string }) {
@@ -813,30 +819,6 @@ function WorkRow({
         <MockStepContent step={step} />
       )}
     </div>
-  );
-}
-
-function StatusTrack({
-  phases,
-}: {
-  phases: { at: number; status: Status | "unread" }[];
-}) {
-  const [first, ...rest] = phases;
-  return (
-    <span className="rhb-swap rhb-status-swap">
-      <span>
-        <ThreadStatus status={first.status} />
-      </span>
-      {rest.map((p) => (
-        <span
-          className="rhb-swap-b"
-          key={p.at}
-          style={{ animationDelay: `${p.at}s` }}
-        >
-          <ThreadStatus status={p.status} />
-        </span>
-      ))}
-    </span>
   );
 }
 
@@ -931,12 +913,11 @@ function freeze(src: HTMLElement): HTMLElement {
         marginBottom: cs.marginBottom,
         clipPath: cs.clipPath,
       });
-    const part = el.matches(".rhb-work") ? el.firstElementChild : null;
-    if (part)
-      c.style.setProperty(
-        "--rhb-m",
-        getComputedStyle(part).getPropertyValue("--rhb-m"),
-      );
+    if (el.matches(".rhb-work.is-muting"))
+      for (const [k, part] of Array.from(el.children).entries()) {
+        const target = c.children[k] as HTMLElement | undefined;
+        if (target) target.style.opacity = getComputedStyle(part).opacity;
+      }
   });
   return clone;
 }
@@ -1520,7 +1501,7 @@ const LinearPanel = memo(function LinearPanel() {
       </div>
       <div className="rhb-card rhb-card-panel">
         <div className="plugin-panel rhb-side-panel">
-          <PanelBar name="Linear issues" meta="checkout-web · 6 open" />
+          <PanelBar name="Linear issues" meta="6 open" />
           <div className="plugin-panel-rows">
             {LINEAR_TASKS.map((task) => (
               <div className="plugin-task" key={task.key}>
@@ -1645,6 +1626,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       if (layer) ro.observe(layer);
     };
     let resume = 0;
+    let lastWidth = feed.offsetWidth;
     const ro = new ResizeObserver(() => {
       const fresh: HTMLElement[] = [];
       for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
@@ -1665,8 +1647,11 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
         run = 0;
       }
       let moved = false;
+      const fw = feed.offsetWidth;
+      const resized = Math.abs(fw - lastWidth) >= 0.5;
+      lastWidth = fw;
       const ft = feed.offsetTop;
-      const fd = growing || furling ? 0 : self.top - ft;
+      const fd = growing || furling || resized ? 0 : self.top - ft;
       self.top = ft;
       if (Math.abs(fd) >= 0.5) {
         self.off += fd;
@@ -1686,7 +1671,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
           offs.set(child, { top, off: 0, v: 0, w: GLIDE_RATE });
           continue;
         }
-        const d = furling ? 0 : o.top - top;
+        const d = furling || resized ? 0 : o.top - top;
         o.top = top;
         if (Math.abs(d) >= 0.5) {
           o.off += d;
@@ -1765,12 +1750,14 @@ function Turn({
   head,
   reduced,
   working = true,
+  startAt = 0,
 }: {
   worked: string;
   plan: TurnPlan;
   head: number;
   reduced: boolean;
   working?: boolean;
+  startAt?: number;
 }) {
   const sec = (s: number) => (reduced ? "0s" : `${s}s`);
   const furlAt = plan.furlAt;
@@ -1804,7 +1791,7 @@ function Turn({
         </div>
       </div>
       {working && !(reduced && done) ? (
-        <MockWorkingRow at={sec(head)} endAt={done ? sec(furlAt) : null} />
+        <MockWorkingRow at={sec(startAt)} endAt={done ? sec(furlAt) : null} />
       ) : null}
     </>
   );
@@ -1853,7 +1840,7 @@ const FeedBody = memo(function FeedBody({
         ) : null,
       )}
       {scene.running && !reduced ? (
-        <MockWorkingRow at={`${head}s`} endAt={null} />
+        <MockWorkingRow at="0s" endAt={null} />
       ) : null}
 
       {then ? (
@@ -1872,12 +1859,6 @@ const FeedBody = memo(function FeedBody({
               style={delay(then.notes[0])}
               body="Invite API and email are in: create, accept, expire."
             />
-            {reduced ? null : (
-              <MockWorkingRow
-                at={`${then.work}s`}
-                endAt={`${then.workDone}s`}
-              />
-            )}
             <MockChildEvent
               kind="sent"
               thread={CHILD}
@@ -1885,6 +1866,18 @@ const FeedBody = memo(function FeedBody({
               style={delay(then.notes[1])}
               body="The screen sends email and role, then lists pending invites."
             />
+            {reduced ? null : (
+              <MockWorkingRow
+                at={`${then.work}s`}
+                endAt={`${then.workDone}s`}
+              />
+            )}
+            <div
+              className="rhb-say customize-msg"
+              style={delay(then.sentReplyAt)}
+            >
+              {then.sentReply}
+            </div>
             <MockChildEvent
               kind="message"
               thread={CHILD}
@@ -1892,6 +1885,18 @@ const FeedBody = memo(function FeedBody({
               style={delay(then.notes[2])}
               body="Tested it end to end. Both sides match."
             />
+            {reduced ? null : (
+              <MockWorkingRow
+                at={`${then.work3}s`}
+                endAt={`${then.workDone3}s`}
+              />
+            )}
+            <div
+              className="rhb-say customize-msg"
+              style={delay(then.finalReplyAt)}
+            >
+              {then.finalReply}
+            </div>
           </div>
         </>
       ) : null}
@@ -1934,6 +1939,7 @@ const FeedBody = memo(function FeedBody({
             worked={f.worked}
             plan={f.at.turn}
             head={f.at.steps[0]}
+            startAt={f.at.user + 0.45}
             reduced={reduced}
           />
           <div
@@ -2002,6 +2008,22 @@ const ISSUES: { n: number; title: string; csv?: boolean }[] = [
   { n: 468, title: "CSV import drops header row", csv: true },
 ];
 
+function Typed({ text, at, step }: { text: string; at: number; step: number }) {
+  return (
+    <>
+      {Array.from(text).map((ch, i) => (
+        <span
+          className="rhb-typed"
+          key={i}
+          style={{ animationDelay: `${at + i * step}s` }}
+        >
+          {ch === " " ? "\u00a0" : ch}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
   return (
     <>
@@ -2019,8 +2041,8 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
             threads
           </span>
           <span className="rhb-issue-q">
-            <span className="rhb-issue-q1">#</span>
-            <span className="rhb-issue-q2">#csv</span>
+            <span>#</span>
+            <Typed text="csv" at={0.1} step={0.07} />
             <i className="rhb-caret" />
           </span>
           <div className="rhb-issue-picker">
@@ -2053,7 +2075,9 @@ function ComposerText({ demo, leaving }: { demo: boolean; leaving: boolean }) {
                 #491 CSV export times out
               </span>
             </span>
-            <span className="rhb-issue-rest">fix this</span>
+            <span className="rhb-issue-rest">
+              <Typed text="fix this" at={0.25} step={0.06} />
+            </span>
           </span>
         </div>
       ) : null}
@@ -2100,6 +2124,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     hasSet.add("panel-collapsed");
   const uses = (x: string) => usesSet.has(x);
   const spawnIdx = SCENES.findIndex((x) => x.id === "spawn");
+  const spawnStep = SCENES[spawnIdx].steps.findIndex((x) =>
+    x.em?.startsWith("bb thread spawn"),
+  );
   const chartIdx = SCENES.findIndex((x) => x.id === "chart");
   const chart = SCENES[chartIdx];
   const chartF =
@@ -2110,7 +2137,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const stripItems: { icon: IconComp; label: string }[] = [
-    { icon: NewThreadIcon, label: "New thread" },
     ...NAV.filter((x) => x.label === "Home"),
     ...(hasSet.has("rail-sentry")
       ? [{ icon: SentryGlyph as IconComp, label: "Sentry" }]
@@ -2143,10 +2169,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   const flips = lastPhase.current.idx === idx && lastPhase.current.n !== n;
   const rowSnap = useRef<RowSnap | null>(null);
   if (flips && rootRef.current && !firstSnap.current) {
-    firstSnap.current = snapLayout(
-      rootRef.current,
-      scene.flags.includes("panel"),
-    );
+    firstSnap.current = snapLayout(rootRef.current, false);
     rowSnap.current = snapRows(rootRef.current);
   }
   useLayoutEffect(() => {
@@ -2187,7 +2210,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     titles.forEach((t) => (t.style.textOverflow = "clip"));
     const anim = el.animate([{ width: `${was.w}px` }, { width: `${w}px` }], {
       duration: 300,
+      delay: 250,
       easing: EASE_OUT,
+      fill: "backwards",
     });
     anim.onfinish = anim.oncancel = () => {
       el.style.removeProperty("overflow");
@@ -2218,13 +2243,15 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     .reverse();
   const statusOf = (k: number): Status => FINAL_STATUS[SCENES[k].id] ?? "done";
 
+  const subOf = (sc: Scene) =>
+    sc.project ? `${sc.project} · main` : "Personal workspace";
   const groups: {
     name: string;
     rows: {
       title: string;
       sub: string;
       age: string;
-      status: Status | "unread";
+      status: Status;
       active?: boolean;
     }[];
   }[] = [
@@ -2247,7 +2274,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
           : [
               {
                 title: scene.title,
-                sub: "checkout-web · main",
+                sub: subOf(scene),
                 age: "now",
                 status: "running" as Status,
                 active: true,
@@ -2263,8 +2290,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
           : []),
         {
           title: "Sentry errors",
-          sub: "checkout-web · main",
+          sub: "Personal workspace",
           age: "9m",
+          status: "running",
+        },
+        {
+          title: "Triage the Sentry spike",
+          sub: "checkout-web · main",
+          age: "12m",
           status: "running",
         },
       ],
@@ -2282,15 +2315,40 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     },
     {
       name: "Done",
-      rows: SCENES.slice(0, n === 4 ? idx + 1 : idx)
-        .filter((sc) => statusOf(SCENES.indexOf(sc)) === "done")
-        .reverse()
-        .map((sc) => ({
-          title: sc.title,
-          sub: "checkout-web · main",
-          age: "8m",
-          status: "done" as Status,
-        })),
+      rows: [
+        ...(n === 4
+          ? [
+              {
+                title: scene.title,
+                sub: subOf(scene),
+                age: "now",
+                status: "done" as Status,
+                active: true,
+              },
+            ]
+          : []),
+        ...SCENES.slice(0, idx)
+          .filter((sc) => statusOf(SCENES.indexOf(sc)) === "done")
+          .reverse()
+          .flatMap((sc) => [
+            {
+              title: sc.title,
+              sub: subOf(sc),
+              age: "8m",
+              status: "done" as Status,
+            },
+            ...(sc.id === "spawn"
+              ? [
+                  {
+                    title: CHILD.label,
+                    sub: "checkout-web · main",
+                    age: "8m",
+                    status: "done" as Status,
+                  },
+                ]
+              : []),
+          ]),
+      ],
     },
   ];
 
@@ -2362,22 +2420,30 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                     <ChevronDown className="rhb-chev" />
                   </div>
                   {sceneRows.map(({ sc, k }) => (
-                    <div className="rhb-thread" key={sc.id}>
+                    <div
+                      className={
+                        k === idx && idx > 0 && !reduced
+                          ? "rhb-thread is-new"
+                          : "rhb-thread"
+                      }
+                      key={sc.id}
+                    >
                       <div
                         className={
-                          k === idx && n !== 4
+                          k === idx
                             ? "rhb-row rhb-row-scene is-active"
                             : "rhb-row rhb-row-scene"
                         }
                       >
+                        <ClaudeIcon className="rhb-kid-ic" />
                         <span className="rhb-row-title">{sc.title}</span>
                         {k === idx && !reduced ? (
                           (() => {
                             const tk = timing(sc, tablet);
                             return tk.statusAt == null ? (
-                              <ThreadStatus status="running" />
+                              <MockThreadStatus status="running" />
                             ) : (
-                              <StatusTrack
+                              <MockStatusTrack
                                 phases={[
                                   { at: 0, status: "running" },
                                   { at: tk.statusAt, status: statusOf(k) },
@@ -2391,6 +2457,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                           at: tk.then.workDone + FURL_FOR,
                                           status: statusOf(k),
                                         },
+                                        {
+                                          at: tk.then.work3,
+                                          status: "running" as const,
+                                        },
+                                        {
+                                          at: tk.then.workDone3 + FURL_FOR,
+                                          status: statusOf(k),
+                                        },
                                       ]
                                     : []),
                                 ]}
@@ -2398,7 +2472,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             );
                           })()
                         ) : (
-                          <ThreadStatus status={statusOf(k)} />
+                          <MockThreadStatus status={statusOf(k)} />
                         )}
                       </div>
                       {k === spawnIdx ? (
@@ -2406,22 +2480,26 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                           className={
                             k === idx ? "rhb-kids rhb-kids-late" : "rhb-kids"
                           }
-                          style={k === idx ? delay(t.changeAt) : undefined}
+                          style={
+                            k === idx
+                              ? delay((t.stepAt[spawnStep] ?? t.changeAt) + 0.4)
+                              : undefined
+                          }
                         >
                           <div className="rhb-row rhb-kid">
                             <CHILD.icon className="rhb-kid-ic" />
                             <span className="rhb-row-title">{CHILD.label}</span>
                             {k === idx && then && !reduced ? (
-                              <StatusTrack
+                              <MockStatusTrack
                                 phases={[
                                   { at: 0, status: "running" },
-                                  { at: then.notes[0], status: "unread" },
+                                  { at: then.notes[0], status: "done" },
                                   { at: then.notes[1], status: "running" },
-                                  { at: then.notes[2], status: "unread" },
+                                  { at: then.notes[2], status: "done" },
                                 ]}
                               />
                             ) : (
-                              <ThreadStatus status="unread" />
+                              <MockThreadStatus status="done" />
                             )}
                           </div>
                         </div>
@@ -2446,7 +2524,7 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                                 <span className="rhb-row-title">
                                   {chartF.fixes[fi].title}
                                 </span>
-                                <ThreadStatus status="running" />
+                                <MockThreadStatus status="running" />
                               </div>
                             </div>
                           ))
@@ -2455,8 +2533,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                   ))}
                   {THREADS.map((x) => (
                     <div className="rhb-row" key={x.title}>
+                      <ClaudeIcon className="rhb-kid-ic" />
                       <span className="rhb-row-title">{x.title}</span>
-                      <ThreadStatus status={x.status} />
+                      <MockThreadStatus status={x.status} />
                     </div>
                   ))}
                 </div>
@@ -2470,16 +2549,14 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                         {g.rows.map((r) => (
                           <div
                             className={
-                              r.active && n !== 4
+                              r.active
                                 ? "rhb-row rhb-row2 is-active"
                                 : "rhb-row rhb-row2"
                             }
                             key={r.title}
                             data-k={`r:${r.title}`}
                           >
-                            <ThreadStatus
-                              status={r.active && n === 4 ? "done" : r.status}
-                            />
+                            <MockThreadStatus status={r.status} />
                             <span className="rhb-row2-text">
                               <span className="rhb-row-title">{r.title}</span>
                               <span className="rhb-row2-sub">{r.sub}</span>
@@ -2493,6 +2570,9 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                 ) : null}
               </div>
               <div className="rhb-foot">
+                {hasSet.has("strip") ? (
+                  <GearIcon className="rhb-ic rhb-foot-gear" />
+                ) : null}
                 <PhoneIcon className="rhb-ic" />
                 <BugIcon className="rhb-ic" />
               </div>
@@ -2508,7 +2588,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                   {SCENES[outIdx].title}
                 </span>
               ) : null}
-              <span className="rhb-title rhb-title-swap" key={`t${idx}`}>
+              <span
+                className={idx > 0 ? "rhb-title rhb-title-swap" : "rhb-title"}
+                key={`t${idx}`}
+              >
                 {scene.title}
               </span>
             </span>
@@ -2543,7 +2626,33 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
             </div>
 
             <MockComposer
-              project="checkout-web"
+              project={scene.project ?? null}
+              running={
+                reduced
+                  ? false
+                  : scene.running
+                    ? true
+                    : [
+                        { at: 0, running: true },
+                        ...(t.doneAt == null
+                          ? []
+                          : [{ at: t.doneAt, running: false }]),
+                        ...(then
+                          ? [
+                              { at: then.work, running: true },
+                              { at: then.workDone, running: false },
+                              { at: then.work3, running: true },
+                              { at: then.workDone3, running: false },
+                            ]
+                          : []),
+                        ...(f
+                          ? [
+                              { at: f.at.user, running: true },
+                              { at: f.at.reply, running: false },
+                            ]
+                          : []),
+                      ]
+              }
               input={
                 <ComposerText
                   demo={scene.id === "composer" && n === 1}
@@ -2638,7 +2747,7 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
     if (t.then) ids.push(at(t.then.at, () => setPos({ idx, n: 2 })));
     const closes = CLOSES.has(scene.id);
     if (closes) ids.push(at(t.end, () => setPos({ idx, n: 3 })));
-    const sequentialClose = scene.id === "linear" && tablet;
+    const sequentialClose = closes && scene.id === "linear" && tablet;
     if (sequentialClose) ids.push(at(t.end + 1, () => setPos({ idx, n: 6 })));
     const next =
       t.end + (closes ? REST_AFTER_CLOSE : REST) + (sequentialClose ? 1 : 0);
@@ -2649,7 +2758,7 @@ export default function HeroWindowStage({ paused }: { paused: boolean }) {
       );
       ids.push(at(next, () => setPos({ idx: idx + 1, n: 0 })));
     } else {
-      ids.push(at(t.end, () => setPos({ idx, n: 4 })));
+      ids.push(at(t.statusAt ?? t.end, () => setPos({ idx, n: 4 })));
       ids.push(
         at(t.end + FINAL_HOLD - 1.6, () =>
           startTransition(() => setPre(loop + 1)),

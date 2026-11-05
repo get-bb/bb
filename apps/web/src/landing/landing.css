@@ -3832,7 +3832,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mock-ui .rhb-user {
   align-self: flex-end;
-  max-width: 80%;
+  max-width: 70%;
   padding: 9px 15px;
   border: 1px solid
     var(--rhb-seam, color-mix(in oklch, var(--ink) 9.5%, var(--bg)));
@@ -3860,10 +3860,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   color: var(--subtle);
 }
 
-.mock-ui .rhb-step-ic.is-plugin {
-  color: var(--accent);
-}
-
 .mock-ui .rhb-work-text {
   flex: 0 1 auto;
   min-width: 0;
@@ -3871,10 +3867,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   overflow-wrap: anywhere;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.mock-ui .rhb-work-plugin .rhb-work-text {
-  color: var(--ink);
 }
 
 .mock-ui .rhb-work-spin {
@@ -3901,8 +3893,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: inline-flex;
   gap: 4px;
   flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .mock-ui .rhb-diff .is-add {
@@ -3915,10 +3906,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .mock-ui .rhb-dur {
   flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: var(--subtle);
-  opacity: 0.75;
 }
 
 .mock-ui .rhb-box {
@@ -4183,6 +4172,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     margin-bottom: -6px;
     opacity: 0;
   }
+  60% {
+    opacity: 0;
+  }
 }
 
 .mock-ui .rhb-working {
@@ -4194,7 +4186,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .mock-ui .rhb-working-label {
   min-height: 0;
   overflow: hidden;
-  padding: 0 8px;
+  padding: 0 8px 0 0;
   line-height: 20px;
   color: var(--subtle);
 }
@@ -4206,6 +4198,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 @keyframes rhb-working-end {
+  40% {
+    opacity: 0;
+  }
   to {
     grid-template-rows: 0fr;
     margin-bottom: calc(-1 * var(--rhb-feed-gap, 12px));
@@ -4231,5 +4226,76 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .mock-ui .rhb-turn-head.is-opening,
   .mock-ui .rhb-working.is-ending {
     animation: none;
+  }
+}
+
+.mock-ui .rhb-box-row .rhb-ic,
+.mock-ui .rhb-box-end .rhb-ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-box .rhb-chev,
+.mock-ui .rhb-context .rhb-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+.mock-ui .rhb-send.is-stop {
+  background: color-mix(in oklch, var(--ink) 8%, var(--bg));
+  color: var(--ink);
+}
+
+.mock-ui .rhb-stop-ic {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.mock-ui .rhb-send-track,
+.mock-ui .rhb-status-track {
+  display: inline-grid;
+  flex-shrink: 0;
+}
+
+.mock-ui .rhb-send-track > *,
+.mock-ui .rhb-status-track > * {
+  display: inline-flex;
+  grid-area: 1 / 1;
+}
+
+.mock-ui .trun {
+  color: color-mix(in oklab, var(--dim) 50%, transparent);
+}
+
+.mock-ui .twait {
+  color: color-mix(in oklab, var(--dim) 75%, transparent);
+}
+
+.mock-ui .tunread {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--dim) 60%, transparent);
+}
+
+.mock-ui .rhb-work.is-past {
+  opacity: 0.4;
+}
+
+@keyframes mock-phase-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mock-phase-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
   }
 }
