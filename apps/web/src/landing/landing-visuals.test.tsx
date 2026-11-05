@@ -240,31 +240,33 @@ describe("PluginMorph", () => {
     FakeObserver.instances[0]!.show(true);
     act(() => vi.advanceTimersByTime(1_050));
     expect(root.dataset.scene).toBe("stock");
-    expect(root.className).toContain("mx-hidden");
+    expect(root.className).toContain("mx-hide-center");
+    expect(root.className).toContain("mx-hide-side");
+    expect(root.className).not.toContain("mx-hide-panel");
 
-    act(() => vi.advanceTimersByTime(500));
+    act(() => vi.advanceTimersByTime(400));
     expect(root.dataset.scene).toBe("files");
-    expect(root.className).toContain("mx-hidden");
+    expect(root.className).toContain("mx-hide-center");
     expect(root.className).toContain("mx-collapsed");
     expect(layer(".mx-center > .main:nth-child(2)")).toContain("is-on");
     expect(layer(".mx-center > .main:nth-child(1)")).not.toContain("is-on");
     expect(layer(".mx-side-threads")).not.toContain("is-on");
 
-    act(() => vi.advanceTimersByTime(100));
-    expect(root.className).not.toContain("mx-hidden");
+    act(() => vi.advanceTimersByTime(750));
+    expect(root.className).not.toContain("mx-hide-");
 
-    act(() => vi.advanceTimersByTime(2_920));
+    act(() => vi.advanceTimersByTime(3_470));
     expect(root.dataset.scene).toBe("graph");
     expect(root.querySelector(".bar-toggle.active")).not.toBeNull();
 
-    act(() => vi.advanceTimersByTime(2_920));
+    act(() => vi.advanceTimersByTime(3_470));
     expect(root.dataset.scene).toBe("taskboard");
     expect(root.querySelector(".bar-toggle.active")).toBeNull();
 
-    act(() => vi.advanceTimersByTime(2_920));
+    act(() => vi.advanceTimersByTime(3_470));
     expect(root.dataset.scene).toBe("shelves");
     expect(root.className).not.toContain("mx-collapsed");
-    expect(root.className).not.toContain("mx-hidden");
+    expect(root.className).not.toContain("mx-hide-");
     expect(layer(".mx-side-shelves")).toContain("is-on");
 
     vi.spyOn(document, "hidden", "get").mockReturnValue(true);
@@ -293,7 +295,7 @@ describe("PluginMorph", () => {
       ].join("|");
     seen.push(layout());
     for (let step = 0; step < 5; step += 1) {
-      act(() => vi.advanceTimersByTime(2_920));
+      act(() => vi.advanceTimersByTime(3_470));
       seen.push(layout());
     }
     for (let step = 1; step < seen.length; step += 1) {
@@ -308,7 +310,7 @@ describe("PluginMorph", () => {
     FakeObserver.instances[0]!.show(true);
     act(() => vi.advanceTimersByTime(20_000));
     expect(root.dataset.scene).toBe("graph");
-    expect(root.className).not.toContain("mx-hidden");
+    expect(root.className).not.toContain("mx-hide-");
     unmount();
   });
 });

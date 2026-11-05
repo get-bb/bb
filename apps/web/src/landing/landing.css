@@ -4597,6 +4597,21 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   --mx-line: var(--border-mix-light);
   --mx-side-w: 192px;
   --mx-panel-w: 0px;
+  --mx-move: 0.75s var(--ease-in-out);
+  --mx-color: 1s ease;
+  transition:
+    --mx-canvas var(--mx-color),
+    --mx-ink var(--mx-color),
+    --mx-side var(--mx-color),
+    --mx-accent var(--mx-color),
+    --mx-ok var(--mx-color),
+    --mx-warn var(--mx-color),
+    --mx-purple var(--mx-color),
+    --mx-red var(--mx-color),
+    --mx-cyan var(--mx-color),
+    --mx-line var(--mx-color),
+    --mx-side-w var(--mx-move),
+    --mx-panel-w var(--mx-move);
 }
 
 .dark .bw-morph.mx-stock {
@@ -4703,17 +4718,25 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-right-color: transparent;
 }
 
-.mx-window {
-  transition: opacity 0.5s ease;
-}
-
-.mx-hidden .mx-window {
-  opacity: 0;
-}
-
 .mx-window .bar-toggle,
 .mx-window .rail-btn {
-  transition: none;
+  transition:
+    background 0.4s ease,
+    color 0.4s ease;
+}
+
+.mx-center > .mx-layer,
+.mx-side-slot > .mx-layer,
+.mx-panel > .mx-ag,
+.mx-title {
+  transition: opacity 0.4s ease;
+}
+
+.mx-hide-center .mx-center > .mx-layer,
+.mx-hide-side .mx-side-slot > .mx-layer,
+.mx-hide-panel .mx-panel > .mx-ag,
+.mx-hide-title .mx-title.is-on {
+  opacity: 0;
 }
 
 .mx-titles {
@@ -4737,6 +4760,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   margin-top: -6px;
   opacity: 0;
   overflow: hidden;
+  transition:
+    height var(--mx-move),
+    margin var(--mx-move),
+    opacity 0.4s ease,
+    background 0.4s ease,
+    color 0.4s ease;
 }
 
 .mx-rail-plugin.is-on {
@@ -6256,5 +6285,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
     opacity: 0;
     clip-path: inset(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bw-morph {
+    transition: none;
   }
 }
