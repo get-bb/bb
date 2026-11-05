@@ -18,6 +18,7 @@ bb storage retention --archive-after never --delete-after never --save --yes
 bb storage retention --delete-storage-on-archive true --save --yes
 bb storage retention --delete-storage-on-archive false --save --yes
 bb storage retention --delete-dev-data-on-checkout-removal true --save --yes
+bb storage db
 bb storage usage
 bb storage usage --rescan
 bb storage usage --machine HOST_ID --rescan
@@ -34,6 +35,16 @@ bb storage remove-external-worktrees --machine HOST_ID --yes
 bb storage remove-external-worktrees --machine HOST_ID --path WORKTREE_PATH --yes
 bb storage remove-external-worktrees --machine HOST_ID --path WORKTREE_PATH --force --yes
 ```
+
+`bb storage db` reads bb.db on the server: `database.fileBytes` and
+`walBytes` (bb.db and its write-ahead log on disk), `freelistPages` and
+`reclaimableBytes` (free pages inside the file), and `autoVacuum`. With
+`incremental`, bb returns free pages to disk in hourly steps; with `none` (databases
+bb created before May 29, 2026), new history reuses free pages before the file
+grows, and returning them to disk needs a full VACUUM. `history` counts
+threads, events and search segments for active, archived and deleted
+(awaiting cleanup) threads; it counts rows, not bytes. The page shows the same
+figures in its Database section. SDK: `bb.sdk.experimental_storage.database()`.
 
 Without `--save`, retention thresholds only preview affected thread counts.
 Days must be whole numbers from 1 to 3650, or `never`. Unspecified settings

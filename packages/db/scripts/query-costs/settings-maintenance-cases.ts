@@ -29,6 +29,12 @@ import {
   getStoredThemeId,
   setStoredAppearance,
 } from "../../src/data/app-theme.js";
+import {
+  countThreadEventsChunk,
+  countThreadSearchSegments,
+  listThreadHistoryEntries,
+  readDatabaseFilePath,
+} from "../../src/data/database-storage.js";
 import { getExperiments, setExperiments } from "../../src/data/experiments.js";
 import {
   dropDeferredLegacyTables,
@@ -127,6 +133,7 @@ const APP_THEME = `${DATA}/app-theme.ts`;
 const EXPERIMENTS = `${DATA}/experiments.ts`;
 const UI_PREFERENCES = `${DATA}/ui-preferences.ts`;
 const MAINTENANCE = `${DATA}/maintenance.ts`;
+const DATABASE_STORAGE = `${DATA}/database-storage.ts`;
 const RATE_LIMIT_PRUNING = `${DATA}/rate-limit-pruning.ts`;
 const RESOLVED_ITEM_PRUNING = `${DATA}/resolved-item-pruning.ts`;
 const RETAINED_EVENT_OUTPUTS = `${DATA}/retained-event-outputs.ts`;
@@ -137,6 +144,8 @@ const PROVIDER_MODEL_CATALOGS = `${DATA}/provider-model-catalogs.ts`;
 
 const SWEEP_BATCH_SIZE = 500;
 const RATE_LIMIT_CHUNK_SIZE = 16;
+const THREAD_HISTORY_THREAD_PAGE_SIZE = 500;
+const THREAD_HISTORY_EVENT_CHUNK_SIZE = 1_024;
 const RETAINED_OUTPUT_EXPIRY_BATCH_SIZE = 1;
 const TIMELINE_WINDOW_EVENT_BUDGET = 1_500;
 const WORKSPACE_CATALOG_RETENTION_MS = 7 * 24 * 60 * 60_000;
@@ -521,6 +530,31 @@ const MAINTENANCE_CASES: readonly Case[] = [
   {
     name: `${MAINTENANCE}#getDatabaseAutoVacuumMode`,
     run: (db) => getDatabaseAutoVacuumMode(db.$client),
+  },
+  {
+    name: `${DATABASE_STORAGE}#readDatabaseFilePath`,
+    run: (db) => readDatabaseFilePath(db),
+  },
+  {
+    name: `${DATABASE_STORAGE}#listThreadHistoryEntries`,
+    run: (db) =>
+      listThreadHistoryEntries(db, {
+        afterThreadId: null,
+        limit: THREAD_HISTORY_THREAD_PAGE_SIZE,
+      }),
+  },
+  {
+    name: `${DATABASE_STORAGE}#countThreadEventsChunk`,
+    run: (db, fixture) =>
+      countThreadEventsChunk(db, {
+        afterSequence: null,
+        limit: THREAD_HISTORY_EVENT_CHUNK_SIZE,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${DATABASE_STORAGE}#countThreadSearchSegments`,
+    run: (db, fixture) => countThreadSearchSegments(db, fixture.threadId),
   },
   {
     name: `${RATE_LIMIT_PRUNING}#pruneRateLimitSnapshotWindow`,

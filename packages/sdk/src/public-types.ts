@@ -30,6 +30,7 @@ export type * from "./areas/prompt-history.js";
 export type * from "./areas/projects.js";
 export type * from "./areas/providers.js";
 export type * from "./areas/status.js";
+export type * from "./areas/storage.js";
 export type * from "./areas/system.js";
 export type * from "./areas/terminals.js";
 export type * from "./areas/theme.js";

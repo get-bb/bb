@@ -216,6 +216,7 @@ type ExpectedBbSdkKey =
   | "experimental_desktopBrowsers"
   | "experimental_promptHistory"
   | "experimental_server"
+  | "experimental_storage"
   | "environments"
   | "files"
   | "guide"
@@ -321,6 +322,7 @@ type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
 type ExpectedPluginInstallJobsKey = "cancel" | "get" | "list";
 
 type ExpectedExperimentalPromptHistoryKey = "list";
+type ExpectedExperimentalStorageKey = "database";
 
 type ExpectedProjectsKey =
   | "machineEnvironment"
@@ -591,6 +593,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["experimental_promptHistory"]
     >().toEqualTypeOf<ExpectedExperimentalPromptHistoryKey>();
+    expectTypeOf<
+      keyof RootBbSdk["experimental_storage"]
+    >().toEqualTypeOf<ExpectedExperimentalStorageKey>();
     expectTypeOf<
       keyof RootBbSdk["providers"]
     >().toEqualTypeOf<ExpectedProvidersKey>();
