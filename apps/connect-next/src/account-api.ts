@@ -176,13 +176,15 @@ export function parseGateResolveResponse(
   const machine = parseMachine(value.machine);
   const oauth = parseOAuth(value.oauth);
   const { credential } = value;
+  const nextEnabled = value.nextEnabled ?? null;
   if (
     label === undefined ||
     session === undefined ||
     desktopSession === undefined ||
     machine === undefined ||
     oauth === undefined ||
-    (credential !== null && typeof credential !== "boolean")
+    (credential !== null && typeof credential !== "boolean") ||
+    (nextEnabled !== null && typeof nextEnabled !== "boolean")
   ) {
     return null;
   }
@@ -191,9 +193,18 @@ export function parseGateResolveResponse(
     (request.desktopSession === null && desktopSession !== null) ||
     (request.credential === null && credential !== null) ||
     (request.machineCredential === null && machine !== null) ||
-    (request.oauth === null && oauth !== null);
+    (request.oauth === null && oauth !== null) ||
+    (request.credential === null && nextEnabled !== null);
   if (unasked) return null;
-  return { label, session, desktopSession, credential, machine, oauth };
+  return {
+    label,
+    session,
+    desktopSession,
+    credential,
+    machine,
+    oauth,
+    nextEnabled,
+  };
 }
 
 export function isPositiveAnswer(

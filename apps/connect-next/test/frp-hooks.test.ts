@@ -28,6 +28,7 @@ it.each(["bee", "bee--3000"])(
           desktopSession: null,
           machine: null,
           oauth: null,
+          nextEnabled: true,
         };
       },
       forget() {},

@@ -1,6 +1,10 @@
 import { createMachineLabelProxy } from "../src/machine-label.js";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
+  GATE_FAST_OFFLINE_HEADER,
+  GATE_FORWARDED_AUTH_HEADER,
+  GATE_FORWARDED_HOST_HEADER,
+  GATE_OFFLINE_HEADER,
   GATE_PRESENCE_BATCH_MAX,
   GATE_RESOLVE_BATCH_MAX,
   type GatePresenceRequest,
@@ -26,6 +30,7 @@ import { silentLog } from "../src/log.js";
 import { startPresence } from "../src/presence.js";
 import { trackServerFrames, WEBSOCKET_GOING_AWAY } from "../src/ws-frames.js";
 import { configFromEnv } from "../src/config.js";
+import { checkForwarded, fastOfflineReply } from "../src/forwarded.js";
 import { createLocalDirectory } from "../src/directory.js";
 import { isOwnSubdomain, parseHookCall } from "../src/frp-hooks.js";
 import { isTenantSetCookie, tenantCookies } from "../src/forwarding.js";
@@ -62,6 +67,7 @@ const OWNED: GateResolveResponse = {
   credential: null,
   machine: null,
   oauth: null,
+  nextEnabled: null,
 };
 
 interface StubCall {
@@ -134,6 +140,26 @@ describe("account API client", () => {
         },
         { ...ASK, desktopSession: "d" },
       ),
+    ).toBeNull();
+  });
+
+  it("reads nextEnabled only on credential checks and tolerates a Worker that does not send it yet", () => {
+    const linkAsk = { ...ASK, session: null, credential: "c" };
+    const linked = { ...OWNED, session: null, credential: true };
+    expect(
+      parseGateResolveResponse({ ...linked, nextEnabled: false }, linkAsk),
+    ).toEqual({ ...linked, nextEnabled: false });
+    const older: Record<string, unknown> = { ...linked };
+    delete older.nextEnabled;
+    expect(parseGateResolveResponse(older, linkAsk)).toEqual({
+      ...linked,
+      nextEnabled: null,
+    });
+    expect(
+      parseGateResolveResponse({ ...linked, nextEnabled: "no" }, linkAsk),
+    ).toBeNull();
+    expect(
+      parseGateResolveResponse({ ...OWNED, nextEnabled: true }, ASK),
     ).toBeNull();
   });
 
@@ -916,6 +942,7 @@ describe("helpers", () => {
     });
     expect(config).toMatchObject({
       baseDomain: "next.getbb.app",
+      forwardedBaseDomain: "getbb.app",
       scheme: "https",
       accountAppUrl: "https://getbb.app",
       ports: { web: 8080, frpTcp: null },
@@ -934,6 +961,146 @@ describe("helpers", () => {
         GATE_SIGNING_KEY: "{}",
       }),
     ).toThrow("GATE_SIGNING_KEY");
+    const base = {
+      ACCOUNT_API_URL: "https://connect.vibecodethis.site",
+      GATE_SECRET: "s",
+      GATE_SIGNING_KEY: key,
+    };
+    expect(
+      configFromEnv({ ...base, BASE_DOMAIN: "next.vibecodethis.site" })
+        .forwardedBaseDomain,
+    ).toBe("vibecodethis.site");
+    expect(
+      configFromEnv({ ...base, BASE_DOMAIN: "fly.example.test" })
+        .forwardedBaseDomain,
+    ).toBeNull();
+    expect(
+      configFromEnv({
+        ...base,
+        BASE_DOMAIN: "fly.example.test",
+        FORWARDED_BASE_DOMAIN: "Example.Test",
+      }).forwardedBaseDomain,
+    ).toBe("example.test");
+    expect(() =>
+      configFromEnv({
+        ...base,
+        BASE_DOMAIN: "next.getbb.app",
+        FORWARDED_BASE_DOMAIN: "next.getbb.app",
+      }),
+    ).toThrow("FORWARDED_BASE_DOMAIN");
+  });
+});
+
+describe("forwarded visits", () => {
+  const policy = {
+    baseDomain: "next.getbb.app",
+    forwardedBaseDomain: "getbb.app",
+    scheme: "https" as const,
+    secret: "gate-secret",
+  };
+  const forwardedHeaders = (host: string, auth = "Bearer gate-secret") => ({
+    [GATE_FORWARDED_HOST_HEADER]: host,
+    [GATE_FORWARDED_AUTH_HEADER]: auth,
+  });
+
+  it("treats a request without forward headers as direct", () => {
+    expect(checkForwarded({}, "bee.next.getbb.app", policy)).toEqual({
+      kind: "direct",
+    });
+    expect(
+      checkForwarded(
+        { [GATE_FAST_OFFLINE_HEADER]: "1" },
+        "bee.next.getbb.app",
+        policy,
+      ),
+    ).toEqual({ kind: "direct" });
+  });
+
+  it("accepts the same subdomain under the public domain with the gate secret", () => {
+    expect(
+      checkForwarded(
+        {
+          ...forwardedHeaders("Bee.GetBB.app"),
+          [GATE_FAST_OFFLINE_HEADER]: "1",
+        },
+        "bee.next.getbb.app",
+        policy,
+      ),
+    ).toEqual({
+      kind: "forwarded",
+      visit: {
+        publicHost: "bee.getbb.app",
+        publicOrigin: "https://bee.getbb.app",
+        publicBaseDomain: "getbb.app",
+        fastOffline: true,
+      },
+    });
+    expect(
+      checkForwarded(
+        forwardedHeaders("bee--5173.getbb.app"),
+        "bee--5173.next.getbb.app:443",
+        policy,
+      ),
+    ).toMatchObject({
+      kind: "forwarded",
+      visit: {
+        publicOrigin: "https://bee--5173.getbb.app",
+        fastOffline: false,
+      },
+    });
+  });
+
+  it("refuses partial, forged and mismatched forwards", () => {
+    const host = "bee.next.getbb.app";
+    const refused = (headers: Record<string, string>, on = host, over = {}) =>
+      checkForwarded(headers, on, { ...policy, ...over }).kind;
+    expect(refused({ [GATE_FORWARDED_HOST_HEADER]: "bee.getbb.app" })).toBe(
+      "refused",
+    );
+    expect(
+      refused({ [GATE_FORWARDED_AUTH_HEADER]: "Bearer gate-secret" }),
+    ).toBe("refused");
+    for (const auth of [
+      "Bearer wrong",
+      "gate-secret",
+      "bearer gate-secret",
+      "Bearer gate-secret ",
+      "",
+    ]) {
+      expect(refused(forwardedHeaders("bee.getbb.app", auth))).toBe("refused");
+    }
+    for (const forwarded of [
+      "wasp.getbb.app",
+      "bee.next.getbb.app",
+      "x.bee.getbb.app",
+      "bee.getbb.app.evil.test",
+      "bee.getbb.appx",
+      "bee.getbb.app:",
+      "bee.getbb.app:99999999",
+      "bee--3000.getbb.app",
+    ]) {
+      expect(refused(forwardedHeaders(forwarded))).toBe("refused");
+    }
+    expect(refused(forwardedHeaders("bee.getbb.app"), "bee.other.test")).toBe(
+      "refused",
+    );
+    expect(
+      refused(forwardedHeaders("bee.getbb.app"), host, {
+        forwardedBaseDomain: null,
+      }),
+    ).toBe("refused");
+    expect(
+      refused(forwardedHeaders("bee.getbb.app", "Bearer "), host, {
+        secret: "",
+      }),
+    ).toBe("refused");
+  });
+
+  it("answers fast offline without a page", () => {
+    const reply = fastOfflineReply();
+    expect(reply.status).toBe(503);
+    expect(reply.headers[GATE_OFFLINE_HEADER]).toBe("1");
+    expect(reply.headers["content-type"]).toContain("text/plain");
   });
 });
 

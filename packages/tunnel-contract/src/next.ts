@@ -116,6 +116,7 @@ export interface GateResolveResponse {
   credential: boolean | null;
   machine: { machineId: string; userId: string } | null;
   oauth: GateAssertionOAuth | null;
+  nextEnabled: boolean | null;
 }
 
 export interface GatePresenceRequest {

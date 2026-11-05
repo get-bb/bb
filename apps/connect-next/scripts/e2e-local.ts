@@ -19,6 +19,10 @@ import {
 import {
   FRP_VERSION,
   GATE_ASSERTION_HEADER,
+  GATE_FAST_OFFLINE_HEADER,
+  GATE_FORWARDED_AUTH_HEADER,
+  GATE_FORWARDED_HOST_HEADER,
+  GATE_OFFLINE_HEADER,
   gateAudienceForServer,
   generateGateKeyPair,
   signGateAssertion,
@@ -527,6 +531,115 @@ async function openWs(
       resolve({ opened: false, status: null, message: null });
     });
   });
+}
+
+const PUBLIC_HOST = `${LABEL}.${new URL(APP_URL).host}`;
+const PUBLIC_ORIGIN = `http://${PUBLIC_HOST}`;
+
+function forwardedHeaders(
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    [GATE_FORWARDED_HOST_HEADER]: PUBLIC_HOST,
+    [GATE_FORWARDED_AUTH_HEADER]: `Bearer ${GATE_SECRET}`,
+    ...extra,
+  };
+}
+
+async function checkForwarded(
+  visitPort: number,
+  ownerCookie: string,
+  otherCookie: string,
+): Promise<void> {
+  const shell = await visit(visitPort, "/", {
+    cookie: ownerCookie,
+    headers: forwardedHeaders({ accept: "text/html" }),
+  });
+  check(
+    "forwarded: the Worker's forward of the owner's visit serves the app shell",
+    shell.status === 200 && shell.body.includes('<div id="root"'),
+    `${shell.status} (public host ${PUBLIC_HOST})`,
+  );
+  const patch = await visit(visitPort, "/api/v1/projects/does-not-exist", {
+    method: "PATCH",
+    cookie: ownerCookie,
+    headers: forwardedHeaders({
+      "content-type": "application/json",
+      origin: PUBLIC_ORIGIN,
+    }),
+    body: JSON.stringify({ name: "x" }),
+  });
+  check(
+    "forwarded: a state change with the public Origin passes the gate and the server's browser guard",
+    patch.status === 404 &&
+      patch.headers.get("content-type")?.includes("json") === true,
+    `${patch.status} ${patch.body.slice(0, 80)}`,
+  );
+  const nextOrigin = await visit(visitPort, "/api/v1/projects/does-not-exist", {
+    method: "PATCH",
+    cookie: ownerCookie,
+    headers: forwardedHeaders({
+      "content-type": "application/json",
+      origin: `http://${LABEL}.${NEXT_DOMAIN}:${visitPort}`,
+    }),
+    body: JSON.stringify({ name: "x" }),
+  });
+  check(
+    "forwarded: a state change with the next Origin is refused",
+    nextOrigin.status === 403,
+    `${nextOrigin.status}`,
+  );
+  const ws = await openWs(
+    visitPort,
+    ownerCookie,
+    forwardedHeaders({ origin: PUBLIC_ORIGIN }),
+  );
+  check(
+    "forwarded: /ws with the public Origin opens and streams",
+    ws.opened,
+    `${ws.status} ${ws.message ?? ""}`,
+  );
+  const other = await visit(visitPort, "/api/v1/projects", {
+    cookie: otherCookie,
+    headers: forwardedHeaders(),
+  });
+  check(
+    "forwarded: another user still gets 403",
+    other.status === 403,
+    `${other.status}`,
+  );
+  const signIn = await visit(visitPort, "/threads", {
+    headers: forwardedHeaders({ accept: "text/html" }),
+  });
+  check(
+    "forwarded: the sign-in page returns to the public address",
+    signIn.status === 401 &&
+      signIn.body.includes(
+        `returnTo=${encodeURIComponent(`${PUBLIC_ORIGIN}/threads`)}`,
+      ),
+    `${signIn.status}`,
+  );
+  const forged = await visit(visitPort, "/api/v1/projects", {
+    cookie: ownerCookie,
+    headers: forwardedHeaders({
+      [GATE_FORWARDED_AUTH_HEADER]: "Bearer not-the-gate-secret",
+    }),
+  });
+  const partial = await visit(visitPort, "/api/v1/projects", {
+    cookie: ownerCookie,
+    headers: { [GATE_FORWARDED_HOST_HEADER]: PUBLIC_HOST },
+  });
+  const otherHost = await visit(visitPort, "/api/v1/projects", {
+    cookie: ownerCookie,
+    headers: forwardedHeaders({
+      [GATE_FORWARDED_HOST_HEADER]: `someone.${new URL(APP_URL).host}`,
+    }),
+  });
+  check(
+    "forwarded: a wrong secret, a missing secret or another label's host is refused with 403",
+    forged.status === 403 && partial.status === 403 && otherHost.status === 403,
+    `${forged.status} ${partial.status} ${otherHost.status}`,
+  );
 }
 
 function countBy(values: number[]): Record<string, number> {
@@ -2033,10 +2146,12 @@ async function mcpCall(
   token: string,
   message: Record<string, unknown>,
   session: string | null,
+  extra: Record<string, string> = {},
 ): Promise<Visit> {
   return visit(visitPort, "/mcp", {
     method: "POST",
     headers: {
+      ...extra,
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
       accept: MCP_ACCEPT,
@@ -2050,6 +2165,7 @@ async function mcpCall(
 async function mcpToolNames(
   visitPort: number,
   token: string,
+  extra: Record<string, string> = {},
 ): Promise<{ status: number; tools: string[]; detail: string }> {
   const init = await mcpCall(
     visitPort,
@@ -2064,6 +2180,7 @@ async function mcpToolNames(
       },
     },
     null,
+    extra,
   );
   if (init.status !== 200) {
     return {
@@ -2081,12 +2198,14 @@ async function mcpToolNames(
     token,
     { method: "notifications/initialized" },
     session,
+    extra,
   );
   const listed = await mcpCall(
     visitPort,
     token,
     { id: 2, method: "tools/list", params: {} },
     session,
+    extra,
   );
   const result = mcpMessages(listed)[0]?.result as
     | { tools?: Array<{ name: string }> }
@@ -2203,6 +2322,37 @@ async function checkMcpOAuth(
           'error="invalid_token"',
         ),
       `${refused.status} (token resource ${classicResource})`,
+    );
+    const forwardedTools = await mcpToolNames(
+      visitPort,
+      classic.access_token,
+      forwardedHeaders(),
+    );
+    check(
+      "mcp oauth: the bb connect address's token works on a forwarded visit",
+      forwardedTools.status === 200 &&
+        ["search", "read", "run"].every((name) =>
+          forwardedTools.tools.includes(name),
+        ),
+      forwardedTools.detail,
+    );
+    const nextOnForward = await mcpCall(
+      visitPort,
+      tokens.access_token,
+      { id: 1, method: "ping" },
+      null,
+      forwardedHeaders(),
+    );
+    const forwardedChallenge =
+      nextOnForward.headers.get("www-authenticate") ?? "";
+    check(
+      "mcp oauth: a next token is refused on a forwarded visit, pointing at the public metadata",
+      nextOnForward.status === 401 &&
+        forwardedChallenge.includes('error="invalid_token"') &&
+        forwardedChallenge.includes(
+          `resource_metadata="${PUBLIC_ORIGIN}${OAUTH_PROTECTED_RESOURCE_METADATA_PATH}/mcp"`,
+        ),
+      `${nextOnForward.status} ${forwardedChallenge}`,
     );
 
     const outside = await visit(visitPort, MCP_LOCAL_PATH, {
@@ -2681,6 +2831,7 @@ async function main(): Promise<void> {
     );
   }
 
+  await checkForwarded(visitPort, ownerCookie, otherCookie);
   await checkShares(visitPort, ownerCookie, otherCookie);
   await checkMachines(visitPort, gate.port, ownerId, ownerCookie, otherCookie);
   if (await ensureCloudflareConnect()) {
@@ -2723,6 +2874,23 @@ async function main(): Promise<void> {
     "presence marks the server offline after turning it off",
     true,
     JSON.stringify(offline),
+  );
+  const fastFrom = Date.now();
+  const fast = await visit(visitPort, "/api/v1/projects", {
+    cookie: ownerCookie,
+    headers: forwardedHeaders({
+      [GATE_FAST_OFFLINE_HEADER]: "1",
+      accept: "text/html",
+    }),
+  });
+  const fastMs = Date.now() - fastFrom;
+  check(
+    "forwarded: fast offline answers 503 with x-bb-gate-offline and no page",
+    fast.status === 503 &&
+      fast.headers.get(GATE_OFFLINE_HEADER) === "1" &&
+      !fast.body.includes("<html") &&
+      fastMs < 5_000,
+    `${fast.status} ${fast.headers.get(GATE_OFFLINE_HEADER) ?? "-"} in ${fastMs} ms`,
   );
   const gone = await visit(visitPort, "/api/v1/projects", {
     cookie: ownerCookie,

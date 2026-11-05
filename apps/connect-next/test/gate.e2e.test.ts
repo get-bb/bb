@@ -9,8 +9,13 @@ import {
   GATE_OAUTH_SCOPE_HEADER,
 } from "@bb/connect-db";
 import {
+  FRP_LOGIN_PAUSED_REASON,
   FRP_LOGIN_REFUSED_REASON,
   GATE_ASSERTION_HEADER,
+  GATE_FAST_OFFLINE_HEADER,
+  GATE_FORWARDED_AUTH_HEADER,
+  GATE_FORWARDED_HOST_HEADER,
+  GATE_OFFLINE_HEADER,
   verifyGateAssertion,
 } from "@bb/tunnel-contract/next";
 import { createLocalDirectory } from "../src/directory.js";
@@ -20,6 +25,7 @@ import { frpBinaries, type FrpBinaries } from "./frp-binaries.js";
 import {
   BASE_DOMAIN,
   GATE_SECRET,
+  PUBLIC_DOMAIN,
   freePort,
   gateAudienceForServer,
   startAccountApi,
@@ -42,6 +48,11 @@ const OTHER = "user-other";
 const SESSION = "better-auth.session_token";
 const DESKTOP = "bb-connect.desktop_session";
 const BEE = `bee.${BASE_DOMAIN}`;
+const PUBLIC_BEE = `bee.${PUBLIC_DOMAIN}`;
+const FORWARDED = {
+  [GATE_FORWARDED_HOST_HEADER]: PUBLIC_BEE,
+  [GATE_FORWARDED_AUTH_HEADER]: `Bearer ${GATE_SECRET}`,
+};
 const GRACE_MS = 2_000;
 const HEAD_MS = 3_000;
 const MAX_WAIT_MS = HEAD_MS * 3;
@@ -71,6 +82,14 @@ const fixture: AccountFixture = {
       revoked: false,
       lastSeenAt: null,
       credential: "cred-moth",
+    },
+    lark: {
+      kind: "server",
+      serverId: "srv-lark",
+      userId: OWNER,
+      revoked: false,
+      lastSeenAt: null,
+      credential: "cred-lark",
     },
     mach: {
       kind: "machine",
@@ -111,7 +130,12 @@ const fixture: AccountFixture = {
       resource: `http://wasp.${BASE_DOMAIN}/mcp`,
       grant: { scope: "bb", grantId: "grant-2", clientName: "x" },
     },
+    "tok-public": {
+      resource: `http://${PUBLIC_BEE}/mcp`,
+      grant: { scope: "bb", grantId: "grant-3", clientName: "Claude" },
+    },
   },
+  paused: ["lark"],
   refreshSetCookie: `${SESSION}=refreshed; Domain=.getbb.app; Path=/; HttpOnly`,
 };
 
@@ -175,6 +199,7 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
     gate = await startConnectNext(
       {
         baseDomain: BASE_DOMAIN,
+        forwardedBaseDomain: PUBLIC_DOMAIN,
         scheme: "http",
         accountApiUrl: account.url,
         gateSecret: GATE_SECRET,
@@ -310,6 +335,22 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
       );
       expect(client.output()).toContain(FRP_LOGIN_REFUSED_REASON);
       expect(gate.directory.locate("wasp").kind).toBe("offline");
+    });
+
+    it("pauses a login outside the rollout with the fixed reason", async () => {
+      const client = await connect("lark", "cred-lark", ["lark"]);
+      await waitFor(
+        () => client.child.exitCode !== null,
+        15_000,
+        "frpc to give up",
+      );
+      expect(client.output()).toContain(FRP_LOGIN_PAUSED_REASON);
+      expect(client.output()).not.toContain(FRP_LOGIN_REFUSED_REASON);
+      expect(gate.directory.locate("lark").kind).toBe("offline");
+      expect(account.resolves.at(-1)).toMatchObject({
+        label: "lark",
+        credential: "cred-lark",
+      });
     });
 
     it("logs a client in through a brief account API outage instead of refusing it", async () => {
@@ -952,6 +993,390 @@ describe.skipIf(!availability.ok)("connect-next gate end to end", () => {
         message.length / 4,
       );
       socket.close();
+    });
+  });
+
+  describe("forwarded from the Cloudflare gate", () => {
+    const forwardedGet = (
+      path: string,
+      headers: Record<string, string> = {},
+      host = BEE,
+    ) =>
+      visit(gate.webPort, host, path, {
+        headers: { ...owner, ...FORWARDED, ...headers },
+      });
+
+    function upgradeStatus(
+      path: string,
+      headers: Record<string, string>,
+    ): Promise<number | string> {
+      return new Promise((resolve) => {
+        const socket = new WebSocket(`ws://127.0.0.1:${gate.webPort}${path}`, {
+          headers: { host: BEE, ...owner, ...headers },
+        });
+        socket.on("open", () => {
+          socket.send("ping");
+        });
+        socket.on("message", (data) => {
+          resolve(String(data));
+          socket.close();
+        });
+        socket.on("unexpected-response", (_request, response) =>
+          resolve(response.statusCode ?? 0),
+        );
+        socket.on("error", () => {});
+      });
+    }
+
+    it("refuses forged, partial or mismatched forward headers without reaching the server", async () => {
+      const before = origin.seen.length;
+      const cases: Array<[string, Record<string, string>]> = [
+        [BEE, { [GATE_FORWARDED_HOST_HEADER]: PUBLIC_BEE }],
+        [BEE, { [GATE_FORWARDED_AUTH_HEADER]: `Bearer ${GATE_SECRET}` }],
+        [BEE, { ...FORWARDED, [GATE_FORWARDED_AUTH_HEADER]: "Bearer wrong" }],
+        [BEE, { ...FORWARDED, [GATE_FORWARDED_AUTH_HEADER]: GATE_SECRET }],
+        [
+          BEE,
+          {
+            ...FORWARDED,
+            [GATE_FORWARDED_AUTH_HEADER]: `Bearer ${GATE_SECRET}x`,
+          },
+        ],
+        [BEE, { ...FORWARDED, [GATE_FORWARDED_HOST_HEADER]: BEE }],
+        [
+          BEE,
+          {
+            ...FORWARDED,
+            [GATE_FORWARDED_HOST_HEADER]: `wasp.${PUBLIC_DOMAIN}`,
+          },
+        ],
+        [
+          BEE,
+          { ...FORWARDED, [GATE_FORWARDED_HOST_HEADER]: `x.${PUBLIC_BEE}` },
+        ],
+        [
+          BEE,
+          { ...FORWARDED, [GATE_FORWARDED_HOST_HEADER]: `${PUBLIC_BEE}.evil` },
+        ],
+        [
+          `bee--3000.${BASE_DOMAIN}`,
+          { ...FORWARDED, [GATE_FORWARDED_HOST_HEADER]: PUBLIC_BEE },
+        ],
+      ];
+      for (const [host, headers] of cases) {
+        const answer = await visit(gate.webPort, host, "/echo?forged", {
+          headers: { ...owner, ...headers },
+        });
+        expect({ headers, status: answer.status }).toEqual({
+          headers,
+          status: 403,
+        });
+        expect(answer.text).toBe("bb connect: forwarded request refused\n");
+      }
+      expect(
+        await upgradeStatus("/ws", {
+          ...FORWARDED,
+          [GATE_FORWARDED_AUTH_HEADER]: "Bearer wrong",
+          origin: `http://${PUBLIC_BEE}`,
+        }),
+      ).toBe(403);
+      expect(origin.seen.length).toBe(before);
+    });
+
+    it("admits a forwarded visit and strips the forward headers before the server", async () => {
+      const before = origin.seen.length;
+      const answer = await forwardedGet("/echo?forwarded", {
+        [GATE_FAST_OFFLINE_HEADER]: "1",
+      });
+      expect(answer.status).toBe(200);
+      const seen = origin.seen
+        .slice(before)
+        .find((entry) => entry.url === "/echo?forwarded");
+      expect(seen?.headers.host).toBe(BEE);
+      expect(seen?.headers["x-forwarded-host"]).toBe(BEE);
+      expect(seen?.headers[GATE_FORWARDED_HOST_HEADER]).toBeUndefined();
+      expect(seen?.headers[GATE_FORWARDED_AUTH_HEADER]).toBeUndefined();
+      expect(seen?.headers[GATE_FAST_OFFLINE_HEADER]).toBeUndefined();
+      expect(seen?.assertion).toMatchObject({
+        ok: true,
+        claims: { aud: "server:srv-bee", kind: "session", target: null },
+      });
+    });
+
+    it("checks Origin against the public address and rewrites it for the ingress", async () => {
+      const before = origin.seen.length;
+      const post = (
+        host: string,
+        path: string,
+        originHeader: string,
+        forwarded: Record<string, string>,
+      ) =>
+        visit(gate.webPort, host, path, {
+          method: "POST",
+          headers: {
+            ...owner,
+            ...forwarded,
+            origin: originHeader,
+            "content-type": "text/plain",
+          },
+          body: "x",
+        });
+      expect(
+        (await post(BEE, "/echo?public", `http://${PUBLIC_BEE}`, FORWARDED))
+          .status,
+      ).toBe(200);
+      expect(
+        (await post(BEE, "/echo?next", `http://${BEE}`, FORWARDED)).status,
+      ).toBe(403);
+      expect(
+        (await post(BEE, "/echo?evil", "http://evil.test", FORWARDED)).status,
+      ).toBe(403);
+      expect(
+        (await post(BEE, "/echo?direct-public", `http://${PUBLIC_BEE}`, {}))
+          .status,
+      ).toBe(403);
+      const shareHost = `bee--3000.${BASE_DOMAIN}`;
+      const publicShare = `bee--3000.${PUBLIC_DOMAIN}`;
+      const shareForward = {
+        ...FORWARDED,
+        [GATE_FORWARDED_HOST_HEADER]: publicShare,
+      };
+      expect(
+        (
+          await post(
+            shareHost,
+            "/echo?share-public",
+            `http://${publicShare}`,
+            shareForward,
+          )
+        ).status,
+      ).toBe(200);
+      const foreignShare = await visit(
+        gate.webPort,
+        shareHost,
+        "/echo?share-foreign",
+        {
+          headers: { ...owner, ...shareForward, origin: `http://${shareHost}` },
+        },
+      );
+      expect(foreignShare.status).toBe(200);
+      const seen = (url: string) =>
+        origin.seen.slice(before).find((entry) => entry.url === url);
+      expect(seen("/echo?public")?.headers.origin).toBe(`http://${BEE}`);
+      expect(seen("/echo?next")).toBeUndefined();
+      expect(seen("/echo?share-public")?.headers.origin).toBe(
+        "http://127.0.0.1:3000",
+      );
+      expect(seen("/echo?share-public")?.headers.host).toBe(shareHost);
+      expect(seen("/echo?share-foreign")?.headers.origin).toBe(
+        `http://${shareHost}`,
+      );
+
+      expect(
+        await upgradeStatus("/ws", {
+          ...FORWARDED,
+          origin: `http://${PUBLIC_BEE}`,
+        }),
+      ).toBe("echo:ping");
+      expect(seen("/ws")?.headers.origin).toBe(`http://${BEE}`);
+      expect(
+        await upgradeStatus("/ws", { ...FORWARDED, origin: `http://${BEE}` }),
+      ).toBe(403);
+    });
+
+    it("signs in, shows machines and serves MCP metadata under the public address", async () => {
+      const html = await visit(gate.webPort, BEE, "/threads?x=1", {
+        headers: { ...FORWARDED, accept: "text/html" },
+      });
+      expect(html.status).toBe(401);
+      expect(html.text).toContain(
+        `${account.url}/dashboard?returnTo=${encodeURIComponent(`http://${PUBLIC_BEE}/threads?x=1`)}`,
+      );
+      const machine = await visit(gate.webPort, `mach.${BASE_DOMAIN}`, "/", {
+        headers: {
+          ...FORWARDED,
+          [GATE_FORWARDED_HOST_HEADER]: `mach.${PUBLIC_DOMAIN}`,
+        },
+      });
+      expect(machine.status).toBe(200);
+      expect(machine.text).toContain(`mach--&lt;port&gt;.${PUBLIC_DOMAIN}<`);
+      const metadata = await visit(
+        gate.webPort,
+        BEE,
+        "/.well-known/oauth-protected-resource/mcp",
+        { headers: FORWARDED },
+      );
+      expect(JSON.parse(metadata.text)).toMatchObject({
+        resource: `http://${PUBLIC_BEE}/mcp`,
+      });
+      const challenge = await visit(gate.webPort, BEE, "/mcp", {
+        method: "POST",
+        headers: FORWARDED,
+      });
+      expect(challenge.status).toBe(401);
+      expect(challenge.headers["www-authenticate"]).toBe(
+        `Bearer resource_metadata="http://${PUBLIC_BEE}/.well-known/oauth-protected-resource/mcp", scope="bb"`,
+      );
+    });
+
+    it("binds MCP tokens to the address they were issued for", async () => {
+      const mcp = (token: string, headers: Record<string, string>) =>
+        visit(gate.webPort, BEE, "/mcp", {
+          method: "POST",
+          headers: {
+            ...headers,
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: "{}",
+        });
+      const before = origin.seen.length;
+      const publicToken = await mcp("tok-public", FORWARDED);
+      expect(publicToken.status).toBe(200);
+      expect(account.resolves.at(-1)?.oauth).toEqual({
+        token: "tok-public",
+        resource: `http://${PUBLIC_BEE}/mcp`,
+      });
+      expect(
+        origin.seen.slice(before).find((entry) => entry.url === MCP_LOCAL_PATH)
+          ?.assertion,
+      ).toMatchObject({
+        ok: true,
+        claims: { kind: "oauth", oauth: { grantId: "grant-3" } },
+      });
+      const nextOnPublic = await mcp("tok-good", FORWARDED);
+      expect(nextOnPublic.status).toBe(401);
+      expect(nextOnPublic.headers["www-authenticate"]).toContain(
+        `error="invalid_token", resource_metadata="http://${PUBLIC_BEE}/`,
+      );
+      const publicOnNext = await mcp("tok-public", {});
+      expect(publicOnNext.status).toBe(401);
+      expect(account.resolves.at(-1)?.oauth).toEqual({
+        token: "tok-public",
+        resource: `http://${BEE}/mcp`,
+      });
+      expect((await mcp("tok-good", {})).status).toBe(200);
+    });
+
+    it("answers fast offline at once, before reading the body, only when asked by an authenticated forward", async () => {
+      const wasp = `wasp.${BASE_DOMAIN}`;
+      const waspForward = {
+        ...FORWARDED,
+        [GATE_FORWARDED_HOST_HEADER]: `wasp.${PUBLIC_DOMAIN}`,
+        [GATE_FAST_OFFLINE_HEADER]: "1",
+      };
+      const fast = await visit(gate.webPort, wasp, "/", {
+        headers: { ...owner, ...waspForward, accept: "text/html" },
+      });
+      expect(fast.status).toBe(503);
+      expect(fast.headers[GATE_OFFLINE_HEADER]).toBe("1");
+      expect(fast.headers["content-type"]).toContain("text/plain");
+      expect(fast.text).not.toContain("<html");
+      const ignored = await visit(gate.webPort, wasp, "/", {
+        headers: {
+          ...owner,
+          [GATE_FAST_OFFLINE_HEADER]: "1",
+          accept: "text/html",
+        },
+      });
+      expect(ignored.status).toBe(503);
+      expect(ignored.headers[GATE_OFFLINE_HEADER]).toBeUndefined();
+      expect(ignored.text).toContain("Your bb is offline");
+      const slowForward = await visit(gate.webPort, wasp, "/", {
+        headers: {
+          ...owner,
+          ...waspForward,
+          [GATE_FAST_OFFLINE_HEADER]: "0",
+          accept: "text/html",
+        },
+      });
+      expect(slowForward.headers[GATE_OFFLINE_HEADER]).toBeUndefined();
+      expect(slowForward.text).toContain("Your bb is offline");
+
+      const unshared = await visit(
+        gate.webPort,
+        `bee--5173.${BASE_DOMAIN}`,
+        "/",
+        {
+          headers: {
+            ...owner,
+            ...FORWARDED,
+            [GATE_FORWARDED_HOST_HEADER]: `bee--5173.${PUBLIC_DOMAIN}`,
+            [GATE_FAST_OFFLINE_HEADER]: "1",
+          },
+        },
+      );
+      expect(unshared.status).toBe(503);
+      expect(unshared.headers[GATE_OFFLINE_HEADER]).toBe("1");
+
+      const unsentBody = await new Promise<{
+        status: number;
+        offline: string | undefined;
+      }>((resolve, reject) => {
+        const outgoing = httpRequest(
+          {
+            hostname: "127.0.0.1",
+            port: gate.webPort,
+            method: "POST",
+            path: "/upload",
+            headers: {
+              ...owner,
+              ...waspForward,
+              host: wasp,
+              origin: `http://wasp.${PUBLIC_DOMAIN}`,
+              "content-length": String(64 * 1024 * 1024),
+            },
+            agent: false,
+          },
+          (response) => {
+            response.resume();
+            outgoing.destroy();
+            const offline = response.headers[GATE_OFFLINE_HEADER];
+            resolve({
+              status: response.statusCode ?? 0,
+              offline: Array.isArray(offline) ? offline[0] : offline,
+            });
+          },
+        );
+        outgoing.on("error", reject);
+        outgoing.flushHeaders();
+      });
+      expect(unsentBody).toEqual({ status: 503, offline: "1" });
+    });
+
+    it("skips the reconnect grace for a forwarded fast-offline visit", async () => {
+      const client = await connect("moth", "cred-moth", ["moth"]);
+      await waitFor(
+        () => gate.directory.locate("moth").kind === "here",
+        15_000,
+        "moth to connect",
+      );
+      await client.kill();
+      await waitFor(
+        () => gate.directory.locate("moth").kind === "offline",
+        10_000,
+        "moth to drop",
+      );
+      const moth = `moth.${BASE_DOMAIN}`;
+      const mothForward = {
+        ...owner,
+        ...FORWARDED,
+        [GATE_FORWARDED_HOST_HEADER]: `moth.${PUBLIC_DOMAIN}`,
+      };
+      const started = Date.now();
+      const fast = await visit(gate.webPort, moth, "/echo", {
+        headers: { ...mothForward, [GATE_FAST_OFFLINE_HEADER]: "1" },
+      });
+      expect(fast.status).toBe(503);
+      expect(fast.headers[GATE_OFFLINE_HEADER]).toBe("1");
+      expect(Date.now() - started).toBeLessThan(GRACE_MS / 2);
+      const waitedFrom = Date.now();
+      const waited = await visit(gate.webPort, moth, "/echo", {
+        headers: mothForward,
+      });
+      expect(waited.status).toBe(503);
+      expect(waited.headers[GATE_OFFLINE_HEADER]).toBeUndefined();
+      expect(Date.now() - waitedFrom).toBeGreaterThan(GRACE_MS / 2);
     });
   });
 

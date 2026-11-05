@@ -1,6 +1,7 @@
 # bb connect next (Fly)
 
-bb connect next is an opt-in second way in to a bb server, next to the Cloudflare gate (`apps/connect`).
+bb connect next is a second way in to a bb server, next to the Cloudflare gate (`apps/connect`), and
+the gate that `<label>.getbb.app` itself is moving to (see Serving getbb.app addresses).
 A server with the `connect-next` plugin enabled answers at `https://<label>.next.getbb.app` as well as
 `https://<label>.getbb.app` (staging: `https://<label>.next.vibecodethis.site`; the plugin derives the
 domain from its bb account, see Plugin). Accounts, servers, machines, credentials and OAuth grants stay in the
@@ -11,7 +12,7 @@ connect Postgres database (PlanetScale, reached through Hyperdrive); only the da
 | Piece          | Where                                                                       | Owns                                                                                                                                                                                                                       |
 | -------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Contract       | `packages/tunnel-contract/src/next.ts` (`@bb/tunnel-contract/next`)         | Names, wire types, gate assertion signing and verification                                                                                                                                                                 |
-| Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                              | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN` |
+| Account API    | `apps/connect` (Worker `bb-connect`, Postgres)                              | `POST https://connect.getbb.app/api/gate/resolve[/batch]` and `/api/gate/presence[/batch]` (staging `connect.vibecodethis.site`), all behind `Authorization: Bearer <GATE_SECRET>` (Worker secret); var `NEXT_BASE_DOMAIN`; KV `CONNECT_DB_FLAGS` (Rollout) |
 | Gate keys      | `apps/web` (getbb.app apex)                                                 | `GET https://getbb.app/.well-known/bb-connect-gate-keys.json` from the `GATE_PUBLIC_KEYS` var (404 while unset; see Gate keys below), `cache-control: public, max-age=300`; var `NEXT_BASE_DOMAIN` for MCP OAuth           |
 | Gate           | `apps/connect-next` (Fly app `bb-connect-next`)                             | TLS-terminated HTTP gate on 8080 plus `frps`; every rule of `apps/connect/src/worker.ts`                                                                                                                                   |
 | Server ingress | `apps/server/src/services/connect-next`                                     | `bb.server.internal_DO_NOT_USE_openTunnelIngress`: a loopback listener that only accepts requests with a valid gate assertion                                                                                              |
@@ -90,12 +91,20 @@ Every field is `null` when its input was `null`:
 - `machine`: a machine credential (`x-bb-connect-machine`) → `{ machineId, userId }` for any unrevoked
   machine; the gate checks `userId` against the label owner. A match for the owner marks the machine seen.
 - `oauth`: `{ token, resource }` → `{ scope, grantId, clientName }` only when the label is an unrevoked
-  server, `resource` is exactly `https://<label>.<NEXT_BASE_DOMAIN>/mcp`, and the token was issued for
-  that resource, user, server and an unrevoked grant. Tokens for `https://<label>.getbb.app/mcp` are
-  refused here and next tokens are refused by the Cloudflare gate. The grant is cached 30 s per isolate
+  server, `resource` is exactly `https://<label>.<NEXT_BASE_DOMAIN>/mcp` or
+  `https://<label>.<BASE_DOMAIN>/mcp` (the getbb.app resource, which the gate sends only for a
+  forwarded visit; see Serving getbb.app addresses), and the token was issued for that exact resource,
+  user, server and an unrevoked grant. The binding stays exact both ways: a next token is refused for
+  the getbb.app resource, a getbb.app token for the next resource, and next tokens are refused by the
+  Cloudflare gate's own `/mcp`. The grant is cached 30 s per isolate
   and the gate keeps the answer fresh up to 60 s, so a revoked grant stops working within about 60 s
   (90 s plus one refresh at worst; 5 minutes while the account API is failing, see Answer cache). In local Cloud development (`CLOUD_DEV=true`) the resource may also be
-  `http://<label>.<NEXT_BASE_DOMAIN>:<port>/mcp`, the address of a local gate.
+  `http://<label>.<NEXT_BASE_DOMAIN>:<port>/mcp`, the address of a local gate, or
+  `http://<label>.<BASE_DOMAIN>:<port>/mcp`.
+- `nextEnabled`: whether the label's server or machine is in the bb connect next rollout (see
+  Rollout). `null` when `credential` was `null`; for an unknown label `false`. The gate's `Login` hook
+  refuses a client whose answer says `false`. A gate treats a missing key (an older Worker) as `null`,
+  that is, not paused.
 
 `POST /api/gate/presence` takes a `GatePresenceRequest` and answers `200 {"recorded": boolean}`,
 `404 {"error":"unknown_label"}`, or `400` when `at` (epoch ms) is more than 60 s ahead. It writes
@@ -365,6 +374,113 @@ only for labels the flag allows: `blob2` served path (`fly`, `cloudflare`, `fall
 `double2` response status. For example `SELECT blob2, blob6, count() FROM bb_connect_gate_events WHERE
 blob1 = 'route' AND timestamp > NOW() - INTERVAL '1' HOUR GROUP BY blob2, blob6`.
 
+## Serving getbb.app addresses
+
+Users move from the Cloudflare gate to Fly without changing address: the Cloudflare Worker keeps
+answering `<label>.getbb.app` and, for a server whose tunnel is on Fly, forwards the visitor's request
+to the Fly gate. The constants are in `@bb/tunnel-contract/next`.
+
+Forward (Worker → gate). The Worker sends the request (method, path and query, body, cookies and other
+headers unchanged; WebSocket upgrades too) to `https://<sub>.<NEXT_BASE_DOMAIN><path>`, where `<sub>`
+is `<label>` or `<label>--<port>`, with:
+
+| Header                                                | Value                                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `x-bb-gate-forwarded-host` (`GATE_FORWARDED_HOST_HEADER`) | The visitor's public host, `<sub>.<BASE_DOMAIN>` (`bee.getbb.app`; a port only in local runs)    |
+| `x-bb-gate-forwarded-auth` (`GATE_FORWARDED_AUTH_HEADER`) | `Bearer <GATE_SECRET>`, the secret the gate already sends to the account API                     |
+| `x-bb-gate-fast-offline` (`GATE_FAST_OFFLINE_HEADER`)     | Optional, `1`: answer offline at once instead of waiting, so the Worker can fall back            |
+
+Gate checks (`src/forwarded.ts`, before anything else, on HTTP and WebSocket upgrades):
+
+- Neither forward header: a direct visit, exactly as before.
+- Both headers, the secret matches (compared in constant time over SHA-256 digests) and the forwarded
+  host is exactly the request's own subdomain under the public base domain (the `Host` minus
+  `.<BASE_DOMAIN>`, then `.<FORWARDED_BASE_DOMAIN>`, an optional `:<port>`, compared lowercase): a
+  forwarded visit.
+- Anything else (one header alone, a wrong secret, another label's or a share's host, a host under
+  another domain): `403` `bb connect: forwarded request refused` (`forward_refused` logged with the
+  reason). Nothing reaches frps or the server.
+
+`FORWARDED_BASE_DOMAIN` defaults to `BASE_DOMAIN` without its leading `next.` (`getbb.app`,
+`vibecodethis.site`, `bb.localhost` locally); with any other `BASE_DOMAIN` and no variable, every
+forward is refused. All three headers start with `x-bb-gate-`, so the gate drops them (with every other
+inbound `x-bb-gate-*` header) before frps.
+
+A forwarded visit's public origin is `<PUBLIC_SCHEME>://<forwarded host>` instead of
+`<PUBLIC_SCHEME>://<Host>`, everywhere the gate uses its own origin:
+
+- Origin check: a state change or WebSocket is refused (`403`) unless its `Origin` is absent or equals
+  the public origin; the next origin is foreign on a forwarded visit (and the getbb.app origin on a
+  direct one).
+- Origin rewrite before frps: on the main proxy, an `Origin` equal to the public origin becomes
+  `<PUBLIC_SCHEME>://<upstream Host>` (the next host), which the server ingress then rewrites to its
+  loopback origin as for a direct visit; on a share, it becomes `http://127.0.0.1:<port>` as before.
+  Any other `Origin` is forwarded unchanged.
+- MCP: protected-resource metadata names `https://<label>.getbb.app/mcp`, the `401` challenge points
+  at `https://<label>.getbb.app/.well-known/oauth-protected-resource/mcp`, and the gate asks the
+  account API with that resource, so tokens bb-web issued for the getbb.app address work and next
+  tokens do not.
+- The sign-in page's `returnTo`, and the machine page's share address (`<label>--<port>.getbb.app`).
+
+`Host` upstream stays the next host (frps routes on it) and frps itself sets `X-Forwarded-Host` to it,
+so the bb server cannot tell a forwarded visit from a direct one; anything it builds from the request
+host (`/api/v1/system` `serverUrl` without `BB_APP_URL`) names the next address.
+
+Fast offline. On a forwarded visit with `x-bb-gate-fast-offline: 1`, when the label or share is not
+held by any gate machine after the normal lookup (local, then peers, up to 1.5 s), the gate answers
+at once `503` with `x-bb-gate-offline: 1` (`GATE_OFFLINE_HEADER`), `cache-control: no-store` and a
+plain-text body: no 15 s reconnect wait and no HTML page. It decides before reading the request body,
+which it then discards. A label held by another gate machine is still replayed with `fly-replay` (or
+proxied over the private network for a large body); the target re-checks the forward headers, which
+Fly's replay keeps, and answers fast offline itself if the label is gone there too. The header is
+ignored on a direct visit and on a forward with any other value; a peer miss on a forwarded
+fast-offline visit answers the same way. A cached asset is still served while the tunnel is down.
+
+Deploy order (each step is safe alone):
+
+1. Set the rollout flag (see Rollout), then deploy the Worker (`bb-connect`, staging first). It accepts
+   the getbb.app MCP resource and adds `nextEnabled`; gates running the previous release ignore the
+   extra key and check nothing new.
+2. Deploy the gate (`Deploy Connect Next`). It accepts forwards and pauses logins outside the rollout.
+   Against a Worker without `nextEnabled` it pauses nobody.
+3. Deploy the Worker forwarding (`<label>.getbb.app` through the Worker) and raise its
+   `connect-next-route` flag, which needs both of the above. The two flags are separate:
+   `connect-next-rollout` decides who may open a Fly tunnel, `connect-next-route` which labels with a
+   Fly tunnel the Worker forwards.
+4. Ship the client that turns the plugin on by default and handles `FRP_LOGIN_PAUSED_REASON`.
+
+## Rollout
+
+Who may open a next tunnel is a KV flag on the Worker: binding `CONNECT_DB_FLAGS`, key
+`connect-next-rollout` (`apps/connect/src/next-rollout.ts`), JSON
+`{ "percent": <0-100>, "labels": ["<label>", …] }` (`labels` optional). A server or machine is in the
+rollout, and its credential checks answer `nextEnabled: true`, when its label is listed, or the
+SHA-256 of `connect-next-rollout:<server or machine id>` falls in the first `percent` of 10 000
+buckets, or its row has `next_tunnel_at` set (it has used next before: today's beta users stay on).
+Grandfathering is one way: once a server connects to Fly it stays in, whatever `percent` says later.
+
+A missing or invalid flag (not JSON, `percent` missing or outside 0–100, `labels` not a list of
+strings) is `{ "percent": 0 }`: only listed and grandfathered servers. That is the safe default for a
+client that is on by default: a paused server keeps using its Cloudflare tunnel, while an open default
+would move every server to Fly the moment the client ships. In local Cloud development
+(`CLOUD_DEV=true`) a missing or invalid flag lets everyone in. The Worker caches the flag 15 s per isolate (KV
+`cacheTtl` 30 s), keeps the last value through a KV failure, and the gate caches answers up to 60 s,
+so a change reaches logins within about two minutes. A batch reads `next_tunnel_at` for all its
+credential checks in one query per table, skipped at `percent` 100.
+
+The gate's `Login` hook refuses a linked credential whose answer says `nextEnabled: false` with exactly
+`FRP_LOGIN_PAUSED_REASON` ("bb connect next: not yet enabled for this server"), logged as
+`frp_login_paused`. A wrong credential still gets `FRP_LOGIN_REFUSED_REASON`. `NewProxy` and `Ping`
+do not check the rollout, so lowering `percent` closes no tunnel that is already open.
+
+Set it (from `apps/connect`; namespace ids are in `wrangler.jsonc`):
+
+```sh
+pnpm exec wrangler kv key put --binding CONNECT_DB_FLAGS --remote \
+  connect-next-rollout '{"percent":5,"labels":["sawyer"]}' [--env staging]
+pnpm exec wrangler kv key get --binding CONNECT_DB_FLAGS --remote connect-next-rollout [--env staging]
+```
+
 ## Operating it
 
 The gate is `apps/connect-next` (`@bb/connect-next`). One Node 24 process owns:
@@ -393,7 +509,8 @@ Visitor rules follow `apps/connect/src/worker.ts`. Differences: a visitor withou
 sign-in page only when it asks for HTML (`accept: text/html`); API callers get a plain `401`. The
 gate refuses a foreign `Origin` on session requests that change state or open a WebSocket (`403`).
 The frps `Login` hook rejects a missing, unknown, reserved or refused credential with the fixed
-`FRP_LOGIN_REFUSED_REASON` ("bb connect refused this server credential"); an account API outage is
+`FRP_LOGIN_REFUSED_REASON` ("bb connect refused this server credential"), a linked one outside the
+rollout with `FRP_LOGIN_PAUSED_REASON` (see Rollout); an account API outage is
 rejected with "the gate could not check this" so the plugin keeps retrying. The hooks first retry a
 failing account API with backoff for up to 7 s (`HOOK_RESOLVE_DEADLINE_MS`, inside frpc's 10 s login
 wait), so a short outage or a mass reconnect delays logins instead of refusing them.
@@ -413,6 +530,7 @@ Environment (`fly.toml` sets the non-secret ones):
 | Variable                                            | Default                | Meaning                                                                                                            |
 | --------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `BASE_DOMAIN`                                       | `next.getbb.app`       | Visitor hosts are `<label>[--<port>].<BASE_DOMAIN>`, the tunnel host `tunnel.<BASE_DOMAIN>`                        |
+| `FORWARDED_BASE_DOMAIN`                             | `BASE_DOMAIN` minus `next.` | Public domain of forwarded visits (see Serving getbb.app addresses)                                      |
 | `ACCOUNT_API_URL`                                   | required               | Origin of the account API, `https://connect.getbb.app` (staging `https://connect.vibecodethis.site`)               |
 | `ACCOUNT_APP_URL`                                   | `https://getbb.app`    | Sign-in, reserved-handle redirects, OAuth authorization server, session refresh                                    |
 | `PUBLIC_SCHEME`                                     | `https`                | `http` only for local runs; it also switches to the non-`__Secure-` cookie names                                   |
@@ -433,7 +551,7 @@ Environment (`fly.toml` sets the non-secret ones):
 Secrets (`fly secrets set` on `bb-connect-next`; the gate holds no database or better-auth secret):
 
 - `GATE_SECRET`: equal to the `GATE_SECRET` Worker secret of `bb-connect`; sent as the account API
-  bearer.
+  bearer, and expected from the Worker in `x-bb-gate-forwarded-auth`.
 - `GATE_SIGNING_KEY`: the private Ed25519 JWK with its `kid`, as JSON (`generateGateKeyPair(kid)`'s
   `privateJwk`). Its public half must be in bb-web's `GATE_PUBLIC_KEYS` before the gate signs with it;
   to rotate, publish the new public key, wait out the servers' key cache, then set the new private key.
@@ -591,6 +709,12 @@ and `FLY_*` variables except `BB_E2E_*`, then:
    the assertion header), a POST with the share's own Origin arrives with the loopback origin and a
    foreign Origin arrives unchanged, another user gets 403 and no cookie the sign-in page, the HMR
    WebSocket opens and echoes, and foreign-origin or other-user WebSockets get 403.
+   Forwarded visits (what the Worker sends for `cne2e.bb.localhost:<cloudPort>`, see Serving getbb.app
+   addresses): the owner's app shell, a `PATCH` with the public Origin that passes the gate and the
+   server's browser guard (404 JSON), the next Origin refused (403), `/ws` with the public Origin,
+   another user's 403, a sign-in `returnTo` on the public address, and 403 for a wrong secret, a host
+   without the secret, and another label's host. After `bb connect-next off`, a forwarded
+   fast-offline visit answers `503` with `x-bb-gate-offline: 1` and no page within seconds.
    `bb connect unexpose` makes the address 503 within 10 s while the main address keeps answering
    200 (polled every 200 ms), and exposing again brings it back.
    Machines (it builds `@bb/cli` first, which a source daemon injects): seeds a bb connect machine
@@ -628,7 +752,9 @@ and `FLY_*` variables except `BB_E2E_*`, then:
    the consent page as the owner in headless Chromium with PKCE (S256) and exchanges the code; then
    `initialize` and `tools/list` through the gate reach the server's MCP plugin. A token authorized for
    the bb connect address (`http://cne2e.bb.localhost:<cloudPort>/mcp`) is refused with
-   `invalid_token`, `/api/v1/plugins/bb--mcp/http/mcp` (also percent-encoded) answers 404, and after
+   `invalid_token` on the next address but lists the tools on a forwarded visit, a next token on a
+   forwarded visit is refused with the public metadata URL,
+   `/api/v1/plugins/bb--mcp/http/mcp` (also percent-encoded) answers 404, and after
    revoking the grant at `/oauth/revoke` the token is refused within 95 s.
    With `BB_E2E_PLAYWRIGHT_DIR` pointing at a directory where `playwright` is installed it also loads
    the app in headless Chromium and saves screenshots (also of both consent pages); without it the

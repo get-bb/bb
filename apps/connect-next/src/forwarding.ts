@@ -92,7 +92,6 @@ export interface UpstreamHeaderInput {
   headers: IncomingHttpHeaders;
   forward: Forward;
   upstreamHost: string;
-  visitorHost: string;
   scheme: string;
   assertion: string;
   acceptEncoding: string | null;
@@ -130,14 +129,15 @@ export function upstreamHeaders(
     delete headers.authorization;
     delete headers.cookie;
   }
-  if (
-    forward.target !== null &&
-    headers.origin === `${input.scheme}://${input.visitorHost}`
-  ) {
-    headers.origin = shareLoopbackOrigin(forward.target);
+  if (headers.origin === forward.publicOrigin) {
+    if (forward.target !== null) {
+      headers.origin = shareLoopbackOrigin(forward.target);
+    } else if (forward.forwarded) {
+      headers.origin = `${input.scheme}://${input.upstreamHost}`;
+    }
   }
   headers.host = input.upstreamHost;
-  headers["x-forwarded-host"] = input.visitorHost;
+  headers["x-forwarded-host"] = input.upstreamHost;
   headers["x-forwarded-proto"] = input.scheme;
   if (input.acceptEncoding !== null) {
     headers["accept-encoding"] = input.acceptEncoding;

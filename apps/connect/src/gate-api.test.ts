@@ -23,6 +23,7 @@ import {
   type GateResolveRequest,
 } from "@bb/tunnel-contract/next";
 import { createDesktopSessionCookie } from "./desktop-session.js";
+import { NEXT_ROLLOUT_KEY, rolloutBucket } from "./next-rollout.js";
 
 const SECRET = "auth-secret";
 const GATE_SECRET = "gate-secret-0123456789";
@@ -66,6 +67,7 @@ async function bundleWorker(): Promise<string> {
 
 async function gate(
   bindings: Record<string, string>,
+  flags: { rollout: string | null } | null = null,
 ): Promise<{ instance: Miniflare; database: ServedTestConnectDb }> {
   const database = await serveTestConnectDb();
   databases.push(database);
@@ -76,6 +78,7 @@ async function gate(
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: { TUNNEL_DO: "TunnelDO" },
     hyperdrives: { HYPERDRIVE: database.connectionString },
+    ...(flags === null ? {} : { kvNamespaces: ["CONNECT_DB_FLAGS"] }),
     bindings: {
       BASE_DOMAIN: BASE,
       BETTER_AUTH_SECRET: SECRET,
@@ -84,6 +87,10 @@ async function gate(
     },
   });
   instances.push(instance);
+  if (flags?.rollout != null) {
+    const kv = await instance.getKVNamespace("CONNECT_DB_FLAGS");
+    await kv.put(NEXT_ROLLOUT_KEY, flags.rollout);
+  }
   return { instance, database };
 }
 
@@ -358,6 +365,7 @@ describe("POST /api/gate/resolve", () => {
       credential: null,
       machine: null,
       oauth: null,
+      nextEnabled: null,
     });
   });
 
@@ -506,7 +514,7 @@ describe("POST /api/gate/resolve", () => {
     ).toBeNull();
   });
 
-  it("accepts an MCP token only for the next resource it was issued for", async () => {
+  it("accepts an MCP token only for the exact next or public resource it was issued for", async () => {
     const nextResource = `https://orchid.${NEXT}/mcp`;
     const cfResource = `https://orchid.${BASE}/mcp`;
     const nextToken = await accessToken({
@@ -528,12 +536,36 @@ describe("POST /api/gate/resolve", () => {
     expect(
       (await resolve({ oauth: { token: cfToken, resource: cfResource } }))
         .oauth,
+    ).toEqual({ scope: "bb", grantId: "grant-cf", clientName: "Claude" });
+    expect(
+      (await resolve({ oauth: { token: nextToken, resource: cfResource } }))
+        .oauth,
     ).toBeNull();
+    for (const resource of [
+      `http://orchid.${BASE}/mcp`,
+      `https://orchid.${BASE}/mcp/`,
+      `https://orchid.${BASE}:443/mcp`,
+      `https://orchid.${BASE}/MCP`,
+      `https://bravo.${BASE}/mcp`,
+      `https://orchid.connect.${BASE}/mcp`,
+    ]) {
+      expect(
+        (await resolve({ oauth: { token: cfToken, resource } })).oauth,
+      ).toBeNull();
+    }
     expect(
       (
         await resolve({
           label: "bravo",
           oauth: { token: nextToken, resource: `https://bravo.${NEXT}/mcp` },
+        })
+      ).oauth,
+    ).toBeNull();
+    expect(
+      (
+        await resolve({
+          label: "bravo",
+          oauth: { token: cfToken, resource: `https://bravo.${BASE}/mcp` },
         })
       ).oauth,
     ).toBeNull();
@@ -623,6 +655,27 @@ describe("POST /api/gate/resolve", () => {
     expect(
       await oauthFor("orchid", "http://orchid.bb.localhost:41000/mcp"),
     ).toBeNull();
+    const publicResource = "http://orchid.bb.localhost:41000/mcp";
+    const publicToken = await accessToken({
+      grantId: "grant-cf",
+      resource: publicResource,
+    });
+    const publicOAuth = async (resource: string) => {
+      const response = await post(
+        local,
+        GATE_RESOLVE_PATH,
+        ask({ oauth: { token: publicToken, resource } }),
+        `Bearer ${GATE_SECRET}`,
+        "connect.bb.localhost",
+      );
+      return ((await response.json()) as { oauth: unknown }).oauth;
+    };
+    expect(await publicOAuth(publicResource)).toEqual({
+      scope: "bb",
+      grantId: "grant-cf",
+      clientName: "Claude",
+    });
+    expect(await publicOAuth(localResource)).toBeNull();
   }, 30_000);
 
   it("refuses OAuth when the worker has no NEXT_BASE_DOMAIN", async () => {
@@ -643,6 +696,180 @@ describe("POST /api/gate/resolve", () => {
       }),
     );
     expect(((await response.json()) as { oauth: unknown }).oauth).toBeNull();
+  }, 30_000);
+});
+
+describe("next rollout on credential checks", () => {
+  async function rolloutGate(rollout: string | null, bindings = {}) {
+    const { instance, database } = await gate(
+      { GATE_SECRET, NEXT_BASE_DOMAIN: NEXT, ...bindings },
+      { rollout },
+    );
+    await seed(database);
+    const enabled = async (
+      label: string,
+      credential: string,
+    ): Promise<unknown> => {
+      const response = await post(
+        instance,
+        GATE_RESOLVE_PATH,
+        ask({ label, credential }),
+      );
+      return ((await response.json()) as { nextEnabled: unknown }).nextEnabled;
+    };
+    return { instance, database, enabled };
+  }
+
+  async function usedNext(
+    target: ServedTestConnectDb,
+    table: "server" | "machine",
+    id: string,
+  ): Promise<void> {
+    await query(
+      target,
+      `UPDATE ${table} SET next_tunnel_at = $1 WHERE id = $2`,
+      [NOW, id],
+    );
+  }
+
+  it("answers nextEnabled only when a credential is asked", async () => {
+    const { enabled, instance } = await rolloutGate(
+      JSON.stringify({ percent: 100 }),
+    );
+    expect(await enabled("orchid", SERVER_CREDENTIAL)).toBe(true);
+    const response = await post(instance, GATE_RESOLVE_PATH, ask({}));
+    expect(
+      ((await response.json()) as { nextEnabled: unknown }).nextEnabled,
+    ).toBeNull();
+  }, 30_000);
+
+  it("pauses everyone not yet on next while the flag is missing, and grandfathers who used next", async () => {
+    const { enabled, database } = await rolloutGate(null);
+    expect(await enabled("orchid", SERVER_CREDENTIAL)).toBe(false);
+    expect(await enabled("box", MACHINE_CREDENTIAL)).toBe(false);
+    expect(await enabled("nobody", SERVER_CREDENTIAL)).toBe(false);
+    await usedNext(database, "server", "srv-orchid");
+    await usedNext(database, "machine", "mch-box");
+    expect(await enabled("orchid", SERVER_CREDENTIAL)).toBe(true);
+    expect(await enabled("box", MACHINE_CREDENTIAL)).toBe(true);
+    expect(await enabled("bravo", "bbcred_server_bravo")).toBe(false);
+  }, 30_000);
+
+  it("treats an invalid flag like a missing one", async () => {
+    for (const rollout of [
+      "not json",
+      JSON.stringify({ percent: 150 }),
+      JSON.stringify({ percent: -1 }),
+      JSON.stringify({ percent: "100" }),
+      JSON.stringify({ labels: ["orchid"] }),
+      JSON.stringify({ percent: 100, labels: "orchid" }),
+      JSON.stringify([100]),
+    ]) {
+      const { enabled } = await rolloutGate(rollout);
+      expect({
+        rollout,
+        enabled: await enabled("orchid", SERVER_CREDENTIAL),
+      }).toEqual({ rollout, enabled: false });
+    }
+  }, 60_000);
+
+  it("lets listed labels in", async () => {
+    const { enabled } = await rolloutGate(
+      JSON.stringify({ percent: 0, labels: ["orchid", "box"] }),
+    );
+    expect(await enabled("orchid", SERVER_CREDENTIAL)).toBe(true);
+    expect(await enabled("box", MACHINE_CREDENTIAL)).toBe(true);
+    expect(await enabled("bravo", "bbcred_server_bravo")).toBe(false);
+  }, 30_000);
+
+  it("lets a stable hash of the server or machine id under the percent in", async () => {
+    const ids = { orchid: "srv-orchid", bravo: "srv-bravo", box: "mch-box" };
+    const buckets = Object.fromEntries(
+      await Promise.all(
+        Object.entries(ids).map(
+          async ([label, id]) => [label, await rolloutBucket(id)] as const,
+        ),
+      ),
+    );
+    const sorted = Object.values(buckets).sort((a, b) => a - b);
+    const percent = ((sorted[0] ?? 0) + (sorted[1] ?? 0)) / 2;
+    const { enabled, instance } = await rolloutGate(
+      JSON.stringify({ percent }),
+    );
+    const credentials: Record<string, string> = {
+      orchid: SERVER_CREDENTIAL,
+      bravo: "bbcred_server_bravo",
+      box: MACHINE_CREDENTIAL,
+    };
+    for (const label of Object.keys(ids)) {
+      expect({
+        label,
+        enabled: await enabled(label, credentials[label] ?? ""),
+      }).toEqual({ label, enabled: (buckets[label] ?? 100) < percent });
+    }
+    const response = await post(instance, GATE_RESOLVE_BATCH_PATH, {
+      requests: Object.keys(ids).map((label) =>
+        ask({ label, credential: credentials[label] ?? "" }),
+      ),
+    });
+    const { answers } = (await response.json()) as {
+      answers: { nextEnabled: boolean }[];
+    };
+    expect(answers.map((answer) => answer.nextEnabled)).toEqual(
+      Object.keys(ids).map((label) => (buckets[label] ?? 100) < percent),
+    );
+    const everyone = await rolloutGate(JSON.stringify({ percent: 100 }));
+    expect(await everyone.enabled("bravo", "bbcred_server_bravo")).toBe(true);
+  }, 30_000);
+
+  it("grandfathers in a batch exactly as on the single route", async () => {
+    const { instance, database } = await rolloutGate(
+      JSON.stringify({ percent: 0, labels: ["bravo"] }),
+    );
+    await usedNext(database, "server", "srv-orchid");
+    const response = await post(instance, GATE_RESOLVE_BATCH_PATH, {
+      requests: [
+        ask({ credential: SERVER_CREDENTIAL }),
+        ask({ label: "bravo", credential: "bbcred_server_bravo" }),
+        ask({ label: "box", credential: MACHINE_CREDENTIAL }),
+        ask({ label: "nobody", credential: SERVER_CREDENTIAL }),
+        ask({ label: "box" }),
+      ],
+    });
+    const { answers } = (await response.json()) as {
+      answers: { nextEnabled: boolean | null }[];
+    };
+    expect(answers.map((answer) => answer.nextEnabled)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      null,
+    ]);
+  }, 30_000);
+
+  it("lets everyone in under local Cloud development while the flag is missing", async () => {
+    const { instance, database } = await gate(
+      {
+        GATE_SECRET,
+        BASE_DOMAIN: "bb.localhost",
+        ACCOUNT_APP_URL: "http://bb.localhost:35067",
+        CLOUD_DEV: "true",
+        NEXT_BASE_DOMAIN: "next.bb.localhost",
+      },
+      { rollout: null },
+    );
+    await seed(database);
+    const response = await post(
+      instance,
+      GATE_RESOLVE_PATH,
+      ask({ credential: SERVER_CREDENTIAL }),
+      `Bearer ${GATE_SECRET}`,
+      "connect.bb.localhost",
+    );
+    expect(
+      ((await response.json()) as { nextEnabled: unknown }).nextEnabled,
+    ).toBe(true);
   }, 30_000);
 });
 
