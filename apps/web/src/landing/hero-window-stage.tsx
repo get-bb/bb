@@ -2611,7 +2611,10 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
                             {k === idx && then && !reduced ? (
                               <Swap
                                 className="rhb-status-swap"
-                                at={then.notes[0]}
+                                at={
+                                  then.notes[0] -
+                                  ((t.stepAt[spawnStep] ?? t.changeAt) + 0.35)
+                                }
                                 a={<ThreadStatus status="running" />}
                                 b={<ThreadStatus status="done" />}
                               />
