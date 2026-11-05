@@ -300,6 +300,7 @@ export interface OnboardingAgent {
 
 const AGENT_STATUS_COPY = {
   checking: "Checking…",
+  loading: "Loading…",
   signedIn: "Signed in",
   signInFailed: "Sign-in didn't finish · try again",
   updateNeeded: "Update needed",
@@ -376,7 +377,7 @@ function quietAgentSubline(
     case "signingIn":
       return setup === "connect"
         ? "Choose a provider and sign in below."
-        : null;
+        : AGENT_STATUS_COPY.loading;
     case "install":
     case "installing":
       return null;
@@ -1465,6 +1466,7 @@ export function AgentSignInPanel({
             onSubmit: onSubmitCode,
           }
         : { kind: "waiting" };
+  if (!connect && !view.started) return null;
   return (
     <div className="mt-3">
       <SignInPanel
