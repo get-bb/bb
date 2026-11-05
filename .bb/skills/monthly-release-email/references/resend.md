@@ -82,16 +82,11 @@ section before sharing it.
   {list}", set its To to that list, and confirm To is still set after a reload.
   Run the check in step 6 on every draft; it accepts the list suffix in the
   name.
-- **Remove overlaps before scheduling and again right before the send.**
-  Someone on two lists would get two copies, since a broadcast can't skip
-  contacts on another list, and people can join a second list between
-  scheduling and the send. Before scheduling, and again within the hour before
-  the send (by hand, or with an automation that has Resend access then), find
-  every contact on more than one of the lists and remove them from all but one:
-  keep the list they joined most recently, which is usually the signup list.
-  Removing a contact from a list doesn't unsubscribe them; in the dashboard,
-  open the contact, Edit contact, and remove that list's tag. Check each one's
-  lists afterwards.
+- **Remove overlaps before scheduling.** Someone on two lists would get two
+  copies, since a broadcast can't skip contacts on another list. Find anyone on
+  more than one of the lists and remove them from all but the list they joined
+  most recently. This doesn't unsubscribe them; in the dashboard, open the
+  contact, Edit contact, and remove that list's tag.
 
   Never re-import contacts by CSV, which can re-subscribe people who
   unsubscribed.
