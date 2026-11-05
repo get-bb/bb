@@ -9,6 +9,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveCurrentDevInstanceConfig } from "../packages/config/src/runtime.ts";
 import { CLOUD_DEV_HOST_HEADER } from "../apps/connect/src/cloud-dev.ts";
+import { startCloudDevDatabase } from "../packages/connect-db-pg/src/dev.ts";
 import { createCloudDevProxy } from "./lib/cloud-dev-proxy.mjs";
 import { waitForCloudService } from "./lib/cloud-dev-readiness.mjs";
 
@@ -19,12 +20,8 @@ const REPO_ROOT = path.resolve(
 const STATE_DIR =
   process.env.BB_CLOUD_DEV_STATE_DIR?.trim() ||
   path.join(REPO_ROOT, ".wrangler", "cloud-dev");
-const DATABASE_URL =
-  process.env.BB_CLOUD_DEV_DATABASE_URL?.trim() ||
-  "postgresql://bb:bb@localhost:5432/bb_connect";
-const DATABASE_ENV = {
-  CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: DATABASE_URL,
-};
+const EXTERNAL_DATABASE_URL = process.env.BB_CLOUD_DEV_DATABASE_URL?.trim();
+const PGLITE_DIR = path.join(STATE_DIR, "connect-db-pglite");
 const DEV_SECRET =
   "6c9e2f41a7d58b30c4e918f267bd5a0c3f1468e2d9a57b04c8f31a6d72e95b40";
 const DEV_BASE_DOMAIN = "bb.localhost";
@@ -34,6 +31,7 @@ const GATEWAY_URL = `http://127.0.0.1:${ports.cloudPort}`;
 const WORKER_URL = `http://127.0.0.1:${ports.cloudWorkerPort}`;
 const webPort = ports.cloudWorkerPort + 8_000;
 const webUrl = `http://127.0.0.1:${webPort}`;
+const databasePort = ports.appPort - 8_000;
 const AI_GATEWAY_PATH_PREFIX = "/api/ai/";
 let aiGatewayUrl;
 let aiGatewayInspectorPort;
@@ -42,6 +40,7 @@ const BOLD = process.stdout.isTTY ? "\u001b[1m" : "";
 const RESET = process.stdout.isTTY ? "\u001b[0m" : "";
 const services = new Set();
 let gateway;
+let database;
 let stopping;
 
 function fail(message) {
@@ -127,6 +126,9 @@ function stop(exitCode = 0) {
   stopping = (async () => {
     if (gateway?.listening) gateway.close();
     await Promise.all([...services].map((child) => stopService(child)));
+    await database?.close().catch((error) => {
+      console.error(`bb Cloud dev: ${error.message}`);
+    });
     process.exit(exitCode);
   })();
   return stopping;
@@ -189,6 +191,9 @@ try {
     assertPortAvailable(ports.cloudPort, "Cloud gateway"),
     assertPortAvailable(ports.cloudWorkerPort, "Connect worker"),
     assertPortAvailable(webPort, "Cloud dashboard"),
+    ...(EXTERNAL_DATABASE_URL
+      ? []
+      : [assertPortAvailable(databasePort, "Local Postgres")]),
   ]);
   aiGatewayUrl = `http://127.0.0.1:${await reserveLoopbackPort()}`;
   aiGatewayInspectorPort = await reserveLoopbackPort();
@@ -197,16 +202,42 @@ try {
 }
 
 await mkdir(STATE_DIR, { recursive: true });
-console.log(
-  `Preparing local Cloud data in ${STATE_DIR} and ${redactedUrl(DATABASE_URL)}`,
-);
-run(
-  ["--filter", "@bb/connect-db-pg", "run", "db:migrate"],
-  { CONNECT_DB_PG_MIGRATOR_URL: DATABASE_URL },
-  "Start a local Postgres first, for example:\n" +
-    "  docker run -d --name bb-connect-pg -p 5432:5432 -e POSTGRES_USER=bb -e POSTGRES_PASSWORD=bb -e POSTGRES_DB=bb_connect postgres:17\n" +
-    "or point BB_CLOUD_DEV_DATABASE_URL at another database.",
-);
+let databaseUrl;
+if (EXTERNAL_DATABASE_URL) {
+  databaseUrl = EXTERNAL_DATABASE_URL;
+  console.log(
+    `Preparing local Cloud data in ${STATE_DIR} and ${redactedUrl(databaseUrl)}`,
+  );
+  run(
+    ["--filter", "@bb/connect-db-pg", "run", "db:migrate"],
+    { CONNECT_DB_PG_MIGRATOR_URL: databaseUrl },
+    "Check that BB_CLOUD_DEV_DATABASE_URL points at a reachable Postgres, or unset it to use the built-in PGlite database.",
+  );
+} else {
+  console.log(`Preparing local Cloud data in ${STATE_DIR}`);
+  try {
+    database = await startCloudDevDatabase({
+      dataDir: PGLITE_DIR,
+      port: databasePort,
+      onError: (error) =>
+        console.error(
+          `bb Cloud dev: local Postgres: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  databaseUrl = database.connectionString;
+  console.log(
+    `Local Postgres (PGlite) is serving ${PGLITE_DIR} at ${databaseUrl}` +
+      (database.applied.length > 0
+        ? `; applied ${database.applied.length} migrations`
+        : ""),
+  );
+}
+const DATABASE_ENV = {
+  CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: databaseUrl,
+};
 
 const proxy = createCloudDevProxy();
 gateway = createServer((request, response) => {
