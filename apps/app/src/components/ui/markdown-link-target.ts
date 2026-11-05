@@ -50,15 +50,22 @@ export function resolveMarkdownLocalFileTarget(
   value: string,
   absolute: MarkdownAbsoluteLocalFileLinkRouting,
   relative: MarkdownRelativeLocalFileLinkRouting | undefined,
+  threadStorageRootPath?: string,
 ): ResolvedMarkdownLocalFileTarget | null {
-  const absoluteLink =
-    parseLocalFileHref({ absoluteLinks: absolute, href: value }) ??
-    (absolute.kind === "trusted-host" && relative !== undefined
-      ? parseLocalFileHref({
-          absoluteLinks: { kind: "contained", rootPath: relative.rootPath },
-          href: value,
-        })
-      : null);
+  let absoluteLink = parseLocalFileHref({
+    absoluteLinks: absolute,
+    href: value,
+  });
+  if (absoluteLink === null && absolute.kind === "trusted-host") {
+    for (const rootPath of [relative?.rootPath, threadStorageRootPath]) {
+      if (rootPath === undefined) continue;
+      absoluteLink = parseLocalFileHref({
+        absoluteLinks: { kind: "contained", rootPath },
+        href: value,
+      });
+      if (absoluteLink !== null) break;
+    }
+  }
   if (absoluteLink !== null) {
     return {
       href: value,
@@ -122,6 +129,7 @@ export function resolveMarkdownLinkTarget({
           href,
           localFileRouting.absoluteLinks,
           localFileRouting.relativeLinks,
+          localFileRouting.threadStorageRootPath,
         );
   if (localFile !== null) {
     return { kind: "local-file", link: localFile.link };

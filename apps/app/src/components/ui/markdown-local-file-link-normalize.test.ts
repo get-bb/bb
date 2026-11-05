@@ -149,6 +149,26 @@ describe("normalizeLocalFileMarkdownLinks", () => {
     ).toBe("[notes](<C:/Users/me/My Notes/plan.md>)");
   });
 
+  it("preserves titles and parentheses in angle-wrapped Windows destinations", () => {
+    expect(
+      normalizeLocalFileMarkdownLinks(
+        String.raw`[artifact]( <C:\Users\me\.bb\folder (draft)\> "Title")`,
+      ),
+    ).toBe('[artifact]( <C:/Users/me/.bb/folder (draft)/> "Title")');
+  });
+
+  it.each([
+    String.raw`[artifact](<C:\Users\me\.bb\exports)`,
+    String.raw`[artifact](<C:\Users\me\<exports>)`,
+    String.raw`[docs](<https://example.test/a\b>)`,
+    String.raw`[relative](<folder\exports>)`,
+    String.raw`[file](</workspace/path with/app.ts>)`,
+    String.raw`\[literal](<C:\Users\me\.bb\exports>)`,
+    "`[code](<C:\\Users\\me\\.bb\\exports>)`",
+  ])("leaves unrelated or malformed content unchanged: %s", (content) => {
+    expect(normalizeLocalFileMarkdownLinks(content)).toBe(content);
+  });
+
   it("leaves a drive-like scheme that is not a file path alone", () => {
     const content = "[x](C:not-a-path) and [mail](mailto:me@example.com)";
     expect(normalizeLocalFileMarkdownLinks(content)).toBe(content);

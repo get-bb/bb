@@ -362,6 +362,7 @@ function areMarkdownLocalFileLinkRoutingsEqual({
   if (previous === undefined || next === undefined) return false;
   return (
     previous.hostId === next.hostId &&
+    previous.threadStorageRootPath === next.threadStorageRootPath &&
     previous.onOpenLink === next.onOpenLink &&
     areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
       next: next.absoluteLinks,
@@ -492,6 +493,7 @@ function buildLocalAwareUrlTransform({
         value,
         localFileRouting.absoluteLinks,
         localFileRouting.relativeLinks,
+        localFileRouting.threadStorageRootPath,
       );
       if (localFile !== null) {
         return localFile.href;
@@ -540,6 +542,7 @@ function resolveInlineCodeFileTarget({
     codeText,
     localFileRouting.absoluteLinks,
     localFileRouting.relativeLinks,
+    localFileRouting.threadStorageRootPath,
   );
   if (target === null) {
     return null;

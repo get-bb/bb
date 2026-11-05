@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
-    threads: { get: vi.fn() },
+    threads: { get: vi.fn(), storageLocation: vi.fn() },
     environments: { get: vi.fn() },
     hosts: { list: vi.fn(async () => []) },
     providers: { list: vi.fn(async () => []) },
@@ -232,6 +232,10 @@ describe("PluginThreadChat", () => {
 
   it("opens file links through app navigation outside the thread detail view", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
+    vi.mocked(sdk.threads.storageLocation).mockResolvedValue({
+      hostId: "host_demo",
+      storageRootPath: "/custom-storage/thr_demo",
+    });
     vi.mocked(sdk.threads.get).mockResolvedValue({
       ...THREAD_FIXTURE,
       environmentId: "env_demo",
@@ -256,7 +260,10 @@ describe("PluginThreadChat", () => {
 
     await waitFor(() =>
       expect(mocks.threadScreenProps.at(-1)?.navigation).toEqual(
-        expect.objectContaining({ workspaceRootPath: "/workspace" }),
+        expect.objectContaining({
+          workspaceRootPath: "/workspace",
+          threadStorageRootPath: "/custom-storage/thr_demo",
+        }),
       ),
     );
     const timelineHost = mocks.threadScreenProps.at(-1)!.navigation as {

@@ -390,45 +390,47 @@ function buildLocalFileMarkdownLinkRepair(
 
   const destinationStartIndex =
     closingBracketIndex + MARKDOWN_LINK_DESTINATION_OPEN.length;
-  if (value[destinationStartIndex] === "<") {
+  const payloadStartIndex =
+    destinationStartIndex +
+    findMarkdownWhitespaceEnd(value.slice(destinationStartIndex));
+  const angleWrapped = value[payloadStartIndex] === "<";
+  const destinationEndIndex = angleWrapped
+    ? value.indexOf(">", payloadStartIndex + 1)
+    : findInlineLinkDestinationEnd(value, destinationStartIndex);
+  if (destinationEndIndex === null || destinationEndIndex === -1) {
     return null;
   }
 
-  const destinationEndIndex = findInlineLinkDestinationEnd(
-    value,
-    destinationStartIndex,
-  );
-  if (destinationEndIndex === null) {
-    return null;
-  }
-
-  const payload = splitInlineLinkPayload(
-    value.slice(destinationStartIndex, destinationEndIndex),
-  );
+  const payload = angleWrapped
+    ? {
+        destination: value.slice(payloadStartIndex + 1, destinationEndIndex),
+        leadingWhitespace: value.slice(
+          destinationStartIndex,
+          payloadStartIndex,
+        ),
+        suffix: "",
+      }
+    : splitInlineLinkPayload(
+        value.slice(destinationStartIndex, destinationEndIndex),
+      );
   if (payload === null) {
     return null;
   }
 
   if (isWindowsDriveLocalFilePath(payload.destination)) {
     const windowsDestination = payload.destination.replaceAll("\\", "/");
-    if (
-      windowsDestination.includes("<") ||
-      windowsDestination.includes(">") ||
-      !parseLocalFileHref({
-        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
-        href: windowsDestination,
-      })
-    ) {
+    if (windowsDestination.includes("<") || windowsDestination.includes(">")) {
       return null;
     }
     return {
-      endIndex: destinationEndIndex,
+      endIndex: angleWrapped ? destinationEndIndex + 1 : destinationEndIndex,
       replacement: `${payload.leadingWhitespace}<${windowsDestination}>${payload.suffix}`,
     };
   }
 
   const destination = unescapeMarkdownEscapes(payload.destination);
   if (
+    angleWrapped ||
     !MARKDOWN_WHITESPACE_PATTERN.test(destination) ||
     destination.includes("<") ||
     destination.includes(">") ||

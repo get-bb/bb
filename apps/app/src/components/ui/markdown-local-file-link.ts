@@ -263,6 +263,7 @@ function isValidAbsoluteLocalFilePath({
 function parseAbsoluteLocalFileHref(
   href: string,
   requireLikelyFileBasename: boolean,
+  allowTrailingSeparator: boolean,
 ): LocalFileHrefParts | null {
   if (
     href.length === 0 ||
@@ -273,6 +274,12 @@ function parseAbsoluteLocalFileHref(
   }
 
   const parsed = parseLineSuffix(safeDecodeURIComponent(href));
+  if (parsed && allowTrailingSeparator) {
+    parsed.path = parsed.path.replace(
+      isWindowsDriveLocalFilePath(parsed.path) ? /[\\/]+$/u : /\/+$/u,
+      "",
+    );
+  }
   if (
     !parsed ||
     !isValidAbsoluteLocalFilePath({
@@ -420,6 +427,7 @@ export function parseLocalFileHref({
   const parts = parseAbsoluteLocalFileHref(
     urlParts?.path ?? href,
     absoluteLinks.kind === "trusted-host" && !isUrl,
+    absoluteLinks.kind === "contained",
   );
   const link =
     parts === null

@@ -1702,6 +1702,7 @@ function ThreadDetailViewInternal(
         onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
         resolveMentionLink={resolveMentionLink}
         threadId={thread.id}
+        threadStorageRootPath={threadStorageRootPath ?? undefined}
         workspaceRootPath={environment?.path ?? undefined}
       >
         <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>

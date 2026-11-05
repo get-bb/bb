@@ -10,6 +10,7 @@ interface ThreadTimelineNavigation {
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler;
   resolveMentionLink: PromptMentionLinkResolver;
   threadId?: string;
+  threadStorageRootPath?: string;
   workspaceRootPath: string | undefined;
 }
 
@@ -23,6 +24,7 @@ export function ThreadTimelineNavigationProvider({
   onOpenLocalFileLink,
   resolveMentionLink,
   threadId,
+  threadStorageRootPath,
   workspaceRootPath,
 }: ThreadTimelineNavigation & { children: ReactNode }) {
   const navigation = useMemo<ThreadTimelineNavigation>(
@@ -32,6 +34,7 @@ export function ThreadTimelineNavigationProvider({
       onOpenLocalFileLink,
       resolveMentionLink,
       threadId,
+      threadStorageRootPath,
       workspaceRootPath,
     }),
     [
@@ -40,6 +43,7 @@ export function ThreadTimelineNavigationProvider({
       onOpenLocalFileLink,
       resolveMentionLink,
       threadId,
+      threadStorageRootPath,
       workspaceRootPath,
     ],
   );
@@ -62,6 +66,7 @@ export function useMessageLinkRouting(
   const hostId = navigation?.hostId ?? null;
   const onOpenLocalFileLink = navigation?.onOpenLocalFileLink;
   const workspaceRootPath = navigation?.workspaceRootPath;
+  const threadStorageRootPath = navigation?.threadStorageRootPath;
   return useMemo(() => {
     if (onOpenLocalFileLink === undefined && threadId === undefined) {
       return undefined;
@@ -83,11 +88,18 @@ export function useMessageLinkRouting(
         absoluteLinks: { kind: "trusted-host" },
         hostId,
         onOpenLink: onOpenLocalFileLink,
+        threadStorageRootPath,
         ...(relativePaths === undefined
           ? {}
           : { relativeLinks: relativePaths }),
       };
     }
     return routing;
-  }, [hostId, onOpenLocalFileLink, threadId, workspaceRootPath]);
+  }, [
+    hostId,
+    onOpenLocalFileLink,
+    threadId,
+    threadStorageRootPath,
+    workspaceRootPath,
+  ]);
 }
