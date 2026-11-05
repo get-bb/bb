@@ -140,11 +140,17 @@ it("fetches all job attempts and marks truncated or malformed inventory incomple
       calls.push(path);
       if (path.startsWith("actions/workflows/"))
         return { total_count: 1, workflow_runs: [run(1, 2, "success", [])] };
+      const url = new URL(path, "https://api.github.com/");
+      const pageSize = Number(url.searchParams.get("per_page"));
+      const page = Number(url.searchParams.get("page"));
+      const jobs = [
+        ...Array.from({ length: 30 }, (_, index) =>
+          job(index + 1, `test-${index}`, 1, "failure", 0, 10),
+        ),
+        job(31, "test-0", 2, "success", 20, 30),
+      ];
       return {
-        jobs: [
-          job(1, "test", 1, "failure", 0, 10),
-          job(2, "test", 2, "success", 20, 30),
-        ],
+        jobs: jobs.slice((page - 1) * pageSize, page * pageSize),
       };
     },
     time(0),
@@ -152,6 +158,9 @@ it("fetches all job attempts and marks truncated or malformed inventory incomple
     () => {},
   );
   expect(calls[1]).toContain("filter=all");
+  expect(calls).toHaveLength(3);
+  expect(runs.runs[0].jobs).toHaveLength(31);
+  expect(runs.runs[0].jobsComplete).toBe(true);
   expect(summarizeCiHealth(runs.runs).recoveredRuns).toBe(1);
   for (const data of [
     { total_count: 1_001, workflow_runs: [] },
@@ -184,7 +193,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
         return { jobs: [job(101, "build", 1, "success", 10, 50)] };
       if (path.endsWith("page=2")) throw new Error("upstream unavailable");
       return {
-        jobs: Array.from({ length: 50 }, (_, index) =>
+        jobs: Array.from({ length: 30 }, (_, index) =>
           job(index + 1, `test-${index}`, 1, "success", 10, 20),
         ),
       };
@@ -199,7 +208,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
   expect(evidence.errors).toEqual([
     { scope: "run 1", message: "upstream unavailable" },
   ]);
-  expect(evidence.runs[0].jobs).toHaveLength(50);
+  expect(evidence.runs[0].jobs).toHaveLength(30);
   const report = summarizeCiHealth(evidence.runs);
   expect(report.incompleteRuns).toBe(1);
   expect(report.durationSeconds).toEqual({ count: 1, median: 50, p90: 50 });
