@@ -37,6 +37,7 @@ interface WorkspaceWatchState {
   lastDefaultBranch: string | null | undefined;
   lastLocalFingerprint: string | null;
   lastSharedRefsFingerprint: string | null;
+  lastBranchNamesFingerprint: string | null;
   pendingKinds: Set<WorkspaceStatusWatchChangeKind>;
   processing: Promise<void> | null;
 }
@@ -259,6 +260,7 @@ export class WatchManager {
           lastDefaultBranch: undefined,
           lastLocalFingerprint: null,
           lastSharedRefsFingerprint: null,
+          lastBranchNamesFingerprint: null,
           pendingKinds: new Set(),
           processing: null,
         },
@@ -364,6 +366,8 @@ export class WatchManager {
         args.entry.watchState.lastLocalFingerprint = localState.fingerprint;
         args.entry.watchState.lastSharedRefsFingerprint =
           sharedRefs.fingerprintFor(localState.branchName);
+        args.entry.watchState.lastBranchNamesFingerprint =
+          sharedRefs.branchNamesFingerprint;
       }
       if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
         if (
@@ -403,6 +407,14 @@ export class WatchManager {
           args.entry.watchState.lastSharedRefsFingerprint =
             nextSharedRefsFingerprint;
           changeKinds.push("git-refs-changed");
+        }
+        if (
+          args.entry.watchState.lastBranchNamesFingerprint !==
+          sharedRefs.branchNamesFingerprint
+        ) {
+          args.entry.watchState.lastBranchNamesFingerprint =
+            sharedRefs.branchNamesFingerprint;
+          changeKinds.push("git-branches-changed");
         }
       }
       if (
@@ -515,6 +527,8 @@ export class WatchManager {
     entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
     entry.watchState.lastSharedRefsFingerprint =
       sharedRefs.fingerprintFor(branchName);
+    entry.watchState.lastBranchNamesFingerprint =
+      sharedRefs.branchNamesFingerprint;
     this.options.onWorkspaceMetadataChanged?.({
       environmentId: entry.target.environmentId,
       workspace: {

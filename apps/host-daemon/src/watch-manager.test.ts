@@ -26,6 +26,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
   let sharedGitRefsFingerprintError: Error | null = null;
+  let branchNamesFingerprint = "names:initial";
   const workspace = {
     path,
     isGitRepo,
@@ -52,6 +53,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
         }
         return {
           defaultBranch: "main",
+          branchNamesFingerprint,
           fingerprintFor: () => sharedGitRefsFingerprint,
         };
       },
@@ -76,6 +78,9 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     setSharedGitRefsFingerprintError(error: Error | null) {
       sharedGitRefsFingerprintError = error;
     },
+    setBranchNamesFingerprint(value: string) {
+      branchNamesFingerprint = value;
+    },
   } satisfies HostWorkspace & {
     setCurrentBranch: (value: string | null) => void;
     setLocalStateFingerprint: (value: GetLocalStateFingerprintResult) => void;
@@ -84,6 +89,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       value: GetSharedGitRefsFingerprintResult,
     ) => void;
     setSharedGitRefsFingerprintError: (error: Error | null) => void;
+    setBranchNamesFingerprint: (value: string) => void;
   };
 
   return workspace;
@@ -484,6 +490,7 @@ describe("WatchManager", () => {
     let featureAOid = "a-1";
     const readSharedRefs = vi.fn(async () => ({
       defaultBranch: "main",
+      branchNamesFingerprint: "names",
       fingerprintFor: (branchName: string | null) =>
         branchName === "feature/a" ? featureAOid : "unchanged",
     }));
@@ -536,6 +543,67 @@ describe("WatchManager", () => {
     expect(onWorkspaceStatusChanged).not.toHaveBeenCalledWith(
       expect.objectContaining({ environmentId: "env-1" }),
     );
+    await manager.shutdown();
+  });
+
+  it("reports branch-name changes separately from the worktree's own ref moves", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+      onWorkspaceStatusChanged,
+    });
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: { workspacePath: "/tmp/env-watch" },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+    watchWorkspaceArgs?.onReady();
+    await vi.waitFor(() =>
+      expect(workspace.getSharedGitRefsSnapshot).toHaveBeenCalledTimes(1),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    onWorkspaceStatusChanged.mockClear();
+    const refChange = () =>
+      watchWorkspaceArgs?.onChange({
+        changedPaths: ["/tmp/env-watch/.git/refs/heads/other"],
+        changeKinds: ["shared-git-refs-changed"],
+        kind: "workspace-status-changed",
+        environmentId: "env-watch",
+      });
+
+    workspace.setBranchNamesFingerprint("names:other-created");
+    refChange();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-branches-changed"],
+        environmentId: "env-watch",
+      }),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:moved");
+    refChange();
+    await vi.waitFor(() =>
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["git-refs-changed"],
+        environmentId: "env-watch",
+      }),
+    );
+    expect(onWorkspaceStatusChanged).toHaveBeenCalledTimes(1);
     await manager.shutdown();
   });
 
@@ -625,7 +693,11 @@ describe("WatchManager", () => {
     const readSharedRefs = vi.fn(async () => {
       const value = fingerprint;
       if (blockReads) await blockedRead.promise;
-      return { defaultBranch: "main", fingerprintFor: () => value };
+      return {
+        defaultBranch: "main",
+        branchNamesFingerprint: "names",
+        fingerprintFor: () => value,
+      };
     });
     for (const workspace of workspaces) {
       workspace.gitCommonDir = "/tmp/repo/.git";
@@ -714,6 +786,7 @@ describe("WatchManager", () => {
     for (const workspace of workspaces) {
       workspace.getSharedGitRefsSnapshot.mockResolvedValue({
         defaultBranch: "trunk",
+        branchNamesFingerprint: "names:initial",
         fingerprintFor: () => "shared:trunk",
       });
     }

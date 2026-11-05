@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  gitFilesTag,
-  gitRefsTag,
-  gitStatusTag,
-} from "../contract.js";
+import { gitFilesTag, gitRefsTag, gitStatusTag } from "../contract.js";
 import {
   createCoalescedInvalidator,
   tagsForEnvironmentChanges,
@@ -11,14 +7,32 @@ import {
 
 describe("tagsForEnvironmentChanges", () => {
   it("refreshes status and files on file changes and refs too on ref changes", () => {
-    expect(tagsForEnvironmentChanges("env_1", ["work-status-changed"])).toEqual({
-      tags: [gitStatusTag("env_1"), gitFilesTag("env_1")],
-      clearCaches: true,
-      refsChanged: false,
-    });
+    expect(tagsForEnvironmentChanges("env_1", ["work-status-changed"])).toEqual(
+      {
+        tags: [gitStatusTag("env_1"), gitFilesTag("env_1")],
+        clearCaches: true,
+        refsChanged: false,
+      },
+    );
     expect(
       tagsForEnvironmentChanges("env_1", ["git-refs-changed"]).tags,
     ).toContain(gitRefsTag("env_1"));
+  });
+
+  it("refreshes only the branch list when branch names change", () => {
+    expect(
+      tagsForEnvironmentChanges("env_1", ["git-branches-changed"]),
+    ).toEqual({
+      tags: [gitRefsTag("env_1")],
+      clearCaches: false,
+      refsChanged: false,
+    });
+    expect(
+      tagsForEnvironmentChanges("env_1", [
+        "work-status-changed",
+        "git-branches-changed",
+      ]).refsChanged,
+    ).toBe(false);
   });
 
   it("keeps cached git reads when only metadata changes", () => {

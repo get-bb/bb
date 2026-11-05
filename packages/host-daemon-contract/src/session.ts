@@ -383,7 +383,7 @@ export type HostDaemonEventBatchResponse = z.infer<
 
 const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
-  .extract(["work-status-changed", "git-refs-changed"]);
+  .extract(["work-status-changed", "git-refs-changed", "git-branches-changed"]);
 export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;

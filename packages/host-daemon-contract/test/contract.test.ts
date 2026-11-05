@@ -1067,7 +1067,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(262);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(263);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1089,7 +1089,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(259)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -3176,6 +3177,19 @@ describe("host-daemon session schemas", () => {
       type: "thread-storage-change",
       threadId: "thr_123",
     });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "environment-change",
+        environmentId: "env_123",
+        change: "git-branches-changed",
+      }),
+    ).toEqual({
+      type: "environment-change",
+      environmentId: "env_123",
+      change: "git-branches-changed",
+    });
+
     expect(() =>
       hostDaemonDaemonWsMessageSchema.parse({
         type: "environment-change",

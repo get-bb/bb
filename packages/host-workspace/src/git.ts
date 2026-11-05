@@ -100,6 +100,7 @@ export async function inspectGitRepository(
 
 export interface SharedGitRefsSnapshot {
   defaultBranch: string | null;
+  branchNamesFingerprint: string;
   fingerprintFor(branchName: string | null): string;
 }
 
@@ -147,9 +148,9 @@ export async function readSharedGitRefsSnapshot(
     parseOriginHeadBranchName(originHead) ??
     resolvePreferredLocalDefaultBranch(localBranches, undefined) ??
     null;
-  const refNames = names.digest("hex");
   return {
     defaultBranch,
+    branchNamesFingerprint: names.digest("hex"),
     fingerprintFor(branchName) {
       const watched = new Set(["refs/remotes/origin/HEAD"]);
       if (originHead) watched.add(originHead);
@@ -170,7 +171,6 @@ export async function readSharedGitRefsSnapshot(
         }
       }
       return JSON.stringify({
-        refNames,
         remoteHead: originHead,
         refs: [...watched]
           .sort()

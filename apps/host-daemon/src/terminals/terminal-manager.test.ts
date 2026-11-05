@@ -265,6 +265,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
     })),
     getSharedGitRefsSnapshot: vi.fn(async () => ({
       defaultBranch: "main",
+      branchNamesFingerprint: "names-1",
       fingerprintFor: () => "refs-1",
     })),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),

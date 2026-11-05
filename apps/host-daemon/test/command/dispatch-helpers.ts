@@ -145,7 +145,11 @@ export function createFakeWorkspace(pathname: string) {
       return { fingerprint: "local-1", branchName: "main" };
     },
     async getSharedGitRefsSnapshot() {
-      return { defaultBranch: "main", fingerprintFor: () => "refs-1" };
+      return {
+        defaultBranch: "main",
+        branchNamesFingerprint: "names-1",
+        fingerprintFor: () => "refs-1",
+      };
     },
     async getAdditionalWorkspaceWriteRoots() {
       return [];

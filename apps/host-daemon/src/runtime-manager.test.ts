@@ -127,6 +127,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
       }
       return {
         defaultBranch: "main",
+        branchNamesFingerprint: "names-1",
         fingerprintFor: () => sharedGitRefsFingerprint,
       };
     }),

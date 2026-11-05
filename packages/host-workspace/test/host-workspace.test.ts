@@ -110,8 +110,11 @@ describe("Workspace", () => {
 
       await runGit(["branch", "feature"], { cwd: repoPath });
       const branchSnapshot = await workspace.getSharedGitRefsSnapshot();
-      expect(branchSnapshot.fingerprintFor("main")).not.toBe(
+      expect(branchSnapshot.fingerprintFor("main")).toBe(
         initialSnapshot.fingerprintFor("main"),
+      );
+      expect(branchSnapshot.branchNamesFingerprint).not.toBe(
+        initialSnapshot.branchNamesFingerprint,
       );
       expect(branchSnapshot.defaultBranch).toBe("main");
 

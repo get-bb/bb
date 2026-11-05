@@ -176,7 +176,11 @@ describe("internal environment change websocket hints", () => {
     });
   });
 
-  it.each(["work-status-changed", "git-refs-changed"] as const)(
+  it.each([
+    "work-status-changed",
+    "git-refs-changed",
+    "git-branches-changed",
+  ] as const)(
     "notifies clients for %s hints without mutating rows",
     async (change) => {
       await withTestHarness(async (harness) => {
