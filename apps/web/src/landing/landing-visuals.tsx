@@ -890,6 +890,7 @@ function WindowComposer({
       project="checkout-web"
       model={model}
       modelIcon={modelIcon}
+      reasoning={null}
       input={<span className="rhb-placeholder">{FOLLOW_UP_PLACEHOLDER}</span>}
     />
   );

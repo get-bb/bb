@@ -461,7 +461,7 @@ export function MockComposer({
   input: ReactNode;
   model?: string;
   modelIcon?: MockIcon;
-  reasoning?: string;
+  reasoning?: string | null;
   project?: string | null;
   environment?: string;
   branch?: string | null;
@@ -480,8 +480,13 @@ export function MockComposer({
           <PlusIcon className="rhb-ic" />
           <span className="rhb-model">
             <ModelIcon className="rhb-model-ic" />
-            <span className="rhb-model-name">{model}</span>{" "}
-            <span className="rhb-model-sub">{reasoning}</span>
+            <span className="rhb-model-name">{model}</span>
+            {reasoning === null ? null : (
+              <>
+                {" "}
+                <span className="rhb-model-sub">{reasoning}</span>
+              </>
+            )}
             <ChevronDown className="rhb-chev" />
           </span>
           <span className="rhb-box-end">
