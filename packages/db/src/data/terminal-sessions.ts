@@ -294,3 +294,37 @@ export function updateTerminalSessions(
     .returning()
     .all();
 }
+
+export const EXITED_TERMINAL_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
+
+export interface PruneExitedTerminalSessionsArgs {
+  exitedBefore: number;
+  limit: number;
+}
+
+export interface PruneExitedTerminalSessionsResult {
+  deleted: number;
+}
+
+export function pruneExitedTerminalSessions(
+  db: DbConnection,
+  args: PruneExitedTerminalSessionsArgs,
+): PruneExitedTerminalSessionsResult {
+  const result = db.$client
+    .prepare<[number, number]>(
+      `
+        DELETE FROM terminal_sessions
+        WHERE id IN (
+          SELECT id
+          FROM terminal_sessions INDEXED BY terminal_sessions_exited_prune_idx
+          WHERE status = 'exited'
+            AND updated_at < ?
+          ORDER BY updated_at, id
+          LIMIT ?
+        )
+      `,
+    )
+    .run(args.exitedBefore, args.limit);
+
+  return { deleted: result.changes };
+}
