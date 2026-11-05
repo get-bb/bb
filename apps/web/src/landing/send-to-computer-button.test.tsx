@@ -8,6 +8,7 @@ import { trackLandingEvent } from "./analytics";
 import { carryUtmToDownloadLinks } from "./download-utm";
 import {
   SendToComputerButton,
+  type SharedLink,
   sendDownloadLink,
   sendLinkUrl,
 } from "./send-to-computer-button";
@@ -119,19 +120,34 @@ describe("send download link button", () => {
     document.body.replaceChildren();
   });
 
-  it("shares the download page link and records the click and the result", async () => {
+  async function clickShare(link: SharedLink) {
     const share = vi.fn(async () => {});
     vi.stubGlobal("navigator", { share });
-    history.replaceState(null, "", "/changelog?utm_source=google&gclid=abc");
+    history.replaceState(null, "", "/?utm_source=google&gclid=abc#install");
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SendToComputerButton placement="changelog" />);
+      root.render(<SendToComputerButton placement="hero" link={link} />);
     });
     await act(async () => {
       container.querySelector("button")?.click();
     });
+    act(() => root.unmount());
+    return share;
+  }
+
+  it("shares the current page as it is, so control keeps today's link", async () => {
+    const share = await clickShare("page");
+    expect(share).toHaveBeenCalledWith({
+      title: "bb: the IDE that builds itself",
+      text: SHARE_TEXT,
+      url: `${window.location.origin}/?utm_source=google&gclid=abc#install`,
+    });
+  });
+
+  it("shares the download page link and records the click and the result", async () => {
+    const share = await clickShare("download_page");
     expect(share).toHaveBeenCalledWith(
       expect.objectContaining({
         text: SHARE_TEXT,
@@ -142,16 +158,15 @@ describe("send download link button", () => {
       [
         {
           name: "landing_send_to_computer_clicked",
-          properties: { placement: "changelog" },
+          properties: { placement: "hero" },
         },
       ],
       [
         {
           name: "landing_send_to_computer_result",
-          properties: { placement: "changelog", outcome: "shared" },
+          properties: { placement: "hero", outcome: "shared" },
         },
       ],
     ]);
-    act(() => root.unmount());
   });
 });

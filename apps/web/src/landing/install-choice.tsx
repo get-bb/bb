@@ -36,7 +36,7 @@ export function DesktopInstallChoice({
         </>
       ) : (
         <>
-          <SendToComputerButton placement={placement} />
+          <SendToComputerButton placement={placement} link="page" />
           <span className="install-note desktop-only">{note}</span>
           <span className="install-note touch-only">{touchNote}</span>
         </>

@@ -93,7 +93,7 @@ export function EmailDownloadLinkForm({
   if (status === "failed") {
     return (
       <span className="install-email-failed touch-only">
-        <SendToComputerButton placement={placement} />
+        <SendToComputerButton placement={placement} link="download_page" />
         <span className="subscribe-error" role="alert">
           Couldn&rsquo;t send the email. Share the link instead.
         </span>

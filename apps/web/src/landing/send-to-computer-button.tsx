@@ -59,12 +59,14 @@ export async function sendDownloadLink({
   return (await copy(url)) ? "copied" : "copy_failed";
 }
 
+export type SharedLink = "page" | "download_page";
+
 export function SendToComputerButton({
   placement,
-  className = "btn btn-primary btn-install",
+  link,
 }: {
   placement: CtaPlacement;
-  className?: string;
+  link: SharedLink;
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
   const send = async () => {
@@ -73,7 +75,10 @@ export function SendToComputerButton({
       properties: { placement },
     });
     const outcome = await sendDownloadLink({
-      url: sendLinkUrl(window.location.href, readSessionUtm()),
+      url:
+        link === "page"
+          ? window.location.href
+          : sendLinkUrl(window.location.href, readSessionUtm()),
       share:
         typeof navigator.share === "function"
           ? (data) => navigator.share(data)
@@ -92,7 +97,7 @@ export function SendToComputerButton({
   return (
     <button
       type="button"
-      className={`${className} install-send touch-only`}
+      className="btn btn-primary btn-install install-send touch-only"
       onClick={() => void send()}
     >
       <HugeiconsIcon icon={LaptopIcon} className="btn-ic" />

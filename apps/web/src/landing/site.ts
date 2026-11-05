@@ -94,8 +94,6 @@ export type CtaPlacement =
   | "customize"
   | "closer"
   | "footer"
-  | "marketplace"
-  | "changelog"
   | "download_page";
 
 export const UTM_PARAM_NAMES = [
