@@ -186,6 +186,10 @@ function createUiPreferences(): UiPreferenceEntries {
       "sidebar.threadListProvider",
     ),
     "composer.provider": uiPreferenceEntry("composer.provider"),
+    "rightPanel.fixedTabOrder": uiPreferenceEntry("rightPanel.fixedTabOrder"),
+    "rightPanel.hiddenFixedTabs": uiPreferenceEntry(
+      "rightPanel.hiddenFixedTabs",
+    ),
     "infoPanel.collapsedSections": uiPreferenceEntry(
       "infoPanel.collapsedSections",
     ),

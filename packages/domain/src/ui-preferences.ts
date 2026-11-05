@@ -50,6 +50,8 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
   "composer.provider",
+  "rightPanel.fixedTabOrder",
+  "rightPanel.hiddenFixedTabs",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
 ] as const;
@@ -155,6 +157,16 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringSchema,
     "__automatic__",
     "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. With no composer plugin enabled, no composer is shown.",
+  ),
+  "rightPanel.fixedTabOrder": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Order of a thread right panel's fixed icon tabs, as plugin-fixed:<encoded pluginId>:<encoded tabId> ids. Unlisted tabs follow in registration order.",
+  ),
+  "rightPanel.hiddenFixedTabs": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Thread right panel fixed icon tabs hidden from the tab strip, as plugin-fixed:<encoded pluginId>:<encoded tabId> ids. A hidden tab still shows while it is selected.",
   ),
   "threadContextCard.pinned": defineUiPreference(
     z.boolean(),
