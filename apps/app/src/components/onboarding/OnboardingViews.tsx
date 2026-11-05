@@ -301,7 +301,7 @@ export interface OnboardingAgent {
 
 const AGENT_STATUS_COPY = {
   checking: "Checking…",
-  loading: "Loading…",
+  startingSignIn: "Starting sign in…",
   signedIn: "Signed in",
   signInFailed: "Sign-in didn't finish · try again",
   updateNeeded: "Update needed",
@@ -378,7 +378,7 @@ function quietAgentSubline(
     case "signingIn":
       return setup === "connect"
         ? "Choose a provider and sign in below."
-        : AGENT_STATUS_COPY.loading;
+        : AGENT_STATUS_COPY.startingSignIn;
     case "install":
     case "installing":
       return null;

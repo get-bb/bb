@@ -559,7 +559,7 @@ describe("AgentStep progress in the redesign", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows Loading… and no empty panel until the sign-in instruction is known", () => {
+  it("shows Starting sign in… and no empty panel until the sign-in instruction is known", () => {
     renderQuiet([
       {
         ...agent("claude-code", { status: "signingIn" }),
@@ -584,11 +584,13 @@ describe("AgentStep progress in the redesign", () => {
       name: "Cancel signing in to claude-code",
     });
     expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
-    const loading = within(rowOf("claude-code")).getByText("Loading…");
+    const loading = within(rowOf("claude-code")).getByText("Starting sign in…");
     expect(
       loading.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
     ).not.toBeNull();
-    expect(within(rowOf("claude-code")).queryByText("Show terminal")).toBeNull();
+    expect(
+      within(rowOf("claude-code")).queryByText("Show terminal"),
+    ).toBeNull();
     expect(rowOf("claude-code").childElementCount).toBe(1);
   });
 
