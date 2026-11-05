@@ -187,6 +187,11 @@ export function registerCli(
                 : storage.hosts();
             }),
         }),
+        db: cliCommand({
+          summary:
+            "Show bb.db and WAL size, free pages, auto-vacuum mode, and history rows by thread state",
+          run: () => output(() => bb.sdk.experimental_storage.database()),
+        }),
         "remove-orphans": cliCommand({
           summary: "Remove orphaned storage from the last scan",
           options: { machine: MACHINE, yes: YES },

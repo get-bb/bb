@@ -52,6 +52,7 @@ import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerPluginInstallJobRoutes } from "./routes/plugin-install-jobs.js";
 import { createPluginInstallJobs } from "./services/plugins/plugin-install-jobs.js";
 import { registerPromptHistoryRoutes } from "./routes/prompt-history.js";
+import { registerStorageRoutes } from "./routes/storage.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
 import {
   createPluginService,
@@ -927,6 +928,7 @@ export function createApp(
   });
   registerProjectRoutes(publicApi, deps);
   registerPromptHistoryRoutes(publicApi, deps);
+  registerStorageRoutes(publicApi, deps);
   registerThreadSectionRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps, pluginService);

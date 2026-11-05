@@ -3882,6 +3882,34 @@ skipped. The same route backs `bb prompt-history list`.
 
 Before stabilization, audit whether `limit` should be a number, whether the cursor format needs versioning, whether project or thread filters belong on this call rather than on `projects.promptHistory` and `threads.promptHistory`, and whether skipped rows should fill the page.
 
+## Database storage readout (`bb.sdk.experimental_storage`)
+
+`database({ signal? })` calls `GET /api/v1/storage/database` and returns
+`{ measuredAt, database, history }`. `database` holds the open bb.db's `path`,
+`fileBytes` and `walBytes` (file sizes on disk), `pageSize`, `pageCount`,
+`freelistPages`, `reclaimableBytes` (free pages × page size) and `autoVacuum`
+(`none`, `incremental` or `full`). `history` counts `threads`, `events` and
+`searchSegments` for `active`, `archived` and `deleted` threads (soft-deleted,
+awaiting cleanup). Header figures are PRAGMA reads. History counts use the
+`thread_id` indexes one thread at a time, events in chunks of 1,024 rows, and
+yield to the event loop after 6 ms of work, so a cold first read stays near
+15 ms per slice; writes during the read can shift the counts slightly. Core
+callers: the Storage & retention page's Database
+section and `bb storage db`.
+
+Docs: `backend-sdk.md`.
+
+**Audit before stabilizing.**
+
+1. **Archive figures.** The cold-history tier adds archive file count and bytes
+   and per-state cold-thread counts; settle where they sit (`archive` beside
+   `database`, or inside `history`).
+2. **Bytes.** History is rows, not bytes. Decide whether an off-thread
+   `dbstat` estimate on a worker connection should add per-table bytes and
+   in-page fragmentation to `reclaimableBytes`.
+3. **Plugin databases.** Decide whether plugin `data.db` files belong in this
+   readout or in each plugin's own storage report.
+
 ## `ThreadChatMessageReference.experimental_messageSeq`
 
 The message reference handed to `messageAction` runs, `ThreadChat` consumer

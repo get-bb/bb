@@ -546,6 +546,17 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
+export {
+  countThreadEventsChunk,
+  countThreadSearchSegments,
+  listThreadHistoryEntries,
+  readDatabaseFilePath,
+  type CountThreadEventsChunkArgs,
+  type ListThreadHistoryEntriesArgs,
+  type ThreadEventsChunkCount,
+  type ThreadHistoryEntry,
+  type ThreadHistoryState,
+} from "./database-storage.js";
 export * from "./machines.js";
 export {
   advanceThreadPruning,

@@ -178,6 +178,7 @@ import {
   type PromptHistoryResponse,
   type PromptHistoryListQuery,
   type PromptHistoryListResponse,
+  type StorageDatabaseResponse,
   type ReorderPinnedThreadRequest,
   type ReorderProjectRequest,
   type ReorderQueuedMessageRequest,
@@ -434,6 +435,14 @@ export const publicApiRoutes = {
         promptHistoryListQuerySchema,
       ),
       response: jsonResponse<PromptHistoryListResponse>(),
+    }),
+  },
+  storage: {
+    database: defineRoute({
+      path: "/storage/database",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<StorageDatabaseResponse>(),
     }),
   },
   projects: {

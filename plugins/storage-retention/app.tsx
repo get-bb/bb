@@ -1457,6 +1457,7 @@ function StoragePage({
                 ))}
               </div>
             </section>
+            <DatabaseStorage />
             <section className="space-y-3">
               <SectionHeading
                 title="Automatic retention"
@@ -2677,6 +2678,173 @@ function categories(report: NonNullable<HostReport["report"]>) {
         ]
       : []),
   ];
+}
+
+type DatabaseReadout = Awaited<
+  ReturnType<ReturnType<typeof useSdk>["experimental_storage"]["database"]>
+>;
+const HISTORY_STATES = [
+  { state: "active", label: "Active threads" },
+  { state: "archived", label: "Archived threads" },
+  { state: "deleted", label: "Deleted, awaiting cleanup" },
+] as const;
+const AUTO_VACUUM_LABELS: Record<
+  DatabaseReadout["database"]["autoVacuum"],
+  string
+> = {
+  incremental: "Incremental vacuum",
+  full: "Full auto-vacuum",
+  none: "Auto-vacuum off",
+};
+const AUTO_VACUUM_NOTES: Record<
+  DatabaseReadout["database"]["autoVacuum"],
+  string
+> = {
+  incremental: "bb returns free space to disk in hourly steps.",
+  full: "SQLite returns free space to disk after every write.",
+  none: "Auto-vacuum is off because this database predates it. New history reuses the free space before the file grows.",
+};
+
+function DatabaseStorage() {
+  const sdk = useSdk();
+  const [readout, setReadout] = useState<DatabaseReadout | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    sdk.experimental_storage.database().then(
+      (next) => {
+        if (!current) return;
+        setReadout(next);
+        setError(null);
+      },
+      (loadError: unknown) => {
+        if (current) setError(message(loadError));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [sdk, attempt]);
+  const database = readout?.database;
+  const totalEvents = readout
+    ? HISTORY_STATES.reduce(
+        (sum, { state }) => sum + readout.history[state].events,
+        0,
+      )
+    : 0;
+  const archivedShare =
+    readout && totalEvents > 0
+      ? Math.round((readout.history.archived.events / totalEvents) * 100)
+      : null;
+  return (
+    <section className="space-y-3">
+      <SectionHeading
+        title="Database"
+        description="Thread history, search and settings live in bb.db on the server."
+        badge={database ? AUTO_VACUUM_LABELS[database.autoVacuum] : undefined}
+      />
+      {error && !readout && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          <p>{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAttempt((count) => count + 1)}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+      {!readout || !database ? (
+        !error && (
+          <DelayedLoading>
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </DelayedLoading>
+        )
+      ) : (
+        <div className="divide-y divide-border rounded-lg border border-border bg-card">
+          <div className="space-y-3 px-4 py-3.5">
+            <dl className="grid grid-cols-3 gap-4 text-xs">
+              {[
+                { label: "bb.db", value: database.fileBytes },
+                { label: "Write-ahead log", value: database.walBytes },
+                {
+                  label: "Free inside the file",
+                  value: database.reclaimableBytes,
+                },
+              ].map((figure) => (
+                <div key={figure.label} className="min-w-0">
+                  <dt className="text-muted-foreground">{figure.label}</dt>
+                  <dd className="mt-0.5 text-sm tabular-nums">
+                    {bytes(figure.value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {database.reclaimableBytes > 0 && (
+              <p className="text-xs leading-snug text-subtle-foreground/75">
+                {AUTO_VACUUM_NOTES[database.autoVacuum]}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2 px-4 py-3.5">
+            <table className="w-full text-xs">
+              <caption className="sr-only">
+                History rows by thread state
+              </caption>
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th scope="col" className="pb-2 text-left font-normal">
+                    History
+                  </th>
+                  <th scope="col" className="pb-2 pl-3 text-right font-normal">
+                    Threads
+                  </th>
+                  <th scope="col" className="pb-2 pl-3 text-right font-normal">
+                    Events
+                  </th>
+                  <th scope="col" className="pb-2 pl-3 text-right font-normal">
+                    Search entries
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {HISTORY_STATES.filter(
+                  ({ state }) =>
+                    state !== "deleted" || readout.history.deleted.threads > 0,
+                ).map(({ state, label }) => (
+                  <tr key={state}>
+                    <th scope="row" className="py-2 text-left font-normal">
+                      {label}
+                    </th>
+                    {(["threads", "events", "searchSegments"] as const).map(
+                      (column) => (
+                        <td
+                          key={column}
+                          className="py-2 pl-3 text-right tabular-nums"
+                        >
+                          {readout.history[state][column].toLocaleString()}
+                        </td>
+                      ),
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {archivedShare !== null && (
+              <p className="text-xs leading-snug text-subtle-foreground/75">
+                Archived threads hold {archivedShare}% of history events.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function StorageBreakdown({

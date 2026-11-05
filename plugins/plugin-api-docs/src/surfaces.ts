@@ -1533,6 +1533,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
           "Start plugin updates in the background and follow their progress or rollback",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
+          "Read bb.db's size, write-ahead log, free space and history rows by thread state",
         ],
         reference: [
           "Normalize and resolve host paths with experimental_normalizeHostPath(path) and experimental_resolveHostPath({ rootPath, path }) from @get-bb/plugin-sdk; invalid paths return null",
@@ -1554,6 +1555,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
+          "PluginBbSdk.experimental_storage.database",
           "PluginBbSdk.environments.experimental_cleanup",
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
