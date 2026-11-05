@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
+import { SETUP_OPTION_ICON_OUTDENT_CLASS } from "@bb/shared-ui/setup-option-row";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -1093,6 +1094,29 @@ describe("connect setup guide section", () => {
     fireEvent.click(setUp);
     await slot.findByText("bb connect is on");
     slot.getByText("https://workstation.getbb.app");
+  });
+
+  it("keeps the bb connect row once it is on, with the check under its icon and no bb cloud line", async () => {
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      { rpc: { status: () => connected() } },
+    );
+
+    const on = await slot.findByText("bb connect is on");
+    slot.getByText("bb connect");
+    slot.getByText("https://workstation.getbb.app");
+    const check = on
+      .closest("div")
+      ?.querySelector('[data-icon="CircleCheck"]')?.parentElement;
+    expect(check?.className).toContain(SETUP_OPTION_ICON_OUTDENT_CLASS);
+    expect(slot.queryByText(/bb cloud/iu)).toBeNull();
+    expect(slot.queryByText(/remote access/iu)).toBeNull();
+    slot.getByText("Install the bb app on your phone:");
+    for (const name of ["iPhone", "Android", "I have the app"]) {
+      slot.getByRole("button", { name });
+    }
+    expect(slot.queryByRole("img")).toBeNull();
   });
 
   it("starts on the install step with no QR, pairs on the next step, then shows only Phone paired", async () => {

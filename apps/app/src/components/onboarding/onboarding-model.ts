@@ -336,9 +336,8 @@ export function connectAccessUrl(
 
 export function devicesShowMachines(
   connect: ReturnType<typeof connectAccessUrl>,
-  connectContributesSection: boolean,
 ): boolean {
-  return connect.status === "on" || !connectContributesSection;
+  return connect.status === "on";
 }
 
 export function signInSiteName(url: string): string | null {

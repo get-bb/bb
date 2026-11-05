@@ -1122,7 +1122,7 @@ function DevicesStepContainer({
   const connectContributesSection = usePluginSlots().setupGuideSections.some(
     (section) => section.pluginId === CONNECT_PLUGIN_ID,
   );
-  const showMachines = devicesShowMachines(connect, connectContributesSection);
+  const showMachines = devicesShowMachines(connect);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
@@ -1154,7 +1154,6 @@ function DevicesStepContainer({
         <RedesignedDevicesStep
           hostName={hostName}
           showMachines={showMachines}
-          mobileLinks={mobileAppDownloads}
           connectSection={
             connectContributesSection ? (
               <PluginSetupGuideSections
