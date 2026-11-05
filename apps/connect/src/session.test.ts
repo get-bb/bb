@@ -7,6 +7,7 @@ import {
 } from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  account,
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
   labelClaim,
@@ -16,6 +17,7 @@ import {
   session,
   sha256Hex,
   user,
+  verification,
   first,
   type ConnectDb,
 } from "@bb/connect-db";
@@ -382,7 +384,7 @@ describe("account session refresh", () => {
       baseURL,
       database: drizzleAdapter(db, {
         provider: "pg",
-        schema: { session, user },
+        schema: { account, session, user, verification },
       }),
       session: {
         expiresIn: CONNECT_SESSION_EXPIRES_IN_SECONDS,
