@@ -76,6 +76,7 @@ const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     workspaceContext: workspaceContextSchema,
+    mergeBaseBranch: z.string().min(1).nullable(),
   })
   .strict();
 export type HostDaemonWatchSetWorkspaceTarget = z.infer<

@@ -3373,6 +3373,7 @@ describe("host-daemon session schemas", () => {
             workspaceContext: {
               workspacePath: "/tmp/env-123",
             },
+            mergeBaseBranch: "origin/feature/base",
           },
         ],
         threadStorageTargets: [{ threadId: "thr_123" }],
@@ -3383,6 +3384,7 @@ describe("host-daemon session schemas", () => {
       workspaceTargets: [
         {
           environmentId: "env_123",
+          mergeBaseBranch: "origin/feature/base",
         },
       ],
       threadStorageTargets: [
@@ -3391,6 +3393,20 @@ describe("host-daemon session schemas", () => {
         },
       ],
     });
+
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "watch-set.replace",
+        generation: 2,
+        workspaceTargets: [
+          {
+            environmentId: "env_123",
+            workspaceContext: { workspacePath: "/tmp/env-123" },
+          },
+        ],
+        threadStorageTargets: [],
+      }).success,
+    ).toBe(false);
 
     expect(
       hostDaemonServerWsMessageSchema.parse({

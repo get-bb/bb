@@ -188,6 +188,13 @@ export class WatchManager {
       const nextTarget = nextTargets.get(environmentId);
       if (nextTarget && sameWorkspaceTarget(entry.target, nextTarget)) {
         nextTargets.delete(environmentId);
+        if (entry.target.mergeBaseBranch !== nextTarget.mergeBaseBranch) {
+          entry.target = nextTarget;
+          this.queueWorkspaceWatchChange({
+            changeKinds: ["shared-git-refs-changed"],
+            entry,
+          });
+        }
         continue;
       }
       this.workspaceEntries.delete(environmentId);
@@ -365,7 +372,10 @@ export class WatchManager {
           return;
         args.entry.watchState.lastLocalFingerprint = localState.fingerprint;
         args.entry.watchState.lastSharedRefsFingerprint =
-          sharedRefs.fingerprintFor(localState.branchName);
+          sharedRefs.fingerprintFor({
+            branchName: localState.branchName,
+            mergeBaseBranch: args.entry.target.mergeBaseBranch,
+          });
         args.entry.watchState.lastBranchNamesFingerprint =
           sharedRefs.branchNamesFingerprint;
       }
@@ -395,11 +405,13 @@ export class WatchManager {
         pendingKinds.includes("shared-git-refs-changed")
       ) {
         sharedRefs ??= await this.readSharedGitRefs(args.entry.workspace);
-        const nextSharedRefsFingerprint = sharedRefs.fingerprintFor(
-          localState?.branchName ??
+        const nextSharedRefsFingerprint = sharedRefs.fingerprintFor({
+          branchName:
+            localState?.branchName ??
             args.entry.watchState.lastBranchName ??
             null,
-        );
+          mergeBaseBranch: args.entry.target.mergeBaseBranch,
+        });
         if (
           args.entry.watchState.lastSharedRefsFingerprint !==
           nextSharedRefsFingerprint
@@ -525,8 +537,10 @@ export class WatchManager {
     entry.workspace = workspace;
     entry.watchState.lastBranchName = branchName;
     entry.watchState.lastDefaultBranch = resolvedDefaultBranch ?? branchName;
-    entry.watchState.lastSharedRefsFingerprint =
-      sharedRefs.fingerprintFor(branchName);
+    entry.watchState.lastSharedRefsFingerprint = sharedRefs.fingerprintFor({
+      branchName,
+      mergeBaseBranch: entry.target.mergeBaseBranch,
+    });
     entry.watchState.lastBranchNamesFingerprint =
       sharedRefs.branchNamesFingerprint;
     this.options.onWorkspaceMetadataChanged?.({

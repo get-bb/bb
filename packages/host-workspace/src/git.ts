@@ -101,7 +101,10 @@ export async function inspectGitRepository(
 export interface SharedGitRefsSnapshot {
   defaultBranch: string | null;
   branchNamesFingerprint: string;
-  fingerprintFor(branchName: string | null): string;
+  fingerprintFor(refs: {
+    branchName: string | null;
+    mergeBaseBranch: string | null;
+  }): string;
 }
 
 export async function readSharedGitRefsSnapshot(
@@ -151,9 +154,17 @@ export async function readSharedGitRefsSnapshot(
   return {
     defaultBranch,
     branchNamesFingerprint: names.digest("hex"),
-    fingerprintFor(branchName) {
+    fingerprintFor({ branchName, mergeBaseBranch }) {
       const watched = new Set(["refs/remotes/origin/HEAD"]);
       if (originHead) watched.add(originHead);
+      if (mergeBaseBranch !== null) {
+        if (mergeBaseBranch.startsWith("refs/")) {
+          watched.add(mergeBaseBranch);
+        } else {
+          watched.add(`refs/heads/${mergeBaseBranch}`);
+          watched.add(`refs/remotes/${mergeBaseBranch}`);
+        }
+      }
       if (defaultBranch !== null) {
         watched.add(`refs/heads/${defaultBranch}`);
         watched.add(`refs/remotes/origin/${defaultBranch}`);

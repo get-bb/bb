@@ -143,6 +143,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -186,6 +187,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -224,6 +226,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -236,6 +239,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -290,6 +294,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -352,6 +357,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -424,6 +430,7 @@ describe("WatchManager", () => {
         {
           environmentId: "env-branch",
           workspaceContext: { workspacePath: workspace.path },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -491,7 +498,7 @@ describe("WatchManager", () => {
     const readSharedRefs = vi.fn(async () => ({
       defaultBranch: "main",
       branchNamesFingerprint: "names",
-      fingerprintFor: (branchName: string | null) =>
+      fingerprintFor: ({ branchName }: { branchName: string | null }) =>
         branchName === "feature/a" ? featureAOid : "unchanged",
     }));
     workspaces[0]!.setCurrentBranch("feature/a");
@@ -514,6 +521,7 @@ describe("WatchManager", () => {
       workspaceTargets: workspaces.map((workspace, i) => ({
         environmentId: `env-${i}`,
         workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
       })),
       threadStorageTargets: [],
     });
@@ -546,6 +554,105 @@ describe("WatchManager", () => {
     await manager.shutdown();
   });
 
+  it("reports a worktree's merge-base moves and follows merge-base changes without restarting its watch", async () => {
+    const workspaces = [
+      createFakeWorkspace("/tmp/worktree-a"),
+      createFakeWorkspace("/tmp/worktree-b"),
+    ];
+    const watches: WatchWorkspaceArgs[] = [];
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watches.push(args);
+        return () => undefined;
+      },
+    });
+    let baseOid = "base-1";
+    const readSharedRefs = vi.fn(async () => ({
+      defaultBranch: "main",
+      branchNamesFingerprint: "names",
+      fingerprintFor: ({
+        mergeBaseBranch,
+      }: {
+        mergeBaseBranch: string | null;
+      }) => (mergeBaseBranch === "origin/feature/base" ? baseOid : "unchanged"),
+    }));
+    workspaces[0]!.setCurrentBranch("feature/a");
+    workspaces[1]!.setCurrentBranch("feature/b");
+    for (const workspace of workspaces) {
+      workspace.gitCommonDir = "/tmp/repo/.git";
+      workspace.getSharedGitRefsSnapshot.mockImplementation(readSharedRefs);
+    }
+    const provisionWorkspace = vi.fn(
+      async ({ path }: { path: string }) =>
+        workspaces.find((workspace) => workspace.path === path)!,
+    );
+    const onWorkspaceStatusChanged = vi.fn();
+    const onWorkspaceMetadataChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace,
+      onWorkspaceStatusChanged,
+      onWorkspaceMetadataChanged,
+    });
+    const watchSet = (
+      generation: number,
+      mergeBaseBranches: (string | null)[],
+    ) => ({
+      generation,
+      workspaceTargets: workspaces.map((workspace, i) => ({
+        environmentId: `env-${i}`,
+        workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: mergeBaseBranches[i] ?? null,
+      })),
+      threadStorageTargets: [],
+    });
+    const moveBase = (oid: string) => {
+      baseOid = oid;
+      for (const watch of watches) {
+        watch.onChange({
+          kind: "workspace-status-changed",
+          environmentId: watch.environmentId,
+          changeKinds: ["shared-git-refs-changed"],
+          changedPaths: ["/tmp/repo/.git/refs/remotes/origin/feature/base"],
+        });
+      }
+    };
+    const refsChangedEnvironments = () =>
+      onWorkspaceStatusChanged.mock.calls
+        .filter(([args]) => args.changeKinds.includes("git-refs-changed"))
+        .map(([args]) => args.environmentId)
+        .sort();
+
+    await manager.replaceWatchSet(watchSet(1, ["origin/feature/base", null]));
+    for (const watch of watches) watch.onReady();
+    await vi.waitFor(() =>
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledTimes(2),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    moveBase("base-2");
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-0"]),
+    );
+    onWorkspaceStatusChanged.mockClear();
+
+    await manager.replaceWatchSet(
+      watchSet(2, ["origin/feature/base", "origin/feature/base"]),
+    );
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-1"]),
+    );
+    expect(provisionWorkspace).toHaveBeenCalledTimes(2);
+    expect(watches).toHaveLength(2);
+    onWorkspaceStatusChanged.mockClear();
+
+    moveBase("base-3");
+    await vi.waitFor(() =>
+      expect(refsChangedEnvironments()).toEqual(["env-0", "env-1"]),
+    );
+    await manager.shutdown();
+  });
+
   it("reports branch-name changes separately from the worktree's own ref moves", async () => {
     let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
     const workspace = createFakeWorkspace("/tmp/env-watch");
@@ -567,6 +674,7 @@ describe("WatchManager", () => {
         {
           environmentId: "env-watch",
           workspaceContext: { workspacePath: "/tmp/env-watch" },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -638,6 +746,7 @@ describe("WatchManager", () => {
       workspaceTargets: workspaces.map((workspace, i) => ({
         environmentId: `env-${i}`,
         workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
       })),
       threadStorageTargets: [],
     });
@@ -717,6 +826,7 @@ describe("WatchManager", () => {
       workspaceTargets: workspaces.map((workspace, i) => ({
         environmentId: `env-${i}`,
         workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
       })),
       threadStorageTargets: [],
     });
@@ -776,6 +886,7 @@ describe("WatchManager", () => {
       workspaceTargets: workspaces.map((workspace, i) => ({
         environmentId: `env-${i}`,
         workspaceContext: { workspacePath: workspace.path },
+        mergeBaseBranch: null,
       })),
       threadStorageTargets: [],
     });
@@ -843,6 +954,7 @@ describe("WatchManager", () => {
         {
           environmentId: "env-branch",
           workspaceContext: { workspacePath: workspace.path },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -882,6 +994,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -920,6 +1033,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -948,6 +1062,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -966,6 +1081,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -999,6 +1115,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -1046,6 +1163,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -1098,6 +1216,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -1174,6 +1293,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -1246,6 +1366,7 @@ describe("WatchManager", () => {
           workspaceContext: {
             workspacePath: "/tmp/env-watch",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
