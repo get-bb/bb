@@ -1,6 +1,7 @@
 import type { ProviderCliStatus } from "@bb/host-daemon-contract";
 import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { asHttpError } from "@/lib/http-error";
+import { viewerIsOnThisComputer } from "@/lib/local-host-daemon-access";
 import type {
   HostDiscoveredRepo,
   RecordTelemetryEventRequest,
@@ -228,6 +229,20 @@ export function resolveAgentSetupState({
     case "unknown":
       return { status: "unknown", message: health.statusMessage };
   }
+}
+
+export function signInBrowserIsOnMachine({
+  agentOnLocalDaemonHost,
+  hostname,
+  isDesktop,
+}: {
+  agentOnLocalDaemonHost: boolean;
+  hostname: string | null;
+  isDesktop: boolean;
+}): boolean {
+  return (
+    agentOnLocalDaemonHost && viewerIsOnThisComputer({ hostname, isDesktop })
+  );
 }
 
 export function resolveSignInCommand(
