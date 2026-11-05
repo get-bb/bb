@@ -21,6 +21,7 @@ import {
 } from "bb-environment-provider-host/branch-options";
 import {
   detectGitRepo,
+  readGitRepo,
   workspaceResolutionFailureFromError,
 } from "bb-environment-provider-host/workspace-git";
 
@@ -219,11 +220,14 @@ export default experimental_defineHostEntry({
         }),
       ),
     fetchRemoteBranches: ({ path }) => {
-      void refreshRemoteBranches(
-        path,
-        { priority: "interactive" },
-        "background",
-      ).catch(() => undefined);
+      const options = { priority: "interactive" } as const;
+      void readGitRepo(path, options)
+        .then((repo) =>
+          repo === null
+            ? undefined
+            : refreshRemoteBranches(repo, options, "background"),
+        )
+        .catch(() => undefined);
       return Promise.resolve({ ok: true as const });
     },
   },

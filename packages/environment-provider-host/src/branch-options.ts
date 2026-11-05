@@ -7,6 +7,7 @@ import type {
 } from "./git-types.js";
 import {
   ensureGitRepo,
+  getGitCommonDir,
   readGitRepo,
   readLocalBranches,
   readOriginHeadBranchName,
