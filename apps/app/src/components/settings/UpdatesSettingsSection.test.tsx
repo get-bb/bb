@@ -2410,8 +2410,9 @@ The published lede.
           .filter((label) => label !== null && /^Update/.test(label)),
       ).toEqual(["Update"]);
       expect(
-        screen.queryByRole("switch", { name: "Restart and update bb automatically" }) !==
-          null,
+        screen.queryByRole("switch", {
+          name: "Restart and update bb automatically",
+        }) !== null,
       ).toBe(experiment);
     },
   );
@@ -2426,13 +2427,18 @@ The published lede.
       makeAppUpdateStatus({
         autoUpdate: true,
         runningThreadCount: 2,
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
     );
 
     renderSection();
     fireEvent.click(
-      await screen.findByRole("switch", { name: "Restart and update bb automatically" }),
+      await screen.findByRole("switch", {
+        name: "Restart and update bb automatically",
+      }),
     );
 
     expect(
@@ -2451,7 +2457,10 @@ The published lede.
       makeAppUpdateStatus({
         autoUpdate: true,
         runningThreadCount: 2,
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
     );
     vi.mocked(
@@ -2469,10 +2478,14 @@ The published lede.
       await screen.findByRole("button", { name: "More update options" }),
       { button: 0, ctrlKey: false },
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Skip this version" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Skip this version" }),
+    );
 
     expect(
-      await screen.findByText("Skipped until a newer version · 2 threads running"),
+      await screen.findByText(
+        "Skipped until a newer version · 2 threads running",
+      ),
     ).toBeDefined();
     expect(sdk.system.experimental_cancelScheduledAppUpdate).toHaveBeenCalled();
     expect(
@@ -2489,7 +2502,10 @@ The published lede.
       makeAppUpdateStatus({
         autoUpdate: true,
         runningThreadCount: 1,
-        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
       }),
     );
     vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(

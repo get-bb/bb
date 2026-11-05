@@ -14,6 +14,8 @@ import type {
 
 const IDLE_SETTLE_MS = 5_000;
 
+export const AUTO_UPDATE_IDLE_MS = 15 * 60_000;
+
 export interface AutoUpdateCheckMs {
   first: number;
   interval: number;
@@ -46,7 +48,10 @@ export interface ScheduledAppUpdateService {
   setAutoUpdate(enabled: boolean): Promise<SystemAppUpdateStatus>;
 }
 
+type ScheduleOrigin = "automatic" | "requested";
+
 interface Schedule {
+  origin: ScheduleOrigin;
   requestedAt: string;
 }
 
@@ -85,6 +90,7 @@ function automaticUpdateSkipReason(
 
 export function createScheduledAppUpdateService(args: {
   autoCheckMs: AutoUpdateCheckMs | null;
+  autoIdleMs?: number;
   autoUpdate: AutoAppUpdateStore;
   countRunningThreads: () => number;
   inner: AppUpdateService;
@@ -100,6 +106,7 @@ export function createScheduledAppUpdateService(args: {
 }): ScheduledAppUpdateService {
   const now = args.now ?? (() => new Date());
   const settleMs = args.settleMs ?? IDLE_SETTLE_MS;
+  const autoIdleMs = args.autoIdleMs ?? AUTO_UPDATE_IDLE_MS;
   let waiting: Schedule | null = null;
   let starting: Schedule | null = null;
   let startInFlight = false;
@@ -108,6 +115,20 @@ export function createScheduledAppUpdateService(args: {
   let enabled = args.isEnabled();
   let threadChangePending = false;
   let queue: Promise<unknown> = Promise.resolve();
+  let idleSince: number | null = Date.now();
+
+  const requiredIdleMs = (schedule: Schedule): number =>
+    schedule.origin === "automatic" ? autoIdleMs : settleMs;
+
+  const remainingIdleMs = (schedule: Schedule): number =>
+    idleSince === null
+      ? requiredIdleMs(schedule)
+      : Math.max(0, idleSince + requiredIdleMs(schedule) - Date.now());
+
+  const observeRunningThreads = (runningThreadCount: number): void => {
+    if (runningThreadCount > 0) idleSince = null;
+    else idleSince ??= Date.now();
+  };
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
     const run = queue.then(operation, operation);
@@ -127,7 +148,13 @@ export function createScheduledAppUpdateService(args: {
       availableSkipped:
         status.available !== null &&
         availableUpdateKey(status.available) === args.skippedUpdate.get(),
-      scheduled: pending === null ? null : { requestedAt: pending.requestedAt },
+      scheduled:
+        pending === null
+          ? null
+          : {
+              requestedAt: pending.requestedAt,
+              requiredIdleMs: requiredIdleMs(pending),
+            },
     };
   };
 
@@ -185,9 +212,16 @@ export function createScheduledAppUpdateService(args: {
     settleTimer = null;
     void serialize(async () => {
       const schedule = waiting;
-      if (schedule === null || args.countRunningThreads() > 0) return;
+      if (schedule === null) return;
+      const runningThreadCount = args.countRunningThreads();
+      observeRunningThreads(runningThreadCount);
+      if (runningThreadCount > 0) return;
       if (!enabled) {
         dropWhenDisabled();
+        return;
+      }
+      if (remainingIdleMs(schedule) > 0) {
+        checkIdle(0);
         return;
       }
       try {
@@ -209,11 +243,12 @@ export function createScheduledAppUpdateService(args: {
   };
 
   function checkIdle(runningThreadCount: number): void {
+    observeRunningThreads(runningThreadCount);
     if (waiting === null || runningThreadCount > 0) {
       clearSettleTimer();
       return;
     }
-    settleTimer ??= setTimeout(startWhenSettled, settleMs);
+    settleTimer ??= setTimeout(startWhenSettled, remainingIdleMs(waiting));
   }
 
   function dropWhenDisabled(): void {
@@ -235,10 +270,19 @@ export function createScheduledAppUpdateService(args: {
     checkIdle(runningThreadCount);
   };
 
-  const scheduleNow = async (): Promise<SystemAppUpdateStatus> => {
+  const scheduleNow = async (
+    origin: ScheduleOrigin,
+  ): Promise<SystemAppUpdateStatus> => {
     const current = withSchedule(
       await args.inner.getStatus({ forceRefresh: false }),
     );
+    if (origin === "requested" && waiting?.origin === "automatic") {
+      waiting = { ...waiting, origin };
+      clearSettleTimer();
+      checkIdle(args.countRunningThreads());
+      args.notifyChanged();
+      return withSchedule(await args.inner.getStatus({ forceRefresh: false }));
+    }
     if (current.scheduled !== null) return current;
     if (current.activity.phase !== "idle") {
       throw new ApiError(
@@ -247,7 +291,21 @@ export function createScheduledAppUpdateService(args: {
         "An update is already in progress.",
       );
     }
-    const schedule: Schedule = { requestedAt: now().toISOString() };
+    const schedule: Schedule = { origin, requestedAt: now().toISOString() };
+    if (origin === "automatic") {
+      const runningThreadCount = args.countRunningThreads();
+      observeRunningThreads(runningThreadCount);
+      if (remainingIdleMs(schedule) > 0) {
+        waiting = schedule;
+        checkIdle(runningThreadCount);
+        args.logger.info(
+          { requiredIdleMs: autoIdleMs },
+          "Scheduled the automatic bb update for when bb has been idle long enough",
+        );
+        args.notifyChanged();
+        return withSchedule(current);
+      }
+    }
     const status = await start(schedule);
     if (waiting === schedule) {
       args.logger.info(
@@ -285,9 +343,9 @@ export function createScheduledAppUpdateService(args: {
       }
       args.logger.info(
         { targetVersion: status.available?.version ?? null },
-        "Found a bb update; updating once threads finish",
+        "Found a bb update; updating once bb has been idle long enough",
       );
-      await scheduleNow();
+      await scheduleNow("automatic");
     });
 
   const runAutomaticCheck = (): void => {
@@ -311,8 +369,10 @@ export function createScheduledAppUpdateService(args: {
   const unsubscribe = args.onChangedMessage((message) => {
     if (message.entity === "system") {
       if (message.changes.includes("config-changed")) {
+        const wasEnabled = enabled;
         enabled = args.isEnabled();
         if (!enabled) dropWhenDisabled();
+        else if (!wasEnabled) idleSince = Date.now();
       }
       return;
     }
@@ -378,7 +438,7 @@ export function createScheduledAppUpdateService(args: {
       return withSchedule(await args.inner.getStatus(input));
     },
     schedule() {
-      return serialize(scheduleNow);
+      return serialize(() => scheduleNow("requested"));
     },
     async setAutoUpdate(autoUpdate) {
       args.autoUpdate.set(autoUpdate);

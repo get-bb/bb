@@ -11,6 +11,7 @@ import { ApiError } from "../../src/errors.js";
 import { createAppUpdateService } from "../../src/services/system/app-update.js";
 import {
   AUTO_UPDATE_CHECK_MS,
+  AUTO_UPDATE_IDLE_MS,
   createScheduledAppUpdateService,
 } from "../../src/services/system/app-update-schedule.js";
 import type { ServerChangedMessage } from "../../src/ws/hub.js";
@@ -643,10 +644,10 @@ function createScheduledService(args: {
     appSurface: "web",
     appVersion: {
       getSystemVersion: async () =>
-        (await appVersion({
+        await appVersion({
           latestVersion: latest.version,
           updateAvailable: latest.version !== "1.0.0",
-        }).getSystemVersion({ forceRefresh: true })),
+        }).getSystemVersion({ forceRefresh: true }),
     },
     config: { appVersion: "1.0.0", isDevelopment: false },
     countRunningThreads: () => running.count,
@@ -753,7 +754,13 @@ describe("checking for bb updates automatically", () => {
   const { first, interval } = AUTO_UPDATE_CHECK_MS;
   beforeEach(() => {
     vi.useFakeTimers({
-      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      toFake: [
+        "Date",
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+      ],
     });
   });
   afterEach(() => {
@@ -764,7 +771,7 @@ describe("checking for bb updates automatically", () => {
     service: ReturnType<typeof createScheduledService>["service"],
   ) => (await service.getStatus({ forceRefresh: false })).scheduled;
 
-  it("checks 30 seconds after boot and every hour, and updates once threads finish", async () => {
+  it("checks 30 seconds after boot and every hour, and updates once no thread has run for 15 minutes", async () => {
     const { applyRequests, latest, launcher, service, setRunningThreads } =
       createScheduledService({ autoCheck: true, runningThreads: 1 });
     latest.version = "1.0.0";
@@ -780,7 +787,9 @@ describe("checking for bb updates automatically", () => {
     expect(applyRequests()).toEqual([]);
 
     setRunningThreads(0);
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_IDLE_MS - 1_000);
+    expect(applyRequests()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(applyRequests()).toEqual([
       {
         target: { kind: "npm", version: "1.1.0" },
@@ -790,6 +799,54 @@ describe("checking for bb updates automatically", () => {
     ]);
     launcher.push(READY_STATUS);
     expect(launcher.requests.at(-1)).toEqual({ type: "restart" });
+  });
+
+  it("restarts the 15-minute wait whenever a thread runs between turns", async () => {
+    const { applyRequests, service, setRunningThreads } =
+      createScheduledService({ autoCheck: true, runningThreads: 1 });
+    await vi.advanceTimersByTimeAsync(first);
+    expect((await scheduledAt(service))?.requiredIdleMs).toBe(
+      AUTO_UPDATE_IDLE_MS,
+    );
+
+    for (let turn = 0; turn < 5; turn += 1) {
+      setRunningThreads(0);
+      await vi.advanceTimersByTimeAsync(AUTO_UPDATE_IDLE_MS - 60_000);
+      setRunningThreads(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+    }
+    expect(applyRequests()).toEqual([]);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_IDLE_MS);
+    expect(applyRequests()).toHaveLength(1);
+  });
+
+  it("counts idle time from when the last thread finished, not from when the update was found", async () => {
+    const { applyRequests, latest, setRunningThreads } = createScheduledService(
+      { autoCheck: true, runningThreads: 1 },
+    );
+    latest.version = "1.0.0";
+    await vi.advanceTimersByTimeAsync(first);
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(AUTO_UPDATE_IDLE_MS - 60_000);
+
+    latest.version = "1.1.0";
+    await vi.advanceTimersByTimeAsync(interval - AUTO_UPDATE_IDLE_MS + 60_000);
+    expect(applyRequests()).toHaveLength(1);
+  });
+
+  it("waits only a few seconds once someone asks for the waiting automatic update", async () => {
+    const { applyRequests, service, setRunningThreads } =
+      createScheduledService({ autoCheck: true, runningThreads: 1 });
+    await vi.advanceTimersByTimeAsync(first);
+
+    const status = await service.schedule();
+    expect(status.scheduled?.requiredIdleMs).toBe(5_000);
+
+    setRunningThreads(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(applyRequests()).toHaveLength(1);
   });
 
   it("does not check while the experiment is off", async () => {
@@ -841,8 +898,10 @@ describe("checking for bb updates automatically", () => {
   });
 
   it("skips a cancelled version until a newer one appears", async () => {
-    const { applyRequests, latest, service, skipped } =
-      createScheduledService({ autoCheck: true, runningThreads: 1 });
+    const { applyRequests, latest, service, skipped } = createScheduledService({
+      autoCheck: true,
+      runningThreads: 1,
+    });
 
     await vi.advanceTimersByTimeAsync(first);
     expect(await scheduledAt(service)).not.toBeNull();
@@ -861,7 +920,7 @@ describe("checking for bb updates automatically", () => {
 
 describe("app update scheduled for when threads finish", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -875,6 +934,7 @@ describe("app update scheduled for when threads finish", () => {
 
     expect(scheduled.scheduled).toEqual({
       requestedAt: "2026-10-23T00:00:00.000Z",
+      requiredIdleMs: 5_000,
     });
     expect(applyRequests()).toEqual([]);
 
@@ -911,7 +971,10 @@ describe("app update scheduled for when threads finish", () => {
     expect(applyRequests()).toHaveLength(1);
     expect(
       (await service.getStatus({ forceRefresh: false })).scheduled,
-    ).toEqual({ requestedAt: "2026-10-23T00:00:00.000Z" });
+    ).toEqual({
+      requestedAt: "2026-10-23T00:00:00.000Z",
+      requiredIdleMs: 5_000,
+    });
     accept();
     await vi.advanceTimersByTimeAsync(0);
     launcher.push(PREPARING_STATUS);

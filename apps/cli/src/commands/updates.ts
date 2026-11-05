@@ -250,6 +250,14 @@ function describeScheduledUpdate(status: SystemAppUpdateStatus): string {
         ? available.version
         : available.commit.slice(0, 10);
   const count = status.runningThreadCount;
+  const requiredIdleMs = status.scheduled?.requiredIdleMs ?? 0;
+  if (requiredIdleMs >= 60_000) {
+    const minutes = Math.round(requiredIdleMs / 60_000);
+    const idle = `${String(minutes)} minute${minutes === 1 ? "" : "s"}`;
+    return count === 0
+      ? `bb will update to ${target} once no thread has run for ${idle}.`
+      : `bb will update to ${target} once no thread has run for ${idle} (${String(count)} running).`;
+  }
   return count === 0
     ? `All threads are idle; bb will update to ${target} shortly.`
     : `bb will update to ${target} when all threads are idle (${String(count)} running).`;
@@ -576,9 +584,7 @@ function registerAppUpdateCommands(
 
   app
     .command("cancel")
-    .description(
-      "Skip a waiting update until a newer version appears",
-    )
+    .description("Skip a waiting update until a newer version appears")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppUpdateStatusOptions) => {
@@ -599,34 +605,36 @@ function registerAppUpdateCommands(
   app
     .command("auto [state]")
     .description(
-      "Show whether bb updates itself automatically, or turn it on or off. `on` checks every hour and restarts bb into a new version once no threads are running; `off` stops checking and drops a waiting update",
+      "Show whether bb updates itself automatically, or turn it on or off. `on` checks every hour and restarts bb into a new version once no thread has run for 15 minutes; `off` stops checking and drops a waiting update",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (state: string | undefined, opts: AppUpdateStatusOptions) => {
-        if (state !== undefined && state !== "on" && state !== "off") {
-          throw new CliUsageError({
-            code: "invalid_value",
-            hint: "Use bb updates app auto on or bb updates app auto off.",
-            message: `Expected "on" or "off", got "${state}".`,
-          });
-        }
-        const sdk = createCliBbSdk(getUrl());
-        const status =
-          state === undefined
-            ? await sdk.system.appUpdate()
-            : await callUpdateWhenIdleRoute(() =>
-                sdk.system.experimental_setAppUpdateAuto({
-                  enabled: state === "on",
-                }),
-              );
-        if (outputJson(opts, status)) return;
-        console.log(
-          status.autoUpdate
-            ? "Automatic updates are on: bb checks every hour and restarts into a new version once no threads are running."
-            : "Automatic updates are off.",
-        );
-      }),
+      action(
+        async (state: string | undefined, opts: AppUpdateStatusOptions) => {
+          if (state !== undefined && state !== "on" && state !== "off") {
+            throw new CliUsageError({
+              code: "invalid_value",
+              hint: "Use bb updates app auto on or bb updates app auto off.",
+              message: `Expected "on" or "off", got "${state}".`,
+            });
+          }
+          const sdk = createCliBbSdk(getUrl());
+          const status =
+            state === undefined
+              ? await sdk.system.appUpdate()
+              : await callUpdateWhenIdleRoute(() =>
+                  sdk.system.experimental_setAppUpdateAuto({
+                    enabled: state === "on",
+                  }),
+                );
+          if (outputJson(opts, status)) return;
+          console.log(
+            status.autoUpdate
+              ? "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes."
+              : "Automatic updates are off.",
+          );
+        },
+      ),
     );
 
   app

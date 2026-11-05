@@ -141,7 +141,8 @@ CLI counterpart of Settings → Updates.
   bb updates app cancel                   Skip a waiting update until a newer version
                                           appears
   bb updates app auto [on|off]            Show or set automatic updates: check every
-                                          hour and install once threads finish
+                                          hour and install once no thread has run
+                                          for 15 minutes
   bb updates app dismiss                  Mark the last update result as seen
 
 `--when-idle`, `cancel`, and `auto on|off` need the `updateWhenIdle` experiment (on for early
@@ -154,8 +155,10 @@ has stayed finished for a few seconds, and waits again if one starts during the
 download. The schedule lasts until bb restarts. `bb updates app auto on` (the
 "Restart and update bb automatically" switch on Settings → Updates) makes bb
 check for an update right away, 30 seconds after it starts, and every hour,
-and schedule what it finds the same way, so it restarts into the update once
-threads finish; `off` stops the checks and drops a waiting update. It does not start a
+and schedule what it finds, so it restarts into the update once no thread has
+run for 15 minutes (a requested update waits only a few seconds, and
+`apply --when-idle` while an automatic update waits shortens its wait to
+that); `off` stops the checks and drops a waiting update. It does not start a
 version whose last update attempt failed, or one you skipped with `cancel`,
 until a newer one appears; you can still update to it by hand. Without
 `--when-idle` or `--yes`,

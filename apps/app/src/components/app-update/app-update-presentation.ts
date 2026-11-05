@@ -108,7 +108,17 @@ export function runningThreadsCaption(count: number): string {
   return `${String(count)} thread${count === 1 ? "" : "s"} running`;
 }
 
-export function scheduledAppUpdateCaption(count: number): string {
+export function scheduledAppUpdateCaption(
+  count: number,
+  requiredIdleMs: number,
+): string {
+  if (requiredIdleMs >= 60_000) {
+    const minutes = Math.round(requiredIdleMs / 60_000);
+    const idle = `${String(minutes)} minute${minutes === 1 ? "" : "s"}`;
+    return count === 0
+      ? `Updates once no thread has run for ${idle}`
+      : `Updates once no thread has run for ${idle} (${String(count)} running)`;
+  }
   return count === 0
     ? "All threads are idle; updating shortly"
     : `Updates when all threads are idle (${String(count)} running)`;
