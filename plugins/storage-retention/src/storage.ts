@@ -128,22 +128,29 @@ const liveEnvironment = (
   env.path !== null &&
   env.status !== "destroyed" &&
   env.lifecycle.teardown?.status !== "removed";
+function bbOwnedPathList(
+  hostId: string,
+  environments: Environment[],
+  projects: Project[],
+) {
+  return [
+    ...environments.flatMap((env) => (liveEnvironment(env) ? [env.path] : [])),
+    ...projects.flatMap((project) =>
+      project.sources
+        .filter((source) => source.hostId === hostId)
+        .map((source) => source.path),
+    ),
+  ];
+}
 function bbOwnedPaths(
   hostId: string,
   environments: Environment[],
   projects: Project[],
 ) {
   return new Set(
-    [
-      ...environments.flatMap((env) =>
-        liveEnvironment(env) ? [env.path] : [],
-      ),
-      ...projects.flatMap((project) =>
-        project.sources
-          .filter((source) => source.hostId === hostId)
-          .map((source) => source.path),
-      ),
-    ].flatMap((path) => hostPath(path) ?? []),
+    bbOwnedPathList(hostId, environments, projects).flatMap(
+      (path) => hostPath(path) ?? [],
+    ),
   );
 }
 function linkedThreads(
@@ -722,6 +729,7 @@ export function createStorage(
         if (source.hostId === hostId && !projectByRepository.has(source.path))
           projectByRepository.set(source.path, project.id);
     const repositoryPaths = [...projectByRepository.keys()];
+    const ownedPaths = bbOwnedPathList(hostId, environments, projects);
     const owned = bbOwnedPaths(hostId, environments, projects);
     const found = new Map<
       string,
@@ -730,7 +738,10 @@ export function createStorage(
     for (let offset = 0; offset < repositoryPaths.length; offset += 100) {
       const result = await worker.call(
         "listGitWorktrees",
-        { repositoryPaths: repositoryPaths.slice(offset, offset + 100) },
+        {
+          repositoryPaths: repositoryPaths.slice(offset, offset + 100),
+          ownedPaths,
+        },
         { hostId, timeoutMs: 10 * 60_000, signal: lifecycle.signal },
       );
       for (const repository of result.repositories)
