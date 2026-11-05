@@ -122,6 +122,33 @@ describe("useAgentSignIns", () => {
     expect(terminals.close).not.toHaveBeenCalled();
   });
 
+  it("cancels a sign-in whose terminal is still being created", async () => {
+    const { result, terminals } = renderSignIns(true);
+    let finish: (() => void) | undefined;
+    vi.mocked(terminals.create).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(makeTerminalSession({ id: "slow" }));
+        }),
+    );
+    let starting: Promise<void> | undefined;
+    act(() => {
+      starting = result.current.start("codex");
+    });
+    await act(async () => {});
+    expect(result.current.startingProviderIds.has("codex")).toBe(true);
+
+    act(() => result.current.end("codex"));
+    expect(result.current.startingProviderIds.has("codex")).toBe(false);
+    await act(async () => {
+      finish?.();
+      await starting;
+    });
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(terminals.close).toHaveBeenCalledExactlyOnceWith("slow");
+  });
+
   it("ends only the sign-in whose agent became ready", async () => {
     const { result, rerender, terminals } = renderSignIns(true);
     await act(async () => {

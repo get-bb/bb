@@ -123,7 +123,14 @@ export function useAgentSignIns({
       failureReason?: SignInFailureReason,
     ) => {
       const current = signInsRef.current.get(providerId);
-      if (current === undefined) return;
+      if (current === undefined) {
+        const request = requestsRef.current.get(providerId);
+        if (request !== undefined) {
+          requestsRef.current.set(providerId, request + 1);
+          setStartingProviderIds((ids) => withoutKey(ids, providerId));
+        }
+        return;
+      }
       signInsRef.current.delete(providerId);
       record(providerId, outcome, failureReason);
       setSignIns(new Map(signInsRef.current));

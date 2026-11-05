@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
   connectAccessUrl,
+  devicesShowMachines,
   connectFlowFailed,
   defaultSelectedRepoPaths,
   featuredPluginEntryIds,
@@ -20,7 +21,6 @@ import {
   resolveAgentSetupState,
   resolveSignInCommand,
   shortRemoteName,
-  signInInstructionReady,
   signInSiteName,
   terminalConnectFlow,
 } from "./onboarding-model";
@@ -76,6 +76,7 @@ const idle = {
   signingIn: false,
   signInFailed: false,
   installInfoPending: false,
+  whileInstallInfoPending: "checking" as const,
 };
 
 describe("resolveAgentSetupState", () => {
@@ -89,6 +90,7 @@ describe("resolveAgentSetupState", () => {
         signingIn: true,
         signInFailed: true,
         installInfoPending: true,
+        whileInstallInfoPending: "checking",
       }),
     ).toEqual({ status: "ready", detail: "a@b.dev · Max (20x)" });
     expect(
@@ -143,6 +145,41 @@ describe("resolveAgentSetupState", () => {
     ).toEqual({ status: "signIn", reason: "signedOut", canSignIn: true });
   });
 
+  it("offers Install or Update in the new guide while install info is still loading", () => {
+    const pending = {
+      ...idle,
+      cliStatus: undefined,
+      installInfoPending: true,
+      whileInstallInfoPending: "offerInstall" as const,
+    };
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        health: health({ status: "not_installed" }),
+      }),
+    ).toEqual({ status: "install", canInstall: true });
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        health: health({
+          status: "unsupported_version",
+          minimumSupportedVersion: "2.0.0",
+        }),
+      }),
+    ).toEqual({
+      status: "update",
+      detail: "Needs version 2.0.0 or newer",
+      canInstall: true,
+    });
+    expect(
+      resolveAgentSetupState({
+        ...pending,
+        installInfoPending: false,
+        health: health({ status: "not_installed" }),
+      }),
+    ).toEqual({ status: "install", canInstall: false });
+  });
+
   it("reports a running install before a previous failure, and a failure before the health state", () => {
     const base = {
       health: health({ status: "not_installed" }),
@@ -150,6 +187,7 @@ describe("resolveAgentSetupState", () => {
       signingIn: false,
       signInFailed: false,
       installInfoPending: false,
+      whileInstallInfoPending: "checking" as const,
     };
     expect(
       resolveAgentSetupState({
@@ -703,33 +741,13 @@ describe("agentContinueDisabled", () => {
   });
 });
 
-describe("signInInstructionReady", () => {
-  const guide = {
-    url: "https://claude.ai/oauth/authorize",
-    userCode: null,
-    acceptsPastedCode: true,
-  };
-
-  it("shows the instruction once a sign-in has started", () => {
-    expect(signInInstructionReady({ started: false, guide }, false)).toBe(
-      false,
-    );
-    expect(signInInstructionReady({ started: true, guide: null }, false)).toBe(
+describe("devicesShowMachines", () => {
+  it("offers other machines when bb connect is on or is not running at all", () => {
+    expect(devicesShowMachines({ status: "on", url: "https://x" }, true)).toBe(
       true,
     );
-  });
-
-  it("shows a connect flow's instruction only once its sign-in page is known", () => {
-    expect(signInInstructionReady({ started: true, guide: null }, true)).toBe(
-      false,
-    );
-    expect(
-      signInInstructionReady(
-        { started: true, guide: { ...guide, url: null } },
-        true,
-      ),
-    ).toBe(false);
-    expect(signInInstructionReady({ started: true, guide }, true)).toBe(true);
+    expect(devicesShowMachines({ status: "unavailable" }, false)).toBe(true);
+    expect(devicesShowMachines({ status: "off" }, true)).toBe(false);
   });
 });
 

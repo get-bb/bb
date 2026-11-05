@@ -153,6 +153,7 @@ interface ResolveAgentSetupStateArgs {
   signingIn: boolean;
   signInFailed: boolean;
   installInfoPending: boolean;
+  whileInstallInfoPending: "checking" | "offerInstall";
 }
 
 export function resolveAgentSetupState({
@@ -163,6 +164,7 @@ export function resolveAgentSetupState({
   signingIn,
   signInFailed,
   installInfoPending,
+  whileInstallInfoPending,
 }: ResolveAgentSetupStateArgs): AgentSetupState {
   if (health.status === "ready") {
     const detail = [health.accountEmail, health.planLabel]
@@ -176,19 +178,22 @@ export function resolveAgentSetupState({
       update: health.status === "unsupported_version",
     };
   }
+  const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
   const canInstall =
-    cliStatus?.installAction !== null && cliStatus?.installAction !== undefined;
+    (awaitingInstallInfo && whileInstallInfoPending === "offerInstall") ||
+    (cliStatus?.installAction !== null && cliStatus?.installAction !== undefined);
   if (installFailure !== null) {
     return { status: "installFailed", message: installFailure, canInstall };
   }
-  const awaitingInstallInfo = cliStatus === undefined && installInfoPending;
+  const checking =
+    awaitingInstallInfo && whileInstallInfoPending === "checking";
   switch (health.status) {
     case "not_installed":
-      return awaitingInstallInfo
+      return checking
         ? { status: "checking" }
         : { status: "install", canInstall };
     case "unsupported_version":
-      if (awaitingInstallInfo) return { status: "checking" };
+      if (checking) return { status: "checking" };
       return {
         status: "update",
         detail:
@@ -361,6 +366,13 @@ export function connectAccessUrl(
   return { status: "off" };
 }
 
+export function devicesShowMachines(
+  connect: ReturnType<typeof connectAccessUrl>,
+  connectContributesSection: boolean,
+): boolean {
+  return connect.status === "on" || !connectContributesSection;
+}
+
 export function signInSiteName(url: string): string | null {
   try {
     const host = new URL(url).hostname.replace(/^www\./u, "");
@@ -374,13 +386,6 @@ export interface SignInGuide {
   url: string | null;
   userCode: string | null;
   acceptsPastedCode: boolean;
-}
-
-export function signInInstructionReady(
-  view: { started: boolean; guide: SignInGuide | null },
-  connect: boolean,
-): boolean {
-  return view.started && (!connect || view.guide?.url != null);
 }
 
 const TERMINAL_OSC_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/gu;

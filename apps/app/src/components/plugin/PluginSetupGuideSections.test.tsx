@@ -40,7 +40,7 @@ function Section({
 function renderSections() {
   const onSetupStarted = vi.fn();
   const onSetupFailed = vi.fn();
-  render(
+  const view = render(
     <MemoryRouter>
       <ul>
         <PluginSetupGuideSections
@@ -48,12 +48,11 @@ function renderSections() {
           onPhone
           onSetupStarted={onSetupStarted}
           onSetupFailed={onSetupFailed}
-          fallback={<li>core fallback</li>}
         />
       </ul>
     </MemoryRouter>,
   );
-  return { onSetupStarted, onSetupFailed };
+  return { ...view, onSetupStarted, onSetupFailed };
 }
 
 describe("PluginSetupGuideSections", () => {
@@ -67,27 +66,25 @@ describe("PluginSetupGuideSections", () => {
     const { onSetupStarted, onSetupFailed } = renderSections();
 
     expect(screen.getByText("phone row")).toBeDefined();
-    expect(screen.queryByText("core fallback")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set up" }));
     expect(onSetupStarted).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Fail" }));
     expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("turn_on");
   });
 
-  it("renders the fallback when the plugin registers no section", () => {
+  it("renders nothing when the plugin registers no section", () => {
     setPluginSlotRegistrations(
       "other",
       registrationSet({
         setupGuideSections: [{ id: "remote-access", component: Section }],
       }),
     );
-    renderSections();
+    const { container } = renderSections();
 
-    expect(screen.getByText("core fallback")).toBeDefined();
-    expect(screen.queryByText("phone row")).toBeNull();
+    expect(container.querySelector("ul")?.childElementCount).toBe(0);
   });
 
-  it("renders the fallback when the section crashes", () => {
+  it("shows the standard crashed-plugin chip when the section crashes", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashes(): never {
@@ -101,6 +98,6 @@ describe("PluginSetupGuideSections", () => {
     );
     renderSections();
 
-    expect(screen.getByText("core fallback")).toBeDefined();
+    expect(screen.getByText("plugin connect crashed")).toBeDefined();
   });
 });
