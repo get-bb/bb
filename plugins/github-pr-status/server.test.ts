@@ -584,6 +584,7 @@ describe("GitHub PR Status server", () => {
     [["metadata-changed"], "branch"],
     [["git-refs-changed", "metadata-changed"], "branch"],
     [["git-refs-changed"], "invalidate"],
+    [["git-branches-changed"], null],
     [["work-status-changed"], null],
   ] as const)(
     "maps environment changes %j to %s, re-checking only where main did",

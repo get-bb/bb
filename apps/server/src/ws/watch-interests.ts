@@ -2,6 +2,7 @@ import { environments, liveThread, threads, type DbConnection } from "@bb/db";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import {
   realtimeSubscriptionTargetKey,
+  resolveEnvironmentMergeBaseBranch,
   type EnvironmentChangeKind,
   type ThreadChangeKind,
   type ThreadEventType,
@@ -321,6 +322,9 @@ export class WatchInterestCoordinator {
           id: environments.id,
           hostId: environments.hostId,
           path: environments.path,
+          mergeBaseBranch: environments.mergeBaseBranch,
+          baseBranch: environments.baseBranch,
+          defaultBranch: environments.defaultBranch,
         })
         .from(environments)
         .where(
@@ -350,6 +354,8 @@ export class WatchInterestCoordinator {
               workspaceContext: workspaceContextFromPath({
                 path: environment.path,
               }),
+              mergeBaseBranch:
+                resolveEnvironmentMergeBaseBranch(environment) ?? null,
             },
           },
         );

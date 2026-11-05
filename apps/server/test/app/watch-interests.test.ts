@@ -5,6 +5,7 @@ import {
   environments,
   threads,
   noopNotifier,
+  updateEnvironmentMetadata,
   updateThread,
   upsertHost,
 } from "@bb/db";
@@ -171,6 +172,7 @@ describe("WatchInterestCoordinator", () => {
           workspaceContext: {
             workspacePath: "/tmp/test-workspace",
           },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],
@@ -246,6 +248,43 @@ describe("WatchInterestCoordinator", () => {
       ],
       threadStorageTargets: [],
     });
+  });
+
+  it("sends each workspace's merge base and re-sends it when the merge base changes", () => {
+    const { db, environment, host, hub } = setup();
+    const daemonSocket = createMockHubSocket();
+    const socket = createMockHubSocket();
+    hub.registerDaemon("session-1", host.id, daemonSocket);
+    const mergeBaseBranches = () => {
+      const message = lastDaemonMessage(daemonSocket);
+      if (message.type !== "watch-set.replace") {
+        throw new Error("Expected watch-set.replace");
+      }
+      return message.workspaceTargets.map((target) => target.mergeBaseBranch);
+    };
+
+    hub.subscribe(socket, {
+      kind: "environment-detail",
+      environmentId: environment.id,
+    });
+    expect(mergeBaseBranches()).toEqual([null]);
+
+    db.update(environments)
+      .set({ defaultBranch: "main", baseBranch: "origin/feature/base" })
+      .where(eq(environments.id, environment.id))
+      .run();
+    hub.notifyEnvironment(environment.id, ["metadata-changed"]);
+    expect(mergeBaseBranches()).toEqual(["origin/feature/base"]);
+
+    updateEnvironmentMetadata(db, hub, environment.id, {
+      mergeBaseBranch: "origin/release",
+    });
+    expect(mergeBaseBranches()).toEqual(["origin/release"]);
+
+    updateEnvironmentMetadata(db, hub, environment.id, {
+      mergeBaseBranch: null,
+    });
+    expect(mergeBaseBranches()).toEqual(["origin/feature/base"]);
   });
 
   it("does not replace a watch set when a relevant invalidation resolves identically", () => {

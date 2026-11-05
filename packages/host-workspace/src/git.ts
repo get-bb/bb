@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { ExecFileException } from "node:child_process";
 import { execHostFileBuffer, runVcsProcess } from "@bb/process-utils";
@@ -38,7 +39,11 @@ function isMissingGitBlobTargetError(stderr: string): boolean {
 export async function inspectGitRepository(
   cwd: string,
   options: GitTimeoutOptions = {},
-): Promise<{ isGitRepo: boolean; isWorktree: boolean }> {
+): Promise<{
+  isGitRepo: boolean;
+  isWorktree: boolean;
+  gitCommonDir: string | null;
+}> {
   const result = await runGit(
     [
       "rev-parse",
@@ -49,7 +54,8 @@ export async function inspectGitRepository(
     ],
     { cwd, ...options, allowFailure: true },
   );
-  if (result.exitCode !== 0) return { isGitRepo: false, isWorktree: false };
+  if (result.exitCode !== 0)
+    return { isGitRepo: false, isWorktree: false, gitCommonDir: null };
   const [insideWorkTree, bare, ...directoryLines] = result.stdout
     .replace(/\n$/u, "")
     .split("\n");
@@ -84,16 +90,21 @@ export async function inspectGitRepository(
     );
   }
   const isGitRepo = insideWorkTree === "true";
+  const gitCommonDir = path.resolve(cwd, commonDir);
   return {
     isGitRepo,
-    isWorktree:
-      isGitRepo && path.resolve(cwd, gitDir) !== path.resolve(cwd, commonDir),
+    isWorktree: isGitRepo && path.resolve(cwd, gitDir) !== gitCommonDir,
+    gitCommonDir: isGitRepo ? gitCommonDir : null,
   };
 }
 
 export interface SharedGitRefsSnapshot {
-  fingerprint: string;
   defaultBranch: string | null;
+  branchNamesFingerprint: string;
+  fingerprintFor(refs: {
+    branchName: string | null;
+    mergeBaseBranch: string | null;
+  }): string;
 }
 
 export async function readSharedGitRefsSnapshot(
@@ -105,24 +116,30 @@ export async function readSharedGitRefsSnapshot(
   const refs = await runGit(
     [
       "for-each-ref",
-      "--format=%(refname)%00%(objectname)%00%(refname:short)%00%(symref)",
+      "--format=%(refname)%00%(objectname)%00%(symref)%00%(upstream)%00%(push)",
       "refs/heads",
       "refs/remotes",
     ],
     { cwd, ...options },
   );
-  const refRecords = refs.stdout
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const [name = "", oid = "", shortName = "", symref = ""] =
-        line.split("\0");
-      return { name, oid, shortName, symref };
-    });
-  const listedOriginHead = refRecords.find(
-    (ref) => ref.name === "refs/remotes/origin/HEAD",
-  );
-  let originHead = listedOriginHead?.symref;
+  const refRecords = new Map<
+    string,
+    { oid: string; upstream: string; push: string }
+  >();
+  const names = createHash("sha1");
+  const localBranches: string[] = [];
+  let listedOriginHead: string | undefined;
+  for (const line of refs.stdout.split("\n")) {
+    if (line.length === 0) continue;
+    const [name = "", oid = "", symref = "", upstream = "", push = ""] =
+      line.split("\0");
+    refRecords.set(name, { oid, upstream, push });
+    names.update(`${name}\0`);
+    if (name === "refs/remotes/origin/HEAD") listedOriginHead = symref;
+    if (name.startsWith("refs/heads/"))
+      localBranches.push(name.slice("refs/heads/".length));
+  }
+  let originHead = listedOriginHead;
   if (originHead === undefined) {
     const remoteHead = await runGit(
       ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
@@ -130,18 +147,47 @@ export async function readSharedGitRefsSnapshot(
     );
     originHead = remoteHead.exitCode === 0 ? remoteHead.stdout.trim() : "";
   }
-  const refLines = refRecords.map(
-    (ref) => `${ref.name}\0${ref.oid}\0${ref.shortName}`,
-  );
-  const localBranches = refRecords
-    .filter((ref) => ref.name.startsWith("refs/heads/"))
-    .map((ref) => ref.shortName);
+  const defaultBranch =
+    parseOriginHeadBranchName(originHead) ??
+    resolvePreferredLocalDefaultBranch(localBranches, undefined) ??
+    null;
   return {
-    fingerprint: JSON.stringify({ refs: refLines, remoteHead: originHead }),
-    defaultBranch:
-      parseOriginHeadBranchName(originHead) ??
-      resolvePreferredLocalDefaultBranch(localBranches, undefined) ??
-      null,
+    defaultBranch,
+    branchNamesFingerprint: names.digest("hex"),
+    fingerprintFor({ branchName, mergeBaseBranch }) {
+      const watched = new Set(["refs/remotes/origin/HEAD"]);
+      if (originHead) watched.add(originHead);
+      if (mergeBaseBranch !== null) {
+        if (mergeBaseBranch.startsWith("refs/")) {
+          watched.add(mergeBaseBranch);
+        } else {
+          watched.add(`refs/heads/${mergeBaseBranch}`);
+          watched.add(`refs/remotes/${mergeBaseBranch}`);
+        }
+      }
+      if (defaultBranch !== null) {
+        watched.add(`refs/heads/${defaultBranch}`);
+        watched.add(`refs/remotes/origin/${defaultBranch}`);
+      }
+      if (branchName !== null) {
+        const head = `refs/heads/${branchName}`;
+        watched.add(head);
+        const record = refRecords.get(head);
+        if (record?.upstream) watched.add(record.upstream);
+        if (record?.push) watched.add(record.push);
+        const remoteSuffix = `/${branchName}`;
+        for (const name of refRecords.keys()) {
+          if (name.startsWith("refs/remotes/") && name.endsWith(remoteSuffix))
+            watched.add(name);
+        }
+      }
+      return JSON.stringify({
+        remoteHead: originHead,
+        refs: [...watched]
+          .sort()
+          .map((name) => [name, refRecords.get(name)?.oid ?? null]),
+      });
+    },
   };
 }
 

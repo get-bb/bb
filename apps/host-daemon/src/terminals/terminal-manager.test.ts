@@ -256,6 +256,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
     path,
     isGitRepo: true,
     isWorktree: false,
+    gitCommonDir: `${path}/.git`,
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateSnapshot: vi.fn(async () => ({
@@ -263,8 +264,9 @@ function createFakeWorkspace(path: string): HostWorkspace {
       branchName: "main",
     })),
     getSharedGitRefsSnapshot: vi.fn(async () => ({
-      fingerprint: "refs-1",
       defaultBranch: "main",
+      branchNamesFingerprint: "names-1",
+      fingerprintFor: () => "refs-1",
     })),
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getDefaultBranch: vi.fn(async () => "main"),

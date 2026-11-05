@@ -49,6 +49,7 @@ it("reconciles content and branch changed between ignore discovery and root watc
         {
           environmentId: "env-watch",
           workspaceContext: { workspacePath: root },
+          mergeBaseBranch: null,
         },
       ],
       threadStorageTargets: [],

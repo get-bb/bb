@@ -76,6 +76,7 @@ const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     workspaceContext: workspaceContextSchema,
+    mergeBaseBranch: z.string().min(1).nullable(),
   })
   .strict();
 export type HostDaemonWatchSetWorkspaceTarget = z.infer<
@@ -383,7 +384,7 @@ export type HostDaemonEventBatchResponse = z.infer<
 
 const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
-  .extract(["work-status-changed", "git-refs-changed"]);
+  .extract(["work-status-changed", "git-refs-changed", "git-branches-changed"]);
 export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
