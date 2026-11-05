@@ -726,54 +726,11 @@ describe("Agent rows active at once in the redesign", () => {
   });
 });
 
-const MOBILE_LINKS = {
-  ios: "https://apps.apple.com/app/bb",
-  android: "https://play.google.com/store/apps/details?id=bb",
-};
-
-function expectMobileAppRow() {
-  const row = screen.getByText("Get the mobile app").closest("li");
-  if (!(row instanceof HTMLElement)) throw new Error("no mobile app row");
-  within(row).getByText("Get a push when a thread needs you.");
-  expect(
-    within(row).getByRole("link", { name: "iOS" }).getAttribute("href"),
-  ).toBe(MOBILE_LINKS.ios);
-  expect(
-    within(row).getByRole("link", { name: "Android" }).getAttribute("href"),
-  ).toBe(MOBILE_LINKS.android);
-}
-
 describe("RedesignedDevicesStep", () => {
-  it("offers the mobile app before and after bb connect is on", () => {
-    const props = {
-      hostName: "bee",
-      connectSection: <li>bb connect</li>,
-      mobileLinks: MOBILE_LINKS,
-      addMachinePanel: null,
-      onAddMachine: vi.fn(),
-      onCloseAddMachine: vi.fn(),
-    };
-    const { rerender } = render(
-      <TooltipProvider>
-        <RedesignedDevicesStep {...props} showMachines={false} />
-      </TooltipProvider>,
-    );
-    expectMobileAppRow();
-
-    rerender(
-      <TooltipProvider>
-        <RedesignedDevicesStep {...props} showMachines />
-      </TooltipProvider>,
-    );
-    expectMobileAppRow();
-    screen.getByText("bb connect");
-  });
-
   it("hides the machine section until bb connect is on", () => {
     const props = {
       hostName: "bee",
       connectSection: <li>bb connect</li>,
-      mobileLinks: MOBILE_LINKS,
       addMachinePanel: null,
       onAddMachine: vi.fn(),
       onCloseAddMachine: vi.fn(),
@@ -800,14 +757,13 @@ describe("RedesignedDevicesStep", () => {
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
 
-  it("shows the mobile app and machines when bb connect contributes nothing", () => {
+  it("adds no row of its own when bb connect contributes nothing", () => {
     render(
       <TooltipProvider>
         <RedesignedDevicesStep
           hostName="bee"
           connectSection={null}
-          showMachines
-          mobileLinks={MOBILE_LINKS}
+          showMachines={false}
           addMachinePanel={null}
           onAddMachine={vi.fn()}
           onCloseAddMachine={vi.fn()}
@@ -815,8 +771,33 @@ describe("RedesignedDevicesStep", () => {
       </TooltipProvider>,
     );
 
+    expect(screen.queryByText("Where you use bb")).toBeNull();
     expect(screen.queryByText(/turned off on this server/u)).toBeNull();
-    expectMobileAppRow();
-    screen.getByText("Add another machine");
+    expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.queryByText("Get the mobile app")).toBeNull();
+  });
+
+  it("puts bb connect above Add another machine once it is on", () => {
+    render(
+      <TooltipProvider>
+        <RedesignedDevicesStep
+          hostName="bee"
+          connectSection={<li>bb connect</li>}
+          showMachines
+          addMachinePanel={null}
+          onAddMachine={vi.fn()}
+          onCloseAddMachine={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    const connect = screen.getByText("bb connect");
+    const machines = screen.getByText("Add another machine");
+    expect(
+      connect.compareDocumentPosition(machines) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText("Get the mobile app")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
