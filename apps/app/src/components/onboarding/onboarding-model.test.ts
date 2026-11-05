@@ -20,6 +20,7 @@ import {
   parsesSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
+  signInBrowserIsOnMachine,
   shortRemoteName,
   signInSiteName,
   terminalConnectFlow,
@@ -799,4 +800,69 @@ describe("agentSignInView", () => {
     });
     expect(parseSignInOutput(DEVICE_OUTPUT).url).not.toBeNull();
   });
+});
+
+describe("signInBrowserIsOnMachine", () => {
+  it.each([
+    {
+      viewer: "the desktop app",
+      hostname: "brsbl.getbb.app",
+      isDesktop: true,
+      agentOnLocalDaemonHost: true,
+      browser: true,
+    },
+    {
+      viewer: "a loopback browser",
+      hostname: "localhost",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: true,
+    },
+    {
+      viewer: "a 127.0.0.1 browser",
+      hostname: "127.0.0.1",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: true,
+    },
+    {
+      viewer: "a getbb.app share",
+      hostname: "brsbl-bbox--41201.getbb.app",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: false,
+    },
+    {
+      viewer: "a LAN address",
+      hostname: "192.168.1.20",
+      isDesktop: false,
+      agentOnLocalDaemonHost: true,
+      browser: false,
+    },
+    {
+      viewer: "the desktop app with the agent on another machine",
+      hostname: "localhost",
+      isDesktop: true,
+      agentOnLocalDaemonHost: false,
+      browser: false,
+    },
+    {
+      viewer: "a loopback browser with the agent on another machine",
+      hostname: "localhost",
+      isDesktop: false,
+      agentOnLocalDaemonHost: false,
+      browser: false,
+    },
+  ])(
+    "signs in with a browser link from $viewer only when browser is $browser",
+    ({ hostname, isDesktop, agentOnLocalDaemonHost, browser }) => {
+      expect(
+        signInBrowserIsOnMachine({
+          agentOnLocalDaemonHost,
+          hostname,
+          isDesktop,
+        }),
+      ).toBe(browser);
+    },
+  );
 });

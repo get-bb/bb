@@ -101,6 +101,7 @@ import {
   hasReadyAgent,
   projectsPrimaryAction,
   resolveAgentSetupState,
+  signInBrowserIsOnMachine,
   shortRemoteName,
   skippedStepIds,
   terminalConnectFlow,
@@ -421,7 +422,14 @@ function AgentStepContainer({
     entry,
     hostId,
     states,
-    isLocalHost: isLocalDaemonHost,
+    isLocalHost: redesign
+      ? (targetHostId) =>
+          signInBrowserIsOnMachine({
+            agentOnLocalDaemonHost: isLocalDaemonHost(targetHostId),
+            hostname: window.location.hostname,
+            isDesktop: getBbDesktopInfo() !== null,
+          })
+      : isLocalDaemonHost,
     terminals: signInTerminals,
     refetchStates: refetchProviderStates,
   });
