@@ -10,7 +10,7 @@ function renderArm(variant: "control" | "test") {
     <ExperimentsProvider
       value={{
         distinctID: null,
-        featureFlags: { "homepage-download-area": variant },
+        featureFlags: { "homepage-download-path": variant },
         preview: false,
       }}
     >
@@ -19,7 +19,7 @@ function renderArm(variant: "control" | "test") {
   );
 }
 
-describe("homepage-download-area install block", () => {
+describe("homepage-download-path install block", () => {
   it("keeps the command in control", () => {
     const html = renderArm("control");
     expect(html).toContain(CLI_COMMAND);

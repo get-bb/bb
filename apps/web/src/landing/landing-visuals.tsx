@@ -12,10 +12,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
-import {
-  useExperiment,
-  useExperimentExposure,
-} from "../experiments/use-experiment";
+import { useExperiment } from "../experiments/use-experiment";
 import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DownloadLink, GitHubLink } from "./cta";
@@ -33,12 +30,9 @@ import {
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS, DOWNLOAD_PAGE_PATH } from "./site";
-import { useInView } from "./visibility";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
-  const simple = useExperiment("homepage-download-area") === "test";
-  const { ref, seen } = useInView<HTMLDivElement>();
-  useExperimentExposure("homepage-download-area", "desktop", seen);
+  const simple = useExperiment("homepage-download-path") === "test";
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
@@ -53,7 +47,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
     </>
   );
   return (
-    <div ref={ref} className="install-options">
+    <div className="install-options">
       <div className="install-actions">
         <DesktopInstallChoice
           placement={placement}

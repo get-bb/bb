@@ -66,7 +66,7 @@ export const Route = createRootRoute({
 const JS_INIT = `document.documentElement.classList.add("js")`;
 
 function SiteBody({ children }: { children: React.ReactNode }) {
-  const siteFontButtons = useExperiment("homepage-download-area") === "test";
+  const siteFontButtons = useExperiment("homepage-download-path") === "test";
   return (
     <body data-download-area={siteFontButtons ? "test" : undefined}>
       {children}
