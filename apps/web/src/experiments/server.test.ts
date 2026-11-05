@@ -489,9 +489,12 @@ describe("site-wide experiments", () => {
     expect(resolution?.bootstrap.featureFlags).toMatchObject({
       "homepage-qa-check": "test",
     });
-    expect(resolution?.setCookies[0]).toContain(
-      encodeURIComponent(`homepage-qa-check=test%7E${assignedAt}`),
-    );
+    const restamped = encodeURIComponent(`homepage-qa-check=test%7E${NOW}`);
+    expect(
+      (resolution?.setCookies ?? []).filter((cookie) =>
+        cookie.includes(restamped),
+      ),
+    ).toEqual([]);
   });
 
   it("skips the homepage's /flags call once every experiment is stored", async () => {
