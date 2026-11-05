@@ -3455,6 +3455,7 @@ export function PromptBoxInternal({
               scrollContainerRef={editorScrollContainerRef}
               inputLocked={composerInputLocked}
               isCompactLayout={showCompactLayout}
+              isCompactViewport={isCompactViewport}
               minHeight={minHeight}
               layout={surface === "new-thread" ? "root-compose" : "thread"}
               resolveMentionLink={mentionResolveLink}

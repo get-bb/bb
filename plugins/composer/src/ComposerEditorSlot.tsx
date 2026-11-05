@@ -20,6 +20,19 @@ const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   "root-compose": "calc(70dvh - 3rem)",
 };
 
+const COMPACT_EDITOR_MAX_HEIGHT =
+  "min(calc(40dvh - 3.5rem), calc(var(--bb-shell-height, 100dvh) * 0.5 - 3rem))";
+
+export function composerEditorMaxHeightStyle(
+  layout: ComposerEditorLayout,
+  isCompactViewport: boolean,
+): string {
+  const viewportCap = isCompactViewport
+    ? COMPACT_EDITOR_MAX_HEIGHT
+    : COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout];
+  return `min(${viewportCap}, var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`;
+}
+
 export function blurPromptEditor(editor: Editor | null | undefined): void {
   editor?.view.dom.blur();
   window.getSelection()?.removeAllRanges();
@@ -32,6 +45,7 @@ export function ComposerEditorSlot({
   isCompactLayout,
   minHeight,
   layout,
+  isCompactViewport,
   resolveMentionLink,
 }: {
   editor: Editor | null;
@@ -40,6 +54,7 @@ export function ComposerEditorSlot({
   isCompactLayout: boolean;
   minHeight: number;
   layout: ComposerEditorLayout;
+  isCompactViewport: boolean;
   resolveMentionLink: PromptMentionLinkResolver | undefined;
 }) {
   return (
@@ -58,7 +73,7 @@ export function ComposerEditorSlot({
         height: isCompactLayout ? "48px" : undefined,
         maxHeight: isCompactLayout
           ? "48px"
-          : `min(${COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout]}, var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`,
+          : composerEditorMaxHeightStyle(layout, isCompactViewport),
       }}
     >
       <PromptMentionLinkContext.Provider value={resolveMentionLink ?? null}>
