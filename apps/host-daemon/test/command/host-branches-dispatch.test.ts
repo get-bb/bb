@@ -106,7 +106,10 @@ async function readUploadPackInvocations(
   sshLogPath: string,
 ): Promise<string[]> {
   const log = await fs.readFile(sshLogPath, "utf8").catch(() => "");
-  return log.split("--\n").filter((entry) => entry.includes("git-upload-pack"));
+  return log
+    .split("--\n")
+    .slice(0, -1)
+    .filter((entry) => entry.includes("git-upload-pack"));
 }
 
 async function waitForUploadPackInvocations(
@@ -171,6 +174,44 @@ async function waitForFile(filePath: string): Promise<void> {
   }
   throw new Error(`File did not appear within 2000ms: ${filePath}`);
 }
+
+describe("host.inspect_git_checkout dispatch", () => {
+  it("reports the checkout without contacting the remote", async () => {
+    const { repoPath, sshLogPath } = await initSshRemoteRepo();
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "host.inspect_git_checkout", path: repoPath },
+      harness.dispatchOptions(),
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      checkout: {
+        kind: "branch",
+        branchName: "develop",
+        headSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await readUploadPackInvocations(sshLogPath)).toEqual([]);
+  });
+
+  it("reports a path outside any repository as unknown", async () => {
+    const plainPath = await makeTempDir("bb-host-branches-plain-");
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "host.inspect_git_checkout", path: plainPath },
+      harness.dispatchOptions(),
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      checkout: { kind: "unknown", reason: "Path is not a git repository" },
+    });
+  });
+});
 
 describe("host.inspect_git_source dispatch", () => {
   it("reports checkout and default-ref metadata without branch pages", async () => {

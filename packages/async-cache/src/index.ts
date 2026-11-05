@@ -1,10 +1,17 @@
+export interface AsyncTtlMemoRunOptions<TValue> {
+  refresh?: boolean;
+  revalidateStale?: boolean;
+  onReplaced?: (previous: TValue, next: TValue) => void;
+  onRevalidateError?: (error: unknown) => void;
+}
+
 export interface AsyncTtlMemo<TKey, TValue> {
   clear(): void;
   invalidateWhere(predicate: (key: TKey) => boolean): void;
   run(
     key: TKey,
     task: () => Promise<TValue>,
-    refresh?: boolean,
+    options?: AsyncTtlMemoRunOptions<TValue>,
   ): Promise<TValue>;
 }
 
@@ -38,7 +45,12 @@ export function createAsyncTtlMemo<TKey, TValue>({
     }
   }
 
-  function start(key: TKey, task: () => Promise<TValue>): Promise<TValue> {
+  function start(
+    key: TKey,
+    task: () => Promise<TValue>,
+    previous: MemoEntry<TValue> | undefined,
+    onReplaced: AsyncTtlMemoRunOptions<TValue>["onReplaced"],
+  ): Promise<TValue> {
     const started = new Promise<TValue>((resolve) => resolve(task()))
       .then((value) => {
         if (pendingByKey.get(key) !== started) return value;
@@ -56,6 +68,7 @@ export function createAsyncTtlMemo<TKey, TValue>({
           settledByKey.delete(oldest.value);
         }
         settledByKey.set(key, { value, expiresAt: settledAt + ttl });
+        if (previous !== undefined) onReplaced?.(previous.value, value);
         return value;
       })
       .finally(() => {
@@ -80,19 +93,23 @@ export function createAsyncTtlMemo<TKey, TValue>({
         if (predicate(key)) pendingByKey.delete(key);
       }
     },
-    run(key, task, refresh = false) {
+    run(key, task, options = {}) {
       const settled = settledByKey.get(key);
-      if (!refresh && settled !== undefined) {
+      if (options.refresh !== true && settled !== undefined) {
         if (settled.expiresAt > now()) return Promise.resolve(settled.value);
         if (staleWhileRevalidate) {
-          if (!pendingByKey.has(key)) start(key, task).catch(() => undefined);
+          if (options.revalidateStale !== false && !pendingByKey.has(key)) {
+            start(key, task, settled, options.onReplaced).catch((error) =>
+              options.onRevalidateError?.(error),
+            );
+          }
           return Promise.resolve(settled.value);
         }
       }
       const pending = pendingByKey.get(key);
       if (pending !== undefined) return pending;
       settledByKey.delete(key);
-      return start(key, task);
+      return start(key, task, settled, options.onReplaced);
     },
   };
 }

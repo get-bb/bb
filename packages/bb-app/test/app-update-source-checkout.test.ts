@@ -58,8 +58,13 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
 
   it("offers the fetched origin/main commit with its subjects and version", async () => {
     const { checkout, running, upstream } = await createCheckout();
-    await publish(upstream, "1.1.0", "Add feature");
-    const tip = await publish(upstream, "1.2.0", "Fix bug");
+    await publish(upstream, "1.1.0", "Add feature", "2026-11-02T12:00:00.000Z");
+    const tip = await publish(
+      upstream,
+      "1.2.0",
+      "Fix bug",
+      "2026-11-02T15:00:00.000Z",
+    );
 
     const check = await inspectSourceCheckout({
       fetch: true,
@@ -70,6 +75,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
 
     expect(check.blocked).toBeNull();
     expect(check.incoming).toEqual({
+      behindSince: "2026-11-02T12:00:00.000Z",
       commit: tip,
       commitCount: 2,
       subjects: ["Fix bug", "Add feature"],
@@ -79,9 +85,14 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
 
   it("counts incoming commits from the running commit after the checkout was pulled", async () => {
     const { checkout, running, upstream } = await createCheckout();
-    await publish(upstream, "1.1.0", "Add feature");
+    await publish(upstream, "1.1.0", "Add feature", "2026-11-02T12:00:00.000Z");
     await git(checkout, "pull", "-q", "--ff-only", "origin", "main");
-    const tip = await publish(upstream, "1.2.0", "Fix bug");
+    const tip = await publish(
+      upstream,
+      "1.2.0",
+      "Fix bug",
+      "2026-11-02T15:00:00.000Z",
+    );
 
     const check = await inspectSourceCheckout({
       fetch: true,
@@ -92,6 +103,7 @@ describe("source checkout inspection", { timeout: 30_000 }, () => {
 
     expect(check.blocked).toBeNull();
     expect(check.incoming).toEqual({
+      behindSince: "2026-11-02T12:00:00.000Z",
       commit: tip,
       commitCount: 2,
       subjects: ["Fix bug", "Add feature"],

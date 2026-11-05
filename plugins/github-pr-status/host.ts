@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { getCurrentBranch, runGit } from "bb-environment-provider-host/git";
-import { githubPrStatusHostContract } from "./contract.js";
+import { githubPrStatusHostContract, type HostRefs } from "./contract.js";
 import {
   prepareCurrentBranchRead,
   prepareUrlRead,
@@ -20,45 +20,83 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+async function readRefs(path: string): Promise<HostRefs> {
+  const [result, branchName] = await Promise.all([
+    runGit(["rev-parse", "--verify", "@{u}"], {
+      cwd: path,
+      allowFailure: true,
+    }),
+    getCurrentBranch(path),
+  ]);
+  return {
+    oid: result.exitCode === 0 ? result.stdout.trim() : null,
+    branchName: branchName ?? null,
+  };
+}
+
+type PreparedView = { read: PreparedRead; refs: HostRefs | null };
+
 async function prepareView({
   path,
-  url,
+  known,
   refresh,
 }: {
   path: string;
-  url: string | null;
+  known: { url: string; branchName: string | null } | null;
   refresh: boolean;
-}): Promise<PreparedRead> {
+}): Promise<PreparedView> {
   if (!(await pathExists(path)))
-    return preparedResult({
-      outcome: "unavailable",
-      message: `Workspace path no longer exists: ${path}`,
-    });
-  if (url !== null) return prepareUrlRead(url, path);
-  const localBranch = await getCurrentBranch(path);
-  if (!localBranch) return preparedResult({ outcome: "none" });
-  return prepareCurrentBranchRead({ cwd: path, localBranch, refresh });
+    return {
+      read: preparedResult({
+        outcome: "unavailable",
+        message: `Workspace path no longer exists: ${path}`,
+      }),
+      refs: null,
+    };
+  let refs: HostRefs;
+  try {
+    refs = await readRefs(path);
+  } catch (error) {
+    return {
+      read: preparedResult({
+        outcome: "unavailable",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Could not read the workspace branch",
+      }),
+      refs: null,
+    };
+  }
+  if (known !== null && known.branchName === refs.branchName)
+    return { read: await prepareUrlRead(known.url, path), refs };
+  if (refs.branchName === null)
+    return { read: preparedResult({ outcome: "none" }), refs };
+  return {
+    read: await prepareCurrentBranchRead({
+      cwd: path,
+      localBranch: refs.branchName,
+      refresh,
+    }),
+    refs,
+  };
 }
 
 export default experimental_defineHostEntry({
   contract: githubPrStatusHostContract,
   handlers: {
-    views({ reads }) {
-      return readPullRequests(reads.map(prepareView));
+    async views({ reads }) {
+      const prepared = reads.map(prepareView);
+      const lookups = await readPullRequests(
+        prepared.map((view) => view.then(({ read }) => read)),
+      );
+      const views = await Promise.all(prepared);
+      return views.map((view, index) => ({
+        lookup: lookups[index]!,
+        refs: view.refs,
+      }));
     },
-    async upstream({ path }) {
-      const [result, branchName] = await Promise.all([
-        runGit(["rev-parse", "--verify", "@{u}"], {
-          cwd: path,
-          allowFailure: true,
-        }),
-        getCurrentBranch(path),
-      ]);
-      return {
-        oid: result.exitCode === 0 ? result.stdout.trim() : null,
-        branchName: branchName ?? null,
-      };
-    },
+    upstream: ({ path }) => readRefs(path),
     async act({ path, action }) {
       const localBranch = await getCurrentBranch(path);
       if (!localBranch) {

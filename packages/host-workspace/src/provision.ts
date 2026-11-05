@@ -7,23 +7,10 @@ import {
   Workspace,
 } from "./host-workspace.js";
 import { inspectGitRepository, type SharedGitRefsSnapshot } from "./git.js";
+import { throwIfProvisionAborted } from "bb-environment-provider-host/transcript";
 import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
-
-function createProvisionCancelledError(cause?: unknown): WorkspaceError {
-  return new WorkspaceError(
-    "provision_cancelled",
-    "Workspace provisioning was cancelled",
-    { cause },
-  );
-}
-
-export function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw createProvisionCancelledError(signal.reason);
-  }
-}
 
 interface ProvisionBase {
   onProgress?: ProvisionProgressCallback;

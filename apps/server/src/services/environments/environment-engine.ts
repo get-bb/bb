@@ -1,5 +1,6 @@
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
+import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { getLatestThreadSequence, updateThread } from "@bb/db";
 import {
@@ -34,6 +35,7 @@ import {
   claimEnvironmentPath,
   bindEnvironmentPath,
   listProviderLifecycleEnvironments,
+  liveThread,
   updatePreparingEnvironment,
   type DbConnection,
   type DbTransaction,
@@ -725,6 +727,9 @@ async function runRemove(
           signal,
         });
       }
+      if (row.providerOwnsPath && row.path !== null) {
+        await preservePathPluginsInside(deps.db, row.path);
+      }
       const invocation = await invokeEnvironmentProvider(
         record,
         "environment remove",
@@ -1320,8 +1325,7 @@ function listStopRequestedEnvironmentProvisionThreads(
       and(
         eq(threads.environmentId, environmentId),
         eq(threads.status, "stopping"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .all();
@@ -1941,8 +1945,7 @@ function recoverEnvironmentProvisionRequest(
       and(
         eq(threads.environmentId, environment.id),
         eq(threads.status, "starting"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .all();

@@ -430,10 +430,13 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
-  get(routes.providerCliStatus, async (context) => {
+  get(routes.providerCliStatus, async (context, query) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    const result = await getProviderInstallations(deps, { hostId });
+    const result = await getProviderInstallations(deps, {
+      hostId,
+      mode: query.refresh === "true" ? "refresh" : "read",
+    });
     return context.json(result);
   });
 

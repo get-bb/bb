@@ -13,9 +13,16 @@ import {
   type DbConnection,
 } from "@bb/db";
 
-interface TimelineGroupingContext {
+export interface TimelineClientRequestContext {
+  acceptedSequences: readonly number[];
+  requestedSequences: readonly number[];
+}
+
+export interface TimelineGroupingContext {
   orderingBoundarySequence: number | null;
   acceptedTurnIds: ReadonlyMap<string, string>;
+  clientRequestIdsBySequence: ReadonlyMap<number, string>;
+  clientRequests: ReadonlyMap<string, TimelineClientRequestContext>;
 }
 
 interface TimelineGroupingContextArgs {
@@ -26,8 +33,21 @@ interface TimelineGroupingContextArgs {
 
 interface TimelineOrderingContext {
   acceptedTurnIds: ReadonlyMap<string, string>;
+  clientRequestIdsBySequence: ReadonlyMap<number, string>;
   boundarySequence: number | null;
   boundaryScanThroughSequence: number;
+  clientRequests: ReadonlyMap<string, TimelineClientRequestContext>;
+}
+
+type TimelineOrderingContextRow = ReturnType<
+  typeof listTimelineOrderingContext
+>[number];
+
+interface TimelineOrderingContextLog {
+  dataVersion: number;
+  generation: number;
+  rows: TimelineOrderingContextRow[];
+  throughSequence: number;
 }
 
 interface TimelineGroupingContextEntry {
@@ -47,8 +67,72 @@ const orderingContexts = new WeakMap<
   Map<string, TimelineGroupingContextEntry[]>
 >();
 
+const orderingContextLogs = new WeakMap<
+  DbConnection,
+  Map<string, TimelineOrderingContextLog>
+>();
+
 export function clearTimelineOrderingContextCache(db: DbConnection): void {
   orderingContexts.delete(db);
+  orderingContextLogs.delete(db);
+}
+
+function sequenceCut(
+  rows: readonly TimelineOrderingContextRow[],
+  maxSeq: number,
+): number {
+  let low = 0;
+  let high = rows.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (rows[middle]!.sequence <= maxSeq) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function listOrderingContextRows(
+  db: DbConnection,
+  args: TimelineGroupingContextArgs,
+  key: string,
+  generation: number,
+  dataVersion: number,
+): readonly TimelineOrderingContextRow[] {
+  let logs = orderingContextLogs.get(db);
+  if (logs === undefined) {
+    logs = new Map();
+    orderingContextLogs.set(db, logs);
+  }
+  let log = logs.get(key);
+  logs.delete(key);
+  if (
+    log === undefined ||
+    log.generation !== generation ||
+    log.dataVersion !== dataVersion
+  ) {
+    log = {
+      dataVersion,
+      generation,
+      rows: [],
+      throughSequence: args.sequenceStart - 1,
+    };
+  }
+  if (log.throughSequence < args.maxSeq) {
+    log.rows.push(
+      ...listTimelineOrderingContext(db, {
+        maxSeq: args.maxSeq,
+        sequenceStart: log.throughSequence + 1,
+        threadId: args.threadId,
+      }),
+    );
+    log.throughSequence = args.maxSeq;
+  }
+  logs.set(key, log);
+  if (logs.size > GROUPING_CONTEXT_KEY_LIMIT) {
+    logs.delete(logs.keys().next().value!);
+  }
+  const cut = sequenceCut(log.rows, args.maxSeq);
+  return cut === log.rows.length ? log.rows : log.rows.slice(0, cut);
 }
 
 function nearestEntry(
@@ -122,10 +206,15 @@ export function getTimelineGroupingContext(
     return reusable.entry.context;
   }
   const orderingContext =
-    reusable?.entry.orderingContext ?? computeTimelineOrderingContext(db, args);
+    reusable?.entry.orderingContext ??
+    computeTimelineOrderingContext(
+      listOrderingContextRows(db, args, key, generation, dataVersion),
+    );
   const parentedBoundary = getFirstParentedTimelineBoundarySequence(db, args);
   const context: TimelineGroupingContext = {
+    clientRequestIdsBySequence: orderingContext.clientRequestIdsBySequence,
     acceptedTurnIds: orderingContext.acceptedTurnIds,
+    clientRequests: orderingContext.clientRequests,
     orderingBoundarySequence:
       parentedBoundary !== null &&
       parentedBoundary <= orderingContext.boundaryScanThroughSequence
@@ -142,20 +231,50 @@ export function getTimelineGroupingContext(
   return context;
 }
 
+function clientRequestContext(
+  clientRequests: Map<
+    string,
+    { acceptedSequences: number[]; requestedSequences: number[] }
+  >,
+  requestId: string,
+): { acceptedSequences: number[]; requestedSequences: number[] } {
+  let request = clientRequests.get(requestId);
+  if (request === undefined) {
+    request = { acceptedSequences: [], requestedSequences: [] };
+    clientRequests.set(requestId, request);
+  }
+  return request;
+}
+
 function computeTimelineOrderingContext(
-  db: DbConnection,
-  args: TimelineGroupingContextArgs,
+  context: readonly TimelineOrderingContextRow[],
 ): TimelineOrderingContext {
-  const context = listTimelineOrderingContext(db, args);
   const spans = new Map<string, ExternalUserBoundaryTurnSpan>();
   const accepted = new Map<string, { sequence: number; turnId: string }>();
+  const clientRequestIdsBySequence = new Map<number, string>();
+  const clientRequests = new Map<
+    string,
+    { acceptedSequences: number[]; requestedSequences: number[] }
+  >();
   for (const row of context) {
+    if (row.type === "client/turn/requested" && row.requestId !== null) {
+      clientRequestContext(
+        clientRequests,
+        row.requestId,
+      ).requestedSequences.push(row.sequence);
+      clientRequestIdsBySequence.set(row.sequence, row.requestId);
+    }
     if (row.turnId === null) continue;
     if (row.type === "turn/input/accepted" && row.clientRequestId !== null) {
       accepted.set(row.clientRequestId, {
         sequence: row.sequence,
         turnId: row.turnId,
       });
+      clientRequestIdsBySequence.set(row.sequence, row.clientRequestId);
+      clientRequestContext(
+        clientRequests,
+        row.clientRequestId,
+      ).acceptedSequences.push(row.sequence);
     }
     if (
       row.type === "turn/started" &&
@@ -239,8 +358,10 @@ function computeTimelineOrderingContext(
     }
   }
   return {
+    clientRequestIdsBySequence,
     boundarySequence: boundary,
     boundaryScanThroughSequence,
+    clientRequests,
     acceptedTurnIds: new Map(
       [...accepted].map(([requestId, entry]) => [requestId, entry.turnId]),
     ),

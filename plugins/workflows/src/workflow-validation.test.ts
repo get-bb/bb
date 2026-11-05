@@ -26,6 +26,8 @@ function catalog(
         {
           id: "gpt-test",
           model: "gpt-test",
+          reasoningDiscovery: "known",
+          defaultReasoningEffort: "medium",
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
         },
       ],
@@ -35,6 +37,43 @@ function catalog(
 }
 
 describe("workflow validation", () => {
+  it.each([
+    { discovery: "known", requested: "medium", accepted: true },
+    { discovery: "known", requested: "high", accepted: false },
+    { discovery: "unknown", requested: "medium", accepted: false },
+  ] as const)(
+    "handles native reasoning defaults: $discovery/$requested",
+    async ({ discovery, requested, accepted }) => {
+      const validation = validateWorkflowSource(
+        SOURCE.replace(
+          'reasoningLevel: "medium"',
+          `reasoningLevel: "${requested}"`,
+        ),
+        "env-1",
+        catalog({
+          loadModels: async () => ({
+            modelLoadError: null,
+            selectedOnlyModels: [],
+            models: [
+              {
+                id: "gpt-test",
+                model: "gpt-test",
+                reasoningDiscovery: discovery,
+                supportedReasoningEfforts: [],
+                defaultReasoningEffort: "medium",
+              },
+            ],
+          }),
+        }),
+      );
+      if (accepted) {
+        await expect(validation).resolves.toMatchObject({ valid: true });
+      } else {
+        await expect(validation).rejects.toThrow("Unsupported reasoning level");
+      }
+    },
+  );
+
   it("validates every safely discoverable literal tuple", async () => {
     await expect(
       validateWorkflowSource(SOURCE, "env-1", catalog()),
@@ -132,6 +171,8 @@ describe("workflow validation", () => {
               {
                 id: "gpt-test",
                 model: "gpt-test",
+                reasoningDiscovery: "known",
+                defaultReasoningEffort: "high",
                 supportedReasoningEfforts: [{ reasoningEffort: "high" }],
               },
             ],
@@ -153,6 +194,8 @@ describe("workflow validation", () => {
               {
                 id: "gpt-test",
                 model: "gpt-test",
+                reasoningDiscovery: "known",
+                defaultReasoningEffort: "medium",
                 supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
               },
             ],

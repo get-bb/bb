@@ -1,4 +1,8 @@
 import { GIT_PLUGIN_ID } from "@bb/domain";
+import {
+  formatWorkspaceCheckoutDisplay,
+  type WorkspaceCheckoutDisplay,
+} from "@bb/shared-ui/lib/workspace-checkout-display";
 import { gitRpcContract } from "bb-plugin-bb--git/rpc-contract";
 import {
   createGitStatusHook,
@@ -23,4 +27,13 @@ const useGitStatusQuery: GitStatusKeyedQuery = (args) => {
   });
 };
 
-export const useGitWorkspaceStatus = createGitStatusHook(useGitStatusQuery);
+const useGitWorkspaceStatus = createGitStatusHook(useGitStatusQuery);
+
+export function useEnvironmentCheckoutDisplay(
+  environmentId: string | null,
+): WorkspaceCheckoutDisplay | undefined {
+  const workspace = useGitWorkspaceStatus(environmentId).workspace;
+  return workspace === undefined
+    ? undefined
+    : formatWorkspaceCheckoutDisplay({ checkout: workspace.checkout });
+}

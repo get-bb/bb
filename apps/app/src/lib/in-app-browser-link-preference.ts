@@ -25,7 +25,7 @@ function isHttpOrHttpsUrl(url: string): boolean {
   return HTTP_URL_SCHEME_PATTERN.test(url);
 }
 
-export function resolveUrlOpenTarget({
+function resolveUrlOpenTarget({
   desktopBrowserAvailable,
   openLinksInAppBrowser,
   url,

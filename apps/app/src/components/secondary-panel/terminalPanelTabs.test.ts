@@ -165,35 +165,6 @@ describe("terminalPanelTabs", () => {
     expect(tabIds(tabs)).toEqual(["terminal:term_1:none"]);
   });
 
-  it("keeps disconnected terminal tabs", () => {
-    const disconnectedTerminal = createTerminalFixedPanelTab({
-      terminalId: "term_disconnected",
-    });
-    const runningTerminal = createTerminalFixedPanelTab({
-      terminalId: "term_running",
-    });
-    const sessions = [
-      terminalSession({
-        id: "term_disconnected",
-        status: "disconnected",
-      }),
-      terminalSession({ id: "term_running" }),
-    ];
-
-    expect(
-      tabIds(
-        buildTerminalSyncedSecondaryFileTabs({
-          orderedTabs: [disconnectedTerminal, runningTerminal],
-          pendingTerminalIds: NO_PENDING_TERMINALS,
-          terminalSessions: sessions,
-        }),
-      ),
-    ).toEqual([
-      "terminal:term_disconnected:none",
-      "terminal:term_running:none",
-    ]);
-  });
-
   it("syncs missing server terminal sessions into fixed panel state", () => {
     const fileTab = createHostFilePreviewFixedPanelTab({
       environmentId: "env_1",

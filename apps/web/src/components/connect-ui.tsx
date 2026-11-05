@@ -337,6 +337,11 @@ export function SignInView({
   );
 }
 
+export const DECISION_ROW_CLASS = "mt-3.5 flex items-start gap-2";
+
+export const DECISION_PRIMARY_CLASS =
+  "h-auto min-h-9 min-w-0 flex-1 justify-center whitespace-normal text-center [overflow-wrap:anywhere]";
+
 export function ClaimField({
   serverUrlTemplate,
   initial = "",
@@ -345,6 +350,7 @@ export function ClaimField({
   buildSubmitLabel,
   onClaim,
   onCancel,
+  secondaryAction,
   layout,
 }: {
   serverUrlTemplate: string;
@@ -354,6 +360,7 @@ export function ClaimField({
   buildSubmitLabel: (label: string) => string;
   onClaim: (label: string) => Promise<string | null>;
   onCancel?: () => void;
+  secondaryAction?: React.ReactNode;
   layout: "card" | "dialog";
 }) {
   const [value, setValue] = useState(initial);
@@ -400,7 +407,11 @@ export function ClaimField({
       disabled={!canSubmit}
       onClick={() => void submit()}
       className={
-        layout === "card" ? "w-full justify-center py-[11px]" : undefined
+        layout === "dialog"
+          ? undefined
+          : secondaryAction === undefined
+            ? "w-full justify-center py-[11px]"
+            : DECISION_PRIMARY_CLASS
       }
     >
       {busy ? "Claiming…" : buildSubmitLabel(label)}
@@ -433,7 +444,14 @@ export function ClaimField({
       </p>
       {error && <ErrorBox>{error}</ErrorBox>}
       {layout === "card" ? (
-        <div className="mt-3.5">{submitButton}</div>
+        secondaryAction === undefined ? (
+          <div className="mt-3.5">{submitButton}</div>
+        ) : (
+          <div className={DECISION_ROW_CLASS}>
+            {submitButton}
+            {secondaryAction}
+          </div>
+        )
       ) : (
         <div className="mt-3.5 flex justify-end gap-2">
           {onCancel && (

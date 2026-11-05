@@ -16,7 +16,12 @@ import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import {
+  internalAuthHeaders,
+  listQueuedThreadCommands,
+  registerTestHostRpcCapture,
+} from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHost,
@@ -144,6 +149,67 @@ async function reopenSessionWithoutThreads(
   expect(response.status).toBe(201);
 }
 
+async function reopenSessionBeforeSlowSocket(
+  harness: TestAppHarness,
+  fixture: ReturnType<typeof seedThreadFixture>,
+): Promise<string> {
+  handleDaemonSocketClosed(harness.deps, { sessionId: fixture.session.id });
+  harness.hub.cancelPendingDaemonDisconnect(fixture.session.id);
+  const socketWait = vi
+    .spyOn(harness.hub, "waitForDaemonForHost")
+    .mockResolvedValue(false);
+  const response = await harness.app.request("/internal/session/open", {
+    method: "POST",
+    headers: internalAuthHeaders(harness, { hostId: fixture.host.id }),
+    body: JSON.stringify({
+      hostId: fixture.host.id,
+      instanceId: fixture.session.instanceId,
+      hostName: fixture.host.name,
+      hasMachineCredential: false,
+      platform: "darwin",
+      dataDir: "/tmp/host-daemon-slow-socket",
+      localApiPort: null,
+      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+      activeThreads: [{ threadId: fixture.thread.id }],
+      openThreadWork: [],
+    }),
+  });
+  expect(response.status).toBe(201);
+  await vi.waitFor(() => expect(socketWait).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  socketWait.mockRestore();
+  const { sessionId } = (await response.json()) as { sessionId: string };
+  return sessionId;
+}
+
+function seedStoppedTurnStillRunning(harness: TestAppHarness) {
+  const fixture = seedThreadFixture(harness, { thread: { status: "idle" } });
+  seedTurnStarted(harness.deps, {
+    environmentId: fixture.environment.id,
+    threadId: fixture.thread.id,
+    turnId: "turn-stopped",
+  });
+  seedStoredEvent(harness.deps, {
+    threadId: fixture.thread.id,
+    environmentId: fixture.environment.id,
+    sequence: 2,
+    type: "system/thread/interrupted",
+    scope: threadScope(),
+    data: { reason: "manual-stop" },
+  });
+  return fixture;
+}
+
+function openDaemonSocket(
+  harness: TestAppHarness,
+  args: { hostId: string; sessionId: string },
+): void {
+  onDaemonSocketOpen(harness.deps, {
+    ...args,
+    socket: registerTestHostRpcCapture(harness, args),
+  });
+}
+
 function listSettledBackgroundTaskItems(
   harness: TestAppHarness,
   threadId: string,
@@ -211,7 +277,10 @@ describe("settleDanglingBackgroundTasks", () => {
         }),
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       const rows = listEvents(harness.deps.db, { threadId: thread.id });
       const completed = rows.filter(
@@ -225,7 +294,10 @@ describe("settleDanglingBackgroundTasks", () => {
       expect(data.item.taskStatus).toBe("stopped");
       expect(data.item.workflowName).toBe("fixture-mini");
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
       expect(
         listEvents(harness.deps.db, { threadId: thread.id }).filter(
           (row) => row.type === "item/backgroundTask/completed",
@@ -287,8 +359,14 @@ describe("settleDanglingBackgroundTasks", () => {
         }),
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: otherHost.id });
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: otherHost.id,
+        reason: "host-daemon-restarted",
+      });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       const completed = listEvents(harness.deps.db, {
         threadId: thread.id,
@@ -301,6 +379,49 @@ describe("settleDanglingBackgroundTasks", () => {
     });
   });
 
+  it("settles a task stored before items carried the foreground flag", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, thread } = seedThreadFixture(harness, {});
+      const data = backgroundTaskItemData({
+        itemId: "task:legacy",
+        status: "pending",
+        taskStatus: "running",
+      });
+      const { foreground: _foreground, ...legacyItem } = data.item as Record<
+        string,
+        unknown
+      >;
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "claude-session-1",
+        itemId: "task:legacy",
+        itemKind: "backgroundTask",
+        data: { ...data, item: legacyItem },
+      });
+
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
+
+      const completed = listEvents(harness.deps.db, {
+        threadId: thread.id,
+      }).filter((row) => row.type === "item/backgroundTask/completed");
+      expect(completed).toHaveLength(1);
+      expect(JSON.parse(completed[0]!.data)).toMatchObject({
+        item: {
+          status: "interrupted",
+          taskStatus: "stopped",
+          foreground: false,
+        },
+      });
+    });
+  });
+
   it("preserves an already-finished task status instead of stomping it to interrupted", async () => {
     await withTestHarness(async (harness) => {
       const { host, thread } = seedOpenBackgroundTaskThread(harness, {
@@ -308,7 +429,10 @@ describe("settleDanglingBackgroundTasks", () => {
         taskStatus: "completed",
       });
 
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
+      settleDanglingBackgroundTasks(harness.deps, {
+        hostId: host.id,
+        reason: "host-daemon-restarted",
+      });
 
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
         { status: "completed", taskStatus: "completed" },
@@ -321,6 +445,7 @@ describe("background-task lifecycle reconciliation triggers", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
+
 
   it("settles open tasks when a restarted daemon re-registers after its previous session already closed", async () => {
     await withTestHarness(async (harness) => {
@@ -998,6 +1123,58 @@ describe("active thread disconnect reconciliation triggers", () => {
 
       expect(response.status).toBe(201);
       expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  it("re-sends a reconnect stop that missed the daemon once its socket opens", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedStoppedTurnStillRunning(harness);
+      const sessionId = await reopenSessionBeforeSlowSocket(harness, fixture);
+      expect(
+        listQueuedThreadCommands(harness, "thread.stop", fixture.thread.id),
+      ).toEqual([]);
+
+      openDaemonSocket(harness, { hostId: fixture.host.id, sessionId });
+
+      await vi.waitFor(() =>
+        expect(
+          listQueuedThreadCommands(harness, "thread.stop", fixture.thread.id),
+        ).toHaveLength(1),
+      );
+      expect(getThread(harness.deps.db, fixture.thread.id)?.status).toBe(
+        "idle",
+      );
+    });
+  });
+
+  it("does not re-send a missed stop once a newer run was requested", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedStoppedTurnStillRunning(harness);
+      const sessionId = await reopenSessionBeforeSlowSocket(harness, fixture);
+      seedStoredEvent(harness.deps, {
+        threadId: fixture.thread.id,
+        environmentId: fixture.environment.id,
+        sequence: 3,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: "creq_after_missed_stop",
+          input: [{ type: "text", text: "Next task" }],
+          target: { kind: "new-turn" },
+          initiator: "user",
+          senderThreadId: null,
+          request: { method: "turn/start", params: {} },
+          source: "tell",
+        },
+      });
+
+      openDaemonSocket(harness, { hostId: fixture.host.id, sessionId });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        listQueuedThreadCommands(harness, "thread.stop", fixture.thread.id),
+      ).toEqual([]);
     });
   });
 

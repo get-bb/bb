@@ -13,6 +13,7 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import { appToast } from "@/components/ui/app-toast";
 import {
   getNotificationCenterState,
+  getNotifications,
   openNotificationCenter,
   resetNotificationStore,
 } from "./notification-store";
@@ -55,6 +56,9 @@ it("keeps notification details open when dismissing the toast restores composer 
   });
   fireEvent.click(showMore);
   expect(getNotificationCenterState().open).toBe(true);
+  expect(getNotificationCenterState().focusedId).toBe(
+    getNotifications()[0]?.id,
+  );
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);
   });

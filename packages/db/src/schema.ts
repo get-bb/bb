@@ -618,6 +618,7 @@ export const threads = sqliteTable(
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),
+    statusChangedAt: integer("status_changed_at").notNull().default(0),
     startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
@@ -1158,24 +1159,6 @@ export const providerModelCatalogs = sqliteTable(
   (table) => [
     primaryKey({
       columns: [table.hostId, table.providerId, table.scopeKey],
-    }),
-  ],
-);
-
-export const diffViewedFiles = sqliteTable(
-  "diff_viewed_files",
-  {
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
-    targetKey: text("target_key").notNull(),
-    path: text("path").notNull(),
-    revision: text("revision").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.environmentId, table.targetKey, table.path],
     }),
   ],
 );

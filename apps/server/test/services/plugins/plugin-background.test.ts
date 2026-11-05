@@ -293,8 +293,6 @@ describe("plugin background services", () => {
                 g.__slowMaxActive = Math.max(g.__slowMaxActive, g.__slowActive);
                 return new Promise<void>((resolve) => {
                   signal.addEventListener("abort", () => {
-                    // Slow-but-legitimate stop: the window in which an
-                    // unserialized concurrent load would double-start.
                     setTimeout(() => {
                       g.__slowActive -= 1;
                       resolve();
@@ -326,7 +324,6 @@ describe("plugin background services", () => {
         export default function plugin(bb: any) {
           bb.background.service("socket", {
             start() {
-              // Ignores the abort signal entirely.
               return new Promise(() => {});
             },
           });
@@ -437,7 +434,7 @@ describe("plugin background services", () => {
             async start(signal: any) {
               g.__emitterStarts += 1;
               if (g.__emitterStarts === 1) {
-                const client = new EventEmitter(); // no client.on("error")
+                const client = new EventEmitter();
                 setTimeout(() => client.emit("error", new Error("Socket timeout")), 5);
               }
               await new Promise<void>((resolve) =>

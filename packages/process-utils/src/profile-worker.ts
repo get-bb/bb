@@ -1,4 +1,7 @@
-import { summarizeStallWindows } from "./stall-attribution.js";
+import {
+  PROFILE_SAMPLING_INTERVAL_MS,
+  summarizeStallWindows,
+} from "./stall-attribution.js";
 import {
   parseStallWindowBatch,
   type StallWindowBatch,
@@ -98,7 +101,9 @@ async function runProfileWorker(): Promise<void> {
     await prune(0);
     session.connectToMainThread();
     await session.post("Profiler.enable");
-    await session.post("Profiler.setSamplingInterval", { interval: 1_000 });
+    await session.post("Profiler.setSamplingInterval", {
+      interval: PROFILE_SAMPLING_INTERVAL_MS * 1_000,
+    });
     title = `bb-performance-${randomUUID()}`;
     await begin(title);
     startedAt = new Date().toISOString();
@@ -106,6 +111,7 @@ async function runProfileWorker(): Promise<void> {
       {
         directory,
         profileIntervalMs: 30_000,
+        profileSamplingIntervalMs: PROFILE_SAMPLING_INTERVAL_MS,
         profileRetentionMs: retentionMs,
         maxRetainedProfileBytes: maxBytes,
         maxProfileBytes,

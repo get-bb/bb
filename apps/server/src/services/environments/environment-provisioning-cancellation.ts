@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import {
   getEnvironment,
+  liveThread,
   threads,
   type DbQueryConnection,
   type DbTransaction,
@@ -35,8 +36,7 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
         eq(threads.environmentId, args.environmentId),
         ne(threads.id, args.threadId),
         inArray(threads.status, ["starting", "active"]),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .limit(1)

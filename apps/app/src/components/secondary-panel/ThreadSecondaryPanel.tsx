@@ -128,12 +128,9 @@ function getScopedFilePreviewScrollPositions(
   return positions;
 }
 
-export function getSecondaryPanelChromeStackClassName(
-  hasGitDiffToolbar: boolean,
-): string {
+export function getSecondaryPanelChromeStackClassName(): string {
   return cn(
     "shrink-0 select-none",
-    hasGitDiffToolbar && "flex flex-col",
     SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
@@ -721,7 +718,7 @@ function ThreadSecondaryPanelContent({
       >
         <div
           className={cn(
-            getSecondaryPanelChromeStackClassName(false),
+            getSecondaryPanelChromeStackClassName(),
             isPanelInFrame && "bg-transparent",
           )}
         >

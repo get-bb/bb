@@ -80,6 +80,11 @@
     "icon": "Coffee"
   },
   {
+    "id": "bb--github-star",
+    "name": "GitHub Star",
+    "icon": "Star"
+  },
+  {
     "id": "memory",
     "name": "Memory",
     "icon": "Brain"

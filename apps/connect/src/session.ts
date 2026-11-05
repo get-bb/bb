@@ -10,6 +10,7 @@ import {
   server,
   session,
   sha256Hex,
+  first,
 } from "@bb/connect-db";
 
 const LABEL_TTL_MS = 60_000;
@@ -251,8 +252,7 @@ export async function resolveLabels(
         lastSeenAt: server.lastSeenAt,
       })
       .from(server)
-      .where(inArray(server.subdomain, wanted))
-      .all(),
+      .where(inArray(server.subdomain, wanted)),
     db
       .select({
         label: machine.subdomain,
@@ -274,8 +274,7 @@ export async function resolveLabels(
           eq(labelClaim.ownerId, machine.id),
         ),
       )
-      .where(inArray(machine.subdomain, wanted))
-      .all(),
+      .where(inArray(machine.subdomain, wanted)),
   ]);
   for (const label of wanted) resolved.set(label, null);
   for (const row of machineRows) {
@@ -319,17 +318,19 @@ async function lookupLabel(
   label: string,
   db: ConnectDb,
 ): Promise<ResolvedLabel | null> {
-  const serverRow = await db
-    .select({
-      userId: server.userId,
-      serverId: server.id,
-      credentialHash: server.credentialHash,
-      revokedAt: server.revokedAt,
-      lastSeenAt: server.lastSeenAt,
-    })
-    .from(server)
-    .where(eq(server.subdomain, label))
-    .get();
+  const serverRow = await first(
+    db
+      .select({
+        userId: server.userId,
+        serverId: server.id,
+        credentialHash: server.credentialHash,
+        revokedAt: server.revokedAt,
+        lastSeenAt: server.lastSeenAt,
+      })
+      .from(server)
+      .where(eq(server.subdomain, label))
+      .limit(1),
+  );
   if (serverRow) {
     return {
       kind: "server",
@@ -343,28 +344,30 @@ async function lookupLabel(
     };
   }
 
-  const machineRow = await db
-    .select({
-      userId: machine.userId,
-      accountHandle: profile.handle,
-      machineId: machine.id,
-      credentialHash: machine.credentialHash,
-      revokedAt: machine.revokedAt,
-      lastSeenAt: machine.lastSeenAt,
-      generation: labelClaim.generation,
-    })
-    .from(machine)
-    .innerJoin(profile, eq(profile.userId, machine.userId))
-    .innerJoin(
-      labelClaim,
-      and(
-        eq(labelClaim.label, machine.subdomain),
-        eq(labelClaim.kind, "machine"),
-        eq(labelClaim.ownerId, machine.id),
-      ),
-    )
-    .where(eq(machine.subdomain, label))
-    .get();
+  const machineRow = await first(
+    db
+      .select({
+        userId: machine.userId,
+        accountHandle: profile.handle,
+        machineId: machine.id,
+        credentialHash: machine.credentialHash,
+        revokedAt: machine.revokedAt,
+        lastSeenAt: machine.lastSeenAt,
+        generation: labelClaim.generation,
+      })
+      .from(machine)
+      .innerJoin(profile, eq(profile.userId, machine.userId))
+      .innerJoin(
+        labelClaim,
+        and(
+          eq(labelClaim.label, machine.subdomain),
+          eq(labelClaim.kind, "machine"),
+          eq(labelClaim.ownerId, machine.id),
+        ),
+      )
+      .where(eq(machine.subdomain, label))
+      .limit(1),
+  );
   if (!machineRow) return null;
   return {
     kind: "machine",
@@ -460,15 +463,19 @@ async function lookupCachedSession(
   const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
   if (!constantTimeEqual(providedSig, expectedSig)) return null;
 
-  const row = await db
-    .select({
-      expiresAt: session.expiresAt,
-      sessionId: session.id,
-      userId: session.userId,
-    })
-    .from(session)
-    .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
-    .get();
+  const row = await first(
+    db
+      .select({
+        expiresAt: session.expiresAt,
+        sessionId: session.id,
+        userId: session.userId,
+      })
+      .from(session)
+      .where(
+        and(eq(session.token, token), gt(session.expiresAt, new Date(now))),
+      )
+      .limit(1),
+  );
   return row
     ? {
         sessionId: row.sessionId,
@@ -518,15 +525,17 @@ async function lookupMachineCredential(
   hash: string,
   db: ConnectDb,
 ): Promise<VerifiedMachine | null> {
-  const row = await db
-    .select({
-      machineId: machine.id,
-      userId: machine.userId,
-      lastSeenAt: machine.lastSeenAt,
-    })
-    .from(machine)
-    .where(and(eq(machine.credentialHash, hash), isNull(machine.revokedAt)))
-    .get();
+  const row = await first(
+    db
+      .select({
+        machineId: machine.id,
+        userId: machine.userId,
+        lastSeenAt: machine.lastSeenAt,
+      })
+      .from(machine)
+      .where(and(eq(machine.credentialHash, hash), isNull(machine.revokedAt)))
+      .limit(1),
+  );
   return row ?? null;
 }
 
@@ -547,8 +556,7 @@ export async function markMachineSeen(
   await db
     .update(machine)
     .set({ lastSeenAt: new Date(now) })
-    .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)))
-    .run();
+    .where(and(eq(machine.id, machineId), isNull(machine.revokedAt)));
   return true;
 }
 

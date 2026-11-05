@@ -12,10 +12,10 @@
   "dependencies": {
     "@bb/connect-db": "workspace:*",
     "@bb/text-utils": "workspace:*",
-    "@bb/tunnel-contract": "workspace:*",
-    "@bb/process-utils": "workspace:*"
+    "@bb/tunnel-contract": "workspace:*"
   },
   "devDependencies": {
+    "@bb/connect-db-pg": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",

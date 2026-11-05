@@ -1,13 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   machine,
-  schema,
+  type ConnectDb,
   server,
   session,
   sha256Hex,
@@ -24,54 +23,42 @@ import {
 import { resolveAccount, revokeServerCredential } from "./servers.js";
 import { SECURE_SESSION_COOKIE } from "./cloud-dev.js";
 
-const MIGRATIONS_DIR = fileURLToPath(
-  new URL("../../../packages/connect-db/migrations", import.meta.url),
-);
 const SECRET = "test-secret";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let database: TestConnectDb;
+let db: ConnectDb;
 
-beforeEach(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
-    if (!file.endsWith(".sql")) continue;
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  db = drizzle(sqlite, { schema });
+beforeEach(async () => {
+  database = await createTestConnectDb();
+  db = database.db;
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
 
-function seedUser(id: string): void {
-  db.insert(user)
-    .values({
-      id,
-      name: id,
-      email: `${id}@example.com`,
-      emailVerified: true,
-      createdAt: new Date(0),
-      updatedAt: new Date(0),
-    })
-    .run();
+async function seedUser(id: string): Promise<void> {
+  await db.insert(user).values({
+    id,
+    name: id,
+    email: `${id}@example.com`,
+    emailVerified: true,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  });
 }
 
 async function seedMachine(userId: string): Promise<DesktopSessionAccount> {
-  seedUser(userId);
+  await seedUser(userId);
   const credentialHash = await sha256Hex(`bbcm_${crypto.randomUUID()}`);
-  db.insert(machine)
-    .values({
-      id: `machine-${userId}`,
-      userId,
-      credentialHash,
-      createdAt: new Date(0),
-    })
-    .run();
+  await db.insert(machine).values({
+    id: `machine-${userId}`,
+    userId,
+    credentialHash,
+    createdAt: new Date(0),
+  });
   return { userId, grant: { kind: "machine", credentialHash } };
 }
 
@@ -165,10 +152,10 @@ describe("desktop session cookie", () => {
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt),
     ).resolves.toMatchObject({ userId: "acct-revoke" });
 
-    db.update(machine)
+    await db
+      .update(machine)
       .set({ revokedAt: new Date(mintedAt) })
-      .where(eq(machine.userId, "acct-revoke"))
-      .run();
+      .where(eq(machine.userId, "acct-revoke"));
 
     await expect(
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 1_000),
@@ -179,17 +166,15 @@ describe("desktop session cookie", () => {
   });
 
   it("stops a server-minted cookie immediately on disconnect and after a credential rotation", async () => {
-    seedUser("acct-server");
+    await seedUser("acct-server");
     const credential = "bbcred_server_cookie";
-    db.insert(server)
-      .values({
-        id: "srv-cookie",
-        userId: "acct-server",
-        subdomain: "sawyer",
-        credentialHash: await sha256Hex(credential),
-        createdAt: new Date(0),
-      })
-      .run();
+    await db.insert(server).values({
+      id: "srv-cookie",
+      userId: "acct-server",
+      subdomain: "sawyer",
+      credentialHash: await sha256Hex(credential),
+      createdAt: new Date(0),
+    });
     const account = await resolveAccount(
       new Request("https://sawyer.getbb.app/api/connect/desktop-session", {
         headers: { "x-bb-connect-machine": credential },
@@ -214,31 +199,29 @@ describe("desktop session cookie", () => {
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 1_000),
     ).resolves.toBeNull();
 
-    db.update(server)
+    await db
+      .update(server)
       .set({
         credentialHash: await sha256Hex("bbcred_rotated"),
         revokedAt: null,
       })
-      .where(eq(server.id, "srv-cookie"))
-      .run();
+      .where(eq(server.id, "srv-cookie"));
     await expect(
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 60_000),
     ).resolves.toBeNull();
   });
 
   it("rejects a browser-session-minted cookie once that session is signed out", async () => {
-    seedUser("acct-browser");
+    await seedUser("acct-browser");
     const token = `sess_${crypto.randomUUID()}`;
-    db.insert(session)
-      .values({
-        id: "sess-browser",
-        token,
-        expiresAt: new Date(Date.now() + DESKTOP_SESSION_TTL_MS),
-        userId: "acct-browser",
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-      })
-      .run();
+    await db.insert(session).values({
+      id: "sess-browser",
+      token,
+      expiresAt: new Date(Date.now() + DESKTOP_SESSION_TTL_MS),
+      userId: "acct-browser",
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    });
     const account = await resolveAccount(
       new Request("https://sawyer.getbb.app/api/connect/desktop-session", {
         headers: {
@@ -259,7 +242,7 @@ describe("desktop session cookie", () => {
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt),
     ).resolves.toMatchObject({ userId: "acct-browser" });
 
-    db.delete(session).where(eq(session.id, "sess-browser")).run();
+    await db.delete(session).where(eq(session.id, "sess-browser"));
     await expect(
       verifyDesktopSessionCookie(value, SECRET, db, mintedAt + 61_000),
     ).resolves.toBeNull();

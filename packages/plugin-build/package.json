@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./runtime-shims": {
+      "types": "./src/runtime-shims.d.mts",
+      "default": "./src/runtime-shims.mjs"
+    },
     "./host-tailwind-version": "./src/generated/host-tailwind-version.ts",
     "./host-tailwind.css": "./src/generated/host-tailwind.css"
   },

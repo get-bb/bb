@@ -17,6 +17,7 @@ import {
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
+  type AutomationRunResponse,
 } from "./rpc-types.js";
 
 function storedScriptPathPattern(automationId: string): RegExp {
@@ -1055,7 +1056,7 @@ describe("automations server plugin harness", () => {
         permissionMode: "auto",
         environment: {
           type: "host",
-          hostId: "host_test",
+          hostId: "host_fake",
           workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
         },
       },
@@ -1080,7 +1081,7 @@ describe("automations server plugin harness", () => {
       targetThreadId: THREAD_ID,
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: { type: "unmanaged", path: "/tmp/design-doctrine" },
       },
     });
@@ -1108,7 +1109,7 @@ describe("automations server plugin harness", () => {
       permissionMode: "auto",
       environment: {
         type: "host",
-        hostId: "host_test",
+        hostId: "host_fake",
         workspace: {
           type: "managed-worktree",
           baseBranch: { kind: "named", name: "release" },
@@ -1123,6 +1124,78 @@ describe("automations server plugin harness", () => {
     ).toHaveLength(1);
 
     await harness.dispose();
+  });
+
+  it.each([
+    {
+      flags: ["--environment", "C:\\repo"],
+      workspace: { type: "unmanaged", path: "C:\\repo" },
+    },
+    {
+      flags: ["--new-environment", "worktree"],
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    },
+  ])(
+    "runs $flags on the calling thread's machine",
+    async ({ flags, workspace }) => {
+      const { harness } = await bootAutomationsPlugin();
+      try {
+        harness.sdk.stub("threads.get", async ({ threadId }) => ({
+          ...makeThreadResponse({ id: threadId }),
+          environment: { hostId: "host_caller" },
+        }));
+        const result = await harness.runCli(
+          [
+            "create",
+            "--project",
+            PROJECT_ID,
+            "--name",
+            "Caller machine",
+            "--in",
+            "30m",
+            "--prompt",
+            "Check the build",
+            "--provider",
+            "codex",
+            "--model",
+            "gpt-5",
+            ...flags,
+            "--json",
+          ],
+          { threadId: THREAD_ID },
+        );
+        expect(result.exitCode).toBe(0);
+        expect(
+          automationDetailResponseSchema.parse(JSON.parse(result.stdout ?? ""))
+            .execution,
+        ).toMatchObject({
+          environment: { type: "host", hostId: "host_caller", workspace },
+        });
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("rejects a date-only --at as ambiguous", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      const result = await harness.runCli([
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Date only",
+        "--at",
+        `${new Date().getFullYear() + 1}-01-01`,
+        "--script",
+        "echo ok",
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("--at needs a time of day");
+    } finally {
+      await harness.dispose();
+    }
   });
 
   it("accepts a long prompt and keeps the automation readable afterwards", async () => {
@@ -1696,6 +1769,27 @@ describe("automations server plugin harness", () => {
     let primaryHostId: string | null = null;
     harness.sdk.stub("system.config", () => ({ primaryHostId }));
     const initialCalls = harness.sdk.callsTo("system.config").length;
+    const publish = host.bb.realtime.publish.bind(host.bb.realtime);
+    const publishSpy = vi.spyOn(host.bb.realtime, "publish");
+    const completedRun = new Promise<AutomationRunResponse>(
+      (resolve, reject) => {
+        publishSpy.mockImplementation((...args) => {
+          publish(...args);
+          void harness
+            .callRpc("automations_runs", {
+              projectId: PROJECT_ID,
+              automationId: automation.id,
+            })
+            .then((result) => {
+              const { runs } = automationRunListResponseSchema.parse(result);
+              if (runs[0] !== undefined && runs[0].status !== "running") {
+                resolve(runs[0]);
+              }
+            })
+            .catch(reject);
+        });
+      },
+    );
     const service = harness.runService("automation-sweep");
     try {
       await vi.waitFor(() =>
@@ -1705,19 +1799,11 @@ describe("automations server plugin harness", () => {
       );
       primaryHostId = "host_fake";
       await vi.advanceTimersByTimeAsync(60_000);
-      await vi.waitFor(async () => {
-        const { runs } = automationRunListResponseSchema.parse(
-          await harness.callRpc("automations_runs", {
-            projectId: PROJECT_ID,
-            automationId: automation.id,
-          }),
-        );
-        expect(runs[0]).toMatchObject({
-          status: "succeeded",
-          output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
-          exitCode: 0,
-          error: null,
-        });
+      expect(await completedRun).toMatchObject({
+        status: "succeeded",
+        output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
+        exitCode: 0,
+        error: null,
       });
       const calls = harness.sdk.callsTo("system.config").length;
       await vi.advanceTimersByTimeAsync(20_000);
@@ -1725,6 +1811,7 @@ describe("automations server plugin harness", () => {
     } finally {
       service.controller.abort();
       await service.done;
+      publishSpy.mockRestore();
       await harness.dispose();
     }
   });

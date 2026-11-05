@@ -4,6 +4,7 @@ import { createWriteStream, existsSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
+import { type PgConnection, connectPg } from "@bb/connect-db-pg";
 import { createRequire } from "node:module";
 import * as http from "node:http";
 import * as net from "node:net";
@@ -32,6 +33,14 @@ const REPO_ROOT = path.resolve(
 const WORK_DIR = process.env.BB_E2E_DIR ?? "/tmp/bb-connect-next-e2e";
 const LOG_DIR = path.join(WORK_DIR, "logs");
 const CLOUD_STATE = path.join(WORK_DIR, "cloud");
+const E2E_DATABASE_URL =
+  process.env.BB_E2E_DATABASE_URL?.trim() ||
+  "postgresql://bb:bb@localhost:5432/bb_connect";
+const CLOUD_DATABASE_URL = (() => {
+  const url = new URL(E2E_DATABASE_URL);
+  url.pathname = "/bb_connect_next_e2e";
+  return url.toString();
+})();
 const BB_DATA = path.join(WORK_DIR, "bb-data");
 const SCREENSHOT_DIR =
   process.env.BB_E2E_SCREENSHOT_DIR ?? path.join(WORK_DIR, "screenshots");
@@ -212,35 +221,39 @@ async function waitFor<T>(
   );
 }
 
-const wranglerEnv = () => cleanEnv({ CI: "1" });
-
-function d1(sql: string): Array<Record<string, unknown>> {
-  const result = run(
-    "pnpm",
-    [
-      "--filter",
-      "@bb/connect",
-      "exec",
-      "wrangler",
-      "d1",
-      "execute",
-      "DB",
-      "--local",
-      "--persist-to",
-      CLOUD_STATE,
-      "--json",
-      "--command",
-      sql,
-    ],
-    wranglerEnv(),
-  );
-  if (result.status !== 0) {
-    throw new Error(`d1 failed: ${result.stderr}\n${result.stdout}`);
+async function withPg<T>(
+  url: string,
+  work: (client: Awaited<ReturnType<PgConnection["client"]>>) => Promise<T>,
+): Promise<T> {
+  const connection = connectPg(url);
+  try {
+    return await work(await connection.client());
+  } finally {
+    await connection.close();
   }
-  const parsed = JSON.parse(result.stdout) as Array<{
-    results: Array<Record<string, unknown>>;
-  }>;
-  return parsed.flatMap((entry) => entry.results);
+}
+
+async function cloudDb(sql: string): Promise<Array<Record<string, unknown>>> {
+  return withPg(CLOUD_DATABASE_URL, async (client) => {
+    const result: unknown = await client.query(sql);
+    const results = Array.isArray(result) ? result : [result];
+    return results.flatMap((entry) =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "rows" in entry &&
+      Array.isArray(entry.rows)
+        ? (entry.rows as Array<Record<string, unknown>>)
+        : [],
+    );
+  });
+}
+
+async function resetCloudDatabase(): Promise<void> {
+  const name = new URL(CLOUD_DATABASE_URL).pathname.slice(1);
+  await withPg(E2E_DATABASE_URL, async (client) => {
+    await client.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    await client.query(`CREATE DATABASE "${name}"`);
+  });
 }
 
 function sqlText(value: string): string {
@@ -461,8 +474,8 @@ async function waitForState(state: string): Promise<Record<string, unknown>> {
   });
 }
 
-function presence(): Record<string, unknown> {
-  const rows = d1(
+async function presence(): Promise<Record<string, unknown>> {
+  const rows = await cloudDb(
     `SELECT next_tunnel_gate, next_tunnel_region, next_tunnel_at, last_seen_at FROM server WHERE subdomain = ${sqlText(LABEL)}`,
   );
   return rows[0] ?? {};
@@ -644,7 +657,7 @@ async function checkSessionRefresh(visitPort: number): Promise<void> {
   const cookie = await signIn("owner@e2e.test");
   const token = sessionToken(cookie);
   const nearExpiry = Date.now() + 2 * DAY_MS;
-  d1(
+  await cloudDb(
     `UPDATE session SET expires_at = ${nearExpiry} WHERE token = ${sqlText(token)}`,
   );
   const refreshesBefore = await gateLogCount("session_refresh");
@@ -662,12 +675,12 @@ async function checkSessionRefresh(visitPort: number): Promise<void> {
       cookieDomain(renewed) === ".bb.localhost",
     `${first.status} ${first.headers.get("x-bb-cache") ?? ""} ${renewed === undefined ? "no Set-Cookie" : redactCookie(renewed)}`,
   );
-  const [row] = d1(
+  const [row] = await cloudDb(
     `SELECT expires_at FROM session WHERE token = ${sqlText(token)}`,
   );
   const expiresAt = Number(row?.expires_at);
   check(
-    "session refresh: bb-web pushed the session's expiry out in D1",
+    "session refresh: bb-web pushed the session's expiry out in Postgres",
     expiresAt > Date.now() + 6 * DAY_MS,
     `expires in ${((expiresAt - Date.now()) / DAY_MS).toFixed(2)} days`,
   );
@@ -695,7 +708,7 @@ async function checkDesktopSession(
   visitPort: number,
   ownerId: string,
 ): Promise<void> {
-  const [row] = d1(
+  const [row] = await cloudDb(
     `SELECT id FROM session WHERE user_id = ${sqlText(ownerId)} AND expires_at > ${Date.now()} ORDER BY created_at LIMIT 1`,
   );
   const cookie = `${DESKTOP_COOKIE}=${desktopSessionValue({
@@ -1137,10 +1150,13 @@ async function checkShares(
   }
 }
 
-function seedMachine(ownerId: string, machineId: string): string {
+async function seedMachine(
+  ownerId: string,
+  machineId: string,
+): Promise<string> {
   const credential = `bbcm_e2e_${randomBytes(16).toString("hex")}`;
   const hash = createHash("sha256").update(credential).digest("hex");
-  d1(
+  await cloudDb(
     `INSERT INTO machine (id, user_id, name, credential_hash, created_at) VALUES (${sqlText(machineId)}, ${sqlText(ownerId)}, ${sqlText(machineId)}, ${sqlText(hash)}, ${Date.now()})`,
   );
   return credential;
@@ -1332,7 +1348,7 @@ async function checkMachines(
   ownerCookie: string,
   otherCookie: string,
 ): Promise<void> {
-  const credential = seedMachine(ownerId, "machine-e2e-next");
+  const credential = await seedMachine(ownerId, "machine-e2e-next");
   const daemon = await startMachineDaemon({
     name: "machine-next",
     repo: REPO_ROOT,
@@ -1637,7 +1653,7 @@ async function checkCloudflareMachine(
   visitPort: number,
 ): Promise<void> {
   const cloudHost = new URL(APP_URL).host;
-  const credential = seedMachine(ownerId, "machine-e2e-cf");
+  const credential = await seedMachine(ownerId, "machine-e2e-cf");
   const daemon = await startMachineDaemon({
     name: "machine-cf",
     repo: REPO_ROOT,
@@ -1709,9 +1725,9 @@ async function checkCloudflareMachine(
       `${listing.url ?? "?"} -> ${cfAnswer?.status ?? "no 200"}; ${nextHost} -> ${nextAnswer.status}; nextUrl ${listing.nextUrl ?? "none"}`,
     );
     const machinePresence = await waitFor(
-      "the machine's next presence in D1",
+      "the machine's next presence in Postgres",
       async () => {
-        const [row] = d1(
+        const [row] = await cloudDb(
           "SELECT next_tunnel_gate FROM machine WHERE id = 'machine-e2e-cf'",
         );
         return typeof row?.next_tunnel_gate === "string" ? row : null;
@@ -1768,7 +1784,7 @@ async function checkOldDaemon(
     return;
   }
   const cloudHost = new URL(APP_URL).host;
-  const credential = seedMachine(ownerId, "machine-e2e-old");
+  const credential = await seedMachine(ownerId, "machine-e2e-old");
   const daemon = await startMachineDaemon({
     name: "machine-old",
     repo: OLD_DAEMON_REPO,
@@ -2321,6 +2337,7 @@ async function main(): Promise<void> {
   await rm(WORK_DIR, { recursive: true, force: true });
   await mkdir(LOG_DIR, { recursive: true });
   log(`work dir ${WORK_DIR}, logs in ${LOG_DIR}`);
+  await resetCloudDatabase();
 
   log("building the gate");
   const build = run(
@@ -2351,6 +2368,7 @@ async function main(): Promise<void> {
       ["cloud:dev"],
       cleanEnv({
         BB_CLOUD_DEV_STATE_DIR: CLOUD_STATE,
+        BB_CLOUD_DEV_DATABASE_URL: CLOUD_DATABASE_URL,
         BB_CLOUD_DEV_GATE_SECRET: GATE_SECRET,
         BB_CLOUD_DEV_GATE_PUBLIC_KEYS: publicKeys,
       }),
@@ -2392,11 +2410,13 @@ async function main(): Promise<void> {
   log("signing up two users through bb-web");
   const ownerCookie = await signUp("owner@e2e.test", "Owner");
   const otherCookie = await signUp("other@e2e.test", "Other");
-  const [owner] = d1(`SELECT id FROM user WHERE email = 'owner@e2e.test'`);
+  const [owner] = await cloudDb(
+    `SELECT id FROM "user" WHERE email = 'owner@e2e.test'`,
+  );
   const ownerId = String(owner?.id);
   const serverId = crypto.randomUUID();
   const now = Date.now();
-  d1(
+  await cloudDb(
     [
       `INSERT INTO profile (user_id, handle, created_at) VALUES (${sqlText(ownerId)}, ${sqlText(LABEL)}, ${now})`,
       `INSERT INTO server (id, user_id, name, subdomain, created_at) VALUES (${sqlText(serverId)}, ${sqlText(ownerId)}, 'default', ${sqlText(LABEL)}, ${now})`,
@@ -2445,11 +2465,11 @@ async function main(): Promise<void> {
     login.status === 0,
     cliDetail(login),
   );
-  const [linked] = d1(
+  const [linked] = await cloudDb(
     `SELECT credential_hash FROM server WHERE id = ${sqlText(serverId)}`,
   );
   check(
-    "D1 holds the minted credential hash",
+    "Postgres holds the minted credential hash",
     typeof linked?.credential_hash === "string",
   );
   await stop(server);
@@ -2678,11 +2698,11 @@ async function main(): Promise<void> {
   );
 
   const online = await waitFor("presence connected", async () => {
-    const row = presence();
+    const row = await presence();
     return row.next_tunnel_gate ? row : null;
   });
   check(
-    "presence marks the server online in local D1",
+    "presence marks the server online in local Postgres",
     online.next_tunnel_gate === "e2e-a",
     JSON.stringify(online),
   );
@@ -2694,7 +2714,7 @@ async function main(): Promise<void> {
   const offline = await waitFor(
     "presence disconnected",
     async () => {
-      const row = presence();
+      const row = await presence();
       return row.next_tunnel_gate ? null : row;
     },
     60_000,
@@ -2716,7 +2736,7 @@ async function main(): Promise<void> {
   bbCli(["connect-next", "on"]);
   await waitForState("connected");
   await waitFor("presence connected again", async () =>
-    presence().next_tunnel_gate ? true : null,
+    (await presence()).next_tunnel_gate ? true : null,
   );
   const disable = bbCli(["plugin", "disable", "bb--connect-next"]);
   check(
@@ -2726,7 +2746,7 @@ async function main(): Promise<void> {
   );
   await waitFor(
     "presence after disabling",
-    async () => (presence().next_tunnel_gate ? null : true),
+    async () => ((await presence()).next_tunnel_gate ? null : true),
     60_000,
   );
   check("presence marks the server offline after disabling the plugin", true);

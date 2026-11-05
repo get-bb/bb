@@ -3,6 +3,7 @@ import type {
   ExperimentalFileOpenOptions,
   ExperimentalLiveFileTarget,
 } from "../app-contract.js";
+import { PLUGIN_SLOT_ID_PATTERN } from "./composer-customization-validation.js";
 
 const FILE_PATH_MAX_LENGTH = 32_768;
 const WINDOWS_DRIVE_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
@@ -219,4 +220,19 @@ export function normalizeExperimentalFileOpenOptions(
   const location = normalizeExperimentalFileLocation(value.location);
   if (target === null || location === undefined) return null;
   return { target, location };
+}
+
+export function normalizeExperimentalFilePreviewOptions(
+  value: unknown,
+): { options: ExperimentalFileOpenOptions; opener: string | null } | null {
+  if (!isJsonObject(value)) return null;
+  const { opener = null, ...rest } = value;
+  if (
+    opener !== null &&
+    (typeof opener !== "string" || !PLUGIN_SLOT_ID_PATTERN.test(opener))
+  ) {
+    return null;
+  }
+  const options = normalizeExperimentalFileOpenOptions(rest);
+  return options === null ? null : { options, opener };
 }

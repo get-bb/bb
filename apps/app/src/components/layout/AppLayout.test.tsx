@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { buildBridgeInjectionScript } from "@bb/mobile-bridge";
 import { defaultAppSettings } from "@bb/domain";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { resetNativeShellForTests } from "@/lib/native-shell";
 import {
   useEffect,
   type MouseEvent as ReactMouseEvent,
@@ -30,6 +32,7 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { AppLayout } from "./AppLayout";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSecondaryPanelPresentation } from "@/components/ui/secondary-panel-shelf-visibility";
+import { beginSplitDrag } from "@/lib/split-drag";
 
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
@@ -366,6 +369,55 @@ describe("mobile workspace sidebar access", () => {
 });
 
 describe("AppLayout Back to app", () => {
+  it.each([...SECONDARY_ROUTES, "/plugins/drag-test/panel"])(
+    "keeps %s open when a split drag cancels sidebar reordering",
+    (route) => {
+      setPluginSlotRegistrations(
+        "drag-test",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "panel",
+              title: "Drag test",
+              path: "panel",
+              icon: "House",
+              component: () => null,
+              experimental_sidebar: () => null,
+            },
+          ],
+        }),
+      );
+      renderLayout(route);
+      const originalElementsFromPoint = document.elementsFromPoint;
+      document.elementsFromPoint = () => [];
+      const onEnd = vi.fn();
+      try {
+        beginSplitDrag({
+          ghostLabel: "Panel tab",
+          cancelSidebarReorderOnEngage: true,
+          shouldEngage: () => true,
+          decide: () => null,
+          onDrop: vi.fn(),
+          onEnd,
+        });
+        fireEvent.pointerMove(window, { clientX: 500, clientY: 300 });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+        expect(document.body.style.cursor).toBe("grabbing");
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(onEnd).toHaveBeenCalledWith({ dropped: false });
+        expect(screen.getByTestId("location").textContent).toBe(route);
+
+        fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+        expect(screen.getByTestId("location").textContent).toBe("/");
+      } finally {
+        fireEvent.pointerCancel(window);
+        fireEvent.click(document.body);
+        document.elementsFromPoint = originalElementsFromPoint;
+      }
+    },
+  );
+
   it.each(SECONDARY_ROUTES)(
     "returns from %s with the remembered query and hash, then releases Escape",
     (route) => {
@@ -672,6 +724,64 @@ describe("AppLayout plugin overlay contexts", () => {
       expect(warnings).not.toHaveBeenCalled();
     },
   );
+});
+
+it("badges the phone app with the number of threads waiting for input", async () => {
+  const posted: unknown[] = [];
+  vi.stubGlobal("ReactNativeWebView", {
+    postMessage: (raw: string) => posted.push(JSON.parse(raw)),
+  });
+  // eslint-disable-next-line no-new-func
+  new Function(
+    "window",
+    buildBridgeInjectionScript({
+      bridgeVersion: 1,
+      appVersion: "0.39.0",
+      platform: "ios",
+      profileMode: "connect",
+      secureContext: true,
+      safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      capabilities: ["badge"],
+    }),
+  )(window);
+  resetNativeShellForTests();
+  const badges = () =>
+    posted.filter(
+      (message): message is { type: "badge"; count: number } =>
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "badge",
+    );
+  try {
+    sidebarThreadsMock.threads = [
+      makeThreadListEntry({ id: "pending-one", hasPendingInteraction: true }),
+      makeThreadListEntry({ id: "pending-two", hasPendingInteraction: true }),
+      makeThreadListEntry({
+        id: "unread",
+        lastReadAt: 10,
+        latestAttentionAt: 20,
+      }),
+    ];
+    renderLayout();
+    await waitFor(() =>
+      expect(badges().at(-1)).toEqual({ type: "badge", count: 2 }),
+    );
+    sidebarThreadsMock.threads = [
+      makeThreadListEntry({
+        id: "unread",
+        lastReadAt: 10,
+        latestAttentionAt: 20,
+      }),
+    ];
+    fireEvent.click(screen.getByRole("link", { name: SETTINGS_ROUTE }));
+    await waitFor(() =>
+      expect(badges().at(-1)).toEqual({ type: "badge", count: 0 }),
+    );
+  } finally {
+    Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
+    resetNativeShellForTests();
+  }
 });
 
 it("synchronizes desktop attention when sidebar state changes and clears its report on unmount", async () => {

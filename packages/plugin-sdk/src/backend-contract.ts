@@ -293,6 +293,13 @@ export interface PluginThreadEventPayloads {
     thread: ThreadResponse;
     previousParentThreadId: string | null;
   };
+  /**
+   * Fired after a thread's read state changes and the thread is now read
+   * (`lastReadAt >= latestAttentionAt`): a client opened it or marked it
+   * read, or the user sent it a turn. Marking a thread unread does not fire
+   * it. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.read": { thread: ThreadResponse };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
   /**
@@ -1263,7 +1270,7 @@ export interface PluginAgentConfiguration {
   /** Skill frontmatter names from this plugin's manifest skill roots.
    * Duplicate or unknown names reject this plugin's complete selection. */
   skills: string[];
-  /** Optional dynamic instructions. Output is truncated to 4096 characters. */
+  /** Optional dynamic instructions. Output is truncated to 32768 characters. */
   instructions?: string;
 }
 
@@ -1729,7 +1736,7 @@ export interface PluginAgents {
    * provider session is next constructed (thread start or resume after a
    * daemon restart, environment switch, or provider restart), never
    * mid-session. Must be synchronous and fast — it sits on the
-   * thread-start path. Output longer than 4096 characters is truncated; a
+   * thread-start path. Output longer than 32768 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.
    */

@@ -134,6 +134,18 @@ afterEach(async () => {
 });
 
 describe("runGit", () => {
+  it("reports the exit status of a silent Git failure", async () => {
+    const repoPath = await initEmptyRepo();
+
+    await expect(
+      runGit(["config", "--local", "--get", "bb.missing-setting"], { cwd: repoPath }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "git_command_failed",
+      cause: { exitCode: 1, signal: null, message: "Git exited with code 1" },
+    });
+  });
+
   it("scrubs inherited bb runtime env vars and node mode", async () => {
     const repoPath = await initEmptyRepo();
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
@@ -223,6 +235,41 @@ describe("readDefaultBranchRefs", () => {
       defaultBranch: "main",
       defaultBranchRelation: "diverged",
       originDefaultBranch: "origin/main",
+    });
+  });
+
+  it("prefers origin's default branch over main when both exist locally", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+    await runGit(["branch", "develop"], { cwd: repoPath });
+    await runGit(["push", "origin", "develop"], { cwd: repoPath });
+    await runGit(["remote", "set-head", "origin", "develop"], {
+      cwd: repoPath,
+    });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "develop",
+      originDefaultBranch: "origin/develop",
+    });
+  });
+
+  it("does not mistake a branch under main/ for main", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "main/feature"], { cwd: repoPath });
+    await runGit(["branch", "master"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "master",
+    });
+  });
+
+  it("falls back to the first local branch by name without main or master", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "beta"], { cwd: repoPath });
+
+    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+      defaultBranch: "beta",
     });
   });
 

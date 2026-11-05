@@ -3,7 +3,6 @@ import {
   gitFilesTag,
   gitRefsTag,
   gitStatusTag,
-  gitViewedTag,
 } from "../contract.js";
 import {
   createCoalescedInvalidator,
@@ -22,15 +21,10 @@ describe("tagsForEnvironmentChanges", () => {
     ).toContain(gitRefsTag("env_1"));
   });
 
-  it("keeps cached git reads when only metadata or viewed marks change", () => {
+  it("keeps cached git reads when only metadata changes", () => {
     expect(
       tagsForEnvironmentChanges("env_1", ["metadata-changed"]).clearCaches,
     ).toBe(false);
-    expect(tagsForEnvironmentChanges("env_1", ["diff-viewed-changed"])).toEqual({
-      tags: [gitViewedTag("env_1")],
-      clearCaches: false,
-      refsChanged: false,
-    });
   });
 });
 

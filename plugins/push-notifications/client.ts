@@ -1,4 +1,5 @@
 import {
+  clientNotificationDismissalSchema,
   clientNotificationSchema,
   type ClientNotification,
 } from "./contract.js";
@@ -168,8 +169,20 @@ export function createClientDelivery(
     else await claim();
   }
 
+  function dismiss(payload: unknown): void {
+    const parsed = clientNotificationDismissalSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const tag = `bb-${parsed.data.threadId}`;
+    for (const notification of active) {
+      if (notification.tag !== tag) continue;
+      notification.close();
+      active.delete(notification);
+    }
+  }
+
   return {
     deliver,
+    dismiss,
     syncFocus,
     dispose() {
       disposed = true;

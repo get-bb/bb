@@ -76,6 +76,7 @@ function commandRow(args: TimelineTestRowArgs): TimelineCommandWorkRow {
     status: "completed",
     callId: args.id,
     command: "pnpm test",
+    description: null,
     cwd: null,
     source: null,
     output: "",

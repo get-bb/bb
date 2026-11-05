@@ -108,6 +108,7 @@ function stubServer(plugins: Array<{ id: string; status: string }>): void {
             publisherLabel: null,
             isOrphanedBuiltin: false,
             sourceDisplay: `path · /plugins/${id}`,
+            sourceNotice: null,
             updateState: {},
             enabled: true,
             description: null,

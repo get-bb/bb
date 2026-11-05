@@ -1021,11 +1021,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1064,10 +1062,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <ThreadTimelineRows
@@ -1136,10 +1133,9 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
       frames.delete(id);
     });
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const view = renderWithRouter(
       <ThreadTimelineRows
@@ -1196,10 +1192,9 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
       frames.delete(id);
     });
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
     const onLoadOlderRows = vi.fn(() => page);
     const { container } = renderWithRouter(
       <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
@@ -1253,10 +1248,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <SearchOlderRowsHarness onLoadOlderRows={onLoadOlderRows} />,
@@ -1746,10 +1740,9 @@ describe("ThreadTimelineRows actions", () => {
       return 1;
     });
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      () => {},
+    );
 
     const { container } = renderWithRouter(
       <SameThreadSearchNavigationHarness />,

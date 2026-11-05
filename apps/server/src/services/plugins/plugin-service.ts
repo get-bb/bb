@@ -105,7 +105,7 @@ import {
 } from "../plugin-catalog/marketplace-manifest.js";
 import {
   getLastThreadErrorMessage,
-  getLastThreadOutput,
+  getLatestTurnFinalOutput,
 } from "../threads/thread-data.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import {
@@ -299,6 +299,7 @@ export interface PluginService {
     | { outcome: "unavailable"; detail: string }
   >;
   installPath(path: string): Promise<InstalledPlugin>;
+  preservePathPluginsInside(directory: string): Promise<void>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   startPeriodicUpdateChecks(): void;
   stopPeriodicUpdateChecks(): Promise<void>;
@@ -726,6 +727,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     installPathSource,
     installedUpdateVersion,
     npmIntentForRow,
+    pathSourceNotice,
+    preservePathPluginsInside,
     provenanceForRow,
     reconcileBundled,
     registerInstalled,
@@ -1075,6 +1078,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           }),
           isOrphanedBuiltin: isOrphanedBuiltinRow(row),
           sourceDisplay: sourceDisplayForRow(row),
+          sourceNotice:
+            row.sourceKind === "path"
+              ? pathSourceNotice({ id: row.id, rootDir: row.rootDir })
+              : null,
           updateState: updateStateForRow(row),
           enabled: row.enabled,
           description:
@@ -1417,7 +1424,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       emitThreadIdle(thread) {
         emitThreadEvent("thread.idle", () => ({
           thread: buildThreadDto(thread),
-          lastAssistantText: getLastThreadOutput(deps.db, thread.id),
+          lastAssistantText: getLatestTurnFinalOutput(deps.db, thread.id),
         }));
       },
       emitThreadFailed(thread) {
@@ -1446,6 +1453,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),
         }));
+      },
+      emitThreadRead(threadId) {
+        emitThreadEvent("experimental_thread.read", () => {
+          const thread = getThread(deps.db, threadId);
+          if (
+            thread === null ||
+            (thread.lastReadAt ?? 0) < thread.latestAttentionAt
+          ) {
+            return null;
+          }
+          return { thread: buildThreadDto(thread) };
+        });
       },
       emitInteractionPending(thread, interaction) {
         emitThreadEvent("interaction.pending", () => ({
@@ -1545,6 +1564,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   bundled.rootDir,
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
+                  { minify: true, hostProvidedZod: true },
                 );
                 logPluginBuildWarnings({
                   dataDir: deps.dataDir,
@@ -1725,6 +1745,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
         installPathSource(path, ROOT_PLUGIN_SOURCE_SELECTION),
+      ),
+
+    preservePathPluginsInside: (directory) =>
+      withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
+        preservePathPluginsInside(directory),
       ),
 
     ...pluginUpdates,

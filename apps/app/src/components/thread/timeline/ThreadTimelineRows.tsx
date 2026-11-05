@@ -1951,7 +1951,7 @@ function findUnreadDividerIndex({
   const firstNewIndex = rows.findIndex((row) =>
     isNewRowAfterCutoff(row, cutoffAt),
   );
-  if (firstNewIndex === -1 || unreadDividerPlacement.anchor !== "turn-answer") {
+  if (firstNewIndex === -1) {
     return firstNewIndex;
   }
   const settledTurnReplyIndexes = findSettledTurnReplyIndexes(

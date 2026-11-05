@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { QueuedMessageWaitingOn } from "@bb/domain";
+import type { QueuedMessageWaitingOn, ThreadStatus } from "@bb/domain";
 import {
   describeQueuedMessageWait,
   formatQueuedMessageCountdown,
@@ -28,6 +28,7 @@ function describeWait(
     now?: number;
     pluginDisplayName?: string | null;
     sendAt?: number | null;
+    threadStatus?: ThreadStatus;
   } = {},
 ): string | null {
   return describeQueuedMessageWait({
@@ -36,6 +37,7 @@ function describeWait(
     payload: { kind: "inline" },
     pluginDisplayName: overrides.pluginDisplayName ?? null,
     sendAt: overrides.sendAt ?? null,
+    threadStatus: overrides.threadStatus ?? "active",
     waitingOn,
   });
 }
@@ -59,6 +61,12 @@ describe("describeQueuedMessageWait", () => {
     expect(describeWait({ kind: "interaction" })).toBe(
       "Waiting for your reply",
     );
+  });
+
+  it("stops promising a turn start once the thread's run has failed", () => {
+    expect(
+      describeWait({ kind: "turn-starting" }, { threadStatus: "error" }),
+    ).toBe("Turn didn't start · sends on the next turn");
   });
 
   it("names the absent machine a host-offline row is waiting on", () => {
@@ -117,6 +125,7 @@ describe("describeQueuedMessageWait", () => {
         },
         pluginDisplayName: null,
         sendAt: NOW + HOUR,
+        threadStatus: "active",
         waitingOn: { kind: "time" },
       }),
     ).toBe(`Rate limited · retrying at ${clockAt(NOW + HOUR)} · attempt 2`);
@@ -132,6 +141,7 @@ describe("describeQueuedMessageWait", () => {
         },
         pluginDisplayName: "Concurrency limit",
         sendAt: null,
+        threadStatus: "active",
         waitingOn: {
           kind: "plugin",
           pluginId: "concurrency-limit",
@@ -197,6 +207,29 @@ describe("queuedMessageFallbackTitle", () => {
         },
       }),
     ).toBe(`Retry failed turn from ${clockAt(NOW)}`);
+  });
+
+  it("titles a restart resume as a resume, with when it resumes and which attempt", () => {
+    const payload = {
+      kind: "retry" as const,
+      retryOfTurnRequestId: "req-1",
+      attempt: 3,
+      reason: "bb restarted",
+    };
+    expect(
+      queuedMessageFallbackTitle({ createdAt: NOW, now: NOW, payload }),
+    ).toBe("Resume after bb restarted");
+    expect(
+      describeQueuedMessageWait({
+        failureReason: null,
+        now: NOW,
+        payload,
+        pluginDisplayName: null,
+        sendAt: NOW + 5_000,
+        threadStatus: "idle",
+        waitingOn: { kind: "time" },
+      }),
+    ).toBe(`resuming at ${clockAt(NOW + 5_000)} · attempt 3`);
   });
 });
 

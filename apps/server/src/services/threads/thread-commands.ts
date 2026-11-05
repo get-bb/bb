@@ -1,5 +1,10 @@
-import { environments, hasStoredSpawnAgentToolCall, threads } from "@bb/db";
-import { and, eq, isNull } from "drizzle-orm";
+import {
+  environments,
+  hasStoredSpawnAgentToolCall,
+  liveThread,
+  threads,
+} from "@bb/db";
+import { and, eq } from "drizzle-orm";
 import {
   PromptInput,
   PromptMode,
@@ -447,8 +452,7 @@ function threadHasLiveChildren(
     .where(
       and(
         eq(threads.parentThreadId, threadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThread,
       ),
     )
     .limit(1)

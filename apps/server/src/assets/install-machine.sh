@@ -1175,6 +1175,7 @@ Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
+OOMPolicy=continue
 
 [Install]
 WantedBy=$service_target

@@ -19,7 +19,6 @@ const MIN_FLUSH_INTERVAL_MS = 1_000;
 const CACHE_KEEPING_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set([
   "metadata-changed",
   "thread-storage-changed",
-  "diff-viewed-changed",
 ]);
 
 export function tagsForEnvironmentChanges(
@@ -38,9 +37,6 @@ export function tagsForEnvironmentChanges(
         tags.add(gitStatusTag(environmentId));
         tags.add(gitFilesTag(environmentId));
         tags.add(gitRefsTag(environmentId));
-        break;
-      case "diff-viewed-changed":
-        tags.add(gitViewedTag(environmentId));
         break;
       case "status-changed":
       case "environment-created":

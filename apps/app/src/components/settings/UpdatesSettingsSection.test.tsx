@@ -12,7 +12,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Host } from "@bb/domain";
+import { defaultExperiments, type Host } from "@bb/domain";
 import { makeHost as makeHostFixture } from "@bb/test-helpers/domain-fixtures";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -34,6 +34,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { appToast } from "@/components/ui/app-toast";
 import { makePluginListItem } from "@/test/fixtures/plugins";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { buildUpdateInventoryPlugins } from "@/hooks/useUpdateInventory";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
@@ -72,6 +73,8 @@ vi.mock("@/lib/sdk", async () => {
         acknowledgeAppUpdate: vi.fn(),
         appUpdate: vi.fn(),
         applyAppUpdate: vi.fn(),
+        experimental_cancelScheduledAppUpdate: vi.fn(),
+        experimental_setAppUpdateAuto: vi.fn(),
         version: vi.fn(),
         config: vi.fn(async () =>
           makeSystemConfig({ primaryHostId: "host_primary" }),
@@ -333,6 +336,7 @@ function makeAppUpdateStatus(
   return {
     activity: { phase: "idle" },
     available: {
+      behindSince: null,
       channel: "latest",
       commit: null,
       commitCount: null,
@@ -342,7 +346,10 @@ function makeAppUpdateStatus(
     blocked: null,
     current: { commit: null, version: "0.0.5" },
     lastResult: null,
+    autoUpdate: false,
+    availableSkipped: false,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
   };
@@ -388,6 +395,15 @@ beforeEach(() => {
   });
 });
 
+function useUpdateWhenIdleExperiment(enabled: boolean): void {
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({
+      primaryHostId: "host_primary",
+      experiments: { ...defaultExperiments, updateWhenIdle: enabled },
+    }),
+  );
+}
+
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
@@ -395,6 +411,9 @@ afterEach(() => {
   resetAppUpdateCheckStoreForTests();
   resetProviderCliInstallStoreForTests();
   vi.clearAllMocks();
+  vi.mocked(sdk.system.config).mockResolvedValue(
+    makeSystemConfig({ primaryHostId: "host_primary" }),
+  );
   vi.unstubAllGlobals();
 });
 
@@ -768,6 +787,7 @@ The published lede.
 
       it("lists the incoming commits instead of the installed release's notes", async () => {
         useSourceCheckout("0.48.0", {
+          behindSince: "2026-11-02T12:00:00.000Z",
           channel: "main",
           commit: TO,
           commitCount: 41,
@@ -2341,6 +2361,156 @@ The published lede.
     });
   });
 
+  it("tells the user running threads resume after the update when restarts resume them", async () => {
+    useWebApp();
+    vi.mocked(sdk.system.config).mockResolvedValue(
+      makeSystemConfig({
+        primaryHostId: "host_primary",
+        experiments: { ...defaultExperiments, resumeThreadsAfterRestart: true },
+      }),
+    );
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "2 threads are running. Updating restarts bb, and they resume after the update.",
+      ),
+    ).toBeDefined();
+  });
+
+  it.each([
+    { experiment: false, running: 2 },
+    { experiment: true, running: 2 },
+  ])(
+    "updates with a single Update button while $running threads run (updateWhenIdle $experiment)",
+    async ({ experiment, running }) => {
+      useWebApp();
+      useUpdateWhenIdleExperiment(experiment);
+      vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+        makeAppUpdateStatus({ runningThreadCount: running }),
+      );
+
+      renderSection();
+
+      expect(await screen.findByText("2 threads running")).toBeDefined();
+      expect(
+        screen
+          .getAllByRole("button")
+          .map((button) => button.textContent)
+          .filter((label) => label !== null && /^Update/.test(label)),
+      ).toEqual(["Update"]);
+      expect(
+        screen.queryByRole("switch", { name: "Restart and update bb automatically" }) !==
+          null,
+      ).toBe(experiment);
+    },
+  );
+
+  it("turns on automatic updates and shows the update waiting for threads", async () => {
+    useWebApp();
+    useUpdateWhenIdleExperiment(true);
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 2 }),
+    );
+    vi.mocked(sdk.system.experimental_setAppUpdateAuto).mockResolvedValue(
+      makeAppUpdateStatus({
+        autoUpdate: true,
+        runningThreadCount: 2,
+        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Restart and update bb automatically" }),
+    );
+
+    expect(
+      await screen.findByText("Updates when all threads are idle (2 running)"),
+    ).toBeDefined();
+    expect(sdk.system.experimental_setAppUpdateAuto).toHaveBeenCalledWith({
+      enabled: true,
+    });
+    expect(sdk.system.applyAppUpdate).not.toHaveBeenCalled();
+  });
+
+  it("skips a waiting update and says why it is not installing", async () => {
+    useWebApp();
+    useUpdateWhenIdleExperiment(true);
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        autoUpdate: true,
+        runningThreadCount: 2,
+        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+      }),
+    );
+    vi.mocked(
+      sdk.system.experimental_cancelScheduledAppUpdate,
+    ).mockResolvedValue(
+      makeAppUpdateStatus({
+        autoUpdate: true,
+        availableSkipped: true,
+        runningThreadCount: 2,
+      }),
+    );
+
+    renderSection();
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "More update options" }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Skip this version" }));
+
+    expect(
+      await screen.findByText("Skipped until a newer version · 2 threads running"),
+    ).toBeDefined();
+    expect(sdk.system.experimental_cancelScheduledAppUpdate).toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", {
+        name: "Update available · Download the update and restart bb",
+      }),
+    ).toBeDefined();
+  });
+
+  it("updates now from a waiting update after confirming the interruption", async () => {
+    useWebApp();
+    useUpdateWhenIdleExperiment(true);
+    vi.mocked(sdk.system.appUpdate).mockResolvedValue(
+      makeAppUpdateStatus({
+        autoUpdate: true,
+        runningThreadCount: 1,
+        scheduled: { requestedAt: "2026-10-23T00:00:00.000Z" },
+      }),
+    );
+    vi.mocked(sdk.system.applyAppUpdate).mockResolvedValue(
+      makeAppUpdateStatus({ runningThreadCount: 1 }),
+    );
+
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "Update now" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/1 thread is running/)).toBeDefined();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Update and restart" }),
+    );
+    await waitFor(() => {
+      expect(sdk.system.applyAppUpdate).toHaveBeenCalledWith({
+        confirmInterruptingThreads: true,
+      });
+    });
+  });
+
   it("asks for confirmation when threads started after the status was fetched", async () => {
     useWebApp();
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
@@ -2623,6 +2793,7 @@ The published lede.
         makeAppUpdateStatus({
           available: incoming
             ? {
+                behindSince: "2026-11-02T12:00:00.000Z",
                 channel: "main",
                 commit: "b".repeat(40),
                 commitCount: 3,
@@ -2738,7 +2909,7 @@ The published lede.
     });
   });
 
-  it("adds a Desktop row under Server only while the desktop needs an update", async () => {
+  it("adds a Desktop row above Server only while the desktop needs an update", async () => {
     const desktopInfo: BbDesktopInfo = {
       downloadState: "downloaded",
       lastCheckedAt: null,
@@ -2758,6 +2929,7 @@ The published lede.
       desktopInfo,
       isDesktop: true,
     });
+    useUpdateWhenIdleExperiment(true);
     useUpdateInventoryMock.mockReturnValue(desktopFleet());
     vi.mocked(sdk.system.appUpdate).mockResolvedValue(makeAppUpdateStatus());
 
@@ -2771,10 +2943,15 @@ The published lede.
     const serverName = within(bbCard).getByText("Server");
     expect(
       serverName.compareDocumentPosition(desktopName) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_PRECEDING,
     ).not.toBe(0);
     expect(serverName.className).toBe(desktopName.className);
     expect(serverName.className).toContain("w-16");
+    expect(
+      await within(bbCard).findByRole("switch", {
+        name: "Restart and update the server automatically",
+      }),
+    ).toBeDefined();
     expect(document.querySelector("[data-updates-device]")).toBeNull();
     fireEvent.click(
       within(bbCard).getByRole("button", {

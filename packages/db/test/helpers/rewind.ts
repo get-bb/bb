@@ -124,3 +124,26 @@ export function dropQueuedMessageDeliveryColumns(db: DbConnection): void {
     }
   }
 }
+
+export function dropThreadStatusChangedAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "status_changed_at")) {
+    db.$client.exec("ALTER TABLE threads DROP COLUMN status_changed_at");
+  }
+}
+
+export function restoreDiffViewedFilesTable(db: DbConnection): void {
+  db.$client.exec(`
+    CREATE TABLE IF NOT EXISTS diff_viewed_files (
+      environment_id text NOT NULL,
+      target_key text NOT NULL,
+      path text NOT NULL,
+      revision text NOT NULL,
+      updated_at integer NOT NULL,
+      PRIMARY KEY(environment_id, target_key, path),
+      FOREIGN KEY (environment_id) REFERENCES environments(id) ON UPDATE no action ON DELETE cascade
+    )
+  `);
+}

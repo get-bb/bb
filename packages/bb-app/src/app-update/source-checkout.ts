@@ -188,6 +188,12 @@ export async function inspectSourceCheckout(
   if (!Number.isInteger(behind) || behind === 0) {
     return { blocked: localBlock, current, incoming: null };
   }
+  const incomingCommitTimes = (
+    await git(args, ["log", "--format=%ct", `${args.running}..${UPSTREAM_REF}`])
+  )
+    .split("\n")
+    .map(Number)
+    .filter(Number.isInteger);
   const subjects = (
     await git(args, [
       "log",
@@ -209,6 +215,9 @@ export async function inspectSourceCheckout(
         : null),
     current,
     incoming: {
+      behindSince: new Date(
+        Math.min(...incomingCommitTimes) * 1000,
+      ).toISOString(),
       commit: upstream,
       commitCount: behind,
       subjects,

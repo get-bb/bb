@@ -106,6 +106,13 @@ describe("ownsModelPickerCycleChord", () => {
         );
       }
     }
+    const unrelatedEditable = {
+      ...base,
+      caretInThisComposer: false,
+      editableOutsideComposer: true,
+    };
+    expect(ownsModelPickerToggleChord(unrelatedEditable)).toBe(true);
+    expect(ownsModelPickerCycleChord(unrelatedEditable)).toBe(false);
   });
 
   it("owns the chord while the picker is open and the caret is nowhere", () => {

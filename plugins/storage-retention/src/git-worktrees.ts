@@ -165,9 +165,15 @@ async function mapConcurrently<T, R>(
 }
 
 export async function listGitWorktrees(
-  { repositoryPaths }: { repositoryPaths: string[] },
+  {
+    repositoryPaths,
+    ownedPaths,
+  }: { repositoryPaths: string[]; ownedPaths: string[] },
   signal: AbortSignal,
 ): Promise<ListOutput> {
+  const owned = new Set(
+    ownedPaths.map((ownedPath) => path.normalize(ownedPath)),
+  );
   const repositories: ListOutput["repositories"] = [];
   const failures: ListOutput["failures"] = [];
   const seen = new Set<string>();
@@ -188,7 +194,9 @@ export async function listGitWorktrees(
     if (main === undefined || seen.has(main.path)) continue;
     seen.add(main.path);
     const worktrees = await mapConcurrently(
-      linked.filter((entry) => !entry.bare && !entry.prunable),
+      linked.filter(
+        (entry) => !entry.bare && !entry.prunable && !owned.has(entry.path),
+      ),
       4,
       async (entry): Promise<Worktree> => {
         const state = await inspect(entry, signal).catch(() => {

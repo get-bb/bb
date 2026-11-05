@@ -69,6 +69,7 @@ import {
   seedThreadFixture,
   seedThreadIdentity,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { installFakeEnvironmentProvider } from "../helpers/environment-provider.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -2371,12 +2372,17 @@ describe("public thread data routes", () => {
           source: "tell",
         },
       });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-1",
+      });
       seedEvent(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
         scope: turnScope("turn-1"),
-        sequence: 2,
+        sequence: 3,
         type: "item/completed",
         data: {
           item: {
@@ -2386,12 +2392,17 @@ describe("public thread data routes", () => {
           },
         },
       });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        turnId: "turn-2",
+      });
       seedEvent(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
         scope: turnScope("turn-2"),
-        sequence: 3,
+        sequence: 5,
         type: "item/completed",
         data: {
           item: {
@@ -2424,22 +2435,14 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("returns a user-visible system output when a later assistant item is empty", async () => {
+  it("skips malformed item/completed events and returns the last valid output", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
 
-      seedEvent(harness.deps, {
+      seedTurnStarted(harness.deps, {
         threadId: thread.id,
         environmentId: environment.id,
-        providerThreadId: "provider-output",
-        scope: turnScope("turn-1"),
-        sequence: 1,
-        type: "system/manager/user_message",
-        data: {
-          text: "Visible system update",
-          toolCallId: "call-1",
-          turnId: "turn-1",
-        },
+        turnId: "turn-1",
       });
       seedEvent(harness.deps, {
         threadId: thread.id,
@@ -2447,36 +2450,6 @@ describe("public thread data routes", () => {
         providerThreadId: "provider-output",
         scope: turnScope("turn-1"),
         sequence: 2,
-        type: "item/completed",
-        data: {
-          item: {
-            type: "agentMessage",
-            id: "msg-1",
-            text: "",
-          },
-        },
-      });
-
-      const outputResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/output`,
-      );
-      expect(outputResponse.status).toBe(200);
-      await expect(readJson(outputResponse)).resolves.toEqual({
-        output: "Visible system update",
-      });
-    });
-  });
-
-  it("skips malformed item/completed events and returns the last valid output", async () => {
-    await withTestHarness(async (harness) => {
-      const { environment, thread } = seedThreadFixture(harness);
-
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        providerThreadId: "provider-output",
-        scope: turnScope("turn-1"),
-        sequence: 1,
         type: "item/completed",
         data: {
           item: {
@@ -2490,10 +2463,10 @@ describe("public thread data routes", () => {
         threadId: thread.id,
         environmentId: environment.id,
         providerThreadId: "provider-output",
-        scope: turnScope("turn-2"),
+        scope: turnScope("turn-1"),
         itemId: "msg-2",
         itemKind: null,
-        sequence: 2,
+        sequence: 3,
         type: "item/completed",
         data: {
           item: {
@@ -2881,32 +2854,6 @@ describe("public thread data routes", () => {
         id: queuedMessage.id,
       });
 
-      const staleUpdateResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            expectedUpdatedAt: queuedMessageBeforeUpdate?.updatedAt,
-            input: [{ type: "text", text: "Stale queued message edit" }],
-          }),
-        },
-      );
-      expect(staleUpdateResponse.status).toBe(409);
-      await expect(readJson(staleUpdateResponse)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Queued message changed since editing began",
-      });
-      expect(
-        getQueuedThreadMessage(harness.db, queuedMessage.id)?.content,
-      ).toBe(
-        JSON.stringify([
-          { type: "text", text: "Edited queued message", mentions: [] },
-        ]),
-      );
-
       const deleteResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
         {
@@ -2971,8 +2918,6 @@ describe("public thread data routes", () => {
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([
         { type: "text", text: "Queued active follow-up", mentions: [] },
       ]);
-      // Nothing was dispatched, and queueing writes no timeline event at all:
-      // the queue rows above the composer are the only narration of a wait.
       expect(
         harness.db
           .select({ type: events.type })
@@ -3360,6 +3305,7 @@ describe("public thread data routes", () => {
         threadId: thread.id,
         content: textInput("Third queued message"),
       });
+      const notifyThread = vi.spyOn(harness.hub, "notifyThread");
       const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${secondQueuedMessage.id}/order`,
         {
@@ -3383,6 +3329,7 @@ describe("public thread data routes", () => {
         secondQueuedMessage.id,
         thirdQueuedMessage.id,
       ]);
+      expect(notifyThread).not.toHaveBeenCalled();
     });
   });
 
@@ -4397,9 +4344,6 @@ describe("public thread data routes", () => {
         },
       );
 
-      // "Send now" overrides plugin waits, not core ones: the workspace is
-      // still being prepared, so the row goes back on the queue waiting on that
-      // rather than being dispatched into a thread that cannot take it.
       expect(sendResponse.status).toBe(409);
       await expect(readJson(sendResponse)).resolves.toMatchObject({
         code: "queued_message_still_waiting",

@@ -1,7 +1,8 @@
 import type { TimelineFileChange } from "@bb/server-contract";
 import {
   getFileChangeAction,
-  isPatchMetadataLine,
+  getFileChangeDiffLines,
+  isPlainFileContentDiff,
   type FileChangeAction,
 } from "@bb/thread-view";
 
@@ -12,63 +13,22 @@ export interface RenderablePatchText {
 
 type SyntheticPatchAction = "created" | "deleted";
 
-function splitPatchLines(diff: string): string[] {
-  const normalizedDiff = diff.replaceAll("\r\n", "\n");
-  if (normalizedDiff.length === 0) {
-    return [];
-  }
-  const lines = normalizedDiff.split("\n");
-  const lastLine = lines[lines.length - 1];
-  if (lastLine === "") {
-    lines.pop();
-  }
-  return lines;
-}
-
-function getPatchBodyLines(diff: string | null): string[] {
-  if (!diff) {
-    return [];
-  }
-  return splitPatchLines(diff).filter((line) => !isPatchMetadataLine(line));
-}
-
 function normalizePatchPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\/+/u, "");
-}
-
-function buildSyntheticPatchBodyLines(
-  lines: readonly string[],
-  action: SyntheticPatchAction,
-): string[] {
-  const contentPrefix = action === "created" ? "+" : "-";
-  const oppositePrefix = action === "created" ? "-" : "+";
-  const bodyLines: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith(contentPrefix)) {
-      bodyLines.push(line);
-      continue;
-    }
-    if (line.startsWith(oppositePrefix) || line.startsWith(" ")) {
-      continue;
-    }
-    bodyLines.push(`${contentPrefix}${line}`);
-  }
-
-  return bodyLines;
 }
 
 function toSyntheticPatch(
   change: TimelineFileChange,
   action: SyntheticPatchAction,
 ): string | null {
-  const lines = getPatchBodyLines(change.diff);
-  if (lines.length === 0) return null;
+  const contentPrefix = action === "created" ? "+" : "-";
+  const bodyLines = getFileChangeDiffLines(change).filter((line) =>
+    line.startsWith(contentPrefix),
+  );
+  if (bodyLines.length === 0) return null;
   const normalizedPath = normalizePatchPath(change.path);
   const fromPath = action === "created" ? "/dev/null" : `a/${normalizedPath}`;
   const toPath = action === "created" ? `b/${normalizedPath}` : "/dev/null";
-  const bodyLines = buildSyntheticPatchBodyLines(lines, action);
-  if (bodyLines.length === 0) return null;
   const oldCount = action === "created" ? 0 : bodyLines.length;
   const newCount = action === "created" ? bodyLines.length : 0;
   const body = bodyLines.join("\n");
@@ -76,7 +36,7 @@ function toSyntheticPatch(
 }
 
 function toSyntheticUpdatePatch(change: TimelineFileChange): string | null {
-  const bodyLines = getPatchBodyLines(change.diff);
+  const bodyLines = getFileChangeDiffLines(change);
   if (bodyLines.length === 0) {
     return null;
   }
@@ -97,7 +57,7 @@ export function getRenderablePatchText(
   change: TimelineFileChange,
 ): RenderablePatchText | null {
   const patch = change.diff;
-  if (patch && patch.trim().length > 0) {
+  if (patch && patch.trim().length > 0 && !isPlainFileContentDiff(change)) {
     const trimmedPatch = patch.trimEnd();
     if (
       trimmedPatch.startsWith("diff --git") ||

@@ -1,6 +1,8 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { createAccountClient } from "./account-client.js";
-import { AccountLink } from "./account-link.js";
+import {
+  createAccountClient,
+  watchAccount,
+} from "bb-plugin-bb-account/src/client.js";
 import { resolveDefaultConnectBaseUrl } from "@bb/connect-client";
 import { registerConnectCli } from "./cli.js";
 import { HostedConnectApi } from "./hosted.js";
@@ -169,24 +171,27 @@ export function createConnectPlugin(options: ConnectPluginOptions = {}) {
       );
     });
 
-    const link = new AccountLink({
+    const copy = new CredentialCopy({
       account,
-      copy: new CredentialCopy({
-        account,
-        store: createCredentialCopyStore(bb.storage.kv),
-        log: bb.log,
-      }),
+      store: createCredentialCopyStore(bb.storage.kv),
       log: bb.log,
-      onAccount: (next) => tunnel.setAccount(next),
-      ...(options.accountRetryMinMs === undefined
-        ? {}
-        : { retryMinMs: options.accountRetryMinMs }),
     });
 
     bb.background.service("tunnel", {
       async start(signal) {
         await tunnel.start();
-        await link.run(signal);
+        await watchAccount(
+          {
+            account,
+            log: bb.log,
+            onAccount: (next) => tunnel.setAccount(next),
+            sync: (status) => copy.sync(status),
+            ...(options.accountRetryMinMs === undefined
+              ? {}
+              : { retryMinMs: options.accountRetryMinMs }),
+          },
+          signal,
+        );
         tunnel.stop();
       },
     });

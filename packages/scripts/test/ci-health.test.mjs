@@ -184,7 +184,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
         return { jobs: [job(101, "build", 1, "success", 10, 50)] };
       if (path.endsWith("page=2")) throw new Error("upstream unavailable");
       return {
-        jobs: Array.from({ length: 100 }, (_, index) =>
+        jobs: Array.from({ length: 50 }, (_, index) =>
           job(index + 1, `test-${index}`, 1, "success", 10, 20),
         ),
       };
@@ -199,7 +199,7 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
   expect(evidence.errors).toEqual([
     { scope: "run 1", message: "upstream unavailable" },
   ]);
-  expect(evidence.runs[0].jobs).toHaveLength(100);
+  expect(evidence.runs[0].jobs).toHaveLength(50);
   const report = summarizeCiHealth(evidence.runs);
   expect(report.incompleteRuns).toBe(1);
   expect(report.durationSeconds).toEqual({ count: 1, median: 50, p90: 50 });
@@ -225,4 +225,58 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
       ...report,
     }),
   ).toContain("INCOMPLETE COLLECTION");
+});
+
+it("keeps collecting and checkpointing while one job inventory stalls without exceeding six requests", async () => {
+  const stalled = Promise.withResolvers();
+  const started = [];
+  const checkpoints = [];
+  let active = 0;
+  let peak = 0;
+  const collection = collectCiHealth(
+    async (path) => {
+      if (path.startsWith("actions/workflows/"))
+        return {
+          total_count: 12,
+          workflow_runs: Array.from({ length: 12 }, (_, index) =>
+            run(index + 1, 1, "success", []),
+          ),
+        };
+      const id = Number(path.split("/")[2]);
+      started.push(id);
+      peak = Math.max(peak, ++active);
+      try {
+        await Promise.resolve();
+        if (id === 1) await stalled.promise;
+        return { jobs: [job(id, "test", 1, "success", 10, 20)] };
+      } finally {
+        active--;
+      }
+    },
+    time(0),
+    time(3_600),
+    (snapshot) => checkpoints.push(structuredClone(snapshot)),
+  );
+  try {
+    await expect
+      .poll(() => started.includes(12), { timeout: 1_000 })
+      .toBe(true);
+    expect(peak).toBeLessThanOrEqual(6);
+    expect(active).toBe(1);
+    expect(
+      checkpoints.some(
+        ({ runs }) =>
+          !runs[0].jobsComplete &&
+          runs.filter(({ jobsComplete }) => jobsComplete).length >= 6,
+      ),
+    ).toBe(true);
+  } finally {
+    stalled.resolve();
+    await collection;
+  }
+  const evidence = await collection;
+  expect(evidence.errors).toEqual([]);
+  expect(evidence.runs.every(({ jobsComplete }) => jobsComplete)).toBe(true);
+  expect(summarizeCiHealth(evidence.runs).durationSeconds.count).toBe(12);
+  expect(checkpoints.at(-1)).toEqual(evidence);
 });

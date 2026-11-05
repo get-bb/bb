@@ -21,10 +21,15 @@ import type {
 import {
   interruptActiveThreadsForHost,
   reconcileDaemonReportedThreads,
+  resendStopsAwaitingDaemon,
 } from "../services/threads/thread-lifecycle.js";
 import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
 import { reconcileDaemonReportedOpenWork } from "../services/threads/open-work-reconciliation.js";
+import {
+  planRestartResumes,
+  queueRestartResumes,
+} from "../services/threads/restart-resume.js";
 import { interruptEnvironmentProvisioningForHost } from "../services/environments/environment-engine.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -75,7 +80,9 @@ export async function handleHostSessionOpened(
     {
       sessionId: args.openedSession.id,
       hostId: args.hostId,
+      instanceId: args.openedSession.instanceId,
       replacedSessionId: args.previousSession?.id ?? null,
+      replacedInstanceId: args.previousSession?.instanceId ?? null,
     },
     "Session opened",
   );
@@ -110,6 +117,9 @@ export async function handleHostSessionOpened(
   }
 
   if (replacedSession && !sameDaemonInstance) {
+    const continuations = planRestartResumes(deps, {
+      hostId: args.hostId,
+    });
     interruptEnvironmentProvisioningForHost(deps, {
       hostId: args.hostId,
       reason: DAEMON_RESTARTED_ENVIRONMENT_PROVISIONING_REASON,
@@ -118,12 +128,20 @@ export async function handleHostSessionOpened(
       hostId: args.hostId,
       reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
     });
-    interruptActiveThreadsForHost(deps, {
+    const interrupted = interruptActiveThreadsForHost(deps, {
       includeStopping: false,
       hostId: args.hostId,
       reason: "host-daemon-restarted",
+      resumingThreadIds: new Set(continuations.keys()),
     });
-    settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+    settleDanglingBackgroundTasks(deps, {
+      hostId: args.hostId,
+      reason: "host-daemon-restarted",
+    });
+    await queueRestartResumes(deps, {
+      continuations,
+      interrupted: interrupted.threads,
+    });
   }
 
   await reconcileDaemonReportedThreads(deps, {
@@ -154,14 +172,12 @@ export function handleDaemonSocketClosed(
 }
 
 export function handleDaemonSocketOpened(
-  deps: Pick<
-    AppDeps,
-    "db" | "hub" | "pendingInteractions" | "providerRegistry"
-  >,
+  deps: LoggedPendingInteractionWorkSessionDeps,
   args: { hostId: string },
 ): void {
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
   deps.pendingInteractions.redeliverAnswersAwaitingDaemon(args.hostId);
+  resendStopsAwaitingDaemon(deps, args.hostId);
 }
 
 export function handleDaemonSessionSilent(
@@ -258,8 +274,12 @@ export function settleRemovedHostWork(
     includeStopping: true,
     hostId: args.hostId,
     reason: "host-removed",
+    resumingThreadIds: new Set(),
   });
-  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+  settleDanglingBackgroundTasks(deps, {
+    hostId: args.hostId,
+    reason: "host-removed",
+  });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }
 
@@ -297,13 +317,17 @@ function settleLostHostWork(
     hostId: args.hostId,
     reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
   });
-  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
+  settleDanglingBackgroundTasks(deps, {
+    hostId: args.hostId,
+    reason: "host-connection-lost",
+  });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
   interruptActiveThreadsForHost(deps, {
     includeStopping: false,
     hostId: args.hostId,
     reason: "host-daemon-restarted",
     cause: "host-connection-lost",
+    resumingThreadIds: new Set(),
   });
   interruptEnvironmentProvisioningForHost(deps, {
     hostId: args.hostId,

@@ -66,6 +66,7 @@ import {
 import {
   extractAssistantText,
   extractClaudeCommandExecutionOutput,
+  extractClaudeCommandExitCode,
   extractClaudeContextWindowUsage,
   extractClaudeRequestContextTokens,
   extractClaudeResultTokenUsage,
@@ -103,7 +104,7 @@ function terminalToolShape(
 function terminalCloseFields(
   shape: DeltaItemShape,
   outputText: string | undefined,
-  isError: boolean,
+  exitCode: number,
 ): Pick<
   Extract<ThreadDelta, { kind: "item.close" }>,
   "exitCode" | "aggregatedOutput" | "resultText"
@@ -111,7 +112,7 @@ function terminalCloseFields(
   switch (shape.type) {
     case "command":
       return {
-        exitCode: isError ? 1 : 0,
+        exitCode,
         ...(outputText === undefined ? {} : { aggregatedOutput: outputText }),
       };
     case "fileRead":
@@ -427,6 +428,7 @@ function createThreadState(): ClaudeThreadDialectState {
 export interface ClaudeDeltaTranslatorOptions {
   cwd?: string | undefined;
   sandboxEnabled: boolean;
+  commandDescriptionsEnabled: boolean;
 }
 
 export function createClaudeDeltaTranslator(
@@ -434,6 +436,7 @@ export function createClaudeDeltaTranslator(
 ) {
   const sessionCwd = options.cwd;
   let sandboxEnabled = options.sandboxEnabled;
+  let commandDescriptionsEnabled = options.commandDescriptionsEnabled;
   const statesByThreadId = new Map<string, ClaudeThreadDialectState>();
   let injectedToolsByName = new Map<string, ClaudeInjectedTool>();
 
@@ -917,6 +920,7 @@ export function createClaudeDeltaTranslator(
         input: toolUse.input,
         injectedTools: injectedToolsByName,
         sandboxEnabled,
+        commandDescriptionsEnabled,
       });
       state.startedTools.set(toolUse.id, classified);
       deltas.push(...releaseHeldSkillOpen(state, undefined));
@@ -1045,7 +1049,11 @@ export function createClaudeDeltaTranslator(
         kind: "item.close",
         key: { providerItemId: result.toolUseId, ...parentRefField },
         status,
-        ...terminalCloseFields(base.shape, outputText, result.isError),
+        ...terminalCloseFields(
+          base.shape,
+          outputText,
+          extractClaudeCommandExitCode(result),
+        ),
         item: terminalToolShape(base.shape, outputText),
         presentation: base.presentation,
       });
@@ -1384,6 +1392,15 @@ export function createClaudeDeltaTranslator(
     return deltas;
   }
 
+  function buildBackgroundTaskSettlementDeltas(
+    threadId: string,
+  ): ThreadDelta[] {
+    const state = statesByThreadId.get(threadId);
+    return state === undefined
+      ? []
+      : buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById });
+  }
+
   function hasOpenTurn(threadId: string): boolean {
     return statesByThreadId.get(threadId)?.mirror.turnOpen === true;
   }
@@ -1413,10 +1430,14 @@ export function createClaudeDeltaTranslator(
 
   return {
     acceptInput,
+    buildBackgroundTaskSettlementDeltas,
     buildSessionSettlementDeltas,
     configureInjectedTools,
     configureSandbox: (enabled: boolean) => {
       sandboxEnabled = enabled;
+    },
+    configureCommandDescriptions: (enabled: boolean) => {
+      commandDescriptionsEnabled = enabled;
     },
     hasOpenTurn,
     setClaudeModelContextWindowHint,

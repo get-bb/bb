@@ -11,6 +11,7 @@ import {
   resetActiveThreadEventPruningState,
 } from "../services/system/event-pruning.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import { rejectUnconfirmedSteersAfterTurnCompleted } from "../services/threads/unconfirmed-turn-requests.js";
 
 interface ApplyTurnCompletedEventResult {
   isRootTurnCompletion: boolean;
@@ -51,6 +52,7 @@ export function applyTurnCompletedEvent(
     return { isRootTurnCompletion, nextStatus: null, thread };
   }
 
+  rejectUnconfirmedSteersAfterTurnCompleted(deps, payload.threadId);
   const outcome = applyLoggedThreadLifecycleEvent(deps, {
     event: lifecycleEventForTurnCompletion(payload.status),
     threadId: payload.threadId,

@@ -67,7 +67,6 @@ function fakeUseCommandSuggestions(
 ): ReturnType<typeof useCommandSuggestions> {
   composerSearchQueries.command(args.query, args.activeTrigger);
   return {
-    triggers: args.skillsTriggers,
     suggestions: [...state.commandSuggestions],
     isLoading: false,
     isRefreshing: false,
