@@ -93,6 +93,7 @@ describe("useRefetchOnUpdateNeeded", () => {
           signingIn: false,
           signInFailed: false,
           installInfoPending: cli.isPending,
+          whileInstallInfoPending: "offerInstall",
         });
       },
       {

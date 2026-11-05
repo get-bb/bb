@@ -7,6 +7,7 @@ import {
   isActiveTerminalSessionStatus,
   mobileAppDownloads,
 } from "@bb/domain";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import {
@@ -17,6 +18,7 @@ import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
@@ -48,6 +50,7 @@ import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { terminalOutputTailQueryKey } from "@/hooks/queries/query-keys";
 import {
+  hostProviderCliStatusQueryOptions,
   useHostProviderCliStatus,
   useSystemConfig,
   useSystemProviderStates,
@@ -81,7 +84,6 @@ import {
   OnboardingPluginGrid,
   OnboardingPluginGridSkeleton,
   ProjectsStep,
-  ConnectUnavailableRow,
   RedesignedDevicesStep,
   type OnboardingAgent,
   type OnboardingRepo,
@@ -92,8 +94,8 @@ import {
   ONBOARDING_STEPS,
   STEP_COPY,
   connectAccessUrl,
+  devicesShowMachines,
   connectFlowFailed,
-  signInInstructionReady,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   featuredPluginEntryIds,
@@ -138,6 +140,8 @@ const REDESIGN_INSTALL_FAILED_MESSAGE =
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
 const ONBOARDING_PHONE_QUERY = "(max-width: 640px) and (pointer: coarse)";
 const ONBOARDING_COMPACT_QUERY = "(max-width: 640px)";
+
+function noop() {}
 
 function stepCopy(redesign: boolean, step: OnboardingStepId) {
   return STEP_COPY[redesign ? "new" : "control"][step];
@@ -377,6 +381,7 @@ function AgentStepContainer({
     hostId === null ? { enabled: false } : { hostId },
   );
   const cliStatusQuery = useHostProviderCliStatus({ hostId });
+  const queryClient = useQueryClient();
   const installRunner = useProviderCliInstallRunner();
   const { isLocalDaemonHost } = useHostDaemon();
   const createTerminal = useCreateTerminal();
@@ -457,9 +462,36 @@ function AgentStepContainer({
     return () => window.clearInterval(poll);
   }, [refetchStates, settlingCount]);
 
-  const startInstall = (providerId: string) => {
-    const status = cliStatusQuery.data?.[providerId];
-    if (hostId === null || status === undefined) return;
+  const [awaitingInstallInfoIds, setAwaitingInstallInfoIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const loadInstallInfo = async (
+    targetHostId: string,
+    providerId: string,
+  ): Promise<ProviderCliStatusResponse | undefined> => {
+    setAwaitingInstallInfoIds((ids) => new Set(ids).add(providerId));
+    try {
+      return await queryClient.fetchQuery(
+        hostProviderCliStatusQueryOptions({ hostId: targetHostId }),
+      );
+    } catch {
+      return undefined;
+    } finally {
+      setAwaitingInstallInfoIds((ids) => {
+        const next = new Set(ids);
+        next.delete(providerId);
+        return next;
+      });
+    }
+  };
+
+  const startInstall = async (providerId: string) => {
+    if (hostId === null) return;
+    const installInfo =
+      cliStatusQuery.data ??
+      (redesign ? await loadInstallInfo(hostId, providerId) : undefined);
+    const status = installInfo?.[providerId];
+    if (status === undefined) return;
     const issue = buildProviderCliIssue({ provider: providerId, status });
     if (issue === null || !hasProviderCliAction(issue)) return;
     installRunner.startInstall({ hostId, issue, onboardingEntry: entry });
@@ -483,14 +515,15 @@ function AgentStepContainer({
           );
           const jobKey = providerCliJobKey(hostId, health.providerId);
           const signIn = signIns.signIns.get(health.providerId) ?? null;
-          const signingIn = signIn !== null;
+          const starting =
+            redesign && signIns.startingProviderIds.has(health.providerId);
+          const signingIn = signIn !== null || starting;
           const installFailure = installRunner.failuresByJobKey.get(jobKey);
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
             : null;
           const view = signIns.views.get(health.providerId) ?? null;
-          const instructionReady =
-            view !== null && signInInstructionReady(view, connectFlow !== null);
+          const instructionReady = view !== null && view.started;
           return {
             id: health.providerId,
             name: health.displayName,
@@ -500,12 +533,9 @@ function AgentStepContainer({
             ...(redesign && installFailure !== undefined
               ? { installLog: installFailure.logDialogState.log }
               : {}),
-            busy:
-              redesign &&
-              (signIns.startingProviderIds.has(health.providerId) ||
-                (signingIn && connectFlow === null && !instructionReady)),
             subline:
               redesign &&
+              connectFlow === null &&
               signIn !== null &&
               view !== null &&
               instructionReady ? (
@@ -532,6 +562,7 @@ function AgentStepContainer({
               health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
+                awaitingInstallInfoIds.has(health.providerId) ||
                 installRunner.runningJobKey === jobKey ||
                 installRunner.queuedJobKeys.has(jobKey) ||
                 (settlingJobKeys.has(jobKey) &&
@@ -546,9 +577,29 @@ function AgentStepContainer({
               signingIn,
               signInFailed: signIns.failedProviderIds.has(health.providerId),
               installInfoPending: cliStatusQuery.isPending,
+              whileInstallInfoPending: redesign ? "offerInstall" : "checking",
             }),
             expanded:
-              signingIn && signIn !== null ? (
+              signIn === null ? (
+                starting ? (
+                  <AgentSignInPanel
+                    connect={connectFlow !== null}
+                    agentName={health.displayName}
+                    view={{
+                      guide: null,
+                      terminalVisible: connectFlow !== null,
+                      started: false,
+                    }}
+                    code=""
+                    codeSubmitted={false}
+                    terminal={null}
+                    onCodeChange={noop}
+                    onSubmitCode={noop}
+                    onCopy={noop}
+                    onToggleTerminal={noop}
+                  />
+                ) : undefined
+              ) : (
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}
@@ -579,7 +630,7 @@ function AgentStepContainer({
                     signIns.setView(health.providerId, nextView)
                   }
                 />
-              ) : undefined,
+              ),
           };
         });
 
@@ -610,7 +661,7 @@ function AgentStepContainer({
         machineName={hostName}
         agents={agents}
         onSignIn={(providerId) => void startSignIn(providerId)}
-        onInstall={startInstall}
+        onInstall={(providerId) => void startInstall(providerId)}
         onViewInstallLog={viewInstallLog}
         onCancelSignIn={(providerId) => signIns.end(providerId)}
         onRecheck={() => {
@@ -1073,6 +1124,10 @@ function DevicesStepContainer({
     (host) => host.id !== hostId,
   ).length;
   const connect = connectAccessUrl(configQuery.data?.serverAccess);
+  const connectContributesSection = usePluginSlots().setupGuideSections.some(
+    (section) => section.pluginId === CONNECT_PLUGIN_ID,
+  );
+  const showMachines = devicesShowMachines(connect, connectContributesSection);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
@@ -1103,17 +1158,18 @@ function DevicesStepContainer({
       >
         <RedesignedDevicesStep
           hostName={hostName}
-          showMachines={connect.status === "on"}
+          showMachines={showMachines}
           connectSection={
-            <PluginSetupGuideSections
-              pluginId={CONNECT_PLUGIN_ID}
-              onPhone={onPhone}
-              onSetupStarted={startRemoteAccessSetup}
-              fallback={<ConnectUnavailableRow />}
-            />
+            connectContributesSection ? (
+              <PluginSetupGuideSections
+                pluginId={CONNECT_PLUGIN_ID}
+                onPhone={onPhone}
+                onSetupStarted={startRemoteAccessSetup}
+              />
+            ) : null
           }
           addMachinePanel={
-            addMachineOpen && connect.status === "on" ? (
+            addMachineOpen && showMachines ? (
               <AddMachineInline />
             ) : null
           }

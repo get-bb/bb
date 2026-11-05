@@ -292,7 +292,6 @@ export interface OnboardingAgent {
   provider: ExperimentalProviderIconProps["provider"];
   state: AgentSetupState;
   setup?: "signIn" | "connect";
-  busy?: boolean;
   installQueued?: boolean;
   installLog?: string;
   subline?: ReactNode;
@@ -375,7 +374,9 @@ function quietAgentSubline(
     case "unknown":
       return state.message ?? AGENT_STATUS_COPY.unknown;
     case "signingIn":
-      return setup === "connect" ? "Finish connecting below" : null;
+      return setup === "connect"
+        ? "Choose a provider and sign in below."
+        : null;
     case "install":
     case "installing":
       return null;
@@ -481,7 +482,6 @@ function AgentRow({
   const inProgress =
     state.status === "checking" ||
     (state.status === "signingIn" && hasQuietSubtitle);
-  const busy = agent.busy === true;
   const signInLabel = "Sign in";
   return (
     <li className="px-3 py-3" data-agent-id={agent.id}>
@@ -557,16 +557,15 @@ function AgentRow({
               </span>
             )
           ) : null}
-          {quiet &&
-          ((state.status === "signIn" && state.canSignIn) ||
-            (state.status === "signingIn" && busy)) ? (
-            <AgentActionButton
-              agent={agent}
-              label={signInLabel}
-              busyLabel="Starting…"
-              busy={busy}
+          {quiet && state.status === "signIn" && state.canSignIn ? (
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => onSignIn(agent.id)}
-            />
+            >
+              <AgentActionIcon agent={agent} quiet />
+              {signInLabel}
+            </Button>
           ) : null}
           {!quiet && state.status === "signIn" && state.canSignIn ? (
             <Button
@@ -620,7 +619,7 @@ function AgentRow({
               {installActionLabel(state)}
             </Button>
           ) : null}
-          {state.status === "signingIn" && !busy ? (
+          {state.status === "signingIn" ? (
             quiet ? (
               <RowDismissButton
                 label={`Cancel signing in to ${agent.name}`}
@@ -1448,9 +1447,9 @@ export function AgentSignInPanel({
   const url = view.guide?.url ?? null;
   const userCode = view.guide?.userCode ?? null;
   const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
-  const starting = !view.started;
-  const variant: SignInPanelVariant =
-    url !== null && userCode !== null
+  const variant: SignInPanelVariant = connect
+    ? { kind: "waiting" }
+    : url !== null && userCode !== null
       ? {
           kind: "code",
           code: userCode,
@@ -1466,13 +1465,12 @@ export function AgentSignInPanel({
             onSubmit: onSubmitCode,
           }
         : { kind: "waiting" };
-  if (starting && !connect) return null;
   return (
     <div className="mt-3">
       <SignInPanel
         flush
         flushBottom
-        status={codeSubmitted ? "Finishing sign-in…" : undefined}
+        status={!connect && codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={
           <DisclosureToggle
@@ -1487,16 +1485,6 @@ export function AgentSignInPanel({
         }
       />
     </div>
-  );
-}
-
-export function ConnectUnavailableRow() {
-  return (
-    <SetupOptionRow
-      icon="ComputerCloud"
-      title="bb connect"
-      description="bb connect is turned off on this server. Turn on its plugin to get a private getbb.app address."
-    />
   );
 }
 
@@ -1518,9 +1506,11 @@ export function RedesignedDevicesStep({
   const open = addMachinePanel !== null;
   return (
     <div className="flex flex-col gap-3">
-      <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
-        {connectSection}
-      </SetupOptionGroup>
+      {connectSection === null ? null : (
+        <SetupOptionGroup label="Where you use bb" labelHidden={!showMachines}>
+          {connectSection}
+        </SetupOptionGroup>
+      )}
       {showMachines ? (
         <SetupOptionGroup label="Where agents run">
           <SetupOptionRow

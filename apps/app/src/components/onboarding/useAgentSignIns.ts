@@ -89,7 +89,14 @@ export function useAgentSignIns({
   const end = useCallback(
     (providerId: string, outcome: SignInOutcome = "cancelled") => {
       const current = signInsRef.current.get(providerId);
-      if (current === undefined) return;
+      if (current === undefined) {
+        const request = requestsRef.current.get(providerId);
+        if (request !== undefined) {
+          requestsRef.current.set(providerId, request + 1);
+          setStartingProviderIds((ids) => withoutKey(ids, providerId));
+        }
+        return;
+      }
       signInsRef.current.delete(providerId);
       recordTelemetryEvent({
         name: "onboarding_sign_in",

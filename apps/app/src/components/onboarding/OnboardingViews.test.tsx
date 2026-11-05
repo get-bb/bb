@@ -308,14 +308,6 @@ describe("AgentSignInInstruction", () => {
       site: "auth.openai.com",
       text: "Sign in on auth.openai.com, or use a code instead.",
     },
-    {
-      name: "Pi connect sign-in",
-      agentName: "Pi",
-      url: "https://claude.ai/oauth/authorize?code=true&state=abc",
-      overrides: { paste: true },
-      site: "claude.ai",
-      text: "Sign in on claude.ai, then paste the code it shows you.",
-    },
   ])("links the sign-in page in the $name line", (example) => {
     const onOpenUrl = vi.fn();
     const line = renderInstruction(example.url, {
@@ -333,25 +325,6 @@ describe("AgentSignInInstruction", () => {
 });
 
 describe("AgentSignInPanel", () => {
-  it("stays hidden while sign-in is still starting", () => {
-    const { container } = render(
-      <AgentSignInPanel
-        connect={false}
-        agentName="Cursor"
-        view={{ guide: null, terminalVisible: false, started: false }}
-        code=""
-        codeSubmitted={false}
-        terminal={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onCopy={vi.fn()}
-        onToggleTerminal={vi.fn()}
-      />,
-    );
-
-    expect(container.textContent).toBe("");
-  });
-
   it("keeps the terminal toggle once the terminal was hidden after showing", () => {
     render(
       <AgentSignInPanel
@@ -402,40 +375,66 @@ describe("AgentSignInPanel", () => {
     expect(screen.queryByText(/continues automatically/u)).toBeNull();
   });
 
-  it.each([
-    { name: "Codex browser", connect: false, acceptsPastedCode: false },
-    { name: "Pi connect", connect: true, acceptsPastedCode: true },
-  ])(
-    "keeps the $name sign-in link out of the panel toolbar",
-    ({ connect, acceptsPastedCode }) => {
-      render(
-        <AgentSignInPanel
-          connect={connect}
-          agentName={connect ? "Pi" : "Codex"}
-          view={{
-            guide: {
-              url: "https://auth.openai.com/oauth/authorize?state=abc",
-              userCode: null,
-              acceptsPastedCode,
-            },
-            terminalVisible: false,
-            started: true,
-          }}
-          code=""
-          codeSubmitted={false}
-          terminal={null}
-          onCodeChange={vi.fn()}
-          onSubmitCode={vi.fn()}
-          onCopy={vi.fn()}
-          onToggleTerminal={vi.fn()}
-        />,
-      );
+  it("keeps the Codex sign-in link out of the panel toolbar", () => {
+    render(
+      <AgentSignInPanel
+        connect={false}
+        agentName="Codex"
+        view={{
+          guide: {
+            url: "https://auth.openai.com/oauth/authorize?state=abc",
+            userCode: null,
+            acceptsPastedCode: false,
+          },
+          terminalVisible: false,
+          started: true,
+        }}
+        code=""
+        codeSubmitted={false}
+        terminal={null}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
 
-      expect(screen.queryByRole("link")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
-      expect(screen.getByText("Show terminal")).toBeTruthy();
-    },
-  );
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
+    expect(screen.getByText("Show terminal")).toBeTruthy();
+  });
+
+  it("leaves Pi's sign-in to its terminal even when Pi asks for a code", () => {
+    render(
+      <AgentSignInPanel
+        connect
+        agentName="Pi"
+        view={{
+          guide: {
+            url: "https://claude.ai/oauth/authorize?code=true&state=abc",
+            userCode: "ABCD-EFGH",
+            acceptsPastedCode: true,
+          },
+          terminalVisible: true,
+          started: true,
+        }}
+        code="pasted"
+        codeSubmitted
+        terminal={<div>pi terminal</div>}
+        onCodeChange={vi.fn()}
+        onSubmitCode={vi.fn()}
+        onCopy={vi.fn()}
+        onToggleTerminal={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("pi terminal")).toBeTruthy();
+    expect(screen.getByText("Hide terminal")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByText("ABCD-EFGH")).toBeNull();
+    expect(screen.queryByText("Finishing sign-in…")).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
 });
 
 function renderQuiet(agents: OnboardingAgent[]) {
@@ -466,6 +465,19 @@ function hasSubtitle(id: string): boolean {
 }
 
 describe("AgentStep progress in the redesign", () => {
+  it("tells Pi users to choose a provider in the terminal while signing in", () => {
+    renderQuiet([
+      { ...agent("pi", { status: "signingIn" }), setup: "connect" },
+    ]);
+
+    expect(
+      within(rowOf("pi")).getByText("Choose a provider and sign in below."),
+    ).toBeTruthy();
+    within(rowOf("pi")).getByRole("button", {
+      name: "Cancel signing in to pi",
+    });
+  });
+
   it("drops subtitles the button already says and keeps informative ones", () => {
     renderQuiet([
       agent("claude-code", {
@@ -533,57 +545,43 @@ describe("AgentStep progress in the redesign", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows Starting… in the button until the sign-in instruction is ready", () => {
-    const { rerender, handlers } = renderQuiet([
+  it("switches to the signing-in layout as soon as Sign in is clicked", () => {
+    renderQuiet([
       {
-        ...agent("claude-code", {
-          status: "signIn",
-          reason: "signedOut",
-          canSignIn: true,
-        }),
-        busy: true,
+        ...agent("claude-code", { status: "signingIn" }),
+        expanded: (
+          <AgentSignInPanel
+            connect={false}
+            agentName="claude-code"
+            view={{ guide: null, terminalVisible: false, started: false }}
+            code=""
+            codeSubmitted={false}
+            terminal={null}
+            onCodeChange={vi.fn()}
+            onSubmitCode={vi.fn()}
+            onCopy={vi.fn()}
+            onToggleTerminal={vi.fn()}
+          />
+        ),
       },
     ]);
-    const starting = screen.getByRole("button", { name: "Starting…" });
-    expect((starting as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(starting);
-    expect(handlers.onSignIn).not.toHaveBeenCalled();
 
-    rerender(
-      <TooltipProvider>
-        <AgentStep
-          quiet
-          machineName="bee"
-          agents={[
-            { ...agent("claude-code", { status: "signingIn" }), busy: true },
-          ]}
-          {...handlers}
-        />
-      </TooltipProvider>,
-    );
-    screen.getByRole("button", { name: "Starting…" });
-    expect(
-      screen.queryByRole("button", { name: /Cancel signing in/u }),
-    ).toBeNull();
-    expect(hasSubtitle("claude-code")).toBe(false);
-
-    rerender(
-      <TooltipProvider>
-        <AgentStep
-          quiet
-          machineName="bee"
-          agents={[
-            {
-              ...agent("claude-code", { status: "signingIn" }),
-              subline: "Finish signing in on claude.ai.",
-            },
-          ]}
-          {...handlers}
-        />
-      </TooltipProvider>,
-    );
-    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
+    within(rowOf("claude-code")).getByRole("button", {
+      name: "Cancel signing in to claude-code",
+    });
+    within(rowOf("claude-code")).getByText("Show terminal");
     expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
+    expect(hasSubtitle("claude-code")).toBe(false);
+  });
+
+  it("spins beside the sign-in line once it is known", () => {
+    renderQuiet([
+      {
+        ...agent("claude-code", { status: "signingIn" }),
+        subline: "Finish signing in on claude.ai.",
+      },
+    ]);
+    screen.getByRole("button", { name: "Cancel signing in to claude-code" });
     const subtitle = screen.getByText("Finish signing in on claude.ai.");
     expect(
       subtitle.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
@@ -715,5 +713,24 @@ describe("RedesignedDevicesStep", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
     expect(props.onAddMachine).toHaveBeenCalledOnce();
+  });
+
+  it("shows only the machine section when bb connect contributes nothing", () => {
+    render(
+      <TooltipProvider>
+        <RedesignedDevicesStep
+          hostName="bee"
+          connectSection={null}
+          showMachines
+          addMachinePanel={null}
+          onAddMachine={vi.fn()}
+          onCloseAddMachine={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByText("Where you use bb")).toBeNull();
+    expect(screen.queryByText(/turned off on this server/u)).toBeNull();
+    screen.getByText("Add another machine");
   });
 });
