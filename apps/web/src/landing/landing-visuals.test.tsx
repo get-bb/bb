@@ -184,7 +184,7 @@ describe("StartAnywhere", () => {
     expect(html).not.toContain("bar-toggle active");
     expect(html.match(/class="rhb-dock-wrap bw-dock"/g)).toHaveLength(1);
     expect(html).toContain("Ask for a follow-up");
-    expect(html).toContain(">GPT-5.5<");
+    expect(html).toContain(">Codex<");
     const label = html.match(/aria-label="([^"]*)"/)![1]!;
     expect(label).toContain("desktop app");
     expect(label).toContain("iPhone");
