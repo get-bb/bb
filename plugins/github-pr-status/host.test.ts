@@ -24,7 +24,6 @@ const localBranch = "bb/review-github-issue-1235-thr_test";
 const forkRemote = "review-fork";
 const upstreamBranch = "per-turn-permission-escalation";
 const forkRemoteUrl = "git@github.com:fork-owner/bb.git";
-const qualifiedUpstream = `fork-owner:${upstreamBranch}`;
 
 function pullRequestJson(): string {
   return JSON.stringify({
@@ -229,17 +228,11 @@ describe("pull request lookup for differently named upstream branches", () => {
         outcome: "found",
         pullRequest: { number: 1236 },
       });
-      await harness.experimental_call("act", {
-        path: workspacePath,
-        action: { operation: "ready" },
-      });
 
-      const calls = await gh.readCalls();
-      expect(calls).toHaveLength(2);
+      expect(await gh.readCalls()).toHaveLength(1);
       expect((await gh.readQueries())[0]).toContain(
         `headRefName: "${localBranch}"`,
       );
-      expect(calls[1]).toEqual(["pr", "ready"]);
     },
   );
 
@@ -436,9 +429,10 @@ describe("pull request lookup for differently named upstream branches", () => {
     expect(await gh.readCalls()).toHaveLength(2);
   });
 
-  it("uses the qualified upstream target for ready, draft, and merge actions", async () => {
+  it("runs ready, draft, and merge against the checked pull request URL", async () => {
     const workspacePath = await createTrackedForkWorkspace();
     const gh = await installFakeGh({});
+    const url = "https://github.com/upstream-owner/bb/pull/1236";
 
     for (const action of [
       { operation: "ready" },
@@ -446,14 +440,14 @@ describe("pull request lookup for differently named upstream branches", () => {
       { operation: "merge", method: "squash" },
     ] as const) {
       await expect(
-        harness.experimental_call("act", { path: workspacePath, action }),
+        harness.experimental_call("act", { path: workspacePath, url, action }),
       ).resolves.toEqual({ ok: true });
     }
 
     expect(await gh.readCalls()).toEqual([
-      ["pr", "ready", qualifiedUpstream],
-      ["pr", "ready", qualifiedUpstream, "--undo"],
-      ["pr", "merge", qualifiedUpstream, "--squash"],
+      ["pr", "ready", url],
+      ["pr", "ready", url, "--undo"],
+      ["pr", "merge", url, "--squash"],
     ]);
   });
 
@@ -544,20 +538,11 @@ describe("workspace state", () => {
     });
   });
 
-  it("refuses actions from a detached workspace", async () => {
+  it("finds no pull request from a detached workspace", async () => {
     const workspacePath = await createRepository("bb-pr-detached-");
     await runGit(["checkout", "--detach"], { cwd: workspacePath });
     const gh = await installFakeGh({});
 
-    await expect(
-      harness.experimental_call("act", {
-        path: workspacePath,
-        action: { operation: "ready" },
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      message: "Cannot update pull request from a detached workspace",
-    });
     await expect(
       view({
         path: workspacePath,

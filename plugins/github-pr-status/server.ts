@@ -482,7 +482,15 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
         `${machine.name} isn't available, so its pull request can't be changed. Start the machine and try again.`,
       );
     }
-    const result = await loadPullRequest(environmentId, null, true);
+    const url = store.currentUrl(environmentId);
+    let result = await loadPullRequest(environmentId, url, true);
+    if (
+      url !== null &&
+      result.outcome === "available" &&
+      (result.pullRequest.state === "merged" ||
+        result.pullRequest.state === "closed")
+    )
+      result = await loadPullRequest(environmentId, null, true);
     if (result.outcome === "unavailable") refuse(result.message);
     if (result.outcome === "absent") refuse("No pull request found");
     return {
@@ -502,7 +510,7 @@ export default function githubPrStatusPlugin(bb: BbPluginApi): void {
     try {
       const result = await host.call(
         "act",
-        { path: target.path, action },
+        { path: target.path, url: target.pullRequest.url, action },
         { hostId: target.environment.hostId, timeoutMs: 90_000 },
       );
       if (!result.ok) refuse(result.message);

@@ -428,11 +428,80 @@ describe("GitHub PR Status server", () => {
       {
         input: {
           path: "/work/env-1",
+          url: "https://github.com/acme/bb/pull/7",
           action: { operation: "merge", method: "rebase" },
         },
         hostId: "host-1",
       },
     ]);
+  });
+
+  it("prechecks a known pull request by its URL and acts on that URL", async () => {
+    const fake = await setup({});
+    await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
+
+    await fake.harness.callRpc("merge", {
+      environmentId: "env-1",
+      method: "squash",
+    });
+
+    const calls = fake.harness.experimental_hostRpcCalls;
+    expect(
+      calls.filter((call) => call.method === "views").map((call) => call.input),
+    ).toEqual([
+      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
+      {
+        reads: [
+          {
+            path: "/work/env-1",
+            url: "https://github.com/acme/bb/pull/7",
+            refresh: true,
+          },
+        ],
+      },
+    ]);
+    expect(calls.find((call) => call.method === "act")?.input).toEqual({
+      path: "/work/env-1",
+      url: "https://github.com/acme/bb/pull/7",
+      action: { operation: "merge", method: "squash" },
+    });
+  });
+
+  it("rediscovers the branch when the known pull request has closed, and acts on the newer one", async () => {
+    const closedUrl = "https://github.com/acme/bb/pull/6";
+    let branchPullRequest = view({ number: 6, url: closedUrl });
+    const fake = await setup({
+      callHost: (call) =>
+        call.method === "upstream"
+          ? { oid: null, branchName: "bb/pr" }
+          : call.method === "views"
+            ? (call.input as { reads: { url: string | null }[] }).reads.map(
+                (read) => ({
+                  outcome: "found",
+                  pullRequest:
+                    read.url === closedUrl
+                      ? view({ number: 6, url: closedUrl, state: "CLOSED" })
+                      : branchPullRequest,
+                }),
+              )
+            : { ok: true },
+    });
+    await fake.harness.callRpc("pullRequests", { keys: ["env-1"] });
+    branchPullRequest = view({
+      number: 8,
+      url: "https://github.com/acme/bb/pull/8",
+    });
+
+    await fake.harness.callRpc("merge", {
+      environmentId: "env-1",
+      method: "squash",
+    });
+
+    expect(
+      fake.harness.experimental_hostRpcCalls.find(
+        (call) => call.method === "act",
+      )?.input,
+    ).toMatchObject({ url: "https://github.com/acme/bb/pull/8" });
   });
 
   it("returns the gh failure as a refusal and the CLI prints it", async () => {
