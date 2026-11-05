@@ -92,7 +92,6 @@ import {
   STEP_COPY,
   connectAccessUrl,
   connectFlowFailed,
-  signInInstructionReady,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   featuredPluginEntryIds,
@@ -486,8 +485,7 @@ function AgentStepContainer({
             ? terminalConnectFlow(health.providerId)
             : null;
           const view = signIns.views.get(health.providerId) ?? null;
-          const instructionReady =
-            view !== null && signInInstructionReady(view, connectFlow !== null);
+          const instructionReady = view !== null && view.started;
           return {
             id: health.providerId,
             name: health.displayName,
@@ -503,6 +501,7 @@ function AgentStepContainer({
                 (signingIn && connectFlow === null && !instructionReady)),
             subline:
               redesign &&
+              connectFlow === null &&
               signIn !== null &&
               view !== null &&
               instructionReady ? (

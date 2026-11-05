@@ -375,7 +375,9 @@ function quietAgentSubline(
     case "unknown":
       return state.message ?? AGENT_STATUS_COPY.unknown;
     case "signingIn":
-      return setup === "connect" ? "Finish connecting below" : null;
+      return setup === "connect"
+        ? "Choose a provider and sign in below."
+        : null;
     case "install":
     case "installing":
       return null;
@@ -1449,8 +1451,9 @@ export function AgentSignInPanel({
   const userCode = view.guide?.userCode ?? null;
   const acceptsPastedCode = view.guide?.acceptsPastedCode ?? false;
   const starting = !view.started;
-  const variant: SignInPanelVariant =
-    url !== null && userCode !== null
+  const variant: SignInPanelVariant = connect
+    ? { kind: "waiting" }
+    : url !== null && userCode !== null
       ? {
           kind: "code",
           code: userCode,
@@ -1472,7 +1475,7 @@ export function AgentSignInPanel({
       <SignInPanel
         flush
         flushBottom
-        status={codeSubmitted ? "Finishing sign-in…" : undefined}
+        status={!connect && codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={
           <DisclosureToggle

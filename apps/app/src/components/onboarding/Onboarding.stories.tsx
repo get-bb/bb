@@ -64,11 +64,18 @@ const CODEX_READY: AgentSetupState = {
   detail: "sawyer@acme.dev · Pro",
 };
 
-function FakeTerminal({ command }: { command: string }) {
+function FakeTerminal({
+  command,
+  output,
+}: {
+  command: string;
+  output?: string;
+}) {
   return (
     <pre className="h-full overflow-hidden whitespace-pre-wrap p-3 font-mono text-xs text-foreground">
       <span className="text-muted-foreground">$ </span>
       {command}
+      {output === undefined ? null : `\n${output}`}
     </pre>
   );
 }
@@ -1049,30 +1056,27 @@ function RedesignSignInPanel({ story }: { story: RedesignSignInStory }) {
   );
 }
 
-const PI_SIGN_IN_URL =
-  "https://claude.ai/oauth/authorize?code=true&client_id=example&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback";
+type PiStage = "signingIn" | "failed";
 
-type PiStage = "code" | "finishing" | "failed";
+const PI_LOGIN_MENU = [
+  "> /login",
+  "Select provider to login:",
+  "> Anthropic (Claude Pro/Max)",
+  "  GitHub Copilot",
+  "  Google Cloud Code Assist (Gemini CLI)",
+  "  OpenAI (ChatGPT Plus/Pro)",
+].join("\n");
 
-const PI_SIGN_IN_VIEW = {
-  guide: { url: PI_SIGN_IN_URL, userCode: null, acceptsPastedCode: true },
-  terminalVisible: true,
-  started: true,
-};
-
-function RedesignPiSignInPanel({ stage }: { stage: "code" | "finishing" }) {
-  const [code, setCode] = useState(
-    stage === "finishing" ? "pi-example-code" : "",
-  );
+function RedesignPiSignInPanel() {
   return (
     <AgentSignInPanel
       connect
       agentName="Pi"
-      view={PI_SIGN_IN_VIEW}
-      code={code}
-      codeSubmitted={stage === "finishing"}
-      terminal={<FakeTerminal command="pi" />}
-      onCodeChange={setCode}
+      view={{ guide: null, terminalVisible: true, started: true }}
+      code=""
+      codeSubmitted={false}
+      terminal={<FakeTerminal command="pi" output={PI_LOGIN_MENU} />}
+      onCodeChange={noop}
       onSubmitCode={noop}
       onCopy={noop}
       onToggleTerminal={noop}
@@ -1122,20 +1126,12 @@ function RedesignAgentFrame({
             onOpenUrl={noop}
             onUseAlternate={noop}
           />
-        ) : agent.id === "pi" && (pi === "code" || pi === "finishing") ? (
-          <AgentSignInInstruction
-            agentName={agent.name}
-            view={PI_SIGN_IN_VIEW}
-            alternate={null}
-            onOpenUrl={noop}
-            onUseAlternate={noop}
-          />
         ) : undefined,
       expanded:
         signingInHere && signingIn !== null ? (
           <RedesignSignInPanel story={signingIn} />
-        ) : agent.id === "pi" && (pi === "code" || pi === "finishing") ? (
-          <RedesignPiSignInPanel stage={pi} />
+        ) : agent.id === "pi" && pi === "signingIn" ? (
+          <RedesignPiSignInPanel />
         ) : state.status === "installFailed" ? (
           <AgentInstallErrorDetails
             log={
@@ -1198,15 +1194,7 @@ export function RedesignAgentCodexBrowserSignIn() {
 export function RedesignAgentPiSignIn() {
   return (
     <div className="flex h-screen flex-col">
-      <RedesignAgentFrame signingIn={null} pi="code" />
-    </div>
-  );
-}
-
-export function RedesignAgentPiFinishingSignIn() {
-  return (
-    <div className="flex h-screen flex-col">
-      <RedesignAgentFrame signingIn={null} pi="finishing" />
+      <RedesignAgentFrame signingIn={null} pi="signingIn" />
     </div>
   );
 }
