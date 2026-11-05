@@ -286,11 +286,11 @@ describe("AgentSignInInstruction", () => {
     return screen.getByTestId("instruction");
   }
 
-  it("names the website to finish signing in on", () => {
+  it("names the website to sign in on", () => {
     const line = renderInstruction("https://www.cursor.com/login");
 
     expect(screen.getByRole("link", { name: "cursor.com" })).toBeTruthy();
-    expect(line.textContent).toBe("Finish signing in on cursor.com.");
+    expect(line.textContent).toBe("Sign in on cursor.com.");
   });
 
   it("names the website for paste sign-ins", () => {
@@ -303,7 +303,7 @@ describe("AgentSignInInstruction", () => {
   it("links the browser when the URL has no website", () => {
     const url = "file:///tmp/sign-in";
     expect(renderInstruction(url).textContent).toBe(
-      "Finish signing in in your browser.",
+      "Sign in in your browser.",
     );
     expect(
       screen.getByRole("link", { name: "your browser" }).getAttribute("href"),
@@ -317,7 +317,7 @@ describe("AgentSignInInstruction", () => {
       url: "https://auth.openai.com/oauth/authorize?state=abc",
       overrides: {},
       site: "auth.openai.com",
-      text: "Finish signing in on auth.openai.com.",
+      text: "Sign in on auth.openai.com.",
     },
     {
       name: "Codex one-time code",

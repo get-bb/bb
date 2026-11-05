@@ -1384,7 +1384,7 @@ export function AgentSignInInstruction({
   if (acceptsPastedCode) {
     return <>Sign in {place}, then paste the code it shows you.</>;
   }
-  return <>Finish signing in {place}.</>;
+  return <>Sign in {place}.</>;
 }
 
 interface AgentSignInPanelProps {
