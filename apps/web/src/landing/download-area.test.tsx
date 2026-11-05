@@ -50,7 +50,7 @@ describe("homepage-download-path install block", () => {
   });
 });
 
-describe("homepage-download-area with the homepage-phone-email test", () => {
+describe("homepage-download-path with the homepage-phone-email test", () => {
   function heroHtml(
     touchAction: "share" | "email",
     placement: "hero" | "closer" = "hero",
@@ -60,7 +60,7 @@ describe("homepage-download-area with the homepage-phone-email test", () => {
         value={{
           distinctID: null,
           featureFlags: {
-            "homepage-download-area": "test",
+            "homepage-download-path": "test",
             "homepage-phone-email": touchAction === "email" ? "test" : "control",
           },
           preview: false,
