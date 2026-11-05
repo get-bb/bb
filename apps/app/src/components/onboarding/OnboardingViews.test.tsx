@@ -527,6 +527,20 @@ describe("AgentStep progress in the redesign", () => {
     ).toBeNull();
   });
 
+  it("leaves a ready agent without account detail to its Ready label", () => {
+    renderQuiet([
+      agent("claude-code", { status: "ready", detail: null }),
+      agent("cursor", { status: "ready", detail: "you@example.com · Pro" }),
+      { ...agent("pi", { status: "ready", detail: null }), setup: "connect" },
+    ]);
+
+    expect(hasSubtitle("claude-code")).toBe(false);
+    within(rowOf("claude-code")).getByText("Ready");
+    expect(screen.queryByText("Signed in")).toBeNull();
+    within(rowOf("cursor")).getByText("you@example.com · Pro");
+    within(rowOf("pi")).getByText("Model connected");
+  });
+
   it("shows Installing… in the same disabled button", () => {
     const { rerender } = renderQuiet([
       agent("codex", { status: "install", canInstall: true }),
@@ -616,8 +630,10 @@ describe("AgentStep progress in the redesign", () => {
         canSignIn: true,
       }),
       agent("pi", { status: "installing", update: false }),
+      agent("codex", { status: "ready", detail: null }),
     ]);
     expect(screen.getByText("Installed · not signed in")).toBeTruthy();
+    expect(screen.getByText("Signed in")).toBeTruthy();
     expect(screen.getByText("Installing…")).toBeTruthy();
   });
 });
