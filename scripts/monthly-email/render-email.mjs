@@ -154,7 +154,7 @@ ${themes}
 <a href="${changelog(ym, "cta")}" style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">${escapeHtml(cta.text)}</a></td></tr></table>
 <p style="margin:12px 0 0 0;font-size:14px;color:#555555;">${escapeHtml(cta.download_prefix)} <a href="${download(ym)}" style="color:#555555;">${escapeHtml(cta.download_text)}</a></p></td></tr>
 <tr><td style="padding:44px 0 0 0;"><div style="border-top:1px solid ${RULE};padding-top:24px;font-size:13px;line-height:20px;color:${DIM};text-align:center;">
-You're getting this because you signed up for bb or Terragon updates.<br><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${DIM};">Unsubscribe</a> · ${escapeHtml(spec.address)}</div></td></tr>
+You're getting this because you signed up for updates.<br><a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:${DIM};">Unsubscribe</a> · ${escapeHtml(spec.address)}</div></td></tr>
 </table></td></tr></table></body></html>`;
 }
 
