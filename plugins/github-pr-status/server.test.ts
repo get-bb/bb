@@ -5,7 +5,10 @@ import {
   type ExperimentalFakeHostRpcCall,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GitHubPullRequestView } from "./contract.js";
+import type {
+  GitHubPullRequestView,
+  HostPullRequestLookup,
+} from "./contract.js";
 import plugin, { environmentChangeEffect } from "./server.js";
 
 type Environment = Awaited<
@@ -61,10 +64,31 @@ function view(
   };
 }
 
+type ViewRead = {
+  path: string;
+  known: { url: string; branchName: string | null } | null;
+  refresh: boolean;
+};
+
+function viewResults(
+  call: ExperimentalFakeHostRpcCall,
+  lookup: (read: ViewRead) => HostPullRequestLookup = () => ({
+    outcome: "found",
+    pullRequest: view(),
+  }),
+  oid: string | null = null,
+) {
+  return (call.input as { reads: ViewRead[] }).reads.map((read) => ({
+    lookup: lookup(read),
+    refs: { oid, branchName: "bb/pr" },
+  }));
+}
+
 async function setup(options: {
   environments?: Record<string, Environment>;
   host?: Parameters<typeof makeHostResponse>[0];
   callHost?: (call: ExperimentalFakeHostRpcCall) => unknown;
+  subscribe?: BbPluginApi["sdk"]["subscribe"];
 }) {
   const environments = options.environments ?? { "env-1": environment() };
   const sdkCalls: string[] = [];
@@ -89,18 +113,13 @@ async function setup(options: {
           return makeHostResponse(options.host);
         },
       },
+      ...(options.subscribe === undefined
+        ? {}
+        : { subscribe: options.subscribe }),
     },
     experimental_callHostRpc:
       options.callHost ??
-      ((call) =>
-        call.method === "upstream"
-          ? { oid: null, branchName: "bb/pr" }
-          : call.method === "views"
-            ? (call.input as { reads: unknown[] }).reads.map(() => ({
-                outcome: "found",
-                pullRequest: view(),
-              }))
-            : { ok: true }),
+      ((call) => (call.method === "views" ? viewResults(call) : { ok: true })),
   });
   await plugin(fake.bb);
   return Object.assign(fake, { sdkCalls });
@@ -173,14 +192,10 @@ describe("GitHub PR Status server", () => {
     let branchPullRequest = merged;
     const fake = await setup({
       callHost: (call) =>
-        call.method === "upstream"
-          ? { oid: null, branchName: "bb/pr" }
-          : (call.input as { reads: { url: string | null }[] }).reads.map(
-              (read) => ({
-                outcome: "found",
-                pullRequest: read.url === null ? branchPullRequest : merged,
-              }),
-            ),
+        viewResults(call, (read) => ({
+          outcome: "found",
+          pullRequest: read.known === null ? branchPullRequest : merged,
+        })),
     });
     await fake.harness.runCli(["show", "env-1"]);
     branchPullRequest = view({ number: 8 });
@@ -196,8 +211,66 @@ describe("GitHub PR Status server", () => {
         .filter((call) => call.method === "views")
         .map((call) => call.input),
     ).toEqual([
-      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
-      { reads: [{ path: "/work/env-1", url: null, refresh: false }] },
+      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+    ]);
+  });
+
+  it("re-reads a known PR in one host call and reloads on a ref event only when the upstream moved", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let changed: ((event: { id: string; changes: string[] }) => void) | null =
+      null;
+    let upstream = "oid-1";
+    const fake = await setup({
+      subscribe: (({ callback }: { callback: typeof changed }) => {
+        changed = callback;
+        return () => {};
+      }) as never,
+      callHost: (call) =>
+        call.method === "upstream"
+          ? { oid: upstream, branchName: "bb/pr" }
+          : viewResults(call, undefined, "oid-1"),
+    });
+    const methods = () =>
+      fake.harness.experimental_hostRpcCalls.map((call) => call.method);
+    const stop = fake.harness.experimental_watchRpc("pullRequests", {
+      key: "env-1",
+    });
+    await vi.waitFor(() => expect(methods()).toEqual(["views"]));
+    vi.setSystemTime(Date.now() + 11_000);
+    await fake.harness.runCli(["show", "env-1"]);
+
+    changed!({ id: "env-1", changes: ["git-refs-changed"] });
+    await vi.waitFor(() => expect(methods()).toHaveLength(3));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(methods()).toHaveLength(3);
+    upstream = "oid-2";
+    changed!({ id: "env-1", changes: ["git-refs-changed"] });
+    await vi.waitFor(() => expect(methods()).toHaveLength(5));
+    stop();
+
+    expect(methods()).toEqual([
+      "views",
+      "views",
+      "upstream",
+      "upstream",
+      "views",
+    ]);
+    expect(
+      fake.harness.experimental_hostRpcCalls
+        .filter((call) => call.method === "views")
+        .map((call) => call.input),
+    ).toEqual([
+      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+      ...Array.from({ length: 2 }, () => ({
+        reads: [
+          {
+            path: "/work/env-1",
+            known: { url: view().url, branchName: "bb/pr" },
+            refresh: false,
+          },
+        ],
+      })),
     ]);
   });
 
@@ -228,12 +301,7 @@ describe("GitHub PR Status server", () => {
       },
       callHost: (call) => {
         if (call.hostId === "host-2") throw new Error("Host is suspended");
-        if (call.method === "upstream")
-          return { oid: null, branchName: "bb/pr" };
-        return (call.input as { reads: unknown[] }).reads.map(() => ({
-          outcome: "found",
-          pullRequest: view(),
-        }));
+        return viewResults(call);
       },
     });
 
@@ -267,11 +335,18 @@ describe("GitHub PR Status server", () => {
         method: "views",
         input: {
           reads: [
-            { path: "/work/env-1", url: null, refresh: false },
-            { path: "/work/env-2", url: null, refresh: false },
+            { path: "/work/env-1", known: null, refresh: false },
+            { path: "/work/env-2", known: null, refresh: false },
           ],
         },
         hostId: "host-1",
+      },
+      {
+        method: "views",
+        input: {
+          reads: [{ path: "/work/env-1", known: null, refresh: false }],
+        },
+        hostId: "host-2",
       },
     ]);
   });
@@ -296,8 +371,8 @@ describe("GitHub PR Status server", () => {
     ).toEqual([
       {
         reads: [
-          { path: "/work/env-1", url: null, refresh: false },
-          { path: "/work/env-2", url: null, refresh: false },
+          { path: "/work/env-1", known: null, refresh: false },
+          { path: "/work/env-2", known: null, refresh: false },
         ],
       },
     ]);
@@ -363,16 +438,12 @@ describe("GitHub PR Status server", () => {
   it("returns the gh failure as a refusal and the CLI prints it", async () => {
     const fake = await setup({
       callHost: (call) =>
-        call.method === "upstream"
-          ? { oid: null, branchName: "bb/pr" }
-          : call.method === "upstream"
-            ? { oid: null, branchName: "bb/pr" }
-            : call.method === "views"
-              ? (call.input as { reads: unknown[] }).reads.map(() => ({
-                  outcome: "found",
-                  pullRequest: view({ isDraft: true }),
-                }))
-              : { ok: false, message: "gh pr ready failed: HTTP 403" },
+        call.method === "views"
+          ? viewResults(call, () => ({
+              outcome: "found",
+              pullRequest: view({ isDraft: true }),
+            }))
+          : { ok: false, message: "gh pr ready failed: HTTP 403" },
     });
 
     await expect(
