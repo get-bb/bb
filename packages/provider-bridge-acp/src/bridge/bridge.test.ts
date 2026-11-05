@@ -5145,6 +5145,92 @@ describe("acp bridge: work the agent starts on its own", () => {
     );
   });
 
+  describe("whether an agent-started turn left anything to read", () => {
+    function completions(): Record<string, unknown>[] {
+      return threadEventsOfType("turn/completed");
+    }
+
+    async function settleAgentTurn(
+      providerThreadId: string,
+      prompt: string,
+      afterStart?: () => Promise<void>,
+    ): Promise<void> {
+      vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+      try {
+        await runPromptedTurn(providerThreadId, prompt);
+        await waitForTurnStartedCount(2);
+        await afterStart?.();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await waitFor(
+          () => (turnStatuses().length === 2 ? true : undefined),
+          "agent turn completion",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it("marks a tool-only agent turn silent and never a prompted one", async () => {
+      const { providerThreadId } = await startThread();
+      await settleAgentTurn(providerThreadId, "then-unprompted-tool-only");
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      expect(completions()[0]).not.toHaveProperty("silent");
+      expect(completions()[1]).toMatchObject({ silent: true });
+    });
+
+    it("does not mark an agent turn with agent text silent", async () => {
+      const { providerThreadId } = await startThread();
+      await settleAgentTurn(providerThreadId, "then-unprompted-stream", () =>
+        waitFor(
+          () =>
+            agentMessageTexts().includes(" unprompted two") ? true : undefined,
+          "unprompted text",
+        ).then(() => undefined),
+      );
+      expect(completions()[1]).not.toHaveProperty("silent");
+    });
+
+    it("does not mark an agent turn with a failed tool silent", async () => {
+      const { providerThreadId } = await startThread();
+      await settleAgentTurn(providerThreadId, "then-unprompted-failed-tool");
+      expect(completions()[1]).not.toHaveProperty("silent");
+    });
+
+    it("does not mark an agent turn that asked for permission silent", async () => {
+      const { providerThreadId } = await startThread({
+        permissionMode: "accept-edits",
+        permissionEscalation: "ask",
+      });
+      await runPromptedTurn(
+        providerThreadId,
+        "then-unprompted-permission",
+        executionOptions({ permissionMode: "accept-edits" }),
+      );
+      const forwarded = await waitFor(
+        () =>
+          output.messages.find(
+            (message) =>
+              message.method === "interaction/request" &&
+              message.id !== undefined,
+          ),
+        "forwarded permission request",
+      );
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: forwarded.id,
+          result: { decision: "allow_once", grantedPermissions: null },
+        }),
+      );
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+        12_000,
+      );
+      expect(completions()[1]).not.toHaveProperty("silent");
+    }, 20_000);
+  });
+
   it("fails the agent's own turn when the agent exits during it", async () => {
     const readyFile = join(workspaceDir, "agent-ready");
     const { providerThreadId } = await startThread({

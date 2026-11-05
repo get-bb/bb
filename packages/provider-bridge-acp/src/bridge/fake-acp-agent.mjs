@@ -101,6 +101,8 @@
  * - "then-unprompted-stream"     → message chunks and a finished tool call
  * - "then-unprompted-permission" → a permission request, then its outcome
  * - "then-unprompted-open-tool"  → a tool call that stays in progress
+ * - "then-unprompted-tool-only"  → a finished tool call and nothing else
+ * - "then-unprompted-failed-tool" → a tool call that fails, and nothing else
  * - "hang-with-open-command"     → start a command, then hang until cancelled
  *                                  without ever closing it (Cursor's shape)
  * - "stop-reason:<reason>"       → end the turn with that stop reason
@@ -782,6 +784,38 @@ async function handlePrompt(message) {
       );
     }
     notifyUpdate(messageChunk(`elicitation:${JSON.stringify(result)}`));
+  } else if (text.includes("then-unprompted-tool-only")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "unprompted-quiet-tool",
+        title: "Background step",
+        kind: "other",
+        status: "in_progress",
+      });
+      notifyUpdate({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "unprompted-quiet-tool",
+        status: "completed",
+      });
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-unprompted-failed-tool")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyUpdate({
+        sessionUpdate: "tool_call",
+        toolCallId: "unprompted-failed-tool",
+        title: "Background step",
+        kind: "other",
+        status: "in_progress",
+      });
+      notifyUpdate({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "unprompted-failed-tool",
+        status: "failed",
+      });
+    }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-open-tool")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {

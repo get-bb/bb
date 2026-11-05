@@ -661,8 +661,8 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     onThreadFailed({ thread, error }) {
       schedule(thread.id, "thread-error", firstLine(error ?? ""));
     },
-    onThreadIdle({ thread, lastAssistantText }) {
-      if (thread.visibility !== "visible") return;
+    onThreadIdle({ thread, lastAssistantText, silent }) {
+      if (thread.visibility !== "visible" || silent === true) return;
       schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     onThreadRead({ thread }) {

@@ -516,6 +516,36 @@ describe("push sender", () => {
     }
   });
 
+  it("does not announce an idle the agent's own turn reached without anything to read", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      const quiet = host.setThread({ title: "Background work" });
+      const answered = host.setThread({ title: "Answered" });
+
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: quiet,
+        lastAssistantText: "An older reply",
+        silent: true,
+      });
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread: answered,
+        lastAssistantText: "The background job finished.",
+      });
+
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(host.expo.requests).toHaveLength(1);
+      expect(host.expo.requests[0]?.[0]).toMatchObject({
+        title: "Answered",
+        body: "The background job finished.",
+        data: { kind: "turn-finished", threadId: answered.id },
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("sends the first paragraph as plain text with thread references named", async () => {
     const host = await setup();
     try {

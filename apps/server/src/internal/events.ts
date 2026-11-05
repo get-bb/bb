@@ -524,6 +524,7 @@ async function applyEventEffects(
         if (
           turnCompleted.thread &&
           turnCompleted.isRootTurnCompletion &&
+          !(event.status === "completed" && event.silent === true) &&
           isParentNotifiableChildThread(turnCompleted.thread, event.status)
         ) {
           const alreadyHandledByCommandFailure =

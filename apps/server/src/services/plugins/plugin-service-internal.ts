@@ -237,7 +237,7 @@ export interface PluginThreadEventEmitter {
   emitHostDeleted(host: HostRow): void;
   emitThreadCreated(thread: Thread): void;
   emitThreadActive(thread: Thread): void;
-  emitThreadIdle(thread: Thread): void;
+  emitThreadIdle(thread: Thread, silent?: boolean): void;
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadUnarchived(thread: Thread): void;

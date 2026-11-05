@@ -84,6 +84,7 @@ function planTurn(
         summaryCount: item.summaryCount,
         completedAt,
         children: null,
+        ...(turn.quietTurnCount ? { quietTurnCount: turn.quietTurnCount } : {}),
       },
       messages: item.sourceMessages,
     });

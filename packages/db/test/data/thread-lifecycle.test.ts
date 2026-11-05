@@ -184,6 +184,15 @@ describe("applyThreadLifecycleEvent", () => {
           target: "idle",
         },
         {
+          
+          attention: false,
+          event: { type: "run.succeeded" },
+          parent: false,
+          quiet: true,
+          status: "active",
+          target: "idle",
+        },
+        {
           attention: false,
           event: { type: "run.started" },
           parent: false,
@@ -219,6 +228,7 @@ describe("applyThreadLifecycleEvent", () => {
         const outcome = applyThreadLifecycleEvent(db, {
           event: testCase.event,
           threadId: thread.id,
+          ...("quiet" in testCase ? { attention: "none" as const } : {}),
         });
 
         expect(outcome.applied).toBe(true);

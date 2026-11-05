@@ -188,6 +188,44 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
+  it("marks thread.idle silent only for a transition that left nothing to read", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__silentIdleEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.idle", (payload: any) => {
+          (globalThis as any).__silentIdleEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        threadId: thread.id,
+        event: { type: "run.succeeded" },
+        attention: "none",
+      });
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        threadId: thread.id,
+        event: { type: "run.started" },
+      });
+      applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+        threadId: thread.id,
+        event: { type: "run.succeeded" },
+      });
+      await vi.waitFor(() => expect(recorded).toHaveLength(2));
+
+      expect(recorded[0]).toMatchObject({ silent: true });
+      expect(recorded[1]).not.toHaveProperty("silent");
+    } finally {
+      delete globals.__silentIdleEvents;
+      await cleanup();
+    }
+  });
+
   it("reports only the ended turn's root reply in thread.idle and the output route", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__turnIdleEvents = recorded;

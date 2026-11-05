@@ -207,6 +207,7 @@ interface AcpThreadSession {
   model: AcpSessionModel;
   promptWorkOpen: boolean;
   agentTurnQuietTimer: ReturnType<typeof setTimeout> | undefined;
+  agentTurnUserFacing: boolean;
   agentUpdateCount: number;
   publishedThreadState: Map<string, string>;
   capabilities: AcpAgentCapabilities | undefined;
@@ -1942,6 +1943,9 @@ function handleElicitationRequest(
   if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
+  if (session.activePromptKind === "agent") {
+    session.agentTurnUserFacing = true;
+  }
   session.pendingElicitations.add(responder);
   void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
     providerThreadId: session.providerThreadId,
@@ -2022,6 +2026,9 @@ function handlePermissionRequest(
 
   if (session.activePromptKind === null) {
     openAgentTurn(session);
+  }
+  if (session.activePromptKind === "agent") {
+    session.agentTurnUserFacing = true;
   }
   session.pendingPermissions.add(pending);
 
@@ -2396,6 +2403,7 @@ async function startAgentSession(
     model: createAcpSessionModel({ generation: 1 }),
     promptWorkOpen: false,
     agentTurnQuietTimer: undefined,
+    agentTurnUserFacing: false,
     agentUpdateCount: 0,
     turnOutputCount: 0,
     publishedThreadState: new Map(),
@@ -2755,6 +2763,7 @@ function armAgentTurnQuietTimer(session: AcpThreadSession): void {
 }
 
 function openAgentTurn(session: AcpThreadSession): void {
+  session.agentTurnUserFacing = false;
   setActivePromptKind(session, "agent");
   emitForSession(session, ACP_TURN_STARTED_METHOD, {
     threadId: session.bbThreadId,
@@ -2769,12 +2778,35 @@ function finishAgentTurn(
   if (session.activePromptKind !== "agent") {
     return;
   }
+  const silent = !session.agentTurnUserFacing && stopReason === "end_turn";
+  session.agentTurnUserFacing = false;
   for (const controller of session.pendingToolCalls) controller.abort();
   setActivePromptKind(session, null);
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
+    ...(silent ? { silent: true } : {}),
   });
+}
+
+function noteAgentTurnUserFacing(
+  session: AcpThreadSession,
+  events: readonly AcpSessionEvent[],
+): void {
+  if (session.activePromptKind !== "agent" || session.agentTurnUserFacing) {
+    return;
+  }
+  session.agentTurnUserFacing = events.some(
+    (event) =>
+      (event.type === "message" &&
+        event.role === "agent" &&
+        (event.change === "appended" ? event.appended : event.content).some(
+          (block) =>
+            block.type !== "text" ||
+            (typeof block.text === "string" && block.text.trim() !== ""),
+        )) ||
+      (event.type === "toolCall" && event.toolCall.status === "failed"),
+  );
 }
 
 function startsAgentWork(events: readonly AcpSessionEvent[]): boolean {
@@ -2953,6 +2985,7 @@ function emitSessionUpdate(
   } else if (session.activePromptKind === "agent") {
     armAgentTurnQuietTimer(session);
   }
+  noteAgentTurnUserFacing(session, events);
   emitForSession(session, ACP_UPDATE_METHOD, {
     threadId: session.bbThreadId,
     update,

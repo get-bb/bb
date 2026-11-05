@@ -83,7 +83,9 @@ export function applyLoggedThreadLifecycleEvent(
     );
   }
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
-  emitPluginThreadLifecycleOutcome(outcome);
+  emitPluginThreadLifecycleOutcome(outcome, {
+    silent: args.attention === "none",
+  });
   announceTurnFailed(args, outcome);
   return outcome;
 }
@@ -98,7 +100,9 @@ export function applyLoggedThreadLifecycleEventInTransaction(
     recordFinishedTurn(deps.db, args.threadId, args.event, previousStatus);
   }
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
-  emitPluginThreadLifecycleOutcome(outcome);
+  emitPluginThreadLifecycleOutcome(outcome, {
+    silent: args.attention === "none",
+  });
   announceTurnFailed(args, outcome);
   return outcome;
 }
