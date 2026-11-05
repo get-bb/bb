@@ -311,6 +311,7 @@ describe("storage", () => {
       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)",
     ]);
     db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
+    expect(db.pragma("auto_vacuum", { simple: true })).toBe(2);
 
     const again = bb.storage.database();
     expect(again).toBe(db);
