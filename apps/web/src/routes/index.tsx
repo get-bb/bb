@@ -231,7 +231,7 @@ function heroWindowStylesheets(context: {
 }): string[] {
   return experimentVariant(
     context.experiments ?? NO_EXPERIMENTS,
-    "homepage-hero-window",
+    "homepage-hero",
   ) === "test"
     ? [heroWindowCss]
     : [];
