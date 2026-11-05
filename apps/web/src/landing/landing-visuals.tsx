@@ -1816,7 +1816,7 @@ export function DelegationTree() {
                     thread={PLAN_THREAD}
                     body={
                       <>
-                        Three steps in <code>plan.md</code>
+                        three steps in <code>plan.md</code>
                       </>
                     }
                   />
@@ -1841,7 +1841,7 @@ export function DelegationTree() {
                   <MockChildEvent
                     kind="message"
                     thread={BUILD_THREAD}
-                    body="Keep the 30s timeout, or make it configurable?"
+                    body="keep the 30s timeout, or make it configurable?"
                   />
                 </Reveal>
                 <Reveal at={14.4} until={16}>
@@ -1879,12 +1879,12 @@ export function DelegationTree() {
                   <MockChildEvent
                     kind="message"
                     thread={REVIEW_THREAD}
-                    body="PR #482 looks good. It needs your approval to merge."
+                    body="Review the diff is waiting on your approval"
                   />
                 </Reveal>
               </div>
             </div>
-            <WindowComposer model="Grok 4.6" modelIcon={GrokIcon} />
+            <WindowComposer model="Grok Build" modelIcon={GrokIcon} />
           </div>
           <div className="bw-toast" style={at(26.9)}>
             <BbGlyph className="bw-toast-mark" />
@@ -2083,7 +2083,7 @@ export function StartAnywhere() {
                   <MockWorkingRow />
                 </Reveal>
               </div>
-              <WindowComposer model="GPT-5.5" modelIcon={OpenAiIcon} />
+              <WindowComposer model="Codex" modelIcon={OpenAiIcon} />
             </div>
           </div>
         </div>
