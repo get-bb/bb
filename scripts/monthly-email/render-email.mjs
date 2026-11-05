@@ -146,7 +146,8 @@ export function renderEmail(spec, { imagesBase = "", hosted } = {}) {
 <body style="margin:0;padding:0;background:#ffffff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;font-family:${FONT};color:${INK};">
-<tr><td style="padding:0 0 28px 0;"><img src="${escapeHtml(logo)}" width="28" height="28" alt="bb" style="display:block;"></td></tr>
+<tr><td style="padding:0 0 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${escapeHtml(logo)}" width="28" height="28" alt="bb" style="display:block;"></td>
+<td align="right" style="font-size:13px;color:${DIM};">${escapeHtml(spec.month.split(" ")[0])} updates</td></tr></table></td></tr>
 <tr><td><h1 style="margin:0;font-size:34px;line-height:40px;letter-spacing:-0.02em;color:${HEAD};font-weight:700;">What's new in bb</h1>
 <p style="margin:12px 0 0 0;font-size:17px;line-height:27px;color:${INK};">${escapeHtml(spec.opening)}</p></td></tr>
 ${themes}
