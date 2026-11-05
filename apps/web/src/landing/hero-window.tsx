@@ -13,7 +13,13 @@ import {
   useExperiment,
   useExperimentExposure,
 } from "../experiments/use-experiment";
-import { WindowControls, useFitMock } from "./app-mock-parts";
+import {
+  ChevronLeft,
+  ChevronRight,
+  PanelIcon,
+  WindowDots,
+  useFitMock,
+} from "./app-mock-parts";
 import { useActiveWhileVisible } from "./visibility";
 
 const HeroWindowStage = lazy(() => import("./hero-window-stage"));
@@ -69,10 +75,15 @@ export function HeroWindow({
         ref={winRef}
         className="mock rhb-win"
         role="img"
-        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, team invites, where a Codex child thread builds the invite API and emails while the main thread builds the invite screen, and the two threads message each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, Linear issue mentions opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
+        aria-label="Animated preview of one bb session customizing itself from prompts, one plugin or script at a time: a Sentry errors page the agent writes and opens beside the thread, team invites, where a Codex child thread builds the invite API and emails while the main thread builds the invite screen, and the two threads message each other, a Linear issues panel the agent writes, a Generative UI chart and Impromptu UI fix cards that start child threads, a custom GitHub issue picker opened with # in the composer, navigation icons moved into the sidebar, and a sidebar grouped by status, ending on the fully customized app"
       >
         <div className="rhb-band rhb-band-left" aria-hidden>
-          <WindowControls />
+          <WindowDots />
+          <span className="rhb-band-ctrls">
+            <ChevronLeft className="rhb-ic" />
+            <ChevronRight className="rhb-ic" />
+            <PanelIcon className="rhb-ic" />
+          </span>
         </div>
         {stage}
       </div>
