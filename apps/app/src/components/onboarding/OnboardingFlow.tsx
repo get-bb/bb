@@ -73,7 +73,6 @@ import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   AgentSignInInstruction,
-  type AgentSignInView,
   AgentSignInGuide,
   AgentSignInPanel,
   AgentStep,
@@ -99,11 +98,13 @@ import {
   agentContinueDisabled,
   featuredPluginEntryIds,
   hasReadyAgent,
-  parseSignInOutput,
   resolveAgentSetupState,
   shortRemoteName,
   skippedStepIds,
   terminalConnectFlow,
+  parsesSignInOutput,
+  agentSignInView,
+  type AgentSignInView,
   type OnboardingStepId,
   type TerminalConnectFlow,
   type SetupGuide,
@@ -163,6 +164,7 @@ function encodeTerminalInput(text: string): string {
 
 function AgentSignInContainer({
   redesign,
+  parsed,
   connectFlow,
   agentName,
   session,
@@ -173,6 +175,7 @@ function AgentSignInContainer({
   onViewChange,
 }: {
   redesign: boolean;
+  parsed: boolean;
   connectFlow: TerminalConnectFlow | null;
   onViewChange: (view: AgentSignInView) => void;
   agentName: string;
@@ -199,10 +202,6 @@ function AgentSignInContainer({
     () => (output === undefined ? null : decodeTerminalChunks(output.chunks)),
     [output],
   );
-  const guide = useMemo(
-    () => (outputText === null ? null : parseSignInOutput(outputText)),
-    [outputText],
-  );
   const connectFailed =
     connectFlow !== null &&
     outputText !== null &&
@@ -223,19 +222,18 @@ function AgentSignInContainer({
     );
     return () => window.clearTimeout(timer);
   }, [redesign]);
-  const terminalVisible =
-    terminalChoice ??
-    (connectFlow !== null ||
-      (fallbackDue && (guide === null || guide.url === null)));
-  const started =
-    guide?.url != null ||
-    fallbackDue ||
-    terminalChoice !== null ||
-    connectFlow !== null;
   const view = useMemo(
-    () => ({ guide, terminalVisible, started }),
-    [guide, terminalVisible, started],
+    () =>
+      agentSignInView({
+        parsed,
+        connect: connectFlow !== null,
+        outputText,
+        fallbackDue,
+        terminalChoice,
+      }),
+    [connectFlow, fallbackDue, outputText, parsed, terminalChoice],
   );
+  const { guide, terminalVisible } = view;
   useEffect(() => {
     onViewChange(view);
   }, [onViewChange, view]);
@@ -519,6 +517,7 @@ function AgentStepContainer({
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
             : null;
+          const parsed = !redesign || parsesSignInOutput(health.providerId);
           const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady = view !== null && view.started;
           return {
@@ -584,7 +583,7 @@ function AgentStepContainer({
                     agentName={health.displayName}
                     view={{
                       guide: null,
-                      terminalVisible: connectFlow !== null,
+                      terminalVisible: !parsed,
                       started: false,
                     }}
                     code=""
@@ -600,6 +599,7 @@ function AgentStepContainer({
                 <AgentSignInContainer
                   key={signIn.session.id}
                   redesign={redesign}
+                  parsed={parsed}
                   connectFlow={connectFlow}
                   agentName={health.displayName}
                   session={signIn.session}
@@ -1180,9 +1180,7 @@ function DevicesStepContainer({
             ) : null
           }
           addMachinePanel={
-            addMachineOpen && showMachines ? (
-              <AddMachineInline />
-            ) : null
+            addMachineOpen && showMachines ? <AddMachineInline /> : null
           }
           onAddMachine={addMachine}
           onCloseAddMachine={closeAddMachine}

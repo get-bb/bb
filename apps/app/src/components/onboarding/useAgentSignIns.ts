@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SystemProviderState, TerminalSession } from "@bb/server-contract";
-import type { AgentSignInView } from "./OnboardingViews";
-import { resolveSignInCommand } from "./onboarding-model";
+import { resolveSignInCommand, type AgentSignInView } from "./onboarding-model";
 import {
   recordTelemetryEvent,
   type OnboardingEntry,
