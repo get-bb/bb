@@ -151,7 +151,7 @@ describe("StartAnywhere", () => {
   it("shows bb desktop grouped by machine and the bb mobile app", () => {
     const html = renderToStaticMarkup(<StartAnywhere />);
     for (const text of [
-      "Fix CHK-41: checkout hangs on slow networks",
+      "Hand this off to bb: fix the checkout bug",
       "src/checkout/pay.ts",
       "linux-box",
       ">server<",

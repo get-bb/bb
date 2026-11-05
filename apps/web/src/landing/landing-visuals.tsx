@@ -1784,8 +1784,8 @@ export function DelegationTree() {
           <div className="main">
             <div className="feed bw-feed bw-feed-live">
               <div className="msg-user">
-                Fix CHK-41. Have Claude Code plan it, Cursor build it and Codex
-                review it.
+                Ship the checkout timeout fix. Plan it, build it and get it
+                reviewed.
               </div>
               <Reveal at={0.6}>
                 <SpawnLine title="Plan the fix" provider="Claude Code" />
@@ -1844,7 +1844,7 @@ export function DelegationTree() {
   );
 }
 
-const START_PROMPT = "Fix CHK-41: checkout hangs on slow networks";
+const START_PROMPT = "Hand this off to bb: fix the checkout bug";
 
 type StartStep =
   | { at: number; say: string }
@@ -1917,7 +1917,7 @@ export function StartAnywhere() {
       ref={ref}
       className="bw bw-start"
       role="img"
-      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix CHK-41, checkout hanging on slow networks, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
+      aria-label="The thread Fix the checkout bug plays step by step in the bb desktop app and, at the same time, in the bb mobile app on an iPhone: you ask bb to fix the checkout bug, it explores the code, reads src/checkout/pay.ts, explains that the payment call has no timeout, edits two files and runs the checkout tests. The same steps appear on both screens as they happen."
     >
       <div
         className={stageClass("bw-start-stage", leaving, paused)}
