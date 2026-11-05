@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Worker } from "node:worker_threads";
 
-export const WAL_CHECKPOINT_INTERVAL_MS = 100;
-export const WAL_CHECKPOINT_FRAME_THRESHOLD = 4_096;
-export const WAL_CHECKPOINT_STARVED_FRAMES = 16_384;
+const WAL_CHECKPOINT_INTERVAL_MS = 100;
+const WAL_CHECKPOINT_FRAME_THRESHOLD = 4_096;
+const WAL_CHECKPOINT_STARVED_FRAMES = 16_384;
 const SLOW_WAL_CHECKPOINT_MS = 100;
 const WAL_CHECKPOINT_WORKER_RESTART_DELAY_MS = 10_000;
 const WAL_CHECKPOINT_WORKER_STOP_TIMEOUT_MS = 5_000;
