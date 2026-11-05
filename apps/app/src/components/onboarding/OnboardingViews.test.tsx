@@ -527,6 +527,20 @@ describe("AgentStep progress in the redesign", () => {
     ).toBeNull();
   });
 
+  it("leaves a ready agent without account detail to its Ready label", () => {
+    renderQuiet([
+      agent("claude-code", { status: "ready", detail: null }),
+      agent("cursor", { status: "ready", detail: "you@example.com · Pro" }),
+      { ...agent("pi", { status: "ready", detail: null }), setup: "connect" },
+    ]);
+
+    expect(hasSubtitle("claude-code")).toBe(false);
+    within(rowOf("claude-code")).getByText("Ready");
+    expect(screen.queryByText("Signed in")).toBeNull();
+    within(rowOf("cursor")).getByText("you@example.com · Pro");
+    within(rowOf("pi")).getByText("Model connected");
+  });
+
   it("shows Installing… in the same disabled button", () => {
     const { rerender } = renderQuiet([
       agent("codex", { status: "install", canInstall: true }),
@@ -559,7 +573,7 @@ describe("AgentStep progress in the redesign", () => {
     expect((busy as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows Loading… and no empty panel until the sign-in instruction is known", () => {
+  it("shows Starting sign in… and no empty panel until the sign-in instruction is known", () => {
     renderQuiet([
       {
         ...agent("claude-code", { status: "signingIn" }),
@@ -584,11 +598,13 @@ describe("AgentStep progress in the redesign", () => {
       name: "Cancel signing in to claude-code",
     });
     expect(screen.queryByRole("button", { name: "Starting…" })).toBeNull();
-    const loading = within(rowOf("claude-code")).getByText("Loading…");
+    const loading = within(rowOf("claude-code")).getByText("Starting sign in…");
     expect(
       loading.closest("span.flex")?.querySelector('[data-icon="Spinner"]'),
     ).not.toBeNull();
-    expect(within(rowOf("claude-code")).queryByText("Show terminal")).toBeNull();
+    expect(
+      within(rowOf("claude-code")).queryByText("Show terminal"),
+    ).toBeNull();
     expect(rowOf("claude-code").childElementCount).toBe(1);
   });
 
@@ -614,8 +630,10 @@ describe("AgentStep progress in the redesign", () => {
         canSignIn: true,
       }),
       agent("pi", { status: "installing", update: false }),
+      agent("codex", { status: "ready", detail: null }),
     ]);
     expect(screen.getByText("Installed · not signed in")).toBeTruthy();
+    expect(screen.getByText("Signed in")).toBeTruthy();
     expect(screen.getByText("Installing…")).toBeTruthy();
   });
 });
@@ -702,11 +720,54 @@ describe("Agent rows active at once in the redesign", () => {
   });
 });
 
+const MOBILE_LINKS = {
+  ios: "https://apps.apple.com/app/bb",
+  android: "https://play.google.com/store/apps/details?id=bb",
+};
+
+function expectMobileAppRow() {
+  const row = screen.getByText("Get the mobile app").closest("li");
+  if (!(row instanceof HTMLElement)) throw new Error("no mobile app row");
+  within(row).getByText("Get a push when a thread needs you.");
+  expect(
+    within(row).getByRole("link", { name: "iOS" }).getAttribute("href"),
+  ).toBe(MOBILE_LINKS.ios);
+  expect(
+    within(row).getByRole("link", { name: "Android" }).getAttribute("href"),
+  ).toBe(MOBILE_LINKS.android);
+}
+
 describe("RedesignedDevicesStep", () => {
+  it("offers the mobile app before and after bb connect is on", () => {
+    const props = {
+      hostName: "bee",
+      connectSection: <li>bb connect</li>,
+      mobileLinks: MOBILE_LINKS,
+      addMachinePanel: null,
+      onAddMachine: vi.fn(),
+      onCloseAddMachine: vi.fn(),
+    };
+    const { rerender } = render(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines={false} />
+      </TooltipProvider>,
+    );
+    expectMobileAppRow();
+
+    rerender(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines />
+      </TooltipProvider>,
+    );
+    expectMobileAppRow();
+    screen.getByText("bb connect");
+  });
+
   it("hides the machine section until bb connect is on", () => {
     const props = {
       hostName: "bee",
       connectSection: <li>bb connect</li>,
+      mobileLinks: MOBILE_LINKS,
       addMachinePanel: null,
       onAddMachine: vi.fn(),
       onCloseAddMachine: vi.fn(),
@@ -733,13 +794,14 @@ describe("RedesignedDevicesStep", () => {
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
 
-  it("shows only the machine section when bb connect contributes nothing", () => {
+  it("shows the mobile app and machines when bb connect contributes nothing", () => {
     render(
       <TooltipProvider>
         <RedesignedDevicesStep
           hostName="bee"
           connectSection={null}
           showMachines
+          mobileLinks={MOBILE_LINKS}
           addMachinePanel={null}
           onAddMachine={vi.fn()}
           onCloseAddMachine={vi.fn()}
@@ -747,8 +809,8 @@ describe("RedesignedDevicesStep", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.queryByText("Where you use bb")).toBeNull();
     expect(screen.queryByText(/turned off on this server/u)).toBeNull();
+    expectMobileAppRow();
     screen.getByText("Add another machine");
   });
 });
