@@ -66,6 +66,7 @@ import {
   CodeDisplay,
   DisclosureToggle,
   INLINE_CHIP_BUTTON_CLASS,
+  InlinePanel,
   InlineTextLink,
   PendingStatus,
   QuietTextAction,
@@ -450,9 +451,11 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
 
 function PairForm({
   dashboardUrl,
+  submitVariant,
   onPaired,
 }: {
   dashboardUrl: string;
+  submitVariant: "default" | "outline";
   onPaired: () => void;
 }) {
   const sdk = useSdk();
@@ -529,7 +532,11 @@ function PairForm({
             errorCode !== null && "border-destructive ring-1 ring-destructive",
           )}
         />
-        <Button type="submit" disabled={pending || !complete}>
+        <Button
+          type="submit"
+          variant={submitVariant}
+          disabled={pending || !complete}
+        >
           {pending ? (
             <Icon name="Spinner" className="size-4 animate-spin" />
           ) : null}
@@ -1257,7 +1264,11 @@ function NotPairedContent({
         </Button>
       </div>
       {codeOpen ? (
-        <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
+        <PairForm
+          dashboardUrl={dashboardUrl}
+          submitVariant="default"
+          onPaired={onPaired}
+        />
       ) : null}
 
       <p className="text-xs text-subtle-foreground">
@@ -2013,6 +2024,7 @@ function ConnectSetupGuideSection({
   const { login, starting, error, start } = useConnectAccountLogin(refetch);
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
+  const [codeOpen, setCodeOpen] = useState(false);
   const signedInLoginId = login?.state === "signed-in" ? login.id : null;
   const remoteAccessOff = status !== null && status.paired && !status.enabled;
   const turnedOnForLoginRef = useRef<string | null>(null);
@@ -2073,12 +2085,48 @@ function ConnectSetupGuideSection({
     error !== null ||
     turnOnError !== null ||
     loadError !== null;
+  const pairingStatus =
+    status !== null && !status.paired && !connecting && !signingIn
+      ? status
+      : null;
 
   return (
     <SetupOptionRow
       icon="ComputerCloud"
       title="bb connect"
       description={SETUP_GUIDE_DESCRIPTION}
+      footer={
+        pairingStatus === null ? null : (
+          <div className="px-3 pb-3">
+            <InlinePanel
+              flush
+              flushBottom
+              hasBody={false}
+              toggles={
+                <DisclosureToggle
+                  expanded={codeOpen}
+                  onToggle={() => setCodeOpen((open) => !open)}
+                >
+                  Have a pairing code?
+                </DisclosureToggle>
+              }
+              expanded={
+                codeOpen ? (
+                  <div className="px-3 pb-3 pt-1">
+                    <PairForm
+                      dashboardUrl={pairingStatus.dashboardUrl}
+                      submitVariant="outline"
+                      onPaired={refetch}
+                    />
+                  </div>
+                ) : null
+              }
+            >
+              {null}
+            </InlinePanel>
+          </div>
+        )
+      }
       panel={
         connecting
           ? null

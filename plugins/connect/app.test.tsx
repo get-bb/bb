@@ -913,6 +913,43 @@ describe("connect setup guide section", () => {
     expect(slot.queryByRole("button", { name: /copy/iu })).toBeNull();
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(
+      slot.queryByRole("button", { name: "Have a pairing code?" }),
+    ).toBeNull();
+  });
+
+  it("opens the pairing form from Have a pairing code?, pairs, and then shows bb connect is on", async () => {
+    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
+    let currentStatus = status();
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      { sdk: account.sdk, rpc: { status: () => currentStatus } },
+    );
+
+    const toggle = await slot.findByRole("button", {
+      name: "Have a pairing code?",
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    currentStatus = connected();
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+
+    await waitFor(() =>
+      expect(account.calls).toContainEqual({
+        pluginId: "bb-account",
+        method: "redeemCode",
+        input: { code: "K7QP-2M4X", baseUrl: null },
+      }),
+    );
+    await slot.findByText("bb connect is on");
+    expect(
+      slot.queryByRole("button", { name: "Have a pairing code?" }),
+    ).toBeNull();
   });
 
   it("turns bb connect on after signing in when it was turned off before", async () => {
