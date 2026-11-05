@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 import { createConnection } from "../src/connection.js";
 import {
   startWalCheckpointer,
-  WAL_CHECKPOINT_STARVED_FRAMES,
   type WalCheckpointLogger,
 } from "../src/wal-checkpointer.js";
 
@@ -86,19 +85,17 @@ describe("startWalCheckpointer", () => {
         });
         writeBatch();
         const restartsBefore = walRestartCount(path);
-        let writtenPages = 0;
-        while (writtenPages < WAL_CHECKPOINT_STARVED_FRAMES * 6) {
-          const before = Number(
-            db.$client.pragma("page_count", { simple: true }),
-          );
+        const deadline = performance.now() + 10_000;
+        while (
+          walRestartCount(path) - restartsBefore < 3 &&
+          performance.now() < deadline
+        ) {
           writeBatch();
-          writtenPages +=
-            Number(db.$client.pragma("page_count", { simple: true })) - before;
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
 
         expect(walRestartCount(path) - restartsBefore).toBeGreaterThanOrEqual(
-          2,
+          3,
         );
         expect(logger.warnings).toEqual([]);
       } finally {

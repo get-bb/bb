@@ -13,6 +13,7 @@ import {
   setAutoAppUpdate,
   setSkippedAppUpdate,
   listRunningThreads,
+  startWalCheckpointer,
   type DbConnection,
 } from "@bb/db";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -203,6 +204,7 @@ async function startIntegrationServer(
   });
 
   const db = createMigratedConnection();
+  const walCheckpointer = startWalCheckpointer({ logger: testLogger });
   ensurePersonalProject(db);
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -357,6 +359,7 @@ async function startIntegrationServer(
     }),
     telemetry,
     terminalSessions,
+    walCheckpointer,
     watchInterests,
   };
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
@@ -425,6 +428,7 @@ async function startIntegrationServer(
       });
       await closeWebSockets();
       await closed;
+      await walCheckpointer.stop();
     },
   };
 }
