@@ -1714,11 +1714,11 @@ const DELEGATION_CHILDREN = [
   },
 ] as const;
 
-function spawnStep(provider: string, prompt: string): MockStep {
+function spawnStep(flags: string): MockStep {
   return {
     kind: "cmd",
     verb: "Ran",
-    em: `bb thread spawn --project $BB_PROJECT_ID --parent-self --provider ${provider} --prompt "${prompt}"`,
+    em: `bb thread spawn --project $BB_PROJECT_ID --parent-self ${flags}`,
   };
 }
 
@@ -1794,7 +1794,9 @@ export function DelegationTree() {
                   start={0.84}
                   furl={3.2}
                   worked="3s"
-                  step={spawnStep("claude", "Plan the checkout timeout fix")}
+                  step={spawnStep(
+                    '--provider claude-code --prompt "Plan the checkout timeout fix"',
+                  )}
                 />
                 <Reveal at={0.84} until={3.9}>
                   <MockWorkingRow />
@@ -1819,7 +1821,9 @@ export function DelegationTree() {
                   start={7.7}
                   furl={10}
                   worked="4s"
-                  step={spawnStep("cursor", "Build the fix in plan.md")}
+                  step={spawnStep(
+                    '--provider cursor --prompt "Build the fix in plan.md"',
+                  )}
                 />
                 <Reveal at={7.7} until={10.7}>
                   <MockWorkingRow />
@@ -1857,7 +1861,7 @@ export function DelegationTree() {
                   start={20.3}
                   furl={22.6}
                   worked="3s"
-                  step={spawnStep("codex", "Review PR #482")}
+                  step={spawnStep('--provider codex --prompt "Review PR #482"')}
                 />
                 <Reveal at={20.3} until={23.3}>
                   <MockWorkingRow />
