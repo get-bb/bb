@@ -91,11 +91,18 @@ section before sharing it.
   Never re-import contacts by CSV, which can re-subscribe people who
   unsubscribed.
 
+- **Pace the send.** Resend sends a broadcast as fast as it can; pacing is the
+  sender's job. A sudden spike to people who haven't heard from us lands some
+  copies in spam. Before scheduling, check the sending domain against Resend's
+  [warm-up guide](https://resend.com/docs/knowledge-base/warming-up) and the
+  root domain for a DMARC record (`dig +short TXT _dmarc.<domain>`). Until
+  the domain is warm, send the most engaged list first and split older lists
+  into smaller lists scheduled on later days.
 - **Test emails** go out only when the reviewer says, to the recipients they
   name, from one draft. Check every link in the received email.
-- **Schedule** every draft after the reviewer's go-ahead on the test email, all
-  at the same time: the first Thursday after the month ends, 16:00 UTC, unless
-  they pick otherwise.
+- **Schedule** every draft after the reviewer's go-ahead on the test email: the
+  first Thursday after the month ends, 16:00 UTC, unless they pick otherwise.
+  Lists split for pacing go out on the following days at the same time.
 - **Changes after scheduling** need the reviewer's go-ahead and go into every
   draft. Unschedule, edit, carry the edit into the JSON and re-render, then run
   the check in step 6 on each draft until it passes. Schedule them again, check
