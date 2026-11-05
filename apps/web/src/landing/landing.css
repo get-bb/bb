@@ -570,28 +570,22 @@ body {
   color: var(--ink);
 }
 
-.install-choice .install-send,
-.install-choice .install-note-touch {
-  display: none;
-}
-
 .install-send {
   position: relative;
   font-family: var(--font-sans);
 }
 
+/* Phones and tablets can't run an installer. Pages render both the desktop and
+   the touch option and CSS picks one, so nothing flashes after load. */
+@media not all and (hover: none) and (pointer: coarse) {
+  .touch-only {
+    display: none !important;
+  }
+}
+
 @media (hover: none) and (pointer: coarse) {
-  .install-choice .install-download,
-  .install-choice .install-note-desktop {
-    display: none;
-  }
-
-  .install-choice .install-send {
-    display: inline-flex;
-  }
-
-  .install-choice .install-note-touch {
-    display: inline;
+  .desktop-only {
+    display: none !important;
   }
 }
 
