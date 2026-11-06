@@ -17,27 +17,10 @@ export default defineWorkspaceTestConfig({
       BB_SERVER_PORT: "49161",
       BB_HOST_DAEMON_PORT: "49162",
     },
-    projects: [
-      ...sharedWorkerProjects({
-        pkgDir: __dirname,
-        name: "@bb/server",
-        include: ["src/**/*.test.ts", "test/**/*.test.ts"],
-        exclude: [
-          "dist/**",
-          "node_modules/**",
-          "test/services/plugins/plugin-native-server-loading.test.ts",
-        ],
-      }),
-      {
-        extends: true,
-        test: {
-          name: "@bb/server:native-plugin",
-          include: [
-            "test/services/plugins/plugin-native-server-loading.test.ts",
-          ],
-          sequence: { groupOrder: 1 },
-        },
-      },
-    ],
+    projects: sharedWorkerProjects({
+      pkgDir: __dirname,
+      name: "@bb/server",
+      include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    }),
   },
 });
