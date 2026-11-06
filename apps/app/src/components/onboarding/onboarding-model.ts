@@ -22,7 +22,7 @@ export const ONBOARDING_STEPS: readonly {
 
 export const ONBOARDING_PLUGIN_MARKETPLACE = "bb-official";
 
-const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
+export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
   "browser-automation",
   "workflows",
   "monaco-editor",
@@ -121,10 +121,6 @@ export const STEP_COPY: Readonly<
     },
   },
 };
-
-export function featuredPluginEntryIds(guide: SetupGuide): readonly string[] {
-  return guide.featuredPluginEntryIds ?? ONBOARDING_PLUGIN_ENTRY_IDS;
-}
 
 export type StepOutcome = "completed" | "skipped";
 

@@ -13,7 +13,6 @@ import {
   devicesShowMachines,
   connectFlowFailed,
   defaultSelectedRepoPaths,
-  featuredPluginEntryIds,
   skippedStepIds,
   hasReadyAgent,
   parseSignInOutput,
@@ -600,30 +599,6 @@ describe("Pi's sign-in", () => {
 
     expect(connectFlowFailed(flow, PI_LOGIN_OUTPUT)).toBe(false);
     expect(connectFlowFailed(flow, PI_LOGIN_FAILED_OUTPUT)).toBe(true);
-  });
-});
-
-describe("featuredPluginEntryIds", () => {
-  it("uses the experiment's plugin list when it has one", () => {
-    expect(
-      featuredPluginEntryIds({
-        variant: "new",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      }),
-    ).toEqual(["memory", "inline-vis"]);
-  });
-
-  it("falls back to today's six plugins without a list", () => {
-    expect(
-      featuredPluginEntryIds({ variant: "new", featuredPluginEntryIds: null }),
-    ).toEqual([
-      "browser-automation",
-      "workflows",
-      "monaco-editor",
-      "prompt-library",
-      "agent-annotations",
-      "ask-user-question",
-    ]);
   });
 });
 

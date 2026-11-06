@@ -98,7 +98,7 @@ import {
   connectFlowFailed,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
-  featuredPluginEntryIds,
+  ONBOARDING_PLUGIN_ENTRY_IDS,
   hasReadyAgent,
   resolveAgentSetupState,
   signInBrowserIsOnMachine,
@@ -996,14 +996,10 @@ function PluginsStepContainer({
   }, [installedCount, refetchCatalog]);
 
   const redesign = setupGuide.variant === "new";
-  const entryIds = useMemo(
-    () => featuredPluginEntryIds(setupGuide),
-    [setupGuide],
-  );
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return entryIds.flatMap((entryId) => {
+    return ONBOARDING_PLUGIN_ENTRY_IDS.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -1011,7 +1007,7 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries, entryIds]);
+  }, [catalogQuery.data?.entries]);
   const isEnabled = (entry: PluginCatalogSearchEntry) =>
     entry.installed &&
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
@@ -1064,7 +1060,9 @@ function PluginsStepContainer({
     >
       <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
         {entries === null ? (
-          <OnboardingPluginGridSkeleton count={entryIds.length} />
+          <OnboardingPluginGridSkeleton
+            count={ONBOARDING_PLUGIN_ENTRY_IDS.length}
+          />
         ) : (
           entries.map((entry) => (
             <PluginCardContainer
