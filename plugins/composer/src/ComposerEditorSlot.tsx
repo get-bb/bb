@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import type { RefObject } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
 import { COARSE_POINTER_TEXT_BASE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
@@ -12,12 +12,12 @@ export const COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY =
 
 export type ComposerEditorLayout = "thread" | "root-compose";
 
-const COMPOSER_EDITOR_MAX_HEIGHT_PERCENT_BY_LAYOUT: Record<
+const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,
-  number
+  string
 > = {
-  thread: 50,
-  "root-compose": 70,
+  thread: "calc(var(--bb-shell-height) * 0.5 - 3rem)",
+  "root-compose": "calc(var(--bb-shell-height) * 0.7 - 3rem)",
 };
 
 export function blurPromptEditor(editor: Editor | null | undefined): void {
@@ -42,23 +42,6 @@ export function ComposerEditorSlot({
   layout: ComposerEditorLayout;
   resolveMentionLink: PromptMentionLinkResolver | undefined;
 }) {
-  const [viewportHeight, setViewportHeight] = useState<number>();
-  useLayoutEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const updateHeight = () => {
-      setViewportHeight(viewport.scale === 1 ? viewport.height : undefined);
-    };
-    updateHeight();
-    viewport.addEventListener("resize", updateHeight);
-    return () => viewport.removeEventListener("resize", updateHeight);
-  }, []);
-  const heightPercent = COMPOSER_EDITOR_MAX_HEIGHT_PERCENT_BY_LAYOUT[layout];
-  const maxViewportHeight =
-    viewportHeight === undefined
-      ? `${heightPercent}dvh`
-      : `${(viewportHeight * heightPercent) / 100}px`;
-
   return (
     <div
       ref={scrollContainerRef}
@@ -75,7 +58,7 @@ export function ComposerEditorSlot({
         height: isCompactLayout ? "48px" : undefined,
         maxHeight: isCompactLayout
           ? "48px"
-          : `min(calc(${maxViewportHeight} - 3rem), var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`,
+          : `min(${COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout]}, var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`,
       }}
     >
       <PromptMentionLinkContext.Provider value={resolveMentionLink ?? null}>
