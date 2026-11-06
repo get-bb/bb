@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -9,7 +8,6 @@ import {
 import {
   definePluginApp,
   UrlLink,
-  useBbNavigate,
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
@@ -25,8 +23,6 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { copyTextWithSdkToast } from "@bb/shared-ui/sdk-clipboard-copy";
-import { InlineTextLink, SignInPanel } from "@bb/shared-ui/sign-in-panel";
 import type { accountPrivateRpcContract } from "./src/contract.js";
 import {
   ACCOUNT_REALTIME_CHANNEL,
@@ -36,10 +32,15 @@ import {
   type LoginView,
   type SignOutResult,
 } from "./src/schemas.js";
-import {
-  useAccountLogin,
-  type AccountLoginTransport,
-} from "./ui/account-login.js";
+
+const LOGIN_POLL_MS = 2_000;
+const LOGIN_POLL_MAX_MS = 30_000;
+
+function loginPollDelay(failures: number): number {
+  return failures === 0
+    ? LOGIN_POLL_MS
+    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
+}
 
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
@@ -439,7 +440,6 @@ function SignInDialogBody({
   startError: string | null;
   onRetry: () => void;
 }) {
-  const navigate = useBbNavigate();
   if (startError !== null) {
     return (
       <div className="space-y-3">
@@ -458,40 +458,51 @@ function SignInDialogBody({
       </p>
     );
   }
-  if (login.state !== "pending") {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-destructive-text">
-          {login.message ?? "Sign-in didn't finish."}
-        </p>
-        <Button type="button" variant="outline" onClick={onRetry}>
-          Get a new code
-        </Button>
-      </div>
-    );
-  }
+  const pending = login.state === "pending";
   return (
-    <SignInPanel
-      status="Waiting for you to approve this bb. You can approve from any device."
-      instruction={
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <p className="text-xs text-muted-foreground">
+          Confirm this code on {hostOf(login.verificationUrl)}:
+        </p>
+        <p
+          aria-label="Sign-in code"
+          className={cn(
+            "font-mono text-base font-semibold tracking-widest",
+            !pending && "text-muted-foreground line-through",
+          )}
+        >
+          {login.userCode}
+        </p>
+      </div>
+      {pending ? (
         <>
-          Finish signing in on{" "}
-          <InlineTextLink
-            href={login.verificationUrl}
-            onOpen={navigate.openUrl}
-          >
-            {hostOf(login.verificationUrl)}
-          </InlineTextLink>
-          .
+          <Button type="button" asChild>
+            <UrlLink
+              href={login.verificationUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open getbb.app
+              <Icon name="ExternalLink" className="size-3.5" />
+            </UrlLink>
+          </Button>
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Icon name="Spinner" className="size-3.5 animate-spin" />
+            Waiting for you to approve it. You can approve from any device.
+          </p>
         </>
-      }
-      variant={{
-        kind: "code",
-        code: login.userCode,
-        label: "Sign-in code",
-        onCopyCode: (code) => void copyTextWithSdkToast(code),
-      }}
-    />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-destructive-text">
+            {login.message ?? "Sign-in didn't finish."}
+          </p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Get a new code
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -508,36 +519,25 @@ function SignInDialog({
   login: LoginView | null;
   onLogin: (state: AccountState) => void;
 }) {
+  const [loginId, setLoginId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const startedForOpen = useRef(false);
-  const transport = useMemo<AccountLoginTransport>(
-    () => ({
-      start: () => rpc.call("login.start", { baseUrl: null }),
-      poll: (loginId) =>
-        rpc.call("login.poll", { loginId }).then((result) => {
-          onLogin(result);
-          return result.login;
-        }),
-      cancel: (loginId) => rpc.call("login.cancel", { loginId }).then(() => {}),
-    }),
-    [onLogin, rpc],
-  );
-  const closeOnSignedIn = useCallback(
-    () => onOpenChange(false),
-    [onOpenChange],
-  );
-  const {
-    login: current,
-    starting,
-    error: startError,
-    start,
-    cancel,
-  } = useAccountLogin({
-    transport,
-    describeStartError: errorText,
-    onSignedIn: closeOnSignedIn,
-    observedLogin: login,
-    openOnStart: true,
-  });
+
+  const start = useCallback(() => {
+    setStarting(true);
+    setStartError(null);
+    rpc.call("login.start", { baseUrl: null }).then(
+      (view) => {
+        setStarting(false);
+        setLoginId(view.id);
+      },
+      (error: unknown) => {
+        setStarting(false);
+        setStartError(errorText(error));
+      },
+    );
+  }, [rpc]);
 
   useEffect(() => {
     if (!open) {
@@ -549,12 +549,52 @@ function SignInDialog({
     start();
   }, [open, start]);
 
+  const current = login !== null && login.id === loginId ? login : null;
+  const pendingId = current?.state === "pending" ? current.id : null;
+
+  useEffect(() => {
+    if (pendingId === null) return;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = () => {
+      rpc
+        .call("login.poll", { loginId: pendingId })
+        .then(
+          (result) => {
+            failures = 0;
+            if (!cancelled) onLogin(result);
+          },
+          () => {
+            failures += 1;
+          },
+        )
+        .finally(() => {
+          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
+        });
+    };
+    timer = setTimeout(poll, LOGIN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [onLogin, pendingId, rpc]);
+
+  useEffect(() => {
+    if (open && current?.state === "signed-in") onOpenChange(false);
+  }, [current?.state, onOpenChange, open]);
+
   const close = useCallback(
     (next: boolean) => {
-      if (!next) cancel();
+      if (!next && pendingId !== null) {
+        rpc.call("login.cancel", { loginId: pendingId }).then(
+          () => {},
+          () => {},
+        );
+      }
       onOpenChange(next);
     },
-    [cancel, onOpenChange],
+    [onOpenChange, pendingId, rpc],
   );
 
   return (

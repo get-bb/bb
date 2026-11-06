@@ -180,15 +180,15 @@ describe("bb account settings section", () => {
     });
 
     await slot.findByText("K7QP-2M4X");
-    expect(slot.navigateCalls).toContainEqual({
-      method: "openUrl",
-      url: "https://getbb.app/link?code=K7QP-2M4X",
-    });
+    expect(
+      slot.navigateCalls.filter((call) => call.method === "openUrl"),
+    ).toEqual([]);
     const link = slot.getByRole("link", {
-      name: "getbb.app",
+      name: /Open getbb\.app/,
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
-    slot.getByText(/Waiting for you to approve this bb/);
+    expect(link.target).toBe("_blank");
+    slot.getByText(/Waiting for you to approve it/);
 
     await slot.emitRealtime(ACCOUNT_REALTIME_CHANNEL, {
       status: signedIn,
