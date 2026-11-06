@@ -274,7 +274,7 @@ describe("buildPluginProviderRegistration", () => {
     });
   });
 
-  it("projects a declared guided sign-in onto ProviderInfo", () => {
+  it("keeps a declared guided sign-in on the registration, not on ProviderInfo", () => {
     const registration = buildPluginProviderRegistration({
       available: true,
       pluginId: "acme-agent",
@@ -283,7 +283,10 @@ describe("buildPluginProviderRegistration", () => {
       readSettings: NO_SETTINGS,
     });
 
-    expect(registration.info.internal_DO_NOT_USE_guidedSignIn).toBe(true);
+    expect(registration.guidedSignIn).toBe(true);
+    expect(registration.info).not.toHaveProperty(
+      "internal_DO_NOT_USE_guidedSignIn",
+    );
   });
 
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {
@@ -366,14 +369,14 @@ describe("buildPluginProviderRegistration", () => {
     const declarations = await loadFirstPartyProviderDeclarations();
     const guided = [...declarations.entries()].flatMap(([pluginId, list]) =>
       list.flatMap((declared) => {
-        const { info } = buildPluginProviderRegistration({
+        const { info, guidedSignIn } = buildPluginProviderRegistration({
           available: true,
           pluginId,
           declaration: declared,
           iconHash: null,
           readSettings: NO_SETTINGS,
         });
-        return info.internal_DO_NOT_USE_guidedSignIn ? [info.id] : [];
+        return guidedSignIn ? [info.id] : [];
       }),
     );
     expect(guided.sort()).toStrictEqual(["acp-cursor", "claude-code", "codex"]);

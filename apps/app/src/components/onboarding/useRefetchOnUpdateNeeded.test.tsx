@@ -28,6 +28,7 @@ function codexHealth(
     canUpdate: true,
     loginCommand: "codex login",
     localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
   };
 }
 

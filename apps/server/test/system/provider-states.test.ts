@@ -187,6 +187,55 @@ describe("getProviderStates", () => {
     });
   });
 
+  it("marks which provider rows run the guided sign-in, on a live and a paused host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.health") {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                health: {
+                  ...readyHealth(request.command.providerId),
+                  status: "unauthenticated",
+                },
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+      const paused = seedHost(harness.deps, {
+        id: "host-provider-states-guided-paused",
+      });
+      updateHost(harness.db, harness.hub, paused.id, {
+        phase: "suspended",
+        suspendedAt: 123,
+      });
+
+      for (const hostId of [host.id, paused.id]) {
+        const result = await getProviderStates(harness.deps, { hostId });
+        expect(
+          Object.fromEntries(
+            result.providers.map((provider) => [
+              provider.providerId,
+              provider.internal_DO_NOT_USE_guidedSignIn,
+            ]),
+          ),
+        ).toStrictEqual({
+          codex: true,
+          "claude-code": true,
+          pi: false,
+          "acp-cursor": true,
+        });
+      }
+    });
+  });
+
   it("does not start a health probe the provider did not declare", async () => {
     await withTestHarness(async (harness) => {
       harness.deps.providerRegistry.register(

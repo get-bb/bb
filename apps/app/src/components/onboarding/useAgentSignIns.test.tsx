@@ -46,6 +46,7 @@ function provider(
     canUpdate: true,
     loginCommand: `${providerId} login`,
     localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
     ...overrides,
   };
 }
