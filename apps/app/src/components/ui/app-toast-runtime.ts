@@ -53,3 +53,23 @@ export function attachSonnerToast(sonnerToast: SonnerToast): void {
   attachedToast = sonnerToast;
   for (const { run } of pendingCalls.splice(0)) run(sonnerToast);
 }
+
+let compactPlacementOverride: boolean | null = null;
+const placementListeners = new Set<() => void>();
+
+export function setToasterCompactPlacement(isCompact: boolean | null): void {
+  if (compactPlacementOverride === isCompact) return;
+  compactPlacementOverride = isCompact;
+  for (const listener of placementListeners) listener();
+}
+
+export function subscribeToasterCompactPlacement(
+  listener: () => void,
+): () => void {
+  placementListeners.add(listener);
+  return () => placementListeners.delete(listener);
+}
+
+export function getToasterCompactPlacement(): boolean | null {
+  return compactPlacementOverride;
+}
