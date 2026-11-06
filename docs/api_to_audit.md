@@ -3996,20 +3996,18 @@ reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
-both assignments, adds `setup_guide_variant`, `setup_guide_source`,
-`featured_plugins_variant` and `featured_plugins_source`, sets both variants
-as person properties (`$set`), and sends `$feature_flag_called` for each
-variant that came from a PostHog flag. Every setup-guide event gets
-`setup_guide_variant` and `featured_plugins_variant` from the server.
+the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
+`setup_guide_variant` as a person property (`$set`), and sends
+`$feature_flag_called` when the variant came from the PostHog flag. Every
+setup-guide event gets `setup_guide_variant` from the server.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
 
 ## `PluginBbSdk.system.experimental_setupGuide`
 
-Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new",
-featuredPluginEntryIds: string[] | null }`, the first-run setup guide this
-install sees. Flag resolution, saved assignments, and the
+Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new" }`,
+the first-run setup guide this install sees. Flag resolution, saved assignments, and the
 `BB_SETUP_GUIDE_VARIANT` override are described under Setup guide in
 [configuration.md](configuration.md#general-settings). Core caller:
 `apps/app/src/components/onboarding/OnboardingGate.tsx`.

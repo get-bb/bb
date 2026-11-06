@@ -86,7 +86,7 @@ function renderFlow({
           <OnboardingFlow
             initialStep={initialStep}
             entry="first_run"
-            setupGuide={{ variant, featuredPluginEntryIds: null }}
+            setupGuide={{ variant }}
             closing={closing}
             onClose={onClose}
           />
