@@ -118,6 +118,7 @@ import type {
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
+import { createRetiredEnvironmentMembers } from "@bb/sdk";
 import type {
   BbSdk,
   ThreadForkArgs,
@@ -358,6 +359,10 @@ function wrapSdkForPlugin(
 ): PluginBbSdk {
   return {
     ...sdk,
+    environments: {
+      ...sdk.environments,
+      ...createRetiredEnvironmentMembers(rpcCallerSdk.plugins.callRpc),
+    },
     plugins: {
       ...sdk.plugins,
       callRpc(args) {

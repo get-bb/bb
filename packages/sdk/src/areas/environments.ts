@@ -1,5 +1,5 @@
 import { createPluginsArea } from "./plugins.js";
-import { createRetiredEnvironmentReads } from "./retired-environment-reads.js";
+import { createRetiredEnvironmentMembers } from "./retired-environment-members.js";
 import { z } from "zod";
 import {
   environmentSchema,
@@ -252,6 +252,6 @@ export function createEnvironmentsArea(
   };
   return Object.assign(
     area,
-    createRetiredEnvironmentReads(createPluginsArea(args).callRpc),
+    createRetiredEnvironmentMembers(createPluginsArea(args).callRpc),
   );
 }
