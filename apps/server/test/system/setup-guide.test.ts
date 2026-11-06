@@ -30,16 +30,6 @@ async function useFlagVariant(harness: TestAppHarness) {
             variant: "new",
             metadata: { id: 1, version: 1 },
           },
-          "onboarding-featured-plugins": {
-            key: "onboarding-featured-plugins",
-            enabled: true,
-            variant: "new",
-            metadata: {
-              id: 2,
-              version: 1,
-              payload: JSON.stringify({ plugins: ["memory", "tasks"] }),
-            },
-          },
         },
         errorsWhileComputingFlags: false,
       }),
@@ -66,22 +56,18 @@ describe("setup guide route", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         variant: "control",
-        featuredPluginEntryIds: null,
       });
     });
   });
 
-  it("serves the guide variant and the plugin flag's list without exposing sources", async () => {
+  it("serves the guide variant without exposing its source", async () => {
     await withTestHarness(async (harness) => {
       const { fetch } = await useFlagVariant(harness);
 
       const response = await harness.app.request("/api/v1/system/setup-guide");
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
-        variant: "new",
-        featuredPluginEntryIds: ["memory", "tasks"],
-      });
+      await expect(readJson(response)).resolves.toEqual({ variant: "new" });
       await harness.app.request("/api/v1/system/setup-guide");
       expect(fetch).toHaveBeenCalledTimes(1);
     });
@@ -105,24 +91,12 @@ describe("setup guide route", () => {
           },
         },
         {
-          name: "$feature_flag_called",
-          properties: {
-            $feature_flag: "onboarding-featured-plugins",
-            $feature_flag_response: "new",
-          },
-        },
-        {
           name: "onboarding_exposed",
           properties: {
             entry: "first_run",
             setup_guide_variant: "new",
             setup_guide_source: "flag",
-            featured_plugins_variant: "new",
-            featured_plugins_source: "flag",
-            $set: {
-              setup_guide_variant: "new",
-              featured_plugins_variant: "new",
-            },
+            $set: { setup_guide_variant: "new" },
           },
         },
       ]);
@@ -154,7 +128,6 @@ describe("setup guide route", () => {
             surface: "onboarding",
             entry: "first_run",
             setup_guide_variant: "new",
-            featured_plugins_variant: "new",
           },
         },
         { name: "new_thread_submit", properties: { outcome: "accepted" } },

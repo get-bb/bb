@@ -340,18 +340,12 @@ lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 The guide shown is `control` (current) or `new` (redesign), from
 `GET /api/v1/system/setup-guide` (`sdk.system.experimental_setupGuide()`,
-`{ variant, featuredPluginEntryIds }`). The server resolves it once per run on
-the first request from two independent PostHog flags evaluated in one
-request for the anonymous install id (3-second timeout): `setup-guide-redesign`
-picks `variant`, and `onboarding-featured-plugins` picks the featured plugins.
-Each flag is `control` on its own when telemetry is off or unavailable, or when
-its evaluation fails, it is missing or disabled, or its variant is unknown.
-Assignments saved in `<dataDir>/setup-guide-assignment.json` are reused.
-`BB_SETUP_GUIDE_VARIANT` forces only the guide variant for QA. The
-`onboarding-featured-plugins` `new` variant's payload
-`{"plugins": ["memory", ...]}` lists bb-official entry ids to feature in either
-guide; `featuredPluginEntryIds` is `null` when it is absent or invalid, and the
-app uses its default list.
+`{ variant }`). The server resolves it once per run on the first request from
+the `setup-guide-redesign` PostHog flag, evaluated for the anonymous install id
+(3-second timeout). It is `control` when telemetry is off or unavailable, or
+when the evaluation fails, the flag is missing or disabled, or its variant is
+unknown. The assignment saved in `<dataDir>/setup-guide-assignment.json` is
+reused. `BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -367,15 +361,13 @@ the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
-being shown: the server saves both flag assignments, adds
-`setup_guide_variant`, `setup_guide_source`, `featured_plugins_variant`, and
-`featured_plugins_source` (`override`, `flag`, or `default`), sets both variants
-as person properties, and sends PostHog's `$feature_flag_called` for each flag
-that decided its variant. The server adds `setup_guide_variant` and
-`featured_plugins_variant` to every setup-guide event (`onboarding_*` and
-onboarding `recommendation`), and once a flag assignment is known every event,
-including `turn_finished`, carries `$feature/setup-guide-redesign` or
-`$feature/onboarding-featured-plugins`.
+being shown: the server saves the flag assignment, adds `setup_guide_variant`
+and `setup_guide_source` (`override`, `flag`, or `default`), sets
+`setup_guide_variant` as a person property, and sends PostHog's
+`$feature_flag_called` when the flag decided the variant. The server adds
+`setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
+`recommendation`), and once the flag assignment is known every event, including
+`turn_finished`, carries `$feature/setup-guide-redesign`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
@@ -1006,6 +998,7 @@ either way.
   plugin releases can go out ahead of a retry scheduled for later (for example
   a provider-retry row waiting hours for a subscription window) and overtake
   it; with it, those rows wait for the retry.
+
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,

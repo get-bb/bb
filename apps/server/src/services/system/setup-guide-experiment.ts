@@ -15,7 +15,6 @@ import type {
 } from "./telemetry.js";
 
 const SETUP_GUIDE_FLAG_KEY = "setup-guide-redesign";
-const FEATURED_PLUGINS_FLAG_KEY = "onboarding-featured-plugins";
 export const SETUP_GUIDE_FLAG_TIMEOUT_MS = 3_000;
 export const SETUP_GUIDE_ASSIGNMENT_FILE_NAME = "setup-guide-assignment.json";
 const POSTHOG_FLAGS_URL = "https://us.i.posthog.com/flags?v=2";
@@ -27,13 +26,8 @@ interface FlagAssignment {
   source: SetupGuideAssignmentSource;
 }
 
-interface FeaturedPluginsAssignment extends FlagAssignment {
-  featuredPluginEntryIds: string[] | null;
-}
-
 export interface SetupGuideAssignments {
   guide: FlagAssignment;
-  plugins: FeaturedPluginsAssignment;
 }
 
 export interface SetupGuideExperiment {
@@ -53,32 +47,15 @@ interface CreateSetupGuideExperimentArgs {
 
 const DEFAULT_GUIDE: FlagAssignment = { variant: "control", source: "default" };
 
-const DEFAULT_PLUGINS: FeaturedPluginsAssignment = {
-  variant: "control",
-  source: "default",
-  featuredPluginEntryIds: null,
-};
-
 const persistedSourceSchema = z.enum(["flag", "default"]);
 
 const persistedGuideSchema = z
   .object({ variant: setupGuideVariantSchema, source: persistedSourceSchema })
   .strict();
 
-const persistedPluginsSchema = z
-  .object({
-    variant: setupGuideVariantSchema,
-    source: persistedSourceSchema,
-    featuredPluginEntryIds: z.array(z.string().min(1)).nullable(),
-  })
-  .strict();
-
-const persistedAssignmentsSchema = z
-  .object({
-    guide: persistedGuideSchema.nullable(),
-    plugins: persistedPluginsSchema.nullable(),
-  })
-  .strict();
+const persistedAssignmentsSchema = z.object({
+  guide: persistedGuideSchema.nullable(),
+});
 
 type PersistedAssignments = z.infer<typeof persistedAssignmentsSchema>;
 
@@ -90,11 +67,6 @@ const flagsResponseSchema = z.object({
 const flagDetailSchema = z.object({
   enabled: z.boolean(),
   variant: z.string().nullable().optional(),
-  metadata: z.object({ payload: z.unknown().optional() }).nullish(),
-});
-
-const featuredPluginsPayloadSchema = z.object({
-  plugins: z.array(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,127}$/)).min(1),
 });
 
 function isSetupGuideTelemetryEvent(
@@ -114,47 +86,24 @@ function parseJsonText(text: string): unknown {
   }
 }
 
-function parseFeaturedPluginEntryIds(payload: unknown): string[] | null {
-  const parsed = featuredPluginsPayloadSchema.safeParse(
-    typeof payload === "string" ? parseJsonText(payload) : payload,
-  );
-  return parsed.success ? parsed.data.plugins : null;
-}
-
 function flagVariant(
   flags: Record<string, unknown>,
   key: string,
-): { variant: SetupGuideVariant; payload: unknown } | null {
+): SetupGuideVariant | null {
   const flag = flagDetailSchema.safeParse(flags[key]);
   if (!flag.success || !flag.data.enabled) return null;
   const variant = setupGuideVariantSchema.safeParse(flag.data.variant);
-  if (!variant.success) return null;
-  return { variant: variant.data, payload: flag.data.metadata?.payload };
+  return variant.success ? variant.data : null;
 }
 
 function assignmentsFromFlagsResponse(body: unknown): SetupGuideAssignments {
   const response = flagsResponseSchema.safeParse(body);
   if (!response.success) {
-    return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
+    return { guide: DEFAULT_GUIDE };
   }
   const guide = flagVariant(response.data.flags, SETUP_GUIDE_FLAG_KEY);
-  const plugins = flagVariant(response.data.flags, FEATURED_PLUGINS_FLAG_KEY);
   return {
-    guide:
-      guide === null
-        ? DEFAULT_GUIDE
-        : { variant: guide.variant, source: "flag" },
-    plugins:
-      plugins === null
-        ? DEFAULT_PLUGINS
-        : {
-            variant: plugins.variant,
-            source: "flag",
-            featuredPluginEntryIds:
-              plugins.variant === "new"
-                ? parseFeaturedPluginEntryIds(plugins.payload)
-                : null,
-          },
+    guide: guide === null ? DEFAULT_GUIDE : { variant: guide, source: "flag" },
   };
 }
 
@@ -210,18 +159,6 @@ function persistedGuide(
     : { variant: assignment.variant, source: assignment.source };
 }
 
-function persistedPlugins(
-  assignment: FeaturedPluginsAssignment,
-): PersistedAssignments["plugins"] {
-  return assignment.source === "override"
-    ? null
-    : {
-        variant: assignment.variant,
-        source: assignment.source,
-        featuredPluginEntryIds: assignment.featuredPluginEntryIds,
-      };
-}
-
 export async function createSetupGuideExperiment(
   args: CreateSetupGuideExperimentArgs,
 ): Promise<SetupGuideExperiment> {
@@ -229,29 +166,17 @@ export async function createSetupGuideExperiment(
   let persisted = await readPersistedAssignments(assignmentPath, args.logger);
   let resolution: Promise<SetupGuideAssignments> | null = null;
 
-  function tagFlagVariants(assignments: {
-    guide: FlagAssignment | null;
-    plugins: FlagAssignment | null;
-  }): void {
-    if (assignments.guide?.source === "flag") {
+  function tagFlagVariant(guide: FlagAssignment | null): void {
+    if (guide?.source === "flag") {
       args.telemetry.setSharedProperty(
         `$feature/${SETUP_GUIDE_FLAG_KEY}`,
-        assignments.guide.variant,
-      );
-    }
-    if (assignments.plugins?.source === "flag") {
-      args.telemetry.setSharedProperty(
-        `$feature/${FEATURED_PLUGINS_FLAG_KEY}`,
-        assignments.plugins.variant,
+        guide.variant,
       );
     }
   }
 
-  if (persisted !== null) {
-    tagFlagVariants({
-      guide: args.override === null ? persisted.guide : null,
-      plugins: persisted.plugins,
-    });
+  if (persisted !== null && args.override === null) {
+    tagFlagVariant(persisted.guide);
   }
 
   async function fetchFlagAssignments(
@@ -272,12 +197,12 @@ export async function createSetupGuideExperiment(
           { status: response.status },
           "Setup guide flag evaluation failed",
         );
-        return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
+        return { guide: DEFAULT_GUIDE };
       }
       return assignmentsFromFlagsResponse(await response.json());
     } catch (error) {
       args.logger.debug({ err: error }, "Setup guide flag evaluation failed");
-      return { guide: DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
+      return { guide: DEFAULT_GUIDE };
     }
   }
 
@@ -288,26 +213,16 @@ export async function createSetupGuideExperiment(
         : { variant: args.override, source: "override" };
     const identity = args.telemetry.featureFlagIdentity();
     if (identity === null || !args.telemetry.isEnabled()) {
-      return { guide: override ?? DEFAULT_GUIDE, plugins: DEFAULT_PLUGINS };
+      return { guide: override ?? DEFAULT_GUIDE };
     }
-    const savedGuide = persisted?.guide ?? null;
-    const savedPlugins = persisted?.plugins ?? null;
-    if ((override !== null || savedGuide !== null) && savedPlugins !== null) {
-      return {
-        guide: override ?? savedGuide ?? DEFAULT_GUIDE,
-        plugins: savedPlugins,
-      };
-    }
-    const fetched = await fetchFlagAssignments(identity);
-    return {
-      guide: override ?? savedGuide ?? fetched.guide,
-      plugins: savedPlugins ?? fetched.plugins,
-    };
+    const saved = override ?? persisted?.guide ?? null;
+    if (saved !== null) return { guide: saved };
+    return fetchFlagAssignments(identity);
   }
 
   function resolve(): Promise<SetupGuideAssignments> {
     resolution ??= resolveAssignments().then((assignments) => {
-      tagFlagVariants(assignments);
+      tagFlagVariant(assignments.guide);
       return assignments;
     });
     return resolution;
@@ -316,16 +231,12 @@ export async function createSetupGuideExperiment(
   return {
     resolve,
     async recordExposure(entry) {
-      const { guide, plugins } = await resolve();
+      const { guide } = await resolve();
       if (!args.telemetry.isEnabled()) return;
       const toPersist: PersistedAssignments = {
         guide: persisted?.guide ?? persistedGuide(guide),
-        plugins: persisted?.plugins ?? persistedPlugins(plugins),
       };
-      if (
-        toPersist.guide !== (persisted?.guide ?? null) ||
-        toPersist.plugins !== (persisted?.plugins ?? null)
-      ) {
+      if (toPersist.guide !== (persisted?.guide ?? null)) {
         try {
           await writePersistedAssignments(assignmentPath, toPersist);
           persisted = toPersist;
@@ -336,19 +247,14 @@ export async function createSetupGuideExperiment(
           );
         }
       }
-      for (const [key, assignment] of [
-        [SETUP_GUIDE_FLAG_KEY, guide],
-        [FEATURED_PLUGINS_FLAG_KEY, plugins],
-      ] as const) {
-        if (assignment.source === "flag") {
-          args.telemetry.capture({
-            name: "$feature_flag_called",
-            properties: {
-              $feature_flag: key,
-              $feature_flag_response: assignment.variant,
-            },
-          });
-        }
+      if (guide.source === "flag") {
+        args.telemetry.capture({
+          name: "$feature_flag_called",
+          properties: {
+            $feature_flag: SETUP_GUIDE_FLAG_KEY,
+            $feature_flag_response: guide.variant,
+          },
+        });
       }
       args.telemetry.capture({
         name: "onboarding_exposed",
@@ -356,12 +262,7 @@ export async function createSetupGuideExperiment(
           entry,
           setup_guide_variant: guide.variant,
           setup_guide_source: guide.source,
-          featured_plugins_variant: plugins.variant,
-          featured_plugins_source: plugins.source,
-          $set: {
-            setup_guide_variant: guide.variant,
-            featured_plugins_variant: plugins.variant,
-          },
+          $set: { setup_guide_variant: guide.variant },
         },
       });
     },
@@ -369,13 +270,12 @@ export async function createSetupGuideExperiment(
       if (!args.telemetry.isEnabled() || !isSetupGuideTelemetryEvent(event)) {
         return event;
       }
-      const { guide, plugins } = await resolve();
+      const { guide } = await resolve();
       return {
         name: event.name,
         properties: {
           ...event.properties,
           setup_guide_variant: guide.variant,
-          featured_plugins_variant: plugins.variant,
         },
       };
     },
