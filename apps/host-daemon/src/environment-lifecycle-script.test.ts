@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -193,10 +192,6 @@ describe("core environment scripts", () => {
           return false;
         }
       });
-      if (alive.length > 0) {
-        console.error("HOOK_REMAINING", JSON.stringify({ pids, alive, workspacePath, at: new Date().toISOString() }));
-        console.error(execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in @( " + pids.join(",") + " ) } | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | ConvertTo-Json -Compress"], { encoding: "utf8" }));
-      }
       expect(alive).toEqual([]);
     },
     20_000,
