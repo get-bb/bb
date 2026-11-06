@@ -6,7 +6,7 @@ import {
   workerNodeBuiltinsPlugin,
 } from "@bb/connect-db-pg/testing";
 import { Miniflare } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   NEXT_TUNNEL_WRITE_INTERVAL_MS,
   sha256Hex,
@@ -490,7 +490,9 @@ describe("POST /api/gate/resolve", () => {
     expect(
       (await resolve({ desktopSession: ageing })).desktopSession,
     ).toMatchObject({ userId: OWNER });
-    expect(Number(await lastSeen())).toBeGreaterThanOrEqual(NOW);
+    await vi.waitFor(async () =>
+      expect(Number(await lastSeen())).toBeGreaterThanOrEqual(NOW),
+    );
   });
 
   it("checks the link credential against the label's own hash and refuses revoked servers", async () => {

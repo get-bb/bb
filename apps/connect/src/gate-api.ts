@@ -266,6 +266,7 @@ async function resolveDesktopSession(
   resolved: ResolvedLabel | null,
   env: Env,
   db: ConnectDb,
+  ctx: ExecutionContext,
 ): Promise<GateResolveResponse["desktopSession"]> {
   const verified = await verifyDesktopSessionCookie(
     cookie,
@@ -280,7 +281,7 @@ async function resolveDesktopSession(
   ) {
     return { userId: verified.userId, setCookie: null };
   }
-  await recordDesktopSessionUse(verified.refreshGrant, db);
+  ctx.waitUntil(recordDesktopSessionUse(verified.refreshGrant, db));
   const runtime = resolveConnectRuntime(env);
   const renewed = await issueDesktopSessionCookie(
     { userId: verified.userId, grant: verified.refreshGrant },
@@ -395,7 +396,13 @@ async function resolveOne(
     desktopSession:
       parsed.desktopSession === null
         ? null
-        : await resolveDesktopSession(parsed.desktopSession, resolved, env, db),
+        : await resolveDesktopSession(
+            parsed.desktopSession,
+            resolved,
+            env,
+            db,
+            ctx,
+          ),
     credential:
       parsed.credential === null
         ? null
