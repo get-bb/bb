@@ -810,11 +810,6 @@ export type AndroidAppArtifact = z.infer<typeof androidAppArtifactSchema>;
 export interface SystemMobileAppReleasesResponse {
   android: (AndroidAppArtifact & { updatedAt: string }) | null;
 }
-export const systemMobileAppReleasesResponseSchema = z.object({
-  android: androidAppArtifactSchema
-    .extend({ updatedAt: z.string() })
-    .nullable(),
-});
 
 export const systemProviderCatalogEntrySchema = z.object({
   id: z.string(),

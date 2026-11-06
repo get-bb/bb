@@ -1,5 +1,4 @@
 import {
-  desktopBrowserInstanceSchema,
   desktopBrowserBrokerChallengeSchema,
   desktopBrowserBrokerProofSchema,
   desktopBrowserImportSelectionSchema,
@@ -90,38 +89,29 @@ export type ExperimentalDesktopBrowserCreateInput = z.input<
 export type ExperimentalDesktopBrowserAcquireInput = z.input<
   typeof desktopBrowserAcquireRequestSchema
 >;
-export const experimentalDesktopBrowserLeaseSchema = z.object({
-  ...desktopBrowserScopeSchema.shape,
-  leaseId: z.string(),
-  tabIds: z.array(z.string()),
-  controllerLabel: z.string(),
-  expiresAt: z.number(),
-});
-export type ExperimentalDesktopBrowserLease = z.infer<
-  typeof experimentalDesktopBrowserLeaseSchema
->;
-export const experimentalDesktopBrowserInstancesSchema = z.object({
-  instances: z.array(
-    desktopBrowserInstanceSchema.extend({ hostId: z.string() }),
-  ),
-});
-export type ExperimentalDesktopBrowserInstances = z.infer<
-  typeof experimentalDesktopBrowserInstancesSchema
->;
+export type ExperimentalDesktopBrowserLease =
+  ExperimentalDesktopBrowserScope & {
+    leaseId: string;
+    tabIds: string[];
+    controllerLabel: string;
+    expiresAt: number;
+  };
+export type ExperimentalDesktopBrowserInstances = {
+  instances: (import("@bb/host-daemon-contract").DesktopBrowserInstance & {
+    hostId: string;
+  })[];
+};
 export type ExperimentalDesktopBrowserTabs =
   import("@bb/host-daemon-contract").DesktopBrowserResult<"desktop.browser.list_tabs">;
 export type ExperimentalDesktopBrowserCreated =
   import("@bb/host-daemon-contract").DesktopBrowserResult<"desktop.browser.create_tab">;
 export type ExperimentalDesktopBrowserCapture =
   import("@bb/host-daemon-contract").DesktopBrowserResult<"desktop.browser.capture_tab">;
-export const experimentalDesktopBrowserConnectionSchema = z.object({
-  hostId: z.string(),
-  wsEndpoint: z.string(),
-  expiresAt: z.number(),
-});
-export type ExperimentalDesktopBrowserConnection = z.infer<
-  typeof experimentalDesktopBrowserConnectionSchema
->;
+export type ExperimentalDesktopBrowserConnection = {
+  hostId: string;
+  wsEndpoint: string;
+  expiresAt: number;
+};
 export type ExperimentalDesktopBrowserInstanceRequest = z.infer<
   typeof desktopBrowserInstanceRequestSchema
 >;

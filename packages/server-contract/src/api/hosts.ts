@@ -6,10 +6,7 @@ import {
 } from "@bb/domain";
 import {
   pathsExistRequestSchema,
-  pathsExistResponseSchema,
-  pickFolderResponseSchema,
   providerCliInstallEventSchema,
-  providerCliStatusResponseSchema,
   providerCliInstallRequestSchema,
   type PathsExistRequest,
   type PathsExistResponse,
@@ -144,7 +141,6 @@ export const hostPathsExistRequestSchema = pathsExistRequestSchema;
 export type HostPathsExistRequest = PathsExistRequest;
 
 export type HostPathsExistResponse = PathsExistResponse;
-export const hostPathsExistResponseSchema = pathsExistResponseSchema;
 
 export const hostPickFolderRequestSchema = z
   .object({
@@ -154,7 +150,6 @@ export const hostPickFolderRequestSchema = z
 export type HostPickFolderRequest = z.infer<typeof hostPickFolderRequestSchema>;
 
 export type HostPickFolderResponse = PickFolderResponse;
-export const hostPickFolderResponseSchema = pickFolderResponseSchema;
 
 export const hostProviderCliStatusQuerySchema = z.object({
   refresh: z.enum(["true", "false"]).optional(),
@@ -164,8 +159,6 @@ export type HostProviderCliStatusQuery = z.input<
 >;
 
 export type HostProviderCliStatusResponse = ProviderCliStatusResponse;
-export const hostProviderCliStatusResponseSchema =
-  providerCliStatusResponseSchema;
 
 export const hostProviderCliInstallRequestSchema =
   providerCliInstallRequestSchema;
