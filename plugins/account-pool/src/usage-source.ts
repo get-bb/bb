@@ -46,12 +46,19 @@ function accountKey(account: AccountSummary): string | null {
       : null;
 }
 
+async function subscriptionAccounts(
+  hub: AccountPoolHub,
+): Promise<AccountSummary[]> {
+  const { accounts } = await hub.status();
+  return accounts.filter((account) => account.kind === "oauth");
+}
+
 export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
   bb.rpc.register(
     usageSourceRpcContract,
     {
       async [usageListMethod]() {
-        const { accounts } = await hub.status();
+        const accounts = await subscriptionAccounts(hub);
         return {
           label: "Account Pooler",
           resources: accounts.map((account) => ({
@@ -67,14 +74,13 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
       },
       async [usageFetchMethod]({ resourceId, refresh }) {
         if (
-          !(await hub.status()).accounts.some(
+          !(await subscriptionAccounts(hub)).some(
             (account) => account.id === resourceId,
           )
         )
           throw new Error("Usage resource no longer exists.");
         await hub.refreshUsage(resourceId, refresh);
-        const { accounts: allAccounts } = await hub.status();
-        const accounts = allAccounts.filter(
+        const accounts = (await subscriptionAccounts(hub)).filter(
           (account) => account.id === resourceId,
         );
         if (accounts.length === 0)
@@ -165,7 +171,7 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
     {
       experimental_discoverable: true,
       experimental_description:
-        "Usage windows for Account Pooler's shared accounts, independent of routing settings and host-local credentials.",
+        "Usage windows for Account Pooler's signed-in subscription accounts, independent of routing settings and host-local credentials. API-key accounts have no usage windows and are not listed.",
     },
   );
 }

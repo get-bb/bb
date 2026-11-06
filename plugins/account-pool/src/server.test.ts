@@ -7530,12 +7530,20 @@ it("drains a streamed response before disposing the owned transport", async () =
   }
 });
 
-it("publishes pooled usage without a display plugin and does not invent unobserved utilization", async () => {
+it("publishes pooled subscription usage without a display plugin and does not invent unobserved utilization", async () => {
   const upstream = await startUpstream((_request, response) => {
     response.end();
   });
   cleanups.push(upstream.close);
-  const fixture = await createFixture({ upstreamUrl: upstream.url });
+  const fixture = await createFixture({
+    upstreamUrl: upstream.url,
+    source: "oauth",
+    options: {
+      usageUrl: `${upstream.url}/usage`,
+      claudeLogin: async () => claudeCredentials(),
+    },
+  });
+  const apiKeyAccount = await addApiAccount(fixture, "sk-pay-as-you-go");
   const inventory = usageResourceListSchema.parse(
     await fixture.host.harness.behavior.callRpc(usageListMethod, {}),
   );
@@ -7560,6 +7568,12 @@ it("publishes pooled usage without a display plugin and does not invent unobserv
       message: "Usage has not been observed for this account.",
     },
   });
+  await expect(
+    fixture.host.harness.behavior.callRpc(usageFetchMethod, {
+      resourceId: apiKeyAccount.id,
+      refresh: false,
+    }),
+  ).rejects.toThrow("no longer exists");
   expect(
     fixture.host.harness.registrations.experimental_publishedRpcMethods.map(
       (entry) => entry.method,
