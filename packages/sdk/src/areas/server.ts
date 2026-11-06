@@ -5,7 +5,7 @@ import type {
   ServerMoveStatus,
   ServerMoveStatusResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export type {
   ServerMoveCheckItem,
@@ -59,11 +59,11 @@ function exportFileName(contentDisposition: string | null): string {
 export function createServerArea(
   args: CreateSdkAreaArgs,
 ): ExperimentalServerArea {
-  const { transport, operations } = args;
+  const { operations } = args;
   const { call } = operations;
   return {
     checkMove: ({ targetHostId, serverUrl, signal }) =>
-      call("server.checkMove", { targetHostId, serverUrl }, signal),
+      call("server.checkMove", { targetHostId, serverUrl }, { signal }),
     startMove: (input) =>
       call("server.startMove", {
         targetHostId: input.targetHostId,
@@ -71,28 +71,30 @@ export function createServerArea(
         stopRunningWork: input.stopRunningWork,
         archiveExistingTargetServerData: input.archiveExistingTargetServerData,
       }),
-    moveStatus: (input) => call("server.moveStatus", {}, input?.signal),
+    moveStatus: (input) =>
+      call("server.moveStatus", {}, { signal: input?.signal }),
     cancelMove: () => call("server.cancelMove", {}),
     async export(input) {
-      const response = await transport.resolve(
-        transport.api.v1.server.export.$post(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
+      const response = await call(
+        "server.export",
+        {},
+        { signal: input?.signal },
       );
-      if (response.body === null) {
+      if (response.body !== "stream") {
         throw new Error("The server returned an empty export");
       }
-      const sha256 = response.headers.get(EXPORT_SHA256_HEADER);
-      if (sha256 === null || !SHA256_HEX_PATTERN.test(sha256)) {
-        await response.body.cancel().catch(() => undefined);
+      const sha256 = response.headers[EXPORT_SHA256_HEADER];
+      if (sha256 === undefined || !SHA256_HEX_PATTERN.test(sha256)) {
+        await response.stream.cancel().catch(() => undefined);
         throw new Error(
           "The server did not send a SHA-256 digest for the export",
         );
       }
       return {
-        fileName: exportFileName(response.headers.get("content-disposition")),
-        body: response.body,
+        fileName: exportFileName(
+          response.headers["content-disposition"] ?? null,
+        ),
+        body: response.stream,
         sha256,
       };
     },

@@ -1,3 +1,4 @@
+import { readOperationBody } from "@bb/operations";
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
 import type { Host, HostType } from "@bb/domain";
 import type {
@@ -161,7 +162,7 @@ export interface HostsArea {
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
-  const { transport, operations } = args;
+  const { operations } = args;
   const { call, send } = operations;
   return {
     async experimental_create(input) {
@@ -172,7 +173,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
           inputs: input.inputs,
           ...(input.key === undefined ? {} : { key: input.key }),
         },
-        input.signal,
+        { signal: input.signal },
       );
       if (input.wait === false) return host;
       for (;;) {
@@ -190,9 +191,9 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       }
     },
     experimental_getEnrollmentCommand: ({ hostId, signal }) =>
-      call("hosts.enrollmentCommand", { id: hostId }, signal),
+      call("hosts.enrollmentCommand", { id: hostId }, { signal }),
     experimental_reconnect: ({ hostId, signal }) =>
-      call("hosts.reconnect", { id: hostId }, signal),
+      call("hosts.reconnect", { id: hostId }, { signal }),
     createJoinCode: () => call("hosts.createJoinCode", {}),
     async delete({ hostId, force }) {
       await send("hosts.delete", {
@@ -204,23 +205,19 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     experimental_deleteOldServerCopy: ({ hostId }) =>
       call("hosts.deleteOldServerCopy", { id: hostId }),
     directory: ({ hostId, path, signal }) =>
-      call("hosts.directory", { id: hostId, path }, signal),
+      call("hosts.directory", { id: hostId, path }, { signal }),
     experimental_discoverRepos: ({ hostId, signal }) =>
-      call("hosts.discoveredRepos", { id: hostId }, signal),
-    get: ({ hostId, signal }) => call("hosts.get", { id: hostId }, signal),
+      call("hosts.discoveredRepos", { id: hostId }, { signal }),
+    get: ({ hostId, signal }) => call("hosts.get", { id: hostId }, { signal }),
     cloneDefaultPath: ({ hostId, projectId, signal }) =>
-      call("hosts.cloneDefaultPath", { id: hostId, projectId }, signal),
+      call("hosts.cloneDefaultPath", { id: hostId, projectId }, { signal }),
     async installProviderCli(input) {
-      const response = await transport.resolve(
-        transport.api.v1.hosts[":id"]["provider-clis"].install.$post({
-          param: { id: input.hostId },
-          json: {
-            provider: input.provider,
-            actionKind: input.actionKind,
-          },
-        }),
-      );
-      const text: string = await response.text();
+      const body = await call("hosts.providerCliInstall", {
+        id: input.hostId,
+        provider: input.provider,
+        actionKind: input.actionKind,
+      });
+      const text = new TextDecoder().decode(await readOperationBody(body));
       return text
         .split(/\r?\n/u)
         .filter((line) => line.trim().length > 0)
@@ -237,21 +234,25 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
             : { includeCreating: input.includeCreating ? "true" : "false" }),
           ...(input?.type === undefined ? {} : { type: input.type }),
         },
-        input?.signal,
+        { signal: input?.signal },
       ),
     async experimental_listProviders(input) {
-      const response = await call("system.machineProviders", {}, input?.signal);
+      const response = await call(
+        "system.machineProviders",
+        {},
+        { signal: input?.signal },
+      );
       return response.providers;
     },
     pathsExist: ({ hostId, paths, signal }) =>
-      call("hosts.pathsExist", { id: hostId, paths }, signal),
+      call("hosts.pathsExist", { id: hostId, paths }, { signal }),
     pickFolder: ({ hostId, clientHostId, signal }) =>
-      call("hosts.pickFolder", { id: hostId, clientHostId }, signal),
+      call("hosts.pickFolder", { id: hostId, clientHostId }, { signal }),
     providerCliStatus: ({ hostId, refresh, signal }) =>
       call(
         "hosts.providerCliStatus",
         { id: hostId, ...(refresh ? { refresh: "true" } : {}) },
-        signal,
+        { signal },
       ),
     experimental_resume: ({ hostId }) => call("hosts.resume", { id: hostId }),
     experimental_retryCleanup: ({ hostId }) =>

@@ -40,6 +40,6 @@ export function readExecutionOptions(
             ? "true"
             : "false",
     },
-    input.signal,
+    { signal: input.signal },
   );
 }

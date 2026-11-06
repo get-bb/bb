@@ -4,7 +4,6 @@ import {
   jsonResponse,
   noRequest,
   optionalQueryRequest,
-  type EmptyInput,
 } from "@bb/hono-typed-routes";
 import { z } from "zod";
 import {
@@ -207,9 +206,6 @@ export type RegistrySkillDetailQuery = z.infer<
   typeof registrySkillDetailQuerySchema
 >;
 
-type PathPluginId = { param: { id: string } };
-type PathJobId = { param: { jobId: string } };
-type PathMarketplaceName = { param: { name: string } };
 type Infer<Schema extends z.ZodType> = z.infer<Schema>;
 
 export const pluginManagementRoutes = {
@@ -217,11 +213,7 @@ export const pluginManagementRoutes = {
     discoverRpc: defineRoute({
       path: "/plugins/rpc",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        z.input<typeof pluginRpcDiscoveryQuerySchema>,
-        typeof pluginRpcDiscoveryQuerySchema
-      >(pluginRpcDiscoveryQuerySchema),
+      request: optionalQueryRequest(pluginRpcDiscoveryQuerySchema),
       response: jsonResponse<Infer<typeof pluginRpcDiscoveryResponseSchema>>(),
     }),
     list: defineRoute({
@@ -239,31 +231,19 @@ export const pluginManagementRoutes = {
     searchMentions: defineRoute({
       path: "/plugins/mentions/search",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        PluginMentionSearchQuery,
-        typeof pluginMentionSearchQuerySchema
-      >(pluginMentionSearchQuerySchema),
+      request: optionalQueryRequest(pluginMentionSearchQuerySchema),
       response: jsonResponse<PluginMentionSearchResponse>(),
     }),
     logs: defineRoute({
       path: "/plugins/:id/logs",
       method: "get",
-      request: optionalQueryRequest<
-        PathPluginId,
-        PluginLogsQuery,
-        typeof pluginLogsQuerySchema
-      >(pluginLogsQuerySchema),
+      request: optionalQueryRequest(pluginLogsQuerySchema),
       response: jsonResponse<PluginLogsResponse>(),
     }),
     checkUpdates: defineRoute({
       path: "/plugins/updates/check",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginUpdateCheckRequestSchema>,
-        typeof pluginUpdateCheckRequestSchema
-      >(pluginUpdateCheckRequestSchema),
+      request: jsonRequest(pluginUpdateCheckRequestSchema),
       response: jsonResponse<Infer<typeof pluginUpdateCheckResponseSchema>>(),
     }),
     updates: defineRoute({
@@ -275,21 +255,13 @@ export const pluginManagementRoutes = {
     pruneCache: defineRoute({
       path: "/plugins/cache/prune",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginCachePruneRequestSchema>,
-        typeof pluginCachePruneRequestSchema
-      >(pluginCachePruneRequestSchema),
+      request: jsonRequest(pluginCachePruneRequestSchema),
       response: jsonResponse<Infer<typeof pluginCachePruneResponseSchema>>(),
     }),
     applyUpdate: defineRoute({
       path: "/plugins/:id/update",
       method: "post",
-      request: jsonRequest<
-        PathPluginId,
-        z.input<typeof pluginApplyUpdateRequestSchema>,
-        typeof pluginApplyUpdateRequestSchema
-      >(pluginApplyUpdateRequestSchema),
+      request: jsonRequest(pluginApplyUpdateRequestSchema),
       response: [
         jsonResponse<Infer<typeof pluginApplyUpdateResultSchema>>(),
         jsonResponse<Infer<typeof pluginUpdateJobResponseSchema>, 202>({
@@ -300,11 +272,7 @@ export const pluginManagementRoutes = {
     install: defineRoute({
       path: "/plugins/install",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginInstallRequestSchema>,
-        typeof pluginInstallRequestSchema
-      >(pluginInstallRequestSchema),
+      request: jsonRequest(pluginInstallRequestSchema),
       response: [
         jsonResponse<PluginEnableResponse>(),
         jsonResponse<Infer<typeof pluginInstallJobStartResponseSchema>, 202>({
@@ -315,17 +283,13 @@ export const pluginManagementRoutes = {
     source: defineRoute({
       path: "/plugins/:id/source",
       method: "get",
-      request: noRequest<PathPluginId>(),
+      request: noRequest(),
       response: jsonResponse<Infer<typeof pluginSourceDetailSchema>>(),
     }),
     reload: defineRoute({
       path: "/plugins/reload",
       method: "post",
-      request: optionalQueryRequest<
-        EmptyInput,
-        PluginReloadQuery,
-        typeof pluginReloadQuerySchema
-      >(pluginReloadQuerySchema),
+      request: optionalQueryRequest(pluginReloadQuerySchema),
       response: jsonResponse<Infer<typeof pluginReloadResponseSchema>>(),
     }),
     safeMode: defineRoute({
@@ -337,56 +301,44 @@ export const pluginManagementRoutes = {
     setSafeMode: defineRoute({
       path: "/plugins/safe-mode",
       method: "put",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginSafeModeRequestSchema>,
-        typeof pluginSafeModeRequestSchema
-      >(pluginSafeModeRequestSchema),
+      request: jsonRequest(pluginSafeModeRequestSchema),
       response:
         jsonResponse<Infer<typeof pluginSafeModeUpdateResponseSchema>>(),
     }),
     enable: defineRoute({
       path: "/plugins/:id/enable",
       method: "post",
-      request: noRequest<PathPluginId>(),
+      request: noRequest(),
       response: jsonResponse<PluginEnableResponse>(),
     }),
     disable: defineRoute({
       path: "/plugins/:id/disable",
       method: "post",
-      request: noRequest<PathPluginId>(),
+      request: noRequest(),
       response: jsonResponse<PluginEnableResponse>(),
     }),
     settings: defineRoute({
       path: "/plugins/:id/settings",
       method: "get",
-      request: noRequest<PathPluginId>(),
+      request: noRequest(),
       response: jsonResponse<PluginSettingsViewResponse>(),
     }),
     updateSettings: defineRoute({
       path: "/plugins/:id/settings",
       method: "put",
-      request: jsonRequest<
-        PathPluginId,
-        z.input<typeof pluginSettingsUpdateRequestSchema>,
-        typeof pluginSettingsUpdateRequestSchema
-      >(pluginSettingsUpdateRequestSchema),
+      request: jsonRequest(pluginSettingsUpdateRequestSchema),
       response: jsonResponse<PluginSettingsViewResponse>(),
     }),
     remove: defineRoute({
       path: "/plugins/:id",
       method: "delete",
-      request: noRequest<PathPluginId>(),
+      request: noRequest(),
       response: jsonResponse<Infer<typeof pluginRemoveResponseSchema>>(),
     }),
     token: defineRoute({
       path: "/plugins/:id/token",
       method: "post",
-      request: jsonRequest<
-        PathPluginId,
-        z.input<typeof pluginTokenRequestSchema>,
-        typeof pluginTokenRequestSchema
-      >(pluginTokenRequestSchema),
+      request: jsonRequest(pluginTokenRequestSchema),
       response: jsonResponse<Infer<typeof pluginTokenResponseSchema>>(),
     }),
     installJobs: defineRoute({
@@ -399,13 +351,13 @@ export const pluginManagementRoutes = {
     installJob: defineRoute({
       path: "/plugins/install-jobs/:jobId",
       method: "get",
-      request: noRequest<PathJobId>(),
+      request: noRequest(),
       response: jsonResponse<Infer<typeof pluginInstallJobResponseSchema>>(),
     }),
     cancelInstallJob: defineRoute({
       path: "/plugins/install-jobs/:jobId/cancel",
       method: "post",
-      request: noRequest<PathJobId>(),
+      request: noRequest(),
       response: jsonResponse<Infer<typeof pluginInstallJobResponseSchema>>(),
     }),
     updateJobs: defineRoute({
@@ -417,7 +369,7 @@ export const pluginManagementRoutes = {
     updateJob: defineRoute({
       path: "/plugins/update-jobs/:jobId",
       method: "get",
-      request: noRequest<PathJobId>(),
+      request: noRequest(),
       response: jsonResponse<Infer<typeof pluginUpdateJobResponseSchema>>(),
     }),
   },
@@ -431,32 +383,20 @@ export const pluginManagementRoutes = {
     search: defineRoute({
       path: "/plugin-catalog/search",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        PluginCatalogSearchQuery,
-        typeof pluginCatalogSearchQuerySchema
-      >(pluginCatalogSearchQuerySchema),
+      request: optionalQueryRequest(pluginCatalogSearchQuerySchema),
       response: jsonResponse<Infer<typeof pluginCatalogSearchResponseSchema>>(),
     }),
     installPlan: defineRoute({
       path: "/plugin-catalog/install-plan",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        PluginCatalogInstallPlanQuery,
-        typeof pluginCatalogInstallPlanQuerySchema
-      >(pluginCatalogInstallPlanQuerySchema),
+      request: optionalQueryRequest(pluginCatalogInstallPlanQuerySchema),
       response:
         jsonResponse<Infer<typeof pluginCatalogInstallPlanResponseSchema>>(),
     }),
     install: defineRoute({
       path: "/plugin-catalog/install",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginCatalogInstallRequestSchema>,
-        typeof pluginCatalogInstallRequestSchema
-      >(pluginCatalogInstallRequestSchema),
+      request: jsonRequest(pluginCatalogInstallRequestSchema),
       response: [
         jsonResponse<PluginEnableResponse>(),
         jsonResponse<Infer<typeof pluginInstallJobStartResponseSchema>, 202>({
@@ -476,29 +416,21 @@ export const pluginManagementRoutes = {
     add: defineRoute({
       path: "/marketplaces",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginMarketplaceAddRequestSchema>,
-        typeof pluginMarketplaceAddRequestSchema
-      >(pluginMarketplaceAddRequestSchema),
+      request: jsonRequest(pluginMarketplaceAddRequestSchema),
       response:
         jsonResponse<Infer<typeof pluginMarketplaceMutationResponseSchema>>(),
     }),
     refresh: defineRoute({
       path: "/marketplaces/refresh",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof pluginMarketplaceRefreshRequestSchema>,
-        typeof pluginMarketplaceRefreshRequestSchema
-      >(pluginMarketplaceRefreshRequestSchema),
+      request: jsonRequest(pluginMarketplaceRefreshRequestSchema),
       response:
         jsonResponse<Infer<typeof pluginMarketplaceRefreshResponseSchema>>(),
     }),
     remove: defineRoute({
       path: "/marketplaces/:name",
       method: "delete",
-      request: noRequest<PathMarketplaceName>(),
+      request: noRequest(),
       response:
         jsonResponse<Infer<typeof pluginMarketplaceRemoveResponseSchema>>(),
     }),
@@ -507,62 +439,38 @@ export const pluginManagementRoutes = {
     list: defineRoute({
       path: "/skills-registry",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        RegistrySkillListQuery,
-        typeof registrySkillListQuerySchema
-      >(registrySkillListQuerySchema),
+      request: optionalQueryRequest(registrySkillListQuerySchema),
       response: jsonResponse<Infer<typeof registrySkillsPageSchema>>(),
     }),
     entry: defineRoute({
       path: "/skills-registry/entry",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        RegistrySkillEntryQuery,
-        typeof registrySkillEntryQuerySchema
-      >(registrySkillEntryQuerySchema),
+      request: optionalQueryRequest(registrySkillEntryQuerySchema),
       response: jsonResponse<Infer<typeof registrySkillSchema>>(),
     }),
     entries: defineRoute({
       path: "/skills-registry/entries",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof registrySkillEntriesRequestSchema>,
-        typeof registrySkillEntriesRequestSchema
-      >(registrySkillEntriesRequestSchema),
+      request: jsonRequest(registrySkillEntriesRequestSchema),
       response:
         jsonResponse<Infer<typeof registrySkillEntriesResponseSchema>>(),
     }),
     repositoryStars: defineRoute({
       path: "/skills-registry/repository-stars",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        RegistryRepositoryStarsQuery,
-        typeof registryRepositoryStarsQuerySchema
-      >(registryRepositoryStarsQuerySchema),
+      request: optionalQueryRequest(registryRepositoryStarsQuerySchema),
       response: jsonResponse<RegistryRepositoryStarsResponse>(),
     }),
     detail: defineRoute({
       path: "/skills-registry/detail",
       method: "get",
-      request: optionalQueryRequest<
-        EmptyInput,
-        RegistrySkillDetailQuery,
-        typeof registrySkillDetailQuerySchema
-      >(registrySkillDetailQuerySchema),
+      request: optionalQueryRequest(registrySkillDetailQuerySchema),
       response: jsonResponse<Infer<typeof registrySkillDetailSchema>>(),
     }),
     install: defineRoute({
       path: "/skills-registry/install",
       method: "post",
-      request: jsonRequest<
-        EmptyInput,
-        z.input<typeof registrySkillInstallRequestSchema>,
-        typeof registrySkillInstallRequestSchema
-      >(registrySkillInstallRequestSchema),
+      request: jsonRequest(registrySkillInstallRequestSchema),
       response:
         jsonResponse<Infer<typeof registrySkillInstallResponseSchema>>(),
     }),

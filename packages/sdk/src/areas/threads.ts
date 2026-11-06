@@ -1027,7 +1027,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         id: input.threadId,
         ...(input.include === undefined ? {} : { include: input.include }),
       },
-      input.signal,
+      { signal: input.signal },
     );
   function timeline(
     input: ThreadTimelineArgs & { afterTag?: undefined },
@@ -1041,7 +1041,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     return call(
       "threads.timeline",
       { id: input.threadId, ...timelineQuery(input) },
-      input.signal,
+      { signal: input.signal },
     );
   }
   const archiveAll = (
@@ -1053,13 +1053,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.events",
         { id: input.threadId, ...eventsListQuery(input) },
-        input.signal,
+        { signal: input.signal },
       ),
     async wait(input) {
       const body = await call(
         "threads.eventWait",
         { id: input.threadId, ...eventWaitQuery(input) },
-        input.signal,
+        { signal: input.signal },
       );
       if (body === null) {
         return null;
@@ -1078,10 +1078,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.interaction",
         { id: input.threadId, interactionId: input.interactionId },
-        input.signal,
+        { signal: input.signal },
       ),
     list: (input) =>
-      call("threads.interactions", { id: input.threadId }, input.signal),
+      call(
+        "threads.interactions",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     resolve: (input) =>
       call("threads.resolveInteraction", {
         id: input.threadId,
@@ -1118,7 +1122,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return { ok: true };
     },
     list: (input) =>
-      call("threads.queuedMessages", { id: input.threadId }, input.signal),
+      call(
+        "threads.queuedMessages",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     reorder: (input) =>
       call("threads.reorderQueuedMessage", {
         id: input.threadId,
@@ -1148,14 +1156,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       }),
   };
   const queue: ThreadQueueArea = {
-    list: (input) => call("queue.list", queueListQuery(input), input?.signal),
+    list: (input) =>
+      call("queue.list", queueListQuery(input), { signal: input?.signal }),
   };
   const tabs: ThreadTabsArea = {
     async get(input) {
       const body = await call(
         "threads.tabs",
         { id: input.threadId },
-        input.signal,
+        { signal: input.signal },
       );
       return threadTabsResponseSchema.parse(body);
     },
@@ -1172,7 +1181,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     archive: archiveAll,
     archiveAll,
     childSummary: (input) =>
-      call("threads.childSummary", { id: input.threadId }, input.signal),
+      call(
+        "threads.childSummary",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     conversationOutline: (input) =>
       call(
         "threads.conversationOutline",
@@ -1180,15 +1193,17 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           id: input.threadId,
           ...(input.role === undefined ? {} : { role: input.role }),
         },
-        input.signal,
+        { signal: input.signal },
       ),
-    count: (input) => call("threads.count", countQuery(input), input?.signal),
-    listRunning: (input) => call("threads.running", {}, input?.signal),
+    count: (input) =>
+      call("threads.count", countQuery(input), { signal: input?.signal }),
+    listRunning: (input) =>
+      call("threads.running", {}, { signal: input?.signal }),
     defaultExecutionOptions: (input) =>
       call(
         "threads.defaultExecutionOptions",
         { id: input.threadId },
-        input.signal,
+        { signal: input.signal },
       ),
     async delete(input) {
       await send("threads.delete", {
@@ -1206,7 +1221,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.ancestors",
         { threadIds: [...input.threadIds] },
-        input.signal,
+        { signal: input.signal },
       ),
     experimental_listDescendants: (input) =>
       call(
@@ -1220,13 +1235,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             ? {}
             : { includeHidden: input.includeHidden }),
         },
-        input.signal,
+        { signal: input.signal },
       ),
     experimental_listCascade: (input) =>
       call(
         "threads.cascade",
         { threadIds: [...input.threadIds], action: input.action },
-        input.signal,
+        { signal: input.signal },
       ),
     experimental_regenerateTitle: (input) =>
       call("threads.regenerateTitle", { id: input.threadId }),
@@ -1234,13 +1249,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.pluginMetadata.list",
         { pluginId: input.pluginId, threadIds: [...input.threadIds] },
-        input.signal,
+        { signal: input.signal },
       ),
     getPluginMetadata: (input) =>
       call(
         "threads.pluginMetadata.get",
         { id: input.threadId, pluginId: input.pluginId },
-        input.signal,
+        { signal: input.signal },
       ),
     updatePluginMetadata: async (input) =>
       call(
@@ -1253,15 +1268,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             : { set: validatePluginMetadata(input.set) }),
           ...(input.remove === undefined ? {} : { remove: input.remove }),
         },
-        input.signal,
+        { signal: input.signal },
       ),
     queue,
     interactions,
-    list: (input) => call("threads.list", listQuery(input), input?.signal),
+    list: (input) =>
+      call("threads.list", listQuery(input), { signal: input?.signal }),
     markRead: (input) =>
-      call("threads.read", { id: input.threadId }, input.signal),
+      call("threads.read", { id: input.threadId }, { signal: input.signal }),
     markUnread: (input) =>
-      call("threads.unread", { id: input.threadId }, input.signal),
+      call("threads.unread", { id: input.threadId }, { signal: input.signal }),
     message: (input) =>
       call(
         "threads.message",
@@ -1273,10 +1289,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             : { before: String(input.before) }),
           ...(input.after === undefined ? {} : { after: String(input.after) }),
         },
-        input.signal,
+        { signal: input.signal },
       ),
     output: (input) =>
-      call("threads.output", { id: input.threadId }, input.signal),
+      call("threads.output", { id: input.threadId }, { signal: input.signal }),
     open: (input) =>
       call("threads.open", {
         id: input.threadId,
@@ -1290,7 +1306,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.promptHistory",
         { id: input.threadId, limit: input.limit },
-        input.signal,
+        { signal: input.signal },
       ),
     queuedMessages,
     reorderPinned: (input) =>
@@ -1303,9 +1319,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       call(
         "threads.resolveMentions",
         { threadIds: input.threadIds },
-        input.signal,
+        { signal: input.signal },
       ),
-    search: (input) => call("threads.search", searchQuery(input), input.signal),
+    search: (input) =>
+      call("threads.search", searchQuery(input), { signal: input.signal }),
     send: (input) =>
       call("threads.send", { id: input.threadId, ...sendJson(input) }),
     restoreEnvironment: (input) =>
@@ -1335,7 +1352,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
     tabs,
     context: (input) =>
-      call("threads.context", { id: input.threadId }, input.signal),
+      call("threads.context", { id: input.threadId }, { signal: input.signal }),
     timeline,
     timelineTurnSummaryDetails: (input) =>
       call(
@@ -1353,16 +1370,20 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             : { deferContent: input.deferContent }),
           ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
         },
-        input.signal,
+        { signal: input.signal },
       ),
     storageFiles: (input) =>
       call(
         "threads.storageFiles",
         { id: input.threadId, query: input.query, limit: input.limit },
-        input.signal,
+        { signal: input.signal },
       ),
     storageLocation: (input) =>
-      call("threads.storageLocation", { id: input.threadId }, input.signal),
+      call(
+        "threads.storageLocation",
+        { id: input.threadId },
+        { signal: input.signal },
+      ),
     storagePaths: (input) =>
       call(
         "threads.storagePaths",
@@ -1373,7 +1394,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           includeFiles: input.includeFiles,
           includeDirectories: input.includeDirectories,
         },
-        input.signal,
+        { signal: input.signal },
       ),
     async unarchive(input) {
       await send("threads.unarchive", { id: input.threadId });

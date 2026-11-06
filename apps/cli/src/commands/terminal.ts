@@ -470,15 +470,14 @@ const terminalRenameCommand = publicCommand("terminals.update", {
     `Renamed terminal ${terminalId} to ${session.title}`,
 });
 
-const terminalRestartCommand = clientCommand({
+const terminalRestartCommand = publicCommand("terminals.restart", {
   path: ["terminal", "restart"],
   summary: "Replace a terminal with a shell in the same scope",
   positionals: TERMINAL_ID_POSITIONAL,
   options: REDUNDANT_SCOPE_OPTIONS,
-  run: ({ positionals: { terminalId } }, client) =>
-    client.sdk().terminals.restart({ terminalId }),
-  print: (session, { positionals }) =>
-    `Restarted terminal ${positionals.terminalId} as ${session.id}`,
+  prepare: ({ positionals }) => ({ terminalId: positionals.terminalId }),
+  print: (session, { terminalId }) =>
+    `Restarted terminal ${terminalId} as ${session.id}`,
 });
 
 const terminalCloseCommand = publicCommand("terminals.close", {
@@ -492,8 +491,8 @@ const terminalCloseCommand = publicCommand("terminals.close", {
   },
   prepare: ({ positionals, options }) => ({
     terminalId: positionals.terminalId,
-    mode: options.ifClean ? "if-clean" : "force",
-    reason: "user",
+    mode: options.ifClean ? ("if-clean" as const) : ("force" as const),
+    reason: "user" as const,
   }),
   print: (_session, { terminalId }) => `Closed terminal ${terminalId}`,
 });

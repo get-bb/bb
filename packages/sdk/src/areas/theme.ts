@@ -33,12 +33,13 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
   const { call } = args.operations;
   return {
     async get(input = {}) {
-      const config = await call("system.config", {}, input.signal);
+      const config = await call("system.config", {}, { signal: input.signal });
       return config.appearance;
     },
-    catalog: (input = {}) => call("system.themes", {}, input.signal),
+    catalog: (input = {}) =>
+      call("system.themes", {}, { signal: input.signal }),
     resolve: ({ themeId, signal }) =>
-      call("system.resolveTheme", { id: themeId }, signal),
+      call("system.resolveTheme", { id: themeId }, { signal }),
     async set(input) {
       if (typeof input === "string") {
         const { appearance } = await call("system.config", {});

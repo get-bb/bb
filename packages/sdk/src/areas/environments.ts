@@ -170,7 +170,7 @@ export function createEnvironmentsArea(
             ? {}
             : { offset: String(input.offset) }),
         },
-        input?.signal,
+        { signal: input?.signal },
       ),
     async listProviders(input) {
       const response = await call(
@@ -181,7 +181,7 @@ export function createEnvironmentsArea(
             : { projectId: input.projectId }),
           ...(input?.hostId === undefined ? {} : { hostId: input.hostId }),
         },
-        input?.signal,
+        { signal: input?.signal },
       );
       return response.providers;
     },
@@ -197,14 +197,14 @@ export function createEnvironmentsArea(
     },
     async get({ environmentId, signal }) {
       return environmentSchema.parse(
-        await call("environments.get", { id: environmentId }, signal),
+        await call("environments.get", { id: environmentId }, { signal }),
       );
     },
     paths: (input) =>
       call(
         "environments.paths",
         { id: input.environmentId, ...environmentPathsQuery(input) },
-        input.signal,
+        { signal: input.signal },
       ),
     async update(input) {
       return call("environments.update", {

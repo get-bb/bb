@@ -20,6 +20,11 @@ tables: everything comes from the route definition.
 - **HTTP door.** The route's method, path and success status, plus any
   `headers` the route declares (`Cache-Control: no-store` on the
   desktop-browser credential routes and mobile releases).
+- **Request types.** Written once: path params come from the path literal
+  (`/threads/:id/files/:filePath{.+}` gives `{ id, filePath }`), and
+  `jsonRequest(schema)`, `queryRequest(schema)` and the other helpers take
+  the client's type from `z.input` and the server's from `z.output` of the
+  same schema. Only form routes name their field types.
 - **Input.** One flat object: path params plus body or query fields
   (`{ id, input, mode }` for `threads.send`). A body that is not an object
   sits under a named field (`system.keyboardSettings` takes `{ overrides }`).
@@ -60,15 +65,18 @@ value | OperationBody)`. There is no HTTP-only registration.
 
 `packages/sdk/src/operation-call.ts` (`@bb/sdk/operation-call`, internal)
 calls a public operation by name with its flat input: it finds the route in
-the contract, splits the input into path params, query and body with
-`routeRequestFromInput`, escapes path params (each segment of a
+the contract, splits the input into path params, query, JSON or form body
+with `routeRequestFromInput`, escapes path params (each segment of a
 `:filePath{.+}` param), and sends it through the transport's typed client.
-`call` returns the JSON, `null` for a 204 or an `OperationBody` for a byte
-route; `send` ignores the body. Every SDK area receives it as `operations`,
-so an area method is the argument renames and transforms its public
-signature promises, then one `call`. The CLI uses the same caller. Methods
-that send headers, upload multipart, read bytes or headers, stream or poll
-keep their own transport code.
+Options carry the signal, extra headers (`prefer: respond-async` for plugin
+installs and updates) and `keepalive`. `call` returns the JSON, `null` for a
+204 or an `OperationBody` for a byte route (attachment and file reads, the
+export stream, the provider-CLI install log); `send` ignores the body. Every
+SDK area receives it as `operations`, so an area method is the argument
+renames and transforms its public signature promises, then one `call`. The
+CLI uses the same caller. Only `plugins.callRpc` keeps its own fetch, since
+the plugin rpc wire route is not an operation; polling helpers such as
+`threads.wait` loop over calls.
 
 ## CLI doors
 

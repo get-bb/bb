@@ -208,17 +208,17 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
         title: input.title,
       }),
     get: ({ terminalId, signal }) =>
-      call("terminals.get", { terminalId }, signal),
+      call("terminals.get", { terminalId }, { signal }),
     input: ({ terminalId, dataBase64 }) =>
       call("terminals.input", { terminalId, dataBase64 }),
     async list({ scope, signal }) {
-      return call("terminals.list", terminalListQuery(scope), signal);
+      return call("terminals.list", terminalListQuery(scope), { signal });
     },
     output: (input) =>
       call(
         "terminals.output",
         { terminalId: input.terminalId, ...terminalOutputQuery(input) },
-        input.signal,
+        { signal: input.signal },
       ),
     rename: ({ terminalId, title }) =>
       call("terminals.update", { terminalId, title }),

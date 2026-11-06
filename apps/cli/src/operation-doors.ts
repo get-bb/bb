@@ -245,7 +245,7 @@ function createClient(
     },
     sdk,
     async call(name, input, options = {}) {
-      const result = await operations.call(name, input, options.signal);
+      const result = await operations.call(name, input, options);
       return result as PublicOperationOutput<typeof name>;
     },
     async confirm(question, declined) {

@@ -248,10 +248,11 @@ function appUpdateQuery(
 }
 
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
-  const { transport, operations } = args;
+  const { operations } = args;
   const { call } = operations;
   const uiPreferences: SystemUiPreferencesArea = {
-    list: (input) => call("system.uiPreferences", {}, input?.signal),
+    list: (input) =>
+      call("system.uiPreferences", {}, { signal: input?.signal }),
     async set(input) {
       const body = await call("system.updateUiPreference", {
         key: input.key,
@@ -274,48 +275,42 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     machineEnvironment: () => call("system.machineEnvironment", {}),
     replaceMachineEnvironment: (input) =>
       call("system.replaceMachineEnvironment", input),
-    attention: (input) => call("system.attention", {}, input?.signal),
-    aiServices: (input) => call("system.aiServices", {}, input?.signal),
+    attention: (input) =>
+      call("system.attention", {}, { signal: input?.signal }),
+    aiServices: (input) =>
+      call("system.aiServices", {}, { signal: input?.signal }),
     setAiServiceSelection: (input) =>
       call("system.setAiServiceSelection", input),
     testAiService: (input) => call("system.testAiService", input),
-    config: (input) => call("system.config", {}, input?.signal),
+    config: (input) => call("system.config", {}, { signal: input?.signal }),
     executionOptions: (input = {}) => readExecutionOptions(operations, input),
     cliSkillsStatus: (input = {}) =>
       call(
         "system.cliSkillsStatus",
         input.hostIds === undefined ? {} : { hostIds: input.hostIds.join(",") },
-        input.signal,
+        { signal: input.signal },
       ),
     installCliSkills: (input) => call("system.installCliSkills", input),
-    async experimental_recordTelemetryEvent(input, options) {
-      return transport.readJson(
-        transport.api.v1.system.telemetry.events.$post(
-          { json: input },
-          ...(options === undefined
-            ? []
-            : [{ init: { keepalive: options.keepalive } }]),
-        ),
-      );
-    },
+    experimental_recordTelemetryEvent: (input, options) =>
+      call(
+        "system.recordTelemetryEvent",
+        input,
+        options === undefined ? {} : { keepalive: options.keepalive },
+      ),
     reloadConfig: () => call("system.reloadConfig", {}),
     async transcribeVoice(input) {
       if (input.file.size === 0) {
         throw new Error("Audio file must not be empty");
       }
-      const form = new FormData();
-      form.set("file", input.file);
-      if (input.prompt !== undefined) form.set("prompt", input.prompt);
-      const baseUrl = transport.baseUrl.replace(/\/$/u, "");
-      const response = await transport.resolve(
-        transport.fetch(`${baseUrl}/api/v1/system/voice-transcription`, {
-          method: "POST",
-          body: form,
-          signal: input.signal,
-        }),
-      );
       return systemVoiceTranscriptionResponseSchema.parse(
-        await response.json(),
+        await call(
+          "system.voiceTranscription",
+          {
+            file: input.file,
+            ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+          },
+          { signal: input.signal },
+        ),
       );
     },
     mobileAppReleases: () => call("system.mobileAppReleases", {}),
@@ -330,7 +325,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       call(
         "system.providerStates",
         { environmentId: input.environmentId, hostId: input.hostId },
-        input.signal,
+        { signal: input.signal },
       ),
     usageLimits: (input = {}) =>
       call(
@@ -345,12 +340,14 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
                 ? "true"
                 : "false",
         },
-        input.signal,
+        { signal: input.signal },
       ),
     version: (input) =>
-      call("system.version", versionQuery(input), input?.signal),
+      call("system.version", versionQuery(input), { signal: input?.signal }),
     appUpdate: (input) =>
-      call("system.appUpdate", appUpdateQuery(input), input?.signal),
+      call("system.appUpdate", appUpdateQuery(input), {
+        signal: input?.signal,
+      }),
     applyAppUpdate: (input) => call("system.applyAppUpdate", input),
     acknowledgeAppUpdate: (input) => call("system.acknowledgeAppUpdate", input),
     experimental_scheduleAppUpdate: () => call("system.scheduleAppUpdate", {}),
@@ -359,7 +356,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     experimental_setAppUpdateAuto: (input) =>
       call("system.setAppUpdateAuto", input),
     experimental_cliCommand: (input) =>
-      call("system.cliCommand", {}, input?.signal),
+      call("system.cliCommand", {}, { signal: input?.signal }),
     experimental_installCliCommand: () => call("system.installCliCommand", {}),
     experimental_removeCliCommand: () => call("system.removeCliCommand", {}),
   };

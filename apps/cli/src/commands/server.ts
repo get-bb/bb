@@ -296,7 +296,7 @@ export const serverCommands = [
     summary: "Show the server move in progress or the last completed move",
     options: { json: JSON_OPTION },
     async run({ options }, client) {
-      const response = await client.sdk().experimental_server.moveStatus();
+      const response = await client.call("server.moveStatus", {});
       if (!outputJson(options, response)) {
         printServerMoveStatusResponse(response);
       }

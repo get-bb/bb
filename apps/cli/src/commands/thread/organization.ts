@@ -388,6 +388,11 @@ const queueUpdateCommand = clientCommand({
         : `Queued message ${positionals.messageId} updated; sends at ${new Date(result.sendAt).toLocaleString()}`,
 });
 
+function queueSendMode(mode: string): "auto" | "steer" {
+  if (mode === "auto" || mode === "steer") return mode;
+  throw new Error("--mode must be auto or steer.");
+}
+
 const queueSendCommand = publicCommand("threads.sendQueuedMessage", {
   path: ["thread", "queue", "send"],
   summary: "Send and remove a queued message",
@@ -398,10 +403,7 @@ const queueSendCommand = publicCommand("threads.sendQueuedMessage", {
     }),
   },
   prepare: ({ positionals, options }) => {
-    const mode = options.mode;
-    if (mode !== "auto" && mode !== "steer") {
-      throw new Error("--mode must be auto or steer.");
-    }
+    const mode = queueSendMode(options.mode);
     return {
       id: positionals.threadId,
       queuedMessageId: positionals.messageId,

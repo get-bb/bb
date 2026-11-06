@@ -112,7 +112,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         await call(
           "skillsRegistry.detail",
           { source: input.source, skillId: input.skillId },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -121,7 +121,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         ids: [...input.registrySkillIds],
       });
       return registrySkillEntriesResponseSchema.parse(
-        await call("skillsRegistry.entries", body, input.signal),
+        await call("skillsRegistry.entries", body, { signal: input.signal }),
       );
     },
     async get(input) {
@@ -129,7 +129,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         await call(
           "skillsRegistry.entry",
           { id: input.registrySkillId },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -144,7 +144,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
         await call(
           "skillsRegistry.repositoryStars",
           { source: input.source },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -158,7 +158,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
             perPage: String(input.perPage ?? 24),
             ...(query ? { q: query } : {}),
           },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -174,13 +174,13 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
           path: input.path,
           environmentId: input.environmentId ?? "",
         },
-        input.signal,
+        { signal: input.signal },
       ),
     list: (input) =>
       call(
         "projects.skills",
         { id: input.projectId, environmentId: input.environmentId ?? "" },
-        input.signal,
+        { signal: input.signal },
       ),
     listFiles: (input) =>
       call(
@@ -190,7 +190,7 @@ export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
           skillId: input.skillId,
           environmentId: input.environmentId ?? "",
         },
-        input.signal,
+        { signal: input.signal },
       ),
     registry,
     remove: (input) =>

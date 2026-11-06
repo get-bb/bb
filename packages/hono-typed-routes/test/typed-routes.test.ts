@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Endpoint } from "../src/endpoint.js";
@@ -8,6 +8,7 @@ import {
   optionalQueryRequest,
   typedRoutes,
   type ApiSchemaFromRouteDescriptors,
+  type RouteParams,
 } from "../src/index.js";
 
 type TestSchema = {
@@ -23,9 +24,7 @@ const testRoutes = {
   search: defineRoute({
     path: "/search",
     method: "get",
-    request: optionalQueryRequest<Record<never, never>, { q: string }>(
-      z.object({ q: z.string().min(1) }),
-    ),
+    request: optionalQueryRequest(z.object({ q: z.string().min(1) })),
     response: jsonResponse<{ q: string }>(),
   }),
 };
@@ -88,5 +87,20 @@ describe("typedRoutes", () => {
     const missingQuery = await app.request("/search", { method: "GET" });
     expect(missingQuery.status).toBe(400);
     expect(await missingQuery.json()).toEqual({ message: "Required" });
+  });
+});
+
+describe("route path params", () => {
+  it("reads parameter names from the path, including multi-segment ones", () => {
+    expectTypeOf<
+      RouteParams<"/threads/:id/files/:filePath{.+}">
+    >().toEqualTypeOf<{ id: string; filePath: string }>();
+    expectTypeOf<
+      RouteParams<"/projects/:id/sources/:sourceId">
+    >().toEqualTypeOf<{
+      id: string;
+      sourceId: string;
+    }>();
+    expectTypeOf<RouteParams<"/system/config">>().toEqualTypeOf<{}>();
   });
 });

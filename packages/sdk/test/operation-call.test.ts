@@ -8,14 +8,25 @@ interface Recorded {
   body: unknown;
 }
 
+interface Sent {
+  request: Request;
+  init: RequestInit | undefined;
+  text: string;
+}
+
 function recorder(respond: () => Response = () => Response.json({ ok: true })) {
   const requests: Recorded[] = [];
+  const sent: Sent[] = [];
   const transport = createHttpTransport({
     baseUrl: "http://bb.test",
     runtime: "node",
     fetch: async (input, init) => {
       const request = new Request(input, init);
-      const text = await request.text();
+      const text = await request.clone().text();
+      sent.push({ request, init, text });
+      if (request.headers.get("content-type")?.startsWith("multipart/")) {
+        return respond();
+      }
       requests.push({
         method: request.method,
         url: request.url,
@@ -24,7 +35,7 @@ function recorder(respond: () => Response = () => Response.json({ ok: true })) {
       return respond();
     },
   });
-  return { requests, ...createOperationCaller(transport) };
+  return { requests, sent, ...createOperationCaller(transport) };
 }
 
 describe("operation caller", () => {
@@ -98,6 +109,35 @@ describe("operation caller", () => {
         ],
       },
     ]);
+  });
+
+  it("sends extra headers, keepalive and multipart forms through the typed client", async () => {
+    const { sent, call } = recorder();
+    await call(
+      "plugins.install",
+      { source: "path:/plugins/demo" },
+      { headers: { prefer: "respond-async" } },
+    );
+    await call(
+      "system.recordTelemetryEvent",
+      { name: "plugin_creation_started", properties: {} },
+      { keepalive: true },
+    );
+    await call("projects.uploadAttachment", {
+      id: "proj_1",
+      file: new File(["hello"], "notes.txt", { type: "text/plain" }),
+    });
+    const [install, telemetry, upload] = sent;
+    expect(install?.request.headers.get("prefer")).toBe("respond-async");
+    expect(JSON.parse(install?.text ?? "")).toEqual({
+      source: "path:/plugins/demo",
+    });
+    expect(telemetry?.init?.keepalive).toBe(true);
+    expect(upload?.request.url).toBe(
+      "http://bb.test/api/v1/projects/proj_1/attachments",
+    );
+    expect(upload?.text).toContain('filename="notes.txt"');
+    expect(upload?.text).toContain("hello");
   });
 
   it("returns JSON, null for a 204 and a body for a byte route", async () => {

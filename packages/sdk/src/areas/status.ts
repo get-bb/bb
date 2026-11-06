@@ -78,10 +78,12 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
       const threadId = input.threadId;
       const [project, thread] = await Promise.all([
         projectId
-          ? fetchSilent(() => call("projects.get", { id: projectId }, signal))
+          ? fetchSilent(() =>
+              call("projects.get", { id: projectId }, { signal }),
+            )
           : Promise.resolve(null),
         threadId
-          ? fetchSilent(() => call("threads.get", { id: threadId }, signal))
+          ? fetchSilent(() => call("threads.get", { id: threadId }, { signal }))
           : Promise.resolve(null),
       ]);
       const pendingTodos =
@@ -91,7 +93,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
               const timeline = await call(
                 "threads.timeline",
                 { id: thread.id, summaryOnly: "true" },
-                signal,
+                { signal },
               );
               if (isThreadTimelineDelta(timeline)) {
                 throw new Error("Expected a full thread timeline window.");
@@ -102,7 +104,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(() =>
-              call("threads.list", { parentThreadId: thread.id }, signal),
+              call("threads.list", { parentThreadId: thread.id }, { signal }),
             );
 
       return {

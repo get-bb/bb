@@ -346,6 +346,8 @@ function pluginPath(pluginId: string, suffix = ""): string {
   return `/api/v1/plugins/${encodeURIComponent(nonEmptyId(pluginId))}${suffix}`;
 }
 
+const RESPOND_ASYNC = { headers: { prefer: "respond-async" } };
+
 export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   const { transport } = args;
   const { call } = args.operations;
@@ -372,25 +374,25 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
     async list(input = {}) {
       const response = pluginUpdateJobListResponseSchema.parse(
-        await call("plugins.updateJobs", {}, input.signal),
+        await call("plugins.updateJobs", {}, { signal: input.signal }),
       );
       return response.jobs;
     },
   };
 
-  function requestUpdate(input: PluginIdArgs) {
-    return requestParsed(
-      pluginPath(input.pluginId, "/update"),
-      z.union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema]),
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          prefer: "respond-async",
-        },
-        body: JSON.stringify(pluginApplyUpdateRequestSchema.parse({})),
-      },
-    );
+  async function requestUpdate(input: PluginIdArgs) {
+    return z
+      .union([pluginUpdateJobResponseSchema, pluginApplyUpdateResultSchema])
+      .parse(
+        await call(
+          "plugins.applyUpdate",
+          {
+            id: nonEmptyId(input.pluginId),
+            ...pluginApplyUpdateRequestSchema.parse({}),
+          },
+          RESPOND_ASYNC,
+        ),
+      );
   }
 
   const installJobs: PluginInstallJobsArea = {
@@ -410,27 +412,37 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
     async list(input = {}) {
       const response = pluginInstallJobListResponseSchema.parse(
-        await call("plugins.installJobs", {}, input.signal),
+        await call("plugins.installJobs", {}, { signal: input.signal }),
       );
       return response.jobs;
     },
   };
-  function requestInstall(path: string, body: unknown) {
-    return requestParsed(path, pluginInstallStartResponseSchema, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        prefer: "respond-async",
-      },
-      body: JSON.stringify(body),
-    });
+  type InstallStart = z.infer<typeof pluginInstallStartResponseSchema>;
+
+  async function installFromSource(
+    input: PluginInstallArgs,
+  ): Promise<InstallStart> {
+    return pluginInstallStartResponseSchema.parse(
+      await call("plugins.install", sourceInstallBody(input), RESPOND_ASYNC),
+    );
+  }
+
+  async function installFromCatalog(
+    input: PluginCatalogInstallArgs,
+  ): Promise<InstallStart> {
+    return pluginInstallStartResponseSchema.parse(
+      await call(
+        "pluginCatalog.install",
+        pluginCatalogInstallRequestSchema.parse(input),
+        RESPOND_ASYNC,
+      ),
+    );
   }
 
   async function startInstall(
-    path: string,
-    body: unknown,
+    started: Promise<InstallStart>,
   ): Promise<PluginInstallJob> {
-    const response = await requestInstall(path, body);
+    const response = await started;
     if ("job" in response) return response.job;
     throw new Error(
       `installed "${response.plugin.id}" without an install job; this BB server predates background installs`,
@@ -438,10 +450,9 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   }
 
   async function installAndWait(
-    path: string,
-    body: unknown,
+    started: Promise<InstallStart>,
   ): Promise<InstalledPlugin> {
-    const response = await requestInstall(path, body);
+    const response = await started;
     if ("plugin" in response) return response.plugin;
     let job = response.job;
     while (
@@ -474,18 +485,8 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   }
 
   const catalog: PluginCatalogArea = {
-    async install(input) {
-      return installAndWait(
-        "/api/v1/plugin-catalog/install",
-        pluginCatalogInstallRequestSchema.parse(input),
-      );
-    },
-    async startInstall(input) {
-      return startInstall(
-        "/api/v1/plugin-catalog/install",
-        pluginCatalogInstallRequestSchema.parse(input),
-      );
-    },
+    install: (input) => installAndWait(installFromCatalog(input)),
+    startInstall: (input) => startInstall(installFromCatalog(input)),
     async installPlan(input) {
       const body = pluginCatalogInstallRequestSchema.parse(
         input.marketplace === undefined
@@ -498,7 +499,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
           body.marketplace === undefined
             ? { entryId: body.entryId }
             : { entryId: body.entryId, marketplace: body.marketplace },
-          input.signal,
+          { signal: input.signal },
         ),
       );
       return response.plan;
@@ -508,13 +509,13 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await call(
           "pluginCatalog.search",
           { q: z.string().parse(input.query) },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
     async status(input = {}) {
       const response = pluginCatalogStatusResponseSchema.parse(
-        await call("pluginCatalog.status", {}, input.signal),
+        await call("pluginCatalog.status", {}, { signal: input.signal }),
       );
       return response.catalog;
     },
@@ -530,7 +531,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
     async list(input = {}) {
       const response = pluginMarketplaceListResponseSchema.parse(
-        await call("marketplaces.list", {}, input.signal),
+        await call("marketplaces.list", {}, { signal: input.signal }),
       );
       return response.marketplaces;
     },
@@ -539,7 +540,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         input.name === undefined ? {} : { name: input.name },
       );
       const response = pluginMarketplaceRefreshResponseSchema.parse(
-        await call("marketplaces.refresh", body, input.signal),
+        await call("marketplaces.refresh", body, { signal: input.signal }),
       );
       return response.results;
     },
@@ -580,7 +581,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await call(
           "plugins.discoverRpc",
           { pluginId: query.pluginId, method: query.method },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -602,13 +603,13 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         input.pluginId === undefined ? {} : { id: input.pluginId },
       );
       const response = pluginUpdateCheckResponseSchema.parse(
-        await call("plugins.checkUpdates", body, input.signal),
+        await call("plugins.checkUpdates", body, { signal: input.signal }),
       );
       return response.results;
     },
     async experimental_getSafeMode(input = {}) {
       return pluginSafeModeResponseSchema.parse(
-        await call("plugins.safeMode", {}, input.signal),
+        await call("plugins.safeMode", {}, { signal: input.signal }),
       );
     },
     async experimental_setSafeMode(input) {
@@ -624,7 +625,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         dryRun: input.dryRun ?? false,
       });
       return pluginCachePruneResponseSchema.parse(
-        await call("plugins.pruneCache", body, input.signal),
+        await call("plugins.pruneCache", body, { signal: input.signal }),
       );
     },
     catalog,
@@ -646,7 +647,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await call(
           "plugins.settings",
           { id: nonEmptyId(input.pluginId) },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
@@ -655,28 +656,21 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         await call(
           "plugins.source",
           { id: nonEmptyId(input.pluginId) },
-          input.signal,
+          { signal: input.signal },
         ),
       );
     },
-    async install(input) {
-      return installAndWait(
-        "/api/v1/plugins/install",
-        sourceInstallBody(input),
-      );
-    },
-    startInstall(input) {
-      return startInstall("/api/v1/plugins/install", sourceInstallBody(input));
-    },
+    install: (input) => installAndWait(installFromSource(input)),
+    startInstall: (input) => startInstall(installFromSource(input)),
     installJobs,
     async list(input = {}) {
       return pluginListResponseSchema.parse(
-        await call("plugins.list", {}, input.signal),
+        await call("plugins.list", {}, { signal: input.signal }),
       );
     },
     async listUpdateResults(input = {}) {
       const response = pluginUpdateCheckResponseSchema.parse(
-        await call("plugins.updates", {}, input.signal),
+        await call("plugins.updates", {}, { signal: input.signal }),
       );
       return response.results;
     },

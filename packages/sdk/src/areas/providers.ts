@@ -53,7 +53,7 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
           environmentId: input.environmentId,
           hostId: input.hostId,
         },
-        input.signal,
+        { signal: input.signal },
       ),
     models: (input = {}) => readExecutionOptions(operations, input),
   };

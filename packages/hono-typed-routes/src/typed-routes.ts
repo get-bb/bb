@@ -57,7 +57,7 @@ type RuntimeInputSource = InputSource | "none" | "form";
 
 type TypedRegister<Schema, MKey extends MethodKey> = <
   Path extends string & keyof Schema,
-  E extends MKey extends keyof Schema[Path] ? Schema[Path][MKey] : never,
+  E extends (MKey extends keyof Schema[Path] ? Schema[Path][MKey] : never),
   Input extends RouteInputForMethod<MKey, EndpointInput<E>>,
 >(
   ...args: [Input] extends [never]

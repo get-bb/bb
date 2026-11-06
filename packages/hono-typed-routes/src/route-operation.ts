@@ -5,13 +5,13 @@ import type {
   EndpointFromRouteDescriptor,
   JsonRouteRequest,
   RouteDefinition,
+  RouteParams,
   RouteRequestInput,
 } from "./route-descriptor.js";
 
-type RouteParam<Descriptor extends RouteDefinition> =
-  RouteRequestInput<Descriptor["request"]> extends { param: infer Param }
-    ? Param
-    : Record<never, string>;
+type RouteParam<Descriptor extends RouteDefinition> = RouteParams<
+  Descriptor["path"]
+>;
 
 type RouteBody<Request> =
   Request extends JsonRouteRequest<any, infer Parsed, infer Field>
@@ -34,6 +34,24 @@ type NoFields<Body> = string extends keyof Body
 
 export type RouteOperationInput<Descriptor extends RouteDefinition> =
   RouteParam<Descriptor> & NoFields<RouteBody<Descriptor["request"]>>;
+
+type RouteCallBody<Request> =
+  RouteRequestInput<Request> extends infer Input
+    ? Input extends { json: infer Json }
+      ? Request extends { field: infer Field extends string }
+        ? { [Key in Field]: Json }
+        : Json
+      : Input extends { query: infer Query }
+        ? Query
+        : Input extends { query?: infer Query }
+          ? Partial<NonNullable<Query>>
+          : Input extends { form: infer Form }
+            ? Form
+            : Record<never, never>
+    : Record<never, never>;
+
+export type RouteCallInput<Descriptor extends RouteDefinition> =
+  RouteParam<Descriptor> & NoFields<RouteCallBody<Descriptor["request"]>>;
 
 type SuccessStatus = 200 | 201 | 202 | 204;
 

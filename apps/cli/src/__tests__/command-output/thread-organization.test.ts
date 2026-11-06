@@ -41,6 +41,11 @@ function queuedMessage(
   };
 }
 
+interface AttachmentUploadRequest {
+  param: { id: string };
+  form: { file: Blob };
+}
+
 describe("bb thread organization commands", () => {
   setupCommandOutputTestEnvironment();
 
@@ -139,22 +144,18 @@ describe("bb thread organization commands", () => {
         await writeFile(path, bytes);
         const get = vi.fn(async () => ({ projectId: "remote-project" }));
         const create = vi.fn(async () => queuedMessage({}));
+        const upload = vi.fn(async (_request: AttachmentUploadRequest) => ({
+          type,
+          path: "durable-token",
+          name: filename,
+          mimeType,
+          sizeBytes: bytes.byteLength,
+        }));
         stubServerApi({
           "v1.threads.:id.$get": get,
           "v1.threads.:id.queued-messages.$post": create,
+          "v1.projects.:id.attachments.$post": upload,
         });
-        vi.mocked(globalThis.fetch).mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              type,
-              path: "durable-token",
-              name: filename,
-              mimeType,
-              sizeBytes: bytes.byteLength,
-            }),
-            { headers: { "content-type": "application/json" } },
-          ),
-        );
 
         await runCommand(
           [
@@ -174,16 +175,11 @@ describe("bb thread organization commands", () => {
         expect(get).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ param: { id: "thread-1" } }),
         );
-        expect(globalThis.fetch).toHaveBeenCalledExactlyOnceWith(
-          "http://server/api/v1/projects/remote-project/attachments",
-          expect.objectContaining({
-            method: "POST",
-            body: expect.any(FormData),
-          }),
-        );
-        const body = vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body;
-        if (!(body instanceof FormData)) throw new Error("Missing upload body");
-        const file = body.get("file");
+        expect(upload).toHaveBeenCalledOnce();
+        expect(upload.mock.calls[0]?.[0].param).toEqual({
+          id: "remote-project",
+        });
+        const file = upload.mock.calls[0]?.[0].form.file;
         if (!(file instanceof File)) throw new Error("Missing uploaded file");
         expect(file.name).toBe(filename);
         expect(file.type).toBe(mimeType);
@@ -210,18 +206,20 @@ describe("bb thread organization commands", () => {
       const path = join(dir, "blue.png");
       await writeFile(path, new Uint8Array([137, 80, 78, 71]));
       const create = vi.fn(async () => queuedMessage({}));
+      const upload = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "Upload rejected" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }),
+      );
       stubServerApi({
         "v1.threads.:id.$get": vi.fn(async () => ({
           projectId: "remote-project",
         })),
         "v1.threads.:id.queued-messages.$post": create,
+        "v1.projects.:id.attachments.$post": upload,
       });
-      vi.mocked(globalThis.fetch).mockResolvedValue(
-        new Response(JSON.stringify({ error: "Upload rejected" }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }),
-      );
 
       await expect(
         runCommand(
@@ -237,7 +235,7 @@ describe("bb thread organization commands", () => {
           register,
         ),
       ).rejects.toThrow("process.exit:1");
-      expect(globalThis.fetch).toHaveBeenCalledOnce();
+      expect(upload).toHaveBeenCalledOnce();
       expect(create).not.toHaveBeenCalled();
     } finally {
       await rm(dir, { recursive: true, force: true });

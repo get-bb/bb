@@ -8,8 +8,10 @@ export type {
   RouteResponseDescriptor,
   RouteDefinition,
   RouteMethod,
+  RouteParams,
 } from "./route-descriptor.js";
 export type {
+  RouteCallInput,
   RouteOperationInput,
   RouteOperationOutput,
 } from "./route-operation.js";

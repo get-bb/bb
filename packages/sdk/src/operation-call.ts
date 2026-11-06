@@ -55,11 +55,34 @@ function encodedParams(
   return encoded;
 }
 
+export interface OperationCallOptions {
+  signal?: AbortSignal;
+  headers?: Readonly<Record<string, string>>;
+  keepalive?: boolean;
+}
+
+function clientOptions(options: OperationCallOptions): unknown[] {
+  const init = {
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.keepalive === undefined
+      ? {}
+      : { keepalive: options.keepalive }),
+  };
+  const hasInit = Object.keys(init).length > 0;
+  if (!hasInit && options.headers === undefined) return [];
+  return [
+    {
+      ...(hasInit ? { init } : {}),
+      ...(options.headers === undefined ? {} : { headers: options.headers }),
+    },
+  ];
+}
+
 function request(
   transport: BbSdkTransport,
   name: PublicOperationName,
   input: unknown,
-  signal: AbortSignal | undefined,
+  options: OperationCallOptions,
 ): Promise<Response> {
   const route = publicOperationRouteDefinition(name);
   if (route === null) throw new Error(`Unknown operation ${name}`);
@@ -69,7 +92,7 @@ function request(
       param === undefined
         ? rest
         : { ...rest, param: encodedParams(route.path, param) },
-      ...(signal === undefined ? [] : [{ init: { signal } }]),
+      ...clientOptions(options),
     ),
   );
 }
@@ -78,12 +101,12 @@ export interface OperationCaller {
   call<Name extends PublicOperationName>(
     name: Name,
     input: PublicOperationInput<Name>,
-    signal?: AbortSignal,
+    options?: OperationCallOptions,
   ): Promise<PublicOperationOutput<Name>>;
   send<Name extends PublicOperationName>(
     name: Name,
     input: PublicOperationInput<Name>,
-    signal?: AbortSignal,
+    options?: OperationCallOptions,
   ): Promise<void>;
 }
 
@@ -91,8 +114,8 @@ export function createOperationCaller(
   transport: BbSdkTransport,
 ): OperationCaller {
   return {
-    async call(name, input, signal) {
-      const response = await request(transport, name, input, signal);
+    async call(name, input, options = {}) {
+      const response = await request(transport, name, input, options);
       const route = publicOperationRouteDefinition(name);
       if (route !== null && routeReturnsBody(route)) {
         return operationBodyFromResponse(response) as PublicOperationOutput<
@@ -104,8 +127,8 @@ export function createOperationCaller(
       }
       return (await response.json()) as PublicOperationOutput<typeof name>;
     },
-    async send(name, input, signal) {
-      await request(transport, name, input, signal);
+    async send(name, input, options = {}) {
+      await request(transport, name, input, options);
     },
   };
 }

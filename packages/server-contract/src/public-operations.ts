@@ -4,7 +4,7 @@ import {
   routeSuccessStatus,
   validationMessageFromZodError,
   type RouteDefinition,
-  type RouteOperationInput,
+  type RouteCallInput,
   type RouteOperationOutput,
 } from "@bb/hono-typed-routes";
 import {
@@ -40,7 +40,7 @@ export type PublicOperationRoute<Name extends PublicOperationName> = RouteAt<
   Name
 >;
 export type PublicOperationInput<Name extends PublicOperationName> =
-  RouteOperationInput<PublicOperationRoute<Name>>;
+  RouteCallInput<PublicOperationRoute<Name>>;
 export type RouteBodyOutput<Route extends RouteDefinition> =
   Route["response"] extends { format: "binary" | "text" }
     ? OperationBody

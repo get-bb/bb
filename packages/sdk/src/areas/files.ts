@@ -101,7 +101,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
   const { call } = args.operations;
   return {
     read: ({ hostId, path, rootPath, ref, signal }) =>
-      call("files.read", { hostId, path, rootPath, ref }, signal),
+      call("files.read", { hostId, path, rootPath, ref }, { signal }),
     write: (input) => call("files.write", input),
     list: (input) =>
       call(
@@ -114,7 +114,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
           path: input.path,
           query: input.query,
         },
-        input.signal,
+        { signal: input.signal },
       ),
     listPaths: (input) =>
       call(
@@ -129,12 +129,12 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
           path: input.path,
           query: input.query,
         },
-        input.signal,
+        { signal: input.signal },
       ),
     mkdir: (input) => call("files.mkdir", input),
     move: (input) => call("files.move", input),
     remove: (input) => call("files.remove", input),
     createPreview: ({ hostId, rootPath, ttlMs, signal }) =>
-      call("files.createPreview", { hostId, rootPath, ttlMs }, signal),
+      call("files.createPreview", { hostId, rootPath, ttlMs }, { signal }),
   };
 }

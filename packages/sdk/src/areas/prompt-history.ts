@@ -22,7 +22,7 @@ export function createPromptHistoryArea({
   return {
     list: (input = {}) => {
       const { signal, ...query } = input;
-      return operations.call("promptHistory.list", query, signal);
+      return operations.call("promptHistory.list", query, { signal });
     },
   };
 }

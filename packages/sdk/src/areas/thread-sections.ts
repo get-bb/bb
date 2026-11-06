@@ -45,7 +45,9 @@ export function createThreadSectionsArea(
     async list(input) {
       return threadSectionSchema
         .array()
-        .parse(await call("threadSections.list", {}, input?.signal));
+        .parse(
+          await call("threadSections.list", {}, { signal: input?.signal }),
+        );
     },
     async update(input) {
       return threadSectionMutationResponseSchema.parse(

@@ -14,7 +14,7 @@ export function createOperationCaller(baseUrl: string): OperationCaller {
     return caller;
   };
   return {
-    call: (name, input, signal) => resolve().call(name, input, signal),
-    send: (name, input, signal) => resolve().send(name, input, signal),
+    call: (name, input, options) => resolve().call(name, input, options),
+    send: (name, input, options) => resolve().send(name, input, options),
   };
 }
