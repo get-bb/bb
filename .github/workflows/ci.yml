@@ -17,6 +17,9 @@ jobs:
       - shell: bash
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
       - shell: bash
+        env:
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
         run: |
           failures=0
           for repeat in $(seq 1 10); do
