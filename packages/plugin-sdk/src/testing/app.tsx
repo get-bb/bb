@@ -2548,13 +2548,19 @@ export interface RenderSlotOptions<
 /** Host-originated inputs a slot test can drive deterministically. */
 export interface RenderedSlotBehaviorDrivers {
   /**
-   * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
-   * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
+   * Invalidate the plugin's cached `useRpc` reads carrying any of `tags`, as a
+   * backend `bb.rpc.experimental_invalidate` does, wrapped in act. `null`
+   * invalidates every read, like `experimental_invalidateAll`. `pluginId`
+   * defaults to the rendered plugin.
    */
   experimental_invalidateRpc(
     tags: readonly string[] | null,
     pluginId?: string,
   ): Promise<void>;
+  /**
+   * Push a realtime event to `useRealtime(channel, …)` subscribers, wrapped
+   * in act. The payload is JSON-round-tripped like `bb.realtime.publish`.
+   */
   emitRealtime(channel: string, payload: unknown): Promise<void>;
   /** Drive the lifecycle of the same connection used by realtime events. */
   setRealtimeConnectionState(

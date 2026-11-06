@@ -3017,6 +3017,68 @@ Docs: `frontend-registration.md`.
    actions. Audit empty machine sections, machine removal, rename updates, and
    loading behavior for `experimental_hosts`.
 
+## `useSidebarThreadDraft` / `useSidebarThreadDraftIds` / `useSidebarThreadRowStatus` / `useSidebarThreadRowStatuses` / `useSidebarThreadShortcut` (`@get-bb/plugin-sdk/app`)
+
+**Shipped without the `experimental_` prefix.** These hooks became public
+`@get-bb/plugin-sdk/app` exports under final names in #4025, against the
+prefix rule. About ten marketplace plugins import them by these names, so
+Michael decided to keep the names. Do not rename them without
+keeping the current names as runtime aliases. The unprefixed names do not
+mean the hooks have been audited.
+
+They expose the per-row facts that are client-local and therefore missing
+from `PluginSidebarThread`:
+
+- `useSidebarThreadDraft(threadId)` returns `{ hasUnsubmittedDraft }`, which
+  is true while the composer holds unsent input for that thread. It is false
+  for a thread that is not in the sidebar's thread view.
+- `useSidebarThreadDraftIds()` returns the ids of every sidebar thread that
+  holds an unsent draft, through one subscription, for collapsed-group
+  rollups. It returns the same empty set whenever there are none.
+- `useSidebarThreadRowStatus(threadId)` returns the status another plugin's
+  content script set through `experimental_setThreadRowStatus`, or null.
+  `useSidebarThreadRowStatuses()` returns every status that is set, by thread
+  id, through one subscription.
+- `useSidebarThreadShortcut(threadId)` returns `{ label, ariaKeyshortcuts }`
+  for the jump shortcut bb assigns while the app command modifier is held.
+  bb numbers rows carrying `data-sidebar-thread-shortcut-target` in DOM
+  order. The hook returns null when the modifier is up and for rows without
+  the attribute.
+
+Docs: `frontend-registration.md`.
+
+Core callers: the bundled Thread list plugin (`plugins/thread-list`) renders
+bb's sidebar through all five. `ThreadRow` reads the draft, row status and
+shortcut hooks, and the group rollups read `useSidebarThreadDraftIds` and
+`useSidebarThreadRowStatuses`. The app implementations in
+`apps/app/src/lib/plugin-sidebar-hooks.ts` wrap the primitives core's own
+lists use. `usePromptDraftHasInput` and `usePluginThreadRowStatus` feed
+`useThreadListEntryStatus`, which the thread search palette, mobile recents
+and related-thread lists draw. Mobile recents also reads
+`usePromptDraftInputThreadIds`.
+`AppSidebar` provides the `SidebarThreadShortcutKeysContext` behind the
+shortcut hook.
+
+**Audit before calling these stable.**
+
+1. **Hooks versus DTO fields.** Confirm that draft, row status and shortcut
+   should stay separate per-row hooks rather than fields on
+   `PluginSidebarThread`. `useSidebarThreadDraft` is the per-thread draft hook
+   that item 5 of the `experimental_useSidebarThreads` entry asks about.
+2. **Draft scope.** A draft is keyed by project and thread, and the hook
+   reports false for threads outside the sidebar's view. Confirm callers never
+   need drafts for archived threads, or for threads the view filters out.
+3. **Row status contract.** `PluginSidebarThreadRowStatus` aliases
+   `PluginComposerThreadRowStatus`, so the `tone` → `state` rename and the
+   arbitration questions in the `experimental_setThreadRowStatus` entry apply
+   to these hooks as well. A change there changes these return types.
+4. **Shortcut targeting.** Shortcut assignment depends on a DOM attribute and
+   DOM order. Confirm that holds for virtualized lists that do not mount every
+   row, and decide whether the attribute name belongs in the typed contract.
+5. **Whole-list subscriptions.** Confirm the set and map returned by
+   `useSidebarThreadDraftIds` and `useSidebarThreadRowStatuses` keep their
+   identity while nothing changes, at ten thousand threads.
+
 ## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, group, order?, component }`. The component receives
