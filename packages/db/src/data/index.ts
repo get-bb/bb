@@ -152,6 +152,7 @@ export {
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
   deleteSweepItemFailures,
+  deleteSweepItemFailuresOfUnknownSweeps,
   getSweepItemFailure,
   listSweepItemFailures,
   upsertSweepItemFailure,

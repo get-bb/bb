@@ -9,12 +9,14 @@ import type { AppDeps } from "../../types.js";
 const RETRY_BASE_MS = 60_000;
 const RETRY_MAX_MS = 60 * 60_000;
 const REPEATED_FAILURE_ATTEMPTS = 5;
+const ITEM_DETACH_AFTER_MS = 60_000;
+const YIELD_AFTER_MS = 8;
 
 export type SweepDeps = Pick<AppDeps, "db" | "logger">;
 
 export interface ItemSweepDefinition<T> {
   name: string;
-  detachAfterMs: number | null;
+  concurrency: number;
   list(args: {
     excludedKeys: ReadonlySet<string>;
   }): readonly T[] | Promise<readonly T[]>;
@@ -123,23 +125,41 @@ async function runItemSweep<T>(
     if (failure.retryAt > now) excludedKeys.add(failure.itemKey);
   }
   const listedKeys = new Set<string>();
+  const due: Array<{ item: T; itemKey: string }> = [];
   for (const item of await definition.list({ excludedKeys })) {
     const itemKey = definition.key(item);
     listedKeys.add(itemKey);
-    if (excludedKeys.has(itemKey)) continue;
-    await runItem(deps, definition, {
-      hadFailure: failures.has(itemKey),
-      inFlight,
-      item,
-      itemKey,
-      now,
-    });
+    if (!excludedKeys.has(itemKey)) due.push({ item, itemKey });
   }
+  let next = 0;
+  let lastYieldAt = performance.now();
+  const worker = async () => {
+    for (let entry = due[next]; entry !== undefined; entry = due[next]) {
+      next += 1;
+      if (performance.now() - lastYieldAt >= YIELD_AFTER_MS) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        lastYieldAt = performance.now();
+      }
+      await runItem(deps, definition, {
+        hadFailure: failures.has(entry.itemKey),
+        inFlight,
+        item: entry.item,
+        itemKey: entry.itemKey,
+        now,
+      });
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.max(1, Math.min(definition.concurrency, due.length)) },
+      worker,
+    ),
+  );
   deleteSweepItemFailures(deps.db, {
     itemKeys: [...failures.values()]
       .filter(
         (failure) =>
-          failure.retryAt <= now &&
+          failure.retryAt <= now - RETRY_MAX_MS &&
           !listedKeys.has(failure.itemKey) &&
           !inFlight.has(failure.itemKey),
       )
@@ -181,14 +201,9 @@ async function runItem<T>(
     .finally(() => {
       args.inFlight.delete(itemKey);
     });
-  const { detachAfterMs } = definition;
-  if (detachAfterMs === null) {
-    await settled;
-    return;
-  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   const detached = new Promise<"detached">((resolve) => {
-    timer = setTimeout(() => resolve("detached"), detachAfterMs);
+    timer = setTimeout(() => resolve("detached"), ITEM_DETACH_AFTER_MS);
     timer.unref();
   });
   const outcome = await Promise.race([
@@ -198,7 +213,7 @@ async function runItem<T>(
   clearTimeout(timer);
   if (outcome === "detached") {
     deps.logger.warn(
-      { detachAfterMs, itemKey, sweep },
+      { detachAfterMs: ITEM_DETACH_AFTER_MS, itemKey, sweep },
       "Sweep item is still running; continuing without waiting for it",
     );
   }

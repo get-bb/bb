@@ -12,10 +12,10 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 const TASK_JOBS: Record<string, string> = {
-  "environment-provider-lifecycle":
-    "Runs teardowns concurrently in per-host slots; each environment catches its own failure and keeps retry state on its row.",
+  "environment-preparation-owner-release":
+    "One bulk UPDATE with no per-item work.",
   "machine-provider-lifecycle":
-    "Runs machine sweeps in the background; each machine catches its own failure and keeps retry state on its row.",
+    "Starts each machine's sweep in the background without waiting for it, catches each failure, and keeps retry state on the host row.",
   "machine-auth-prune": "One bulk DELETE with no per-item work.",
   "completed-event-output-migration":
     "Cursor scan per target; a failing target is backed off through the shared failure records while the other targets continue.",

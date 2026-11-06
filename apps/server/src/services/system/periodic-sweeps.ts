@@ -8,7 +8,10 @@ import {
   runProjectAttachmentBackfill,
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
-import { sweepProviderLifecycles } from "../environments/environment-engine.js";
+import {
+  providerLifecycleSweep,
+  sweepProviderLifecycles,
+} from "../environments/environment-engine.js";
 import {
   runThreadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
@@ -29,6 +32,8 @@ import {
   getEnvironment,
   isDatabaseMaintenanceIdle,
   listSweepItemFailures,
+  releaseFinishedEnvironmentPreparationOwners,
+  deleteSweepItemFailuresOfUnknownSweeps,
   listArchivedThreadsPendingTeardown,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
@@ -329,7 +334,7 @@ function projectDeletionSweep(
 ): ItemSweep {
   return defineItemSweep({
     name: "project-deletion",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () => listProjectsPendingDeletion(deps),
     key: (projectId) => projectId,
     process: async (projectId) => {
@@ -343,7 +348,7 @@ function environmentProvisioningSweep(
 ): ItemSweep {
   return defineItemSweep({
     name: "environment-provisioning-orphan-cleanup",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () =>
       deps.db
         .select({ id: environments.id })
@@ -370,7 +375,7 @@ function threadProvisioningSweep(
 ): ItemSweep {
   return defineItemSweep({
     name: "thread-provisioning",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () =>
       deps.db
         .select({ id: threads.id })
@@ -391,7 +396,7 @@ function archivedThreadTeardownSweep(
 ): ItemSweep {
   return defineItemSweep({
     name: "archived-thread-teardown",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () => listArchivedThreadsPendingTeardown(deps.db),
     key: (thread) => thread.id,
     process: (thread) => {
@@ -417,7 +422,7 @@ function deletedThreadFinalizationSweep(
 ): ItemSweep {
   return defineItemSweep({
     name: "deleted-thread-finalization",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () =>
       deps.db
         .select({
@@ -633,8 +638,15 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
+    kind: "items",
+    sweep: providerLifecycleSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "environment-preparation-owner-release",
     kind: "task",
-    run: sweepProviderLifecycles,
+    run: (deps) => releaseFinishedEnvironmentPreparationOwners(deps.db),
   },
   {
     cadenceMs: 0,
@@ -823,6 +835,12 @@ async function runStartupRecoveryStep(
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
+  await runStartupRecoveryStep(deps, "forget-unknown-sweep-failures", () => {
+    deleteSweepItemFailuresOfUnknownSweeps(
+      deps.db,
+      PERIODIC_SWEEP_JOBS.map((job) => job.name),
+    );
+  });
   await runStartupRecoveryStep(deps, "release-queued-message-claims", () => {
     const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
       deps,

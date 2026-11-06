@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import type { DbQueryConnection } from "../connection.js";
 import { sweepItemFailures } from "../schema.js";
 
@@ -63,4 +63,14 @@ export function deleteSweepItemFailures(
       ),
     )
     .run();
+}
+
+export function deleteSweepItemFailuresOfUnknownSweeps(
+  db: DbQueryConnection,
+  knownSweeps: readonly string[],
+): number {
+  return db
+    .delete(sweepItemFailures)
+    .where(notInArray(sweepItemFailures.sweep, [...knownSweeps]))
+    .run().changes;
 }

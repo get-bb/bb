@@ -1427,7 +1427,7 @@ export function turnStartDeadlineSweep(
   const deadline = now - TURN_START_DEADLINE_MS;
   return defineItemSweep({
     name: "turn-start-deadline",
-    detachAfterMs: null,
+    concurrency: 1,
     list: () =>
       deps.db
         .select({

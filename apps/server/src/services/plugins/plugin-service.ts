@@ -495,7 +495,6 @@ const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
-const SCHEDULE_DETACH_AFTER_MS = 60_000;
 
 class PluginRpcBoundaryError extends Error {
   constructor(readonly rpcError: PluginRpcError) {
@@ -2788,7 +2787,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     dueScheduleSweep(now) {
       return defineItemSweep({
         name: "plugin-schedule",
-        detachAfterMs: SCHEDULE_DETACH_AFTER_MS,
+        concurrency: 1,
         list: ({ excludedKeys }) =>
           schedulesPaused
             ? []
