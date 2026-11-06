@@ -1291,6 +1291,7 @@ function storyHealth(
     loginCommand: null,
     localLoginCommand: null,
     internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
   };
 }
 
