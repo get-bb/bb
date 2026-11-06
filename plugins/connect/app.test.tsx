@@ -1364,6 +1364,10 @@ describe("connect setup guide section", () => {
 
   it("reports a sign-in that could not start or was denied as a sign-in failure", async () => {
     const onSetupFailed = vi.fn();
+    let resolveStatus: (value: ConnectStatus) => void = () => {};
+    const initialStatus = new Promise<ConnectStatus>((resolve) => {
+      resolveStatus = resolve;
+    });
     let startFails = true;
     const account = fakeAccountSdk({
       "login.start": () => {
@@ -1381,19 +1385,22 @@ describe("connect setup guide section", () => {
       {
         openUrl: () => true,
         sdk: account.sdk,
-        rpc: { status: () => status() },
+        rpc: { status: () => initialStatus },
       },
     );
 
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-    await waitFor(() =>
-      expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("sign_in"),
+    await act(async () => resolveStatus(status()));
+    vi.useFakeTimers();
+    await act(async () =>
+      fireEvent.click(slot.getByRole("button", { name: "Set up" })),
     );
+    expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("sign_in");
     startFails = false;
-    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
-    await waitFor(() => expect(onSetupFailed).toHaveBeenCalledTimes(2), {
-      timeout: 4_000,
-    });
+    await act(async () =>
+      fireEvent.click(slot.getByRole("button", { name: "Set up" })),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(onSetupFailed).toHaveBeenCalledTimes(2);
     expect(onSetupFailed).toHaveBeenLastCalledWith("sign_in");
   });
 
