@@ -16,6 +16,7 @@ const daysSchema = z.number().int().min(1).max(3650).nullable();
 export const policySchema = z
   .object({
     archiveAfterDays: daysSchema,
+    saveAfterDays: daysSchema.default(null),
     deleteAfterDays: daysSchema,
     deleteStorageOnArchive: z.boolean().default(false),
     deleteDevDataOnCheckoutRemoval: z.boolean().default(false),
@@ -25,6 +26,7 @@ export type Policy = z.infer<typeof policySchema>;
 export const runSchema = z.object({
   ranAt: z.number(),
   archivedCount: z.number().int().nonnegative(),
+  savedCount: z.number().int().nonnegative().default(0),
   deletedCount: z.number().int().nonnegative(),
   failedCount: z.number().int().nonnegative(),
 });
@@ -36,6 +38,7 @@ export const stateSchema = z.object({
 export type State = z.infer<typeof stateSchema>;
 export const previewSchema = z.object({
   archiveCount: z.number().int().nonnegative(),
+  saveCount: z.number().int().nonnegative(),
   deleteCount: z.number().int().nonnegative(),
 });
 export type Preview = z.infer<typeof previewSchema>;

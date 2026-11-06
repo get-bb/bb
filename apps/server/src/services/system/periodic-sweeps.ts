@@ -13,6 +13,11 @@ import {
   sweepProviderLifecycles,
 } from "../environments/environment-engine.js";
 import { threadPurgeSweep } from "../threads/thread-purge.js";
+import { threadSaveSweep } from "../threads/saved-threads/thread-saving.js";
+import {
+  reconcileSavedThreads,
+  removeOrphanedSavedThreadFiles,
+} from "../threads/saved-threads/saved-thread-files.js";
 import {
   threadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
@@ -620,6 +625,8 @@ export function createThreadEventPruningJob(
   };
 }
 
+const SAVED_THREAD_ORPHAN_FILE_SWEEP_CADENCE_MS = 10 * 60_000;
+
 export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -738,6 +745,26 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     name: "thread-purge",
     background: true,
     sweep: threadPurgeSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "thread-save",
+    background: true,
+    sweep: threadSaveSweep,
+  },
+  {
+    cadenceMs: SAVED_THREAD_ORPHAN_FILE_SWEEP_CADENCE_MS,
+    category: "orphan-cleanup",
+    name: "saved-thread-orphan-files",
+    background: true,
+    sweep: (deps) =>
+      defineSingleItemSweep({
+        name: "saved-thread-orphan-files",
+        process: async () => {
+          await removeOrphanedSavedThreadFiles(deps);
+        },
+      }),
   },
   {
     cadenceMs: 0,
@@ -883,6 +910,9 @@ export async function runStartupRecoverySweep(
       );
     }
   });
+  await runStartupRecoveryStep(deps, "saved-thread-reconcile", () =>
+    reconcileSavedThreads(deps),
+  );
   await runStartupRecoveryStep(deps, "legacy-deferred-messages", () =>
     deliverLegacyDeferredThreadMessages(deps),
   );

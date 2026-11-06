@@ -231,6 +231,12 @@ import {
   type TerminalOutputResponse,
   type TerminalResizeRequest,
   type ThreadArchiveAllResponse,
+  type ThreadImportForm,
+  type ThreadImportResponse,
+  savedThreadListQuerySchema,
+  type SavedThreadListQuery,
+  type SavedThreadListResponse,
+  type SavedThreadResponse,
   type ThreadChildSummaryResponse,
   type ThreadEventWaitQuery,
   type ThreadEventsQuery,
@@ -1684,6 +1690,75 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    /**
+     * Download the thread as a self-contained thread file: zstd-compressed JSONL
+     * with a header line naming the thread, then the thread's rows, every event
+     * in sequence order, and its attachments.
+     */
+    exportThread: defineRoute({
+      path: "/threads/:id/export",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    /**
+     * Import a thread file. Merges the events a thread already in the database
+     * lacks, or recreates a deleted thread in its project. 404 when the project
+     * is not on this server; 400 when the file is not a thread file or uses an
+     * unknown format version.
+     */
+    importThread: defineRoute({
+      path: "/threads/import",
+      method: "post",
+      request: formRequest<EmptyInput, ThreadImportForm>(),
+      response: jsonResponse<ThreadImportResponse>(),
+    }),
+    /**
+     * Save the thread to a thread file and remove it from the database in a
+     * paced background sweep. Answers at once with the `saving` entry; 409
+     * while the thread is pinned, running, open in a client, already being
+     * saved, has pending work, or has child, forked or lifecycle-dependent
+     * threads that are still in the database.
+     */
+    saveThread: defineRoute({
+      path: "/threads/:id/save",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<SavedThreadResponse>(),
+    }),
+    /** Threads saved to files, newest first. */
+    listSaved: defineRoute({
+      path: "/saved-threads",
+      method: "get",
+      request: queryRequest<EmptyInput, SavedThreadListQuery>(
+        savedThreadListQuerySchema,
+      ),
+      response: jsonResponse<SavedThreadListResponse>(),
+    }),
+    /**
+     * Bring a saved thread back into the database from its file, together with
+     * any saved parent or source threads it links to. The file is removed.
+     */
+    restoreSaved: defineRoute({
+      path: "/saved-threads/:id/restore",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadImportResponse>(),
+    }),
+    /** Permanently delete a saved thread's file. */
+    deleteSaved: defineRoute({
+      path: "/saved-threads/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true }>(),
+    }),
+    /** Download a saved thread's file. */
+    savedFile: defineRoute({
+      path: "/saved-threads/:id/file",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: binaryResponse<Uint8Array>(),
     }),
     /**
      * Ask the environment provider to restore a thread's destroyed environment

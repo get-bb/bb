@@ -18,6 +18,29 @@ export function requestThreadPurge(
     .run();
 }
 
+export function isThreadPurgeRequested(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ threadId: threadPurges.threadId })
+      .from(threadPurges)
+      .where(eq(threadPurges.threadId, threadId))
+      .get() !== undefined
+  );
+}
+
+export function cancelThreadPurge(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db.delete(threadPurges).where(eq(threadPurges.threadId, threadId)).run()
+      .changes > 0
+  );
+}
+
 export function nextThreadPurge(
   db: DbQueryConnection,
   args: { excludedThreadIds: ReadonlySet<string> },

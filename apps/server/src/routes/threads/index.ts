@@ -3,6 +3,7 @@ import type { AppDeps } from "../../types.js";
 import { registerThreadActionRoutes } from "./actions.js";
 import { registerThreadBaseRoutes } from "./base.js";
 import { registerThreadDataRoutes } from "./data.js";
+import { registerThreadTransferRoutes } from "./transfer.js";
 import { registerThreadInteractionRoutes } from "./interactions.js";
 import { registerThreadTabRoutes } from "./tabs.js";
 
@@ -10,6 +11,7 @@ export function registerThreadRoutes(app: Hono, deps: AppDeps): void {
   registerThreadBaseRoutes(app, deps);
   registerThreadActionRoutes(app, deps);
   registerThreadDataRoutes(app, deps);
+  registerThreadTransferRoutes(app, deps);
   registerThreadInteractionRoutes(app, deps);
   registerThreadTabRoutes(app, deps);
 }

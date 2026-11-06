@@ -26,7 +26,10 @@ interface Candidate {
 
 export function selectCandidates(
   threads: readonly RetentionThread[],
-  policy: Pick<Policy, "archiveAfterDays" | "deleteAfterDays">,
+  policy: Pick<
+    Policy,
+    "archiveAfterDays" | "deleteAfterDays" | "saveAfterDays"
+  >,
   now: number,
 ) {
   const live = threads.filter((thread) => thread.deletedAt === null);
@@ -67,7 +70,35 @@ export function selectCandidates(
     return result;
   }
   const archive: Candidate[] = [];
+  const save: Candidate[] = [];
   const deletion: Candidate[] = [];
+  const referenced = new Set(
+    live.flatMap((thread) => [
+      thread.parentThreadId,
+      thread.sourceThreadId,
+      thread.lifecycleOwnerThreadId,
+    ]),
+  );
+  if (policy.saveAfterDays !== null) {
+    const cutoff = now - policy.saveAfterDays * 86400000;
+    for (const thread of live) {
+      if (
+        thread.archivedAt !== null &&
+        thread.archivedAt < cutoff &&
+        thread.pinnedAt === null &&
+        thread.status !== "active" &&
+        thread.status !== "starting" &&
+        thread.status !== "stopping" &&
+        !referenced.has(thread.id)
+      ) {
+        save.push({
+          rootId: thread.id,
+          memberIds: [thread.id],
+          oldestAt: thread.archivedAt,
+        });
+      }
+    }
+  }
   const active = (id: string | null) =>
     id !== null && byId.has(id) && byId.get(id)!.archivedAt === null;
   for (const root of live) {
@@ -127,5 +158,9 @@ export function selectCandidates(
   }
   const sort = (a: Candidate, b: Candidate) =>
     a.oldestAt - b.oldestAt || a.rootId.localeCompare(b.rootId);
-  return { archive: archive.sort(sort), delete: deletion.sort(sort) };
+  return {
+    archive: archive.sort(sort),
+    save: save.sort(sort),
+    delete: deletion.sort(sort),
+  };
 }

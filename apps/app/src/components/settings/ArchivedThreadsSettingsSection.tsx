@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
+import type { SavedThreadResponse } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { ProjectSelector } from "@/components/pickers/ProjectSelector";
 import {
@@ -22,6 +23,11 @@ import {
   type UseArchivedThreadsFilters,
 } from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import {
+  useDeleteSavedThread,
+  useRestoreSavedThread,
+  useSavedThreads,
+} from "@/hooks/queries/saved-thread-queries";
 import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -106,6 +112,95 @@ function filterArchivedThreadsBySearch(
   });
 }
 
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function savedThreadStatus(entry: SavedThreadResponse): string {
+  if (entry.state !== "saved" || entry.savedAt === null) return "Saving…";
+  return `Saved ${formatRelativeTime({ timestamp: entry.savedAt, now: Date.now() })} · ${formatMegabytes(entry.packedBytes)}`;
+}
+
+function SavedThreadsList({
+  entries,
+  projectNames,
+}: {
+  entries: readonly SavedThreadResponse[];
+  projectNames: ReadonlyMap<string, string>;
+}) {
+  const restoreSavedThread = useRestoreSavedThread();
+  const deleteSavedThread = useDeleteSavedThread();
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center gap-2 px-0.5 text-xs font-medium text-muted-foreground">
+        <Icon name="Archive" className="size-3.5" />
+        <h3 className="min-w-0 flex-1 truncate">Saved to files</h3>
+        <span>
+          {entries.length} {entries.length === 1 ? "thread" : "threads"}
+        </span>
+      </div>
+      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+        {entries.map((entry) => (
+          <div
+            key={entry.threadId}
+            className="flex min-h-14 items-center gap-3 px-4 py-2.5"
+          >
+            <div className="min-w-0 flex-1">
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                <ThreadTitle title={entry.title ?? "Untitled thread"} />
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-subtle-foreground">
+                {projectNames.get(entry.projectId) ?? "Unknown project"} ·{" "}
+                {savedThreadStatus(entry)}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={entry.state !== "saved" || restoreSavedThread.isPending}
+              onClick={() =>
+                restoreSavedThread.mutate({ threadId: entry.threadId })
+              }
+            >
+              Restore
+            </Button>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  aria-label={`More actions for ${entry.title ?? "saved thread"}`}
+                  disabled={entry.state !== "saved"}
+                >
+                  <Icon name="MoreHorizontal" className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`/api/v1/saved-threads/${encodeURIComponent(entry.threadId)}/file`}
+                    download
+                  >
+                    Download file
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() =>
+                    deleteSavedThread.mutate({ threadId: entry.threadId })
+                  }
+                >
+                  Delete permanently
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ArchivedThreadsSettingsSection() {
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<ArchivedThreadsKindFilter>("all");
@@ -126,6 +221,11 @@ export function ArchivedThreadsSettingsSection() {
   });
   const unarchiveThread = useUnarchiveThread();
   const resolveTitle = useResolveThreadTitle();
+  const savedThreadsQuery = useSavedThreads(
+    { projectId: projectId === ALL_PROJECTS ? null : projectId, search },
+    { enabled: kind !== "child" },
+  );
+  const savedThreads = savedThreadsQuery.data?.savedThreads ?? [];
 
   const projects = useMemo(() => {
     if (!sidebarNavigation.data) return [];
@@ -303,6 +403,10 @@ export function ArchivedThreadsSettingsSection() {
           ))}
         </div>
       )}
+
+      {kind !== "child" && savedThreads.length > 0 ? (
+        <SavedThreadsList entries={savedThreads} projectNames={projectNames} />
+      ) : null}
 
       {!searchIsActive && archivedThreadsQuery.hasNextPage ? (
         <Button

@@ -46,7 +46,7 @@ describe("retention eligibility", () => {
             }),
             thread("independent"),
           ],
-          { archiveAfterDays: 30, deleteAfterDays: null },
+          { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
           NOW,
         );
         expect(result.archive.map((group) => group.rootId)).toEqual([
@@ -75,7 +75,7 @@ describe("retention eligibility", () => {
         }),
         thread("pinned", { archivedAt: DAY, pinnedAt: DAY }),
       ],
-      { archiveAfterDays: null, deleteAfterDays: 30 },
+      { archiveAfterDays: null, saveAfterDays: null, deleteAfterDays: 30 },
       NOW,
     );
     expect(
@@ -96,7 +96,7 @@ describe("retention eligibility", () => {
         }),
         thread("deleted", { deletedAt: DAY }),
       ],
-      { archiveAfterDays: 30, deleteAfterDays: null },
+      { archiveAfterDays: 30, saveAfterDays: null, deleteAfterDays: null },
       NOW,
     );
     expect(result.archive.map((group) => group.memberIds)).toEqual([
@@ -126,7 +126,11 @@ describe("retention plugin", () => {
         archiveAfterDays: 30,
         deleteAfterDays: null,
       });
-      expect(preview).toEqual({ archiveCount: 1, deleteCount: 0 });
+      expect(preview).toEqual({
+        archiveCount: 1,
+        saveCount: 0,
+        deleteCount: 0,
+      });
       expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(0);
       const refused = await host.harness.runCli([
         "retention",
@@ -146,7 +150,11 @@ describe("retention plugin", () => {
       await host.harness.runSchedule("retention");
       expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(1);
       expect(await host.harness.callRpc("state", null)).toMatchObject({
-        policy: { archiveAfterDays: 30, deleteAfterDays: null },
+        policy: {
+          archiveAfterDays: 30,
+          saveAfterDays: null,
+          deleteAfterDays: null,
+        },
         lastRun: { archivedCount: 1 },
       });
     } finally {
@@ -194,6 +202,59 @@ describe("retention plugin", () => {
       });
     } finally {
       await host.harness.dispose();
+    }
+  });
+  it("saves only old archived threads that nothing else points at, and only with the experiment on", async () => {
+    const result = selectCandidates(
+      [
+        thread("old", { archivedAt: DAY }),
+        thread("recent", { archivedAt: NOW - DAY }),
+        thread("pinned", { archivedAt: DAY, pinnedAt: DAY }),
+        thread("parent", { archivedAt: DAY }),
+        thread("child", { archivedAt: DAY, parentThreadId: "parent" }),
+        thread("running", { archivedAt: DAY, status: "active" }),
+        thread("live"),
+      ],
+      { archiveAfterDays: null, saveAfterDays: 30, deleteAfterDays: null },
+      NOW,
+    );
+    expect(result.save.map((candidate) => candidate.rootId)).toEqual([
+      "child",
+      "old",
+    ]);
+
+    for (const savedThreads of [false, true]) {
+      const host = createFakePluginHost({
+        pluginId: "storage-retention",
+        sdk: {
+          system: {
+            config: async () => ({ experiments: { savedThreads } }),
+          },
+          threads: {
+            list: async () => [
+              makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
+            ],
+            experimental_save: async ({ threadId }) => ({ threadId }),
+          },
+        },
+      });
+      try {
+        plugin(host.bb);
+        await host.harness.callRpc("configure", {
+          archiveAfterDays: null,
+          saveAfterDays: 30,
+          deleteAfterDays: null,
+        });
+        await host.harness.runSchedule("retention");
+        expect(host.harness.sdk.callsTo("threads.experimental_save")).toEqual(
+          savedThreads ? [[{ threadId: "thr_old" }]] : [],
+        );
+        expect(await host.harness.callRpc("state", null)).toMatchObject({
+          lastRun: { savedCount: savedThreads ? 1 : 0, failedCount: 0 },
+        });
+      } finally {
+        await host.harness.dispose();
+      }
     }
   });
   it("runs deletion through the SDK and persists its run summary", async () => {
