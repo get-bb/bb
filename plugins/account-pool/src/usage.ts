@@ -4,9 +4,11 @@ import {
   type AccountQuota,
   type FamilyQuota,
   type FamilyWeekly,
+  type LimitWindow,
+  type LimitWindowSlot,
   type ModelFamily,
 } from "./contracts.js";
-import { modelFamily, parseReset } from "./quota.js";
+import { CLAUDE_WINDOWS, modelFamily, parseReset } from "./quota.js";
 
 const numberValueSchema = z.union([z.number(), z.string()]);
 
@@ -119,6 +121,17 @@ function limitBucket(
   );
 }
 
+function usageWindow(
+  slot: LimitWindowSlot,
+  bucket: UsageBucket | null | undefined,
+  now: number,
+): LimitWindow | null {
+  const normalized = bucket == null ? null : normalizeBucket(bucket, now);
+  return normalized === null
+    ? null
+    : { slot, windowMinutes: CLAUDE_WINDOWS[slot].minutes, ...normalized };
+}
+
 export function quotaFromUsage(
   accountId: string,
   payload: object,
@@ -168,10 +181,13 @@ export function quotaFromUsage(
     const normalized = normalizeBucket(bucket, now);
     if (normalized !== null) familyWeekly[family] = normalized;
   }
-  const fiveHour =
-    data.five_hour == null ? null : normalizeBucket(data.five_hour, now);
-  const sevenDay =
-    data.seven_day == null ? null : normalizeBucket(data.seven_day, now);
+  const limitWindows =
+    data.five_hour === undefined && data.seven_day === undefined
+      ? previous.limitWindows
+      : [
+          usageWindow("primary", data.five_hour, now),
+          usageWindow("secondary", data.seven_day, now),
+        ].filter((window): window is LimitWindow => window !== null);
   return {
     ...previous,
     accountId,
@@ -192,13 +208,8 @@ export function quotaFromUsage(
               observedAt: now,
               source: "usage",
             },
-    fiveHourUtilization: fiveHour?.utilization ?? previous.fiveHourUtilization,
-    fiveHourResetAt: fiveHour?.resetAt ?? previous.fiveHourResetAt,
-    fiveHourStatus: fiveHour?.status ?? previous.fiveHourStatus,
-    sevenDayUtilization: sevenDay?.utilization ?? previous.sevenDayUtilization,
-    sevenDayResetAt: sevenDay?.resetAt ?? previous.sevenDayResetAt,
-    sevenDayStatus: sevenDay?.status ?? previous.sevenDayStatus,
     familyWeekly,
+    limitWindows,
     observedAt: now,
   };
 }

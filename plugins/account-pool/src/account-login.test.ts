@@ -397,7 +397,10 @@ describe("Account Pooler logins", () => {
 
     expect(await sendMessage(pool, "session-pinned")).toBe(200);
     const mainBefore = await summary(pool, main.id);
-    expect(mainBefore.fiveHourUtilization).toBe(0.42);
+    expect(mainBefore.limitWindows[0]).toMatchObject({
+      slot: "primary",
+      utilization: 0.42,
+    });
     const reserveUsageCalls = () =>
       providers.usageAuthorizations.filter(
         (token) => !providers.upstreamAuthorizations.includes(token),
@@ -432,7 +435,10 @@ describe("Account Pooler logins", () => {
       mainSecret.accessToken,
     );
     const mainAfter = await summary(pool, main.id);
-    expect(mainAfter.fiveHourUtilization).toBe(0.42);
+    expect(mainAfter.limitWindows[0]).toMatchObject({
+      slot: "primary",
+      utilization: 0.42,
+    });
     expect(mainAfter.createdAt).toBe(mainBefore.createdAt);
     expect((await summary(pool, reserve.id)).status).toBe("disabled");
   });
