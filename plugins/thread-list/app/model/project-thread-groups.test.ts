@@ -160,7 +160,7 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
   });
 
-  it("renders forks as roots and excludes side chats", () => {
+  it("renders forks and visible children of hidden side chats as roots", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
         id: "thr_parent",
@@ -181,9 +181,20 @@ describe("buildProjectThreadGroups", () => {
         createdAt: 30,
         latestAttentionAt: 40,
       }),
+      createThread({
+        id: "thr_sidechat_child",
+        parentThreadId: "thr_sidechat",
+        createdAt: 40,
+        latestAttentionAt: 50,
+      }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual(["thr_parent", "thr_fork"]);
+    expect(summarizeItems(rootItems)).toEqual([
+      "thr_sidechat_child",
+      "thr_parent",
+      "thr_fork",
+    ]);
+    expect(findNode(rootItems, "thr_sidechat_child")?.depth).toBe(0);
     expect(findNode(rootItems, "thr_parent")?.children).toEqual([]);
     expect(findNode(rootItems, "thr_fork")?.depth).toBe(0);
     expect(findNode(rootItems, "thr_sidechat")).toBeNull();

@@ -401,7 +401,7 @@ export function registerSpawnCommand(
     .option("--pinned", "Create the thread in Pinned")
     .option(
       "--visibility <visibility>",
-      "Thread visibility: visible or hidden (a child inherits its parent)",
+      "Thread visibility: visible or hidden (defaults to visible)",
     )
     .option("--parent-notifications <value>", PARENT_NOTIFICATIONS_HELP)
     .option(

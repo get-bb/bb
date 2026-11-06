@@ -155,7 +155,7 @@ describe("public thread parenting routes", () => {
     });
   });
 
-  it("inherits a hidden parent's visibility unless the request states one", async () => {
+  it("makes children of hidden parents visible unless explicitly hidden", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -192,19 +192,31 @@ describe("public thread parenting routes", () => {
           }),
         });
 
-      const inheritedResponse = await createChild();
-      expect(inheritedResponse.status).toBe(201);
-      const inheritedThread = threadSchema.parse(
-        await readJson(inheritedResponse),
-      );
-      expect(inheritedThread.parentThreadId).toBe(hiddenParentThread.id);
-      expect(inheritedThread.visibility).toBe("hidden");
+      const defaultResponse = await createChild();
+      expect(defaultResponse.status).toBe(201);
+      const defaultThread = threadSchema.parse(await readJson(defaultResponse));
+      expect(defaultThread.parentThreadId).toBe(hiddenParentThread.id);
+      expect(defaultThread.visibility).toBe("visible");
 
-      const explicitResponse = await createChild("visible");
+      const listResponse = await harness.app.request(
+        `/api/v1/threads?projectId=${project.id}`,
+      );
+      expect(listResponse.status).toBe(200);
+      const listedThreads = threadListResponseSchema.parse(
+        await readJson(listResponse),
+      );
+      expect(listedThreads.map((thread) => thread.id)).toContain(
+        defaultThread.id,
+      );
+      expect(listedThreads.map((thread) => thread.id)).not.toContain(
+        hiddenParentThread.id,
+      );
+
+      const explicitResponse = await createChild("hidden");
       expect(explicitResponse.status).toBe(201);
       expect(
         threadSchema.parse(await readJson(explicitResponse)).visibility,
-      ).toBe("visible");
+      ).toBe("hidden");
     });
   });
 

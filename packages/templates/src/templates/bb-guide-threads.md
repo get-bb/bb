@@ -69,7 +69,7 @@ Spawning:
     --section <id>                 Create the thread in a section
     --pinned                       Create the thread in Pinned (combines with --section;
                                    unpinning reveals it in that section)
-    --visibility <visibility>      visible or hidden; a child inherits its parent by default
+    --visibility <visibility>      visible or hidden; defaults to visible
     --parent-notifications <value> auto (default), stuck, or off; which outcomes wake the parent
     --send-at <when>               Dispatch the first message at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  CLI-local absolute path, file: URL, or uploaded file path
@@ -92,9 +92,9 @@ Spawning:
   ID while staying out of sidebar organization and unread/pending favicon
   attention. Thread lists exclude them unless
   --include-hidden is passed; direct-ID operations remain available.
-  A new child thread inherits the visibility of its parent, so the subagents of
-  a hidden thread stay hidden too. Pass --visibility to override the inherited
-  value. A hidden child still reports its turns and blockers to its parent
+  New threads default to visible, including children of hidden threads. Pass
+  --visibility hidden to create a hidden worker explicitly.
+  A hidden child still reports its turns and blockers to its parent
   thread; only source-derived forks stay silent.
   --parent-notifications chooses which child outcomes wake the parent. auto
   reports every finished, failed, or interrupted turn and every blocker; a

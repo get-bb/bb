@@ -9,7 +9,6 @@ import {
   type SessionOptionSelections,
   type Thread,
   type ThreadOriginKind,
-  type ThreadVisibility,
 } from "@bb/domain";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { assertProviderAcceptsPromptActions } from "../providers/provider-plan-command.js";
@@ -528,20 +527,6 @@ async function createPendingThreadAndAttemptFirstDispatch(
   return getThreadSafe(deps, thread.id);
 }
 
-interface ResolveCreateThreadVisibilityArgs {
-  parentThread: Pick<Thread, "visibility"> | null;
-  requestedVisibility: ThreadVisibility | undefined;
-}
-
-function resolveCreateThreadVisibility(
-  args: ResolveCreateThreadVisibilityArgs,
-): ThreadVisibility {
-  if (args.requestedVisibility !== undefined) {
-    return args.requestedVisibility;
-  }
-  return args.parentThread?.visibility ?? "visible";
-}
-
 function resolveCreateThreadPluginMetadata(
   request: Pick<
     ThreadCreateServiceRequestInput,
@@ -723,10 +708,7 @@ export async function createThreadFromRequest(
     originKind,
     parentNotifications: requestInput.parentNotifications ?? "auto",
     pluginMetadata,
-    visibility: resolveCreateThreadVisibility({
-      parentThread,
-      requestedVisibility: requestInput.visibility,
-    }),
+    visibility: requestInput.visibility ?? "visible",
     environment: requestedEnvironment,
     providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
