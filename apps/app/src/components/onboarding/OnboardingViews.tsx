@@ -1,9 +1,11 @@
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { useState, type ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
 import {
   CodeDisplay,
@@ -882,6 +884,26 @@ interface ProjectsStepProps {
   onRetry: () => void;
 }
 
+function SelectAllCheckbox({
+  checked,
+  ...props
+}: Omit<CheckboxPrimitive.CheckboxProps, "className" | "children">) {
+  return (
+    <CheckboxPrimitive.Root
+      checked={checked}
+      className={`peer size-4 shrink-0 rounded-sm border border-input shadow-xs ${CONTROL_HOVER_TRANSITION} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background data-[state=indeterminate]:border-foreground data-[state=indeterminate]:bg-foreground data-[state=indeterminate]:text-background`}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+        <Icon
+          name={checked === "indeterminate" ? "Minus" : "Check"}
+          className="size-3.5"
+        />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  );
+}
+
 export function ProjectsStep({
   selection = "line",
   status,
@@ -978,7 +1000,7 @@ export function ProjectsStep({
                 selectableCount > 0 && "cursor-pointer hover:text-foreground",
               )}
             >
-              <Checkbox
+              <SelectAllCheckbox
                 aria-label={
                   allSelected
                     ? "Clear project selection"

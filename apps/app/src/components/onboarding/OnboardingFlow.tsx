@@ -252,8 +252,9 @@ function AgentSignInContainer({
         outputText,
         fallbackDue,
         terminalChoice,
+        signInLink: redesign ? "last" : "first",
       }),
-    [connectFlow, fallbackDue, outputText, parsed, terminalChoice],
+    [connectFlow, fallbackDue, outputText, parsed, redesign, terminalChoice],
   );
   const { guide, terminalVisible } = view;
   useEffect(() => {
@@ -424,6 +425,7 @@ function AgentStepContainer({
     void refetchCliStatus({ cancelRefetch: false });
   }, [refetchCliStatus]);
   useRefetchOnUpdateNeeded({
+    enabled: redesign,
     states,
     statesUpdatedAt: statesQuery.dataUpdatedAt,
     cliStatus: cliStatusQuery.data,
@@ -1263,8 +1265,9 @@ export function OnboardingFlow({
   >(() => new Map());
   const queryClient = useQueryClient();
   useEffect(() => {
+    if (!redesign) return;
     void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
-  }, [queryClient]);
+  }, [queryClient, redesign]);
   const exposedRef = useRef(false);
   useEffect(() => {
     if (exposedRef.current) return;

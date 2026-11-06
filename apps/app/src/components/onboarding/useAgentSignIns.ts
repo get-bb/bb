@@ -265,11 +265,11 @@ export function useAgentSignIns({
   useEffect(() => {
     if (activeCount === 0) return;
     const interval = window.setInterval(
-      () => refetchStates({ cancelRefetch: false }),
+      () => refetchStates({ cancelRefetch: !failUnreadyExits }),
       SIGN_IN_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(interval);
-  }, [activeCount, refetchStates]);
+  }, [activeCount, failUnreadyExits, refetchStates]);
 
   useEffect(() => {
     for (const providerId of signIns.keys()) {
