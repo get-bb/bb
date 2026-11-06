@@ -251,6 +251,7 @@ change the host-daemon protocol.
 | `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                                                                                                                                                                                     |
 | `BB_TELEMETRY`                 | `bb-app env`, or environment                       | Startup-only            | `false` always disables anonymous usage telemetry, overriding the `telemetryEnabled` setting.                                                                                                                                                                              |
 | `BB_SKIP_ONBOARDING`           | Environment                                        | Startup-only            | Default false. `1` marks first-run setup completed at startup when it is not yet, so the setup screen is skipped. Settings → General can still replay it. `pnpm dev`, `pnpm start:worktree`, and `pnpm desktop:worktree` default it to `1`; an explicit `0` retains setup. |
+| `BB_SETUP_GUIDE_VARIANT`       | Environment                                        | Startup-only QA         | `control` or `new` forces the first-run setup guide variant, ignoring telemetry and the `setup-guide-redesign` experiment. Unset by default. See [General settings](#general-settings).                                                                                    |
 | `BB_PERF_DIAGNOSTICS`          | `bb-app env`, environment, or `--perf-diagnostics` | Startup-only            | Default false. Permits the `performanceDiagnostics` experiment; see [Experiments](#experiments).                                                                                                                                                                           |
 | `BB_CLI_ERROR_LOG`             | Environment of the `bb` process                    | Optional                | `0` stops the CLI recording failed invocations (command path, error code, no argument values) to `<dataDir>/logs/cli-errors.jsonl`. See `bb guide overview`.                                                                                                               |
 | `BB_ACCOUNT_POOL_PARENT_URL`   | Set automatically by a parent bb server            | Nested bb servers       | Account Pooler hub of the bb server whose thread launched this one. When present the Account Pooler plugin is enabled on first run and proxies to that parent; `bb pool parent isolate` opts out. Not a `bb-app config` key.                                               |
@@ -337,6 +338,14 @@ when it was finished or skipped; `bb settings replay-onboarding`, or Settings �
 General → Setup guide, clears it so the guide shows again. The projects step
 lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
+The guide shown is `control` (current) or `new` (redesign), from the app's
+`GET /api/v1/system/setup-guide` request (`{ variant }`). The server resolves
+it once per run on the first request from the `setup-guide-redesign` PostHog
+flag, evaluated for the anonymous install id (3-second timeout). It is
+`control` when telemetry is off or unavailable, or when the evaluation fails,
+the flag is missing or disabled, or its variant is unknown. The assignment
+saved in `<dataDir>/setup-guide-assignment.json` is reused.
+`BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -351,6 +360,14 @@ first-send events through `POST /api/v1/system/telemetry/events`
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
+`onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
+being shown: the server saves the flag assignment, adds `setup_guide_variant`
+and `setup_guide_source` (`override`, `flag`, or `default`), sets
+`setup_guide_variant` as a person property, and sends PostHog's
+`$feature_flag_called` when the flag decided the variant. The server adds
+`setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
+`recommendation`), and once the flag assignment is known every event, including
+`turn_finished`, carries `$feature/setup-guide-redesign`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The
