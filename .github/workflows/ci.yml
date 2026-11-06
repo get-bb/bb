@@ -22,7 +22,7 @@ jobs:
         run: pnpm exec turbo run test --filter=@bb/process-utils -- test/vcs-process-admission.test.ts
       - shell: bash
         run: |
-          for iteration in {1..10}; do
+          for iteration in {1..5}; do
             echo "REPETITION $iteration"
-            pnpm --filter @bb/process-utils exec vitest run --config vitest.config.ts test/vcs-process-admission.test.ts --silent=false || exit $?
+            pnpm --filter @bb/process-utils exec vitest run --config vitest.config.ts --silent=false || exit $?
           done
