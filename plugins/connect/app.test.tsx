@@ -930,6 +930,9 @@ describe("connect setup guide section", () => {
 
     await slot.findByRole("button", { name: "Set up" });
     slot.getByText(/A private web address for your bb server/);
+    expect(
+      slot.queryByRole("button", { name: "Have a pairing code?" }),
+    ).toBeNull();
     expect(slot.queryByText("Install the bb app on your phone:")).toBeNull();
     expect(slot.queryByRole("button", { name: "iPhone" })).toBeNull();
     expect(slot.rpcCalls.map((call) => call.method)).not.toContain(
@@ -975,25 +978,38 @@ describe("connect setup guide section", () => {
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(slot.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(
-      slot.queryByRole("button", { name: "Have a pairing code?" }),
-    ).toBeNull();
+      slot
+        .getByRole("button", { name: "Have a pairing code?" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
   });
 
-  it("opens the pairing form from Have a pairing code?, pairs, and then shows bb connect is on", async () => {
+  it("pairs with a code while sign-in is pending, cancels that sign-in, and shows bb connect is on", async () => {
     const onSetupStarted = vi.fn();
-    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+      "login.cancel": () => ({
+        login: pendingLogin("cancelled", "Sign-in was cancelled."),
+      }),
+      redeemCode: () => signedInAccount,
+    });
     let currentStatus = status();
     const slot = renderSlot(
       section(),
       { onPhone: false, onSetupStarted },
-      { sdk: account.sdk, rpc: { status: () => currentStatus } },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => currentStatus },
+      },
     );
 
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
     const toggle = await slot.findByRole("button", {
       name: "Have a pairing code?",
     });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(slot.queryByLabelText("Pairing code")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     currentStatus = connected();
@@ -1008,11 +1024,89 @@ describe("connect setup guide section", () => {
         input: { code: "K7QP-2M4X", baseUrl: null },
       }),
     );
-    expect(onSetupStarted).toHaveBeenCalledOnce();
+    expect(onSetupStarted).toHaveBeenCalledTimes(2);
     await slot.findByText("bb connect is on");
+    expect(account.calls).toContainEqual({
+      pluginId: "bb-account",
+      method: "login.cancel",
+      input: { loginId: "login-1" },
+    });
     expect(
       slot.queryByRole("button", { name: "Have a pairing code?" }),
     ).toBeNull();
+  });
+
+  it("does not leave the pending sign-in showing after pairing when bb connect is still off", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+      "login.cancel": () => ({
+        login: pendingLogin("cancelled", "Sign-in was cancelled."),
+      }),
+      redeemCode: () => signedInAccount,
+    });
+    let currentStatus = status();
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => currentStatus },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    currentStatus = status({ paired: true, enabled: false });
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+
+    await slot.findByRole("button", { name: "Set up" });
+    expect(slot.queryByText(/Finish signing in on/u)).toBeNull();
+    expect(slot.queryByText(/cancelled/u)).toBeNull();
+    expect(
+      slot.queryByRole("button", { name: "Have a pairing code?" }),
+    ).toBeNull();
+  });
+
+  it("keeps the pending sign-in when a pairing code is rejected", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+      redeemCode: () => {
+        throw new Error("HTTP 500: expired_code");
+      },
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(slot.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+
+    await slot.findByText(/That code has expired\./u);
+    slot.getByText(/Finish signing in on/u);
+    expect(
+      slot.getByLabelText("Pairing code").getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(account.calls.map((call) => call.method)).not.toContain(
+      "login.cancel",
+    );
   });
 
   it("turns bb connect on after signing in when it was turned off before", async () => {
