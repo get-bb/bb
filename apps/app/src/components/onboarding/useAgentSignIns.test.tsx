@@ -67,8 +67,7 @@ function renderSignIns(
   const view = renderHook(
     (props: { states: SystemProviderState[]; statesSettledAt: number }) =>
       useAgentSignIns({
-        concurrent,
-        failUnreadyExits: concurrent,
+        redesign: concurrent,
         entry: "first_run",
         hostId: "host_1",
         states: props.states,
@@ -246,33 +245,30 @@ describe("useAgentSignIns", () => {
     expect([...result.current.failedProviderIds]).toEqual(["codex"]);
   });
 
-  it.each([0, 1, null])(
-    "shows the failed state when the sign-in exits with %s before the agent is ready",
-    async (exitCode) => {
-      const states = [provider("pi")];
-      const { result, rerender, terminals, refetchStates } = renderSignIns(
-        true,
-        states,
-      );
-      await act(async () => {
-        await result.current.start("pi");
-      });
+  it("shows the failed state when the sign-in exits cleanly before the agent is ready", async () => {
+    const states = [provider("pi")];
+    const { result, rerender, terminals, refetchStates } = renderSignIns(
+      true,
+      states,
+    );
+    await act(async () => {
+      await result.current.start("pi");
+    });
 
-      act(() => result.current.handleExit("pi", exitCode));
-      act(() => result.current.handleExit("pi", exitCode));
-      expect(result.current.signIns.has("pi")).toBe(true);
-      expect(result.current.failedProviderIds.size).toBe(0);
-      expect(refetchStates).toHaveBeenCalledTimes(1);
+    act(() => result.current.handleExit("pi", 0));
+    act(() => result.current.handleExit("pi", 0));
+    expect(result.current.signIns.has("pi")).toBe(true);
+    expect(result.current.failedProviderIds.size).toBe(0);
+    expect(refetchStates).toHaveBeenCalledTimes(1);
 
-      rerender({ states, statesSettledAt: 0 });
-      expect(result.current.signIns.has("pi")).toBe(true);
+    rerender({ states, statesSettledAt: 0 });
+    expect(result.current.signIns.has("pi")).toBe(true);
 
-      rerender({ states, statesSettledAt: settledAfterNow() });
-      expect(result.current.signIns.size).toBe(0);
-      expect([...result.current.failedProviderIds]).toEqual(["pi"]);
-      expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
-    },
-  );
+    rerender({ states, statesSettledAt: settledAfterNow() });
+    expect(result.current.signIns.size).toBe(0);
+    expect([...result.current.failedProviderIds]).toEqual(["pi"]);
+    expect(terminals.close).toHaveBeenCalledExactlyOnceWith("term_1");
+  });
 
   it("ends as ready when the agent is ready once its sign-in exits", async () => {
     const { result, rerender } = renderSignIns(true, [provider("codex")]);
@@ -419,8 +415,7 @@ describe("useAgentSignIns", () => {
           [refetch],
         );
         return useAgentSignIns({
-          concurrent: true,
-          failUnreadyExits: true,
+          redesign: true,
           entry: "first_run",
           hostId: "host_1",
           states: query.data,

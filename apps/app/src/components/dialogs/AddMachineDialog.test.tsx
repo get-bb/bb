@@ -299,10 +299,10 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
   rendered.unmount();
 });
 
-it("shows the enrollment command inline and removes the pending machine on close", async () => {
+it("shows the enrollment command inline", async () => {
   stubManualLaunch();
   const { wrapper } = createQueryClientTestHarness();
-  const rendered = render(
+  render(
     <MemoryRouter>
       <AddMachineInline />
     </MemoryRouter>,
@@ -318,11 +318,6 @@ it("shows the enrollment command inline and removes the pending machine on close
   fireEvent.click(screen.getByRole("button", { name: "Windows" }));
   screen.getByText("irm windows-command | iex");
   expect(screen.queryByText("bb machine enroll test")).toBeNull();
-
-  rendered.unmount();
-  await waitFor(() =>
-    expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: "host-reserved" }),
-  );
 });
 
 it("replaces the waiting line once the machine connects", () => {

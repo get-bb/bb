@@ -128,7 +128,7 @@ describe("database maintenance", () => {
       const db = createConnection(tempDatabase.dbPath);
       try {
         migrate(db);
-        expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
+        expect(getDatabaseAutoVacuumMode(db.$client)).toBe("incremental");
       } finally {
         db.$client.close();
       }
@@ -136,7 +136,7 @@ describe("database maintenance", () => {
       const reopenedDb = createConnection(tempDatabase.dbPath);
       try {
         migrate(reopenedDb);
-        expect(getDatabaseAutoVacuumMode(reopenedDb)).toBe("incremental");
+        expect(getDatabaseAutoVacuumMode(reopenedDb.$client)).toBe("incremental");
       } finally {
         reopenedDb.$client.close();
       }
@@ -147,7 +147,7 @@ describe("database maintenance", () => {
 
   it("reclaims freed pages incrementally without a full VACUUM", () => {
     const { db } = setup();
-    expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
+    expect(getDatabaseAutoVacuumMode(db.$client)).toBe("incremental");
 
     db.$client.exec(
       "CREATE TABLE scratch_blobs (id INTEGER PRIMARY KEY, blob TEXT)",
@@ -164,7 +164,7 @@ describe("database maintenance", () => {
     insertMany(3_000);
     db.$client.exec("DELETE FROM scratch_blobs");
 
-    const before = getDatabaseFreelistStats(db);
+    const before = getDatabaseFreelistStats(db.$client);
     expect(before.freelistCount).toBeGreaterThan(0);
 
     const preparedSql: string[] = [];
@@ -180,7 +180,7 @@ describe("database maintenance", () => {
     });
     let result: ReturnType<typeof runIncrementalVacuum>;
     try {
-      result = runIncrementalVacuum(db, {
+      result = runIncrementalVacuum(db.$client, {
         maxPages: TEST_INCREMENTAL_VACUUM_MAX_PAGES,
       });
     } finally {
@@ -198,10 +198,10 @@ describe("database maintenance", () => {
     expect(reclaimedPages).toBeLessThanOrEqual(
       TEST_INCREMENTAL_VACUUM_MAX_PAGES,
     );
-    expect(getDatabaseFreelistStats(db).freelistCount).toBeLessThan(
+    expect(getDatabaseFreelistStats(db.$client).freelistCount).toBeLessThan(
       before.freelistCount,
     );
     expect(preparedSql.some((source) => source.includes("dbstat"))).toBe(false);
-    expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
+    expect(getDatabaseAutoVacuumMode(db.$client)).toBe("incremental");
   });
 });
