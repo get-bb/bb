@@ -91,6 +91,7 @@ function automation(
       model: "claude-fable-5",
       reasoningLevel: "medium",
       permissionMode: "auto",
+      visibility: "visible",
       environment: { type: "host", workspace: { type: "personal" } },
     },
     origin: "human",
@@ -180,6 +181,7 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
     model: "claude-fable-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    visibility: "visible",
     environment: { type: "host", workspace: { type: "personal" } },
   },
   nextRunAt: now,
@@ -201,6 +203,7 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     model: "claude-fable-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    visibility: "visible",
     environment: {
       type: "host",
 
@@ -697,6 +700,7 @@ const FAILED_AUTOMATION: AutomationDetailResponse = {
     model: "claude-fable-5",
     reasoningLevel: "high",
     permissionMode: "full",
+    visibility: "visible",
     environment: { type: "project-default" },
     targetThreadId: "thr_story_target",
   },

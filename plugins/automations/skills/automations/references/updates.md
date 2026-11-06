@@ -16,9 +16,9 @@ Choose one of three execution update forms:
 
 - A partial agent update preserves every omitted execution field and edits the
   existing agent automation in place. Use any combination of `--prompt`,
-  `--provider`, `--model`, `--reasoning`, `--service-tier`, and
-  `--permission-mode accept-edits|auto|full`, then choose at most one execution
-  target. When changing providers, pass the provider's coherent model,
+  `--provider`, `--model`, `--reasoning`, `--service-tier`,
+  `--permission-mode accept-edits|auto|full`, and `--visibility visible|hidden`,
+  then choose at most one execution target. When changing providers, pass the provider's coherent model,
   reasoning, tier, and permission selection together:
 
 ```bash
@@ -33,6 +33,9 @@ bb automation update <automationId> --project <id> \
 `--target-thread`, `--environment`, and `--new-environment` are mutually
 exclusive. These flags apply only to agent automations; script automations have
 no execution environment.
+
+`--visibility` changes the initial visibility of future newly spawned threads.
+It does not change previous run threads or an existing `--target-thread`.
 
 - A partial script update preserves every omitted execution field and edits the
   existing script automation in place. Use any combination of `--script` or

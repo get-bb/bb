@@ -1205,6 +1205,20 @@ plugins, with `bb plugin config <id> set <key> <value>`, or with SDK
 `plugins.updateSettings({ pluginId, values })`. Running plugins receive changes
 live.
 
+### Automation thread visibility
+
+Agent automations default to creating visible threads. Set
+`bb automation create --project <id> ... --visibility hidden`, update an
+existing automation with `bb automation update <id> --project <id> --visibility
+hidden`, or use **Start hidden** in the Automations definition editor to hide
+new run threads from the thread list. The plugin RPC accepts
+`execution.visibility` on creation and `agent.visibility` for partial updates,
+with values `visible` or `hidden`.
+
+This setting controls initial visibility for newly spawned threads. Existing
+run threads and an existing `--target-thread` keep their visibility. Hidden
+threads stay hidden on failure unless the routine explicitly reveals them.
+
 ### Multi-plugin repositories
 
 An optional `.bb/plugins.json` collection manifest at a repository root

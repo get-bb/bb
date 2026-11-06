@@ -510,6 +510,9 @@ function applyAgentExecutionUpdate(
     ...(update.permissionMode !== undefined
       ? { permissionMode: update.permissionMode }
       : {}),
+    ...(update.visibility !== undefined
+      ? { visibility: update.visibility }
+      : {}),
   };
   if (update.serviceTier === null) {
     delete next.serviceTier;

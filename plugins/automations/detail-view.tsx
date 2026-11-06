@@ -509,10 +509,12 @@ export function AgentAutomationDefinition({
   const [permissionMode, setPermissionMode] = useState(
     execution.permissionMode,
   );
+  const [visibility, setVisibility] = useState(execution.visibility);
   useEffect(() => {
     setPrompt(execution.prompt);
     setProviderModel(providerModelValue(execution));
     setPermissionMode(execution.permissionMode);
+    setVisibility(execution.visibility);
     // oxlint-disable-next-line react/exhaustive-deps
   }, [
     execution.model,
@@ -521,6 +523,7 @@ export function AgentAutomationDefinition({
     execution.providerId,
     execution.reasoningLevel,
     execution.serviceTier,
+    execution.visibility,
   ]);
   const pickerRouting = providerModelRouting(execution.environment);
   const trimmedPrompt = prompt.trim();
@@ -530,7 +533,8 @@ export function AgentAutomationDefinition({
     providerModel.model !== execution.model ||
     providerModel.reasoningLevel !== execution.reasoningLevel ||
     providerModel.serviceTier !== execution.serviceTier ||
-    permissionMode !== execution.permissionMode;
+    permissionMode !== execution.permissionMode ||
+    visibility !== execution.visibility;
   const promptFooter = (
     <div
       data-automation-prompt-footer=""
@@ -559,6 +563,19 @@ export function AgentAutomationDefinition({
           leading={<AutomationEnvironmentIcon execution={execution} />}
         />
       </div>
+      {execution.targetThreadId === undefined ? (
+        <label className="flex shrink-0 items-center gap-2 text-xs">
+          <Switch
+            aria-label="Start new threads hidden"
+            checked={(editing ? visibility : execution.visibility) === "hidden"}
+            onCheckedChange={(checked) =>
+              setVisibility(checked ? "hidden" : "visible")
+            }
+            disabled={!editing || pending}
+          />
+          Start hidden
+        </label>
+      ) : null}
       {editing ? (
         <PermissionModePicker
           providerId={providerModel.providerId}
@@ -594,6 +611,7 @@ export function AgentAutomationDefinition({
           reasoningLevel: providerModel.reasoningLevel,
           serviceTier: providerModel.serviceTier ?? null,
           permissionMode,
+          visibility,
         });
       }}
     >

@@ -279,6 +279,7 @@ async function createAgentAutomation(
       | ReturnType<typeof oneShotTrigger>
       | { triggerType: "schedule"; cron: string; timezone: string };
     targetThreadId?: string;
+    visibility?: "visible" | "hidden";
   } = {},
 ) {
   return automationDetailResponseSchema.parse(
@@ -287,7 +288,12 @@ async function createAgentAutomation(
       name: options.name ?? "Agent automation",
       enabled: true,
       trigger: options.trigger ?? oneShotTrigger(),
-      execution: agentExecution(options.targetThreadId),
+      execution: {
+        ...agentExecution(options.targetThreadId),
+        ...(options.visibility === undefined
+          ? {}
+          : { visibility: options.visibility }),
+      },
       origin: "human",
     }),
   );
@@ -311,6 +317,206 @@ describe("automations server plugin harness", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
+
+  it("defaults legacy visibility to visible without rewriting stored settings", async () => {
+    const host = await bootAutomationsPlugin();
+    const { harness } = host;
+    try {
+      const automation = await createAgentAutomation(harness);
+      const database = host.bb.storage.database();
+      database
+        .prepare("UPDATE automations SET execution = ? WHERE id = ?")
+        .run(JSON.stringify(agentExecution()), automation.id);
+      const result = automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_get", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      );
+      expect(result.execution).toMatchObject({ visibility: "visible" });
+      expect(
+        database
+          .prepare(
+            "SELECT json_extract(execution, '$.visibility') AS visibility FROM automations WHERE id = ?",
+          )
+          .get(automation.id),
+      ).toEqual({ visibility: null });
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+          visibility: "visible",
+        }),
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("creates and updates visibility through the CLI and preserves it on unrelated edits", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      const created = await harness.runCli([
+        "create",
+        "--project",
+        PROJECT_ID,
+        "--name",
+        "Quiet check",
+        "--in",
+        "1h",
+        "--prompt",
+        "Check",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+        "--visibility",
+        "hidden",
+        "--json",
+      ]);
+      expect(created.exitCode, created.stderr).toBe(0);
+      const automation = automationDetailResponseSchema.parse(
+        JSON.parse(created.stdout ?? ""),
+      );
+      expect(automation.execution).toMatchObject({ visibility: "hidden" });
+      const updated = await harness.runCli([
+        "update",
+        automation.id,
+        "--project",
+        PROJECT_ID,
+        "--prompt",
+        "Check again",
+        "--json",
+      ]);
+      expect(updated.exitCode, updated.stderr).toBe(0);
+      expect(JSON.parse(updated.stdout ?? "").execution).toMatchObject({
+        visibility: "hidden",
+        prompt: "Check again",
+      });
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
+          visibility: "hidden",
+        }),
+      );
+      const visible = await harness.runCli([
+        "update",
+        automation.id,
+        "--project",
+        PROJECT_ID,
+        "--visibility",
+        "visible",
+        "--json",
+      ]);
+      expect(visible.exitCode, visible.stderr).toBe(0);
+      expect(JSON.parse(visible.stdout ?? "").execution).toMatchObject({
+        visibility: "visible",
+        prompt: "Check again",
+      });
+      const shown = await harness.runCli([
+        "show",
+        automation.id,
+        "--project",
+        PROJECT_ID,
+      ]);
+      expect(shown.stdout).toContain("Visibility: visible");
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("updates visibility through RPC and rejects invalid values without changing the saved definition", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      const automation = await createAgentAutomation(harness);
+      const input = { projectId: PROJECT_ID, automationId: automation.id };
+      const updated = automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_update", {
+          ...input,
+          agent: { visibility: "hidden" },
+        }),
+      );
+      expect(updated.execution).toMatchObject({ visibility: "hidden" });
+      await expect(
+        harness.callRpc("automations_update", {
+          ...input,
+          agent: { visibility: "archived" },
+        }),
+      ).rejects.toThrow();
+      const saved = automationDetailResponseSchema.parse(
+        await harness.callRpc("automations_get", input),
+      );
+      expect(saved.execution).toMatchObject({ visibility: "hidden" });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("preserves existing thread visibility when re-prompting a target thread", async () => {
+    const { harness } = await bootAutomationsPlugin();
+    try {
+      const automation = await createAgentAutomation(harness, {
+        targetThreadId: THREAD_ID,
+        visibility: "hidden",
+      });
+      await harness.callRpc("automations_run", {
+        projectId: PROJECT_ID,
+        automationId: automation.id,
+      });
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("threads.send")).toHaveLength(1),
+      );
+      expect(harness.sdk.callsTo("threads.spawn")).toEqual([]);
+      expect(harness.sdk.callsTo("threads.update")).toEqual([]);
+      expect(harness.sdk.callsTo("threads.send")[0]?.[0]).not.toHaveProperty(
+        "visibility",
+      );
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it.each([
+    [
+      "--prompt",
+      "Check",
+      "--provider",
+      "codex",
+      "--model",
+      "gpt-5",
+      "--visibility",
+      "archived",
+    ],
+    ["--script", "echo ok", "--visibility", "hidden"],
+  ])(
+    "rejects invalid or script visibility flags without creating work: %j",
+    async (...flags) => {
+      const { harness } = await bootAutomationsPlugin();
+      try {
+        const result = await harness.runCli([
+          "create",
+          "--project",
+          PROJECT_ID,
+          "--name",
+          "Invalid",
+          "--in",
+          "1h",
+          ...flags,
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(
+          await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+        ).toEqual([]);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
 
   it("boots through server.ts and registers rpc, cli, thread events, and sweep service", async () => {
     const { harness } = await bootAutomationsPlugin();
@@ -492,6 +698,7 @@ describe("automations server plugin harness", () => {
       reasoningLevel: "ultra",
       serviceTier: "fast",
       permissionMode: "accept-edits",
+      visibility: "visible",
       environment: { type: "project-default" },
       targetThreadId: THREAD_ID,
     });
@@ -1868,69 +2075,81 @@ describe("automations server plugin harness", () => {
     }
   });
 
-  it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-    const host = await bootAutomationsPlugin();
-    const { harness } = host;
-    const automation = await createAgentAutomation(harness, {
-      name: "Sweep",
-      trigger: { triggerType: "schedule", cron: "* * * * *", timezone: "UTC" },
-    });
+  it.each([undefined, "visible", "hidden"] as const)(
+    "dispatches scheduled visibility %s and closes the run from thread.idle",
+    async (visibility) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      const host = await bootAutomationsPlugin();
+      const { harness } = host;
+      const automation = await createAgentAutomation(harness, {
+        name: "Sweep",
+        ...(visibility === undefined ? {} : { visibility }),
+        trigger: {
+          triggerType: "schedule",
+          cron: "* * * * *",
+          timezone: "UTC",
+        },
+      });
 
-    vi.setSystemTime(new Date("2026-01-01T00:01:05.000Z"));
-    const service = harness.runService("automation-sweep");
-    await vi.waitFor(() =>
-      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
-    );
-    service.controller.abort();
-    await service.done;
+      vi.setSystemTime(new Date("2026-01-01T00:01:05.000Z"));
+      const service = harness.runService("automation-sweep");
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+      );
+      service.controller.abort();
+      await service.done;
 
-    expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
-    expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
-      projectId: PROJECT_ID,
-      prompt: `[bb automation due:${automation.id}]\n\nsummarize the inbox`,
-      title: "Sweep",
-      origin: "plugin",
-      originPluginId: "automations",
-    });
-    const runningRuns = automationRunListResponseSchema.parse(
-      await harness.callRpc("automations_runs", {
+      expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
+      expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
         projectId: PROJECT_ID,
+        prompt: `[bb automation due:${automation.id}]\n\nsummarize the inbox`,
+        title: "Sweep",
+        origin: "plugin",
+        originPluginId: "automations",
+        visibility: visibility ?? "visible",
+      });
+      const runningRuns = automationRunListResponseSchema.parse(
+        await harness.callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      ).runs;
+      expect(runningRuns).toHaveLength(1);
+      expect(runningRuns[0]).toMatchObject({
         automationId: automation.id,
-      }),
-    ).runs;
-    expect(runningRuns).toHaveLength(1);
-    expect(runningRuns[0]).toMatchObject({
-      automationId: automation.id,
-      status: "running",
-      threadId: "thr_spawned",
-      trigger: "schedule",
-    });
+        status: "running",
+        threadId: "thr_spawned",
+        trigger: "schedule",
+      });
 
-    await harness.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: "thr_spawned", projectId: PROJECT_ID }),
-      lastAssistantText: null,
-    });
-    const closedRuns = automationRunListResponseSchema.parse(
-      await harness.callRpc("automations_runs", {
-        projectId: PROJECT_ID,
-        automationId: automation.id,
-      }),
-    ).runs;
-    expect(closedRuns[0]).toMatchObject({
-      status: "succeeded",
-      threadId: "thr_spawned",
-    });
-    expect(signalKinds(host)).toEqual(
-      expect.arrayContaining([
-        "automations-changed",
-        "automation-runs-changed",
-      ]),
-    );
+      await harness.emitThreadEvent("thread.idle", {
+        thread: makeThreadResponse({
+          id: "thr_spawned",
+          projectId: PROJECT_ID,
+        }),
+        lastAssistantText: null,
+      });
+      const closedRuns = automationRunListResponseSchema.parse(
+        await harness.callRpc("automations_runs", {
+          projectId: PROJECT_ID,
+          automationId: automation.id,
+        }),
+      ).runs;
+      expect(closedRuns[0]).toMatchObject({
+        status: "succeeded",
+        threadId: "thr_spawned",
+      });
+      expect(signalKinds(host)).toEqual(
+        expect.arrayContaining([
+          "automations-changed",
+          "automation-runs-changed",
+        ]),
+      );
 
-    await harness.dispose();
-  });
+      await harness.dispose();
+    },
+  );
 
   it("declines a provider retry of a recurring run's failed turn in its target thread", async () => {
     vi.useFakeTimers();
