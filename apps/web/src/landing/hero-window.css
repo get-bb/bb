@@ -1703,7 +1703,22 @@
 }
 
 .rhb .rhb-title-stack > .rhb-title {
+  display: inline-flex;
   grid-area: 1 / 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.rhb .rhb-title-stack > .rhb-title > .rhb-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rhb .rhb-title-stack > .rhb-title > .rhb-ic {
+  flex-shrink: 0;
 }
 
 .rhb .rhb-title-swap {
@@ -2045,32 +2060,22 @@
   }
 
   .mockup-wrap.rhb .mock.rhb-win {
-    --mock-desktop-width: 360px;
-    --mock-visible-width: 360px;
+    --mock-fill: 1;
+    --mock-desktop-width: var(--mock-fill-width, 334px);
+    --mock-visible-width: var(--mock-fill-width, 334px);
+    zoom: 1;
   }
 
   .rhb .rhb-win > .rhb-band-left {
-    gap: 13px;
-    width: 104px;
+    width: auto;
     min-width: 0;
-    padding: 0 16px;
-    border-right: 1px solid var(--border-soft);
+    padding: 0 0 0 16px;
     background: var(--surface);
   }
 
-  .rhb .rhb-win > .rhb-band-left .rhb-band-ctrls {
-    flex: none;
-    margin-left: 0;
-    padding-right: 0;
-  }
-
-  .rhb .rhb-win > .rhb-band-left .rhb-band-ctrls > :not(:first-child) {
+  .rhb .rhb-win > .rhb-band-left .rhb-band-ctrls,
+  .rhb .rhb-col-main > .rhb-band .rhb-band-end {
     display: none;
-  }
-
-  .rhb .rhb-win > .rhb-band-left .rhb-band-ctrls > .rhb-ic {
-    width: 17px;
-    height: 17px;
   }
 
   .rhb .rhb-body {
@@ -2078,7 +2083,7 @@
   }
 
   .rhb .rhb-col-main > .rhb-band {
-    padding: 0 18px 0 118px;
+    padding: 0 18px 0 76px;
     border-bottom: 1px solid var(--border-soft);
     background: var(--surface);
   }

@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { flushSync } from "react-dom";
 import linearLogo from "../assets/company-logos/linear.svg";
 import { ClaudeIcon, OpenAiIcon } from "./icons";
 import {
@@ -71,8 +72,6 @@ import {
   MOCK_CROSSFADE_DELAY_MS,
   MOCK_CROSSFADE_OUT_MS,
   MOCK_GHOST_FADE_MS,
-  MOCK_TITLE_GLIDE_MS,
-  MOCK_TITLE_GLIDE_DELAY_MS,
   MOCK_GLIDE_RATE,
   MOCK_PACE_S,
   MOCK_PANEL_EASE,
@@ -1669,8 +1668,10 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       };
       anim.onfinish = done;
       anim.oncancel = done;
+      growAnims.set(el, anim);
       return true;
     };
+    const growAnims = new WeakMap<HTMLElement, Animation>();
     const ITEMS = ":scope > *, .rhb-turn-body > *, .rhb-notes > *";
     const layer = feed.parentElement;
     const observe = () => {
@@ -1680,15 +1681,7 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
     let resume = 0;
     let lastWidth = feed.offsetWidth;
     const fitHeights = new WeakMap<HTMLElement, number>();
-    const ro = new ResizeObserver(() => {
-      const fresh: HTMLElement[] = [];
-      for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
-        if (!visible(el) || seen.has(el)) continue;
-        seen.add(el);
-        if (primed) fresh.push(el);
-      }
-      primed = true;
-      let run = 0;
+    const checkFits = () => {
       let grew = false;
       for (const el of feed.querySelectorAll<HTMLElement>(".rhb-fit")) {
         const h = el.offsetHeight;
@@ -1721,6 +1714,18 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
           grew = true;
         }
       }
+      return grew;
+    };
+    const ro = new ResizeObserver(() => {
+      const fresh: HTMLElement[] = [];
+      for (const el of feed.querySelectorAll<HTMLElement>(ITEMS)) {
+        if (!visible(el) || seen.has(el)) continue;
+        seen.add(el);
+        if (primed) fresh.push(el);
+      }
+      primed = true;
+      let run = 0;
+      let grew = checkFits();
       for (const el of fresh) {
         if (fresh.some((p) => p !== el && p.contains(el))) continue;
         run += roomOf(el);
@@ -1777,6 +1782,14 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       const anims = feed.getAnimations({ subtree: true }).filter((a) => {
         const timing = a.effect?.getComputedTiming();
         const progress = timing?.progress;
+        const target =
+          a.effect instanceof KeyframeEffect ? a.effect.target : null;
+        if (
+          target &&
+          working.compareDocumentPosition(target) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+        )
+          return false;
         return (
           a.playState !== "finished" &&
           typeof timing?.endTime === "number" &&
@@ -1803,7 +1816,31 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
         fill: "forwards",
       });
     };
+    const isItem = (el: HTMLElement) =>
+      el.parentElement === feed ||
+      !!el.parentElement?.matches(".rhb-turn-body, .rhb-notes");
+    const revealedAt = new WeakMap<HTMLElement, number | null>();
+    const reveal = (el: HTMLElement) => {
+      if (!primed || seen.has(el) || !isItem(el) || !visible(el)) return;
+      seen.add(el);
+      const now = document.timeline.currentTime as number | null;
+      revealedAt.set(el, now);
+      for (let a = el.parentElement; a && a !== feed; a = a.parentElement) {
+        if (isItem(a) && (!seen.has(a) || revealedAt.get(a) === now)) return;
+      }
+      for (const inner of el.querySelectorAll<HTMLElement>("*")) {
+        if (revealedAt.get(inner) === now) growAnims.get(inner)?.cancel();
+        if (isItem(inner) && visible(inner)) seen.add(inner);
+      }
+      grow(el, roomOf(el));
+    };
     const onAnimation = (e: AnimationEvent) => {
+      if (
+        e.type === "animationstart" &&
+        e.animationName === "rhb-reveal" &&
+        e.target instanceof HTMLElement
+      )
+        reveal(e.target);
       if (!FOLDS.has(e.animationName)) return;
       if (
         e.type === "animationstart" &&
@@ -1830,9 +1867,16 @@ function FeedLayer({ scene, reduced, out, pre, swap, onIn }: FeedProps) {
       "animationcancel",
     ] as const;
     animationEvents.forEach((type) => feed.addEventListener(type, onAnimation));
+    const stage = feed.closest(".rhb-stage");
+    const classes = new MutationObserver(() => {
+      if (primed) checkFits();
+    });
+    if (stage)
+      classes.observe(stage, { attributes: true, attributeFilter: ["class"] });
     observe();
     return () => {
       ro.disconnect();
+      classes.disconnect();
       cancelAnimationFrame(resume);
       animationEvents.forEach((type) =>
         feed.removeEventListener(type, onAnimation),
@@ -1969,6 +2013,9 @@ const FeedBody = memo(function FeedBody({
         ) : null,
       )}
       {!then && !hasChart ? mainWorking : null}
+      {hasChart && !reduced ? (
+        <MockWorkingRow at="0s" endAt={`${t.chartAt ?? t.changeAt}s`} />
+      ) : null}
 
       {then ? (
         <>
@@ -2043,7 +2090,6 @@ const FeedBody = memo(function FeedBody({
           </span>
         </div>
       ) : null}
-      {hasChart ? mainWorking : null}
 
       {f ? (
         <>
@@ -2271,18 +2317,37 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
   const stripRef = useRef<HTMLSpanElement>(null);
   const [stripFit, setStripFit] = useState(stripItems.length);
   const hasStrip = usesSet.has("strip");
-  useLayoutEffect(() => {
+  const measureStrip = useCallback(() => {
     const el = stripRef.current;
-    if (!el) return;
-    const measure = () => {
-      const per = 15 + 6;
-      setStripFit(Math.max(1, Math.floor((el.clientWidth + 6) / per)));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    const strip = el?.parentElement;
+    if (!el || !strip) return null;
+    const cs = getComputedStyle(strip);
+    const gap = parseFloat(cs.columnGap) || 0;
+    let used =
+      (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    for (const child of Array.from(strip.children)) {
+      if (child !== el) used += child.getBoundingClientRect().width + gap;
+    }
+    const iconGap = parseFloat(getComputedStyle(el).columnGap) || 0;
+    return Math.max(
+      1,
+      Math.floor((strip.clientWidth - used + iconGap) / (15 + iconGap)),
+    );
+  }, []);
+  useLayoutEffect(() => {
+    const fit = measureStrip();
+    if (fit != null && fit !== stripFit) setStripFit(fit);
+  });
+  useLayoutEffect(() => {
+    const strip = stripRef.current?.parentElement;
+    if (!strip) return;
+    const ro = new ResizeObserver(() => {
+      const fit = measureStrip();
+      if (fit != null) flushSync(() => setStripFit(fit));
+    });
+    ro.observe(strip);
     return () => ro.disconnect();
-  }, [hasStrip]);
+  }, [hasStrip, measureStrip]);
   const stripMore = stripItems.length > stripFit;
   const stripShown = stripMore ? stripItems.slice(0, stripFit - 1) : stripItems;
 
@@ -2316,31 +2381,6 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
     if (reduced) return;
     setOutIdx(from);
   }, [idx, reduced]);
-
-  const titleRef = useRef<HTMLSpanElement>(null);
-  const titleW = useRef({ idx, w: 0 });
-  useLayoutEffect(() => {
-    const el = titleRef.current;
-    if (!el) return;
-    const was = titleW.current;
-    const w = el.offsetWidth;
-    titleW.current = { idx, w };
-    if (reduced || was.idx === idx || !was.w || Math.abs(was.w - w) <= 1)
-      return;
-    const titles = Array.from(el.children) as HTMLElement[];
-    el.style.overflow = "hidden";
-    titles.forEach((t) => (t.style.textOverflow = "clip"));
-    const anim = el.animate([{ width: `${was.w}px` }, { width: `${w}px` }], {
-      duration: MOCK_TITLE_GLIDE_MS,
-      delay: MOCK_TITLE_GLIDE_DELAY_MS,
-      easing: EASE_OUT,
-      fill: "backwards",
-    });
-    anim.onfinish = anim.oncancel = () => {
-      el.style.removeProperty("overflow");
-      titles.forEach((t) => t.style.removeProperty("text-overflow"));
-    };
-  }, [idx, n, reduced]);
 
   const clearOut = () => setOutIdx(null);
   const outgoing = prevIdx.current < idx ? prevIdx.current : outIdx;
@@ -2703,20 +2743,21 @@ function Shell({ idx, n, reduced, ghost, pre, frozen, nextFeed }: ShellProps) {
 
         <div className="rhb-col rhb-col-main">
           <div className="rhb-band">
-            <span className="rhb-title-stack" ref={titleRef}>
+            <span className="rhb-title-stack">
               {outIdx != null && outIdx < idx ? (
                 <span className="rhb-title is-out" key={`t${outIdx}`}>
-                  {SCENES[outIdx].title}
+                  <span className="rhb-title-text">{SCENES[outIdx].title}</span>
+                  <Ellipsis className="rhb-ic" />
                 </span>
               ) : null}
               <span
                 className={idx > 0 ? "rhb-title rhb-title-swap" : "rhb-title"}
                 key={`t${idx}`}
               >
-                {scene.title}
+                <span className="rhb-title-text">{scene.title}</span>
+                <Ellipsis className="rhb-ic" />
               </span>
             </span>
-            <Ellipsis className="rhb-ic" />
             <span className="rhb-band-end">
               <PanelRightIcon className="rhb-ic rhb-panel-toggle" />
             </span>

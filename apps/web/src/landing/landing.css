@@ -4218,6 +4218,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-shrink: 0;
 }
 
+.mock-ui :is(.rhb-feed, .bw-reveal-inner) > *,
+.mock-ui :is(.rhb-pill, .rhb-gen-ic, .rhb-step-ic, .bw-step-ic) {
+  will-change: transform;
+}
+
 @media (max-width: 560px) {
   .mock-ui .rhb-context {
     gap: 6px;

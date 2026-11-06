@@ -284,6 +284,21 @@ export function useFitMock(ref: RefObject<HTMLElement | null>) {
     }
     const fit = () => {
       const wrapStyle = getComputedStyle(wrap);
+      if (
+        getComputedStyle(mock).getPropertyValue("--mock-fill").trim() === "1"
+      ) {
+        const fill = Math.floor(
+          wrap.clientWidth -
+            Number.parseFloat(wrapStyle.paddingLeft) -
+            Number.parseFloat(wrapStyle.paddingRight),
+        );
+        mock.style.setProperty("--mock-scale", "1");
+        mock.style.setProperty("--mock-fill-width", `${fill}px`);
+        mock.style.setProperty("--mock-slice", `${fill}px`);
+        mock.style.setProperty("--mock-slice-ratio", "1");
+        return;
+      }
+      mock.style.removeProperty("--mock-fill-width");
       const visibleWidth = Number.parseFloat(
         getComputedStyle(mock).getPropertyValue("--mock-visible-width"),
       );
@@ -726,8 +741,6 @@ export const MOCK_CROSSFADE_IN_MS = 260;
 export const MOCK_CROSSFADE_DELAY_MS = 150;
 export const MOCK_CROSSFADE_OUT_MS = 150;
 export const MOCK_GHOST_FADE_MS = 450;
-export const MOCK_TITLE_GLIDE_MS = 300;
-export const MOCK_TITLE_GLIDE_DELAY_MS = 250;
 
 export function mockGrowRow(
   el: HTMLElement,
