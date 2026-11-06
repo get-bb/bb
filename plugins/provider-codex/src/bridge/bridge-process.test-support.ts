@@ -51,7 +51,7 @@ export async function waitForAppServerChildrenToExit(
   while (childPids.some(processIsAlive)) {
     if (Date.now() > deadline) {
       throw new Error(
-        `Timed out waiting for app-server children to exit: ${JSON.stringify(childPids.filter(processIsAlive))} LOG=${readProcessLog(processLogPath)} PROCESSES=${process.platform === "win32" ? execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress"], {encoding:"utf8",timeout:10000}) : "non-Windows"}`,
+        `Timed out waiting for app-server children to exit: ${JSON.stringify(childPids.filter(processIsAlive))} LOG=${readProcessLog(processLogPath)} PROCESSES=${process.platform === "win32" ? execFileSync("powershell.exe", ["-NoProfile", "-Command", `Get-CimInstance Win32_Process -Filter "${childPids.map(pid => `ProcessId = ${pid}`).join(" OR ")}" | Select-Object ProcessId,ParentProcessId,CreationDate,Name | ConvertTo-Json -Compress`], {encoding:"utf8",timeout:10000}) : "non-Windows"}`,
       );
     }
     await new Promise((resolveTick) =>
