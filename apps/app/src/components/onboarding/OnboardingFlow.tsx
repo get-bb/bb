@@ -1274,8 +1274,9 @@ export function OnboardingFlow({
   >(() => new Map());
   const queryClient = useQueryClient();
   useEffect(() => {
+    if (!redesign) return;
     void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
-  }, [queryClient]);
+  }, [queryClient, redesign]);
   const exposedRef = useRef(false);
   useEffect(() => {
     if (exposedRef.current) return;
