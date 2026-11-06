@@ -55,13 +55,10 @@ it is archived.
 ### Background sweeps
 
 The server runs its periodic sweep jobs (`PERIODIC_SWEEP_JOBS` in
-`apps/server/src/services/system/periodic-sweeps.ts`) every 10 seconds. Each
-job has its own error boundary, so a failing job never stops the others.
-
-A job that works through a list of items (threads, projects, environments,
-plugin schedules) is an `items` job built with `defineItemSweep`
-(`item-sweep.ts`). The job lists its items with a stable key, processes one,
-and sets how many run at once; the runner owns everything else:
+`apps/server/src/services/system/periodic-sweeps.ts`) every 10 seconds, and
+every job is an item sweep (`item-sweep.ts`). A job lists its items with a
+stable key, processes one, and sets how many run at once; the runner owns
+everything else:
 
 - A failure is written to `sweep_item_failures` (sweep, item key, attempts,
   retry time, last error), and the remaining items still run.
@@ -79,12 +76,10 @@ and sets how many run at once; the runner owns everything else:
 - A job marked `background` doesn't hold up the rest of the pass; it is
   skipped on later passes until it finishes.
 
-Every other job is a `task`: single SQL statements, maintenance passes, the
-two cursor scans, and the few loops whose behaviour the runner would change. `apps/server/test/system/periodic-sweep-jobs.test.ts`
-lists each one with the reason it doesn't need the runner, and a new task job
-fails that test until it is added there. Cursor scans (event pruning, completed
-output migration) are tasks that record failures through the same
-`recordSweepFailure` and skip the failing thread or target.
+Three constructors cover the shapes: `defineItemSweep` for a list read once per
+pass, `defineScanSweep` for a cursor scan that lists again after each batch
+until nothing new comes back (event pruning lists each policy's next thread),
+and `defineSingleItemSweep` for one bulk statement or maintenance pass.
 
 ### Transport contracts
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, notInArray } from "drizzle-orm";
 import {
   acquireProjectAttachmentOwnership,
   claimProjectAttachments,
@@ -242,23 +242,38 @@ export async function pruneProjectAttachments(
   }
 }
 
-export async function runProjectAttachmentPrune(
+export function projectAttachmentPruneSweep(
   deps: MaintenanceDeps,
   now: number,
-): Promise<void> {
+): ItemSweep {
   const maintenance = getMaintenanceState(deps.db);
-  const row = deps.db
-    .select({ id: projectAttachmentBackfills.projectId })
-    .from(projectAttachmentBackfills)
-    .where(
-      and(
-        eq(projectAttachmentBackfills.phase, "done"),
-        gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
-      ),
-    )
-    .orderBy(asc(projectAttachmentBackfills.projectId))
-    .limit(1)
-    .get();
-  maintenance.pruneCursor = row?.id ?? "";
-  if (row) await pruneProjectAttachments(deps, row.id, now);
+  return defineItemSweep({
+    name: "project-attachment-orphan-prune",
+    concurrency: 1,
+    list: ({ excludedKeys }) => {
+      const row = deps.db
+        .select({ id: projectAttachmentBackfills.projectId })
+        .from(projectAttachmentBackfills)
+        .where(
+          and(
+            eq(projectAttachmentBackfills.phase, "done"),
+            gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
+            excludedKeys.size === 0
+              ? undefined
+              : notInArray(projectAttachmentBackfills.projectId, [
+                  ...excludedKeys,
+                ]),
+          ),
+        )
+        .orderBy(asc(projectAttachmentBackfills.projectId))
+        .limit(1)
+        .get();
+      maintenance.pruneCursor = row?.id ?? "";
+      return row === undefined ? [] : [row.id];
+    },
+    key: (projectId) => projectId,
+    process: async (projectId) => {
+      await pruneProjectAttachments(deps, projectId, now);
+    },
+  });
 }

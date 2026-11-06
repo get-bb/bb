@@ -34,18 +34,40 @@ export function defineItemSweep<T>(
 ): ItemSweep {
   return {
     name: definition.name,
-    run: (deps, now) => runItemSweep(deps, definition, now),
+    run: (deps, now) => runItemSweep(deps, definition, { now, relist: false }),
   };
 }
 
-export function sweepRetryDelayMs(attempts: number): number {
+export function defineScanSweep<T>(
+  definition: ItemSweepDefinition<T>,
+): ItemSweep {
+  return {
+    name: definition.name,
+    run: (deps, now) => runItemSweep(deps, definition, { now, relist: true }),
+  };
+}
+
+export function defineSingleItemSweep(definition: {
+  name: string;
+  process(): void | Promise<void>;
+}): ItemSweep {
+  return defineItemSweep({
+    name: definition.name,
+    concurrency: 1,
+    list: () => [definition.name],
+    key: (itemKey) => itemKey,
+    process: () => definition.process(),
+  });
+}
+
+function sweepRetryDelayMs(attempts: number): number {
   return Math.min(
     RETRY_MAX_MS,
     RETRY_BASE_MS * 2 ** Math.min(attempts - 1, 16),
   );
 }
 
-export function recordSweepFailure(
+function recordSweepFailure(
   deps: SweepDeps,
   args: { error: unknown; itemKey: string; now: number; sweep: string },
 ): void {
@@ -75,7 +97,7 @@ export function recordSweepFailure(
   }
 }
 
-export function clearSweepFailure(
+function clearSweepFailure(
   deps: SweepDeps,
   args: { itemKey: string; sweep: string },
 ): void {
@@ -83,17 +105,6 @@ export function clearSweepFailure(
     itemKeys: [args.itemKey],
     sweep: args.sweep,
   });
-}
-
-export function listBackingOffSweepItems(
-  deps: SweepDeps,
-  args: { now: number; sweep: string },
-): Set<string> {
-  return new Set(
-    listSweepItemFailures(deps.db, args.sweep)
-      .filter((failure) => failure.retryAt > args.now)
-      .map((failure) => failure.itemKey),
-  );
 }
 
 const inFlightBySweep = new Map<string, Set<string>>();
@@ -110,8 +121,9 @@ function inFlightKeys(sweep: string): Set<string> {
 async function runItemSweep<T>(
   deps: SweepDeps,
   definition: ItemSweepDefinition<T>,
-  now: number,
+  args: { now: number; relist: boolean },
 ): Promise<void> {
+  const { now } = args;
   const sweep = definition.name;
   const failures = new Map(
     listSweepItemFailures(deps.db, sweep).map((failure) => [
@@ -120,41 +132,54 @@ async function runItemSweep<T>(
     ]),
   );
   const inFlight = inFlightKeys(sweep);
-  const excludedKeys = new Set(inFlight);
-  for (const failure of failures.values()) {
-    if (failure.retryAt > now) excludedKeys.add(failure.itemKey);
-  }
+  const backingOff = [...failures.values()]
+    .filter((failure) => failure.retryAt > now)
+    .map((failure) => failure.itemKey);
+  const failedThisPass = new Set<string>();
+  const started = new Set<string>();
   const listedKeys = new Set<string>();
-  const due: Array<{ item: T; itemKey: string }> = [];
-  for (const item of await definition.list({ excludedKeys })) {
-    const itemKey = definition.key(item);
-    listedKeys.add(itemKey);
-    if (!excludedKeys.has(itemKey)) due.push({ item, itemKey });
-  }
-  let next = 0;
   let lastYieldAt = performance.now();
-  const worker = async () => {
-    for (let entry = due[next]; entry !== undefined; entry = due[next]) {
-      next += 1;
-      if (performance.now() - lastYieldAt >= YIELD_AFTER_MS) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        lastYieldAt = performance.now();
-      }
-      await runItem(deps, definition, {
-        hadFailure: failures.has(entry.itemKey),
-        inFlight,
-        item: entry.item,
-        itemKey: entry.itemKey,
-        now,
-      });
+  for (;;) {
+    const excludedKeys = new Set([
+      ...backingOff,
+      ...inFlight,
+      ...failedThisPass,
+    ]);
+    const due: Array<{ item: T; itemKey: string }> = [];
+    for (const item of await definition.list({ excludedKeys })) {
+      const itemKey = definition.key(item);
+      listedKeys.add(itemKey);
+      if (excludedKeys.has(itemKey) || started.has(itemKey)) continue;
+      started.add(itemKey);
+      due.push({ item, itemKey });
     }
-  };
-  await Promise.all(
-    Array.from(
-      { length: Math.max(1, Math.min(definition.concurrency, due.length)) },
-      worker,
-    ),
-  );
+    if (due.length === 0) break;
+    let next = 0;
+    const worker = async () => {
+      for (let entry = due[next]; entry !== undefined; entry = due[next]) {
+        next += 1;
+        if (performance.now() - lastYieldAt >= YIELD_AFTER_MS) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          lastYieldAt = performance.now();
+        }
+        const outcome = await runItem(deps, definition, {
+          hadFailure: failures.has(entry.itemKey),
+          inFlight,
+          item: entry.item,
+          itemKey: entry.itemKey,
+          now,
+        });
+        if (outcome === "failed") failedThisPass.add(entry.itemKey);
+      }
+    };
+    await Promise.all(
+      Array.from(
+        { length: Math.max(1, Math.min(definition.concurrency, due.length)) },
+        worker,
+      ),
+    );
+    if (!args.relist) break;
+  }
   deleteSweepItemFailures(deps.db, {
     itemKeys: [...failures.values()]
       .filter(
@@ -178,7 +203,7 @@ async function runItem<T>(
     itemKey: string;
     now: number;
   },
-): Promise<void> {
+): Promise<"detached" | "failed" | "succeeded"> {
   const sweep = definition.name;
   const { itemKey } = args;
   args.inFlight.add(itemKey);
@@ -187,9 +212,11 @@ async function runItem<T>(
     .then(
       () => {
         if (args.hadFailure) clearSweepFailure(deps, { itemKey, sweep });
+        return "succeeded" as const;
       },
       (error: unknown) => {
         recordSweepFailure(deps, { error, itemKey, now: args.now, sweep });
+        return "failed" as const;
       },
     )
     .catch((error: unknown) => {
@@ -197,6 +224,7 @@ async function runItem<T>(
         { err: error, itemKey, sweep },
         "Sweep item outcome could not be recorded",
       );
+      return "failed" as const;
     })
     .finally(() => {
       args.inFlight.delete(itemKey);
@@ -206,10 +234,7 @@ async function runItem<T>(
     timer = setTimeout(() => resolve("detached"), ITEM_DETACH_AFTER_MS);
     timer.unref();
   });
-  const outcome = await Promise.race([
-    settled.then(() => "settled" as const),
-    detached,
-  ]);
+  const outcome = await Promise.race([settled, detached]);
   clearTimeout(timer);
   if (outcome === "detached") {
     deps.logger.warn(
@@ -217,4 +242,5 @@ async function runItem<T>(
       "Sweep item is still running; continuing without waiting for it",
     );
   }
+  return outcome;
 }

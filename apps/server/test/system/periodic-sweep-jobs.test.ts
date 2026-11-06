@@ -11,41 +11,17 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
-const TASK_JOBS: Record<string, string> = {
-  "environment-preparation-owner-release": "One bulk UPDATE with no items.",
-  "machine-auth-prune": "One bulk DELETE with no items.",
-  "retained-event-output-expiry": "Bulk DELETE of expired rows in batches.",
-  "closed-session-prune": "One bulk DELETE with no items.",
-  "exited-terminal-session-prune": "One bulk DELETE with no items.",
-  "queued-message-claim-release": "One bulk UPDATE with no items.",
-  "database-maintenance": "One maintenance pass with no items.",
-  "plugin-database-maintenance": "One vacuum check per open plugin database.",
-  "thread-event-pruning":
-    "Cursor scan; a failing thread is skipped and recorded through the shared failure records.",
-  "completed-event-output-migration":
-    "Cursor scan per target; a failing target is backed off through the shared failure records.",
-  "machine-provider-lifecycle":
-    "Starts every machine's sweep without waiting for it, and re-requests removal for machines whose sweep is still running, which the runner's in-flight skip would prevent.",
-  "project-attachment-orphan-prune":
-    "One project per pass; the cursor moves past the project before pruning it, and each attachment's failure is caught.",
-};
-
 describe("periodic sweep jobs", () => {
-  it("runs every job that works through items on the item sweep runner, and lists a reason for every other job", async () => {
+  it("gives every job a unique name that matches the item sweep it runs", async () => {
     await withTestHarness(async (harness) => {
       const deps = {
         ...harness.deps,
         pluginSchedules: harness.pluginService,
         plugins: harness.pluginService,
       };
-      const taskJobs = PERIODIC_SWEEP_JOBS.filter(
-        (job) => job.kind === "task",
-      ).map((job) => job.name);
-      expect(taskJobs.sort()).toEqual(Object.keys(TASK_JOBS).sort());
-      for (const job of PERIODIC_SWEEP_JOBS) {
-        if (job.kind === "items")
-          expect(job.sweep(deps, Date.now()).name).toBe(job.name);
-      }
+      expect(
+        PERIODIC_SWEEP_JOBS.map((job) => job.sweep(deps, Date.now()).name),
+      ).toEqual(PERIODIC_SWEEP_JOBS.map((job) => job.name));
       expect(new Set(PERIODIC_SWEEP_JOBS.map((job) => job.name)).size).toBe(
         PERIODIC_SWEEP_JOBS.length,
       );
