@@ -1,0 +1,27 @@
+name: Codex cleanup Windows diagnosis
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+      - run: pnpm install --frozen-lockfile --filter bb-plugin-provider-codex... --filter @bb/db... --filter @bb/scripts...
+      - name: Build prerequisites and first full package
+        run: pnpm exec turbo run test --filter=bb-plugin-provider-codex --force --output-logs=full
+      - name: Repeat full package
+        shell: pwsh
+        run: |
+          for ($iteration=1; $iteration -le 10; $iteration++) {
+            Write-Output "Iteration $iteration"
+            pnpm --filter bb-plugin-provider-codex exec vitest run --config vitest.config.ts
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
