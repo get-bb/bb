@@ -66,6 +66,7 @@ import {
 } from "@bb/shared-ui/setup-option-row";
 import {
   CodeDisplay,
+  CodeEntryForm,
   DisclosureToggle,
   INLINE_CHIP_BUTTON_CLASS,
   InlinePanel,
@@ -453,13 +454,13 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
 
 function PairForm({
   dashboardUrl,
-  submitVariant,
+  layout,
   onSubmitted,
   onFailed,
   onPaired,
 }: {
   dashboardUrl: string;
-  submitVariant: "default" | "outline";
+  layout: "settings" | "setupGuide";
   onSubmitted: () => void;
   onFailed: () => void;
   onPaired: () => void;
@@ -519,40 +520,56 @@ function PairForm({
   const copy = errorCode !== null ? PAIR_ERROR_COPY[errorCode] : null;
 
   return (
-    <div className="space-y-2.5">
-      <form
-        className="flex max-w-md items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit(code);
-        }}
-      >
-        <Input
+    <div className={layout === "setupGuide" ? "space-y-3" : "space-y-2.5"}>
+      {layout === "setupGuide" ? (
+        <CodeEntryForm
+          label="Pairing code"
           value={code}
-          onChange={(event) => onChange(event.target.value)}
           placeholder="XXXX–XXXX"
-          autoComplete="off"
-          spellCheck={false}
-          aria-label="Pairing code"
-          aria-invalid={errorCode !== null}
-          className={cn(
-            "font-mono tracking-widest",
-            errorCode !== null && "border-destructive ring-1 ring-destructive",
-          )}
+          submitLabel="Pair"
+          canSubmit={complete}
+          pending={pending}
+          invalid={errorCode !== null}
+          onChange={onChange}
+          onSubmit={() => submit(code)}
         />
-        <Button
-          type="submit"
-          variant={submitVariant}
-          disabled={pending || !complete}
+      ) : (
+        <form
+          className="flex max-w-md items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit(code);
+          }}
         >
-          {pending ? (
-            <Icon name="Spinner" className="size-4 animate-spin" />
-          ) : null}
-          Pair
-        </Button>
-      </form>
+          <Input
+            value={code}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="XXXX–XXXX"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Pairing code"
+            aria-invalid={errorCode !== null}
+            className={cn(
+              "font-mono tracking-widest",
+              errorCode !== null &&
+                "border-destructive ring-1 ring-destructive",
+            )}
+          />
+          <Button type="submit" disabled={pending || !complete}>
+            {pending ? (
+              <Icon name="Spinner" className="size-4 animate-spin" />
+            ) : null}
+            Pair
+          </Button>
+        </form>
+      )}
       {copy !== null ? (
-        <div className="max-w-md rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
+        <div
+          className={cn(
+            "rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text",
+            layout === "settings" && "max-w-md",
+          )}
+        >
           {copy.lead}{" "}
           <UrlLink
             href={dashboardUrl}
@@ -1332,7 +1349,7 @@ function NotPairedContent({
       {codeOpen ? (
         <PairForm
           dashboardUrl={dashboardUrl}
-          submitVariant="default"
+          layout="settings"
           onSubmitted={onSetupStarted}
           onFailed={reportPairingFailed}
           onPaired={onPaired}
@@ -2126,7 +2143,7 @@ function ConnectSetupGuideSection({
     () => onSetupFailed("pairing"),
     [onSetupFailed],
   );
-  const { login, starting, error, start } = useConnectAccountLogin(
+  const { login, starting, error, start, cancel } = useConnectAccountLogin(
     refetch,
     reportSignInFailed,
   );
@@ -2166,6 +2183,7 @@ function ConnectSetupGuideSection({
       (login.state === "signed-in" && turnOnError === null));
   const setUp = () => {
     setTurnOnError(null);
+    setCodeOpen(false);
     if (status === null) {
       refetch();
       return;
@@ -2196,9 +2214,16 @@ function ConnectSetupGuideSection({
     turnOnError !== null ||
     loadError !== null;
   const pairingStatus =
-    status !== null && !status.paired && !connecting && !signingIn
+    status !== null &&
+    !status.paired &&
+    !connecting &&
+    login?.state === "pending"
       ? status
       : null;
+  const paired = () => {
+    cancel();
+    refetch();
+  };
 
   return (
     <SetupOptionRow
@@ -2222,13 +2247,13 @@ function ConnectSetupGuideSection({
               }
               expanded={
                 codeOpen ? (
-                  <div className="px-3 pb-3 pt-1">
+                  <div className="border-t border-border-hairline p-3">
                     <PairForm
                       dashboardUrl={pairingStatus.dashboardUrl}
-                      submitVariant="outline"
+                      layout="setupGuide"
                       onSubmitted={onSetupStarted}
                       onFailed={reportPairingFailed}
-                      onPaired={refetch}
+                      onPaired={paired}
                     />
                   </div>
                 ) : null

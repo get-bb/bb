@@ -220,14 +220,24 @@ export function PendingStatus({ children }: { children: ReactNode }) {
   );
 }
 
-export function PasteCodeForm({
+export function CodeEntryForm({
   label,
   value,
+  placeholder,
+  submitLabel,
+  canSubmit,
+  pending,
+  invalid,
   onChange,
   onSubmit,
 }: {
   label: string;
   value: string;
+  placeholder: string;
+  submitLabel: string;
+  canSubmit: boolean;
+  pending: boolean;
+  invalid: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }) {
@@ -243,20 +253,53 @@ export function PasteCodeForm({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
-        placeholder="Paste the code here"
+        aria-invalid={invalid}
+        placeholder={placeholder}
         autoComplete="off"
         spellCheck={false}
-        className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        className={cn(
+          "h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring",
+          invalid && "border-destructive ring-1 ring-destructive",
+        )}
       />
       <Button
         type="submit"
         size="sm"
         variant="outline"
-        disabled={value.trim().length === 0}
+        disabled={pending || !canSubmit}
       >
-        Complete
+        {pending ? (
+          <Icon name="Spinner" aria-hidden className="size-4 animate-spin" />
+        ) : null}
+        {submitLabel}
       </Button>
     </form>
+  );
+}
+
+export function PasteCodeForm({
+  label,
+  value,
+  onChange,
+  onSubmit,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <CodeEntryForm
+      label={label}
+      value={value}
+      placeholder="Paste the code here"
+      submitLabel="Complete"
+      canSubmit={value.trim().length > 0}
+      pending={false}
+      invalid={false}
+      onChange={onChange}
+      onSubmit={onSubmit}
+    />
   );
 }
 
