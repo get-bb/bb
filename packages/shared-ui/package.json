@@ -244,6 +244,11 @@
       "types": "./src/components/ui/hooks/use-compact-viewport.tsx",
       "default": "./src/components/ui/hooks/use-compact-viewport.tsx"
     },
+    "./hooks/use-countdown": {
+      "source": "./src/components/ui/hooks/use-countdown.ts",
+      "types": "./src/components/ui/hooks/use-countdown.ts",
+      "default": "./src/components/ui/hooks/use-countdown.ts"
+    },
     "./hooks/use-media-query": {
       "source": "./src/components/ui/hooks/use-media-query.ts",
       "types": "./src/components/ui/hooks/use-media-query.ts",
@@ -438,6 +443,11 @@
       "source": "./src/components/ui/info-list-row.tsx",
       "types": "./src/components/ui/info-list-row.tsx",
       "default": "./src/components/ui/info-list-row.tsx"
+    },
+    "./mobile-platform-icon": {
+      "source": "./src/components/ui/mobile-platform-icon.tsx",
+      "types": "./src/components/ui/mobile-platform-icon.tsx",
+      "default": "./src/components/ui/mobile-platform-icon.tsx"
     },
     "./setup-option-row": {
       "source": "./src/components/ui/setup-option-row.tsx",

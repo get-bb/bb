@@ -10,6 +10,7 @@ import {
   agentRowSetup,
   agentSignInView,
   connectAccessUrl,
+  devicesShowMachines,
   connectFlowFailed,
   defaultSelectedRepoPaths,
   skippedStepIds,
@@ -690,6 +691,14 @@ describe("agentContinueDisabled", () => {
         statesLoading: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("devicesShowMachines", () => {
+  it("offers other machines only once bb connect is on", () => {
+    expect(devicesShowMachines({ status: "on", url: "https://x" })).toBe(true);
+    expect(devicesShowMachines({ status: "off" })).toBe(false);
+    expect(devicesShowMachines({ status: "unavailable" })).toBe(false);
   });
 });
 

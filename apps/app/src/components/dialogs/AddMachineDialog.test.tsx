@@ -18,7 +18,12 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { Dialog, DialogContent } from "@bb/shared-ui/dialog";
-import { AddMachineContent, ManualMachineSetup } from "./AddMachineDialog";
+import {
+  AddMachineContent,
+  AddMachineInline,
+  ManualMachineSetup,
+  QuickMachineSetupView,
+} from "./AddMachineDialog";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -292,4 +297,45 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
   expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: reservedHost.id });
   await screen.findByText("expired enrollment command");
   rendered.unmount();
+});
+
+it("shows the enrollment command inline", async () => {
+  stubManualLaunch();
+  const { wrapper } = createQueryClientTestHarness();
+  render(
+    <MemoryRouter>
+      <AddMachineInline />
+    </MemoryRouter>,
+    { wrapper },
+  );
+
+  await screen.findByText("bb machine enroll test");
+  screen.getByText("On the other machine, run:");
+  screen.getByText("Waiting for it to connect…");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText("Connection method")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Windows" }));
+  screen.getByText("irm windows-command | iex");
+  expect(screen.queryByText("bb machine enroll test")).toBeNull();
+});
+
+it("replaces the waiting line once the machine connects", () => {
+  render(
+    <QuickMachineSetupView
+      command={{
+        value: "bb machine enroll test",
+        windowsValue: "irm windows-command | iex",
+        expiresAt: Date.now() + 60_000,
+        unavailable: false,
+      }}
+      connectedHost={makeHost({ id: "host_new", name: "Studio Mac" })}
+      errorMessage={null}
+      onRetry={() => {}}
+      onRegenerate={() => {}}
+    />,
+  );
+
+  screen.getByText("Studio Mac connected");
+  expect(screen.queryByText("Waiting for it to connect…")).toBeNull();
 });
