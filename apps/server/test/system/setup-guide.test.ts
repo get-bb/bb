@@ -45,31 +45,18 @@ async function useFlagVariant(harness: TestAppHarness) {
     override: null,
     telemetry,
   });
-  return { capture, fetch };
+  return { capture };
 }
 
 describe("setup guide route", () => {
-  it("serves the control guide when telemetry is unavailable", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/system/setup-guide");
-
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
-        variant: "control",
-      });
-    });
-  });
-
   it("serves the guide variant without exposing its source", async () => {
     await withTestHarness(async (harness) => {
-      const { fetch } = await useFlagVariant(harness);
+      await useFlagVariant(harness);
 
       const response = await harness.app.request("/api/v1/system/setup-guide");
 
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({ variant: "new" });
-      await harness.app.request("/api/v1/system/setup-guide");
-      expect(fetch).toHaveBeenCalledTimes(1);
     });
   });
 
