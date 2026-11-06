@@ -2609,16 +2609,39 @@ describe("ComposerBox size controls", () => {
   it.each([
     [
       "thread",
+      false,
       "min(calc(50dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
     [
       "new-thread",
+      false,
       "min(calc(70dvh - 3rem), var(--composer-editor-available-height, 100dvh))",
     ],
+    [
+      "thread",
+      true,
+      "min(min(calc(40dvh - 3.5rem), calc(var(--bb-shell-height, 100dvh) * 0.5 - 3rem)), var(--composer-editor-available-height, 100dvh))",
+    ],
+    [
+      "new-thread",
+      true,
+      "min(min(calc(40dvh - 3.5rem), calc(var(--bb-shell-height, 100dvh) * 0.5 - 3rem)), var(--composer-editor-available-height, 100dvh))",
+    ],
   ] as const)(
-    "caps the %s editor at its intended viewport height or the host's available space",
-    (surface, maxHeight) => {
-      render(<ComposerBox {...createPromptBoxProps({ surface })} />);
+    "caps the %s surface editor (compact: %j) at its viewport cap or the host's available space",
+    (surface, compact, maxHeight) => {
+      const editor = (
+        <ComposerBox {...createPromptBoxProps({ surface })} />
+      );
+      render(
+        compact ? (
+          <CompactViewportOverrideProvider isCompactViewport>
+            {editor}
+          </CompactViewportOverrideProvider>
+        ) : (
+          editor
+        ),
+      );
 
       const editorScroll = document.querySelector<HTMLElement>(
         "[data-promptbox-editor-scroll]",
