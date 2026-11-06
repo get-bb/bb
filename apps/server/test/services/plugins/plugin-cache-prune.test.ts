@@ -304,6 +304,7 @@ describe("plugin cache pruning", () => {
           ...args,
           now: Date.now() + 1,
           retentionMs: 0,
+          snapshotsCreatedBefore: 0,
         });
       }
 

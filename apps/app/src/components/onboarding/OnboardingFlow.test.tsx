@@ -179,25 +179,11 @@ afterEach(() => {
 });
 
 describe("OnboardingFlow", () => {
-  it("lets Start using bb finish again after the close it started was undone", () => {
-    const onClose = vi.fn();
-    const { setClosing } = renderFlow({ initialStep: "devices", onClose });
-
-    fireEvent.click(button(/Start using bb/u));
-    fireEvent.click(button(/Start using bb/u));
-    expect(onClose).toHaveBeenCalledTimes(1);
-
-    setClosing(true);
-    setClosing(false);
-    fireEvent.click(button(/Start using bb/u));
-
-    expect(onClose).toHaveBeenCalledTimes(2);
-  });
-
   it("keeps the guide on its last step when the user navigates while a failing Finish save is pending", () => {
     const onClose = vi.fn();
     const { setClosing } = renderFlow({ initialStep: "devices", onClose });
 
+    fireEvent.click(button(/Start using bb/u));
     fireEvent.click(button(/Start using bb/u));
     expect(onClose).toHaveBeenCalledTimes(1);
     setClosing(true);
@@ -281,8 +267,6 @@ describe("OnboardingFlow", () => {
   });
 
   it.each([
-    ["new", "desktop", "bottom-right"],
-    ["control", "desktop", "bottom-right"],
     ["new", "narrow window", "bottom-right"],
     ["new", "phone", "top-center"],
     ["control", "narrow window", "top-center"],

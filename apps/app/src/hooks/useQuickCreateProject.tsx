@@ -31,7 +31,7 @@ interface QuickCreateProjectDialogState {
   target: ProjectPathDialogTarget | null;
 }
 
-export interface ProjectCreateObserver {
+interface ProjectCreateObserver {
   onStarted: () => void;
   onSettled: (
     result: { outcome: "succeeded" } | { outcome: "failed"; error: unknown },

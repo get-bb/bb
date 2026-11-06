@@ -4,6 +4,7 @@ import {
   eq,
   gt,
   inArray,
+  lt,
   lte,
   notExists,
   notInArray,
@@ -141,16 +142,24 @@ export function setPluginStateSnapshotStatus(
   );
 }
 
-export function listExpiredPluginStateSnapshots(
+export interface ListDiscardablePluginStateSnapshotsArgs {
+  createdBefore: number;
+  now: number;
+}
+
+export function listDiscardablePluginStateSnapshots(
   db: DbConnection,
-  now: number,
+  args: ListDiscardablePluginStateSnapshotsArgs,
 ): PluginStateSnapshotRow[] {
   return db
     .select()
     .from(pluginStateSnapshots)
     .where(
       and(
-        lte(pluginStateSnapshots.retainedUntil, now),
+        or(
+          lte(pluginStateSnapshots.retainedUntil, args.now),
+          lt(pluginStateSnapshots.createdAt, args.createdBefore),
+        ),
         notInArray(pluginStateSnapshots.status, [
           "rollback-pending",
           "restoring",

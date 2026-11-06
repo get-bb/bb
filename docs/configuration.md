@@ -1165,7 +1165,13 @@ inside the bb server process.
 Plugin state lives under the data dir:
 
 ```
-<dataDir>/plugins/<id>/data.db     Per-plugin SQLite database
+<dataDir>/plugins/<id>/data.db     Per-plugin SQLite database (when it uses
+                                   incremental auto-vacuum, bb returns its
+                                   free pages to disk hourly)
+<dataDir>/plugins/snapshots/<id>/  Rollback copy of a plugin's state taken
+                                   before an update; deleted once the update
+                                   settles, or at the next restart after a
+                                   rollback
 <dataDir>/plugins/<id>/secrets/    Secret settings and the plugin HTTP token
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)

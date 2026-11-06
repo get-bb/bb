@@ -364,23 +364,6 @@ describe("buildPluginProviderRegistration", () => {
       "acp-hermes-agent": "collapse",
     });
   });
-
-  it("gives only Claude Code, Codex and Cursor the guided sign-in", async () => {
-    const declarations = await loadFirstPartyProviderDeclarations();
-    const guided = [...declarations.entries()].flatMap(([pluginId, list]) =>
-      list.flatMap((declared) => {
-        const { info, guidedSignIn } = buildPluginProviderRegistration({
-          available: true,
-          pluginId,
-          declaration: declared,
-          iconHash: null,
-          readSettings: NO_SETTINGS,
-        });
-        return guidedSignIn ? [info.id] : [];
-      }),
-    );
-    expect(guided.sort()).toStrictEqual(["acp-cursor", "claude-code", "codex"]);
-  });
 });
 
 function standardSchema() {

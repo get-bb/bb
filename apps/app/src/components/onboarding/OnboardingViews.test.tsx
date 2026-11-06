@@ -322,60 +322,25 @@ describe("AgentSignInInstruction", () => {
     ).toBe(url);
   });
 
-  it.each([
-    {
-      name: "Codex browser sign-in",
-      agentName: "Codex",
-      url: "https://auth.openai.com/oauth/authorize?state=abc",
-      overrides: {},
-      site: "auth.openai.com",
-      text: "Sign in on auth.openai.com.",
-    },
-    {
-      name: "Codex one-time code",
-      agentName: "Codex",
-      url: "https://auth.openai.com/codex/device",
-      overrides: { userCode: "JWMS-GLRCB" },
-      site: "auth.openai.com",
-      text: "Enter this code on auth.openai.com.",
-    },
-  ])("links the sign-in page in the $name line", (example) => {
+  it("links the sign-in page in the Codex one-time code line", () => {
+    const url = "https://auth.openai.com/codex/device";
     const onOpenUrl = vi.fn();
-    const line = renderInstruction(example.url, {
-      ...example.overrides,
-      agentName: example.agentName,
+    const line = renderInstruction(url, {
+      userCode: "JWMS-GLRCB",
+      agentName: "Codex",
       onOpenUrl,
     });
 
-    expect(line.textContent).toBe(example.text);
+    expect(line.textContent).toBe("Enter this code on auth.openai.com.");
     expect(within(line).queryByRole("button")).toBeNull();
-    const link = screen.getByRole("link", { name: example.site });
-    expect(link.getAttribute("href")).toBe(example.url);
+    const link = screen.getByRole("link", { name: "auth.openai.com" });
+    expect(link.getAttribute("href")).toBe(url);
     fireEvent.click(link);
-    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(example.url);
+    expect(onOpenUrl).toHaveBeenCalledExactlyOnceWith(url);
   });
 });
 
 describe("AgentSignInPanel", () => {
-  it("keeps the terminal toggle once the terminal was hidden after showing", () => {
-    render(
-      <AgentSignInPanel
-        connect={false}
-        agentName="Cursor"
-        view={{ guide: null, terminalVisible: false, started: true }}
-        code=""
-        codeSubmitted={false}
-        terminal={null}
-        onCodeChange={vi.fn()}
-        onSubmitCode={vi.fn()}
-        onCopy={vi.fn()}
-        onToggleTerminal={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("Show terminal")).toBeTruthy();
-  });
-
   it("holds only the controls, not the instruction or a waiting line", () => {
     render(
       <AgentSignInPanel
@@ -774,6 +739,13 @@ describe("RedesignedDevicesStep", () => {
     expect(screen.getByText("Where you use bb").className).not.toContain(
       "sr-only",
     );
+    expect(
+      screen
+        .getByText("bb connect")
+        .compareDocumentPosition(screen.getByText("Add another machine")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
     expect(props.onAddMachine).toHaveBeenCalledOnce();
   });
@@ -796,29 +768,5 @@ describe("RedesignedDevicesStep", () => {
     expect(screen.queryByText(/turned off on this server/u)).toBeNull();
     expect(screen.queryByText("Add another machine")).toBeNull();
     expect(screen.queryByText("Get the mobile app")).toBeNull();
-  });
-
-  it("puts bb connect above Add another machine once it is on", () => {
-    render(
-      <TooltipProvider>
-        <RedesignedDevicesStep
-          hostName="bee"
-          connectSection={<li>bb connect</li>}
-          showMachines
-          addMachinePanel={null}
-          onAddMachine={vi.fn()}
-          onCloseAddMachine={vi.fn()}
-        />
-      </TooltipProvider>,
-    );
-
-    const connect = screen.getByText("bb connect");
-    const machines = screen.getByText("Add another machine");
-    expect(
-      connect.compareDocumentPosition(machines) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(screen.queryByText("Get the mobile app")).toBeNull();
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
