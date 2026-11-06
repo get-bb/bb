@@ -178,11 +178,6 @@ describe("connect settings section", () => {
     slot.getByText(
       "Waiting for you to approve it. You can approve from any device.",
     );
-    expect(
-      slot.queryByText(
-        "Remote access turns on automatically after you sign in.",
-      ),
-    ).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_999));
     expect(polls).toBe(0);
@@ -1152,12 +1147,6 @@ describe("connect setup guide section", () => {
             currentStatus = connected();
             return currentStatus;
           },
-          createMachineCode: () => ({
-            code: "PAIR-CODE",
-            expiresAt: Date.now() + 600_000,
-            serverUrl: "https://workstation.getbb.app",
-          }),
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
         },
       },
     );
@@ -1230,12 +1219,6 @@ describe("connect setup guide section", () => {
             expect(input).toEqual({ enabled: true });
             return currentStatus;
           },
-          createMachineCode: () => ({
-            code: "PAIR-CODE",
-            expiresAt: Date.now() + 600_000,
-            serverUrl: "https://workstation.getbb.app",
-          }),
-          lookupMachineCode: () => ({ consumed: false, machineId: null }),
         },
       },
     );

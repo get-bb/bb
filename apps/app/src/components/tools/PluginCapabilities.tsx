@@ -176,7 +176,7 @@ function namedSlotItems<
     );
 }
 
-export function pluginAppSurfaceItems(
+function pluginAppSurfaceItems(
   plugin: PluginListItem,
   slots: PluginSlotSnapshot,
   configurationPath: string | undefined,

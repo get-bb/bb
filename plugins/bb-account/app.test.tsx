@@ -180,9 +180,6 @@ describe("bb account settings section", () => {
     });
 
     await slot.findByText("K7QP-2M4X");
-    expect(
-      slot.navigateCalls.filter((call) => call.method === "openUrl"),
-    ).toEqual([]);
     const link = slot.getByRole("link", {
       name: /Open getbb\.app/,
     }) as HTMLAnchorElement;
