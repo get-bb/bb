@@ -3362,22 +3362,27 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-phone {
-  --bw-phone-ui-scale: 0.98;
+  --pf: var(--bw-overlay-scale);
+  --pu: calc(var(--pf) * 0.98);
+  --mock-text-lg: round(calc(15px * var(--pu)), 1px);
+  --text-lead: round(calc(16px * var(--pu)), 1px);
+  --mock-text-xs: round(calc(11px * var(--pu)), 1px);
+  --mock-text-sm: round(calc(11.5px * var(--pu)), 1px);
+  --mock-text-base: round(calc(13px * var(--pu)), 1px);
+  --icon-sm: round(calc(14px * var(--pu)), 1px);
   position: absolute;
   z-index: 3;
   top: var(--bw-phone-top);
   left: calc(
-    var(--bw-fit-slice) - 312px - var(--bw-drop) * 24px /
+    var(--bw-fit-slice) - round(calc(312px * var(--pf)), 1px) - var(--bw-drop) * 24px /
       var(--mock-scale, 0.62)
   );
-  width: 312px;
-  height: 656px;
-  padding: 9px;
-  border-radius: 50px;
+  width: round(calc(312px * var(--pf)), 1px);
+  height: round(calc(656px * var(--pf)), 1px);
+  padding: round(calc(9px * var(--pf)), 1px);
+  border-radius: round(calc(50px * var(--pf)), 1px);
   background: var(--phone-body);
   box-shadow: var(--shadow-phone);
-  transform: scale(var(--bw-overlay-scale));
-  transform-origin: right top;
 }
 
 .bw-phone-screen {
@@ -3385,7 +3390,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 41px;
+  border-radius: round(calc(41px * var(--pf)), 1px);
   background: var(--bg);
 }
 
@@ -3395,10 +3400,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   left: 0;
   display: flex;
   flex-direction: column;
-  width: 300px;
-  height: 651px;
-  transform: scale(var(--bw-phone-ui-scale));
-  transform-origin: 0 0;
+  width: round(calc(300px * var(--pu)), 1px);
+  height: round(calc(651px * var(--pu)), 1px);
   color: var(--ink);
 }
 
@@ -3407,8 +3410,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   z-index: 5;
   top: 8px;
   left: 50%;
-  width: 94px;
-  height: 28px;
+  width: round(calc(94px * var(--pu)), 1px);
+  height: round(calc(28px * var(--pu)), 1px);
   border-radius: var(--radius-pill);
   background: var(--phone-screen);
   transform: translateX(-50%);
@@ -3419,9 +3422,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding: 2px 20px 0 32px;
-  font-size: 15px;
+  height: round(calc(44px * var(--pu)), 1px);
+  padding: round(calc(2px * var(--pu)), 1px) round(calc(20px * var(--pu)), 1px) 0 round(calc(32px * var(--pu)), 1px);
+  font-size: round(calc(15px * var(--pu)), 1px);
   font-weight: 600;
   letter-spacing: -0.2px;
   color: var(--heading);
@@ -3430,22 +3433,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .bw-phone-sys {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: round(calc(6px * var(--pu)), 1px);
 }
 
 .bw-phone-sys svg {
   display: block;
-  height: 12px;
+  height: round(calc(12px * var(--pu)), 1px);
   fill: currentColor;
 }
 
 .bw-phone-home {
   position: absolute;
   z-index: 5;
-  bottom: 8px;
+  bottom: round(calc(8px * var(--pu)), 1px);
   left: 50%;
-  width: 139px;
-  height: 5px;
+  width: round(calc(139px * var(--pu)), 1px);
+  height: round(calc(5px * var(--pu)), 1px);
   border-radius: var(--radius-pill);
   background: var(--heading);
   transform: translateX(-50%);
@@ -3455,9 +3458,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 16px;
-  height: 48px;
-  padding: 0 20px;
+  gap: round(calc(16px * var(--pu)), 1px);
+  height: round(calc(48px * var(--pu)), 1px);
+  padding: 0 round(calc(20px * var(--pu)), 1px);
   border-bottom: 1px solid
     color-mix(in oklch, var(--border-soft) 60%, var(--bg));
   font-size: var(--mock-text-lg);
@@ -3465,8 +3468,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-head-ic {
-  width: 20px;
-  height: 20px;
+  width: round(calc(20px * var(--pu)), 1px);
+  height: round(calc(20px * var(--pu)), 1px);
   flex-shrink: 0;
   color: var(--dim);
 }
@@ -3489,20 +3492,20 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding: 10px 16px 0;
+  padding: round(calc(10px * var(--pu)), 1px) round(calc(16px * var(--pu)), 1px) 0;
   overflow: hidden;
 }
 
 .bw-m-feed .bw-reveal > .bw-reveal-inner > * {
-  margin-top: 10px;
+  margin-top: round(calc(10px * var(--pu)), 1px);
 }
 
 .bw-m-user {
   width: max-content;
   max-width: 70%;
   margin-left: auto;
-  margin-bottom: 6px;
-  padding: 10px 16px;
+  margin-bottom: round(calc(6px * var(--pu)), 1px);
+  padding: round(calc(10px * var(--pu)), 1px) round(calc(16px * var(--pu)), 1px);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-lg);
   background: var(--surface-recessed);
@@ -3512,25 +3515,25 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-say {
-  padding: 4px 8px 4px 0;
+  padding: round(calc(4px * var(--pu)), 1px) round(calc(8px * var(--pu)), 1px) round(calc(4px * var(--pu)), 1px) 0;
   font-size: var(--mock-text-lg);
-  line-height: 24px;
+  line-height: round(calc(24px * var(--pu)), 1px);
   color: var(--ink);
 }
 
 .bw-step {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: round(calc(6px * var(--pu)), 1px);
   color: var(--dim);
   white-space: nowrap;
   opacity: 0.4;
 }
 
 .bw-m-feed .bw-step {
-  padding: 0 8px 0 0;
+  padding: 0 round(calc(8px * var(--pu)), 1px) 0 0;
   font-size: var(--mock-text-lg);
-  line-height: 20px;
+  line-height: round(calc(20px * var(--pu)), 1px);
 }
 
 .bw-step.is-live {
@@ -3538,10 +3541,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-step-ic {
-  width: 14px;
-  height: 14px;
+  width: round(calc(14px * var(--pu)), 1px);
+  height: round(calc(14px * var(--pu)), 1px);
   flex-shrink: 0;
-  margin-right: 2px;
+  margin-right: round(calc(2px * var(--pu)), 1px);
 }
 
 .bw-step-object {
@@ -3580,11 +3583,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-working {
-  min-height: 28px;
-  margin-top: 16px;
-  padding: 0 8px 0 0;
+  min-height: round(calc(28px * var(--pu)), 1px);
+  margin-top: round(calc(16px * var(--pu)), 1px);
+  padding: 0 round(calc(8px * var(--pu)), 1px) 0 0;
   font-size: var(--mock-text-lg);
-  line-height: 28px;
+  line-height: round(calc(28px * var(--pu)), 1px);
   color: var(--dim);
   -webkit-mask-image: linear-gradient(
     100deg,
@@ -3620,10 +3623,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 4px;
-  height: 48px;
-  margin: 12px 16px 34px;
-  padding: 0 4px 0 14px;
+  gap: round(calc(4px * var(--pu)), 1px);
+  height: round(calc(48px * var(--pu)), 1px);
+  margin: round(calc(12px * var(--pu)), 1px) round(calc(16px * var(--pu)), 1px) round(calc(34px * var(--pu)), 1px);
+  padding: 0 round(calc(4px * var(--pu)), 1px) 0 round(calc(14px * var(--pu)), 1px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg);
@@ -3637,9 +3640,9 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .bw-m-mic {
-  width: 20px;
-  height: 20px;
-  margin: 0 10px;
+  width: round(calc(20px * var(--pu)), 1px);
+  height: round(calc(20px * var(--pu)), 1px);
+  margin: 0 round(calc(10px * var(--pu)), 1px);
   color: var(--dim);
 }
 
@@ -3647,15 +3650,15 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: round(calc(40px * var(--pu)), 1px);
+  height: round(calc(40px * var(--pu)), 1px);
   border-radius: var(--radius-sm);
   background: color-mix(in oklch, var(--ink) 9%, var(--bg));
 }
 
 .bw-m-stop i {
-  width: 14px;
-  height: 14px;
+  width: round(calc(14px * var(--pu)), 1px);
+  height: round(calc(14px * var(--pu)), 1px);
   border-radius: 3px;
   background: var(--ink);
 }
@@ -5187,14 +5190,24 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .mx-title {
+  display: inline-flex;
   grid-area: 1 / 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  opacity: 0;
+  transition: opacity calc(var(--mock-slide-dur) / 2) var(--mock-slide-ease);
+}
+
+.mx-title-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 0;
 }
 
 .mx-title.is-on {
   opacity: 1;
+  transition-delay: calc(var(--mock-slide-dur) / 2);
 }
 
 .mx-rail-plugin {
@@ -6774,8 +6787,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .bw.bw-lead,
   .bw.bw-morph {
-    --mock-width: 360px;
-    --mock-visible-width: 360px;
+    --mock-fill: 1;
+    --mock-width: var(--mock-fill-width, 334px);
+    --mock-visible-width: var(--mock-fill-width, 334px);
+    zoom: 1;
   }
 
   .bw-lead .rail,
@@ -6794,6 +6809,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .bw-lead .bar-left {
     width: auto;
+  }
+
+  :is(.bw-lead, .bw-morph) .bar-menu,
+  :is(.bw-lead, .bw-morph) .bar-actions {
+    display: none;
+  }
+
+  :is(.bw-lead, .bw-morph) .bar-left {
+    padding-right: 0;
+    border-right: 0;
   }
 
   .bw-morph .mx-center {
@@ -6860,6 +6885,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   .bw.bw-start {
     width: auto;
     zoom: 1;
+  }
+
+  .bw-start .bw-phone {
+    --pf: 0.884;
   }
 
   .bw-start .bw-window {

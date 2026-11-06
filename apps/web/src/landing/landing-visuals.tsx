@@ -787,14 +787,16 @@ function Reveal({
 function WindowBar({
   title,
   panelOpen = false,
+  menuInTitle = false,
 }: {
   title: ReactNode;
   panelOpen?: boolean;
+  menuInTitle?: boolean;
 }) {
   return (
     <MockBar>
       <span className="bar-title">{title}</span>
-      <MoreIcon className="bar-kebab" />
+      {menuInTitle ? null : <MoreIcon className="bar-kebab" />}
       <span className="bar-actions" aria-hidden>
         <span className={panelOpen ? "bar-toggle active" : "bar-toggle"}>
           <PanelRightIcon className="ri" />
@@ -1720,6 +1722,7 @@ export function PluginMorph() {
       <div className="mock bw-window mx-window mock-ui">
         <WindowBar
           panelOpen={title === "graph"}
+          menuInTitle
           title={
             <span className="mx-titles">
               {titles.map((label) => (
@@ -1731,7 +1734,8 @@ export function PluginMorph() {
                       : "mx-title"
                   }
                 >
-                  {label}
+                  <span className="mx-title-text">{label}</span>
+                  <MoreIcon className="bar-kebab" />
                 </span>
               ))}
             </span>
