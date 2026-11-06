@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -198,6 +198,22 @@ export function listActiveProviderPendingInteractionsForHost(
     )
     .all()
     .map((row) => row.interaction);
+}
+
+export function listPendingProviderQuestions(
+  db: PendingInteractionReadConnection,
+): PendingInteractionRow[] {
+  return db
+    .select()
+    .from(pendingInteractions)
+    .where(
+      and(
+        eq(pendingInteractions.originKind, "provider"),
+        eq(pendingInteractions.status, "pending"),
+        sql`CASE WHEN json_valid(${pendingInteractions.payload}) THEN json_extract(${pendingInteractions.payload}, '$.kind') END = 'user_question'`,
+      ),
+    )
+    .all();
 }
 
 export function listActivePluginPendingInteractions(

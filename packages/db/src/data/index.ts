@@ -450,6 +450,7 @@ export {
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
   listActiveProviderPendingInteractionsForHost,
+  listPendingProviderQuestions,
   listPendingInteractionsByThread,
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
