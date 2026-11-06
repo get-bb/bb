@@ -401,6 +401,18 @@ function contextWindowDeltasFor(
   });
 }
 
+function usageDeltasFor(threadId: string): Record<string, unknown>[] {
+  return messagesForThread(threadId).flatMap((message) => {
+    if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
+      return [];
+    }
+    const params = message.params as
+      | { deltas?: Record<string, unknown>[] }
+      | undefined;
+    return (params?.deltas ?? []).filter((delta) => delta.kind === "usage");
+  });
+}
+
 function sendModelList(
   args: AgentLaunchArgs & {
     modelLines?: string;
@@ -4374,6 +4386,70 @@ describe("acp bridge", () => {
       { used: 0, size: 500_000 },
       { used: 17_504, size: 500_000 },
     ]);
+  });
+
+  it("turns ACP prompt-result usage into per-turn token usage with a running total", async () => {
+    const { bbThreadId, providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_USAGE: "1" },
+    });
+
+    await completeTurnWith(
+      providerThreadId,
+      "one",
+      executionOptions({ envVars: { FAKE_ACP_PROMPT_USAGE: "1" } }),
+    );
+    await completeTurnWith(
+      providerThreadId,
+      "two",
+      executionOptions({ envVars: { FAKE_ACP_PROMPT_USAGE: "1" } }),
+    );
+
+    const turn = {
+      totalTokens: 22_873,
+      inputTokens: 4,
+      cachedInputTokens: 22_865,
+      cacheReadInputTokens: 0,
+      cacheWriteInputTokens: 22_865,
+      outputTokens: 4,
+      reasoningOutputTokens: 0,
+    };
+    const deltas = usageDeltasFor(bbThreadId);
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0]).toMatchObject({ last: turn, total: turn });
+    expect(deltas[1]).toMatchObject({
+      last: turn,
+      total: {
+        totalTokens: 45_746,
+        inputTokens: 8,
+        cacheWriteInputTokens: 45_730,
+        outputTokens: 8,
+      },
+    });
+
+    const assembled = threadEvents();
+    const events = assembled.filter(
+      (event) => event.type === "thread/tokenUsage/updated",
+    );
+    expect(events).toHaveLength(2);
+    const completed = assembled.filter(
+      (event) => event.type === "turn/completed",
+    );
+    events.forEach((event, index) => {
+      expect(event).toMatchObject({
+        tokenUsage: { last: turn },
+        scope: completed[index]?.scope,
+      });
+    });
+  });
+
+  it("emits no token usage when the prompt result has none", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "hello", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+    expect(usageDeltasFor(bbThreadId)).toEqual([]);
+    expect(threadEventsOfType("thread/tokenUsage/updated")).toEqual([]);
   });
 
   it("ignores Grok-shaped session _meta on other ACP dialects", async () => {

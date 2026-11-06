@@ -13,6 +13,7 @@ import type {
   PromptInput,
   ReasoningLevel,
   SessionOptionSelections,
+  ThreadEventTokenUsageBreakdown,
   ThreadSessionOption,
 } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
@@ -83,6 +84,10 @@ import {
   resolveAcpDialect,
   type AcpDialect,
 } from "../dialect.js";
+import {
+  nextPromptTokenUsage,
+  promptUsageFromResult,
+} from "../prompt-usage.js";
 import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import { describeAcpSignIn } from "../auth-guidance.js";
 import { planAcpElicitation } from "../elicitation.js";
@@ -225,6 +230,7 @@ interface AcpThreadSession {
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
   grokContextWindowSize: number | undefined;
+  promptUsageTotal: ThreadEventTokenUsageBreakdown | null;
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
@@ -392,6 +398,26 @@ function emitGrokContextWindow(session: AcpThreadSession, used: number): void {
       estimated: false,
       attach: "open",
       ...(cost === undefined ? {} : { cost }),
+    },
+  ]);
+}
+
+function emitPromptTokenUsage(
+  session: AcpThreadSession,
+  result: unknown,
+): void {
+  const usage = promptUsageFromResult(result);
+  if (usage === undefined) {
+    return;
+  }
+  const { last, total } = nextPromptTokenUsage(session.promptUsageTotal, usage);
+  session.promptUsageTotal = total;
+  sendThreadDeltas(session.bbThreadId, [
+    {
+      kind: "usage",
+      last,
+      total,
+      modelContextWindow: session.model.snapshot().usage?.size ?? null,
     },
   ]);
 }
@@ -2418,6 +2444,7 @@ async function startAgentSession(
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
     grokContextWindowSize: undefined,
+    promptUsageTotal: null,
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
@@ -3147,6 +3174,7 @@ function runTurn(
           try {
             const result = await promptResult;
             stopReason = result.stopReason;
+            emitPromptTokenUsage(session, result);
             const grokUsage = grokContextUsageFromPromptResult(result);
             if (grokUsage !== undefined) {
               emitGrokContextWindow(session, grokUsage.used);
@@ -3420,6 +3448,7 @@ function startCompaction(
 
   session.turnSettled = promptResult
     .then((result) => {
+      emitPromptTokenUsage(session, result);
       const grokUsage = grokContextUsageFromPromptResult(result);
       if (grokUsage !== undefined) {
         emitGrokContextWindow(session, grokUsage.used);
