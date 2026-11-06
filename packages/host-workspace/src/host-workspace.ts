@@ -18,9 +18,7 @@ import {
 } from "./git.js";
 import { withCheckoutMutationLock } from "./checkout-mutation-lock.js";
 import type { HostWorkspace } from "./provision.js";
-import {
-  resolveAdditionalWorkspaceWriteRoots,
-} from "./workspace-write-roots.js";
+import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js";
 
 export interface LocalStateSnapshot {
   fingerprint: string;
@@ -41,17 +39,20 @@ export class Workspace implements HostWorkspace {
   readonly path: string;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
+  readonly gitCommonDir: string | null;
   private readonly gitProcessOptions: GitProcessOptions;
 
   constructor(opts: {
     path: string;
     isGitRepo: boolean;
     isWorktree: boolean;
+    gitCommonDir: string | null;
     shellPath?: string;
   }) {
     this.path = opts.path;
     this.isGitRepo = opts.isGitRepo;
     this.isWorktree = opts.isWorktree;
+    this.gitCommonDir = opts.gitCommonDir;
     this.gitProcessOptions =
       opts.shellPath === undefined ? {} : { shellPath: opts.shellPath };
   }

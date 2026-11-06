@@ -49,7 +49,9 @@ and ill-formed Unicode—have no active href and cannot record a preview in the
 frontend harness. Buttons and menus can call
 `experimental_openFilePreview({ target, location })` or
 `experimental_openFileExternally({ target, location })`; both return whether
-the current host accepted the intent. The
+the current host accepted the intent. Pass `opener: "<id>"` to
+`experimental_openFilePreview` to show the file with one of your own
+`fileOpener` registrations for that open, as the "Open with" menu does. The
 `experimental_useCanOpenFileExternally(target)` hook reports whether the
 external open can succeed now (false while loading) and re-renders the
 component when that changes; use it to disable an Open externally control.

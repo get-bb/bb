@@ -222,7 +222,6 @@ describe("EnvironmentRow", () => {
     const markup = renderEnvironmentRow(
       makeEnvironment({
         status: "provisioning",
-        path: null,
       }),
     );
 

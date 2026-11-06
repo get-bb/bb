@@ -1,40 +1,44 @@
+// @vitest-environment jsdom
+
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { APP_PAGE_HEADER_SURFACE_CLASS } from "@/components/layout/AppPageHeader";
 import { ScrollToBottomButton } from "./scroll-to-bottom-button";
 
+afterEach(() => {
+  cleanup();
+});
+
 function renderButton(visible: boolean) {
-  const markup = renderToStaticMarkup(
-    <ScrollToBottomButton visible={visible} active onClick={() => {}} />,
-  );
-  const button = markup.match(
-    /<button class="([^"]*)" aria-label="Scroll to latest event"[^>]*>(.*?)<\/button>/,
-  );
+  render(<ScrollToBottomButton visible={visible} active onClick={() => {}} />);
+  const button = screen.getByRole("button", {
+    name: "Scroll to latest event",
+  });
   return {
-    classes: button?.[1]?.split(" ") ?? [],
-    content: button?.[2] ?? "",
+    classes: button.classList,
+    icon: button.querySelector('svg[data-icon="ArrowDown"]'),
   };
 }
 
 describe("surfaces that stay over the timeline do not blur their backdrop", () => {
   it("renders the scroll-to-bottom button on an opaque fill without blur", () => {
-    const { classes, content } = renderButton(true);
-    expect(classes).not.toContain("backdrop-blur");
-    expect(classes).toContain("bg-background");
-    expect(classes).not.toContain("hover:bg-state-hover");
-    expect(classes).toContain("hover:bg-accent");
-    expect(classes).not.toContain("invisible");
-    expect(content).toContain("animate-shine-icon");
+    const { classes, icon } = renderButton(true);
+    expect(classes.contains("backdrop-blur")).toBe(false);
+    expect(classes.contains("bg-background")).toBe(true);
+    expect(classes.contains("hover:bg-state-hover")).toBe(false);
+    expect(classes.contains("hover:bg-accent")).toBe(true);
+    expect(classes.contains("invisible")).toBe(false);
+    expect(icon?.classList.contains("animate-shine-icon")).toBe(true);
   });
 
   it("stops the shimmer and hides the button while it is not shown", () => {
-    const { classes, content } = renderButton(false);
-    expect(classes).toContain("invisible");
-    expect(content).toContain("<svg");
-    expect(content).not.toContain("animate-shine-icon");
+    const { classes, icon } = renderButton(false);
+    expect(classes.contains("invisible")).toBe(true);
+    expect(icon).not.toBeNull();
+    expect(icon?.classList.contains("animate-shine-icon")).toBe(false);
   });
 
   it("keeps the shared page-header surface free of blur", () => {

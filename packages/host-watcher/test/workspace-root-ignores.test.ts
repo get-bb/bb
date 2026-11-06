@@ -79,10 +79,13 @@ function countInotifyWatches(): number {
 }
 
 async function measureWorkspaceRootWatch(root: string): Promise<{
-  ignore: string[] | undefined;
+  ignore: Array<string | RegExp> | undefined;
   watches: number;
 }> {
-  const seenOptions: Array<{ dir: string; ignore: string[] | undefined }> = [];
+  const seenOptions: Array<{
+    dir: string;
+    ignore: Array<string | RegExp> | undefined;
+  }> = [];
   vi.spyOn(parcelWatcher, "subscribe").mockImplementation(
     async (dir, cb, opts) => {
       seenOptions.push({ dir, ignore: opts?.ignore });

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Dialog, DialogContent } from "@bb/shared-ui/dialog";
-import type { WorkspaceChangedFilesSection } from "@bb/shared-ui/workspace-change-summary";
+import type { WorkspaceChangedFilesSection } from "../workspace-change-summary.js";
 import type { WorkspaceFileStatus } from "../../contract.js";
 import { CommitDialogContent } from "./CommitDialog.js";
 

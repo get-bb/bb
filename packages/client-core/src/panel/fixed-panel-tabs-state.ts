@@ -593,16 +593,6 @@ export function createGitDiffFixedPanelTab(): PluginFixedPanelTab {
   });
 }
 
-export function isGitDiffFixedPanelTab(
-  tab: FixedPanelTab | null | undefined,
-): boolean {
-  return (
-    tab?.kind === "plugin-fixed" &&
-    tab.pluginId === GIT_PLUGIN_ID &&
-    tab.tabId === "diff"
-  );
-}
-
 export function migrateLegacyFixedPanelTabId(id: string): string {
   if (id === THREAD_INFO_TAB_ID) return createThreadInfoFixedPanelTab().id;
   if (id === GIT_DIFF_TAB_ID || id === CORE_GIT_DIFF_TAB_ID) {

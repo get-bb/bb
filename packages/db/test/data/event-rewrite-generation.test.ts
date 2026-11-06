@@ -38,6 +38,7 @@ function setup() {
   });
   const createCodexThread = () =>
     createThread(db, noopNotifier, {
+      status: "idle",
       projectId: project.id,
       providerId: "codex",
     }).id;

@@ -16,6 +16,7 @@ import {
 } from "./FilePreview";
 import { SOURCE_CODE_MAX_LINES } from "@/components/code/source-code-budget";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import { FilePreviewRenderPreviewContext } from "./filePreviewRenderPreviewContext";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@bb/sdk/browser";
@@ -522,6 +523,49 @@ describe("FilePreview", () => {
     await screen.findByTestId("pierre-file");
     expect(pierreMock.state.lastFile?.contents).toBe(contents);
     expect(screen.queryByRole("button", { name: "Load full file" })).toBeNull();
+  });
+
+  it("draws a supplied Preview body under BB's header and keeps Raw as BB's code view", async () => {
+    const renderPreview = vi.fn(({ content, url }) => (
+      <div data-testid="plugin-preview" data-url={url}>
+        {content}
+      </div>
+    ));
+    render(
+      <FilePreviewRenderPreviewContext.Provider value={renderPreview}>
+        <FilePreview
+          path="reports/page.html"
+          download={{
+            url: "/api/v1/threads/thr_1/thread-storage/files/reports/page.html",
+            fileName: "page.html",
+          }}
+          state={{
+            kind: "html",
+            file: { name: "page.html", contents: "<h1>Page</h1>" },
+            iframe: {
+              sandbox: "allow-scripts",
+              title: "reports/page.html",
+              url: "/api/v1/threads/thr_1/thread-storage/files/reports/page.html",
+            },
+            lineRange: null,
+          }}
+        />
+      </FilePreviewRenderPreviewContext.Provider>,
+    );
+
+    const body = screen.getByTestId("plugin-preview");
+    expect(body.textContent).toBe("<h1>Page</h1>");
+    expect(body.getAttribute("data-url")).toBe(
+      `${window.location.origin}/api/v1/threads/thr_1/thread-storage/files/reports/page.html`,
+    );
+    expect(document.querySelector("iframe")).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(screen.queryByText("Loading preview…")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    expect(screen.queryByTestId("plugin-preview")).toBeNull();
+    await screen.findByTestId("pierre-file");
+    expect(pierreMock.state.lastFile?.contents).toBe("<h1>Page</h1>");
   });
 
   it("opens a rendered HTML preview in the external browser", () => {

@@ -204,7 +204,10 @@ with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
   Stable installs follow the `latest` dist-tag and nightly builds `nightly`.
 - **Source checkouts** update only from a clean `main` that fast-forwards to
   `origin/main`; bb fast-forwards, runs `pnpm install --frozen-lockfile`,
-  rebuilds, and restarts.
+  rebuilds, and restarts. The sidebar badges a source update once the server
+  is more than 30 commits behind `origin/main`, or six hours after the oldest
+  missing commit was committed. `available.behindSince` in
+  `GET /api/v1/system/app-update` and `bb updates app` report that commit time.
 
 bb does not roll back an update; a version that fails to start runs again on
 the next start, and an older release may not open a database the new version
@@ -906,18 +909,13 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `applicationLinks`, `timelinePush`, `compactExpiredCache`,
-`pluginUpdates`, `sidebarMultiSelect`, `skipFocusedThreadNotifications`,
-`threadRowMetadata`, `unreadDividerAtAnswer`, and `websocketCompression`) turn
-on, and the rest stay off. An experiment you set yourself keeps your value
+(currently `timelinePush`, `compactExpiredCache`, `pluginUpdates`,
+`skipFocusedThreadNotifications`, `threadRowMetadata`, and `updateWhenIdle`)
+turn on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
-- `applicationLinks` (on for early adopters) enables explicit app links such as
-  `linear://` and `slack://` in rendered Markdown and the plugin
-  `navigate.openUrl` path. The viewing device asks before opening unless the
-  scheme was saved with Always allow. See [App links](#app-links).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -967,21 +965,47 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
-- `sidebarMultiSelect` (on for early adopters) lets the built-in thread list
-  select several threads: Cmd/Ctrl+Shift-click toggles a row (starting from the
-  open thread), Shift-click selects the visible range from the last clicked row,
-  and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
-  clears the selection.
-  Right-clicking a selected row offers Mark read/unread, Pin/Unpin,
-  Notifications, Move to section, Archive (Unarchive when every selected
-  thread is archived), and Delete for the whole selection. Archive and Delete
-  ask once for the whole selection, counting child threads that are not
-  selected, and act on the topmost selected threads; Archive skips the
-  question when the Archive confirmation setting is off. Dragging a selected row moves
-  every selected thread onto a section, under a thread, or into Pinned, or drops
-  them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
-  thread in a split. Plugins read it with
-  `experimental_useExperiment("sidebarMultiSelect")`.
+- `resumeThreadsAfterRestart` resumes threads a
+  restart cut off. When a machine's daemon comes back as a new process (bb
+  quit, crashed, or updated, or the machine restarted), the server marks the
+  turns it was running as interrupted (`host-daemon-restarted`) and the
+  background tasks it was tracking as stopped, as before, and then queues a
+  retry with reason "bb restarted", scheduled 5 seconds out (the queue sweep
+  sends it on its next pass after that), for:
+  - each running turn it cut off;
+  - each idle thread with background work the restart stopped, such as a
+    background command its agent was waiting on (the retry re-runs the
+    thread's latest turn).
+
+  The retry is the same row as `bb thread retry`, titled "Resume after bb
+  restarted" in the app's queue and in `bb thread queue list`. When the provider had
+  accepted the turn's input, it sends an agent-only message instead of
+  "Please continue.": it says bb restarted, names the command the turn was
+  running and any background work the restart stopped (command and
+  description, one per line when there are several, up to ten), says the
+  restart, not the user, cut them off, and asks the agent to check their
+  effects before continuing or rerunning them. Otherwise it sends the original input. A message you send
+  (or Send now) before it goes out overtakes it. Turns stopped by the user,
+  threads waiting on a question or approval, and archived threads are not
+  resumed, and a turn is not retried again once its retry chain reaches
+  attempt 4 (three restarts in a row). A child thread that resumes does not notify its parent
+  that it was interrupted; the parent hears when the child finishes.
+  `bb thread wait` keeps waiting on a thread whose resume is queued.
+  Updating bb counts as a restart, so threads that Update now (or
+  `bb updates app apply --yes`) cuts resume after the update. With the
+  experiment on, the Update now dialog, the CLI prompt, and the
+  `threads_running` error say "Updating restarts bb, and they resume after
+  the update" instead of "interrupts them".
+  The experiment also makes every queued retry, including `bb thread retry` and
+  provider-retry ones, go first: a new retry row is placed at the front of the
+  thread's queue, and while a live retry (not Not sent, not exhausted) is
+  queued, the queue does not automatically send the thread's other rows; one
+  that comes up is re-queued as `thread-busy` and sends after the retry's turn
+  ends. That is what keeps messages queued or steered while the daemon was down
+  behind the resume. Without the experiment, a `--send-at` message or a row a
+  plugin releases can go out ahead of a retry scheduled for later (for example
+  a provider-retry row waiting hours for a subscription window) and overtake
+  it; with it, those rows wait for the retry.
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,
@@ -1015,21 +1039,35 @@ either way.
   client refetching the latest window after every update. A missed push falls
   back to the delta request used when it is off. Open views follow a toggle
   live.
-- `unreadDividerAtAnswer` (on for early adopters) moves the NEW divider in an unread thread from the
-  first row after your read point to the answer of a turn that finished while
-  you were away: the turn's final assistant message, or the error that ended
-  it. The turn's tool calls and in-between notes stay above the divider. A
-  message that started a new turn keeps the divider above it, a turn that is
-  still running or has no answer keeps the old placement, and the divider never
-  lands on your own message. It applies the next time you open a thread.
-- `websocketCompression` (on for early adopters) lets the realtime client
-  WebSocket (`/ws`) negotiate `permessage-deflate`, so messages of 1 KB or more,
-  such as timeline pushes, are compressed (about 4x for timeline JSON). It
-  helps clients that reach the server over a network, including bb connect
-  next; the bb connect relay re-frames messages and does not carry it.
-  Terminal, host daemon, and plugin WebSockets are never compressed. The server
-  reads the experiment when a client connects, so a toggle applies when the
-  app reconnects.
+- `updateWhenIdle` (on for early adopters) lets bb update itself once no
+  thread is running instead of interrupting them. Settings → Updates gains an
+  "Restart and update bb automatically" switch ("Restart and update the server
+  automatically" when the desktop app talks to a separate server), saved as the `autoAppUpdate` app
+  setting and off until you turn it on; `bb updates app auto on|off` does the
+  same. While it is on, bb checks for an update right away, 30 seconds after the
+  server starts, and every hour (a `git fetch` of origin/main in source
+  mode, the npm registry, or the desktop updater) and installs what it finds
+  once no thread is running; turning it off stops the checks and drops a
+  waiting update. The Server row then reads "Updates when all threads are
+  idle", with Update now (which still asks before interrupting) and Skip this
+  version in its menu. Skip this version (or `bb updates app cancel`) skips that
+  version (stored as the `skippedAppUpdate` app setting) until a newer one
+  appears, and the automatic check also skips a version whose last update
+  attempt failed; Update still installs a skipped version.
+  `bb updates app apply --when-idle` waits for threads once, without the
+  switch, so an agent can update bb from its own thread. bb starts a waiting
+  update after running threads stay at zero for five seconds and waits again if
+  a thread starts before it restarts. From the moment bb decides to restart
+  into an update (Update, Update now, a waiting update, or
+  `bb updates app apply`) until it
+  stops, new sends, including Send now and retries, wait in the thread's queue
+  as "Sending after bb restarts to update" (`app-update` in `bb thread queue`)
+  instead of starting turns the restart would cut. bb sends them when it starts
+  again, after any resume `resumeThreadsAfterRestart` queues, in order; if the
+  update is deferred, cancelled, or fails, it sends them at once. While the
+  experiment is off, the schedule and automatic update routes return 403
+  `update_when_idle_experiment_disabled`, the CLI commands print how to turn it
+  on, and turning it off drops a waiting update. See `bb guide machines`.
 
 ## Thread Timeline Window
 
@@ -1039,6 +1077,13 @@ returns. It is a server-start operator setting, not a hard limit on query
 bytes, events, or CPU: one large turn can need substantially more work. Pages
 target 4 MiB of rendered rows. The API and SDK contract is in
 [timeline-pagination.md](timeline-pagination.md).
+
+When you open a thread whose turn finished while you were away, the NEW
+divider sits above the turn's answer: its final assistant message, or the
+error that ended it. The turn's tool calls and in-between notes stay above the
+divider. A message that started a new turn keeps the divider above it, a turn
+that is still running or has no answer puts it above the first row after your
+read point, and the divider never lands on your own message.
 
 Timeline builds slower than 150 ms log `Thread timeline build blocked the event
 loop`, and event-loop stalls over 500 ms log `Event loop stalled`, both at
@@ -1128,7 +1173,7 @@ skills.
 Set them with `bb plugin config provider-claude-code set <key> <value>`. Unless
 noted, a change restarts the thread's Claude process before its next turn,
 keeping the conversation. Memory, native subagents, and the Workflow tool are toggled on
-the provider's page in Settings → Providers (see `bb guide providers`).
+the plugin's page in Settings → Plugins → Claude Code provider (see `bb guide providers`).
 
 Two host-daemon environment variables reach the Claude Code bridge:
 `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary, and
@@ -1321,6 +1366,19 @@ or a plugin's `<pluginId>/<actionId>`. Bare legacy ids and `core/<id>` keys
 migrate to current keys. A key whose action is hidden for a row, or whose
 plugin is not installed, is skipped on that row.
 
+Cmd/Ctrl+Shift-click toggles a row in a multi-thread selection (starting from
+the open thread), Shift-click selects the visible range from the last clicked
+row, and a plain click, Cmd/Ctrl-click, Escape, or a click outside the sidebar
+clears the selection. Right-clicking a selected row offers Mark read/unread,
+Pin/Unpin, Notifications, Move to section, Archive (Unarchive when every
+selected thread is archived), and Delete for the whole selection. Archive and
+Delete ask once for the whole selection, counting child threads that are not
+selected, and act on the topmost selected threads; Archive skips the question
+when the Archive confirmation setting is off. Dragging a selected row moves
+every selected thread onto a section, under a thread, or into Pinned, or drops
+them onto a composer as one mention per thread. Cmd/Ctrl-click still opens a
+thread in a split.
+
 ### Connect and bb account
 
 Remote access makes this server reachable at `https://<handle>.getbb.app` once
@@ -1360,6 +1418,12 @@ every enrolled machine's daemon also serves the ports shared from it with
 | Connect next setting | Default | Effect                                                                      |
 | -------------------- | ------- | --------------------------------------------------------------------------- |
 | `enabled`            | `true`  | "Reach this bb at its next address (beta)". Also `bb connect-next on\|off`. |
+
+The realtime client WebSocket (`/ws`) negotiates `permessage-deflate`, so
+messages of 1 KB or more, such as timeline pushes, are compressed (about 4x for
+timeline JSON). It helps clients that reach the server over a network,
+including connect next; the bb connect relay re-frames messages and does not
+carry it. Terminal, host daemon, and plugin WebSockets are never compressed.
 
 | Variable                 | Effect                                                                                                                            |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -1507,13 +1571,9 @@ backup before rolling back to a build predating the tolerant-reader fix #5286.
 
 ## App links
 
-Enable App links in Settings → Experiments or run
-`bb settings experiment applicationLinks true`. The experiment is a server
-setting shared by its clients. Disable it with
-`bb settings experiment applicationLinks false`.
-
 Explicit Markdown links such as `[Review note](reflect://note/Project%20X)`
-become clickable while enabled. Bare custom-scheme text is not auto-linked.
+and links plugins open through `navigate.openUrl` open in their apps, for
+example `linear://` and `slack://`. Bare custom-scheme text is not auto-linked.
 The shared web UI asks before opening an app on the viewing device; choose
 Always allow to remember that URL scheme. All clients save approvals in
 localStorage for this BB site on this device. They do not sync between devices,

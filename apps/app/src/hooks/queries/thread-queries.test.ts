@@ -1159,28 +1159,18 @@ describe("thread open cache retention", () => {
 });
 
 describe("palette lifecycle queries", () => {
-  it("loads bounded archived recents only while selected before typing", async () => {
+  it("requests a bounded archived list only when enabled", async () => {
     const { queryClient } = createQueryClientTestHarness();
     const archived = makeThreadListEntry({ id: "archived", archivedAt: 1 });
     vi.mocked(sdk.threads.list).mockResolvedValue([archived]);
-    const options = ({
-      recent,
-      selected,
-    }: {
-      recent: boolean;
-      selected: boolean;
-    }) =>
-      paletteRecentArchivedThreadsQueryOptions({
-        enabled: recent && selected,
-      });
     const observer = observe(
       queryClient,
-      options({ recent: true, selected: false }),
+      paletteRecentArchivedThreadsQueryOptions({ enabled: false }),
     );
     expect(sdk.threads.list).not.toHaveBeenCalled();
-    observer.setOptions(options({ recent: false, selected: true }));
-    expect(sdk.threads.list).not.toHaveBeenCalled();
-    observer.setOptions(options({ recent: true, selected: true }));
+    observer.setOptions(
+      paletteRecentArchivedThreadsQueryOptions({ enabled: true }),
+    );
     await vi.waitFor(() =>
       expect(observer.getCurrentResult().data).toEqual([archived]),
     );

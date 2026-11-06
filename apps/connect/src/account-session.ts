@@ -1,19 +1,7 @@
 type AuthFetch = (request: Request) => Promise<Response>;
 
-interface HeadersWithGetSetCookie extends Headers {
-  getSetCookie(): string[];
-}
-
-function hasGetSetCookie(headers: Headers): headers is HeadersWithGetSetCookie {
-  return (
-    "getSetCookie" in headers && typeof headers.getSetCookie === "function"
-  );
-}
-
 export function getSetCookies(headers: Headers): string[] {
-  return hasGetSetCookie(headers)
-    ? headers.getSetCookie()
-    : headers.getAll("set-cookie");
+  return headers.getSetCookie();
 }
 
 export async function refreshAccountSessionCookies(

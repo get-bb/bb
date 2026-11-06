@@ -230,6 +230,11 @@ export interface SystemArea {
   acknowledgeAppUpdate(
     args: SystemAcknowledgeAppUpdateArgs,
   ): Promise<SystemAppUpdateStatusResult>;
+  experimental_scheduleAppUpdate(): Promise<SystemAppUpdateStatusResult>;
+  experimental_cancelScheduledAppUpdate(): Promise<SystemAppUpdateStatusResult>;
+  experimental_setAppUpdateAuto(args: {
+    enabled: boolean;
+  }): Promise<SystemAppUpdateStatusResult>;
   experimental_cliCommand(
     args?: SystemCliCommandArgs,
   ): Promise<SystemCliCommandStatusResult>;
@@ -478,6 +483,21 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.system["app-update"].acknowledge.$post({
           json: input,
         }),
+      );
+    },
+    async experimental_scheduleAppUpdate() {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].schedule.$post({}),
+      );
+    },
+    async experimental_cancelScheduledAppUpdate() {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].schedule.cancel.$post({}),
+      );
+    },
+    async experimental_setAppUpdateAuto(input) {
+      return transport.readJson(
+        transport.api.v1.system["app-update"].auto.$post({ json: input }),
       );
     },
     async experimental_cliCommand(input) {

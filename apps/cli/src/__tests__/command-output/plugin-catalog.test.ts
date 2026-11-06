@@ -82,6 +82,7 @@ const installedPlugin = {
   catalogEntryId: "linear",
   publisherLabel: "BB Community",
   sourceDisplay: "builtin · linear",
+  sourceNotice: null,
   updateState: {},
   enabled: true,
   description: "Linear issue tools",

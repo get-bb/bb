@@ -16,15 +16,15 @@ import {
   getGitStatusDisplay,
   SquashMergeInfo,
   type ThreadGitStatusDisplay,
-} from "@bb/shared-ui/git-status-display";
+} from "../git-status-display.js";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { WorkspaceChangesList } from "@bb/shared-ui/workspace-changes-list";
+import { WorkspaceChangesList } from "../workspace-changes-list.js";
 import {
   renderChangeSummary,
   selectWorkspaceChangedFilesSection,
   toChangeTally,
   type WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../workspace-change-summary.js";
 import { useGitStatus } from "../queries.js";
 import {
   closeCommitDialog,

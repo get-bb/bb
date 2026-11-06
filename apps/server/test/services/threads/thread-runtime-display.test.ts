@@ -237,8 +237,6 @@ function createThreadListEntry(
     environmentHostId: args.environmentHostId,
     environmentName: null,
     hasPendingInteraction: false,
-    // Only a `pending` thread whose first message queued carries one, and
-    // these fixtures are all threads that already started.
     startupContext: null,
   };
 }
@@ -513,18 +511,28 @@ describe("thread runtime display", () => {
     ] satisfies ThreadRuntimeState[]);
   });
 
-  it("reports each thread's queued work, with a failure outranking a wait", () => {
+  it("reports each thread's queued work, with a failure outranking a wait and bb notices alone not counting as a wait", () => {
     const { db, hostId, hub } = setup();
     const empty = createThreadWithEnvironment({ db, hostId, status: "idle" });
     const waiting = createThreadWithEnvironment({ db, hostId, status: "idle" });
     const failed = createThreadWithEnvironment({ db, hostId, status: "idle" });
+    const noticesOnly = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "idle",
+    });
+    const noticeAndMessage = createThreadWithEnvironment({
+      db,
+      hostId,
+      status: "idle",
+    });
+    const notice = { kind: "child-completed" as const, subject: null };
 
-    // The failed thread holds BOTH a healthy row and a failed one, which is the
-    // case the precedence rule exists for: a thread that queued two messages
-    // and only the first one blew up must not read as merely waiting.
-    for (const { thread, count } of [
-      { thread: waiting.thread, count: 1 },
-      { thread: failed.thread, count: 2 },
+    for (const { thread, count, systemNotices } of [
+      { thread: waiting.thread, count: 1, systemNotices: 0 },
+      { thread: failed.thread, count: 2, systemNotices: 0 },
+      { thread: noticesOnly.thread, count: 2, systemNotices: 2 },
+      { thread: noticeAndMessage.thread, count: 2, systemNotices: 1 },
     ]) {
       for (let index = 0; index < count; index += 1) {
         createQueuedThreadMessage(db, noopNotifier, {
@@ -537,7 +545,7 @@ describe("thread runtime display", () => {
           waitingOn: { kind: "thread-busy" },
           sendAt: null,
           payload: { kind: "inline" },
-          systemNotice: null,
+          systemNotice: index < systemNotices ? notice : null,
         });
       }
     }
@@ -554,7 +562,13 @@ describe("thread runtime display", () => {
       { db, hub, providerRegistry },
       {
         now: 1_000,
-        threads: [empty.thread, waiting.thread, failed.thread].map((thread) =>
+        threads: [
+          empty.thread,
+          waiting.thread,
+          failed.thread,
+          noticesOnly.thread,
+          noticeAndMessage.thread,
+        ].map((thread) =>
           createThreadListEntry({
             environmentHostId: hostId,
             thread: { ...thread, pinSortKey: null },
@@ -567,6 +581,8 @@ describe("thread runtime display", () => {
       "none",
       "waiting",
       "failed",
+      "none",
+      "waiting",
     ]);
   });
 

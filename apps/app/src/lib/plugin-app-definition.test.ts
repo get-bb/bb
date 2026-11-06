@@ -500,6 +500,35 @@ describe("collectPluginAppRegistrations", () => {
     },
   );
 
+  it("resolves a file opener with no extensions only when named", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.fileOpener({
+        id: "page",
+        title: "Page",
+        extensions: [],
+        component: Component,
+      });
+    });
+    const registrations = collectPluginAppRegistrations(
+      definition,
+    ).fileOpeners.map((registration) => ({
+      ...registration,
+      pluginId: "pages",
+      generation: 1,
+    }));
+
+    expect(
+      resolveFileOpenerReplacement({ registrations, path: "report.html" }),
+    ).toEqual({ kind: "owner" });
+    expect(
+      resolveFileOpenerReplacement({
+        registrations,
+        path: "report.html",
+        override: { pluginId: "pages", openerId: "page" },
+      }),
+    ).toEqual({ kind: "plugin", registration: registrations[0] });
+  });
+
   it.each([
     "_board",
     "board_",
@@ -1078,17 +1107,17 @@ describe("collectPluginAppRegistrations", () => {
       /"path" must match/,
     ],
     [
-      "file opener with no extensions",
+      "file opener without an extensions array",
       () =>
         definePluginApp((app) => {
           app.slots.fileOpener({
             id: "x",
             title: "X",
-            extensions: [],
+            extensions: "md",
             component: Component,
-          });
+          } as never);
         }),
-      /"extensions" must be a non-empty array/,
+      /"extensions" must be an array/,
     ],
     [
       "file opener with a dotted extension",

@@ -32,6 +32,10 @@ Live triggers (thread activity, idle, and archive transitions) and a background
 sweep apply the same rules incrementally. Each call advances one policy for one
 thread, so cleanup can fall behind under continuous activity and a single
 idle or archive transition does not guarantee completion. The background sweep
-runs every ten seconds while database maintenance is idle and never waits on a
-competing writer. Committed deletions invalidate cached timelines and publish a
-history-compacted notification to viewers of the thread.
+runs every ten seconds and never waits on a competing writer. It skips threads
+that are active or starting, or have a pending or resolving interaction, and
+keeps advancing every other thread; each deletion transaction rechecks this, so
+a thread that becomes busy mid-visit is left for a later cycle. A new policy, or
+a policy whose version changes, queues every thread for that policy. Committed
+deletions invalidate cached timelines and publish a history-compacted
+notification to viewers of the thread.

@@ -12,11 +12,11 @@ import {
   type DiffPatchEntry,
   type GitFilesResult,
   type GitPatchResult,
+  type GitViewedFile,
   type WorkspaceDiffTarget,
 } from "../../contract.js";
 import { gitRpcContract } from "../../rpc-contract.js";
 import { useGitViewed } from "../queries.js";
-import type { DiffViewedFile } from "@bb/server-contract";
 
 const UNCOMMITTED_TARGET: WorkspaceDiffTarget = { type: "uncommitted" };
 const PATCH_REQUEST_DEBOUNCE_MS = 80;
@@ -105,10 +105,10 @@ export function useDiffViewedRevisions(args: {
 }
 
 function withViewed(
-  files: readonly DiffViewedFile[],
+  files: readonly GitViewedFile[],
   path: string,
   revision: string | null,
-): DiffViewedFile[] {
+): GitViewedFile[] {
   const rest = files.filter((file) => file.path !== path);
   return revision === null ? rest : [...rest, { path, revision }];
 }

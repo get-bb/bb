@@ -20,6 +20,7 @@ const GUIDE: InstalledPlugin = {
   publisherLabel: "BB Official",
   isOrphanedBuiltin: false,
   sourceDisplay: "Included with BB",
+  sourceNotice: null,
   updateState: {},
   enabled: false,
   description: "Explore the plugin API",

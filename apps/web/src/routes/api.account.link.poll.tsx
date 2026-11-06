@@ -4,7 +4,7 @@ import {
   pollServerLink,
   readJsonObject,
 } from "@/server/account";
-import { depsFromEnv } from "@/server/api";
+import { depsFromEnv } from "@/server/deps";
 import { getEnv } from "@/server/env";
 
 export const Route = createFileRoute("/api/account/link/poll")({

@@ -48,7 +48,10 @@ function livePreviewRequest(
   intent: AppFilePreviewIntent,
   scope: PanelFileScope | null,
 ): OpenSecondaryPanelTabRequest | null {
-  const normalized = normalizeExperimentalFileOpenOptions(intent);
+  const normalized = normalizeExperimentalFileOpenOptions({
+    target: intent.target,
+    location: intent.location,
+  });
   if (normalized === null) return null;
   const { target } = normalized;
   const lineRange = toFilePreviewLineRange(normalized.location);

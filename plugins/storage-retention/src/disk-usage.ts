@@ -92,6 +92,7 @@ interface SizeBucket {
 
 interface MeasuredChild extends SizeBucket {
   name: string;
+  empty: boolean;
 }
 
 interface DuRun {
@@ -154,6 +155,25 @@ async function readDirectoryEntries(
     );
   } catch (error) {
     if (isSkippableEntryError(error)) return [];
+    throw error;
+  }
+}
+
+async function isEmptyDirectory(
+  signal: AbortSignal,
+  directoryPath: string,
+): Promise<boolean> {
+  try {
+    return await withScanSlot(filesystemSlots, signal, async () => {
+      const directory = await fs.opendir(directoryPath);
+      try {
+        return (await directory.read()) === null;
+      } finally {
+        await directory.close();
+      }
+    });
+  } catch (error) {
+    if (isSkippableEntryError(error)) return false;
     throw error;
   }
 }
@@ -354,6 +374,7 @@ async function classifyChildren(
       nonDirectories.push({
         name: entry.name,
         sizeBytes: allocatedBytes(child),
+        empty: false,
       });
       if (child.isFile())
         files.push({
@@ -397,7 +418,13 @@ async function measureChildDirectoriesWithDu(
     async ({ name, operand }): Promise<MeasuredChild | null> => {
       const sizeBytes =
         measured.get(operand) ?? (await walkEntryTotal(measurement, operand));
-      return sizeBytes === null ? null : { name, sizeBytes };
+      return sizeBytes === null
+        ? null
+        : {
+            name,
+            sizeBytes,
+            empty: await isEmptyDirectory(measurement.signal, operand),
+          };
     },
   );
   return children.filter((child) => child !== null);
@@ -544,6 +571,7 @@ async function measureDirectoryWithWalker(
   const children = entries.map((entry) => ({
     name: entry.name,
     sizeBytes: 0,
+    directory: entry.isDirectory(),
   }));
   for (const child of children) {
     walk.pending.push({
@@ -568,7 +596,20 @@ async function measureDirectoryWithWalker(
       (total, child) => total + child.sizeBytes,
       own.sizeBytes,
     ),
-    children,
+    children: await mapWithConcurrency(
+      children,
+      measurement.walkerConcurrency,
+      measurement.signal,
+      async ({ directory, ...child }) => ({
+        ...child,
+        empty:
+          directory &&
+          (await isEmptyDirectory(
+            measurement.signal,
+            path.join(targetPath, child.name),
+          )),
+      }),
+    ),
   };
 }
 

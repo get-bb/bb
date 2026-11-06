@@ -95,12 +95,19 @@ interface PendingThreadListEventsAppended {
 
 type ThreadChangedMessage = Extract<ServerChangedMessage, { entity: "thread" }>;
 
+const THREAD_DETAIL_ONLY_CHANGE_KINDS: ReadonlySet<ThreadChangeKind> = new Set([
+  "history-compacted",
+  "storage-changed",
+]);
+
 function isThreadDetailOnlyChange(
   message: Pick<ThreadChangedMessage, "changes">,
 ): boolean {
   return (
     message.changes.length > 0 &&
-    message.changes.every((change) => change === "history-compacted")
+    message.changes.every((change) =>
+      THREAD_DETAIL_ONLY_CHANGE_KINDS.has(change),
+    )
   );
 }
 
@@ -110,7 +117,8 @@ function isThreadListRelevantChange(
   if (
     message.changes.some(
       (change) =>
-        change !== "events-appended" && change !== "history-compacted",
+        change !== "events-appended" &&
+        !THREAD_DETAIL_ONLY_CHANGE_KINDS.has(change),
     )
   ) {
     return true;

@@ -13,6 +13,7 @@ import {
   buildUpdateInventoryPlugins,
   buildUpdateInventoryProviderIssues,
   resolveAppUpdateAvailable,
+  sourceUpdateBadgeDueAt,
   updateInventoryHosts,
 } from "./useUpdateInventory";
 
@@ -185,6 +186,7 @@ describe("resolveAppUpdateAvailable", () => {
     return {
       activity: { phase: "idle" },
       available: {
+        behindSince: null,
         channel: "latest",
         commit: null,
         commitCount: null,
@@ -194,7 +196,10 @@ describe("resolveAppUpdateAvailable", () => {
       blocked: null,
       current: { commit: null, version: "1.0.0" },
       lastResult: null,
+      autoUpdate: false,
+      availableSkipped: false,
       runningThreadCount: 0,
+      scheduled: null,
       support: { kind: "supported", mode: "npm" },
       ...overrides,
     };
@@ -223,16 +228,6 @@ describe("resolveAppUpdateAvailable", () => {
     ).toBe(false);
   });
 
-  it("does not badge every new main commit on a source checkout", () => {
-    expect(
-      resolveAppUpdateAvailable({
-        appUpdate: status({ support: { kind: "supported", mode: "source" } }),
-        isDesktop: true,
-        systemVersion: undefined,
-      }),
-    ).toBe(false);
-  });
-
   it("keeps the npm version badge for web installs without the launcher shim", () => {
     expect(
       resolveAppUpdateAvailable({
@@ -244,5 +239,58 @@ describe("resolveAppUpdateAvailable", () => {
         systemVersion: npmVersion,
       }),
     ).toBe(true);
+  });
+});
+
+describe("sourceUpdateBadgeDueAt", () => {
+  const behindSince = "2026-11-02T12:00:00.000Z";
+  const sixHoursLater = Date.parse("2026-11-02T18:00:00.000Z");
+
+  function sourceStatus(
+    commitCount: number,
+    blocked: SystemAppUpdateStatus["blocked"] = null,
+  ): SystemAppUpdateStatus {
+    return {
+      activity: { phase: "idle" },
+      available: {
+        behindSince,
+        channel: "main",
+        commit: "e722e64ea8779dd5d216d45dad99832e62ef648d",
+        commitCount,
+        subjects: [],
+        version: "1.0.0",
+      },
+      blocked,
+      current: {
+        commit: "d0bf4528508b46beafe5f7ef526e506cde5e0313",
+        version: "1.0.0",
+      },
+      lastResult: null,
+      autoUpdate: false,
+      availableSkipped: false,
+      runningThreadCount: 0,
+      scheduled: null,
+      support: { kind: "supported", mode: "source" },
+    };
+  }
+
+  it("waits six hours after the oldest missing commit while 30 or fewer commits are missing", () => {
+    expect(sourceUpdateBadgeDueAt(sourceStatus(1))).toBe(sixHoursLater);
+    expect(sourceUpdateBadgeDueAt(sourceStatus(30))).toBe(sixHoursLater);
+  });
+
+  it("is due immediately once more than 30 commits are missing", () => {
+    expect(sourceUpdateBadgeDueAt(sourceStatus(31))).toBe(0);
+  });
+
+  it("never badges a source update the user cannot apply", () => {
+    expect(
+      sourceUpdateBadgeDueAt(
+        sourceStatus(50, {
+          message: "Local main has uncommitted changes.",
+          reason: "uncommitted-changes",
+        }),
+      ),
+    ).toBeNull();
   });
 });

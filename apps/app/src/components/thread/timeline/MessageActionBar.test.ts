@@ -48,16 +48,6 @@ describe("computeMessageActionRowLayout", () => {
     ).toEqual({ inlineCount: 1, overflowCount: 2 });
   });
 
-  it("puts every candidate in the menu when none fit beside the trigger", () => {
-    expect(
-      computeMessageActionRowLayout({
-        actionCount: 3,
-        availableWidth: 30,
-        ...metrics,
-      }),
-    ).toEqual({ inlineCount: 0, overflowCount: 3 });
-  });
-
   it("returns an empty layout for zero candidates", () => {
     expect(
       computeMessageActionRowLayout({

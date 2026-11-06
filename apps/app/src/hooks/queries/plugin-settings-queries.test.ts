@@ -242,7 +242,7 @@ describe("plugin list envelope", () => {
     ).rejects.toThrow();
   });
 
-  it("drops a row with a partial lastFailure rather than showing the quiet state", async () => {
+  it("rejects a list whose row has a partial lastFailure rather than showing the quiet state", async () => {
     const partialFailure = {
       ...ROW,
       updateState: { lastFailure: { version: "1.7.0", label: "1.7.0" } },

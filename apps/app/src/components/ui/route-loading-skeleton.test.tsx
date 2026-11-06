@@ -1,38 +1,41 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { RouteLoadingSkeleton } from "./route-loading-skeleton";
 
+const STANDALONE_BLEED_CLASSES = ["-mx-4", "-mt-4", "md:-mx-5", "md:-mt-5"];
+
+afterEach(() => {
+  cleanup();
+});
+
 function renderSkeleton(isBoundedPane: boolean) {
-  const markup = renderToStaticMarkup(
-    <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />,
-  );
-  const match = markup.match(
-    /^<div class="([^"]*)"[^>]*data-testid="route-loading-skeleton"[^>]*><div class="([^"]*)"/,
-  );
-  return {
-    skeleton: match?.[1]?.split(" ") ?? [],
-    header: match?.[2]?.split(" ") ?? [],
-  };
+  render(<RouteLoadingSkeleton isBoundedPane={isBoundedPane} />);
+  const skeleton = screen.getByRole("status", { name: "Loading" });
+  const header = skeleton.firstElementChild;
+  if (header === null) throw new Error("Skeleton header row is missing");
+  return { skeleton: skeleton.classList, header: header.classList };
 }
 
 describe("RouteLoadingSkeleton", () => {
   it("bleeds through standalone page padding", () => {
     const { skeleton, header } = renderSkeleton(false);
 
-    expect(skeleton).toEqual(
-      expect.arrayContaining(["-mx-4", "-mt-4", "md:-mx-5", "md:-mt-5"]),
-    );
-    expect(header).toContain("pl-12");
+    for (const token of STANDALONE_BLEED_CLASSES) {
+      expect(skeleton.contains(token), token).toBe(true);
+    }
+    expect(header.contains("pl-12")).toBe(true);
   });
 
   it("keeps bounded-pane placeholders inside their pane", () => {
     const { skeleton, header } = renderSkeleton(true);
 
-    expect(skeleton).toContain("flex");
-    for (const token of ["-mx-4", "-mt-4", "md:-mx-5", "md:-mt-5"]) {
-      expect(skeleton).not.toContain(token);
+    expect(skeleton.contains("flex")).toBe(true);
+    for (const token of STANDALONE_BLEED_CLASSES) {
+      expect(skeleton.contains(token), token).toBe(false);
     }
-    expect(header).toContain("px-4");
-    expect(header).not.toContain("pl-12");
+    expect(header.contains("px-4")).toBe(true);
+    expect(header.contains("pl-12")).toBe(false);
   });
 });

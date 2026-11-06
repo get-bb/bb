@@ -104,8 +104,32 @@ export function runningThreadCountFromError(error: unknown): number | null {
   return parsed.success ? parsed.data.details.runningThreadCount : null;
 }
 
-export function runningThreadsWarning(count: number): string {
-  return `${String(count)} thread${count === 1 ? " is" : "s are"} running. Updating restarts bb and interrupts ${
-    count === 1 ? "it" : "them"
-  }.`;
+export function runningThreadsCaption(count: number): string {
+  return `${String(count)} thread${count === 1 ? "" : "s"} running`;
+}
+
+export function scheduledAppUpdateCaption(
+  count: number,
+  requiredIdleMs: number,
+): string {
+  if (requiredIdleMs >= 60_000) {
+    const minutes = Math.round(requiredIdleMs / 60_000);
+    const idle = `${String(minutes)} minute${minutes === 1 ? "" : "s"}`;
+    return count === 0
+      ? `Updates once no thread has run for ${idle}`
+      : `Updates once no thread has run for ${idle} (${String(count)} running)`;
+  }
+  return count === 0
+    ? "All threads are idle; updating shortly"
+    : `Updates when all threads are idle (${String(count)} running)`;
+}
+
+export function runningThreadsWarning(
+  count: number,
+  threadsResume: boolean,
+): string {
+  const running = `${String(count)} thread${count === 1 ? " is" : "s are"} running.`;
+  return threadsResume
+    ? `${running} Updating restarts bb, and ${count === 1 ? "it resumes" : "they resume"} after the update.`
+    : `${running} Updating restarts bb and interrupts ${count === 1 ? "it" : "them"}.`;
 }

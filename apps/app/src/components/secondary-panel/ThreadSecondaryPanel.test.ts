@@ -1,24 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { resolveCollapsedPanelTrafficLightReserveClassName } from "./ThreadSecondaryPanel";
 import {
-  getSecondaryPanelChromeStackClassName,
-  resolveCollapsedPanelTrafficLightReserveClassName,
-} from "./ThreadSecondaryPanel";
-import {
-  CHROME_ROW_HEIGHT_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS,
 } from "@/lib/bb-desktop";
-
-describe("getSecondaryPanelChromeStackClassName", () => {
-  it("reserves the combined navigation and active Diff toolbar height", () => {
-    const className = getSecondaryPanelChromeStackClassName(true);
-
-    expect(className).toContain("flex");
-    expect(className).toContain("flex-col");
-    expect(className).toContain("shrink-0");
-    expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
-  });
-});
 
 describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
   const base = {

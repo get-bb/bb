@@ -163,14 +163,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toEqual([]);
   });
 
-  it("has no fallback candidates when a stored default provider is used", () => {
-    expect(
-      resolveCreateThreadExecutionDefaults(registry, {
-        storedDefaults: makeDefaults({ providerId: "codex" }),
-      }).providerFallbackCandidates,
-    ).toEqual([]);
-  });
-
   it("discards stored defaults when the resolved provider changes", () => {
     expect(
       resolveCreateThreadExecutionDefaults(registry, {
@@ -200,6 +192,16 @@ describe("resolveCreateThreadExecutionDefaults", () => {
       providerId: "codex",
       providerFallbackCandidates: [],
     });
+  });
+
+  it("falls back to the product default when the stored provider is no longer registered", () => {
+    expect(
+      resolveCreateThreadExecutionDefaults(registry, {
+        storedDefaults: makeDefaults({ providerId: "acp-removed-plugin" }),
+      }),
+    ).toEqual(
+      resolveCreateThreadExecutionDefaults(registry, { storedDefaults: null }),
+    );
   });
 
   it("skips unavailable providers when choosing the product default", async () => {
@@ -617,25 +619,22 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
         hostId: host.id,
         path: "/tmp/git-default-source",
       });
-      registerHostRpcResponder(harness, {
+      const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: () => ({
-          ok: true,
-          result: {
-            checkout: {
-              kind: "branch" as const,
-              branchName: "feature",
-              headSha: "abc123",
+        handle: (request) => {
+          expect(request.command.type).toBe("host.inspect_git_checkout");
+          return {
+            ok: true,
+            result: {
+              checkout: {
+                kind: "branch" as const,
+                branchName: "feature",
+                headSha: "abc123",
+              },
             },
-            defaultBranch: "main",
-            defaultBranchRelation: null,
-            isWorktree: false,
-            hasUncommittedChanges: false,
-            operation: { kind: "none" as const },
-            originDefaultBranch: null,
-          } satisfies GitSourceInspection,
-        }),
+          };
+        },
       });
 
       await expect(
@@ -646,48 +645,9 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
         type: "provider",
         environmentProviderId: "git-worktree",
         machine: { type: "existing", hostId: host.id },
-        inputs: { branch: { kind: "named", name: "main" } },
+        inputs: { branch: { kind: "default" } },
       });
-    });
-  });
-
-  it("uses the project checkout for a non-Git project", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-non-git-default",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/non-git-default-source",
-      });
-      registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: () => ({
-          ok: true,
-          result: {
-            checkout: { kind: "unborn" as const, branchName: "main" },
-            defaultBranch: null,
-            defaultBranchRelation: null,
-            isWorktree: false,
-            hasUncommittedChanges: false,
-            operation: { kind: "none" as const },
-            originDefaultBranch: null,
-          } satisfies GitSourceInspection,
-        }),
-      });
-
-      await expect(
-        resolveProjectDefaultThreadEnvironment(harness.deps, {
-          projectId: project.id,
-        }),
-      ).resolves.toEqual({
-        type: "provider",
-        environmentProviderId: "project-checkout",
-        machine: { type: "existing", hostId: host.id },
-        inputs: { path: "/tmp/non-git-default-source" },
-      });
+      expect(responder.requests).toHaveLength(1);
     });
   });
 

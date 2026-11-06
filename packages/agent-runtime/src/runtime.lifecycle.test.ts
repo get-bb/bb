@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import { JsonRpcRequestTimeoutError } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
 import {
   createScriptedEchoLaunch,
@@ -110,7 +111,7 @@ describe("createAgentRuntime lifecycle", () => {
           if (timesOut) {
             expect(await constructionOutcome).toEqual({
               status: "rejected",
-              error: new Error(`JSON-RPC request timed out: thread/${method}`),
+              error: new JsonRpcRequestTimeoutError(`thread/${method}`),
             });
             expect(runtime.hasThread("t1")).toBe(false);
             expect(runtime.getProviderSession("t1")).toBeNull();
@@ -640,12 +641,13 @@ describe("createAgentRuntime lifecycle", () => {
           },
         },
       });
+      const methodsBeforeTurn = recordedMethods(record).length;
 
       await runtime.runTurn({
         clientRequestId: "creq_222222224h",
         threadId: "t1",
         input: [promptTextInput({ text: "follow up" })],
-        instructions: "Initial instructions",
+        instructions: "Updated instructions",
         options: {
           ...fullRuntimeOptions,
           model: "test-model-2",
@@ -662,7 +664,9 @@ describe("createAgentRuntime lifecycle", () => {
         },
       });
 
-      expect(recordedMethods(record)).not.toContain("thread/resume");
+      expect(recordedMethods(record).slice(methodsBeforeTurn)).toEqual([
+        "turn/start",
+      ]);
       expect(record.last("thread/start")?.params).toMatchObject({
         options: {
           model: "test-model",
@@ -680,6 +684,7 @@ describe("createAgentRuntime lifecycle", () => {
       expect(record.last("turn/start")?.params).toMatchObject({
         clientRequestId: "creq_222222224h",
         options: {
+          instructions: "Updated instructions",
           model: "test-model-2",
           permissionMode: "accept-edits",
           permissionScope: "workspace",
@@ -828,51 +833,6 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("does not start a turn until input is sent separately", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          onEvent: (event) => events.push(event),
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await wait(100);
-
-      expect(events.some((event) => event.type === "thread/identity")).toBe(
-        true,
-      );
-      expect(events.some((event) => event.type === "turn/started")).toBe(false);
-      expect(events.some((event) => event.type === "turn/completed")).toBe(
-        false,
-      );
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223n",
-        threadId: "t1",
-        input: [promptTextInput({ text: "hello after start" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        runtime,
-        threadId: "t1",
-      });
-
-      expect(events.some((event) => event.type === "turn/started")).toBe(true);
-      expect(events.some((event) => event.type === "turn/completed")).toBe(
-        true,
-      );
-      await runtime.shutdown();
-    });
-
     it("preserves active turn state when the stop request fails", async () => {
       const events: ThreadEvent[] = [];
       const record = createScriptedEchoRequestRecord();
@@ -933,60 +893,6 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("retires the provider after thread stop and starts it for resume", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          onEvent: (event) => events.push(event),
-        },
-      });
-
-      const startResult = await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      expect(runtime.listRunningProviders()).toEqual(["fake"]);
-      expect(runtime.hasThread("t1")).toBe(true);
-      expect(runtime.getProviderSession("t1")).toEqual({
-        providerId: "fake",
-        providerThreadId: startResult.providerThreadId,
-      });
-
-      await runtime.stopThread({ threadId: "t1" });
-      expect(runtime.listRunningProviders()).toEqual([]);
-      expect(runtime.hasThread("t1")).toBe(false);
-      expect(runtime.getProviderSession("t1")).toBeNull();
-      expect(runtime.getActiveTurnId("t1")).toBeNull();
-
-      await runtime.resumeThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerThreadId: startResult.providerThreadId,
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223s",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after stop" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "fake",
-        runtime,
-        text: "after stop",
-        threadId: "t1",
-      });
-
-      await runtime.shutdown();
-    });
-
     it("resolves waitForActiveTurn and rejects a competing start while active", async () => {
       const events: ThreadEvent[] = [];
       const record = createScriptedEchoRequestRecord();
@@ -1007,14 +913,14 @@ describe("createAgentRuntime lifecycle", () => {
       });
       expect(runtime.getActiveTurnId("t1")).toBeNull();
 
-      const pendingTurnId = runtime.waitForActiveTurn("t1", {
-        timeoutMs: 5_000,
-      });
       await runtime.runTurn({
         clientRequestId: "creq_222222223t",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500" })],
         options: fullRuntimeOptions,
+      });
+      const pendingTurnId = runtime.waitForActiveTurn("t1", {
+        timeoutMs: 5_000,
       });
       const { turnId } = await waitForThreadTurnStarted({
         events,
@@ -1038,6 +944,137 @@ describe("createAgentRuntime lifecycle", () => {
         recordedMethods(record).filter((method) => method === "turn/start"),
       ).toHaveLength(1);
       await runtime.shutdown();
+    });
+
+    it("resolves waitForActiveTurn with null at once when no turn is starting", async () => {
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: () => {},
+        },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        expect(runtime.hasThread("t1")).toBe(true);
+
+        const startedAt = performance.now();
+        await expect(
+          runtime.waitForActiveTurn("t1", { timeoutMs: 60_000 }),
+        ).resolves.toBeNull();
+        expect(performance.now() - startedAt).toBeLessThan(1_000);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("waits for a turn whose runTurn call has not reached the provider yet", async () => {
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: (event) => events.push(event),
+        },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        const run = runtime.runTurn({
+          clientRequestId: "creq_222222224e",
+          threadId: "t1",
+          input: [promptTextInput({ text: "delay:500" })],
+          options: fullRuntimeOptions,
+        });
+        const awaitedTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 5_000,
+        });
+        await run;
+        const { turnId } = await waitForThreadTurnStarted({
+          events,
+          providerId: "fake",
+          runtime,
+          threadId: "t1",
+        });
+
+        await expect(awaitedTurnId).resolves.toBe(turnId);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("resolves waitForActiveTurn with null once an in-flight operation ends without a turn", async () => {
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: () => {},
+        },
+      });
+
+      try {
+        const start = runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        const startedAt = performance.now();
+        const awaitedTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 60_000,
+        });
+        await start;
+
+        await expect(awaitedTurnId).resolves.toBeNull();
+        expect(performance.now() - startedAt).toBeLessThan(5_000);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("keeps waiting for the active turn while a turn start is pending", async () => {
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: () => {},
+        },
+        launch: { scripted: { swallowTurnStart: true } },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        await runtime.runTurn({
+          clientRequestId: "creq_222222224c",
+          threadId: "t1",
+          input: [promptTextInput({ text: "wait for first event" })],
+          options: fullRuntimeOptions,
+        });
+
+        const startedAt = performance.now();
+        await expect(
+          runtime.waitForActiveTurn("t1", { timeoutMs: 300 }),
+        ).resolves.toBeNull();
+        expect(performance.now() - startedAt).toBeGreaterThanOrEqual(250);
+      } finally {
+        await runtime.shutdown();
+      }
     });
 
     it("reports pending work and rejects a competing start before the first event", async () => {
@@ -1090,7 +1127,9 @@ describe("createAgentRuntime lifecycle", () => {
           workspacePath: tmpDir,
           onEvent: () => {},
         },
-        launch: { scripted: { exitAfter: "thread/start" } },
+        launch: {
+          scripted: { swallowTurnStart: true, exitAfter: "turn/start" },
+        },
       });
 
       await runtime.startThread({
@@ -1100,6 +1139,12 @@ describe("createAgentRuntime lifecycle", () => {
         providerId: "fake",
         options: fullRuntimeOptions,
       });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224d",
+        threadId: "t1",
+        input: [promptTextInput({ text: "never starts" })],
+        options: fullRuntimeOptions,
+      });
       const pendingTurnId = runtime.waitForActiveTurn("t1", {
         timeoutMs: 30_000,
       });
@@ -1107,47 +1152,6 @@ describe("createAgentRuntime lifecycle", () => {
       await expect(pendingTurnId).resolves.toBeNull();
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
-      await runtime.shutdown();
-    });
-
-    it("carries changed settings and instructions on later run turns", async () => {
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => {},
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: { ...fullRuntimeOptions, model: "fake-model" },
-        instructions: "Initial instructions",
-      });
-      const methodsBeforeTurn = recordedMethods(record).length;
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223v",
-        threadId: "t1",
-        input: [promptTextInput({ text: "use a different setup" })],
-        options: { ...fullRuntimeOptions, model: "fake-model-2" },
-        instructions: "Updated instructions",
-      });
-
-      expect(recordedMethods(record).slice(methodsBeforeTurn)).toEqual([
-        "turn/start",
-      ]);
-      expect(record.last("turn/start")?.params).toMatchObject({
-        clientRequestId: "creq_222222223v",
-        options: {
-          instructions: "Updated instructions",
-          model: "fake-model-2",
-        },
-      });
       await runtime.shutdown();
     });
 

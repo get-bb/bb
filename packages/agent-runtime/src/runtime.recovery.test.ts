@@ -1156,7 +1156,7 @@ describe("runtime recovery hints", () => {
     expect(countSpawns(processLog)).toBe(2);
   });
 
-  it("unsolicited authRequired and rateLimited hints are forwarded and take no action", async () => {
+  it("forwards an unsolicited authRequired hint without taking action", async () => {
     const { events, hints, processLog, record, runtime } =
       createRecoveryRuntime();
     await startThread(runtime, "t-forward");

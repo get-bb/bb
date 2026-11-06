@@ -97,7 +97,9 @@ async function cachedGitCredentials(run: typeof runGh, refresh: boolean) {
     credentialCaches.set(run, cache);
   }
   return structuredClone(
-    await cache.run("github.com", () => loadGitCredentials(run), refresh),
+    await cache.run("github.com", () => loadGitCredentials(run), {
+      refresh,
+    }),
   );
 }
 

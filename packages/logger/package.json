@@ -17,13 +17,13 @@
   },
   "dependencies": {
     "@bb/config": "workspace:*",
-    "pino": "^9.6.0",
-    "pino-roll": "^4.0.0",
-    "pino-pretty": "^13.0.0"
+    "pino": "^9.14.0",
+    "pino-pretty": "^13.2.0",
+    "pino-roll": "^4.0.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.5",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }

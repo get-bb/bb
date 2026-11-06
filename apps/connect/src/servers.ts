@@ -1,18 +1,18 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_CREDENTIAL_CACHE_TTL_MS,
   SERVER_OFFLINE_AFTER_MS,
   ServerCredentialCache,
   isLive,
   nextTunnelConnected,
-  schema,
   server,
   sha256Hex,
   tunnelConnectedLookup,
   type ConnectDb,
   type TunnelConnectedLookup,
+  first,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import {
   parseCookie,
   verifyMachineCredential,
@@ -47,14 +47,18 @@ export async function revokeServerCredential(
   if (!presented) return null;
 
   const credentialHash = await sha256Hex(presented);
-  const revoked = await db
-    .update(server)
-    .set({ credentialHash: null, revokedAt: new Date() })
-    .where(
-      and(eq(server.credentialHash, credentialHash), isNull(server.revokedAt)),
-    )
-    .returning({ subdomain: server.subdomain })
-    .get();
+  const revoked = await first(
+    db
+      .update(server)
+      .set({ credentialHash: null, revokedAt: new Date() })
+      .where(
+        and(
+          eq(server.credentialHash, credentialHash),
+          isNull(server.revokedAt),
+        ),
+      )
+      .returning({ subdomain: server.subdomain }),
+  );
   serverCredentials.forget(presented);
   invalidateDesktopSessionGrant({ kind: "server", credentialHash });
   return revoked ?? null;
@@ -118,8 +122,7 @@ export async function listAccountServers(
       nextTunnelAt: server.nextTunnelAt,
     })
     .from(server)
-    .where(eq(server.userId, userId))
-    .all();
+    .where(eq(server.userId, userId));
 
   return Promise.all(
     rows.map(async (row) => {
@@ -143,7 +146,7 @@ export async function listAccountServers(
 }
 
 async function resolveRequestAccount(request: Request, env: Env) {
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const runtime = resolveConnectRuntime(env);
   const account = await resolveAccount(
     request,
@@ -184,7 +187,7 @@ export async function handleDisconnectServer(
     return methodNotAllowed("POST");
   }
 
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const revoked = await revokeServerCredential(credential, db);
   if (!revoked) {

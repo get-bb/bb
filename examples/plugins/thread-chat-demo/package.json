@@ -21,10 +21,10 @@
   ],
   "devDependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
-    "@types/react": "^19.0.0",
-    "react": "^19.0.0",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
-    "typescript": "^5.7.0"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "typecheck": "tsrs --noEmit"

@@ -33,11 +33,6 @@ export interface OrderedMentionSuggestions {
   readonly suggestions: readonly PromptMentionSuggestion[];
 }
 
-export const EMPTY_ORDERED_MENTION_SUGGESTIONS: OrderedMentionSuggestions = {
-  groups: [],
-  suggestions: [],
-};
-
 const MENTION_MATCH_RANK = {
   exact: 0,
   prefix: 1,

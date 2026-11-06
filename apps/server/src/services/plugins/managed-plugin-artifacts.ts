@@ -293,6 +293,7 @@ export function createManagedPluginArtifacts(
             args.rootDir,
             deps.appVersion,
             await getPluginBuildToolchain(deps),
+            { minify: true, hostProvidedZod: true },
           );
         } catch (error) {
           throw new Error(
