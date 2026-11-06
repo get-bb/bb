@@ -102,6 +102,7 @@ async function createTargetAutomation(
       model: "gpt-5",
       reasoningLevel: "high",
       permissionMode: "accept-edits",
+      visibility: "visible",
       environment: { type: "project-default" },
       targetThreadId: THREAD_ID,
     },

@@ -26,6 +26,7 @@ import type {
   ReasoningLevel,
   ResolvedCreateAutomationInput,
   ScriptExecutionUpdate,
+  ThreadVisibility,
   UpdateAutomationInput,
 } from "./rpc-types.js";
 import {
@@ -43,6 +44,7 @@ import {
   automationScriptInterpreterSchema,
   permissionModeSchema,
   reasoningLevelSchema,
+  threadVisibilitySchema,
 } from "./rpc-types.js";
 import { interpreterForPath } from "./script-files.js";
 
@@ -146,6 +148,12 @@ const AGENT_OPTIONS = {
     placeholder: "thread-id",
     description: "Re-prompt this existing thread instead of spawning one",
   },
+  visibility: {
+    type: "enum",
+    values: threadVisibilitySchema.options,
+    description:
+      "Initial visibility of newly spawned threads (default visible); existing target threads keep their visibility",
+  },
   environment: {
     type: "string",
     placeholder: "id-or-path",
@@ -224,6 +232,7 @@ interface AgentOptionValues {
   "service-tier": string | undefined;
   "clear-service-tier": boolean | undefined;
   "permission-mode": PermissionMode | undefined;
+  visibility: ThreadVisibility | undefined;
   "target-thread": string | undefined;
   environment: string | undefined;
   "new-environment": "worktree" | undefined;
@@ -677,6 +686,7 @@ async function buildExecution(
           options["permission-mode"],
           providerRoutingForEnvironment(environment),
         ),
+        visibility: options.visibility ?? "visible",
         environment,
         ...(options["target-thread"]
           ? { targetThreadId: options["target-thread"] }
@@ -691,6 +701,7 @@ async function buildExecution(
     options["service-tier"] !== undefined ||
     options["clear-service-tier"] === true ||
     options["permission-mode"] !== undefined ||
+    options.visibility !== undefined ||
     options["target-thread"] !== undefined ||
     options.environment !== undefined ||
     options["new-environment"] !== undefined ||
@@ -753,6 +764,7 @@ function hasAgentOptions(options: AgentOptionValues): boolean {
     options["service-tier"],
     options["clear-service-tier"] || undefined,
     options["permission-mode"],
+    options.visibility,
     options["target-thread"],
     options.environment,
     options["new-environment"],
@@ -826,6 +838,9 @@ async function buildAgentExecutionUpdate(
   }
   if (options["permission-mode"] !== undefined) {
     update.permissionMode = options["permission-mode"];
+  }
+  if (options.visibility !== undefined) {
+    update.visibility = options.visibility;
   }
   if (options["target-thread"] !== undefined) {
     update.target = {
@@ -964,6 +979,7 @@ function printAutomation(
       `  Reasoning: ${automation.execution.reasoningLevel}`,
       `  Tier:      ${automation.execution.serviceTier ?? "-"}`,
       `  Permission: ${automation.execution.permissionMode}`,
+      `  Visibility: ${automation.execution.visibility}`,
     );
   }
   if (automation.lastError) lines.push(`  Error:     ${automation.lastError}`);

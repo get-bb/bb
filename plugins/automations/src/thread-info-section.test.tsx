@@ -25,6 +25,7 @@ function automation(
       model: "claude-opus-5",
       reasoningLevel: "medium",
       permissionMode: "auto",
+      visibility: "visible",
       environment: { type: "project-default" },
       targetThreadId: "thr_1",
     },
