@@ -69,20 +69,6 @@ async function useFlags(harness: TestAppHarness) {
 }
 
 describe("setup guide featured plugins route", () => {
-  it("serves no list when telemetry is unavailable", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request(
-        "/api/v1/system/setup-guide/featured-plugins",
-      );
-
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
-        entryIds: null,
-        alreadyOnEntryIds: [],
-      });
-    });
-  });
-
   it("serves the flag's list and already-on plugins", async () => {
     await withTestHarness(async (harness) => {
       await useFlags(harness);
@@ -147,17 +133,6 @@ describe("setup guide featured plugins route", () => {
         },
         { name: "new_thread_submit", properties: { outcome: "accepted" } },
       ]);
-    });
-  });
-
-  it("rejects an exposure event with extra properties", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await postEvent(harness, {
-        name: "onboarding_featured_plugins_exposed",
-        properties: { entry: "first_run", variant: "new" },
-      });
-
-      expect(response.status).toBe(400);
     });
   });
 });

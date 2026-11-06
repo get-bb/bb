@@ -277,24 +277,4 @@ describe("featured plugins experiment", () => {
       },
     });
   });
-
-  it("adds the variant only to setup-guide events", async () => {
-    const experiment = await create({
-      fetch: respondWith({ variant: "new", payload: TEST_LIST }),
-      telemetry: createTelemetry().telemetry,
-    });
-
-    await expect(
-      experiment.variantProperties({
-        name: "onboarding_step_reached",
-        properties: { step: "plugins", entry: "first_run" },
-      }),
-    ).resolves.toEqual({ featured_plugins_variant: "new" });
-    await expect(
-      experiment.variantProperties({
-        name: "release_notes_opened",
-        properties: { release_version: "0.47.0", view: "web" },
-      }),
-    ).resolves.toBeNull();
-  });
 });

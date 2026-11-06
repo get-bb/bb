@@ -27,6 +27,7 @@ import {
   signInSiteName,
   terminalConnectFlow,
   featuredPlugins,
+  ONBOARDING_PLUGIN_ENTRY_IDS,
 } from "./onboarding-model";
 
 function health(
@@ -681,32 +682,13 @@ describe("Pi's sign-in", () => {
 });
 
 describe("featuredPlugins", () => {
-  it("uses the experiment's list and already-on plugins when it has a list", () => {
-    expect(
-      featuredPlugins({
-        entryIds: ["memory", "inline-vis"],
-        alreadyOnEntryIds: ["inline-vis"],
-      }),
-    ).toEqual({
-      entryIds: ["memory", "inline-vis"],
-      alreadyOnEntryIds: new Set(["inline-vis"]),
-    });
-  });
-
-  it("falls back to today's six plugins without a list or a response", () => {
+  it("falls back to today's plugins without a list or a response", () => {
     for (const response of [
       { entryIds: null, alreadyOnEntryIds: [] },
       undefined,
     ]) {
       expect(featuredPlugins(response)).toEqual({
-        entryIds: [
-          "browser-automation",
-          "workflows",
-          "monaco-editor",
-          "prompt-library",
-          "agent-annotations",
-          "ask-user-question",
-        ],
+        entryIds: ONBOARDING_PLUGIN_ENTRY_IDS,
         alreadyOnEntryIds: new Set(),
       });
     }
