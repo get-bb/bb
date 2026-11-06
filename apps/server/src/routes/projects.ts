@@ -470,7 +470,7 @@ export function registerProjectRoutes(
       ])[0],
   );
 
-  operations.implement(routes.defaultExecutionOptions, ({ id, sourceId }) => {
+  operations.implement(routes.defaultExecutionOptions, ({ id }) => {
     const projectId = id;
     requirePublicProject(deps.db, projectId);
     return getProjectExecutionDefaults(deps.db, { projectId });

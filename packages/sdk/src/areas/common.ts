@@ -2,10 +2,12 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
+import type { OperationCaller } from "../operation-call.js";
 import type { BbSdkTransport } from "../transport.js";
 
 export interface CreateSdkAreaArgs {
   transport: BbSdkTransport;
+  operations: OperationCaller;
 }
 
 type SignalRequestOptions = { init: { signal: AbortSignal } };
@@ -16,31 +18,28 @@ export function signalRequestArgs(
   return signal === undefined ? [] : [{ init: { signal } }];
 }
 
-export async function readExecutionOptions(
-  transport: BbSdkTransport,
+export function readExecutionOptions(
+  operations: OperationCaller,
   input: Omit<SystemExecutionOptionsQuery, "preferCached"> & {
     preferCached?: boolean;
     signal?: AbortSignal;
   },
 ): Promise<SystemExecutionOptionsResponse> {
-  return transport.readJson(
-    transport.api.v1.system["execution-options"].$get(
-      {
-        query: {
-          environmentId: input.environmentId,
-          hostId: input.hostId,
-          projectId: input.projectId,
-          providerId: input.providerId,
-          selectedModel: input.selectedModel,
-          preferCached:
-            input.preferCached === undefined
-              ? undefined
-              : input.preferCached
-                ? "true"
-                : "false",
-        },
-      },
-      ...signalRequestArgs(input.signal),
-    ),
+  return operations.call(
+    "system.executionOptions",
+    {
+      environmentId: input.environmentId,
+      hostId: input.hostId,
+      projectId: input.projectId,
+      providerId: input.providerId,
+      selectedModel: input.selectedModel,
+      preferCached:
+        input.preferCached === undefined
+          ? undefined
+          : input.preferCached
+            ? "true"
+            : "false",
+    },
+    input.signal,
   );
 }

@@ -368,16 +368,11 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
-  const { transport } = args;
+  const { transport, operations } = args;
+  const { call, send } = operations;
   const attachments: ProjectAttachmentsArea = {
-    async copy(input) {
-      const { projectId, ...json } = input;
-      await transport.readVoid(
-        transport.api.v1.projects[":id"].attachments.copy.$post({
-          param: { id: projectId },
-          json,
-        }),
-      );
+    async copy({ projectId, ...rest }) {
+      await send("projects.copyAttachments", { id: projectId, ...rest });
     },
     async read(input) {
       const response = await transport.resolve(
@@ -420,84 +415,36 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
     },
   };
   const sources: ProjectSourcesArea = {
-    async add(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].sources.$post({
-          param: { id: input.projectId },
-          json: projectSourceAddJson(input),
-        }),
-      );
-    },
-    async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.projects[":id"].sources[":sourceId"].$delete({
-          param: { id: input.projectId, sourceId: input.sourceId },
-        }),
-      );
+    add: (input) =>
+      call("projects.createSource", {
+        id: input.projectId,
+        ...projectSourceAddJson(input),
+      }),
+    async delete({ projectId, sourceId }) {
+      await send("projects.deleteSource", { id: projectId, sourceId });
       return { ok: true };
     },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].sources[":sourceId"].$patch({
-          param: { id: input.projectId, sourceId: input.sourceId },
-          json: projectSourceUpdateJson(input),
-        }),
-      );
-    },
+    update: (input) =>
+      call("projects.updateSource", {
+        id: input.projectId,
+        sourceId: input.sourceId,
+        ...projectSourceUpdateJson(input),
+      }),
   };
 
   return {
     attachments,
-    async branches(input) {
-      const { projectId, signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1.projects[":id"].branches.$get(
-          {
-            param: { id: projectId },
-            query,
-          },
-          ...signalRequestArgs(signal),
-        ),
-      );
-    },
-    async commands(input) {
-      const { projectId, signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1.projects[":id"].commands.$get(
-          {
-            param: { id: projectId },
-            query,
-          },
-          ...signalRequestArgs(signal),
-        ),
-      );
-    },
-    async create(input) {
-      return transport.readJson(
-        transport.api.v1.projects.$post({
-          json: input,
-        }),
-      );
-    },
-    async delete(input) {
-      await transport.readVoid(
-        transport.api.v1.projects[":id"].$delete({
-          param: { id: input.projectId },
-        }),
-      );
+    branches: ({ projectId, signal, ...query }) =>
+      call("projects.branches", { id: projectId, ...query }, signal),
+    commands: ({ projectId, signal, ...query }) =>
+      call("projects.commands", { id: projectId, ...query }, signal),
+    create: (input) => call("projects.create", input),
+    async delete({ projectId }) {
+      await send("projects.delete", { id: projectId });
       return { ok: true };
     },
-    async defaultExecutionOptions(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["default-execution-options"].$get(
-          {
-            param: { id: input.projectId },
-            query: {},
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    defaultExecutionOptions: ({ projectId, signal }) =>
+      call("projects.defaultExecutionOptions", { id: projectId }, signal),
     async fileContent(input) {
       const { projectId, path, signal, environmentId, hostId } = input;
       const filePath = encodeProjectFilePath(path);
@@ -529,120 +476,47 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
         sizeBytes: bytes.byteLength,
       };
     },
-    async files(input) {
-      const { projectId, signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1.projects[":id"].files.$get(
-          {
-            param: { id: projectId },
-            query,
-          },
-          ...signalRequestArgs(signal),
-        ),
-      );
-    },
-    async machineEnvironment(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["machine-environment"].$get({
-          param: { id: input.projectId },
-        }),
-      );
-    },
-    async replaceMachineEnvironment(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["machine-environment"].$put({
-          param: { id: input.projectId },
-          json: { variables: input.variables },
-        }),
-      );
-    },
-    async setMachineEnvironmentVariable(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["machine-environment"].$post({
-          param: { id: input.projectId },
-          json: { name: input.name, value: input.value, note: input.note },
-        }),
-      );
-    },
-    async deleteMachineEnvironmentVariable(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["machine-environment"].$delete({
-          param: { id: input.projectId },
-          json: { name: input.name },
-        }),
-      );
-    },
-    async get(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].$get(
-          {
-            param: { id: input.projectId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async list(input = {}) {
+    files: ({ projectId, signal, ...query }) =>
+      call("projects.files", { id: projectId, ...query }, signal),
+    machineEnvironment: ({ projectId }) =>
+      call("projects.machineEnvironment", { id: projectId }),
+    replaceMachineEnvironment: ({ projectId, variables }) =>
+      call("projects.replaceMachineEnvironment", { id: projectId, variables }),
+    setMachineEnvironmentVariable: ({ projectId, name, value, note }) =>
+      call("projects.setMachineEnvironmentVariable", {
+        id: projectId,
+        name,
+        value,
+        note,
+      }),
+    deleteMachineEnvironmentVariable: ({ projectId, name }) =>
+      call("projects.deleteMachineEnvironmentVariable", {
+        id: projectId,
+        name,
+      }),
+    get: ({ projectId, signal }) =>
+      call("projects.get", { id: projectId }, signal),
+    list: (input = {}) => {
       const { signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1.projects.$get(
-          {
-            query: projectListQuery(query),
-          },
-          ...signalRequestArgs(signal),
-        ),
-      );
+      return call("projects.list", projectListQuery(query), signal);
     },
-    async paths(input) {
-      const { projectId, signal, ...query } = input;
-      return transport.readJson(
-        transport.api.v1.projects[":id"].paths.$get(
-          {
-            param: { id: projectId },
-            query,
-          },
-          ...signalRequestArgs(signal),
-        ),
-      );
-    },
-    async promptHistory(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"]["prompt-history"].$get(
-          {
-            param: { id: input.projectId },
-            query: { limit: input.limit },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async reorder(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].order.$patch({
-          param: { id: input.projectId },
-          json: {
-            previousProjectId: input.previousProjectId,
-            nextProjectId: input.nextProjectId,
-          },
-        }),
-      );
-    },
-    async sidebarBootstrap(input = {}) {
-      return transport.readJson(
-        transport.api.v1["sidebar-bootstrap"].$get(
-          {},
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    paths: ({ projectId, signal, ...query }) =>
+      call("projects.paths", { id: projectId, ...query }, signal),
+    promptHistory: ({ projectId, limit, signal }) =>
+      call("projects.promptHistory", { id: projectId, limit }, signal),
+    reorder: ({ projectId, previousProjectId, nextProjectId }) =>
+      call("projects.reorder", {
+        id: projectId,
+        previousProjectId,
+        nextProjectId,
+      }),
+    sidebarBootstrap: (input = {}) =>
+      call("projects.sidebarBootstrap", {}, input.signal),
     sources,
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].$patch({
-          param: { id: input.projectId },
-          json: projectUpdateJson(input),
-        }),
-      );
-    },
+    update: (input) =>
+      call("projects.update", {
+        id: input.projectId,
+        ...projectUpdateJson(input),
+      }),
   };
 }

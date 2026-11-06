@@ -9,7 +9,7 @@ import type {
   TerminalSession,
   UpdateTerminalRequest,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface TerminalThreadScope {
   cwd?: never;
@@ -194,95 +194,36 @@ function terminalOutputQuery(args: TerminalOutputArgs): TerminalOutputQuery {
 }
 
 export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
-  const { transport } = args;
-
-  const get = (input: TerminalGetArgs): Promise<TerminalGetResult> =>
-    transport.readJson(
-      transport.api.v1.terminals[":terminalId"].$get(
-        {
-          param: { terminalId: input.terminalId },
-        },
-        ...signalRequestArgs(input.signal),
-      ),
-    );
-
-  const create = (input: TerminalCreateArgs): Promise<TerminalCreateResult> =>
-    transport.readJson(
-      transport.api.v1.terminals.$post({
-        json: {
-          cols: input.cols,
-          id: input.id,
-          rows: input.rows,
-          start: input.start,
-          target: terminalCreateTarget(input.scope),
-          title: input.title,
-        },
-      }),
-    );
-
+  const { call } = args.operations;
   return {
-    async close(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].close.$post({
-          param: { terminalId: input.terminalId },
-          json: { mode: input.mode, reason: "user" },
-        }),
-      );
+    close: ({ terminalId, mode }) =>
+      call("terminals.close", { terminalId, mode, reason: "user" }),
+    create: (input) =>
+      call("terminals.create", {
+        cols: input.cols,
+        id: input.id,
+        rows: input.rows,
+        start: input.start,
+        target: terminalCreateTarget(input.scope),
+        title: input.title,
+      }),
+    get: ({ terminalId, signal }) =>
+      call("terminals.get", { terminalId }, signal),
+    input: ({ terminalId, dataBase64 }) =>
+      call("terminals.input", { terminalId, dataBase64 }),
+    async list({ scope, signal }) {
+      return call("terminals.list", terminalListQuery(scope), signal);
     },
-    create,
-    get,
-    async input(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].input.$post({
-          param: { terminalId: input.terminalId },
-          json: { dataBase64: input.dataBase64 },
-        }),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.terminals.$get(
-          {
-            query: terminalListQuery(input.scope),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async output(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].output.$get(
-          {
-            param: { terminalId: input.terminalId },
-            query: terminalOutputQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async rename(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].$patch({
-          param: { terminalId: input.terminalId },
-          json: { title: input.title },
-        }),
-      );
-    },
-    async restart(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].restart.$post({
-          param: { terminalId: input.terminalId },
-          json: {},
-        }),
-      );
-    },
-    async resize(input) {
-      return transport.readJson(
-        transport.api.v1.terminals[":terminalId"].resize.$post({
-          param: { terminalId: input.terminalId },
-          json: { cols: input.cols, rows: input.rows },
-        }),
-      );
-    },
+    output: (input) =>
+      call(
+        "terminals.output",
+        { terminalId: input.terminalId, ...terminalOutputQuery(input) },
+        input.signal,
+      ),
+    rename: ({ terminalId, title }) =>
+      call("terminals.update", { terminalId, title }),
+    restart: ({ terminalId }) => call("terminals.restart", { terminalId }),
+    resize: ({ terminalId, cols, rows }) =>
+      call("terminals.resize", { terminalId, cols, rows }),
   };
 }

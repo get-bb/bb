@@ -44,11 +44,7 @@ import type {
   UiPreferencesResponse,
 } from "@bb/server-contract";
 import { systemVoiceTranscriptionResponseSchema } from "@bb/server-contract";
-import {
-  readExecutionOptions,
-  signalRequestArgs,
-  type CreateSdkAreaArgs,
-} from "./common.js";
+import { readExecutionOptions, type CreateSdkAreaArgs } from "./common.js";
 
 export interface SystemAttentionArgs {
   signal?: AbortSignal;
@@ -252,116 +248,46 @@ function appUpdateQuery(
 }
 
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
-  const { transport } = args;
+  const { transport, operations } = args;
+  const { call } = operations;
   const uiPreferences: SystemUiPreferencesArea = {
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.preferences.ui.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
+    list: (input) => call("system.uiPreferences", {}, input?.signal),
     async set(input) {
-      const body = await transport.readJson(
-        transport.api.v1.preferences.ui[":key"].$put({
-          json: {
-            expectedRevision: input.expectedRevision,
-            value: input.value,
-          },
-          param: { key: input.key },
-        }),
-      );
+      const body = await call("system.updateUiPreference", {
+        key: input.key,
+        expectedRevision: input.expectedRevision,
+        value: input.value,
+      });
       return body as UiPreferenceResponse<typeof input.key>;
     },
     async reset(input) {
-      const body = await transport.readJson(
-        transport.api.v1.preferences.ui[":key"].$delete({
-          param: { key: input.key },
-        }),
-      );
+      const body = await call("system.resetUiPreference", { key: input.key });
       return body as UiPreferenceResponse<typeof input.key>;
     },
   };
   return {
     uiPreferences,
-    async setMachineEnvironmentVariable(input) {
-      return transport.readJson(
-        transport.api.v1.settings["machine-environment"].$post({ json: input }),
-      );
-    },
-    async deleteMachineEnvironmentVariable(input) {
-      return transport.readJson(
-        transport.api.v1.settings["machine-environment"].$delete({
-          json: input,
-        }),
-      );
-    },
-    async machineEnvironment() {
-      return transport.readJson(
-        transport.api.v1.settings["machine-environment"].$get(),
-      );
-    },
-    async replaceMachineEnvironment(input) {
-      return transport.readJson(
-        transport.api.v1.settings["machine-environment"].$put({ json: input }),
-      );
-    },
-    async attention(input) {
-      return transport.readJson(
-        transport.api.v1.system.attention.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async aiServices(input) {
-      return transport.readJson(
-        transport.api.v1.system["ai-services"].$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async setAiServiceSelection(input) {
-      return transport.readJson(
-        transport.api.v1.system["ai-services"].selection.$put({ json: input }),
-      );
-    },
-    async testAiService(input) {
-      return transport.readJson(
-        transport.api.v1.system["ai-services"].test.$post({ json: input }),
-      );
-    },
-    async config(input) {
-      return transport.readJson(
-        transport.api.v1.system.config.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async executionOptions(input = {}) {
-      return readExecutionOptions(transport, input);
-    },
-    async cliSkillsStatus(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system["cli-skills"].$get(
-          {
-            query:
-              input.hostIds === undefined
-                ? {}
-                : { hostIds: input.hostIds.join(",") },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async installCliSkills(input) {
-      return transport.readJson(
-        transport.api.v1.system["cli-skills"].install.$post({ json: input }),
-      );
-    },
+    setMachineEnvironmentVariable: (input) =>
+      call("system.setMachineEnvironmentVariable", input),
+    deleteMachineEnvironmentVariable: (input) =>
+      call("system.deleteMachineEnvironmentVariable", input),
+    machineEnvironment: () => call("system.machineEnvironment", {}),
+    replaceMachineEnvironment: (input) =>
+      call("system.replaceMachineEnvironment", input),
+    attention: (input) => call("system.attention", {}, input?.signal),
+    aiServices: (input) => call("system.aiServices", {}, input?.signal),
+    setAiServiceSelection: (input) =>
+      call("system.setAiServiceSelection", input),
+    testAiService: (input) => call("system.testAiService", input),
+    config: (input) => call("system.config", {}, input?.signal),
+    executionOptions: (input = {}) => readExecutionOptions(operations, input),
+    cliSkillsStatus: (input = {}) =>
+      call(
+        "system.cliSkillsStatus",
+        input.hostIds === undefined ? {} : { hostIds: input.hostIds.join(",") },
+        input.signal,
+      ),
+    installCliSkills: (input) => call("system.installCliSkills", input),
     async experimental_recordTelemetryEvent(input, options) {
       return transport.readJson(
         transport.api.v1.system.telemetry.events.$post(
@@ -372,9 +298,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         ),
       );
     },
-    async reloadConfig() {
-      return transport.readJson(transport.api.v1.system.config.reload.$post());
-    },
+    reloadConfig: () => call("system.reloadConfig", {}),
     async transcribeVoice(input) {
       if (input.file.size === 0) {
         throw new Error("Audio file must not be empty");
@@ -394,121 +318,49 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         await response.json(),
       );
     },
-    async mobileAppReleases() {
-      return transport.readJson(
-        transport.api.v1.system["mobile-app-releases"].$get(),
-      );
-    },
+    mobileAppReleases: () => call("system.mobileAppReleases", {}),
     mobileAppDownloads() {
       return { ...mobileAppDownloads };
     },
-    async updateExperiments(input) {
-      return transport.readJson(
-        transport.api.v1.settings.experiments.$put({ json: input }),
-      );
-    },
-    async updateGeneralSettings(input) {
-      return transport.readJson(
-        transport.api.v1.settings.general.$put({ json: input }),
-      );
-    },
-    async updateKeyboardSettings(input) {
-      return transport.readJson(
-        transport.api.v1.settings.keyboard.$put({ json: input }),
-      );
-    },
-    async providerStates(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system.providers.state.$get(
-          {
-            query: {
-              environmentId: input.environmentId,
-              hostId: input.hostId,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async usageLimits(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system["usage-limits"].$get(
-          {
-            query: {
-              hostId: input.hostId,
-              providerId: input.providerId,
-              refresh:
-                input.refresh === undefined
-                  ? undefined
-                  : input.refresh
-                    ? "true"
-                    : "false",
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async version(input) {
-      return transport.readJson(
-        transport.api.v1.system.version.$get(
-          { query: versionQuery(input) },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async appUpdate(input) {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].$get(
-          { query: appUpdateQuery(input) },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async applyAppUpdate(input) {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].apply.$post({ json: input }),
-      );
-    },
-    async acknowledgeAppUpdate(input) {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].acknowledge.$post({
-          json: input,
-        }),
-      );
-    },
-    async experimental_scheduleAppUpdate() {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].schedule.$post({}),
-      );
-    },
-    async experimental_cancelScheduledAppUpdate() {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].schedule.cancel.$post({}),
-      );
-    },
-    async experimental_setAppUpdateAuto(input) {
-      return transport.readJson(
-        transport.api.v1.system["app-update"].auto.$post({ json: input }),
-      );
-    },
-    async experimental_cliCommand(input) {
-      return transport.readJson(
-        transport.api.v1.system["cli-command"].$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async experimental_installCliCommand() {
-      return transport.readJson(
-        transport.api.v1.system["cli-command"].install.$post({}),
-      );
-    },
-    async experimental_removeCliCommand() {
-      return transport.readJson(
-        transport.api.v1.system["cli-command"].remove.$post({}),
-      );
-    },
+    updateExperiments: (input) => call("system.experiments", input),
+    updateGeneralSettings: (input) => call("system.generalSettings", input),
+    updateKeyboardSettings: (input) =>
+      call("system.keyboardSettings", { overrides: input }),
+    providerStates: (input = {}) =>
+      call(
+        "system.providerStates",
+        { environmentId: input.environmentId, hostId: input.hostId },
+        input.signal,
+      ),
+    usageLimits: (input = {}) =>
+      call(
+        "system.usageLimits",
+        {
+          hostId: input.hostId,
+          providerId: input.providerId,
+          refresh:
+            input.refresh === undefined
+              ? undefined
+              : input.refresh
+                ? "true"
+                : "false",
+        },
+        input.signal,
+      ),
+    version: (input) =>
+      call("system.version", versionQuery(input), input?.signal),
+    appUpdate: (input) =>
+      call("system.appUpdate", appUpdateQuery(input), input?.signal),
+    applyAppUpdate: (input) => call("system.applyAppUpdate", input),
+    acknowledgeAppUpdate: (input) => call("system.acknowledgeAppUpdate", input),
+    experimental_scheduleAppUpdate: () => call("system.scheduleAppUpdate", {}),
+    experimental_cancelScheduledAppUpdate: () =>
+      call("system.cancelScheduledAppUpdate", {}),
+    experimental_setAppUpdateAuto: (input) =>
+      call("system.setAppUpdateAuto", input),
+    experimental_cliCommand: (input) =>
+      call("system.cliCommand", {}, input?.signal),
+    experimental_installCliCommand: () => call("system.installCliCommand", {}),
+    experimental_removeCliCommand: () => call("system.removeCliCommand", {}),
   };
 }

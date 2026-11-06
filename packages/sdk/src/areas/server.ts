@@ -59,45 +59,20 @@ function exportFileName(contentDisposition: string | null): string {
 export function createServerArea(
   args: CreateSdkAreaArgs,
 ): ExperimentalServerArea {
-  const { transport } = args;
+  const { transport, operations } = args;
+  const { call } = operations;
   return {
-    async checkMove(input) {
-      return transport.readJson(
-        transport.api.v1.server.move.check.$post(
-          {
-            json: {
-              targetHostId: input.targetHostId,
-              serverUrl: input.serverUrl,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async startMove(input) {
-      return transport.readJson(
-        transport.api.v1.server.move.$post({
-          json: {
-            targetHostId: input.targetHostId,
-            serverUrl: input.serverUrl,
-            stopRunningWork: input.stopRunningWork,
-            archiveExistingTargetServerData:
-              input.archiveExistingTargetServerData,
-          },
-        }),
-      );
-    },
-    async moveStatus(input) {
-      return transport.readJson(
-        transport.api.v1.server.move.$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
-    async cancelMove() {
-      return transport.readJson(transport.api.v1.server.move.cancel.$post());
-    },
+    checkMove: ({ targetHostId, serverUrl, signal }) =>
+      call("server.checkMove", { targetHostId, serverUrl }, signal),
+    startMove: (input) =>
+      call("server.startMove", {
+        targetHostId: input.targetHostId,
+        serverUrl: input.serverUrl,
+        stopRunningWork: input.stopRunningWork,
+        archiveExistingTargetServerData: input.archiveExistingTargetServerData,
+      }),
+    moveStatus: (input) => call("server.moveStatus", {}, input?.signal),
+    cancelMove: () => call("server.cancelMove", {}),
     async export(input) {
       const response = await transport.resolve(
         transport.api.v1.server.export.$post(

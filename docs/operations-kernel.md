@@ -64,6 +64,20 @@ value | OperationBody)`. There is no HTTP-only registration.
   back into a stream body with `operationBodyFromResponse`. Detection is
   structural (`isOperationBody`), not `instanceof`.
 
+## The SDK's operation caller
+
+`packages/sdk/src/operation-call.ts` (`@bb/sdk/operation-call`, internal)
+calls a public operation by name with its flat input: it finds the route in
+the contract, splits the input into path params, query and body with
+`routeRequestFromInput`, escapes path params (each segment of a
+`:filePath{.+}` param), and sends it through the transport's typed client.
+`call` returns the JSON, `null` for a 204 or an `OperationBody` for a byte
+route; `send` ignores the body. Every SDK area receives it as `operations`,
+so an area method is the argument renames and transforms its public
+signature promises, then one `call`. The CLI uses the same caller. Methods
+that send headers, upload multipart, read bytes or headers, stream or poll
+keep their own transport code.
+
 ## Callers
 
 `OperationCaller` is `{ user, door, thread, via }` (`kernel/caller.ts`), held
@@ -87,8 +101,7 @@ Every core `bb` command is declared as a door (`apps/cli/src/cli-door.ts`,
 mounted by `apps/cli/src/operation-doors.ts`):
 
 - `publicCommand(name, door)` is one call of a public operation, sent through
-  the operation's own route (`apps/cli/src/operation-call.ts`, the CLI's
-  transport plus the contract's route table).
+  the operation's own route by the SDK's operation caller.
 - `clientCommand(door)` is a command whose `run(values, client)` chains
   operations, waits, polls, streams, or works locally (starting the server,
   the guide).

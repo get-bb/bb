@@ -7,7 +7,6 @@ import {
   registryRepositoryStarsSchema,
   registrySkillSchema,
   registrySkillsPageSchema,
-  type DeleteSkillRequest,
   type RegistryRepositoryStars,
   type RegistrySkill,
   type RegistrySkillDetail,
@@ -18,7 +17,7 @@ import {
   type SkillFilesResponse,
   type SkillListResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface SkillWorkspaceArgs {
   projectId: string;
@@ -105,155 +104,108 @@ export interface SkillsArea {
 }
 
 export function createSkillsArea(args: CreateSdkAreaArgs): SkillsArea {
-  const { transport } = args;
-
-  async function requestParsed<T>(
-    path: string,
-    schema: { parse(value: unknown): T },
-    init?: RequestInit,
-  ): Promise<T> {
-    const baseUrl = transport.baseUrl.replace(/\/$/u, "");
-    const response = await transport.resolve(
-      transport.fetch(`${baseUrl}${path}`, init),
-    );
-    return schema.parse(await response.json());
-  }
+  const { call } = args.operations;
 
   const registry: SkillsRegistryArea = {
     async detail(input) {
-      const query = new URLSearchParams({
-        source: input.source,
-        skillId: input.skillId,
-      });
-      return requestParsed(
-        `/api/v1/skills-registry/detail?${query.toString()}`,
-        registrySkillDetailSchema,
-        { signal: input.signal },
+      return registrySkillDetailSchema.parse(
+        await call(
+          "skillsRegistry.detail",
+          { source: input.source, skillId: input.skillId },
+          input.signal,
+        ),
       );
     },
     async entries(input) {
       const body = registrySkillEntriesRequestSchema.parse({
         ids: [...input.registrySkillIds],
       });
-      return requestParsed(
-        "/api/v1/skills-registry/entries",
-        registrySkillEntriesResponseSchema,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: input.signal,
-        },
+      return registrySkillEntriesResponseSchema.parse(
+        await call("skillsRegistry.entries", body, input.signal),
       );
     },
     async get(input) {
-      const query = new URLSearchParams({ id: input.registrySkillId });
-      return requestParsed(
-        `/api/v1/skills-registry/entry?${query.toString()}`,
-        registrySkillSchema,
-        { signal: input.signal },
+      return registrySkillSchema.parse(
+        await call(
+          "skillsRegistry.entry",
+          { id: input.registrySkillId },
+          input.signal,
+        ),
       );
     },
     async install(input) {
       const body = registrySkillInstallRequestSchema.parse(input);
-      return requestParsed(
-        "/api/v1/skills-registry/install",
-        registrySkillInstallResponseSchema,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        },
+      return registrySkillInstallResponseSchema.parse(
+        await call("skillsRegistry.install", body),
       );
     },
     async repositoryStars(input) {
-      const query = new URLSearchParams({ source: input.source });
-      return requestParsed(
-        `/api/v1/skills-registry/repository-stars?${query.toString()}`,
-        registryRepositoryStarsSchema,
-        { signal: input.signal },
+      return registryRepositoryStarsSchema.parse(
+        await call(
+          "skillsRegistry.repositoryStars",
+          { source: input.source },
+          input.signal,
+        ),
       );
     },
     async search(input = {}) {
-      const query = new URLSearchParams({
-        page: String(input.page ?? 0),
-        perPage: String(input.perPage ?? 24),
-      });
-      if (input.query?.trim()) query.set("q", input.query.trim());
-      return requestParsed(
-        `/api/v1/skills-registry?${query.toString()}`,
-        registrySkillsPageSchema,
-        { signal: input.signal },
+      const query = input.query?.trim();
+      return registrySkillsPageSchema.parse(
+        await call(
+          "skillsRegistry.list",
+          {
+            page: String(input.page ?? 0),
+            perPage: String(input.perPage ?? 24),
+            ...(query ? { q: query } : {}),
+          },
+          input.signal,
+        ),
       );
     },
   };
 
   return {
-    async getContent(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.content.$get(
-          {
-            param: { id: input.projectId },
-            query: {
-              skillId: input.skillId,
-              path: input.path,
-              environmentId: input.environmentId ?? "",
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.$get(
-          {
-            param: { id: input.projectId },
-            query: { environmentId: input.environmentId ?? "" },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async listFiles(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.files.$get(
-          {
-            param: { id: input.projectId },
-            query: {
-              skillId: input.skillId,
-              environmentId: input.environmentId ?? "",
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
+    getContent: (input) =>
+      call(
+        "projects.skillContent",
+        {
+          id: input.projectId,
+          skillId: input.skillId,
+          path: input.path,
+          environmentId: input.environmentId ?? "",
+        },
+        input.signal,
+      ),
+    list: (input) =>
+      call(
+        "projects.skills",
+        { id: input.projectId, environmentId: input.environmentId ?? "" },
+        input.signal,
+      ),
+    listFiles: (input) =>
+      call(
+        "projects.skillFiles",
+        {
+          id: input.projectId,
+          skillId: input.skillId,
+          environmentId: input.environmentId ?? "",
+        },
+        input.signal,
+      ),
     registry,
-    async remove(input) {
-      const body: DeleteSkillRequest = {
+    remove: (input) =>
+      call("projects.deleteSkill", {
+        id: input.projectId,
         skillId: input.skillId,
         environmentId: input.environmentId,
-      };
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.$delete({
-          param: { id: input.projectId },
-          json: body,
-        }),
-      );
-    },
-    async update(input) {
-      return transport.readJson(
-        transport.api.v1.projects[":id"].skills.content.$patch({
-          param: { id: input.projectId },
-          json: {
-            skillId: input.skillId,
-            environmentId: input.environmentId,
-            content: input.content,
-            revision: input.revision,
-          },
-        }),
-      );
-    },
+      }),
+    update: (input) =>
+      call("projects.updateSkill", {
+        id: input.projectId,
+        skillId: input.skillId,
+        environmentId: input.environmentId,
+        content: input.content,
+        revision: input.revision,
+      }),
   };
 }

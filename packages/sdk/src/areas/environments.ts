@@ -16,7 +16,7 @@ import {
   type WorkspacePathListResponse,
   type SystemEnvironmentProvider,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface EnvironmentActionArgs {
   environmentId: string;
@@ -138,116 +138,79 @@ function environmentPathsQuery(
 export function createEnvironmentsArea(
   args: CreateSdkAreaArgs,
 ): EnvironmentsArea {
-  const { transport } = args;
+  const { call } = args.operations;
   const area: EnvironmentsArea = {
-    async archiveThreads(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"]["archive-threads"].$post({
-          param: { id: input.environmentId },
-        }),
-      );
-    },
-    async commit(input) {
-      const body = await transport.readJson(
-        transport.api.v1.environments[":id"].actions.$post({
-          param: { id: input.environmentId },
-          json: {
-            action: "commit",
-          },
-        }),
-      );
+    archiveThreads: ({ environmentId }) =>
+      call("environments.archiveThreads", { id: environmentId }),
+    async commit({ environmentId }) {
+      const body = await call("environments.actions", {
+        id: environmentId,
+        action: "commit",
+      });
       return commitActionResponseSchema.parse(body);
     },
-    async list(input) {
-      return transport.readJson(
-        transport.api.v1.environments.$get(
-          {
-            query: {
-              ...(input?.projectId === undefined
-                ? {}
-                : { projectId: input.projectId }),
-              ...(input?.hostId === undefined ? {} : { hostId: input.hostId }),
-              ...(input?.environmentProviderId === undefined
-                ? {}
-                : { environmentProviderId: input.environmentProviderId }),
-              ...(input?.instanceKey === undefined
-                ? {}
-                : { instanceKey: input.instanceKey }),
-              ...(input?.status === undefined ? {} : { status: input.status }),
-              ...(input?.path === undefined ? {} : { path: input.path }),
-              ...(input?.limit === undefined
-                ? {}
-                : { limit: String(input.limit) }),
-              ...(input?.offset === undefined
-                ? {}
-                : { offset: String(input.offset) }),
-            },
-          },
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-    },
+    list: (input) =>
+      call(
+        "environments.list",
+        {
+          ...(input?.projectId === undefined
+            ? {}
+            : { projectId: input.projectId }),
+          ...(input?.hostId === undefined ? {} : { hostId: input.hostId }),
+          ...(input?.environmentProviderId === undefined
+            ? {}
+            : { environmentProviderId: input.environmentProviderId }),
+          ...(input?.instanceKey === undefined
+            ? {}
+            : { instanceKey: input.instanceKey }),
+          ...(input?.status === undefined ? {} : { status: input.status }),
+          ...(input?.path === undefined ? {} : { path: input.path }),
+          ...(input?.limit === undefined ? {} : { limit: String(input.limit) }),
+          ...(input?.offset === undefined
+            ? {}
+            : { offset: String(input.offset) }),
+        },
+        input?.signal,
+      ),
     async listProviders(input) {
-      const response = await transport.readJson(
-        transport.api.v1.system["environment-providers"].$get(
-          {
-            query: {
-              ...(input?.projectId === undefined
-                ? {}
-                : { projectId: input.projectId }),
-              ...(input?.hostId === undefined ? {} : { hostId: input.hostId }),
-            },
-          },
-          ...signalRequestArgs(input?.signal),
-        ),
+      const response = await call(
+        "system.environmentProviders",
+        {
+          ...(input?.projectId === undefined
+            ? {}
+            : { projectId: input.projectId }),
+          ...(input?.hostId === undefined ? {} : { hostId: input.hostId }),
+        },
+        input?.signal,
       );
       return response.providers;
     },
-    async experimental_cleanup(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"]["cleanup"].$post({
-          param: { id: input.environmentId },
-          query: { recover: input.recover === true ? "true" : "false" },
-        }),
+    experimental_cleanup: ({ environmentId, recover }) =>
+      call("environments.cleanup", {
+        id: environmentId,
+        recover: recover === true ? "true" : "false",
+      }),
+    async delete({ environmentId }) {
+      return okResponseSchema.parse(
+        await call("environments.delete", { id: environmentId }),
       );
     },
-    async delete(input) {
-      const body = await transport.readJson(
-        transport.api.v1.environments[":id"].$delete({
-          param: { id: input.environmentId },
-        }),
-      );
-      return okResponseSchema.parse(body);
-    },
-    async get(input) {
-      const body = await transport.readJson(
-        transport.api.v1.environments[":id"].$get(
-          {
-            param: { id: input.environmentId },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-      return environmentSchema.parse(body);
-    },
-    async paths(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"].paths.$get(
-          {
-            param: { id: input.environmentId },
-            query: environmentPathsQuery(input),
-          },
-          ...signalRequestArgs(input.signal),
-        ),
+    async get({ environmentId, signal }) {
+      return environmentSchema.parse(
+        await call("environments.get", { id: environmentId }, signal),
       );
     },
+    paths: (input) =>
+      call(
+        "environments.paths",
+        { id: input.environmentId, ...environmentPathsQuery(input) },
+        input.signal,
+      ),
     async update(input) {
-      return transport.readJson(
-        transport.api.v1.environments[":id"].$patch({
-          param: { id: input.environmentId },
-          json: environmentUpdateJson(input),
-        }),
-      );
+      return call("environments.update", {
+        id: input.environmentId,
+        ...environmentUpdateJson(input),
+      });
     },
   };
   return Object.assign(

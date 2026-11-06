@@ -26,8 +26,14 @@ type RouteBody<Request> =
           : Record<never, never>
         : Record<never, never>;
 
+type NoFields<Body> = string extends keyof Body
+  ? Body[string] extends never
+    ? Record<never, never>
+    : Body
+  : Body;
+
 export type RouteOperationInput<Descriptor extends RouteDefinition> =
-  RouteParam<Descriptor> & RouteBody<Descriptor["request"]>;
+  RouteParam<Descriptor> & NoFields<RouteBody<Descriptor["request"]>>;
 
 type SuccessStatus = 200 | 201 | 202 | 204;
 

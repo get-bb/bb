@@ -9,7 +9,7 @@ import {
   threadSectionMutationResponseSchema,
   threadSectionSchema,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export type ThreadSectionCreateResult = ThreadSectionResponse;
 export type ThreadSectionUpdateResult = ThreadSectionMutationResponse;
@@ -30,34 +30,27 @@ export interface ThreadSectionsArea {
 export function createThreadSectionsArea(
   args: CreateSdkAreaArgs,
 ): ThreadSectionsArea {
-  const { transport } = args;
+  const { call } = args.operations;
   return {
     async create(input) {
-      const body = await transport.readJson(
-        transport.api.v1["thread-sections"].$post({ json: input }),
+      return threadSectionSchema.parse(
+        await call("threadSections.create", input),
       );
-      return threadSectionSchema.parse(body);
     },
     async delete(input) {
-      const body = await transport.readJson(
-        transport.api.v1["thread-sections"].$delete({ json: input }),
+      return threadSectionMutationResponseSchema.parse(
+        await call("threadSections.delete", input),
       );
-      return threadSectionMutationResponseSchema.parse(body);
     },
     async list(input) {
-      const body = await transport.readJson(
-        transport.api.v1["thread-sections"].$get(
-          {},
-          ...signalRequestArgs(input?.signal),
-        ),
-      );
-      return threadSectionSchema.array().parse(body);
+      return threadSectionSchema
+        .array()
+        .parse(await call("threadSections.list", {}, input?.signal));
     },
     async update(input) {
-      const body = await transport.readJson(
-        transport.api.v1["thread-sections"].$patch({ json: input }),
+      return threadSectionMutationResponseSchema.parse(
+        await call("threadSections.update", input),
       );
-      return threadSectionMutationResponseSchema.parse(body);
     },
   };
 }

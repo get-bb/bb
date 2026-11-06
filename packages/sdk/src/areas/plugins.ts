@@ -338,13 +338,17 @@ function pluginSourceSelection(
   return undefined;
 }
 
+function nonEmptyId(value: string): string {
+  return z.string().min(1).parse(value);
+}
+
 function pluginPath(pluginId: string, suffix = ""): string {
-  const id = z.string().min(1).parse(pluginId);
-  return `/api/v1/plugins/${encodeURIComponent(id)}${suffix}`;
+  return `/api/v1/plugins/${encodeURIComponent(nonEmptyId(pluginId))}${suffix}`;
 }
 
 export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   const { transport } = args;
+  const { call } = args.operations;
 
   async function requestParsed<TOutput>(
     path: string,
@@ -359,33 +363,16 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     return schema.parse(json);
   }
 
-  function jsonInit(method: "POST" | "PUT", body: unknown): RequestInit {
-    return {
-      method,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    };
-  }
-
-  function installJobPath(jobId: string, suffix = ""): string {
-    const id = z.string().min(1).parse(jobId);
-    return `/api/v1/plugins/install-jobs/${encodeURIComponent(id)}${suffix}`;
-  }
-
   const updateJobs: PluginUpdateJobsArea = {
     async get(input) {
-      const jobId = z.string().min(1).parse(input.jobId);
-      const response = await requestParsed(
-        `/api/v1/plugins/update-jobs/${encodeURIComponent(jobId)}`,
-        pluginUpdateJobResponseSchema,
+      const response = pluginUpdateJobResponseSchema.parse(
+        await call("plugins.updateJob", { jobId: nonEmptyId(input.jobId) }),
       );
       return response.job;
     },
     async list(input = {}) {
-      const response = await requestParsed(
-        "/api/v1/plugins/update-jobs",
-        pluginUpdateJobListResponseSchema,
-        { signal: input.signal },
+      const response = pluginUpdateJobListResponseSchema.parse(
+        await call("plugins.updateJobs", {}, input.signal),
       );
       return response.jobs;
     },
@@ -408,30 +395,26 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
 
   const installJobs: PluginInstallJobsArea = {
     async cancel(input) {
-      const response = await requestParsed(
-        installJobPath(input.jobId, "/cancel"),
-        pluginInstallJobResponseSchema,
-        jsonInit("POST", {}),
+      const response = pluginInstallJobResponseSchema.parse(
+        await call("plugins.cancelInstallJob", {
+          jobId: nonEmptyId(input.jobId),
+        }),
       );
       return response.job;
     },
     async get(input) {
-      const response = await requestParsed(
-        installJobPath(input.jobId),
-        pluginInstallJobResponseSchema,
+      const response = pluginInstallJobResponseSchema.parse(
+        await call("plugins.installJob", { jobId: nonEmptyId(input.jobId) }),
       );
       return response.job;
     },
     async list(input = {}) {
-      const response = await requestParsed(
-        "/api/v1/plugins/install-jobs",
-        pluginInstallJobListResponseSchema,
-        { signal: input.signal },
+      const response = pluginInstallJobListResponseSchema.parse(
+        await call("plugins.installJobs", {}, input.signal),
       );
       return response.jobs;
     },
   };
-
   function requestInstall(path: string, body: unknown) {
     return requestParsed(path, pluginInstallStartResponseSchema, {
       method: "POST",
@@ -509,31 +492,29 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
           ? { entryId: input.entryId }
           : { entryId: input.entryId, marketplace: input.marketplace },
       );
-      const query = new URLSearchParams({ entryId: body.entryId });
-      if (body.marketplace !== undefined) {
-        query.set("marketplace", body.marketplace);
-      }
-      const response = await requestParsed(
-        `/api/v1/plugin-catalog/install-plan?${query.toString()}`,
-        pluginCatalogInstallPlanResponseSchema,
-        { signal: input.signal },
+      const response = pluginCatalogInstallPlanResponseSchema.parse(
+        await call(
+          "pluginCatalog.installPlan",
+          body.marketplace === undefined
+            ? { entryId: body.entryId }
+            : { entryId: body.entryId, marketplace: body.marketplace },
+          input.signal,
+        ),
       );
       return response.plan;
     },
     async search(input) {
-      const query = z.string().parse(input.query);
-      const response = await requestParsed(
-        `/api/v1/plugin-catalog/search?q=${encodeURIComponent(query)}`,
-        pluginCatalogSearchResponseCompatibilitySchema,
-        { signal: input.signal },
+      return pluginCatalogSearchResponseCompatibilitySchema.parse(
+        await call(
+          "pluginCatalog.search",
+          { q: z.string().parse(input.query) },
+          input.signal,
+        ),
       );
-      return response;
     },
     async status(input = {}) {
-      const response = await requestParsed(
-        "/api/v1/plugin-catalog",
-        pluginCatalogStatusResponseSchema,
-        { signal: input.signal },
+      const response = pluginCatalogStatusResponseSchema.parse(
+        await call("pluginCatalog.status", {}, input.signal),
       );
       return response.catalog;
     },
@@ -542,18 +523,14 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
   const marketplaces: PluginMarketplacesArea = {
     async add(input) {
       const body = pluginMarketplaceAddRequestSchema.parse(input);
-      const response = await requestParsed(
-        "/api/v1/marketplaces",
-        pluginMarketplaceMutationResponseSchema,
-        jsonInit("POST", body),
+      const response = pluginMarketplaceMutationResponseSchema.parse(
+        await call("marketplaces.add", body),
       );
       return response.marketplace;
     },
     async list(input = {}) {
-      const response = await requestParsed(
-        "/api/v1/marketplaces",
-        pluginMarketplaceListResponseSchema,
-        { signal: input.signal },
+      const response = pluginMarketplaceListResponseSchema.parse(
+        await call("marketplaces.list", {}, input.signal),
       );
       return response.marketplaces;
     },
@@ -561,19 +538,15 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       const body = pluginMarketplaceRefreshRequestSchema.parse(
         input.name === undefined ? {} : { name: input.name },
       );
-      const response = await requestParsed(
-        "/api/v1/marketplaces/refresh",
-        pluginMarketplaceRefreshResponseSchema,
-        { ...jsonInit("POST", body), signal: input.signal },
+      const response = pluginMarketplaceRefreshResponseSchema.parse(
+        await call("marketplaces.refresh", body, input.signal),
       );
       return response.results;
     },
     async remove(input) {
       const name = pluginMarketplaceNameSchema.parse(input.name);
-      const response = await requestParsed(
-        `/api/v1/marketplaces/${encodeURIComponent(name)}`,
-        pluginMarketplaceRemoveResponseSchema,
-        { method: "DELETE" },
+      const response = pluginMarketplaceRemoveResponseSchema.parse(
+        await call("marketplaces.remove", { name }),
       );
       return { convertedPluginIds: response.convertedPluginIds };
     },
@@ -603,20 +576,24 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     experimental_updateJobs: updateJobs,
     async experimental_discoverRpc(input = {}) {
       const query = pluginRpcDiscoveryQuerySchema.parse(input);
-      const params = new URLSearchParams();
-      if (query.pluginId !== undefined) params.set("pluginId", query.pluginId);
-      if (query.method !== undefined) params.set("method", query.method);
-      return requestParsed(
-        `/api/v1/plugins/rpc?${params}`,
-        pluginRpcDiscoveryResponseSchema,
-        { signal: input.signal },
+      return pluginRpcDiscoveryResponseSchema.parse(
+        await call(
+          "plugins.discoverRpc",
+          { pluginId: query.pluginId, method: query.method },
+          input.signal,
+        ),
       );
     },
     async callRpc(input) {
       const envelope = await requestParsed(
         pluginPath(input.pluginId, `/rpc/${encodeURIComponent(input.method)}`),
         z.object({ ok: z.literal(true), result: jsonValueSchema }),
-        { ...jsonInit("POST", input.input ?? null), signal: input.signal },
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input.input ?? null),
+          signal: input.signal,
+        },
       );
       return input.outputSchema.parse(envelope.result);
     },
@@ -624,70 +601,62 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       const body = pluginUpdateCheckRequestSchema.parse(
         input.pluginId === undefined ? {} : { id: input.pluginId },
       );
-      const response = await requestParsed(
-        "/api/v1/plugins/updates/check",
-        pluginUpdateCheckResponseSchema,
-        { ...jsonInit("POST", body), signal: input.signal },
+      const response = pluginUpdateCheckResponseSchema.parse(
+        await call("plugins.checkUpdates", body, input.signal),
       );
       return response.results;
     },
     async experimental_getSafeMode(input = {}) {
-      return requestParsed(
-        "/api/v1/plugins/safe-mode",
-        pluginSafeModeResponseSchema,
-        { signal: input.signal },
+      return pluginSafeModeResponseSchema.parse(
+        await call("plugins.safeMode", {}, input.signal),
       );
     },
     async experimental_setSafeMode(input) {
       const body = pluginSafeModeRequestSchema.parse({
         enabled: input.enabled,
       });
-      return requestParsed(
-        "/api/v1/plugins/safe-mode",
-        pluginSafeModeUpdateResponseSchema,
-        jsonInit("PUT", body),
+      return pluginSafeModeUpdateResponseSchema.parse(
+        await call("plugins.setSafeMode", body),
       );
     },
     async experimental_pruneCache(input = {}) {
       const body = pluginCachePruneRequestSchema.parse({
         dryRun: input.dryRun ?? false,
       });
-      return requestParsed(
-        "/api/v1/plugins/cache/prune",
-        pluginCachePruneResponseSchema,
-        { ...jsonInit("POST", body), signal: input.signal },
+      return pluginCachePruneResponseSchema.parse(
+        await call("plugins.pruneCache", body, input.signal),
       );
     },
     catalog,
     marketplaces,
     async disable(input) {
-      const response = await requestParsed(
-        pluginPath(input.pluginId, "/disable"),
-        pluginInstallResponseSchema,
-        jsonInit("POST", {}),
+      const response = pluginInstallResponseSchema.parse(
+        await call("plugins.disable", { id: nonEmptyId(input.pluginId) }),
       );
       return response.plugin;
     },
     async enable(input) {
-      const response = await requestParsed(
-        pluginPath(input.pluginId, "/enable"),
-        pluginInstallResponseSchema,
-        jsonInit("POST", {}),
+      const response = pluginInstallResponseSchema.parse(
+        await call("plugins.enable", { id: nonEmptyId(input.pluginId) }),
       );
       return response.plugin;
     },
     async getSettings(input) {
-      return requestParsed(
-        pluginPath(input.pluginId, "/settings"),
-        pluginSettingsResponseSchema,
-        { signal: input.signal },
+      return pluginSettingsResponseSchema.parse(
+        await call(
+          "plugins.settings",
+          { id: nonEmptyId(input.pluginId) },
+          input.signal,
+        ),
       );
     },
     async getSource(input) {
-      return requestParsed(
-        pluginPath(input.pluginId, "/source"),
-        pluginSourceDetailSchema,
-        { signal: input.signal },
+      return pluginSourceDetailSchema.parse(
+        await call(
+          "plugins.source",
+          { id: nonEmptyId(input.pluginId) },
+          input.signal,
+        ),
       );
     },
     async install(input) {
@@ -701,53 +670,49 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
     installJobs,
     async list(input = {}) {
-      return requestParsed("/api/v1/plugins", pluginListResponseSchema, {
-        signal: input.signal,
-      });
+      return pluginListResponseSchema.parse(
+        await call("plugins.list", {}, input.signal),
+      );
     },
     async listUpdateResults(input = {}) {
-      const response = await requestParsed(
-        "/api/v1/plugins/updates",
-        pluginUpdateCheckResponseSchema,
-        { signal: input.signal },
+      const response = pluginUpdateCheckResponseSchema.parse(
+        await call("plugins.updates", {}, input.signal),
       );
       return response.results;
     },
     async reload(input = {}) {
-      const query = input.pluginId
-        ? `?id=${encodeURIComponent(z.string().min(1).parse(input.pluginId))}`
-        : "";
-      return requestParsed(
-        `/api/v1/plugins/reload${query}`,
-        pluginReloadResponseSchema,
-        jsonInit("POST", {}),
+      return pluginReloadResponseSchema.parse(
+        await call(
+          "plugins.reload",
+          input.pluginId ? { id: nonEmptyId(input.pluginId) } : {},
+        ),
       );
     },
     async remove(input) {
-      return requestParsed(
-        pluginPath(input.pluginId),
-        pluginRemoveResponseSchema,
-        { method: "DELETE" },
+      return pluginRemoveResponseSchema.parse(
+        await call("plugins.remove", { id: nonEmptyId(input.pluginId) }),
       );
     },
     async token(input) {
       const body = pluginTokenRequestSchema.parse({
         rotate: input.rotate ?? false,
       });
-      return requestParsed(
-        pluginPath(input.pluginId, "/token"),
-        pluginTokenResponseSchema,
-        jsonInit("POST", body),
+      return pluginTokenResponseSchema.parse(
+        await call("plugins.token", {
+          id: nonEmptyId(input.pluginId),
+          ...body,
+        }),
       );
     },
     async updateSettings(input) {
       const body = pluginSettingsUpdateRequestSchema.parse({
         values: input.values,
       });
-      return requestParsed(
-        pluginPath(input.pluginId, "/settings"),
-        pluginSettingsResponseSchema,
-        jsonInit("PUT", body),
+      return pluginSettingsResponseSchema.parse(
+        await call("plugins.updateSettings", {
+          id: nonEmptyId(input.pluginId),
+          ...body,
+        }),
       );
     },
   };

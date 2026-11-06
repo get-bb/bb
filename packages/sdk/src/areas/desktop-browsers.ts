@@ -76,32 +76,24 @@ export interface ExperimentalDesktopBrowsersArea {
 }
 
 export function createDesktopBrowsersArea({
-  transport,
+  operations,
 }: CreateSdkAreaArgs): ExperimentalDesktopBrowsersArea {
-  const api = () => transport.api.v1["desktop-browsers"];
+  const { call } = operations;
   const listTabs = (input: ExperimentalDesktopBrowserScope) =>
-    transport.readJson(api().tabs.$post({ json: input }));
+    call("desktopBrowsers.listTabs", input);
   return {
-    listInstances: (input) =>
-      transport.readJson(api().instances.$post({ json: input })),
+    listInstances: (input) => call("desktopBrowsers.listInstances", input),
     listTabs,
-    createTab: (input) =>
-      transport.readJson(api().create.$post({ json: input })),
-    acquireControl: (input) =>
-      transport.readJson(api().acquire.$post({ json: input })),
-    openConnection: (input) =>
-      transport.readJson(api().connection.$post({ json: input })),
-    releaseControl: (input) =>
-      transport.readJson(api().release.$post({ json: input })),
-    revealTab: (input) =>
-      transport.readJson(api().reveal.$post({ json: input })),
-    closeTab: (input) => transport.readJson(api().close.$post({ json: input })),
-    captureTab: (input) =>
-      transport.readJson(api().capture.$post({ json: input })),
+    createTab: (input) => call("desktopBrowsers.createTab", input),
+    acquireControl: (input) => call("desktopBrowsers.acquireControl", input),
+    openConnection: (input) => call("desktopBrowsers.openConnection", input),
+    releaseControl: (input) => call("desktopBrowsers.releaseControl", input),
+    revealTab: (input) => call("desktopBrowsers.revealTab", input),
+    closeTab: (input) => call("desktopBrowsers.closeTab", input),
+    captureTab: (input) => call("desktopBrowsers.captureTab", input),
     listImportSources: (input) =>
-      transport.readJson(api()["import-sources"].$post({ json: input })),
-    importCookies: (input) =>
-      transport.readJson(api()["import-cookies"].$post({ json: input })),
+      call("desktopBrowsers.listImportSources", input),
+    importCookies: (input) => call("desktopBrowsers.importCookies", input),
     subscribe(input) {
       let disposed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;

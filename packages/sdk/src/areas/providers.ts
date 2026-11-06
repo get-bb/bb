@@ -4,11 +4,7 @@ import type {
   SystemProviderCatalogEntry,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import {
-  readExecutionOptions,
-  signalRequestArgs,
-  type CreateSdkAreaArgs,
-} from "./common.js";
+import { readExecutionOptions, type CreateSdkAreaArgs } from "./common.js";
 
 export type ProviderHostRoutingArgs =
   | { environmentId: string; hostId?: never }
@@ -43,37 +39,22 @@ export interface ProvidersArea {
 }
 
 export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
-  const { transport } = args;
+  const { operations } = args;
+  const { call } = operations;
   return {
-    async catalog() {
-      return transport.readJson(
-        transport.api.v1.system.providers.catalog.$get(),
-      );
-    },
-    async setEnabled(input) {
-      return transport.readJson(
-        transport.api.v1.system.providers[":id"].enabled.$put({
-          param: { id: input.providerId },
-          json: { enabled: input.enabled },
-        }),
-      );
-    },
-    async list(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system.providers.$get(
-          {
-            query: {
-              capability: input.capability,
-              environmentId: input.environmentId,
-              hostId: input.hostId,
-            },
-          },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
-    async models(input = {}) {
-      return readExecutionOptions(transport, input);
-    },
+    catalog: () => call("system.providerCatalog", {}),
+    setEnabled: ({ providerId, enabled }) =>
+      call("system.providerEnabled", { id: providerId, enabled }),
+    list: (input = {}) =>
+      call(
+        "system.providers",
+        {
+          capability: input.capability,
+          environmentId: input.environmentId,
+          hostId: input.hostId,
+        },
+        input.signal,
+      ),
+    models: (input = {}) => readExecutionOptions(operations, input),
   };
 }

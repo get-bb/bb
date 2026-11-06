@@ -11,7 +11,7 @@ import {
   type ThreadTimelineResponse,
   type ThreadWithIncludesResponse,
 } from "@bb/server-contract";
-import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
@@ -70,7 +70,7 @@ function summarizeThread(thread: StatusSourceThread): StatusThreadSummary {
 }
 
 export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
-  const { transport } = args;
+  const { call } = args.operations;
   return {
     async get(input = {}) {
       const projectId = input.projectId;
@@ -78,42 +78,20 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
       const threadId = input.threadId;
       const [project, thread] = await Promise.all([
         projectId
-          ? fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.projects[":id"].$get(
-                  {
-                    param: { id: projectId },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
-            )
+          ? fetchSilent(() => call("projects.get", { id: projectId }, signal))
           : Promise.resolve(null),
         threadId
-          ? fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.threads[":id"].$get(
-                  {
-                    param: { id: threadId },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
-            )
+          ? fetchSilent(() => call("threads.get", { id: threadId }, signal))
           : Promise.resolve(null),
       ]);
       const pendingTodos =
         thread === null
           ? null
           : await fetchSilent(async () => {
-              const timeline = await transport.readJson(
-                transport.api.v1.threads[":id"].timeline.$get(
-                  {
-                    param: { id: thread.id },
-                    query: { summaryOnly: "true" },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
+              const timeline = await call(
+                "threads.timeline",
+                { id: thread.id, summaryOnly: "true" },
+                signal,
               );
               if (isThreadTimelineDelta(timeline)) {
                 throw new Error("Expected a full thread timeline window.");
@@ -124,14 +102,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(() =>
-              transport.readJson(
-                transport.api.v1.threads.$get(
-                  {
-                    query: { parentThreadId: thread.id },
-                  },
-                  ...signalRequestArgs(signal),
-                ),
-              ),
+              call("threads.list", { parentThreadId: thread.id }, signal),
             );
 
       return {

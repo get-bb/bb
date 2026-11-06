@@ -29,7 +29,7 @@ vi.mock("../../client.js", async () => {
     const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
     return {
       ...realTransport,
-      api: serverClientState.createClient(baseUrl)?.api ?? {},
+      api: serverClientState.createClient(baseUrl)?.api ?? realTransport.api,
       readJson: (responsePromise: MockTransportPromise) =>
         realTransport.readJson(responsePromise.then(toResponse)),
       readVoid: (responsePromise: MockTransportPromise) =>

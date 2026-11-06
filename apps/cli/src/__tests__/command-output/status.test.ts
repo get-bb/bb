@@ -19,6 +19,7 @@ describe("bb status command output", () => {
   it("bb status prints project/thread context", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-1");
+    stubServerApi({});
 
     await runCommand(["status"], register);
 
@@ -94,43 +95,35 @@ describe("bb status command output", () => {
 function stubServer(plugins: Array<{ id: string; status: string }>): void {
   stubServerApi({
     "v1.system.config.$get": vi.fn(async () => ({ dataDir: "/data/bb" })),
-  });
-  vi.mocked(fetch).mockImplementation(async (input) => {
-    const url = String(input instanceof Request ? input.url : input);
-    const body = url.endsWith("/api/v1/system/config")
-      ? { dataDir: "/data/bb" }
-      : {
-          plugins: plugins.map(({ id, status }) => ({
-            id,
-            status,
-            statusDetail: null,
-            source: `path:/plugins/${id}`,
-            rootDir: `/plugins/${id}`,
-            version: "1.0.0",
-            provenance: "direct",
-            publisherLabel: null,
-            isOrphanedBuiltin: false,
-            sourceDisplay: `path · /plugins/${id}`,
-            sourceNotice: null,
-            updateState: {},
-            enabled: true,
-            description: null,
-            name: null,
-            icon: null,
-            iconUrl: null,
-            handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-            services: [],
-            schedules: [],
-            cliCommand: null,
-            hasSettings: false,
-            app: { hasApp: false, bundle: null },
-            logoUrl: null,
-            logoDarkUrl: null,
-          })),
-        };
-    return new Response(JSON.stringify(body), {
-      headers: { "Content-Type": "application/json" },
-    });
+    "v1.plugins.$get": vi.fn(async () => ({
+      plugins: plugins.map(({ id, status }) => ({
+        id,
+        status,
+        statusDetail: null,
+        source: `path:/plugins/${id}`,
+        rootDir: `/plugins/${id}`,
+        version: "1.0.0",
+        provenance: "direct",
+        publisherLabel: null,
+        isOrphanedBuiltin: false,
+        sourceDisplay: `path · /plugins/${id}`,
+        sourceNotice: null,
+        updateState: {},
+        enabled: true,
+        description: null,
+        name: null,
+        icon: null,
+        iconUrl: null,
+        handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+        services: [],
+        schedules: [],
+        cliCommand: null,
+        hasSettings: false,
+        app: { hasApp: false, bundle: null },
+        logoUrl: null,
+        logoDarkUrl: null,
+      })),
+    })),
   });
 }
 
