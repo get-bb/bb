@@ -3,8 +3,8 @@ import type { PluginInstallJob } from "@bb/server-contract";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { isActivePluginInstallJob } from "@/hooks/queries/plugin-install-job-queries";
 import {
-  invalidatePluginCatalogSearch,
   invalidatePluginList,
+  refreshPluginCatalogSearch,
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
 
@@ -69,8 +69,10 @@ export function useOnboardingPluginSwitches(): OnboardingPluginSwitches {
   }, []);
 
   const refresh = useCallback(async () => {
-    invalidatePluginCatalogSearch({ queryClient });
-    await invalidatePluginList({ queryClient }).catch(() => undefined);
+    await Promise.all([
+      refreshPluginCatalogSearch({ queryClient }).catch(() => undefined),
+      invalidatePluginList({ queryClient }).catch(() => undefined),
+    ]);
   }, [queryClient]);
 
   const drive = useCallback(

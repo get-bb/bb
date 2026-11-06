@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { useQuery } from "@tanstack/react-query";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { PluginInstallJob } from "@bb/server-contract";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
+import {
+  pluginCatalogSearchQueryKey,
+  pluginInstallJobsQueryKey,
+  pluginListQueryKey,
+} from "@/hooks/queries/query-keys";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -114,5 +119,65 @@ describe("useOnboardingPluginSwitches", () => {
     expect(apply).toHaveBeenCalledTimes(1);
     expect(shown()).toBe(false);
     expect(onFailed).not.toHaveBeenCalled();
+  });
+
+  it("keeps a successfully installed switch on until both the catalog and the plugin list show it", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(pluginInstallJobsQueryKey(), [job("running")]);
+    const server = { installed: false };
+    const catalogReply = { release: () => {} };
+    const rendered: boolean[] = [];
+    const view = renderHook(
+      () => {
+        const switches = useOnboardingPluginSwitches();
+        const catalog = useQuery({
+          queryKey: pluginCatalogSearchQueryKey(""),
+          queryFn: () => {
+            const installed = server.installed;
+            return new Promise<boolean>((resolve) => {
+              catalogReply.release = () => resolve(installed);
+              if (!installed) resolve(false);
+            });
+          },
+        });
+        const list = useQuery({
+          queryKey: pluginListQueryKey(false),
+          queryFn: () => Promise.resolve(server.installed),
+        });
+        const serverEnabled = catalog.data === true && list.data === true;
+        const shown = switches.shown("workflows", serverEnabled);
+        rendered.push(shown);
+        return { switches, catalog, list };
+      },
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(view.result.current.catalog.data).toBe(false);
+      expect(view.result.current.list.data).toBe(false);
+    });
+
+    await act(async () =>
+      view.result.current.switches.set({
+        pluginId: "workflows",
+        enabled: true,
+        serverEnabled: false,
+        apply: async () => "job_1",
+        onFailed: vi.fn(),
+      }),
+    );
+    rendered.length = 0;
+    server.installed = true;
+    await act(async () => {
+      queryClient.setQueryData(pluginInstallJobsQueryKey(), [job("succeeded")]);
+    });
+    await waitFor(() => expect(view.result.current.list.data).toBe(true));
+    expect(view.result.current.catalog.data).toBe(false);
+
+    await act(async () => catalogReply.release());
+    await waitFor(() => expect(view.result.current.catalog.data).toBe(true));
+    await act(async () => {});
+
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.every((shown) => shown)).toBe(true);
   });
 });
