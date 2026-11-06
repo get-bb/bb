@@ -983,7 +983,7 @@ describe("connect setup guide section", () => {
     ).toBeNull();
   });
 
-  it("does not leave the pending sign-in showing after pairing when bb connect is still off", async () => {
+  it("turns bb connect on after pairing with a code when it was off, without showing Set up in between", async () => {
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
@@ -992,14 +992,23 @@ describe("connect setup guide section", () => {
       }),
       redeemCode: () => signedInAccount,
     });
-    let currentStatus = status();
+    let statusAfterPairing: ((value: ConnectStatus) => void) | null = null;
+    let currentStatus: () => ConnectStatus | Promise<ConnectStatus> = () =>
+      status();
     const slot = renderSlot(
       section(),
       { onPhone: false, onSetupStarted: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
-        rpc: { status: () => currentStatus },
+        rpc: {
+          status: () => currentStatus(),
+          setRemoteAccess: (input: unknown) => {
+            expect(input).toEqual({ enabled: true });
+            currentStatus = () => connected();
+            return connected();
+          },
+        },
       },
     );
 
@@ -1007,17 +1016,31 @@ describe("connect setup guide section", () => {
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
-    currentStatus = status({ paired: true, enabled: false });
+    currentStatus = () =>
+      new Promise<ConnectStatus>((resolve) => {
+        statusAfterPairing = resolve;
+      });
     fireEvent.change(slot.getByLabelText("Pairing code"), {
       target: { value: "k7qp-2m4x" },
     });
 
-    await slot.findByRole("button", { name: "Set up" });
+    await slot.findByText("Signed in. Turning on bb connect…");
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(slot.queryByText(/Finish signing in on/u)).toBeNull();
     expect(slot.queryByText(/cancelled/u)).toBeNull();
     expect(
       slot.queryByRole("button", { name: "Have a pairing code?" }),
     ).toBeNull();
+
+    await waitFor(() => expect(statusAfterPairing).not.toBeNull());
+    await act(async () => {
+      statusAfterPairing?.(status({ paired: true, enabled: false }));
+    });
+    await slot.findByText("bb connect is on");
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "setRemoteAccess"),
+    ).toHaveLength(1);
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
 
   it("keeps the pending sign-in when a pairing code is rejected", async () => {

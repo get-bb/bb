@@ -2061,19 +2061,36 @@ function ConnectSetupGuideSection({
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
   const [codeOpen, setCodeOpen] = useState(false);
+  const [codePairing, setCodePairing] = useState<{
+    id: number;
+    statusAtPairing: ConnectStatus | null;
+  } | null>(null);
+  const codePairingCountRef = useRef(0);
   const signedInLoginId = login?.state === "signed-in" ? login.id : null;
+  const turnOnKey =
+    signedInLoginId ?? (codePairing === null ? null : `code:${codePairing.id}`);
   const remoteAccessOff = status !== null && status.paired && !status.enabled;
-  const turnedOnForLoginRef = useRef<string | null>(null);
+  const turnedOnForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (signedInLoginId === null || !remoteAccessOff) return;
-    if (turnedOnForLoginRef.current === signedInLoginId) return;
-    turnedOnForLoginRef.current = signedInLoginId;
+    if (turnOnKey === null || !remoteAccessOff) return;
+    if (turnedOnForRef.current === turnOnKey) return;
+    turnedOnForRef.current = turnOnKey;
     rpc
       .call("setRemoteAccess", { enabled: true })
       .then(refetch, (rpcError: unknown) =>
         setTurnOnError(errorText(rpcError)),
       );
-  }, [refetch, remoteAccessOff, rpc, signedInLoginId]);
+  }, [refetch, remoteAccessOff, rpc, turnOnKey]);
+  useEffect(() => {
+    if (
+      codePairing !== null &&
+      status !== null &&
+      status !== codePairing.statusAtPairing &&
+      !status.paired
+    ) {
+      setCodePairing(null);
+    }
+  }, [codePairing, status]);
 
   if (
     status !== null &&
@@ -2087,14 +2104,17 @@ function ConnectSetupGuideSection({
   const connectingState =
     status !== null && status.paired && status.enabled ? status.state : null;
   const connecting = connectingState !== null;
+  const turningOnAfterPairing = codePairing !== null && turnOnError === null;
   const signingIn =
-    login !== null &&
-    (login.state === "pending" ||
-      (login.state === "signed-in" && turnOnError === null));
+    turningOnAfterPairing ||
+    (login !== null &&
+      (login.state === "pending" ||
+        (login.state === "signed-in" && turnOnError === null)));
   const setUp = () => {
     onSetupStarted();
     setTurnOnError(null);
     setCodeOpen(false);
+    setCodePairing(null);
     if (status === null) {
       refetch();
       return;
@@ -2118,6 +2138,7 @@ function ConnectSetupGuideSection({
 
   const showsContent =
     connecting ||
+    turningOnAfterPairing ||
     (login !== null && login.state !== "pending") ||
     error !== null ||
     turnOnError !== null ||
@@ -2130,6 +2151,11 @@ function ConnectSetupGuideSection({
       ? status
       : null;
   const paired = () => {
+    codePairingCountRef.current += 1;
+    setCodePairing({
+      id: codePairingCountRef.current,
+      statusAtPairing: status,
+    });
     cancel();
     refetch();
   };
@@ -2171,11 +2197,7 @@ function ConnectSetupGuideSection({
           </div>
         )
       }
-      panel={
-        connecting
-          ? null
-          : setupGuideLoginPanel(login, navigate.openUrl)
-      }
+      panel={connecting ? null : setupGuideLoginPanel(login, navigate.openUrl)}
       action={
         connecting || signingIn ? undefined : (
           <Button
@@ -2201,7 +2223,9 @@ function ConnectSetupGuideSection({
                 ? "bb connect is reconnecting…"
                 : "bb connect is starting…"}
             </PendingStatus>
-          ) : turnOnError !== null ? null : (
+          ) : turnOnError !== null ? null : turningOnAfterPairing ? (
+            <PendingStatus>Signed in. Turning on bb connect…</PendingStatus>
+          ) : (
             setupGuideLoginContent(login)
           )}
           {error !== null ? <SetupGuideError>{error}</SetupGuideError> : null}
