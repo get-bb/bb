@@ -274,6 +274,9 @@ async function resolveDesktopSession(
     db,
   );
   if (verified === null) return null;
+  if (verified.unrecordedUse) {
+    ctx.waitUntil(recordDesktopSessionUse(verified.unrecordedUse, db));
+  }
   if (
     verified.refreshGrant === null ||
     resolved === null ||
@@ -281,7 +284,6 @@ async function resolveDesktopSession(
   ) {
     return { userId: verified.userId, setCookie: null };
   }
-  ctx.waitUntil(recordDesktopSessionUse(verified.refreshGrant, db));
   const runtime = resolveConnectRuntime(env);
   const renewed = await issueDesktopSessionCookie(
     { userId: verified.userId, grant: verified.refreshGrant },

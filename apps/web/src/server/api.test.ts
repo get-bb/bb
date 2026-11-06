@@ -1277,6 +1277,17 @@ describe("deleteAccount", () => {
     expect(closeTunnel).not.toHaveBeenCalled();
   });
 
+  it("refuses an account that has no handle to confirm with", async () => {
+    await seedUser("u1", "sawyer-gh");
+
+    await expect(deleteAccount(deps, "u1", "")).resolves.toEqual({
+      error: "no-handle",
+    });
+    expect(
+      await first(db.select().from(user).where(eq(user.id, "u1")).limit(1)),
+    ).toBeDefined();
+  });
+
   it("deletes the account, frees its addresses, and closes its tunnels", async () => {
     await seedAccount();
 

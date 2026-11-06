@@ -612,8 +612,10 @@ function DeleteAccountDialog({
   async function confirm() {
     setBusy(true);
     setFailed(false);
-    const result = await deleteAccountFn({ data: { confirmHandle: typed } });
-    if ("ok" in result) {
+    const result = await deleteAccountFn({
+      data: { confirmHandle: typed },
+    }).catch(() => null);
+    if (result !== null && "ok" in result) {
       window.location.href = "/";
       return;
     }

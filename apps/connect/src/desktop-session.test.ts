@@ -110,18 +110,41 @@ describe("recordDesktopSessionUse", () => {
     return row?.lastSeenAt?.getTime() ?? null;
   }
 
-  it("records use for a machine grant at most once a minute", async () => {
+  it("records use for a machine grant at most once an hour", async () => {
     const account = await seedMachine("acct-use");
     const now = Date.now();
 
     await recordDesktopSessionUse(account.grant, db, now);
     expect(await lastSeen("machine-acct-use")).toBe(now);
 
-    await recordDesktopSessionUse(account.grant, db, now + 30_000);
+    await recordDesktopSessionUse(account.grant, db, now + 30 * 60_000);
     expect(await lastSeen("machine-acct-use")).toBe(now);
 
-    await recordDesktopSessionUse(account.grant, db, now + 61_000);
-    expect(await lastSeen("machine-acct-use")).toBe(now + 61_000);
+    await recordDesktopSessionUse(account.grant, db, now + HOUR_MS + 1);
+    expect(await lastSeen("machine-acct-use")).toBe(now + HOUR_MS + 1);
+  });
+
+  it("asks the gate to record a device's use once an hour, and again if the write never landed", async () => {
+    const account = await seedMachine("acct-gate-use");
+    const mintedAt = Date.now();
+    const value = await createDesktopSessionCookie(
+      account,
+      SECRET,
+      mintedAt + DESKTOP_SESSION_TTL_MS,
+    );
+    const unrecordedUse = async (at: number) =>
+      (await verifyDesktopSessionCookie(value, SECRET, db, at))
+        ?.unrecordedUse ?? null;
+
+    expect(await unrecordedUse(mintedAt)).toEqual(account.grant);
+    expect(await unrecordedUse(mintedAt + 1_000)).toBeNull();
+    expect(await unrecordedUse(mintedAt + 61_000)).toEqual(account.grant);
+
+    await recordDesktopSessionUse(account.grant, db, mintedAt + 61_000);
+    expect(await unrecordedUse(mintedAt + 30 * 60_000)).toBeNull();
+    expect(await unrecordedUse(mintedAt + HOUR_MS + 61_000)).toEqual(
+      account.grant,
+    );
   });
 
   it("ignores session grants and revoked machines", async () => {
@@ -155,7 +178,7 @@ describe("desktop session cookie", () => {
 
     await expect(
       verifyDesktopSessionCookie(cookie.value, SECRET, db, mintedAt + HOUR_MS),
-    ).resolves.toEqual({ userId: "acct-roll", refreshGrant: null });
+    ).resolves.toMatchObject({ userId: "acct-roll", refreshGrant: null });
     await expect(
       verifyDesktopSessionCookie(
         cookie.value,
@@ -163,7 +186,10 @@ describe("desktop session cookie", () => {
         db,
         mintedAt + DAY_MS + 1,
       ),
-    ).resolves.toEqual({ userId: "acct-roll", refreshGrant: account.grant });
+    ).resolves.toMatchObject({
+      userId: "acct-roll",
+      refreshGrant: account.grant,
+    });
     await expect(
       verifyDesktopSessionCookie(cookie.value, SECRET, db, cookie.expiresAt),
     ).resolves.toBeNull();
@@ -290,7 +316,11 @@ describe("desktop session cookie", () => {
     const legacy = await legacyDesktopCookie("acct-legacy", issuedAt + HOUR_MS);
     await expect(
       verifyDesktopSessionCookie(legacy, SECRET, db, issuedAt + 30 * 60_000),
-    ).resolves.toEqual({ userId: "acct-legacy", refreshGrant: null });
+    ).resolves.toEqual({
+      userId: "acct-legacy",
+      refreshGrant: null,
+      unrecordedUse: null,
+    });
     await expect(
       verifyDesktopSessionCookie(legacy, SECRET, db, issuedAt + HOUR_MS),
     ).resolves.toBeNull();

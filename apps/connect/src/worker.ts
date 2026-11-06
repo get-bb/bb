@@ -715,6 +715,9 @@ const gate = {
         )
       : null;
     const desktopUserId = verifiedDesktop?.userId ?? null;
+    if (verifiedDesktop?.unrecordedUse) {
+      ctx.waitUntil(recordDesktopSessionUse(verifiedDesktop.unrecordedUse, db));
+    }
     if (!sessionUserId && !desktopUserId) {
       return signInPage(label, appUrl, url.toString());
     }
@@ -759,7 +762,6 @@ const gate = {
     const setCookies: string[] = [];
     const desktopRefreshGrant = verifiedDesktop?.refreshGrant ?? null;
     if (desktopUserId === resolved.userId && desktopRefreshGrant !== null) {
-      ctx.waitUntil(recordDesktopSessionUse(desktopRefreshGrant, db));
       const renewed = await issueDesktopSessionCookie(
         { userId: desktopUserId, grant: desktopRefreshGrant },
         {

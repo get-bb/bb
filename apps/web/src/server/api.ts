@@ -388,14 +388,11 @@ export async function deleteAccount(
   deps: Pick<Deps, "db" | "closeTunnel">,
   userId: string,
   confirmHandle: string,
-): Promise<{ ok: true } | { error: "not-found" | "handle-mismatch" }> {
+): Promise<{ ok: true } | { error: "no-handle" | "handle-mismatch" }> {
   const { db } = deps;
-  const account = await first(
-    db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1),
-  );
-  if (!account) return { error: "not-found" };
   const prof = await findProfile(db, userId);
-  if (prof && prof.handle !== confirmHandle.trim().toLowerCase()) {
+  if (!prof) return { error: "no-handle" };
+  if (prof.handle !== confirmHandle.trim().toLowerCase()) {
     return { error: "handle-mismatch" };
   }
 
@@ -413,7 +410,7 @@ export async function deleteAccount(
     userId,
     action: ACCOUNT_DELETE_AUDIT_ACTION,
     detail: JSON.stringify({
-      handle: prof?.handle ?? null,
+      handle: prof.handle,
       servers: servers.length,
     }),
     createdAt: new Date(),
