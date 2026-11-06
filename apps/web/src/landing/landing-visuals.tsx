@@ -20,7 +20,9 @@ import { useDesktopPlatform } from "./desktop-platform";
 import { DesktopInstallChoice } from "./install-choice";
 import {
   ClaudeIcon,
+  CopilotIcon,
   CursorIcon,
+  GeminiIcon,
   GrokIcon,
   HermesAgentIcon,
   OmpIcon,
@@ -178,6 +180,66 @@ export function ProviderChips() {
         </span>
       ) : null}
     </>
+  );
+}
+
+declare const __ACP_AGENT_IDS__: string[] | null | undefined;
+
+const AGENT_ROW = [
+  { Icon: ClaudeIcon, registry: ["claude-acp"] },
+  { Icon: OpenAiIcon, registry: ["codex-acp"] },
+  { Icon: GeminiIcon, registry: ["gemini"] },
+  { Icon: CursorIcon, registry: ["cursor"] },
+  { Icon: CopilotIcon, registry: ["github-copilot-cli"] },
+  { Icon: PiIcon, registry: ["pi-acp"] },
+  { Icon: OpencodeIcon, registry: ["opencode", "opencode-v2"] },
+  { Icon: GrokIcon, registry: ["grok-build"] },
+  { Icon: OmpIcon, registry: [] },
+  { Icon: HermesAgentIcon, registry: [] },
+] as const;
+
+const AGENT_ROW_PHONE_COUNTS = [3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+export function moreRegistryAgents(
+  ids: readonly string[] | null | undefined,
+): number | null {
+  if (!ids) return null;
+  const shown = new Set<string>(AGENT_ROW.flatMap((agent) => agent.registry));
+  return ids.filter((id) => !shown.has(id)).length;
+}
+
+export function AgentRow({
+  registryIds = typeof __ACP_AGENT_IDS__ === "undefined"
+    ? null
+    : __ACP_AGENT_IDS__,
+}: {
+  registryIds?: readonly string[] | null;
+}) {
+  const more = moreRegistryAgents(registryIds);
+  return (
+    <div className="providers agent-row">
+      <span className="label">Bring your own subscription</span>
+      {AGENT_ROW.map(({ Icon }, i) => (
+        <Icon key={i} className={`plogo agent-logo agent-logo-${i}`} />
+      ))}
+      {more ? (
+        <span className="agent-more" aria-label={`${more} more agents`}>
+          +{more} more
+        </span>
+      ) : null}
+      {AGENT_ROW_PHONE_COUNTS.map((shown) => {
+        const hidden = AGENT_ROW.length - shown + (more ?? 0);
+        return hidden > 0 ? (
+          <span
+            key={shown}
+            className={`agent-phone-more agent-phone-more-${shown}`}
+            aria-label={`${hidden} more agents`}
+          >
+            +{hidden} more
+          </span>
+        ) : null;
+      })}
+    </div>
   );
 }
 

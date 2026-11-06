@@ -894,6 +894,18 @@ html:has(.nav-sticky) {
   text-wrap: balance;
 }
 
+.hero .sub-wide {
+  max-width: 700px;
+}
+
+@media (max-width: 560px) {
+  .hero:has(.sub-wide) h1,
+  .hero .sub-wide {
+    max-width: none;
+    text-wrap: pretty;
+  }
+}
+
 .providers {
   display: flex;
   align-items: center;
@@ -922,6 +934,39 @@ html:has(.nav-sticky) {
 .plogo:hover {
   color: var(--ink);
   transform: translateY(-1px);
+}
+
+.agent-row .plogo {
+  color: var(--ink);
+}
+
+.agent-phone-more {
+  display: none;
+}
+
+.agent-more {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--subtle);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 560px) {
+  .providers.agent-row {
+    row-gap: 10px;
+  }
+
+  .agent-row .label {
+    flex-basis: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-more {
+    display: none;
+  }
 }
 
 /* Collapsed "+N more" for the mobile provider row; desktop shows every logo. */
@@ -3357,6 +3402,133 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     display: inline;
   }
 
+  .providers.agent-row {
+    container: agent-row / inline-size;
+    column-gap: 16px;
+  }
+
+  .agent-row .agent-more,
+  .agent-row .agent-logo-3,
+  .agent-row .agent-logo-4,
+  .agent-row .agent-logo-5,
+  .agent-row .agent-logo-6,
+  .agent-row .agent-logo-7,
+  .agent-row .agent-logo-8,
+  .agent-row .agent-logo-9 {
+    display: none;
+  }
+
+  .agent-row .agent-phone-more {
+    display: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--subtle);
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+
+  .agent-row .agent-phone-more-3 {
+    display: inline;
+  }
+
+  @container agent-row (min-width: 232px) {
+    .agent-row .agent-logo-3 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-4 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 274px) {
+    .agent-row .agent-logo-4 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-5 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 316px) {
+    .agent-row .agent-logo-5 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-6 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 358px) {
+    .agent-row .agent-logo-6 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-7 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 400px) {
+    .agent-row .agent-logo-7 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-8 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 442px) {
+    .agent-row .agent-logo-8 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-9 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 484px) {
+    .agent-row .agent-logo-9 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-10 {
+      display: inline;
+    }
+  }
+
   /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
      radial that can't fade within the narrow mobile hero, leaving a tinted
      rectangle with hard side edges/corners. Re-size it relative to the hero
@@ -4322,6 +4494,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: rhb-shimmer 2s linear infinite;
 }
 
+@keyframes rhb-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
 
 .mock-ui .rhb-gen-head {
   min-width: 0;
@@ -4337,6 +4517,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   text-overflow: ellipsis;
 }
 
+@keyframes rhb-reveal {
+  from {
+    display: none;
+  }
+}
 
 .mock-ui .rhb-turn-head {
   display: grid;
@@ -4352,6 +4537,16 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   animation: rhb-turn-open var(--mock-fold-dur) var(--mock-fold-ease) both;
 }
 
+@keyframes rhb-turn-open {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: -6px;
+    opacity: 0;
+  }
+  60% {
+    opacity: 0;
+  }
+}
 
 .mock-ui .rhb-working {
   display: grid;
@@ -4373,6 +4568,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     rhb-working-end var(--mock-fold-dur) var(--mock-fold-ease) forwards;
 }
 
+@keyframes rhb-working-end {
+  to {
+    opacity: 0;
+  }
+}
 
 .mock-ui .rhb-working.is-ending + * {
   margin-top: calc(-20px - var(--rhb-feed-gap, 12px));
@@ -4457,7 +4657,18 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   opacity: 0.4;
 }
 
+@keyframes mock-phase-in {
+  from {
+    opacity: 0;
+  }
+}
 
+@keyframes mock-phase-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
 
 
 .mock-ui .rhb-turn-fold {
@@ -4487,6 +4698,23 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     rhb-furl var(--mock-fold-dur) var(--mock-fold-ease) forwards;
 }
 
+@keyframes rhb-furl {
+  from {
+    grid-template-rows: 1fr;
+    margin-bottom: 0;
+    opacity: 1;
+    clip-path: inset(0);
+  }
+  35% {
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 0fr;
+    margin-bottom: calc(6px - var(--rhb-feed-gap, 12px));
+    opacity: 0;
+    clip-path: inset(0);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mock-ui .rhb-turn-fold.is-furling {
