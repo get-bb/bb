@@ -19,9 +19,9 @@ export function useDeviceSetupTracking({
   connectedMachineCount: number | undefined;
 }) {
   const pending = useRef<{
-    remoteAccess: boolean;
+    remoteAccess: "idle" | "started" | "failed" | "succeeded";
     machinesBefore: number | null;
-  }>({ remoteAccess: false, machinesBefore: null });
+  }>({ remoteAccess: "idle", machinesBefore: null });
   const record = useCallback(
     (
       operation: "remote_access" | "add_machine",
@@ -34,8 +34,14 @@ export function useDeviceSetupTracking({
     [entry],
   );
   useEffect(() => {
-    if (connectStatus !== "on" || !pending.current.remoteAccess) return;
-    pending.current.remoteAccess = false;
+    const remoteAccess = pending.current.remoteAccess;
+    if (
+      connectStatus !== "on" ||
+      (remoteAccess !== "started" && remoteAccess !== "failed")
+    ) {
+      return;
+    }
+    pending.current.remoteAccess = "succeeded";
     record("remote_access", "succeeded");
   }, [connectStatus, record]);
   useEffect(() => {
@@ -63,14 +69,17 @@ export function useDeviceSetupTracking({
   }, [connectedMachineCount, record]);
 
   const startRemoteAccessSetup = useCallback(() => {
-    if (connectStatus !== "off" || pending.current.remoteAccess) return;
-    pending.current.remoteAccess = true;
+    if (connectStatus !== "off" || pending.current.remoteAccess === "started") {
+      return;
+    }
+    pending.current.remoteAccess = "started";
     record("remote_access", "started");
   }, [connectStatus, record]);
 
   const failRemoteAccessSetup = useCallback(
     (stage: InternalDoNotUseSetupFailureStage) => {
-      pending.current.remoteAccess = false;
+      if (pending.current.remoteAccess === "succeeded") return;
+      pending.current.remoteAccess = "failed";
       recordTelemetryEvent({
         name: "onboarding_operation",
         properties: {

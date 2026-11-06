@@ -88,6 +88,25 @@ describe("useDeviceSetupTracking", () => {
     ]);
   });
 
+  it.each(["pairing", "sign_in"] as const)(
+    "records succeeded once when bb connect turns on after a %s failure",
+    (stage) => {
+      const hook = render();
+      act(() => hook.result.current.startRemoteAccessSetup());
+      act(() => hook.result.current.failRemoteAccessSetup(stage));
+      hook.rerender({ ...baseProps(), connectStatus: "on" });
+      act(() => hook.result.current.failRemoteAccessSetup("turn_on"));
+      hook.rerender({ ...baseProps(), connectStatus: "unavailable" });
+      hook.rerender({ ...baseProps(), connectStatus: "on" });
+
+      expect(recorded()).toEqual([
+        "remote_access started",
+        "remote_access failed",
+        "remote_access succeeded",
+      ]);
+    },
+  );
+
   it.each([
     [
       new MachineEnrollmentEndedError("Machine setup cancelled"),
