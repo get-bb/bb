@@ -15,7 +15,16 @@ import {
   sha256Hex,
 } from "@bb/connect-db";
 
+import {
+  GATE_FAST_OFFLINE_HEADER,
+  GATE_FORWARDED_AUTH_HEADER,
+  GATE_FORWARDED_HOST_HEADER,
+  GATE_OFFLINE_HEADER,
+} from "@bb/tunnel-contract/next";
+
 import { cacheKey } from "./cache";
+import { NEXT_REPLAY_BODY_MAX_BYTES } from "./next-forward";
+import { labelBucket, resetNextRouteFlagCache } from "./next-route";
 import { parseClientProtocolVersion } from "./tunnel-do";
 import {
   cacheNamespace,
@@ -245,9 +254,11 @@ function sessionDetails(userId = OWNER, needsRefresh = false) {
 function resolvedServer(
   over: Partial<{
     lastSeenAt: Date | null;
+    nextTunnelAt: Date | null;
     userId: string;
   }> = {},
 ) {
+  const nextTunnelAt = over.nextTunnelAt ?? null;
   return {
     kind: "server" as const,
     userId: over.userId ?? OWNER,
@@ -256,6 +267,8 @@ function resolvedServer(
       credentialHash: "abc",
       revokedAt: null,
       lastSeenAt: over.lastSeenAt ?? null,
+      nextTunnelGate: nextTunnelAt === null ? null : "gate-iad-1",
+      nextTunnelAt,
     },
   };
 }
@@ -264,11 +277,13 @@ function resolvedMachine(
   over: Partial<{
     credentialHash: string;
     lastSeenAt: Date | null;
+    nextTunnelAt: Date | null;
     revokedAt: Date | null;
     routingKey: string;
     userId: string;
   }> = {},
 ) {
+  const nextTunnelAt = over.nextTunnelAt ?? null;
   return {
     kind: "machine" as const,
     routingKey: over.routingKey ?? "sawyer-air:machine-generation",
@@ -279,6 +294,8 @@ function resolvedMachine(
       credentialHash: over.credentialHash ?? "abc",
       revokedAt: over.revokedAt ?? null,
       lastSeenAt: over.lastSeenAt ?? null,
+      nextTunnelGate: nextTunnelAt === null ? null : "gate-iad-1",
+      nextTunnelAt,
     },
   };
 }
@@ -4078,5 +4095,478 @@ describe("gate worker MCP routing", () => {
     expect(anonymous.status).toBe(401);
     expect(anonymous.headers.get("www-authenticate")).toBeNull();
     expect(anonymous.headers.get("content-type")).toContain("text/html");
+  });
+});
+
+const FLY_GATE_SECRET = "fly-gate-secret";
+const FRESH_NEXT_TUNNEL = () => new Date(Date.now() - 60_000);
+
+function nextRouteEnv(
+  flag: string | null,
+  doFetch: (req: Request) => Promise<Response> | Response = () =>
+    new Response("via tunnel object"),
+) {
+  const made = makeEnv(doFetch);
+  const kv = { get: vi.fn(async () => flag) };
+  return {
+    ...made,
+    kv,
+    env: {
+      ...made.env,
+      NEXT_BASE_DOMAIN: "next.getbb.app",
+      GATE_SECRET: FLY_GATE_SECRET,
+      CONNECT_DB_FLAGS: kv,
+    },
+  };
+}
+
+function routeEvents(env: { GATE_EVENTS: { writeDataPoint: unknown } }) {
+  return vi
+    .mocked(
+      env.GATE_EVENTS.writeDataPoint as (point: {
+        blobs?: string[];
+        doubles?: number[];
+      }) => void,
+    )
+    .mock.calls.map(([point]) => point.blobs ?? [])
+    .filter((blobs) => blobs[0] === "route")
+    .map(([, served, method, host, path, reason]) => ({
+      served,
+      method,
+      host,
+      path,
+      reason,
+    }));
+}
+
+function gateOfflineResponse(): Response {
+  return new Response("bb connect: this server is offline\n", {
+    status: 503,
+    headers: { [GATE_OFFLINE_HEADER]: "1", "content-type": "text/plain" },
+  });
+}
+
+describe("bb connect next routing", () => {
+  let flyFetch: ReturnType<typeof vi.fn<typeof fetch>>;
+  let flyRequests: Request[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetNextRouteFlagCache();
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails());
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({ nextTunnelAt: FRESH_NEXT_TUNNEL() }),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    flyRequests = [];
+    flyFetch = vi.fn<typeof fetch>(async (input, init) => {
+      flyRequests.push(new Request(input, init));
+      return new Response("via fly");
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(flyFetch);
+  });
+
+  afterEach(() => {
+    vi.mocked(globalThis.fetch).mockRestore();
+    vi.mocked(console.log).mockRestore();
+    resetNextRouteFlagCache();
+  });
+
+  it("changes nothing while the flag is missing, invalid, or the gate is unconfigured", async () => {
+    for (const flag of [
+      null,
+      "not json",
+      '{"percent":101}',
+      '{"labels":[1]}',
+    ]) {
+      resetNextRouteFlagCache();
+      const { env, ctx, captured } = nextRouteEnv(flag);
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/"),
+        env as never,
+        ctx,
+      );
+      expect(await response.text()).toBe("via tunnel object");
+      expect(captured).toHaveLength(1);
+      expect(routeEvents(env)).toEqual([]);
+    }
+    resetNextRouteFlagCache();
+    const { env, ctx } = nextRouteEnv('{"percent":100}');
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      { ...env, GATE_SECRET: undefined } as never,
+      ctx,
+    );
+    expect(flyFetch).not.toHaveBeenCalled();
+  });
+
+  it("forwards a listed label to its Fly gate host with the forwarding headers", async () => {
+    const { env, ctx, captured } = nextRouteEnv('{"labels":["Sawyer"]}');
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/thread/1?view=full", {
+        method: "POST",
+        body: "hello",
+        headers: {
+          "content-length": "5",
+          cookie: "__Secure-better-auth.session_token=abc; tenant=1",
+          [GATE_FORWARDED_AUTH_HEADER]: "Bearer forged",
+          [GATE_FORWARDED_HOST_HEADER]: "evil.getbb.app",
+          [GATE_FAST_OFFLINE_HEADER]: "0",
+          [GATE_OFFLINE_HEADER]: "1",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(await response.text()).toBe("via fly");
+    expect(captured).toHaveLength(0);
+    expect(mockServeWithCache).not.toHaveBeenCalled();
+    expect(mockVerifySessionDetails).not.toHaveBeenCalled();
+    const [forwarded] = flyRequests;
+    expect(forwarded?.url).toBe(
+      "https://sawyer.next.getbb.app/thread/1?view=full",
+    );
+    expect(forwarded?.method).toBe("POST");
+    expect(forwarded?.redirect).toBe("manual");
+    expect(await forwarded?.text()).toBe("hello");
+    expect(forwarded?.headers.get(GATE_FORWARDED_HOST_HEADER)).toBe(
+      "sawyer.getbb.app",
+    );
+    expect(forwarded?.headers.get(GATE_FORWARDED_AUTH_HEADER)).toBe(
+      `Bearer ${FLY_GATE_SECRET}`,
+    );
+    expect(forwarded?.headers.get(GATE_FAST_OFFLINE_HEADER)).toBe("1");
+    expect(forwarded?.headers.get(GATE_OFFLINE_HEADER)).toBeNull();
+    expect(forwarded?.headers.get("cookie")).toBe(
+      "__Secure-better-auth.session_token=abc; tenant=1",
+    );
+    expect(routeEvents(env)).toEqual([
+      {
+        served: "fly",
+        method: "POST",
+        host: "sawyer.getbb.app",
+        path: "/thread/1",
+        reason: "",
+      },
+    ]);
+  });
+
+  it("forwards share hosts and machine shares under their full subdomain", async () => {
+    const { env, ctx } = nextRouteEnv('{"percent":100}');
+    await worker.fetch(
+      visitorRequest("sawyer--8000.getbb.app", "/app.js"),
+      env as never,
+      ctx,
+    );
+    mockResolveLabel.mockResolvedValue(
+      resolvedMachine({ nextTunnelAt: FRESH_NEXT_TUNNEL() }),
+    );
+    await worker.fetch(
+      visitorRequest("sawyer-air--3000.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(flyRequests.map((request) => request.url)).toEqual([
+      "https://sawyer--8000.next.getbb.app/app.js",
+      "https://sawyer-air--3000.next.getbb.app/",
+    ]);
+  });
+
+  it("splits labels by a stable hash under the percent", async () => {
+    const bucket = labelBucket("sawyer");
+    expect(labelBucket("sawyer")).toBe(bucket);
+    const below = nextRouteEnv(JSON.stringify({ percent: bucket }));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      below.env as never,
+      below.ctx,
+    );
+    expect(flyFetch).not.toHaveBeenCalled();
+    expect(below.captured).toHaveLength(1);
+
+    resetNextRouteFlagCache();
+    const above = nextRouteEnv(JSON.stringify({ percent: bucket + 1 }));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      above.env as never,
+      above.ctx,
+    );
+    expect(flyFetch).toHaveBeenCalledTimes(1);
+    expect(above.captured).toHaveLength(0);
+  });
+
+  it("keeps a label on the tunnel object while its next tunnel is stale or absent", async () => {
+    for (const nextTunnelAt of [new Date(Date.now() - 13 * 60_000), null]) {
+      mockResolveLabel.mockResolvedValue(resolvedServer({ nextTunnelAt }));
+      const { env, ctx, captured } = nextRouteEnv('{"percent":100}');
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/"),
+        env as never,
+        ctx,
+      );
+      expect(await response.text()).toBe("via tunnel object");
+      expect(captured).toHaveLength(1);
+      expect(routeEvents(env)).toMatchObject([
+        { served: "cloudflare", reason: "next-offline" },
+      ]);
+    }
+    expect(flyFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps account routes, app links, reserved handles, dials and /__ paths in the Worker", async () => {
+    mockHandleListAccountServers.mockResolvedValue(Response.json([]));
+    mockHandleCreateDesktopSession.mockResolvedValue(Response.json({}));
+    const credential = "bbc_dial_secret";
+    mockResolveLabel.mockResolvedValue({
+      ...resolvedServer({ nextTunnelAt: FRESH_NEXT_TUNNEL() }),
+      server: {
+        ...resolvedServer({ nextTunnelAt: FRESH_NEXT_TUNNEL() }).server,
+        credentialHash: await sha256Hex(credential),
+      },
+    });
+    const { env, ctx, captured } = nextRouteEnv(
+      '{"percent":100}',
+      () => new Response("dialed"),
+    );
+    const call = (host: string, path: string, init?: RequestInit) =>
+      worker.fetch(visitorRequest(host, path, init), env as never, ctx);
+
+    expect(
+      (await call("sawyer.getbb.app", "/api/connect/servers")).status,
+    ).toBe(200);
+    expect(
+      (
+        await call("sawyer.getbb.app", "/api/connect/desktop-session", {
+          method: "POST",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(
+          "sawyer.getbb.app",
+          "/.well-known/apple-app-site-association",
+        )
+      ).status,
+    ).toBe(200);
+    expect((await call("docs.getbb.app", "/docs")).status).toBe(301);
+    expect((await call("sawyer.getbb.app", "/__gate/health")).status).toBe(404);
+    const dial = await call("sawyer.getbb.app", "/__tunnel", {
+      headers: { authorization: `Bearer ${credential}` },
+    });
+    expect(await dial.text()).toBe("dialed");
+    expect(captured).toHaveLength(1);
+
+    mockResolveLabel.mockResolvedValue(
+      resolvedMachine({ nextTunnelAt: FRESH_NEXT_TUNNEL() }),
+    );
+    expect(await (await call("sawyer-air.getbb.app", "/")).text()).toContain(
+      "is a machine",
+    );
+    expect(flyFetch).not.toHaveBeenCalled();
+  });
+
+  it("strips visitor copies of the forwarding headers on the tunnel object path", async () => {
+    const { env, ctx, captured } = nextRouteEnv(null);
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", {
+        headers: {
+          [GATE_FORWARDED_AUTH_HEADER]: "Bearer forged",
+          [GATE_FORWARDED_HOST_HEADER]: "evil.getbb.app",
+          [GATE_FAST_OFFLINE_HEADER]: "1",
+          [GATE_OFFLINE_HEADER]: "1",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    const [forwarded] = captured;
+    for (const name of [
+      GATE_FORWARDED_AUTH_HEADER,
+      GATE_FORWARDED_HOST_HEADER,
+      GATE_FAST_OFFLINE_HEADER,
+      GATE_OFFLINE_HEADER,
+    ]) {
+      expect(forwarded?.headers.get(name)).toBeNull();
+    }
+  });
+
+  it("falls back to the tunnel object when the Fly gate says the server is offline there", async () => {
+    flyFetch.mockImplementation(async (input, init) => {
+      flyRequests.push(new Request(input, init));
+      return gateOfflineResponse();
+    });
+    const { env, ctx, captured } = nextRouteEnv(
+      '{"percent":100}',
+      async (req) => new Response(`tunnel got ${await req.text()}`),
+    );
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/threads", {
+        method: "POST",
+        body: "small body",
+        headers: { "content-length": "10" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(await response.text()).toBe("tunnel got small body");
+    expect(await flyRequests[0]?.text()).toBe("small body");
+    expect(captured).toHaveLength(1);
+    expect(routeEvents(env)).toMatchObject([
+      { served: "fallback", reason: "gate-offline" },
+    ]);
+  });
+
+  it("shows today's offline page when both gates are offline", async () => {
+    flyFetch.mockImplementation(async () => gateOfflineResponse());
+    mockResolveLabel.mockResolvedValue(
+      resolvedServer({
+        lastSeenAt: new Date(Date.now() - 5 * 60_000),
+        nextTunnelAt: FRESH_NEXT_TUNNEL(),
+      }),
+    );
+    const { env, ctx } = nextRouteEnv('{"percent":100}', offlineDoResponse);
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", {
+        headers: { accept: "text/html" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain("Your bb is offline");
+  });
+
+  it("does not replay a body over the buffer cap or of unknown length", async () => {
+    flyFetch.mockImplementation(async () => gateOfflineResponse());
+    const { env, ctx, captured } = nextRouteEnv('{"percent":100}');
+    const size = NEXT_REPLAY_BODY_MAX_BYTES + 1;
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/upload", {
+        method: "PUT",
+        body: new Uint8Array(size),
+        headers: { "content-length": String(size) },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(503);
+    expect(response.headers.get(GATE_OFFLINE_HEADER)).toBe("1");
+    expect(captured).toHaveLength(0);
+    expect(routeEvents(env)).toMatchObject([
+      { served: "fly", reason: "gate-offline-unreplayable" },
+    ]);
+  });
+
+  it("falls back on a Fly network error only for safe methods", async () => {
+    flyFetch.mockRejectedValue(new TypeError("fetch failed"));
+    const get = nextRouteEnv('{"percent":100}');
+    const fellBack = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      get.env as never,
+      get.ctx,
+    );
+    expect(await fellBack.text()).toBe("via tunnel object");
+    expect(routeEvents(get.env)).toMatchObject([
+      { served: "fallback", reason: "fly-error" },
+    ]);
+
+    const post = nextRouteEnv('{"percent":100}');
+    const failed = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/threads", {
+        method: "POST",
+        body: "x",
+        headers: { "content-length": "1" },
+      }),
+      post.env as never,
+      post.ctx,
+    );
+    expect(failed.status).toBe(502);
+    expect(post.captured).toHaveLength(0);
+    expect(routeEvents(post.env)).toMatchObject([
+      { served: "fly", reason: "fly-error" },
+    ]);
+  });
+
+  it("retries a Fly gateway error on the tunnel object but keeps it when that is offline too", async () => {
+    flyFetch.mockImplementation(
+      async () => new Response("nothing on port 8000", { status: 502 }),
+    );
+    const served = nextRouteEnv('{"percent":100}');
+    const fromTunnel = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      served.env as never,
+      served.ctx,
+    );
+    expect(await fromTunnel.text()).toBe("via tunnel object");
+    expect(routeEvents(served.env)).toMatchObject([
+      { served: "fallback", reason: "fly-5xx" },
+    ]);
+
+    const offline = nextRouteEnv('{"percent":100}', offlineDoResponse);
+    const fromFly = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/", {
+        headers: { accept: "text/html" },
+      }),
+      offline.env as never,
+      offline.ctx,
+    );
+    expect(fromFly.status).toBe(502);
+    expect(await fromFly.text()).toBe("nothing on port 8000");
+    expect(routeEvents(offline.env)).toMatchObject([
+      { served: "fly", reason: "fly-5xx-both-offline" },
+    ]);
+  });
+
+  it("passes a server's own 500 through without falling back", async () => {
+    flyFetch.mockImplementation(
+      async () => new Response("boom", { status: 500 }),
+    );
+    const { env, ctx, captured } = nextRouteEnv('{"percent":100}');
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(500);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("proxies a WebSocket upgrade through and returns the Fly response itself", async () => {
+    const upgraded = new Response("upgraded");
+    flyFetch.mockImplementation(async (input, init) => {
+      flyRequests.push(new Request(input, init));
+      return upgraded;
+    });
+    const { env, ctx, captured } = nextRouteEnv('{"percent":100}');
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/ws?thread=1", {
+        headers: { upgrade: "websocket", connection: "Upgrade" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(response).toBe(upgraded);
+    expect(flyRequests[0]?.url).toBe(
+      "https://sawyer.next.getbb.app/ws?thread=1",
+    );
+    expect(flyRequests[0]?.headers.get("upgrade")).toBe("websocket");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("reads the flag once per isolate window", async () => {
+    const { env, ctx, kv } = nextRouteEnv('{"percent":100}');
+    for (let index = 0; index < 3; index += 1) {
+      await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/"),
+        env as never,
+        ctx,
+      );
+    }
+    expect(kv.get).toHaveBeenCalledTimes(1);
+    expect(kv.get).toHaveBeenCalledWith("connect-next-route", {
+      cacheTtl: 30,
+    });
   });
 });

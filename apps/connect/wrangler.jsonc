@@ -17,6 +17,9 @@
 // Var: NEXT_BASE_DOMAIN — the bb connect next domain (next.getbb.app); MCP
 //         OAuth tokens for https://<label>.<NEXT_BASE_DOMAIN>/mcp resolve only
 //         through /api/gate/resolve.
+// KV: CONNECT_DB_FLAGS key connect-next-route = {"percent":0-100,"labels":[...]}
+//         sends labels whose bb connect next tunnel is connected to the Fly
+//         gate (docs/connect-next.md, Worker forwarding). Missing = off.
 // Optional var: ASSETLINKS_SHA256_FINGERPRINTS — comma-separated Android
 //         signing-cert fingerprints for /.well-known/assetlinks.json (bb
 //         mobile app links). Unset until the Android app is signed.
@@ -47,6 +50,9 @@
       "id": "1645c9edadb74b8cb593218030fac7f2",
       "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
     },
+  ],
+  "kv_namespaces": [
+    { "binding": "CONNECT_DB_FLAGS", "id": "2ccd420634434541be2321c40bfe1cea" },
   ],
   "analytics_engine_datasets": [
     { "binding": "GATE_EVENTS", "dataset": "bb_connect_gate_events" },
@@ -83,6 +89,12 @@
           "binding": "HYPERDRIVE",
           "id": "c4123f16fa6d4ef084d4531996012f1b",
           "localConnectionString": "postgresql://bb:bb@localhost:5432/bb_connect",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CONNECT_DB_FLAGS",
+          "id": "5eed6edac43a416ca47483042381e6d4",
         },
       ],
       "analytics_engine_datasets": [

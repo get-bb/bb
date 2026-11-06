@@ -200,6 +200,8 @@ interface ResolvedServer {
     credentialHash: string | null;
     revokedAt: Date | null;
     lastSeenAt: Date | null;
+    nextTunnelGate: string | null;
+    nextTunnelAt: Date | null;
   };
 }
 
@@ -213,6 +215,8 @@ interface ResolvedMachine {
     credentialHash: string;
     revokedAt: Date | null;
     lastSeenAt: Date | null;
+    nextTunnelGate: string | null;
+    nextTunnelAt: Date | null;
   };
 }
 
@@ -250,6 +254,8 @@ export async function resolveLabels(
         credentialHash: server.credentialHash,
         revokedAt: server.revokedAt,
         lastSeenAt: server.lastSeenAt,
+        nextTunnelGate: server.nextTunnelGate,
+        nextTunnelAt: server.nextTunnelAt,
       })
       .from(server)
       .where(inArray(server.subdomain, wanted)),
@@ -262,6 +268,8 @@ export async function resolveLabels(
         credentialHash: machine.credentialHash,
         revokedAt: machine.revokedAt,
         lastSeenAt: machine.lastSeenAt,
+        nextTunnelGate: machine.nextTunnelGate,
+        nextTunnelAt: machine.nextTunnelAt,
         generation: labelClaim.generation,
       })
       .from(machine)
@@ -289,6 +297,8 @@ export async function resolveLabels(
         credentialHash: row.credentialHash,
         revokedAt: row.revokedAt,
         lastSeenAt: row.lastSeenAt,
+        nextTunnelGate: row.nextTunnelGate,
+        nextTunnelAt: row.nextTunnelAt,
       },
     });
   }
@@ -301,6 +311,8 @@ export async function resolveLabels(
         credentialHash: row.credentialHash,
         revokedAt: row.revokedAt,
         lastSeenAt: row.lastSeenAt,
+        nextTunnelGate: row.nextTunnelGate,
+        nextTunnelAt: row.nextTunnelAt,
       },
     });
   }
@@ -326,6 +338,8 @@ async function lookupLabel(
         credentialHash: server.credentialHash,
         revokedAt: server.revokedAt,
         lastSeenAt: server.lastSeenAt,
+        nextTunnelGate: server.nextTunnelGate,
+        nextTunnelAt: server.nextTunnelAt,
       })
       .from(server)
       .where(eq(server.subdomain, label))
@@ -340,6 +354,8 @@ async function lookupLabel(
         credentialHash: serverRow.credentialHash,
         revokedAt: serverRow.revokedAt,
         lastSeenAt: serverRow.lastSeenAt,
+        nextTunnelGate: serverRow.nextTunnelGate,
+        nextTunnelAt: serverRow.nextTunnelAt,
       },
     };
   }
@@ -353,6 +369,8 @@ async function lookupLabel(
         credentialHash: machine.credentialHash,
         revokedAt: machine.revokedAt,
         lastSeenAt: machine.lastSeenAt,
+        nextTunnelGate: machine.nextTunnelGate,
+        nextTunnelAt: machine.nextTunnelAt,
         generation: labelClaim.generation,
       })
       .from(machine)
@@ -379,6 +397,8 @@ async function lookupLabel(
       credentialHash: machineRow.credentialHash,
       revokedAt: machineRow.revokedAt,
       lastSeenAt: machineRow.lastSeenAt,
+      nextTunnelGate: machineRow.nextTunnelGate,
+      nextTunnelAt: machineRow.nextTunnelAt,
     },
   };
 }

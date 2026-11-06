@@ -288,9 +288,82 @@ nextRetryAt, since, shares: [{ port, state, error }] } }` whenever it changes an
   domain is the next domain, which has no `/__tunnel`, so its Cloudflare machine tunnel does not
   dial (`lastError` says so) and its shares answer only through connect next.
 
-## Not in the first cut
+## `<label>.getbb.app` through the Worker
 
-Moving `*.getbb.app` itself.
+Visitors keep their `<label>.getbb.app` address. The Cloudflare Worker (`apps/connect/src/worker.ts`,
+`next-route.ts`, `next-forward.ts`) sends a label's traffic to the Fly gate once that label's bb is on
+connect next, and to its TunnelDO otherwise, so servers move as they update.
+
+**Kept in the Worker.** Account API routes (`/api/gate/*`, `/api/connect/servers`, `/disconnect`,
+`/desktop-session`, `/machine-label`), app-link association files, reserved handles, unknown labels,
+`/__tunnel` dials, every other `/__` path, and the bare machine-label page. Everything else on a resolved
+label (bare host, `<label>--<port>` share hosts, machine shares, `/api/v1` and `/internal` with machine
+credentials, MCP, install paths, WebSocket upgrades) is routed.
+
+**Decision, per request after `resolveLabel`.** Forward when all hold:
+
+- `NEXT_BASE_DOMAIN` and `GATE_SECRET` are set on the Worker;
+- the route flag allows the label (below);
+- the server or machine row shows a connected next tunnel (`nextTunnelConnected`: `next_tunnel_gate`
+  set and `next_tunnel_at` under 12 minutes old). `resolveLabel` returns both columns and caches hits for
+  60 s per isolate, so a bb that just moved to Fly reaches it within a minute; one that left Fly answers
+  through the fallback below until then.
+
+**Route flag.** KV namespace `CONNECT_DB_FLAGS` (prod `2ccd4206…`, staging `5eed6eda…`), key
+`connect-next-route`, JSON `{"percent": 0-100, "labels": ["<label>", …]}`. Listed labels are always on;
+others are on when FNV-1a(label) mod 100 is below `percent`, so a label stays on the same side as the
+percent grows. A missing key, invalid JSON or out-of-range value is off, which is also the kill switch.
+Each isolate reads it with `cacheTtl: 30` and keeps it 30 s; a failed read keeps the last value (off if
+none).
+
+```bash
+pnpm --filter @bb/connect exec wrangler kv key put --remote \
+  --namespace-id 5eed6edac43a416ca47483042381e6d4 connect-next-route '{"percent":0,"labels":["sawyer"]}'
+pnpm --filter @bb/connect exec wrangler kv key delete --remote \
+  --namespace-id 5eed6edac43a416ca47483042381e6d4 connect-next-route
+```
+
+(prod: `--namespace-id 2ccd420634434541be2321c40bfe1cea`). Changes reach every isolate within about a
+minute (KV edge cache plus the isolate cache).
+
+**Forwarding.** The Worker fetches `https://<sub>.<NEXT_BASE_DOMAIN><path+query>` (`<sub>` is `<label>`
+or `<label>--<target>`) with the visitor's method, headers (cookies included) and body,
+`redirect: "manual"`, plus `x-bb-gate-forwarded-host: <original host>`,
+`x-bb-gate-forwarded-auth: Bearer <GATE_SECRET>` and `x-bb-gate-fast-offline: 1`, and returns Fly's
+response unchanged: the Fly gate runs every visitor check for the `getbb.app` origin and sets platform
+cookies itself. Forwarded requests skip the Worker's response cache, the Worker's session, machine and
+MCP checks, and its cookie filtering. WebSocket upgrades are fetched with their `Upgrade` header and the
+101 response is returned as is. The Worker strips visitor-sent copies of the four `x-bb-gate-*`
+forwarding headers (including `x-bb-gate-offline`) on every path. While a request waits on Fly, the
+30 s response-head deadline keeps extending up to 10 minutes, as for a live Cloudflare tunnel; Fly's own
+deadlines apply. The `*.next.<domain>` records are DNS only, so the subrequest goes straight to Fly and
+never re-enters the Worker's `*.getbb.app/*` route (checked on staging: `/__gate/health` from the
+staging Worker returned Fly's `ok` with `fly-request-id` and `via: 1.1 fly.io`, 40-140 ms).
+
+**Fallback** to the TunnelDO path (today's path, offline page included):
+
+- on `503` with `x-bb-gate-offline: 1` (the gate answers this, without forwarding, when it holds no
+  tunnel for the label and the request carried `x-bb-gate-fast-offline: 1`), for any request whose body
+  can be replayed;
+- on a network error or a `502`/`503`/`504` from Fly, only for `GET`, `HEAD`, `OPTIONS` and WebSocket
+  upgrades, since those may have reached the bb. If the TunnelDO is offline too, the visitor gets Fly's
+  original response (a share whose port has nothing listening must not turn into "Your bb is offline").
+  A `500` or any other status passes through.
+
+A request body is replayable when it has a `content-length` of at most 1 MiB; the Worker buffers it
+before forwarding. Larger or chunked bodies stream to Fly and are never replayed: Fly's offline answer
+goes to the visitor, and a network error is a `502`. Buffering small bodies keeps fallback for ordinary
+API calls (almost all under a few KiB) while uploads keep streaming; the gap is a large upload in the
+window after a bb leaves Fly and before its row goes stale or the label cache expires.
+
+**Watching it.** Each routed request writes a `route` event to `GATE_EVENTS`
+(`bb_connect_gate_events`, staging `bb_connect_gate_events_staging`) and a `bb connect: route` log line,
+only for labels the flag allows: `blob2` served path (`fly`, `cloudflare`, `fallback`), `blob3` method,
+`blob4` host, `blob5` path, `blob6` reason (`""`, `next-offline` for a label not on Fly,
+`gate-offline`, `fly-error`, `fly-5xx`, `gate-offline-unreplayable`, `fly-5xx-both-offline`),
+`double1` ms in the Worker after the flag check,
+`double2` response status. For example `SELECT blob2, blob6, count() FROM bb_connect_gate_events WHERE
+blob1 = 'route' AND timestamp > NOW() - INTERVAL '1' HOUR GROUP BY blob2, blob6`.
 
 ## Operating it
 
