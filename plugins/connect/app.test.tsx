@@ -934,6 +934,54 @@ describe("connect setup guide section", () => {
     expect(slot.queryByLabelText("Pairing code")).toBeNull();
   });
 
+  it("keeps the sign-in code behind Show pairing code, one footer panel open at a time", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    const showCode = await slot.findByRole("button", {
+      name: "Show pairing code",
+    });
+    const havePairingCode = slot.getByRole("button", {
+      name: "Have a pairing code?",
+    });
+    expect(showCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+
+    fireEvent.click(showCode);
+    expect(showCode.getAttribute("aria-expanded")).toBe("true");
+    expect(slot.getByLabelText("bb connect sign-in code").textContent).toBe(
+      "K7QP-2M4X",
+    );
+    slot.getByRole("button", { name: "Copy code" });
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
+
+    fireEvent.click(havePairingCode);
+    expect(havePairingCode.getAttribute("aria-expanded")).toBe("true");
+    expect(showCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+    slot.getByLabelText("Pairing code");
+
+    fireEvent.click(showCode);
+    expect(havePairingCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
+    slot.getByLabelText("bb connect sign-in code");
+
+    fireEvent.click(showCode);
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+  });
+
   it("pairs with a code while sign-in is pending, cancels that sign-in, and shows bb connect is on", async () => {
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
