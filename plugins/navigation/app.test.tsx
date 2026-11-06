@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalBadge,
   ExperimentalSidebarNavigationItem,
@@ -77,6 +77,7 @@ const SEARCH = hostItem(
 const PLUGINS = hostItem("__bb__/extensions", "Plugins", {
   kind: "open-extensions",
 });
+const DND_KIT_DOCUMENT_LISTENER_TEARDOWN_MS = 60;
 const DOCS = panelItem("garden", "docs", "Docs");
 const ALERTS = panelItem("garden", "alerts", "Alerts");
 
@@ -175,6 +176,37 @@ describe("Rail", () => {
       { method: "goHome", target: "current" },
       { method: "goHome", target: "tab" },
     ]);
+  });
+
+  it("saves the dragged order across every item, keeping hidden ones in place, and swallows the drop's click", async () => {
+    const view = renderRail([NEW_THREAD, SEARCH, PLUGINS, DOCS, ALERTS]);
+    const slots = new Map(
+      [PLUGINS, DOCS, ALERTS].map((item, index) => [item.id, index]),
+    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const index = slots.get(this.dataset.navRailItem ?? "") ?? 0;
+        return DOMRect.fromRect({ x: 0, y: index * 40, width: 32, height: 32 });
+      },
+    );
+    const alerts = screen.getByRole("button", { name: "Alerts" });
+
+    fireEvent.mouseDown(alerts, { button: 0, clientX: 16, clientY: 96 });
+    fireEvent.mouseMove(document, { clientX: 16, clientY: 60 });
+    fireEvent.mouseMove(document, { clientX: 16, clientY: 16 });
+    fireEvent.mouseUp(document, { clientX: 16, clientY: 16 });
+    fireEvent.click(alerts);
+
+    expect(view.inspection.sidebarNavigationCalls).toEqual([
+      {
+        method: "setOrder",
+        itemIds: [NEW_THREAD.id, SEARCH.id, ALERTS.id, PLUGINS.id, DOCS.id],
+      },
+    ]);
+    vi.restoreAllMocks();
+    await new Promise((resolve) =>
+      setTimeout(resolve, DND_KIT_DOCUMENT_LISTENER_TEARDOWN_MS),
+    );
   });
 
   it("caps rail counts at 9+ and names the badge in the destination's label", () => {
