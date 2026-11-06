@@ -446,8 +446,7 @@ function AgentStepContainer({
     [closeTerminalMutate, createTerminalAsync],
   );
   const signIns = useAgentSignIns({
-    concurrent: redesign,
-    failUnreadyExits: redesign,
+    redesign,
     entry,
     hostId,
     states,
@@ -950,7 +949,6 @@ function PluginCardContainer({
   return (
     <OnboardingPluginCard
       density={compact ? "compact" : "default"}
-      showStateLabel={!compact}
       name={entry.displayName}
       description={entry.description}
       icon={{
