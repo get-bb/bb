@@ -54,8 +54,7 @@ async function fetchRemoteBranchesNonInteractively(
       },
     });
     return { status: "fetched" };
-  } catch (error) {
-    console.error("FETCH-DIAGNOSTIC", error);
+  } catch {
     return { status: "failed" };
   }
 }
