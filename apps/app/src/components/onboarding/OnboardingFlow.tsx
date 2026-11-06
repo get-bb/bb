@@ -817,15 +817,17 @@ function ProjectsStepContainer({
       }
       primaryDisabled={scanning}
       primaryBusy={importing}
-      secondaryLabel="Skip"
+      secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (selectedPaths.size === 0) onContinue();
-        else void importSelected();
+        if (selectedPaths.size > 0) void importSelected();
+        else if (redesign) onSkip();
+        else onContinue();
       }}
       onSecondary={onSkip}
       onBack={onBack}
     >
       <ProjectsStep
+        selection={redesign ? "header" : "line"}
         status={
           scanning
             ? { kind: "scanning" }
