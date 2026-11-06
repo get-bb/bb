@@ -109,29 +109,12 @@ export function registerUsageSource(bb: BbPluginApi, hub: AccountPoolHub) {
               cost: null,
             });
           };
-          if (account.limitWindows.length > 0) {
-            for (const window of account.limitWindows) {
-              add(
-                window.slot,
-                usageWindowLabel(window.windowMinutes, window.slot),
-                window.utilization,
-                window.resetAt,
-                null,
-              );
-            }
-          } else {
+          for (const window of account.limitWindows) {
             add(
-              "five-hour",
-              "Five-hour limit",
-              account.fiveHourUtilization,
-              account.fiveHourResetAt,
-              null,
-            );
-            add(
-              "weekly",
-              "Weekly limit",
-              account.sevenDayUtilization,
-              account.sevenDayResetAt,
+              window.slot,
+              usageWindowLabel(window.windowMinutes, window.slot),
+              window.utilization,
+              window.resetAt,
               null,
             );
           }

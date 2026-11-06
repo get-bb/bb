@@ -932,8 +932,6 @@ describe("Account Pool plugin", () => {
     expect(firstCodex).toMatchObject({
       provider: "codex",
       status: "exhausted",
-      fiveHourUtilization: null,
-      sevenDayUtilization: null,
       familyWeekly: { other: null },
       limitWindows: [
         {
@@ -2347,10 +2345,22 @@ describe("Account Pool plugin", () => {
       .array(accountSummarySchema)
       .parse(await fixture.host.harness.behavior.callRpc("account.list", null));
     expect(accounts[0]).toMatchObject({
-      fiveHourUtilization: 0.25,
-      sevenDayUtilization: 0.5,
-      fiveHourStatus: "allowed",
-      sevenDayStatus: "allowed",
+      limitWindows: [
+        {
+          slot: "primary",
+          windowMinutes: 300,
+          utilization: 0.25,
+          status: "allowed",
+          source: "header",
+        },
+        {
+          slot: "secondary",
+          windowMinutes: 10_080,
+          utilization: 0.5,
+          status: "allowed",
+          source: "header",
+        },
+      ],
       representativeClaim: "claim-a",
       familyWeekly: {
         fable: {

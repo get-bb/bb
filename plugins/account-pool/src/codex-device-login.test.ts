@@ -76,12 +76,6 @@ function summary(account: CodexDeviceAccount): AccountSummary {
     lastUsedAt: null,
     lastUsedHostId: null,
     lastUsedHostName: null,
-    fiveHourUtilization: null,
-    fiveHourResetAt: null,
-    fiveHourStatus: null,
-    sevenDayUtilization: null,
-    sevenDayResetAt: null,
-    sevenDayStatus: null,
     representativeClaim: null,
     familyWeekly: {
       fable: null,

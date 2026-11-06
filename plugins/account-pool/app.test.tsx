@@ -5,6 +5,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {
   AccountPoolConfig,
   AccountSummary,
+  LimitWindow,
   PoolStatus,
 } from "./src/contracts.js";
 
@@ -17,6 +18,23 @@ afterEach(() => {
 });
 
 const STATUS_CACHE_KEY = "account-pool:status";
+
+function claudeWindow(
+  slot: LimitWindow["slot"],
+  utilization: number,
+  overrides: Partial<LimitWindow> = {},
+): LimitWindow {
+  return {
+    slot,
+    windowMinutes: slot === "primary" ? 300 : 10_080,
+    utilization,
+    resetAt: null,
+    status: null,
+    observedAt: 1,
+    source: "usage",
+    ...overrides,
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -64,12 +82,6 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
     lastUsedAt: 2,
     lastUsedHostId: "host-one",
     lastUsedHostName: "bee",
-    fiveHourUtilization: 0.21,
-    fiveHourResetAt: null,
-    fiveHourStatus: null,
-    sevenDayUtilization: null,
-    sevenDayResetAt: null,
-    sevenDayStatus: null,
     representativeClaim: null,
     familyWeekly: {
       fable: null,
@@ -78,7 +90,7 @@ function account(overrides: Partial<AccountSummary> = {}): AccountSummary {
       haiku: null,
       other: null,
     },
-    limitWindows: [],
+    limitWindows: [claudeWindow("primary", 0.21)],
     extraUsage: null,
     usageRestriction: null,
     observedAt: 1,
@@ -218,7 +230,7 @@ describe("Account Pool settings", () => {
   it("renders cached accounts as refreshing until live status arrives, then caches it", async () => {
     window.localStorage.setItem(
       STATUS_CACHE_KEY,
-      JSON.stringify(status([account({ fiveHourUtilization: 0.21 })])),
+      JSON.stringify(status([account({ limitWindows: [claudeWindow("primary", 0.21)] })])),
     );
     const live = deferred<PoolStatus>();
     const slot = render([], { "status.get": () => live.promise });
@@ -228,14 +240,14 @@ describe("Account Pool settings", () => {
     expect(slot.getByText(/· refreshing…$/)).toBeTruthy();
     expect(slot.queryByText("Loading…")).toBeNull();
     expect(slot.queryByText("No accounts in the pool")).toBeNull();
-    live.resolve(status([account({ fiveHourUtilization: 0.6 })]));
+    live.resolve(status([account({ limitWindows: [claudeWindow("primary", 0.6)] })]));
     expect(await slot.findByText("60%")).toBeTruthy();
     expect(slot.queryByText("refreshing usage…")).toBeNull();
     expect(slot.queryByText(/· refreshing…$/)).toBeNull();
     const cached = JSON.parse(
       window.localStorage.getItem(STATUS_CACHE_KEY) ?? "null",
     ) as PoolStatus;
-    expect(cached.accounts[0]?.fiveHourUtilization).toBe(0.6);
+    expect(cached.accounts[0]?.limitWindows[0]?.utilization).toBe(0.6);
   });
 
   it("ignores a malformed status cache and shows the loading state", async () => {
@@ -263,16 +275,44 @@ describe("Account Pool settings", () => {
     );
   });
 
-  it("renders fixed quota slots with missing buckets as em dashes", async () => {
-    const slot = render();
+  it("renders only the windows a Claude account reports and an unobserved Fable slot as an em dash", async () => {
+    const slot = render([
+      account({ limitWindows: [claudeWindow("secondary", 0.3)] }),
+    ]);
     expect(await slot.findByText("person@example.com")).toBeTruthy();
-    expect(slot.getByText("5H")).toBeTruthy();
     expect(slot.getByText("7D")).toBeTruthy();
+    expect(slot.getByText("30%")).toBeTruthy();
+    expect(slot.queryByText("5H")).toBeNull();
     expect(slot.getByText("FABLE")).toBeTruthy();
-    expect(slot.getAllByText("—")).toHaveLength(2);
+    expect(slot.getAllByText("—")).toHaveLength(1);
     expect(
       slot.getByText("Hub accepting · 2 in flight · used by bee"),
     ).toBeTruthy();
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "Open person@example.com details",
+      }),
+    );
+    expect(await slot.findByText("7 day")).toBeTruthy();
+    expect(slot.queryByText("Weekly")).toBeNull();
+    expect(slot.queryByText("5 hour")).toBeNull();
+  });
+
+  it("renders a Claude account with no observed windows as empty 5H and 7D slots", async () => {
+    const slot = render([account({ limitWindows: [] })]);
+    expect(await slot.findByText("person@example.com")).toBeTruthy();
+    expect(slot.getByText("5H")).toBeTruthy();
+    expect(slot.getByText("7D")).toBeTruthy();
+    expect(slot.queryByText("LIMIT")).toBeNull();
+    expect(slot.getAllByText("—")).toHaveLength(3);
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "Open person@example.com details",
+      }),
+    );
+    expect(await slot.findByText("5 hour")).toBeTruthy();
+    expect(slot.getByText("7 day")).toBeTruthy();
+    expect(slot.queryByText("No usage limits observed yet.")).toBeNull();
   });
 
   it("keeps the quota slots visible at mobile widths", async () => {
@@ -286,12 +326,16 @@ describe("Account Pool settings", () => {
     const slot = render([
       account({
         status: "exhausted",
-        fiveHourUtilization: 1,
-        fiveHourStatus: "rejected",
-        fiveHourResetAt: Date.now() + 2 * 60 * 60 * 1_000,
-        sevenDayUtilization: 0.99,
-        sevenDayStatus: "allowed",
-        sevenDayResetAt: Date.now() + 6 * 24 * 60 * 60 * 1_000,
+        limitWindows: [
+          claudeWindow("primary", 1, {
+            status: "rejected",
+            resetAt: Date.now() + 2 * 60 * 60 * 1_000,
+          }),
+          claudeWindow("secondary", 0.99, {
+            status: "allowed",
+            resetAt: Date.now() + 6 * 24 * 60 * 60 * 1_000,
+          }),
+        ],
       }),
     ]);
     expect(await slot.findByText("Exhausted · resets in 2h 0m")).toBeTruthy();
@@ -306,8 +350,6 @@ describe("Account Pool settings", () => {
         label: "pro@example.com",
         codexAccountId: "chatgpt-account",
         status: "exhausted",
-        fiveHourUtilization: 0.25,
-        fiveHourResetAt: Date.now() + 60 * 60 * 1_000,
         limitWindows: [
           {
             slot: "primary",
