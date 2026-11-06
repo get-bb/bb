@@ -1,16 +1,10 @@
 export type {
-  CallerDoor,
   CallerPrincipal,
-  HookPolicy,
   HttpDoor,
   HttpDoorMethod,
   Operation,
   OperationCaller,
-  OperationDoors,
-  OperationKind,
-  OperationOptions,
 } from "./contract.js";
-export { defineOperation } from "./contract.js";
 export type {
   OperationBody,
   OperationBodyHead,
@@ -24,7 +18,6 @@ export {
   isOperationBody,
   jsonBody,
   operationBodyFromResponse,
-  operationBodyProblem,
   operationBodyResponse,
   readOperationBody,
   streamBody,
@@ -32,22 +25,8 @@ export {
 export type {
   CallContext,
   CallOptions,
-  Hook,
-  HookOptions,
-  HookTier,
   Implementation,
-  KernelOptions,
-  Next,
   OperationErrorCode,
-  OperationInspection,
   OperationKernel,
-  OperationScope,
-  Vote,
 } from "./kernel.js";
-export {
-  CORE_OWNER,
-  OperationError,
-  SYSTEM_CALLER,
-  createOperationKernel,
-  deny,
-} from "./kernel.js";
+export { OperationError, createOperationKernel } from "./kernel.js";

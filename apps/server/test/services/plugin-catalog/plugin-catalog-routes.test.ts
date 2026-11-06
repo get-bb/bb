@@ -67,7 +67,7 @@ describe("plugin catalog routes", () => {
     const app = new Hono();
     app.onError(createServerErrorHandler(testLogger));
     registerPluginCatalogRoutes(
-      createOperationRoutes(app, createServerKernel(testLogger)),
+      createOperationRoutes(app, createServerKernel()),
       catalog,
       createPluginInstallJobs({ notifyChanged: () => {} }),
     );

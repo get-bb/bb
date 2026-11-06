@@ -99,8 +99,7 @@ export function createOperationRoutes(
 
   function mount(route: RouteDefinition): void {
     const operation = publicOperationForRoute(route);
-    const status = (operation.doors.http?.status ??
-      200) as ContentfulStatusCode;
+    const status = operation.http.status as ContentfulStatusCode;
     app.on(route.method.toUpperCase(), route.path, async (context) => {
       let output: unknown;
       try {
@@ -113,7 +112,7 @@ export function createOperationRoutes(
       } catch (error) {
         throw operationErrorToApiError(error);
       }
-      const doorHeaders = operation.doors.http?.headers ?? {};
+      const doorHeaders = operation.http.headers;
       if (isOperationBody(output)) {
         return operationBodyResponse({
           ...output,
@@ -145,10 +144,7 @@ export function createOperationRoutes(
 }
 
 export function assertEveryOperationImplemented(routes: OperationRoutes): void {
-  const missing = routes.kernel.kernel
-    .inspect()
-    .filter((operation) => operation.owner === null)
-    .map((operation) => operation.name);
+  const missing = routes.kernel.kernel.unimplemented();
   if (missing.length > 0) {
     throw new Error(
       `Operations without an implementation: ${missing.join(", ")}`,

@@ -75,6 +75,7 @@ export interface RouteDefinition<
   method: Method;
   request: Request;
   response: Response;
+  headers?: Readonly<Record<string, string>>;
 }
 
 export type RouteRequestInput<Request> = Request extends {

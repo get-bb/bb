@@ -9,17 +9,11 @@ import {
 } from "@bb/hono-typed-routes";
 import {
   OperationError,
-  defineOperation,
-  isOperationBody,
-  operationBodyProblem,
   type Operation,
   type OperationBody,
 } from "@bb/operations";
 import { z, type ZodType } from "zod";
 import { publicApiRoutes } from "./public-api.js";
-import { publicOperationKinds } from "./operation-kinds.js";
-import { publicOperationNames } from "./operation-names.js";
-import { publicOperationOutputSchemas } from "./output-schemas/index.js";
 
 type RouteNames<Tree, Prefix extends string = ""> = {
   [Key in keyof Tree & string]: Tree[Key] extends RouteDefinition
@@ -40,20 +34,10 @@ type RouteAt<
       : never
     : never;
 
-export type RouteKeys<Tree> = RouteNames<Tree>;
-export type OperationNameTable<Tree> = {
-  readonly [Key in RouteKeys<Tree>]: string;
-};
-export type PublicRouteKey = RouteKeys<typeof publicApiRoutes>;
-export type PublicOperationName = (typeof publicOperationNames)[PublicRouteKey];
-type RouteKeyFor<Name extends PublicOperationName> = {
-  [Key in PublicRouteKey]: (typeof publicOperationNames)[Key] extends Name
-    ? Key
-    : never;
-}[PublicRouteKey];
+export type PublicOperationName = RouteNames<typeof publicApiRoutes>;
 export type PublicOperationRoute<Name extends PublicOperationName> = RouteAt<
   typeof publicApiRoutes,
-  RouteKeyFor<Name>
+  Name
 >;
 export type PublicOperationInput<Name extends PublicOperationName> =
   RouteOperationInput<PublicOperationRoute<Name>>;
@@ -64,34 +48,6 @@ export type RouteBodyOutput<Route extends RouteDefinition> =
 
 export type PublicOperationOutput<Name extends PublicOperationName> =
   RouteBodyOutput<PublicOperationRoute<Name>>;
-
-type GroupOperationName<Group extends string> = Extract<
-  PublicOperationName,
-  `${Group}.${string}`
->;
-
-export type PublicOperationOutputSchema<Name extends PublicOperationName> =
-  PublicOperationRoute<Name>["response"] extends {
-    format: "binary" | "text";
-  }
-    ? null
-    : ZodType<PublicOperationOutput<Name>>;
-
-export type GroupOutputSchemas<Group extends string> = {
-  readonly [Name in GroupOperationName<Group>]: PublicOperationOutputSchema<Name>;
-};
-
-const NO_STORE = { "cache-control": "no-store" } as const;
-
-const RESPONSE_HEADERS: {
-  readonly [Name in PublicOperationName]?: Readonly<Record<string, string>>;
-} = {
-  "desktopBrowsers.brokerProof": NO_STORE,
-  "desktopBrowsers.openConnection": NO_STORE,
-  "desktopBrowsers.captureTab": NO_STORE,
-  "desktopBrowsers.importCookies": NO_STORE,
-  "system.mobileAppReleases": NO_STORE,
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -213,23 +169,6 @@ export function routeReturnsBody(route: RouteDefinition): boolean {
   return routeResponseFormat(route) !== "json";
 }
 
-function outputChecker(
-  route: RouteDefinition,
-  schema: ZodType | null,
-): ((output: unknown) => string | null) | undefined {
-  if (routeReturnsBody(route)) return operationBodyProblem;
-  if (schema === null) return undefined;
-  return (output) => {
-    if (isOperationBody(output)) return null;
-    const result = schema.safeParse(output);
-    if (result.success) return null;
-    const [issue] = result.error.issues;
-    if (issue === undefined) return "invalid result";
-    const path = issue.path.join(".");
-    return path === "" ? issue.message : `${path}: ${issue.message}`;
-  };
-}
-
 export interface PublicRouteEntry {
   key: string;
   route: RouteDefinition;
@@ -331,47 +270,16 @@ export function routeFieldClash(
   return `Operation ${name}: path parameter "${clash}" and ${where} field "${clash}" share a name, so its flat input would be ambiguous`;
 }
 
-function lookup<Value>(
-  table: Readonly<Record<string, Value>>,
-  name: string,
-  what: string,
-): Value {
-  if (!Object.hasOwn(table, name)) {
-    throw new Error(`Operation ${name} has no ${what}`);
-  }
-  return table[name] as Value;
-}
-
 function buildOperation(name: string, route: RouteDefinition): Operation {
-  const kind = lookup(publicOperationKinds, name, "kind");
-  const checkOutput = outputChecker(
-    route,
-    lookup<ZodType | null>(publicOperationOutputSchemas, name, "output schema"),
-  );
-  const internal = route.request.source === "form" || routeReturnsBody(route);
-  return defineOperation({
+  return Object.freeze({
     name,
-    kind,
-    hooks: kind === "read" ? "rewrite" : "answer",
-    internal,
-    doors: {
-      http: {
-        method: route.method,
-        path: route.path,
-        status: routeSuccessStatus(route),
-        ...(Object.hasOwn(RESPONSE_HEADERS, name)
-          ? {
-              headers: (
-                RESPONSE_HEADERS as Readonly<
-                  Record<string, Readonly<Record<string, string>>>
-                >
-              )[name],
-            }
-          : {}),
-      },
+    http: {
+      method: route.method,
+      path: route.path,
+      status: routeSuccessStatus(route),
+      headers: route.headers ?? {},
     },
     parse: routeParser(route),
-    ...(checkOutput === undefined ? {} : { checkOutput }),
   });
 }
 
@@ -381,34 +289,17 @@ export interface PublicOperationSet {
   byRoute: WeakMap<RouteDefinition, Operation>;
 }
 
-export function createPublicOperations(
-  tree: object,
-  names: Readonly<Record<string, string>>,
-): PublicOperationSet {
+export function createPublicOperations(tree: object): PublicOperationSet {
   const operations = new Map<string, Operation>();
   const routes = new Map<string, RouteDefinition>();
   const byRoute = new WeakMap<RouteDefinition, Operation>();
-  const keys = new Set<string>();
   for (const { key, route } of listRouteEntries(tree)) {
-    keys.add(key);
-    if (!Object.hasOwn(names, key)) {
-      throw new Error(`Route ${key} has no entry in the operation name table`);
-    }
-    const name = names[key] as string;
-    if (operations.has(name)) {
-      throw new Error(`Operation ${name} is named by more than one route`);
-    }
-    const clash = routeFieldClash(name, route);
+    const clash = routeFieldClash(key, route);
     if (clash !== null) throw new Error(clash);
-    const operation = buildOperation(name, route);
-    operations.set(name, operation);
-    routes.set(name, route);
+    const operation = buildOperation(key, route);
+    operations.set(key, operation);
+    routes.set(key, route);
     byRoute.set(route, operation);
-  }
-  for (const key of Object.keys(names)) {
-    if (!keys.has(key)) {
-      throw new Error(`The operation name table names a missing route ${key}`);
-    }
   }
   return { operations, routes, byRoute };
 }
@@ -416,7 +307,7 @@ export function createPublicOperations(
 let built: PublicOperationSet | null = null;
 
 function publicOperationSet(): PublicOperationSet {
-  built ??= createPublicOperations(publicApiRoutes, publicOperationNames);
+  built ??= createPublicOperations(publicApiRoutes);
   return built;
 }
 
@@ -426,13 +317,10 @@ export function publicOperations(): ReadonlyMap<string, Operation> {
 
 export function publicOperation<Name extends PublicOperationName>(
   name: Name,
-): Operation<PublicOperationInput<Name>, PublicOperationOutput<Name>> {
+): Operation<PublicOperationInput<Name>> {
   const operation = publicOperations().get(name);
   if (operation === undefined) throw new Error(`Unknown operation ${name}`);
-  return operation as Operation<
-    PublicOperationInput<Name>,
-    PublicOperationOutput<Name>
-  >;
+  return operation as Operation<PublicOperationInput<Name>>;
 }
 
 export function publicOperationRouteDefinition(

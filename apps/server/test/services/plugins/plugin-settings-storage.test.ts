@@ -298,7 +298,7 @@ describe("plugin settings + storage", () => {
       const app = new Hono();
       app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        createOperationRoutes(app, createServerKernel(testLogger)),
+        createOperationRoutes(app, createServerKernel()),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
@@ -359,7 +359,7 @@ describe("plugin settings + storage", () => {
       const app = new Hono();
       app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        createOperationRoutes(app, createServerKernel(testLogger)),
+        createOperationRoutes(app, createServerKernel()),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),
@@ -400,7 +400,7 @@ describe("plugin settings + storage", () => {
       const app = new Hono();
       app.onError(createServerErrorHandler(testLogger));
       registerPluginRoutes(
-        createOperationRoutes(app, createServerKernel(testLogger)),
+        createOperationRoutes(app, createServerKernel()),
         { config: { serverPort: 3334 }, db },
         service,
         createPluginInstallJobs({ notifyChanged: () => {} }),

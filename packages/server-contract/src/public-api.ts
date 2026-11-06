@@ -428,6 +428,8 @@ type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
 };
 
+const NO_STORE = { "cache-control": "no-store" } as const;
+
 export const publicApiRoutes = {
   ...pluginManagementRoutes,
   promptHistory: {
@@ -762,6 +764,7 @@ export const publicApiRoutes = {
         desktopBrowserBrokerProofRequestSchema,
       ),
       response: jsonResponse<DesktopBrowserBrokerProof>(),
+      headers: NO_STORE,
     }),
     listInstances: defineRoute({
       path: "/desktop-browsers/instances",
@@ -802,6 +805,7 @@ export const publicApiRoutes = {
         desktopBrowserLeaseRequestSchema,
       ),
       response: jsonResponse<ExperimentalDesktopBrowserConnection>(),
+      headers: NO_STORE,
     }),
     releaseControl: defineRoute({
       path: "/desktop-browsers/release",
@@ -834,6 +838,7 @@ export const publicApiRoutes = {
         desktopBrowserTabRequestSchema,
       ),
       response: jsonResponse<ExperimentalDesktopBrowserCapture>(),
+      headers: NO_STORE,
     }),
     listImportSources: defineRoute({
       path: "/desktop-browsers/import-sources",
@@ -852,6 +857,7 @@ export const publicApiRoutes = {
         ExperimentalDesktopBrowserImportCookiesInput
       >(desktopBrowserImportCookiesRequestSchema),
       response: jsonResponse<ExperimentalDesktopBrowserImportOutcome>(),
+      headers: NO_STORE,
     }),
   },
 
@@ -1878,6 +1884,7 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemMobileAppReleasesResponse>(),
+      headers: NO_STORE,
     }),
     config: defineRoute({
       path: "/system/config",

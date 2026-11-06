@@ -133,11 +133,6 @@ export function isOperationBody(value: unknown): value is OperationBody {
   return false;
 }
 
-export function operationBodyProblem(value: unknown): string | null {
-  if (isOperationBody(value)) return null;
-  return "expected an operation body (status, contentType, headers and bytes or a stream)";
-}
-
 export function operationBodyResponse(body: OperationBody): Response {
   const headers = new Headers(body.headers);
   if (body.contentType !== null) headers.set("content-type", body.contentType);

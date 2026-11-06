@@ -1,4 +1,3 @@
-import { emptyBody, jsonBody } from "@bb/operations";
 import { describe, expect, it } from "vitest";
 import {
   publicApiRoutes,
@@ -55,24 +54,15 @@ describe("public operations", () => {
     ).toEqual({ param: { id: "thr_path" }, json: { title: "Renamed" } });
   });
 
-  it("declares kinds per operation, including POST reads", () => {
-    expect(publicOperation("threads.ancestors").kind).toBe("read");
-    expect(publicOperation("files.read").kind).toBe("read");
-    expect(publicOperation("threads.read").kind).toBe("write");
-    expect(publicOperation("threads.list").kind).toBe("read");
-  });
-
-  it("checks outputs against the route's schema", () => {
-    const remove = publicOperation("threads.delete");
-    expect(remove.checkOutput?.({ ok: true })).toBeNull();
-    expect(remove.checkOutput?.({ ok: false })).toMatch(/^ok: /);
-    const exported = publicOperation("server.export");
-    expect(exported.checkOutput?.(emptyBody(200))).toBeNull();
-    expect(exported.checkOutput?.(new Uint8Array(1))).toMatch(
-      /^expected an operation body/,
-    );
-    expect(
-      remove.checkOutput?.(jsonBody({ ok: true }, { status: 202 })),
-    ).toBeNull();
+  it("names each operation by its route key and carries the route's door", () => {
+    expect(publicOperation("threads.send").http).toEqual({
+      method: "post",
+      path: "/threads/:id/send",
+      status: 200,
+      headers: {},
+    });
+    expect(publicOperation("system.mobileAppReleases").http.headers).toEqual({
+      "cache-control": "no-store",
+    });
   });
 });

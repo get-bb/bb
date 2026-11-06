@@ -10,17 +10,13 @@ import {
 import { createServerKernel } from "../../src/kernel/server-kernel.js";
 import {
   startTestServer,
-  testLogger,
   type RunningTestServer,
 } from "../helpers/test-app.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 
 describe("operation coverage", () => {
   it("names every operation a route leaves unimplemented", () => {
-    const routes = createOperationRoutes(
-      new Hono(),
-      createServerKernel(testLogger),
-    );
+    const routes = createOperationRoutes(new Hono(), createServerKernel());
     expect(() => assertEveryOperationImplemented(routes)).toThrow(
       /Operations without an implementation: .*threads\.send/,
     );

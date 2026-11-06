@@ -182,7 +182,7 @@ async function createPluginUpdateFixture(
   });
   const app = new Hono();
   app.onError(createServerErrorHandler(testLogger));
-  const routes = createOperationRoutes(app, createServerKernel(testLogger));
+  const routes = createOperationRoutes(app, createServerKernel());
   const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
   registerPluginUpdateJobRoutes(routes, updateJobs);
   registerPluginRoutes(

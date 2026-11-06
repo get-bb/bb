@@ -7,30 +7,23 @@ import {
 import { publicOperations } from "@bb/server-contract";
 import type { Context } from "hono";
 import { ApiError } from "../errors.js";
-import type { ServerLogger } from "../types.js";
-import {
-  callerFromRequest,
-  currentOperationCaller,
-  runAsOperationCaller,
-} from "./caller.js";
+import { getGateAuthKind } from "../request-context.js";
 
 export interface ServerKernel {
   readonly kernel: OperationKernel<Context>;
   callerFor(context: Context): OperationCaller;
 }
 
-export function createServerKernel(logger: ServerLogger): ServerKernel {
-  const kernel = createOperationKernel<Context>({
-    currentCaller: currentOperationCaller,
-    enter: runAsOperationCaller,
-    warn: (message, fields) => logger.warn(fields, message),
-  });
+export function createServerKernel(): ServerKernel {
+  const kernel = createOperationKernel<Context>();
   for (const operation of publicOperations().values()) {
     kernel.define(operation);
   }
   return {
     kernel,
-    callerFor: callerFromRequest,
+    callerFor: (context) => ({
+      user: getGateAuthKind(context) === "machine" ? "machine" : "owner",
+    }),
   };
 }
 
@@ -39,15 +32,7 @@ export function operationErrorToApiError(error: unknown): unknown {
   switch (error.code) {
     case "invalid_input":
       return new ApiError(400, "invalid_request", error.message);
-    case "denied":
-      return new ApiError(403, "denied_by_plugin", error.message, {
-        details: { plugin: error.plugin },
-      });
     case "unimplemented":
       return new ApiError(501, "unimplemented", error.message);
-    case "unknown_operation":
-      return new ApiError(404, "operation_not_found", error.message);
-    case "invalid_output":
-      return new ApiError(500, "internal_error", error.message);
   }
 }

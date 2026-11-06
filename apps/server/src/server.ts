@@ -484,7 +484,7 @@ export function createApp(
   options?: CreateAppOptions,
 ): ServerApp {
   const app = new Hono();
-  const serverKernel = createServerKernel(deps.logger);
+  const serverKernel = createServerKernel();
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });

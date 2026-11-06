@@ -1,41 +1,33 @@
 # Operations Kernel
 
-The server's public actions are operations in one registry, the operations
+Every public server route is an operation in one registry, the operations
 kernel (`packages/operations`, held by the server in `apps/server/src/kernel`).
-An operation has a name, a kind (`read` | `write`), a hook policy, an input
-parser, an output check and an HTTP door. One owner implements it,
-anyone calls it, and every call runs as a caller.
+An operation is a name, an HTTP door and an input parser, all derived from its
+route; core implements it once, and the route, the SDK and the CLI all reach
+it by name.
 
-This is the foundation: core routes and core `bb` commands run through it, and
-nothing about plugins changes. Plugin rpc methods, `message.dispatch` and every
-plugin API keep their existing paths. Plugin hooks, a plugin operations API,
-stability levels, an audit log and a contract lock build on it later.
+This is the foundation: nothing about plugins changes. Plugin rpc methods,
+`message.dispatch` and every plugin API keep their existing paths. What builds
+on it later is listed at the end.
 
 ## Where operations come from
 
-- **Names.** Every route in `publicApiRoutes` (`packages/server-contract`) is an
-  operation built by `publicOperations()` in `public-operations.ts`. Its name
-  comes from the frozen table in `operation-names.ts`, which maps each route
-  key to a name (`threads.send`, `threadSections.create`). The compiler rejects
-  a route without an entry and an entry without a route, and loading rejects
-  two routes with one name, so renaming a route key keeps the operation's
-  name.
-- **Kinds.** `operation-kinds.ts` declares every operation's kind in a table
-  the compiler checks against the names (POST reads such as
-  `threads.ancestors` are reads). Reads get hook policy `rewrite`, writes
-  `answer`.
-- **Inputs.** An operation's input is one flat object: path params plus body
-  or query fields (`{ id, input, mode }` for `threads.send`). A body that is not
-  an object sits under a named field (`system.keyboardSettings` takes
-  `{ overrides }`). The door merges the request into that object and clients
-  split it back (`routeInputFromRequest`, `routeRequestFromInput`). Fields are
-  parsed with the route's schema; a parse failure is 400 `invalid_request`. A
-  route whose body or query declares a field with a path parameter's name
-  fails to load, so the flat input is never ambiguous.
-- **Outputs.** Every operation has an output schema in `output-schemas/`
-  (`null` for binary and text routes), checked by the compiler against the
-  route's response type. The kernel validates a result a hook produced; a
-  result straight from core's implementation is not re-validated.
+Every route in `publicApiRoutes` (`packages/server-contract`) is an operation,
+built by `publicOperations()` in `public-operations.ts`. There are no side
+tables: everything comes from the route definition.
+
+- **Name.** The route key: `threads.send`, `threadSections.create`.
+- **HTTP door.** The route's method, path and success status, plus any
+  `headers` the route declares (`Cache-Control: no-store` on the
+  desktop-browser credential routes and mobile releases).
+- **Input.** One flat object: path params plus body or query fields
+  (`{ id, input, mode }` for `threads.send`). A body that is not an object
+  sits under a named field (`system.keyboardSettings` takes `{ overrides }`).
+  The door merges the request into that object and clients split it back
+  (`routeInputFromRequest`, `routeRequestFromInput`). Fields are parsed with
+  the route's schema; a parse failure is 400 `invalid_request`. A route whose
+  body or query declares a field with a path parameter's name fails to load,
+  so the flat input is never ambiguous.
 - **Coverage.** `createApp` fails to start if any operation has no
   implementation (`assertEveryOperationImplemented`).
 - **Not operations.** `/internal/*` daemon routes, WebSockets, plugin wire
@@ -48,13 +40,13 @@ Route files receive `OperationRoutes` (`kernel/http-door.ts`) and register
 every handler with `implement(route, (input, { caller, signal, request }) =>
 value | OperationBody)`. There is no HTTP-only registration.
 
+- **Caller.** `caller.user` is `machine` for a gate machine credential and
+  `owner` otherwise; routes that machines may not use check it.
 - **Inputs.** JSON bodies and queries arrive as flat fields. A multipart route
   gets its form fields in the flat input, files as web `File`s. `request` is
   the web `Request` (conditional GETs, forwarded host, `Prefer`).
 - **Outputs.** A plain value is serialized as JSON with the route's success
-  status and the operation's door headers (`Cache-Control: no-store` for the
-  desktop-browser credential routes and mobile releases, from
-  `RESPONSE_HEADERS`). Bytes, streams and statuses the route does not declare
+  status and the route's headers. Bytes, streams and statuses the route does not declare
   are an `OperationBody` (`packages/operations/src/body.ts`): a plain object
   `{ body: "bytes" | "stream", status, contentType, headers, bytes | stream }`
   built with `bytesBody`, `streamBody`, `emptyBody` and `jsonBody`. Byte routes
@@ -77,23 +69,6 @@ so an area method is the argument renames and transforms its public
 signature promises, then one `call`. The CLI uses the same caller. Methods
 that send headers, upload multipart, read bytes or headers, stream or poll
 keep their own transport code.
-
-## Callers
-
-`OperationCaller` is `{ user, door, thread, via }` (`kernel/caller.ts`), held
-in an `AsyncLocalStorage` so nested calls inherit it. `user` is `machine` for
-a gate machine credential and `owner` otherwise; routes that machines may not
-use check it. `door` and `thread` come from request headers, and `via` is
-empty until plugins call operations.
-
-## Hooks
-
-The kernel runs hooks outermost first by tier, then registration order:
-`observe` ignores what a hook passes and returns, `rewrite` must call `next`,
-`answer` may return without `next` or `deny(reason)`, and `vote` collects one
-vote per hook for the implementation. A hook that throws or passes its 10 s
-budget is skipped unless it is fail-closed. Only the kernel's tests register
-hooks today; the server exposes no way to add one.
 
 ## CLI doors
 
@@ -160,3 +135,18 @@ Differences from main that a user, a script or an HTTP client can observe:
 | Plugin management routes with a malformed body or query (catalog install, marketplace add/refresh, safe mode, settings, update check, rpc discovery) | Handler-specific body, sometimes 422 | 400 `{ code: "invalid_request", message }`; invalid or empty JSON is 400 "Invalid JSON request body"; semantic errors keep their bodies | Input validation belongs to the operation's schema |
 | `POST /plugins/:id/token` with no body | 200 | 400 (CLI and SDK always send `{}`) | It is a JSON-body operation |
 | `searchMentions`, `POST /plugins/install` | Browser guard before input parsing | After input parsing | The guard reads `request` inside the operation |
+
+## What builds on this later
+
+Kept in `bb/operations-kernel-full` for the plugin PR, each arriving with its
+first user:
+
+- Hooks (observe, rewrite, answer, vote), `deny`, serialized calls, plugin
+  scopes, and the caller's door, thread and plugin path carried through
+  nested calls.
+- Kinds (`read` / `write`) and output checks, declared on the route
+  (`kind: "read"` for the POST reads, `jsonResponse(schema)`), since both only
+  matter to hooks.
+- `bb.experimental_operations`, stability levels, plugin rpc methods as
+  operations, `message.dispatch` on the kernel, the audit log, and a
+  generated, test-checked list of frozen names.
