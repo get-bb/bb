@@ -29,6 +29,7 @@ export function useOnboardingErrorStep(step: OnboardingStepId): void {
 interface OnboardingErrorTelemetryProps {
   entry: OnboardingEntry;
   initialStep: OnboardingStepId;
+  closing: boolean;
   children: ReactNode;
 }
 
@@ -54,10 +55,11 @@ export class OnboardingErrorTelemetry extends Component<
     this.step = step;
   };
 
-  private readonly onUncaughtError = (): void => this.report("uncaught");
+  private readonly onUncaughtError = (): void =>
+    this.reportWindowError("uncaught");
 
   private readonly onUnhandledRejection = (): void =>
-    this.report("unhandled_rejection");
+    this.reportWindowError("unhandled_rejection");
 
   static getDerivedStateFromError(
     error: unknown,
@@ -73,6 +75,13 @@ export class OnboardingErrorTelemetry extends Component<
   override componentWillUnmount(): void {
     window.removeEventListener("error", this.onUncaughtError);
     window.removeEventListener("unhandledrejection", this.onUnhandledRejection);
+  }
+
+  private reportWindowError(
+    kind: Exclude<OnboardingErrorKind, "render">,
+  ): void {
+    if (this.props.closing) return;
+    this.report(kind);
   }
 
   private report(kind: OnboardingErrorKind): void {

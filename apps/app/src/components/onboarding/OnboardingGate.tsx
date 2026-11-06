@@ -92,7 +92,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           hidden={firstRunClosed}
           className="flex h-dvh w-full flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
         >
-          <OnboardingErrorTelemetry entry={entry} initialStep="agent">
+          <OnboardingErrorTelemetry
+            entry={entry}
+            initialStep="agent"
+            closing={firstRunClosed}
+          >
             <Suspense fallback={null}>
               <OnboardingFlow
                 initialStep="agent"

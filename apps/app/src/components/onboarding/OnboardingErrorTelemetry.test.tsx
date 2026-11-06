@@ -30,23 +30,25 @@ function Guide({
 }
 
 function renderGuide(step: OnboardingStepId) {
-  const view = render(
+  const tree = (next: OnboardingStepId, crash: boolean, closing: boolean) => (
     <AppErrorBoundary>
-      <OnboardingErrorTelemetry entry="first_run" initialStep="agent">
-        <Guide step={step} />
+      <OnboardingErrorTelemetry
+        entry="first_run"
+        initialStep="agent"
+        closing={closing}
+      >
+        <Guide step={next} crash={crash} />
       </OnboardingErrorTelemetry>
-    </AppErrorBoundary>,
+    </AppErrorBoundary>
   );
+  const view = render(tree(step, false, false));
   return {
     ...view,
     goTo(next: OnboardingStepId, crash = false) {
-      view.rerender(
-        <AppErrorBoundary>
-          <OnboardingErrorTelemetry entry="first_run" initialStep="agent">
-            <Guide step={next} crash={crash} />
-          </OnboardingErrorTelemetry>
-        </AppErrorBoundary>,
-      );
+      view.rerender(tree(next, crash, false));
+    },
+    setClosing(closing: boolean) {
+      view.rerender(tree(step, false, closing));
     },
   };
 }
@@ -132,5 +134,22 @@ describe("onboarding error telemetry", () => {
     rejectUnhandled();
 
     expect(recordTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("ignores app errors while the hidden guide waits on its Finish save, and reports again if it comes back", () => {
+    const view = renderGuide("devices");
+    view.setClosing(true);
+    throwUncaught();
+    rejectUnhandled();
+    expect(recordTelemetryEvent).not.toHaveBeenCalled();
+
+    view.setClosing(false);
+    throwUncaught();
+    expect(reportedErrors()).toEqual([
+      {
+        name: "onboarding_error",
+        properties: { step: "devices", entry: "first_run", kind: "uncaught" },
+      },
+    ]);
   });
 });
