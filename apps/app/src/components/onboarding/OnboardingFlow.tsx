@@ -1107,7 +1107,8 @@ function PluginsStepContainer({
       return entry === undefined ? [] : [entry];
     });
   }, [catalogQuery.data?.entries, featured]);
-  const featuredShown = redesign && featuredQuery.isSuccess && entries !== null;
+  const featuredShown =
+    redesign && featuredQuery.data !== undefined && entries !== null;
   useEffect(() => {
     if (featuredShown) onFeaturedPluginsShown();
   }, [featuredShown, onFeaturedPluginsShown]);
