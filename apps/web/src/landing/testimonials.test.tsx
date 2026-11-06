@@ -23,7 +23,7 @@ describe("Testimonials", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
-    act(() => root.render(<Testimonials />));
+    act(() => root.render(<Testimonials phonePages={false} />));
 
     const section = container.querySelector("section");
     expect(section?.dataset.section).toBe("testimonials");
@@ -54,7 +54,7 @@ describe("Testimonials", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
-    act(() => root.render(<Testimonials />));
+    act(() => root.render(<Testimonials phonePages={false} />));
 
     for (const card of container.querySelectorAll(".tm-card")) {
       const href =
@@ -70,7 +70,7 @@ describe("Testimonials", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
-    act(() => root.render(<Testimonials />));
+    act(() => root.render(<Testimonials phonePages={false} />));
 
     const cut = [...container.querySelectorAll(".tm-card")]
       .filter((card) =>
@@ -91,5 +91,31 @@ describe("Testimonials", () => {
       ),
     ).toEqual(["Ben Tossell", "Tobi Lütke", "Alana Goyal", "Rob Haisfield"]);
     act(() => root.unmount());
+  });
+  it("lays out the same 12 cards in the bento's columns on both arms, paging only on phones in the test arm", () => {
+    const columnsOf = (phonePages: boolean) => {
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      act(() => root.render(<Testimonials phonePages={phonePages} />));
+      const section = container.querySelector("section");
+      const columns = [...container.querySelectorAll(".tm-col")].map((col) =>
+        [...col.querySelectorAll(".tm-name")].map((n) => n.textContent),
+      );
+      act(() => root.unmount());
+      return { paged: section?.classList.contains("tm-phone-pages"), columns };
+    };
+    const test = columnsOf(true);
+    const control = columnsOf(false);
+    expect(test.paged).toBe(true);
+    expect(control.paged).toBe(false);
+    expect(test.columns).toEqual(control.columns);
+    expect(test.columns.map((c) => c[0])).toEqual([
+      "Ben Tossell",
+      "Tobi Lütke",
+      "Alana Goyal",
+      "Rob Haisfield",
+    ]);
+    expect(test.columns.flat()).toHaveLength(12);
   });
 });

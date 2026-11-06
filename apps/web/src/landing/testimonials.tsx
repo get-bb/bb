@@ -218,10 +218,10 @@ function TestimonialCard({ t }: { t: Testimonial }) {
   );
 }
 
-export function Testimonials() {
+export function Testimonials({ phonePages }: { phonePages: boolean }) {
   return (
     <section
-      className="testimonials"
+      className={phonePages ? "testimonials tm-phone-pages" : "testimonials"}
       aria-labelledby="testimonials-title"
       data-reveal
       data-section="testimonials"

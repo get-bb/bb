@@ -4346,6 +4346,36 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 560px) {
+  .tm-phone-pages .tm-grid {
+    flex-direction: row;
+    margin: -4px calc(-1 * var(--wrap-gutter)) -4px -4px;
+    padding: 4px var(--wrap-gutter) 4px 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline-start: 4px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .tm-phone-pages .tm-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tm-phone-pages .tm-pair {
+    display: contents;
+  }
+
+  .tm-phone-pages .tm-col {
+    flex: 0 0 min(300px, 100vw - var(--wrap-gutter) - var(--gap-md) - 50px);
+    scroll-snap-align: start;
+  }
+
+  .tm-phone-pages .tm-col > .tm-item:last-child {
+    flex-grow: 1;
+  }
+}
+
 /* ── Section titles, closer, footer ─────────────────────────────── */
 
 .sec-title {

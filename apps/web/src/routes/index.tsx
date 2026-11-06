@@ -1165,7 +1165,7 @@ function TodayBelowFold() {
         </div>
       </section>
 
-      <Testimonials />
+      <Testimonials phonePages={false} />
 
       <Closer
         title="Put your agents to work."
@@ -1226,7 +1226,7 @@ function RefreshedBelowFold() {
         </p>
       </Band>
 
-      <Testimonials />
+      <Testimonials phonePages />
 
       <Closer
         title="One programmable workspace for all your agents."
