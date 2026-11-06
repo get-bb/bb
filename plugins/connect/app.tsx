@@ -3,7 +3,6 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -21,11 +20,6 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { mobileAppDownloads } from "@bb/domain";
 import {
-  useAccountLogin,
-  type AccountLogin,
-  type AccountLoginTransport,
-} from "bb-plugin-bb-account/ui/account-login";
-import {
   encodeMobilePairingPayload,
   mobilePairingPayload,
   type MobilePairingPayload,
@@ -38,6 +32,7 @@ import {
   accountStatusSchema,
   loginPollOutputSchema,
   loginViewSchema,
+  type LoginView,
 } from "bb-plugin-bb-account/src/schemas.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";
@@ -78,8 +73,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const COPIED_RESET_MS = 1_500;
-
 const DANGER_QUIET_CLASS =
   "text-destructive-text hover:text-destructive-text hover:bg-surface-destructive";
 
@@ -97,6 +90,15 @@ interface PairErrorCopy {
   lead: string;
   linkLabel: string;
   tail: string;
+}
+
+const LOGIN_POLL_MS = 2_000;
+const LOGIN_POLL_MAX_MS = 30_000;
+
+function loginPollDelay(failures: number): number {
+  return failures === 0
+    ? LOGIN_POLL_MS
+    : Math.min(LOGIN_POLL_MS * 2 ** failures, LOGIN_POLL_MAX_MS);
 }
 
 const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
@@ -373,10 +375,7 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
       }
       setCopyState("copied");
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(
-        () => setCopyState("idle"),
-        COPIED_RESET_MS,
-      );
+      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
     });
   }, [url, selectUrl]);
 
@@ -432,7 +431,7 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
       if (!written) return;
       setCopied(true);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), COPIED_RESET_MS);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
     });
   }, [text]);
   return (
@@ -1132,52 +1131,117 @@ function TurnOffDialog({
   );
 }
 
-function useConnectAccountLogin(
+interface AccountLogin {
+  login: LoginView | null;
+  starting: boolean;
+  error: string | null;
+  start(): void;
+  cancel(): void;
+}
+
+function useAccountLogin(
   onSignedIn: () => void,
   openOnStart: boolean,
 ): AccountLogin {
   const sdk = useSdk();
-  const transport = useMemo<AccountLoginTransport>(
-    () => ({
-      start: () =>
-        sdk.plugins.callRpc({
-          pluginId: ACCOUNT_PLUGIN_ID,
-          method: "login.start",
-          input: { baseUrl: null },
-          outputSchema: loginViewSchema,
-        }),
-      poll: (loginId) =>
-        sdk.plugins
-          .callRpc({
-            pluginId: ACCOUNT_PLUGIN_ID,
-            method: "login.poll",
-            input: { loginId },
-            outputSchema: loginPollOutputSchema,
-          })
-          .then((result) => result.login),
-      cancel: (loginId) =>
-        sdk.plugins
-          .callRpc({
-            pluginId: ACCOUNT_PLUGIN_ID,
-            method: "login.cancel",
-            input: { loginId },
-            outputSchema: loginPollOutputSchema.pick({ login: true }),
-          })
-          .then(() => {}),
-    }),
-    [sdk],
-  );
-  return useAccountLogin({
-    transport,
-    describeStartError: signInStartErrorText,
-    onSignedIn,
-    observedLogin: null,
-    openOnStart,
+  const navigate = useBbNavigate();
+  const [login, setLogin] = useState<LoginView | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const onSignedInRef = useRef(onSignedIn);
+  useEffect(() => {
+    onSignedInRef.current = onSignedIn;
   });
+
+  const start = useCallback(() => {
+    setStarting(true);
+    setError(null);
+    sdk.plugins
+      .callRpc({
+        pluginId: ACCOUNT_PLUGIN_ID,
+        method: "login.start",
+        input: { baseUrl: null },
+        outputSchema: loginViewSchema,
+      })
+      .then(
+        (view) => {
+          setStarting(false);
+          setLogin(view);
+          if (openOnStart && view.state === "pending") {
+            navigate.openUrl(view.verificationUrl);
+          }
+        },
+        (rpcError: unknown) => {
+          setStarting(false);
+          setError(signInStartErrorText(rpcError));
+        },
+      );
+  }, [navigate, openOnStart, sdk]);
+
+  const pendingId = login?.state === "pending" ? login.id : null;
+  useEffect(() => {
+    if (pendingId === null) return;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = () => {
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.poll",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema,
+        })
+        .then(
+          (result) => {
+            failures = 0;
+            if (!cancelled && result.login?.id === pendingId) {
+              setLogin(result.login);
+            }
+          },
+          () => {
+            failures += 1;
+          },
+        )
+        .finally(() => {
+          if (!cancelled) timer = setTimeout(poll, loginPollDelay(failures));
+        });
+    };
+    timer = setTimeout(poll, LOGIN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [pendingId, sdk]);
+
+  const signedInId = login?.state === "signed-in" ? login.id : null;
+  useEffect(() => {
+    if (signedInId !== null) onSignedInRef.current();
+  }, [signedInId]);
+
+  const cancel = useCallback(() => {
+    if (pendingId !== null) {
+      sdk.plugins
+        .callRpc({
+          pluginId: ACCOUNT_PLUGIN_ID,
+          method: "login.cancel",
+          input: { loginId: pendingId },
+          outputSchema: loginPollOutputSchema.pick({ login: true }),
+        })
+        .then(
+          () => {},
+          () => {},
+        );
+    }
+    setLogin(null);
+    setError(null);
+  }, [pendingId, sdk]);
+
+  return { login, starting, error, start, cancel };
 }
 
 function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
-  const { login, starting, error, start, cancel } = useConnectAccountLogin(
+  const { login, starting, error, start, cancel } = useAccountLogin(
     onSignedIn,
     false,
   );
@@ -2054,7 +2118,7 @@ function ConnectSetupGuideSection({
   const rpc = useRpc<typeof connectRpcContract>();
   const navigate = useBbNavigate();
   const { status, loadError, refetch } = useConnectStatus();
-  const { login, starting, error, start, cancel } = useConnectAccountLogin(
+  const { login, starting, error, start, cancel } = useAccountLogin(
     refetch,
     true,
   );
@@ -2173,8 +2237,6 @@ function ConnectSetupGuideSection({
         pendingSignIn === null ? null : (
           <div className="px-3 pb-3">
             <InlinePanel
-              flush
-              flushBottom
               hasBody={false}
               toggles={
                 <>

@@ -1207,6 +1207,9 @@ export const terminalSessions = sqliteTable(
     ),
     index("terminal_sessions_host_status_idx").on(table.hostId, table.status),
     index("terminal_sessions_daemon_session_idx").on(table.daemonSessionId),
+    index("terminal_sessions_exited_prune_idx")
+      .on(table.updatedAt, table.id)
+      .where(sql`${table.status} = 'exited'`),
   ],
 );
 
