@@ -17,7 +17,6 @@ import {
   skippedStepIds,
   hasReadyAgent,
   parseSignInOutput,
-  parsesSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
   signInBrowserIsOnMachine,
@@ -697,22 +696,6 @@ describe("signInSiteName", () => {
 describe("agentSignInView", () => {
   const DEVICE_OUTPUT =
     "Open https://auth.example.com/device and enter code ABCD-1234\r\n";
-
-  it("parses a sign-in link and code only for Claude Code, Codex and Cursor", () => {
-    for (const id of ["claude-code", "codex", "acp-cursor"]) {
-      expect(parsesSignInOutput(id)).toBe(true);
-    }
-    for (const id of [
-      "pi",
-      "acp-omp",
-      "acp-grok",
-      "acp-hermes-agent",
-      "acp-opencode",
-      "acp-registry-agent",
-    ]) {
-      expect(parsesSignInOutput(id)).toBe(false);
-    }
-  });
 
   it("opens the terminal without a parsed link for other agents once it prints", () => {
     const base = {

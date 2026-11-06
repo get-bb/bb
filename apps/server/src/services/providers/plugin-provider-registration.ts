@@ -211,6 +211,9 @@ export function buildPluginProviderRegistration(args: {
     reasoningLevels: projectReasoningLevels(declaration),
     ...(serviceTiers === undefined ? {} : { serviceTiers }),
     ...(extensionKinds === undefined ? {} : { extensionKinds }),
+    ...(declaration.internal_DO_NOT_USE_guidedSignIn
+      ? { internal_DO_NOT_USE_guidedSignIn: true as const }
+      : {}),
   };
 
   const serverCapabilities: ProviderServerCapabilities = {

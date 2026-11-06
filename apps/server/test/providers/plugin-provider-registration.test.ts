@@ -274,6 +274,18 @@ describe("buildPluginProviderRegistration", () => {
     });
   });
 
+  it("projects a declared guided sign-in onto ProviderInfo", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({ internal_DO_NOT_USE_guidedSignIn: true }),
+      iconHash: null,
+      readSettings: NO_SETTINGS,
+    });
+
+    expect(registration.info.internal_DO_NOT_USE_guidedSignIn).toBe(true);
+  });
+
   it("maps an icon-less declaration to a null logoUrl and skills-only actions", () => {
     const registration = buildPluginProviderRegistration({
       iconHash: null,
@@ -348,6 +360,23 @@ describe("buildPluginProviderRegistration", () => {
       "acp-grok": "collapse",
       "acp-hermes-agent": "collapse",
     });
+  });
+
+  it("gives only Claude Code, Codex and Cursor the guided sign-in", async () => {
+    const declarations = await loadFirstPartyProviderDeclarations();
+    const guided = [...declarations.entries()].flatMap(([pluginId, list]) =>
+      list.flatMap((declared) => {
+        const { info } = buildPluginProviderRegistration({
+          available: true,
+          pluginId,
+          declaration: declared,
+          iconHash: null,
+          readSettings: NO_SETTINGS,
+        });
+        return info.internal_DO_NOT_USE_guidedSignIn ? [info.id] : [];
+      }),
+    );
+    expect(guided.sort()).toStrictEqual(["acp-cursor", "claude-code", "codex"]);
   });
 });
 

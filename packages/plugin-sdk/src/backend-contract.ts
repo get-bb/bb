@@ -1658,6 +1658,14 @@ export interface PluginProviderDeclaration {
    */
   experimental_resolvesNativeRoots?: boolean;
   /**
+   * Internal to bb's own provider plugins; not part of the plugin API, and it
+   * may change or disappear in any release. When true, the first-run setup
+   * guide runs this provider's sign-in in its guided panel, which reads the
+   * sign-in link and code from the provider's login output. Otherwise the
+   * guide opens the provider's sign-in terminal in the row. Defaults to false.
+   */
+  internal_DO_NOT_USE_guidedSignIn?: boolean;
+  /**
    * Derive this provider's opaque per-command options. Called synchronously
    * by the server for every session and turn command on a thread of this
    * provider, with the command's {@link PluginProviderOptionsContext}; the

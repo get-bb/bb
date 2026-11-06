@@ -22,7 +22,6 @@ import {
 import {
   STEP_COPY,
   agentSignInView,
-  parsesSignInOutput,
   resolveAgentSetupState,
   type AgentSetupState,
   type OnboardingStepId,
@@ -1091,7 +1090,7 @@ const GROK_LOGIN_OUTPUT = [
 
 function grokSigningInAgent(): OnboardingAgent {
   const view = agentSignInView({
-    parsed: parsesSignInOutput("acp-grok"),
+    parsed: false,
     connect: false,
     outputText: GROK_LOGIN_OUTPUT,
     fallbackDue: false,

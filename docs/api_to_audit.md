@@ -1331,6 +1331,30 @@ Devices step, which renders `PluginSetupGuideSections` for `connect`.
 setup guide rows, which groups they may target, and whether the guide should
 own the row chrome instead of the plugin rendering `SetupOptionRow`.
 
+## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `ProviderInfo.internal_DO_NOT_USE_guidedSignIn`
+
+Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+A provider declaration sets `internal_DO_NOT_USE_guidedSignIn: true` when the
+redesigned first-run setup guide should run its sign-in in the guided panel:
+the guide runs the provider's login command, keeps its terminal behind Show
+terminal, reads the sign-in link and code from the output, and shows them in
+the row. Every other
+provider is terminal-first: the guide opens the login terminal in the row. The
+validator fills `false` when the field is absent and refuses a non-boolean.
+The server projects it onto `ProviderInfo` only when true, so the field is
+absent for every other provider. Today's guide ignores it.
+
+Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
+Cursor agent only. Core caller: the onboarding Agent step
+(`OnboardingFlow`), which reads `ProviderInfo.internal_DO_NOT_USE_guidedSignIn`
+instead of a list of provider ids.
+
+**Audit before stabilizing.** Decide whether the provider should describe its
+sign-in output itself (link and code patterns, or a structured sign-in
+request from the bridge) instead of core parsing terminal text, and whether
+Pi's terminal `/login` flow belongs in the same declaration.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto
