@@ -346,6 +346,19 @@ the `setup-guide-redesign` PostHog flag, evaluated for the anonymous install id
 when the evaluation fails, the flag is missing or disabled, or its variant is
 unknown. The assignment saved in `<dataDir>/setup-guide-assignment.json` is
 reused. `BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
+The Plugins step's featured plugins come from
+`GET /api/v1/system/setup-guide/featured-plugins`
+(`sdk.system.experimental_setupGuideFeaturedPlugins()`,
+`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
+`onboarding-featured-plugins` PostHog flag in the same way (3-second timeout,
+`control` without telemetry or on any failure) and saved in
+`<dataDir>/featured-plugins-assignment.json`. Its `new` variant's payload
+`{"plugins": ["browser-automation", ...], "alreadyOn": ["push-notifications", ...]}`
+lists bb-official entry ids to feature in either guide; `alreadyOn` (optional,
+a subset of `plugins`) names plugins the new guide shows switched on with the
+switch disabled while they are enabled. `entryIds` is `null` for `control` or
+when the payload is absent or invalid, and the app shows its default list.
+`BB_SETUP_GUIDE_VARIANT` doesn't affect it.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -378,6 +391,16 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
 `recommendation`), and once the flag assignment is known every event, including
 `turn_finished`, carries `$feature/setup-guide-redesign`.
+`onboarding_featured_plugins_exposed` (`entry`) is sent once per guide when the
+Plugins step first shows its featured plugins: the server saves that flag's
+assignment, adds `featured_plugins_variant` and `featured_plugins_source`
+(`flag` or `default`), sets `featured_plugins_variant` as a person property,
+and sends `$feature_flag_called` when the flag decided the variant. The server
+also adds `featured_plugins_variant` to every setup-guide event, and once the
+assignment is known every event carries `$feature/onboarding-featured-plugins`.
+The new guide sends no `recommendation` events for `alreadyOn` plugins and
+doesn't count them when deciding whether its Plugins step was completed or
+skipped.
 `onboarding_operation` records a setup-guide action's `started`,
 `succeeded`, or `failed` outcome with counts only, the same way in both
 guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran

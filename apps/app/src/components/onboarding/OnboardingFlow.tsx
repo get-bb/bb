@@ -50,6 +50,7 @@ import {
   useHostProviderCliStatus,
   useSystemConfig,
   useSystemProviderStates,
+  useSetupGuideFeaturedPlugins,
   useSystemProviders,
 } from "@/hooks/queries/system-queries";
 import {
@@ -95,6 +96,7 @@ import {
   defaultSelectedRepoPaths,
   agentContinueDisabled,
   ONBOARDING_PLUGIN_ENTRY_IDS,
+  featuredPlugins,
   hasReadyAgent,
   operationFailureReason,
   projectsPrimaryAction,
@@ -941,6 +943,7 @@ function PluginCardContainer({
   entry,
   compact,
   enabled,
+  locked,
   switches,
   onChanged,
   onSelected,
@@ -951,6 +954,7 @@ function PluginCardContainer({
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
+  locked: boolean;
   switches: OnboardingPluginSwitches | null;
   onChanged: () => Promise<void>;
   onSelected: () => void;
@@ -1028,6 +1032,7 @@ function PluginCardContainer({
           : switches.shown(entry.pluginId, enabled)
       }
       pending={switches === null && (busy || settling)}
+      locked={locked}
       unavailableReason={
         entry.installed || entry.compatible
           ? null
@@ -1038,12 +1043,15 @@ function PluginCardContainer({
   );
 }
 
+const NO_ENTRY_IDS: ReadonlySet<string> = new Set();
+
 function PluginsStepContainer({
   chrome,
   setupGuide,
   entry: onboardingEntry,
   trackInstall,
   switches,
+  onFeaturedPluginsShown,
   onBack,
   onContinue,
   onSkip,
@@ -1053,11 +1061,13 @@ function PluginsStepContainer({
   entry: OnboardingEntry;
   trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
+  onFeaturedPluginsShown: () => void;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  const featuredQuery = useSetupGuideFeaturedPlugins();
   useLoadFailureTelemetry({
     entry: onboardingEntry,
     step: "plugins",
@@ -1079,10 +1089,15 @@ function PluginsStepContainer({
   }, [installedCount, refetchCatalog]);
 
   const redesign = setupGuide.variant === "new";
+  const featured = useMemo(
+    () =>
+      featuredQuery.isPending ? null : featuredPlugins(featuredQuery.data),
+    [featuredQuery.isPending, featuredQuery.data],
+  );
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
-    if (all === undefined) return null;
-    return ONBOARDING_PLUGIN_ENTRY_IDS.flatMap((entryId) => {
+    if (all === undefined || featured === null) return null;
+    return featured.entryIds.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -1090,12 +1105,17 @@ function PluginsStepContainer({
       );
       return entry === undefined ? [] : [entry];
     });
-  }, [catalogQuery.data?.entries]);
+  }, [catalogQuery.data?.entries, featured]);
+  useEffect(() => {
+    if (entries !== null) onFeaturedPluginsShown();
+  }, [entries, onFeaturedPluginsShown]);
   const isEnabled = (entry: PluginCatalogSearchEntry) =>
     entry.installed &&
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
+  const alreadyOnEntryIds =
+    redesign && featured !== null ? featured.alreadyOnEntryIds : NO_ENTRY_IDS;
   const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
     redesign
       ? switches.shown(entry.pluginId, isEnabled(entry))
@@ -1123,13 +1143,18 @@ function PluginsStepContainer({
     },
     [onboardingEntry, recommendationIds],
   );
+  const recommendedEntries = useMemo(
+    () =>
+      entries?.filter((entry) => !alreadyOnEntryIds.has(entry.entryId)) ?? [],
+    [entries, alreadyOnEntryIds],
+  );
   useEffect(() => {
-    for (const entry of entries ?? []) {
+    for (const entry of recommendedEntries) {
       if (!recommendationIds.has(entry.pluginId)) {
         recordRecommendation(entry.pluginId, "shown");
       }
     }
-  }, [entries, recommendationIds, recordRecommendation]);
+  }, [recommendedEntries, recommendationIds, recordRecommendation]);
 
   return (
     <OnboardingLayout
@@ -1139,7 +1164,7 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (!(entries ?? []).some(isShownEnabled)) onSkip();
+        if (!recommendedEntries.some(isShownEnabled)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}
@@ -1148,7 +1173,9 @@ function PluginsStepContainer({
       <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
         {entries === null ? (
           <OnboardingPluginGridSkeleton
-            count={ONBOARDING_PLUGIN_ENTRY_IDS.length}
+            count={
+              featured?.entryIds.length ?? ONBOARDING_PLUGIN_ENTRY_IDS.length
+            }
           />
         ) : (
           entries.map((entry) => (
@@ -1159,6 +1186,7 @@ function PluginsStepContainer({
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
+              locked={alreadyOnEntryIds.has(entry.entryId) && isEnabled(entry)}
               switches={redesign ? switches : null}
               onChanged={refresh}
               onSelected={() =>
@@ -1340,6 +1368,15 @@ export function OnboardingFlow({
     exposedRef.current = true;
     recordTelemetryEvent({ name: "onboarding_exposed", properties: { entry } });
   }, [entry]);
+  const featuredPluginsExposedRef = useRef(false);
+  const recordFeaturedPluginsExposure = useCallback(() => {
+    if (featuredPluginsExposedRef.current) return;
+    featuredPluginsExposedRef.current = true;
+    recordTelemetryEvent({
+      name: "onboarding_featured_plugins_exposed",
+      properties: { entry },
+    });
+  }, [entry]);
   const navigationProjects = useSidebarNavigation().data?.projects;
   const [projectIdsAtOpen, setProjectIdsAtOpen] =
     useState<ReadonlySet<string> | null>(null);
@@ -1488,6 +1525,7 @@ export function OnboardingFlow({
           entry={entry}
           trackInstall={trackPluginInstall}
           switches={pluginSwitches}
+          onFeaturedPluginsShown={recordFeaturedPluginsExposure}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}

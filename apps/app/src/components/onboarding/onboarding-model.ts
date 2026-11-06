@@ -8,6 +8,7 @@ import type {
   ServerAccessStatus,
   SetupGuideVariant,
   SystemProviderState,
+  SystemSetupGuideFeaturedPluginsResponse,
   SystemSetupGuideResponse,
 } from "@bb/server-contract";
 
@@ -33,6 +34,26 @@ export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
   "agent-annotations",
   "ask-user-question",
 ];
+
+export interface FeaturedPlugins {
+  entryIds: readonly string[];
+  alreadyOnEntryIds: ReadonlySet<string>;
+}
+
+export function featuredPlugins(
+  response: SystemSetupGuideFeaturedPluginsResponse | undefined,
+): FeaturedPlugins {
+  if (response === undefined || response.entryIds === null) {
+    return {
+      entryIds: ONBOARDING_PLUGIN_ENTRY_IDS,
+      alreadyOnEntryIds: new Set(),
+    };
+  }
+  return {
+    entryIds: response.entryIds,
+    alreadyOnEntryIds: new Set(response.alreadyOnEntryIds),
+  };
+}
 
 export const CONNECT_PLUGIN_ID = "connect";
 

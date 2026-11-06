@@ -38,6 +38,7 @@ import {
   hostProviderCliStatusQueryKey,
   systemCliCommandQueryKey,
   systemSetupGuideQueryKey,
+  systemSetupGuideFeaturedPluginsQueryKey,
   systemCliSkillsQueryKey,
   systemAiServicesQueryKey,
   systemConfigQueryKey,
@@ -595,6 +596,20 @@ export function useSetupGuideAssignment(options?: QueryOptions) {
     staleTime: Infinity,
     retry: false,
   });
+}
+
+export function setupGuideFeaturedPluginsQueryOptions() {
+  return queryOptions({
+    queryKey: systemSetupGuideFeaturedPluginsQueryKey(),
+    queryFn: ({ signal }) =>
+      sdk.system.experimental_setupGuideFeaturedPlugins({ signal }),
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+export function useSetupGuideFeaturedPlugins() {
+  return useQuery(setupGuideFeaturedPluginsQueryOptions());
 }
 
 export function useCliCommandStatus(options?: QueryOptions) {

@@ -34,6 +34,7 @@ import type {
   SystemProviderStatesResponse,
   SystemProvidersQuery,
   SystemSetupGuideResponse,
+  SystemSetupGuideFeaturedPluginsResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -119,6 +120,8 @@ export interface SystemSetupGuideArgs {
   signal?: AbortSignal;
 }
 export type SystemSetupGuideResult = SystemSetupGuideResponse;
+export type SystemSetupGuideFeaturedPluginsResult =
+  SystemSetupGuideFeaturedPluginsResponse;
 
 export interface SystemAiServicesArgs {
   signal?: AbortSignal;
@@ -200,6 +203,9 @@ export interface SystemArea {
   experimental_setupGuide(
     args?: SystemSetupGuideArgs,
   ): Promise<SystemSetupGuideResult>;
+  experimental_setupGuideFeaturedPlugins(
+    args?: SystemSetupGuideArgs,
+  ): Promise<SystemSetupGuideFeaturedPluginsResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
   setAiServiceSelection(
     args: SystemSetAiServiceSelectionArgs,
@@ -384,6 +390,14 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async experimental_setupGuide(input) {
       return transport.readJson(
         transport.api.v1.system["setup-guide"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_setupGuideFeaturedPlugins(input) {
+      return transport.readJson(
+        transport.api.v1.system["setup-guide"]["featured-plugins"].$get(
           {},
           ...signalRequestArgs(input?.signal),
         ),

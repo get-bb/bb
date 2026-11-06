@@ -196,6 +196,7 @@ import {
   type SidebarBootstrapResponse,
   type SystemAttentionResponse,
   type SystemSetupGuideResponse,
+  type SystemSetupGuideFeaturedPluginsResponse,
   type SystemConfigReloadResponse,
   type SystemConfigResponse,
   type SystemMobileAppReleasesResponse,
@@ -1909,6 +1910,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemSetupGuideResponse>(),
+    }),
+    setupGuideFeaturedPlugins: defineRoute({
+      path: "/system/setup-guide/featured-plugins",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<SystemSetupGuideFeaturedPluginsResponse>(),
     }),
     recordTelemetryEvent: defineRoute({
       path: "/system/telemetry/events",

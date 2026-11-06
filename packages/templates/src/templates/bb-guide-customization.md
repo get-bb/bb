@@ -430,7 +430,10 @@ when the saved preference is enabled.
 `BB_SETUP_GUIDE_VARIANT=control` or `new` (startup-only) forces which
 first-run setup guide this server shows, ignoring telemetry and the
 `setup-guide-redesign` experiment. SDK `system.experimental_setupGuide()`
-returns the variant in use.
+returns the variant in use. The Plugins step's featured plugins follow the
+separate `onboarding-featured-plugins` experiment, which the variant override
+doesn't affect; SDK `system.experimental_setupGuideFeaturedPlugins()` returns
+the list in use (`entryIds` is `null` for the default list).
 
 Mobile app downloads
 

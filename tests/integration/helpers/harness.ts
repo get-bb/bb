@@ -54,6 +54,7 @@ import { createProviderNativeRootsCache } from "../../../apps/server/src/service
 import { createProviderLiveCommandsCache } from "../../../apps/server/src/services/providers/provider-live-commands.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createSetupGuideExperiment } from "../../../apps/server/src/services/system/setup-guide-experiment.js";
+import { createFeaturedPluginsExperiment } from "../../../apps/server/src/services/system/featured-plugins-experiment.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
 import type {
@@ -353,6 +354,13 @@ async function startIntegrationServer(
       flagTimeoutMs: 1_000,
       logger: testLogger,
       override: null,
+      telemetry,
+    }),
+    featuredPluginsExperiment: await createFeaturedPluginsExperiment({
+      dataDir: serverDataDir,
+      fetch: () => Promise.reject(new Error("no PostHog in tests")),
+      flagTimeoutMs: 1_000,
+      logger: testLogger,
       telemetry,
     }),
     telemetry,

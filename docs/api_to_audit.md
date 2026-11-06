@@ -4023,6 +4023,11 @@ the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
 `setup_guide_variant` as a person property (`$set`), and sends
 `$feature_flag_called` when the variant came from the PostHog flag. Every
 setup-guide event gets `setup_guide_variant` from the server.
+`onboarding_featured_plugins_exposed` (`entry`) marks the Plugins step first
+showing its featured plugins; the server handles it the same way for the
+`onboarding-featured-plugins` flag (`featured_plugins_variant`,
+`featured_plugins_source`), and every setup-guide event also gets
+`featured_plugins_variant`.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -4038,6 +4043,21 @@ the first-run setup guide this install sees. Flag resolution, saved assignments,
 Stabilize or remove when the setup-guide experiment concludes; decide then
 whether a general server-evaluated experiment surface is wanted, and if so
 replace this single-purpose method with it.
+
+## `PluginBbSdk.system.experimental_setupGuideFeaturedPlugins`
+
+Reads `GET /api/v1/system/setup-guide/featured-plugins`:
+`{ entryIds: string[] | null, alreadyOnEntryIds: string[] }`, the bb-official
+entry ids the setup guide's Plugins step features for this install and the
+ones the new guide shows switched on with the switch disabled. `entryIds` is
+`null` when the `onboarding-featured-plugins` experiment supplies no list, and
+the app uses its default. Flag resolution and the payload format are described
+under Setup guide in [configuration.md](configuration.md#general-settings).
+Core caller: `PluginsStepContainer` in
+`apps/app/src/components/onboarding/OnboardingFlow.tsx`.
+
+Stabilize or remove with `experimental_setupGuide` when the featured-plugins
+experiment concludes.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 

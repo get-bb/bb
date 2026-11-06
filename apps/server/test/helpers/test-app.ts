@@ -49,6 +49,7 @@ import { createAppVersionService } from "../../src/services/system/app-version.j
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { createSetupGuideExperiment } from "../../src/services/system/setup-guide-experiment.js";
+import { createFeaturedPluginsExperiment } from "../../src/services/system/featured-plugins-experiment.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
@@ -367,6 +368,13 @@ export async function createTestAppHarness(
       flagTimeoutMs: 1_000,
       logger,
       override: null,
+      telemetry,
+    }),
+    featuredPluginsExperiment: await createFeaturedPluginsExperiment({
+      dataDir,
+      fetch: () => Promise.reject(new Error("no PostHog in tests")),
+      flagTimeoutMs: 1_000,
+      logger,
       telemetry,
     }),
     config,

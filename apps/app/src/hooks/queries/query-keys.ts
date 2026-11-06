@@ -63,6 +63,8 @@ export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 const SYSTEM_CLI_COMMAND_QUERY_KEY = "systemCliCommand";
 const SYSTEM_SETUP_GUIDE_QUERY_KEY = "systemSetupGuide";
+const SYSTEM_SETUP_GUIDE_FEATURED_PLUGINS_QUERY_KEY =
+  "systemSetupGuideFeaturedPlugins";
 const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 const SYSTEM_APP_UPDATE_QUERY_KEY = "systemAppUpdate";
 const SERVER_MOVE_STATUS_QUERY_KEY = "serverMoveStatus";
@@ -418,6 +420,9 @@ type AllSystemThemesQueryKeyPrefix = readonly [typeof SYSTEM_THEME_QUERY_KEY];
 type SystemCliSkillsQueryKey = readonly [typeof SYSTEM_CLI_SKILLS_QUERY_KEY];
 type SystemCliCommandQueryKey = readonly [typeof SYSTEM_CLI_COMMAND_QUERY_KEY];
 type SystemSetupGuideQueryKey = readonly [typeof SYSTEM_SETUP_GUIDE_QUERY_KEY];
+type SystemSetupGuideFeaturedPluginsQueryKey = readonly [
+  typeof SYSTEM_SETUP_GUIDE_FEATURED_PLUGINS_QUERY_KEY,
+];
 type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 type SystemAppUpdateQueryKey = readonly [typeof SYSTEM_APP_UPDATE_QUERY_KEY];
 type ServerMoveStatusQueryKey = readonly [typeof SERVER_MOVE_STATUS_QUERY_KEY];
@@ -986,6 +991,10 @@ export function systemCliCommandQueryKey(): SystemCliCommandQueryKey {
 
 export function systemSetupGuideQueryKey(): SystemSetupGuideQueryKey {
   return [SYSTEM_SETUP_GUIDE_QUERY_KEY];
+}
+
+export function systemSetupGuideFeaturedPluginsQueryKey(): SystemSetupGuideFeaturedPluginsQueryKey {
+  return [SYSTEM_SETUP_GUIDE_FEATURED_PLUGINS_QUERY_KEY];
 }
 
 export function systemConfigQueryKey(): SystemConfigQueryKey {
