@@ -164,15 +164,25 @@ describe("connect settings section", () => {
       method: "login.start",
       input: { baseUrl: null },
     });
-    expect(slot.navigateCalls).toContainEqual({
-      method: "openUrl",
-      url: "https://getbb.app/link?code=K7QP-2M4X",
-    });
+    expect(
+      slot.navigateCalls.filter((call) => call.method === "openUrl"),
+    ).toEqual([]);
+    slot.getByText("Confirm this code on getbb.app:");
+    expect(slot.getByLabelText("Sign-in code").textContent).toBe("K7QP-2M4X");
     const link = slot.getByRole("link", {
-      name: "getbb.app",
+      name: /Open getbb\.app/,
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
-    slot.getByText("Remote access turns on automatically after you sign in.");
+    expect(link.target).toBe("_blank");
+    slot.getByRole("button", { name: "Cancel" });
+    slot.getByText(
+      "Waiting for you to approve it. You can approve from any device.",
+    );
+    expect(
+      slot.queryByText(
+        "Remote access turns on automatically after you sign in.",
+      ),
+    ).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_999));
     expect(polls).toBe(0);

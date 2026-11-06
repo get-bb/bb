@@ -71,7 +71,6 @@ import {
   InlineTextLink,
   PendingStatus,
   QuietTextAction,
-  SignInPanel,
 } from "@bb/shared-ui/sign-in-panel";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 
@@ -1133,7 +1132,10 @@ function TurnOffDialog({
   );
 }
 
-function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
+function useConnectAccountLogin(
+  onSignedIn: () => void,
+  openOnStart: boolean,
+): AccountLogin {
   const sdk = useSdk();
   const transport = useMemo<AccountLoginTransport>(
     () => ({
@@ -1170,13 +1172,15 @@ function useConnectAccountLogin(onSignedIn: () => void): AccountLogin {
     describeStartError: signInStartErrorText,
     onSignedIn,
     observedLogin: null,
+    openOnStart,
   });
 }
 
 function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
-  const navigate = useBbNavigate();
-  const { login, starting, error, start, cancel } =
-    useConnectAccountLogin(onSignedIn);
+  const { login, starting, error, start, cancel } = useConnectAccountLogin(
+    onSignedIn,
+    false,
+  );
 
   if (login === null) {
     return (
@@ -1221,29 +1225,41 @@ function AccountSignInCard({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   return (
-    <div className="w-full max-w-md">
-      <SignInPanel
-        status="Remote access turns on automatically after you sign in."
-        instruction={
-          <>
-            Finish signing in on{" "}
-            <InlineTextLink
-              href={login.verificationUrl}
-              onOpen={navigate.openUrl}
-            >
-              {hostOf(login.verificationUrl)}
-            </InlineTextLink>
-            .
-          </>
-        }
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "Sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
-        toggles={<QuietTextAction onClick={cancel}>Cancel</QuietTextAction>}
-      />
+    <div className="space-y-2.5 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+      <p className="text-xs text-muted-foreground">
+        Confirm this code on {hostOf(login.verificationUrl)}:
+      </p>
+      <p
+        aria-label="Sign-in code"
+        className="font-mono text-base font-semibold tracking-widest"
+      >
+        {login.userCode}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" asChild>
+          <UrlLink
+            href={login.verificationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open getbb.app
+            <Icon name="ExternalLink" className="size-3.5" />
+          </UrlLink>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={cancel}
+        >
+          Cancel
+        </Button>
+      </div>
+      <p className="flex items-center gap-2 text-xs text-subtle-foreground">
+        <Icon name="Spinner" className="size-3.5 animate-spin" />
+        Waiting for you to approve it. You can approve from any device.
+      </p>
     </div>
   );
 }
@@ -2038,8 +2054,10 @@ function ConnectSetupGuideSection({
   const rpc = useRpc<typeof connectRpcContract>();
   const navigate = useBbNavigate();
   const { status, loadError, refetch } = useConnectStatus();
-  const { login, starting, error, start, cancel } =
-    useConnectAccountLogin(refetch);
+  const { login, starting, error, start, cancel } = useConnectAccountLogin(
+    refetch,
+    true,
+  );
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
   const [codeOpen, setCodeOpen] = useState(false);
