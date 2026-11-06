@@ -5,8 +5,8 @@ import {
   emptyResolvedItemPruningProbe,
 } from "./resolved-item-pruning.js";
 import { pruneRateLimitSnapshotWindow } from "./rate-limit-pruning.js";
-import { and, eq, gt, inArray, sql, type SQLWrapper } from "drizzle-orm";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import { and, eq, gt, inArray, notInArray, sql, type SQLWrapper } from "drizzle-orm";
+import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import {
   events,
   pendingInteractions,
@@ -149,75 +149,91 @@ export function getNextThreadPruningPolicy(
   );
 }
 
+function prepareThreadPruningCursor(
+  tx: DbTransaction,
+  policy: ThreadPruningPolicy,
+  threadScope: string | undefined,
+) {
+  const scope = threadScope ?? "";
+  drainPendingThreadPruningWork(tx, threadScope);
+  const latestAdvance = tx
+    .select({ updatedAt: threadPruningCursors.updatedAt })
+    .from(threadPruningCursors)
+    .where(
+      and(
+        eq(threadPruningCursors.scope, scope),
+        inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
+      ),
+    )
+    .all();
+  const now = Math.max(
+    Date.now(),
+    ...latestAdvance.map((row) => row.updatedAt + 1),
+  );
+  const created =
+    tx
+      .insert(threadPruningCursors)
+      .values({
+        policy,
+        scope,
+        threadId: threadScope ?? null,
+        version: VERSION_BY_POLICY[policy],
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .run().changes > 0;
+  let cursor = tx
+    .select()
+    .from(threadPruningCursors)
+    .where(
+      and(
+        eq(threadPruningCursors.policy, policy),
+        eq(threadPruningCursors.scope, scope),
+      ),
+    )
+    .get();
+  if (!cursor) throw new Error("Missing thread pruning cursor");
+  const stale = cursor.version !== VERSION_BY_POLICY[policy];
+  if (threadScope === undefined && (created || stale))
+    enqueueEveryThread(tx, policy);
+  if (stale) {
+    cursor = {
+      policy,
+      scope,
+      threadId: threadScope ?? null,
+      version: VERSION_BY_POLICY[policy],
+      lastThreadId: "",
+      currentThreadId: null,
+      step: 0,
+      sequence: 0,
+      upperSequence: 0,
+      workRevision: 0,
+      cycle: 0,
+      latestRootSequence: 0,
+      latestContextSequence: 0,
+      ...emptyResolvedItemPruningProbe(),
+      updatedAt: now,
+    };
+  }
+  return { cursor, now };
+}
+
 function advanceThreadPruningTransaction(
   db: DbConnection,
   policy: ThreadPruningPolicy,
-  threadScope?: string,
+  threadScope: string | undefined,
+  excludedThreadIds: ReadonlySet<string>,
 ) {
+  const notExcluded =
+    excludedThreadIds.size === 0
+      ? undefined
+      : notInArray(threadPruningWork.threadId, [...excludedThreadIds]);
   const scope = threadScope ?? "";
   const batchSize = threadScope === undefined ? BATCH_SIZE : LIVE_BATCH_SIZE;
-  const result = db.transaction(
+  let visitingThreadId: string | null = null;
+  const advance = () => db.transaction(
     (tx) => {
-      drainPendingThreadPruningWork(tx, threadScope);
-      const latestAdvance = tx
-        .select({ updatedAt: threadPruningCursors.updatedAt })
-        .from(threadPruningCursors)
-        .where(
-          and(
-            eq(threadPruningCursors.scope, scope),
-            inArray(threadPruningCursors.policy, [...THREAD_PRUNING_POLICIES]),
-          ),
-        )
-        .all();
-      const now = Math.max(
-        Date.now(),
-        ...latestAdvance.map((row) => row.updatedAt + 1),
-      );
-      const created =
-        tx
-          .insert(threadPruningCursors)
-          .values({
-            policy,
-            scope,
-            threadId: threadScope ?? null,
-            version: VERSION_BY_POLICY[policy],
-            updatedAt: now,
-          })
-          .onConflictDoNothing()
-          .run().changes > 0;
-      let cursor = tx
-        .select()
-        .from(threadPruningCursors)
-        .where(
-          and(
-            eq(threadPruningCursors.policy, policy),
-            eq(threadPruningCursors.scope, scope),
-          ),
-        )
-        .get();
-      if (!cursor) throw new Error("Missing thread pruning cursor");
-      const stale = cursor.version !== VERSION_BY_POLICY[policy];
-      if (threadScope === undefined && (created || stale))
-        enqueueEveryThread(tx, policy);
-      if (stale) {
-        cursor = {
-          policy,
-          scope,
-          threadId: threadScope ?? null,
-          version: VERSION_BY_POLICY[policy],
-          lastThreadId: "",
-          currentThreadId: null,
-          step: 0,
-          sequence: 0,
-          upperSequence: 0,
-          workRevision: 0,
-          cycle: 0,
-          latestRootSequence: 0,
-          latestContextSequence: 0,
-          ...emptyResolvedItemPruningProbe(),
-          updatedAt: now,
-        };
-      }
+      const { cursor, now } = prepareThreadPruningCursor(tx, policy, threadScope);
       let action:
         | "advanced"
         | "cycle-complete"
@@ -241,6 +257,7 @@ function advanceThreadPruningTransaction(
                     eq(threadPruningWork.policy, policy),
                     gt(threadPruningWork.threadId, cursor.lastThreadId),
                     isSettledThread(threadPruningWork.threadId),
+                    notExcluded,
                   ),
                 )
                 .orderBy(threadPruningWork.threadId)
@@ -262,6 +279,7 @@ function advanceThreadPruningTransaction(
               and(
                 eq(threadPruningWork.policy, policy),
                 isSettledThread(threadPruningWork.threadId),
+                notExcluded,
               ),
             )
             .orderBy(threadPruningWork.threadId)
@@ -298,6 +316,7 @@ function advanceThreadPruningTransaction(
         }
       }
       const threadId = cursor.currentThreadId;
+      visitingThreadId = threadId;
       if (threadId !== null) {
         const thread = tx
           .select({
@@ -489,6 +508,12 @@ function advanceThreadPruningTransaction(
     },
     { behavior: "immediate" },
   );
+  let result: ReturnType<typeof advance>;
+  try {
+    result = advance();
+  } catch (error) {
+    throw new ThreadPruningAdvanceError({ cause: error, policy, threadId: visitingThreadId });
+  }
   if (result.removed > 0 && result.threadId !== null)
     bumpThreadEventRewriteGeneration(result.threadId);
   return result;
@@ -498,11 +523,7 @@ export function advanceThreadPruning(
   db: DbConnection,
   target: ThreadPruningPolicy | { threadId: string },
 ) {
-  const timeout: unknown = db.$client.pragma("busy_timeout", { simple: true });
-  if (typeof timeout !== "number")
-    throw new Error("Invalid SQLite busy timeout");
-  db.$client.pragma("busy_timeout = 0");
-  try {
+  return advanceWithoutBusyWait(db, () => {
     const threadScope =
       typeof target === "string" ? undefined : target.threadId;
     const policy =
@@ -510,10 +531,77 @@ export function advanceThreadPruning(
         ? target
         : getNextThreadPruningPolicy(db, new Set(), target.threadId);
     if (policy === null) throw new Error("Missing live pruning policy");
-    return advanceThreadPruningTransaction(db, policy, threadScope);
+    return advanceThreadPruningTransaction(db, policy, threadScope, new Set());
+  });
+}
+
+export function advanceThreadPruningPolicy(
+  db: DbConnection,
+  args: { excludedThreadIds: ReadonlySet<string>; policy: ThreadPruningPolicy },
+) {
+  return advanceWithoutBusyWait(db, () =>
+    advanceThreadPruningTransaction(
+      db,
+      args.policy,
+      undefined,
+      args.excludedThreadIds,
+    ),
+  );
+}
+
+function advanceWithoutBusyWait<T>(db: DbConnection, advance: () => T): T {
+  const timeout: unknown = db.$client.pragma("busy_timeout", { simple: true });
+  if (typeof timeout !== "number")
+    throw new Error("Invalid SQLite busy timeout");
+  db.$client.pragma("busy_timeout = 0");
+  try {
+    return advance();
   } finally {
     db.$client.pragma(`busy_timeout = ${timeout}`);
   }
+}
+
+export class ThreadPruningAdvanceError extends Error {
+  readonly policy: ThreadPruningPolicy;
+  readonly threadId: string | null;
+
+  constructor(args: { cause: unknown; policy: ThreadPruningPolicy; threadId: string | null }) {
+    super(args.cause instanceof Error ? args.cause.message : String(args.cause), {
+      cause: args.cause,
+    });
+    this.name = "ThreadPruningAdvanceError";
+    this.policy = args.policy;
+    this.threadId = args.threadId;
+  }
+}
+
+export function skipThreadPruningThread(
+  db: DbConnection,
+  args: { policy: ThreadPruningPolicy; threadId: string },
+): void {
+  db.transaction(
+    (tx) => {
+      const { cursor, now } = prepareThreadPruningCursor(tx, args.policy, undefined);
+      tx.update(threadPruningCursors)
+        .set({
+          ...cursor,
+          ...emptyResolvedItemPruningProbe(),
+          currentThreadId: null,
+          lastThreadId: args.threadId,
+          sequence: 0,
+          step: 0,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(threadPruningCursors.policy, args.policy),
+            eq(threadPruningCursors.scope, ""),
+          ),
+        )
+        .run();
+    },
+    { behavior: "immediate" },
+  );
 }
 
 export function deleteThreadScopedPruningCursors(

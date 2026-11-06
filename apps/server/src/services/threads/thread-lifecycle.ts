@@ -107,6 +107,7 @@ import {
 } from "../hosts/live-command.js";
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
@@ -1419,71 +1420,77 @@ function requestThreadStop(
 export const TURN_START_DEADLINE_MS = 5 * 60_000;
 export const TURN_START_DEADLINE_RECONNECT_GRACE_MS = 60_000;
 
-export function stopRunsWhoseTurnNeverStarted(
+export function turnStartDeadlineSweep(
   deps: CommandResultSideEffectsDeps,
   now: number,
-): void {
+): ItemSweep {
   const deadline = now - TURN_START_DEADLINE_MS;
-  const activeThreads = deps.db
-    .select({
-      environmentId: environments.id,
-      hostId: environments.hostId,
-      threadId: threads.id,
-    })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(threads.status, "active"),
-        isNull(threads.deletedAt),
-        lte(threads.statusChangedAt, deadline),
-        sql`NOT EXISTS (
+  return defineItemSweep({
+    name: "turn-start-deadline",
+    detachAfterMs: null,
+    list: () =>
+      deps.db
+        .select({
+          environmentId: environments.id,
+          hostId: environments.hostId,
+          threadId: threads.id,
+        })
+        .from(threads)
+        .innerJoin(environments, eq(threads.environmentId, environments.id))
+        .where(
+          and(
+            eq(threads.status, "active"),
+            isNull(threads.deletedAt),
+            lte(threads.statusChangedAt, deadline),
+            sql`NOT EXISTS (
           SELECT 1 FROM ${events}
           WHERE ${events.threadId} = ${threads.id}
             AND ${events.type} = 'turn/completed'
             AND ${events.createdAt} > ${deadline}
         )`,
-      ),
-    )
-    .all();
-  for (const thread of activeThreads) {
-    const daemonConnectedAt = deps.hub.getDaemonConnectedAtForHost(
-      thread.hostId,
-    );
-    if (
-      daemonConnectedAt === null ||
-      now - daemonConnectedAt < TURN_START_DEADLINE_RECONNECT_GRACE_MS
-    ) {
-      continue;
-    }
-    if (getActiveTurnId(deps, thread.threadId) !== null) continue;
-    deps.logger.warn(
-      { threadId: thread.threadId },
-      "Stopping a run whose turn never started",
-    );
-    const notificationBuffer = new NotificationBuffer();
-    deps.db.transaction(
-      (tx) =>
-        appendSystemErrorEventInTransaction(
-          { db: tx, hub: notificationBuffer },
-          {
-            threadId: thread.threadId,
-            environmentId: thread.environmentId,
-            code: "provider_turn_start_deadline",
-            message: `The provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes, so bb stopped it. Send a message to try again.`,
-            scope: threadScope(),
-          },
-        ),
-      { behavior: "immediate" },
-    );
-    notificationBuffer.flushInto(deps.hub);
-    requestThreadStop(deps, {
-      environmentId: thread.environmentId,
-      hostId: thread.hostId,
-      interruptionReason: "provider-turn-idle",
-      threadId: thread.threadId,
-    });
-  }
+          ),
+        )
+        .all(),
+    key: (thread) => thread.threadId,
+    process: (thread) => {
+      const daemonConnectedAt = deps.hub.getDaemonConnectedAtForHost(
+        thread.hostId,
+      );
+      if (
+        daemonConnectedAt === null ||
+        now - daemonConnectedAt < TURN_START_DEADLINE_RECONNECT_GRACE_MS
+      ) {
+        return;
+      }
+      if (getActiveTurnId(deps, thread.threadId) !== null) return;
+      deps.logger.warn(
+        { threadId: thread.threadId },
+        "Stopping a run whose turn never started",
+      );
+      const notificationBuffer = new NotificationBuffer();
+      deps.db.transaction(
+        (tx) =>
+          appendSystemErrorEventInTransaction(
+            { db: tx, hub: notificationBuffer },
+            {
+              threadId: thread.threadId,
+              environmentId: thread.environmentId,
+              code: "provider_turn_start_deadline",
+              message: `The provider did not start the turn within ${TURN_START_DEADLINE_MS / 60_000} minutes, so bb stopped it. Send a message to try again.`,
+              scope: threadScope(),
+            },
+          ),
+        { behavior: "immediate" },
+      );
+      notificationBuffer.flushInto(deps.hub);
+      requestThreadStop(deps, {
+        environmentId: thread.environmentId,
+        hostId: thread.hostId,
+        interruptionReason: "provider-turn-idle",
+        threadId: thread.threadId,
+      });
+    },
+  });
 }
 
 function markThreadStopRequested(

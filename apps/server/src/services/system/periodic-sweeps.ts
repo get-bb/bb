@@ -28,6 +28,7 @@ import {
   getDatabaseMaintenanceActivity,
   getEnvironment,
   isDatabaseMaintenanceIdle,
+  listSweepItemFailures,
   listArchivedThreadsPendingTeardown,
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
@@ -56,7 +57,7 @@ import {
   hasLiveThreadStartInFlight,
   requestThreadStopForCurrentState,
   requestThreadStorageDeletion,
-  stopRunsWhoseTurnNeverStarted,
+  turnStartDeadlineSweep,
 } from "../threads/thread-lifecycle.js";
 import {
   archiveUndoGraceKeepsTerminals,
@@ -72,11 +73,17 @@ import { releaseOrphanedQueuedMessageDispatchClaims } from "../threads/queued-me
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 import type { OpenPluginDatabase } from "../plugins/plugin-service.js";
 import type Database from "better-sqlite3";
+import {
+  clearSweepFailure,
+  defineItemSweep,
+  recordSweepFailure,
+  type ItemSweep,
+} from "./item-sweep.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
 interface PluginScheduleSweeper {
-  sweepDueSchedules(now: number): Promise<void>;
+  dueScheduleSweep(now: number): ItemSweep;
 }
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
@@ -103,12 +110,23 @@ type PeriodicSweepJobCategory =
   | "maintenance"
   | "scheduler";
 
-export interface PeriodicSweepJob {
+interface PeriodicSweepJobBase {
   cadenceMs: number;
   category: PeriodicSweepJobCategory;
   name: string;
-  run(deps: PeriodicSweepDeps, now: number): Promise<void> | void;
 }
+
+export type PeriodicSweepJob = PeriodicSweepJobBase &
+  (
+    | {
+        kind: "items";
+        sweep(deps: PeriodicSweepDeps, now: number): ItemSweep;
+      }
+    | {
+        kind: "task";
+        run(deps: PeriodicSweepDeps, now: number): Promise<void> | void;
+      }
+  );
 
 interface PeriodicSweepJobState {
   lastStartedAt: number;
@@ -155,7 +173,11 @@ async function runPeriodicSweepJob(
   state.lastStartedAt = now;
   state.running = true;
   try {
-    await runEventLoopWork(`sweep:${job.name}`, () => job.run(deps, now));
+    await runEventLoopWork(`sweep:${job.name}`, () =>
+      job.kind === "items"
+        ? job.sweep(deps, now).run(deps, now)
+        : job.run(deps, now),
+    );
   } catch (error) {
     deps.logger.error(
       {
@@ -302,124 +324,143 @@ export async function runDatabaseMaintenanceSweep(
   });
 }
 
-async function runProjectDeletionSweep(
+function projectDeletionSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
-): Promise<void> {
-  for (const projectId of listProjectsPendingDeletion(deps)) {
-    try {
+): ItemSweep {
+  return defineItemSweep({
+    name: "project-deletion",
+    detachAfterMs: null,
+    list: () => listProjectsPendingDeletion(deps),
+    key: (projectId) => projectId,
+    process: async (projectId) => {
       await advanceProjectDeletion(deps, { projectId });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          projectId,
-        },
-        "Project deletion sweep failed",
-      );
-    }
-  }
+    },
+  });
+}
+
+function environmentProvisioningSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+): ItemSweep {
+  return defineItemSweep({
+    name: "environment-provisioning-orphan-cleanup",
+    detachAfterMs: null,
+    list: () =>
+      deps.db
+        .select({ id: environments.id })
+        .from(environments)
+        .where(inArray(environments.status, ["creating", "provisioning"]))
+        .all(),
+    key: (environment) => environment.id,
+    process: async (environment) => {
+      await advanceEnvironmentProvisioning(deps, {
+        environmentId: environment.id,
+      });
+    },
+  });
 }
 
 export async function runEnvironmentProvisioningSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  const provisioningEnvironments = deps.db
-    .select({ id: environments.id })
-    .from(environments)
-    .where(inArray(environments.status, ["creating", "provisioning"]))
-    .all();
-
-  for (const environment of provisioningEnvironments) {
-    try {
-      await advanceEnvironmentProvisioning(deps, {
-        environmentId: environment.id,
-      });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          environmentId: environment.id,
-        },
-        "Environment provisioning sweep failed",
-      );
-    }
-  }
+  await environmentProvisioningSweep(deps).run(deps, Date.now());
 }
 
-async function runThreadProvisioningOrphanCleanupSweep(
+function threadProvisioningSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+): ItemSweep {
+  return defineItemSweep({
+    name: "thread-provisioning",
+    detachAfterMs: null,
+    list: () =>
+      deps.db
+        .select({ id: threads.id })
+        .from(threads)
+        .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
+        .all(),
+    key: (thread) => thread.id,
+    process: async (thread) => {
+      if (hasLiveThreadStartInFlight(thread.id)) return;
+      await advanceThreadProvisioning(deps, { threadId: thread.id });
+    },
+  });
+}
+
+function archivedThreadTeardownSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): ItemSweep {
+  return defineItemSweep({
+    name: "archived-thread-teardown",
+    detachAfterMs: null,
+    list: () => listArchivedThreadsPendingTeardown(deps.db),
+    key: (thread) => thread.id,
+    process: (thread) => {
+      if (!archiveUndoGraceKeepsTerminals(thread, now)) {
+        deps.terminalSessions.closeArchivedThreadTerminals({
+          threadId: thread.id,
+        });
+      }
+      if (archiveUndoGraceKeepsTurnRunning(thread, now)) return;
+      requestThreadStopForCurrentState(
+        deps,
+        thread,
+        thread.environmentId
+          ? getEnvironment(deps.db, thread.environmentId)
+          : null,
+      );
+    },
+  });
+}
+
+function deletedThreadFinalizationSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+): ItemSweep {
+  return defineItemSweep({
+    name: "deleted-thread-finalization",
+    detachAfterMs: null,
+    list: () =>
+      deps.db
+        .select({
+          environmentId: threads.environmentId,
+          id: threads.id,
+          storageDeletedAt: threads.storageDeletedAt,
+        })
+        .from(threads)
+        .where(isNotNull(threads.deletedAt))
+        .all(),
+    key: (thread) => thread.id,
+    process: (thread) => {
+      deps.terminalSessions.closeDeletedThreadTerminals({
+        threadId: thread.id,
+      });
+      if (thread.storageDeletedAt !== null) {
+        finalizeStoppedThread(deps, { threadId: thread.id });
+        return;
+      }
+      requestThreadStorageDeletion(
+        deps,
+        thread,
+        thread.environmentId
+          ? getEnvironment(deps.db, thread.environmentId)
+          : null,
+      );
+    },
+  });
+}
+
+async function runThreadOrphanCleanupSweeps(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {
-  const provisioningThreads = deps.db
-    .select({
-      id: threads.id,
-      status: threads.status,
-    })
-    .from(threads)
-    .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
-    .all();
-
-  for (const thread of provisioningThreads) {
-    try {
-      if (hasLiveThreadStartInFlight(thread.id)) {
-        continue;
-      }
-      await advanceThreadProvisioning(deps, {
-        threadId: thread.id,
-      });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          threadId: thread.id,
-        },
-        "Thread provisioning sweep failed",
-      );
-    }
-  }
-  for (const thread of listArchivedThreadsPendingTeardown(deps.db)) {
-    if (!archiveUndoGraceKeepsTerminals(thread, now)) {
-      deps.terminalSessions.closeArchivedThreadTerminals({
-        threadId: thread.id,
-      });
-    }
-    if (archiveUndoGraceKeepsTurnRunning(thread, now)) {
-      continue;
-    }
-    requestThreadStopForCurrentState(
-      deps,
-      thread,
-      thread.environmentId
-        ? getEnvironment(deps.db, thread.environmentId)
-        : null,
-    );
-  }
-  const deletedThreads = deps.db
-    .select({
-      environmentId: threads.environmentId,
-      id: threads.id,
-      storageDeletedAt: threads.storageDeletedAt,
-    })
-    .from(threads)
-    .where(isNotNull(threads.deletedAt))
-    .all();
-  for (const thread of deletedThreads) {
-    deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
-    if (thread.storageDeletedAt !== null) {
-      finalizeStoppedThread(deps, { threadId: thread.id });
-      continue;
-    }
-    const environment = thread.environmentId
-      ? getEnvironment(deps.db, thread.environmentId)
-      : null;
-    requestThreadStorageDeletion(deps, thread, environment);
-  }
+  await threadProvisioningSweep(deps).run(deps, now);
+  await archivedThreadTeardownSweep(deps, now).run(deps, now);
+  await deletedThreadFinalizationSweep(deps).run(deps, now);
 }
 
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  await runThreadProvisioningOrphanCleanupSweep(deps, Date.now());
+  await runThreadOrphanCleanupSweeps(deps, Date.now());
   await sweepProviderLifecycles(deps);
   await sweepMachineLifecycles(deps);
 }
@@ -430,12 +471,32 @@ async function runMachineAuthPruneSweep(
   await deps.machineAuth.pruneExpiredKeys();
 }
 
+const COMPLETED_EVENT_OUTPUT_MIGRATION_SWEEP =
+  "completed-event-output-migration";
+
+function completedEventOutputMigrationKey(targetIndex: number): string {
+  const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
+  return target
+    ? `${target.itemKind}.${target.outputPath}`
+    : "legacy-image-generation";
+}
+
 async function runCompletedEventOutputMigrationSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {
   const migrationTargetCount = RETAINED_EVENT_OUTPUT_TARGETS.length + 1;
+  const failures = new Map(
+    listSweepItemFailures(deps.db, COMPLETED_EVENT_OUTPUT_MIGRATION_SWEEP).map(
+      (failure) => [failure.itemKey, failure],
+    ),
+  );
   const exhaustedTargets = new Set<number>();
+  for (let index = 0; index < migrationTargetCount; index += 1) {
+    const failure = failures.get(completedEventOutputMigrationKey(index));
+    if (failure !== undefined && failure.retryAt > now)
+      exhaustedTargets.add(index);
+  }
   const changedThreadIds = new Set<string>();
   let targetIndex = 0;
   try {
@@ -448,26 +509,45 @@ async function runCompletedEventOutputMigrationSweep(
       while (exhaustedTargets.has(targetIndex)) {
         targetIndex = (targetIndex + 1) % migrationTargetCount;
       }
-      const result = runEventLoopWorkSync(
-        "sweep:completed-event-output-migration:advance",
-        () => {
-          const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
-          return target
-            ? migrateNextCompletedEventItemOutput(deps.db, {
-                ...target,
-                limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
-                migratedAt: now,
-              })
-            : migrateNextLegacyImageGenerationOutput(deps.db, {
-                limit: DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
-                migratedAt: now,
-              });
-        },
-      );
-      if (result.action === "migrated") {
-        if (!result.threadId) {
+      const itemKey = completedEventOutputMigrationKey(targetIndex);
+      let result: ReturnType<typeof migrateNextCompletedEventItemOutput>;
+      try {
+        result = runEventLoopWorkSync(
+          "sweep:completed-event-output-migration:advance",
+          () => {
+            const target = RETAINED_EVENT_OUTPUT_TARGETS[targetIndex];
+            return target
+              ? migrateNextCompletedEventItemOutput(deps.db, {
+                  ...target,
+                  limit: DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
+                  migratedAt: now,
+                })
+              : migrateNextLegacyImageGenerationOutput(deps.db, {
+                  limit: DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
+                  migratedAt: now,
+                });
+          },
+        );
+        if (result.action === "migrated" && !result.threadId) {
           throw new Error("Migrated completed output has no thread");
         }
+      } catch (error) {
+        recordSweepFailure(deps, {
+          error,
+          itemKey,
+          now,
+          sweep: COMPLETED_EVENT_OUTPUT_MIGRATION_SWEEP,
+        });
+        exhaustedTargets.add(targetIndex);
+        continue;
+      }
+      if (failures.delete(itemKey)) {
+        clearSweepFailure(deps, {
+          itemKey,
+          sweep: COMPLETED_EVENT_OUTPUT_MIGRATION_SWEEP,
+        });
+      }
+      if (result.action === "migrated" && result.threadId) {
         changedThreadIds.add(result.threadId);
       } else if (result.action === "complete" || result.action === "idle") {
         exhaustedTargets.add(targetIndex);
@@ -543,75 +623,101 @@ export function createThreadEventPruningJob(
     cadenceMs: 0,
     category: "retention",
     name: "thread-event-pruning",
-    run: (deps) => runThreadPruningSweep(deps, limits),
+    kind: "task",
+    run: (deps, now) => runThreadPruningSweep(deps, limits, now),
   };
 }
 
-const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
+export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
+    kind: "task",
     run: sweepProviderLifecycles,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "machine-provider-lifecycle",
+    kind: "task",
     run: (deps) => sweepMachineLifecycles(deps, { background: true }),
   },
   {
     cadenceMs: 0,
     category: "retention",
     name: "machine-auth-prune",
+    kind: "task",
     run: runMachineAuthPruneSweep,
   },
   {
     cadenceMs: 0,
     category: "retention",
     name: "completed-event-output-migration",
+    kind: "task",
     run: runCompletedEventOutputMigrationSweep,
   },
   {
     cadenceMs: 0,
     category: "retention",
     name: "retained-event-output-expiry",
+    kind: "task",
     run: runRetainedEventOutputExpirySweep,
   },
   {
     cadenceMs: 0,
     category: "retention",
     name: "closed-session-prune",
+    kind: "task",
     run: runClosedSessionPruneSweep,
   },
   {
     cadenceMs: 0,
     category: "retention",
     name: "exited-terminal-session-prune",
+    kind: "task",
     run: runExitedTerminalSessionPruneSweep,
   },
   {
     cadenceMs: 0,
     category: "orphan-cleanup",
     name: "environment-provisioning-orphan-cleanup",
-    run: runEnvironmentProvisioningSweep,
+    kind: "items",
+    sweep: environmentProvisioningSweep,
   },
   {
     cadenceMs: 0,
     category: "orphan-cleanup",
-    name: "thread-provisioning-orphan-cleanup",
-    run: runThreadProvisioningOrphanCleanupSweep,
+    name: "thread-provisioning",
+    kind: "items",
+    sweep: threadProvisioningSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "orphan-cleanup",
+    name: "archived-thread-teardown",
+    kind: "items",
+    sweep: archivedThreadTeardownSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "orphan-cleanup",
+    name: "deleted-thread-finalization",
+    kind: "items",
+    sweep: deletedThreadFinalizationSweep,
   },
   {
     cadenceMs: 0,
     category: "orphan-cleanup",
     name: "turn-start-deadline",
-    run: stopRunsWhoseTurnNeverStarted,
+    kind: "items",
+    sweep: turnStartDeadlineSweep,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "queued-message-auto-send",
+    kind: "task",
     run: (deps, now) =>
       runQueuedMessageDispatch(deps, {
         kind: "idle-recovery",
@@ -622,6 +728,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "due-scheduled-queue-dispatch",
+    kind: "task",
     run: (deps, now) =>
       runQueuedMessageDispatch(deps, { kind: "time-reached", now }),
   },
@@ -629,6 +736,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "failed-queue-message-retry",
+    kind: "task",
     run: (deps, now) =>
       runQueuedMessageDispatch(deps, { kind: "failed-retry", now }),
   },
@@ -636,6 +744,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "orphaned-queue-wait-clear",
+    kind: "task",
     run: (deps) =>
       runQueuedMessageDispatch(deps, {
         kind: "orphaned-plugin-recovery",
@@ -646,31 +755,36 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "project-deletion",
-    run: runProjectDeletionSweep,
+    kind: "items",
+    sweep: projectDeletionSweep,
   },
   {
     cadenceMs: 0,
     category: "scheduler",
     name: "plugin-schedule",
-    run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
+    kind: "items",
+    sweep: (deps, now) => deps.pluginSchedules.dueScheduleSweep(now),
   },
   createThreadEventPruningJob(THREAD_PRUNING_SWEEP_LIMITS),
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
+    kind: "task",
     run: runDatabaseMaintenanceSweep,
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "plugin-database-maintenance",
+    kind: "task",
     run: runPluginDatabaseMaintenanceSweep,
   },
   {
     cadenceMs: 0,
     category: "maintenance",
     name: "project-attachment-backfill",
+    kind: "task",
     run: (deps, now) =>
       runProjectAttachmentBackfill(
         deps,
@@ -682,32 +796,60 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 60_000,
     category: "retention",
     name: "project-attachment-orphan-prune",
+    kind: "task",
     run: runProjectAttachmentPrune,
   },
   {
     cadenceMs: THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
     category: "orphan-cleanup",
     name: "thread-storage-orphan-cleanup",
+    kind: "task",
     run: runThreadStorageOrphanSweep,
   },
 ];
 
+async function runStartupRecoveryStep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  step: string,
+  run: () => Promise<void> | void,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    deps.logger.error({ err: error, step }, "Startup recovery step failed");
+  }
+}
+
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
-    deps,
-    Date.now(),
-  );
-  if (releasedClaims > 0) {
-    deps.logger.info(
-      { releasedClaims },
-      "Released queued message claims left by the previous server process",
+  await runStartupRecoveryStep(deps, "release-queued-message-claims", () => {
+    const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
+      deps,
+      Date.now(),
     );
-  }
-  await deliverLegacyDeferredThreadMessages(deps);
-  await runEnvironmentProvisioningSweep(deps);
-  await runThreadLifecycleSweep(deps);
+    if (releasedClaims > 0) {
+      deps.logger.info(
+        { releasedClaims },
+        "Released queued message claims left by the previous server process",
+      );
+    }
+  });
+  await runStartupRecoveryStep(deps, "legacy-deferred-messages", () =>
+    deliverLegacyDeferredThreadMessages(deps),
+  );
+  await runStartupRecoveryStep(deps, "environment-provisioning", () =>
+    runEnvironmentProvisioningSweep(deps),
+  );
+  await runStartupRecoveryStep(deps, "thread-orphan-cleanup", () =>
+    runThreadOrphanCleanupSweeps(deps, Date.now()),
+  );
+  await runStartupRecoveryStep(deps, "environment-provider-lifecycle", () =>
+    sweepProviderLifecycles(deps),
+  );
+  await runStartupRecoveryStep(deps, "machine-provider-lifecycle", () =>
+    sweepMachineLifecycles(deps),
+  );
 }
 
 export async function runPeriodicSweeps(

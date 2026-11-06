@@ -1,0 +1,146 @@
+import { describe, expect, it, vi } from "vitest";
+import { listSweepItemFailures } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
+import { defineItemSweep } from "../../src/services/system/item-sweep.js";
+import { testLogger } from "../helpers/test-app.js";
+
+const NOW = 1_000_000;
+
+function setup() {
+  return { db: createMigratedConnection(), logger: testLogger };
+}
+
+function failuresOf(deps: ReturnType<typeof setup>, sweep: string) {
+  return listSweepItemFailures(deps.db, sweep);
+}
+
+describe("item sweeps", () => {
+  it("keeps going past a failing item, backs it off, and clears the record once it succeeds", async () => {
+    const deps = setup();
+    const processed: string[] = [];
+    const listed: Array<ReadonlySet<string>> = [];
+    let failing = true;
+    const sweep = defineItemSweep({
+      name: "test-isolation",
+      detachAfterMs: null,
+      list: ({ excludedKeys }) => {
+        listed.push(new Set(excludedKeys));
+        return ["a", "b", "c"];
+      },
+      key: (item) => item,
+      process: (item) => {
+        if (item === "a" && failing) throw new Error("item a is broken");
+        processed.push(item);
+      },
+    });
+
+    await sweep.run(deps, NOW);
+    expect(processed).toEqual(["b", "c"]);
+    expect(failuresOf(deps, "test-isolation")).toEqual([
+      {
+        attempts: 1,
+        firstFailedAt: NOW,
+        itemKey: "a",
+        lastError: "item a is broken",
+        retryAt: NOW + 60_000,
+        sweep: "test-isolation",
+      },
+    ]);
+
+    await sweep.run(deps, NOW + 59_999);
+    expect(listed.at(-1)).toEqual(new Set(["a"]));
+    expect(processed).toEqual(["b", "c", "b", "c"]);
+
+    failing = false;
+    await sweep.run(deps, NOW + 60_000);
+    expect(processed.slice(4)).toEqual(["a", "b", "c"]);
+    expect(failuresOf(deps, "test-isolation")).toEqual([]);
+  });
+
+  it("doubles the delay on each failure and logs an error from the fifth", async () => {
+    const deps = setup();
+    const error = vi.spyOn(deps.logger, "error");
+    const sweep = defineItemSweep({
+      name: "test-escalation",
+      detachAfterMs: null,
+      list: () => ["a"],
+      key: (item) => item,
+      process: () => {
+        throw new Error("still broken");
+      },
+    });
+    const delays: number[] = [];
+    let now = NOW;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await sweep.run(deps, now);
+      const failure = failuresOf(deps, "test-escalation")[0];
+      if (failure === undefined) throw new Error("missing failure record");
+      delays.push(failure.retryAt - now);
+      now = failure.retryAt;
+    }
+    expect(delays).toEqual([60_000, 120_000, 240_000, 480_000, 960_000]);
+    expect(error).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ attempts: 5, itemKey: "a" }),
+      "Sweep item keeps failing; other items continue",
+    );
+    error.mockRestore();
+  });
+
+  it("forgets a failure once its item is no longer listed", async () => {
+    const deps = setup();
+    let items = ["a"];
+    const sweep = defineItemSweep({
+      name: "test-forget",
+      detachAfterMs: null,
+      list: () => items,
+      key: (item) => item,
+      process: () => {
+        throw new Error("broken");
+      },
+    });
+    await sweep.run(deps, NOW);
+    items = [];
+    await sweep.run(deps, NOW + 1);
+    expect(failuresOf(deps, "test-forget")).toHaveLength(1);
+    await sweep.run(deps, NOW + 60_000);
+    expect(failuresOf(deps, "test-forget")).toEqual([]);
+  });
+
+  it("stops waiting for an item that runs too long, skips it while it runs, and records its later failure", async () => {
+    const deps = setup();
+    let rejectHung: (error: Error) => void = () => {};
+    const processed: string[] = [];
+    const listed: Array<ReadonlySet<string>> = [];
+    const sweep = defineItemSweep({
+      name: "test-detach",
+      detachAfterMs: 20,
+      list: ({ excludedKeys }) => {
+        listed.push(new Set(excludedKeys));
+        return ["hung", "next"];
+      },
+      key: (item) => item,
+      process: (item) => {
+        if (item === "next") {
+          processed.push(item);
+          return;
+        }
+        return new Promise<void>((_resolve, reject) => {
+          rejectHung = reject;
+        });
+      },
+    });
+
+    await sweep.run(deps, NOW);
+    expect(processed).toEqual(["next"]);
+    await sweep.run(deps, NOW + 1);
+    expect(listed.at(-1)).toEqual(new Set(["hung"]));
+    expect(processed).toEqual(["next", "next"]);
+
+    rejectHung(new Error("hung item gave up"));
+    await vi.waitFor(() =>
+      expect(failuresOf(deps, "test-detach")).toMatchObject([
+        { attempts: 1, itemKey: "hung", lastError: "hung item gave up" },
+      ]),
+    );
+  });
+});

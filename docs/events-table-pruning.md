@@ -35,7 +35,11 @@ idle or archive transition does not guarantee completion. The background sweep
 runs every ten seconds and never waits on a competing writer. It skips threads
 that are active or starting, or have a pending or resolving interaction, and
 keeps advancing every other thread; each deletion transaction rechecks this, so
-a thread that becomes busy mid-visit is left for a later cycle. A new policy, or
+a thread that becomes busy mid-visit is left for a later cycle. If a step fails
+on a thread, the sweep records the failure in `sweep_item_failures` under
+`<policy>:<thread id>`, skips that thread for the policy, and keeps going; the
+thread is picked again once its retry time (1 minute, doubling to 1 hour)
+passes. A new policy, or
 a policy whose version changes, queues every thread for that policy. Committed
 deletions invalidate cached timelines and publish a history-compacted
 notification to viewers of the thread. Archiving a thread runs one live step and

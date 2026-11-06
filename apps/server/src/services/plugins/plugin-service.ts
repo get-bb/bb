@@ -79,6 +79,7 @@ import {
   getThread,
   getLatestThreadSequence,
   listDuePluginSchedules,
+  pluginScheduleKey,
   listInstalledPlugins,
   listPendingGitPluginArtifacts,
   listPluginMarketplaces,
@@ -202,6 +203,7 @@ import type {
 } from "./plugin-service-internal.js";
 import type { PluginMachineProviderBridge } from "./plugin-machine-provider-registry.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 export type {
   PluginAgentToolContribution,
   PluginMentionResolveResult,
@@ -484,7 +486,7 @@ export interface PluginService {
     keep(plugin: InstalledPluginRow): boolean;
   }): Promise<string[]>;
   resumeSuspendedPlugins(): Promise<string[]>;
-  sweepDueSchedules(now: number): Promise<void>;
+  dueScheduleSweep(now: number): ItemSweep;
 }
 
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
@@ -493,6 +495,7 @@ const DEFAULT_PROVIDER_ENV_RESOLVE_TIMEOUT_MS = 5_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
+const SCHEDULE_DETACH_AFTER_MS = 60_000;
 
 class PluginRpcBoundaryError extends Error {
   constructor(readonly rpcError: PluginRpcError) {
@@ -2782,48 +2785,48 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
-    async sweepDueSchedules(now) {
-      if (schedulesPaused || loaded.size === 0) return;
-      const due = listDuePluginSchedules(deps.db, {
-        now,
-        limit: SCHEDULE_SWEEP_BATCH_SIZE,
-      });
-      for (const row of due) {
-        const owner = loaded.get(row.pluginId);
-        const schedule = owner?.handle.schedules.find(
-          (record) => record.name === row.name,
-        );
-        if (owner === undefined || schedule === undefined) continue;
-        let newNextRunAt: number;
-        try {
-          newNextRunAt = nextCronRunAt(schedule.cron, now);
-        } catch (error) {
-          logger.warn(
-            `[plugin:${row.pluginId}] schedule ${row.name} has an invalid cron: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+    dueScheduleSweep(now) {
+      return defineItemSweep({
+        name: "plugin-schedule",
+        detachAfterMs: SCHEDULE_DETACH_AFTER_MS,
+        list: ({ excludedKeys }) =>
+          schedulesPaused
+            ? []
+            : listDuePluginSchedules(deps.db, {
+                excludedKeys,
+                limit: SCHEDULE_SWEEP_BATCH_SIZE,
+                now,
+                pluginIds: [...loaded.keys()],
+              }),
+        key: (row) => pluginScheduleKey(row),
+        process: async (row) => {
+          const owner = loaded.get(row.pluginId);
+          const schedule = owner?.handle.schedules.find(
+            (record) => record.name === row.name,
           );
-          continue;
-        }
-        const claimed = claimPluginScheduledRun(deps.db, {
-          pluginId: row.pluginId,
-          name: row.name,
-          expectedNextRunAt: row.nextRunAt,
-          newNextRunAt,
-          now,
-        });
-        if (!claimed) continue;
-        const outcome = await invokeWrapped(owner, `schedule ${row.name}`, () =>
-          schedule.fn(),
-        );
-        recordPluginScheduleResult(deps.db, {
-          pluginId: row.pluginId,
-          name: row.name,
-          status: outcome.ok ? "ok" : "error",
-          error: outcome.ok ? null : outcome.error,
-          now: Date.now(),
-        });
-      }
+          if (owner === undefined || schedule === undefined) return;
+          const claimed = claimPluginScheduledRun(deps.db, {
+            pluginId: row.pluginId,
+            name: row.name,
+            expectedNextRunAt: row.nextRunAt,
+            newNextRunAt: nextCronRunAt(schedule.cron, now),
+            now,
+          });
+          if (!claimed) return;
+          const outcome = await invokeWrapped(
+            owner,
+            `schedule ${row.name}`,
+            () => schedule.fn(),
+          );
+          recordPluginScheduleResult(deps.db, {
+            pluginId: row.pluginId,
+            name: row.name,
+            status: outcome.ok ? "ok" : "error",
+            error: outcome.ok ? null : outcome.error,
+            now: Date.now(),
+          });
+        },
+      });
     },
   };
 }

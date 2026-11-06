@@ -23,6 +23,14 @@ import { createNoopTelemetryService } from "../../../src/services/system/telemet
 
 const logger = testLogger as unknown as Logger;
 
+function sweepSchedules(
+  db: DbConnection,
+  service: PluginService,
+  now: number,
+): Promise<void> {
+  return service.dueScheduleSweep(now).run({ db, logger }, now);
+}
+
 async function writePlugin(
   dir: string,
   options: { name: string; serverSource: string },
@@ -611,7 +619,7 @@ describe("plugin schedules", () => {
     await installTicker();
     setNextRunAt(db, "ticker", "tick", Date.now() - 60_000);
     const now = Date.now();
-    await service.sweepDueSchedules(now);
+    await sweepSchedules(db, service, now);
     expect(globals.__tickRuns).toBe(1);
     const row = listPluginSchedules(db, "ticker")[0];
     const expectedNext = CronExpressionParser.parse("*/5 * * * *", {
@@ -630,11 +638,11 @@ describe("plugin schedules", () => {
     const past = Date.now() - 60_000;
     setNextRunAt(db, "ticker", "tick", past);
     service.setSchedulesPaused(true);
-    await service.sweepDueSchedules(Date.now());
+    await sweepSchedules(db, service, Date.now());
     expect(globals.__tickRuns).toBe(0);
     expect(listPluginSchedules(db, "ticker")[0]?.nextRunAt).toBe(past);
     service.setSchedulesPaused(false);
-    await service.sweepDueSchedules(Date.now());
+    await sweepSchedules(db, service, Date.now());
     expect(globals.__tickRuns).toBe(1);
   });
 
@@ -644,8 +652,8 @@ describe("plugin schedules", () => {
     setNextRunAt(db, "ticker", "tick", past);
     const now = Date.now();
     await Promise.all([
-      service.sweepDueSchedules(now),
-      service.sweepDueSchedules(now),
+      sweepSchedules(db, service, now),
+      sweepSchedules(db, service, now),
     ]);
     expect(globals.__tickRuns).toBe(1);
     const claimed = claimPluginScheduledRun(db, {
@@ -672,7 +680,7 @@ describe("plugin schedules", () => {
     await service.installPath(rootDir);
     setNextRunAt(db, "boomer", "boom", Date.now() - 60_000);
     const now = Date.now();
-    await service.sweepDueSchedules(now);
+    await sweepSchedules(db, service, now);
     const row = listPluginSchedules(db, "boomer")[0];
     expect(row?.lastStatus).toBe("error");
     expect(row?.lastError).toContain("sync exploded");
@@ -687,7 +695,7 @@ describe("plugin schedules", () => {
     expect(listPluginSchedules(db, "ticker")).toHaveLength(1);
     const past = Date.now() - 60_000;
     setNextRunAt(db, "ticker", "tick", past);
-    await service.sweepDueSchedules(Date.now());
+    await sweepSchedules(db, service, Date.now());
     expect(globals.__tickRuns).toBe(0);
     expect(listPluginSchedules(db, "ticker")[0]?.nextRunAt).toBe(past);
 

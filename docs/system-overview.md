@@ -52,6 +52,35 @@ it. During the grace it still counts as live, so its environment and machine
 are not retired under it. A thread start still in flight is stopped as soon as
 it is archived.
 
+### Background sweeps
+
+The server runs its periodic sweep jobs (`PERIODIC_SWEEP_JOBS` in
+`apps/server/src/services/system/periodic-sweeps.ts`) every 10 seconds. Each
+job has its own error boundary, so a failing job never stops the others.
+
+A job that works through a list of items (threads, projects, environments,
+plugin schedules) is an `items` job built with `defineItemSweep`
+(`item-sweep.ts`). The job lists its items with a stable key and processes them
+one at a time; the runner owns what happens when one fails:
+
+- The failure is written to `sweep_item_failures` (sweep, item key, attempts,
+  retry time, last error), and the remaining items still run.
+- The item is left out of the next passes until its retry time: 1 minute,
+  doubling to at most 1 hour. `list` receives these keys as `excludedKeys` so
+  queries with a `LIMIT` can leave them out in SQL.
+- Each failure logs a warning; from the fifth attempt on, an error.
+- A success clears the record, and a record whose item is no longer listed is
+  dropped.
+- With `detachAfterMs`, the runner stops waiting for an item that runs too
+  long, skips it while it is still running, and records its outcome when it
+  settles.
+
+Every other job is a `task`. `apps/server/test/system/periodic-sweep-jobs.test.ts`
+lists each one with the reason it doesn't need the runner. A new task job fails
+that test until it is added there. Cursor scans (event pruning, completed
+output migration) are tasks that record failures through the same
+`recordSweepFailure` and skip the failing thread or target.
+
 ### Transport contracts
 
 Two contract packages define the boundaries between components:

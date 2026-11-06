@@ -653,6 +653,7 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 0,
           category: "maintenance",
           name: "test-overlap-sweep",
+          kind: "task",
           async run() {
             runCount += 1;
             if (resolveJobStarted) {
@@ -689,6 +690,7 @@ describe("runPeriodicSweeps", () => {
           cadenceMs: 1_000,
           category: "maintenance",
           name: "test-cadence-sweep",
+          kind: "task",
           run() {
             runCount += 1;
           },
