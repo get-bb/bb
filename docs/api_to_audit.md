@@ -4379,7 +4379,7 @@ own value, so plugins built against the old constant keep working.
 
 ## Retired Goal activity (`PluginSidebarThreadActivity.goals`, the `goal` sidebar indicator)
 
-bb no longer tracks provider Goals in core: the Codex plugin draws its own Goal card, and the sidebar no longer shows a Goal glyph, so a Goal thread shows bb's ordinary working indicator. `ThreadActivityState.activeGoalCount` is gone from the thread list API. `PluginSidebarThreadActivity.goals` stays in the typings as `@deprecated` and is always 0 at runtime, so plugins that read it keep building and running; `"goal"` is gone from `PluginSidebarThreadIndicator` and is never reported. A provider plugin reads its own Goal state with `experimental_useThreadExtensionState`. Remove `goals` at the next major.
+bb no longer tracks provider Goals in core: the Codex plugin draws its own Goal card, and the sidebar no longer shows a Goal glyph, so a Goal thread shows bb's ordinary working indicator. `ThreadActivityState.activeGoalCount` is gone from the thread list API. `goals` is gone from the `PluginSidebarThreadActivity` typings, but the host still sends `goals: 0` in every thread's `activity` at runtime (`apps/app/src/lib/plugin-sidebar-threads.ts`), so already-built plugins that read it keep running; `"goal"` is gone from `PluginSidebarThreadIndicator` and is never reported. A provider plugin reads its own Goal state with `experimental_useThreadExtensionState`. Stop sending `goals` at the next major.
 
 ## Provider skills index
 

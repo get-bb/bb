@@ -45,7 +45,7 @@ describe("toPluginSidebarThread", () => {
     ).toBe("Review Slop Cop in bb");
   });
 
-  it("maps activity counts onto the plugin-facing names", () => {
+  it("maps activity counts onto the plugin-facing names and keeps the retired goals count at 0", () => {
     const mapped = toPluginSidebarThread(
       makeThread({
         activity: {

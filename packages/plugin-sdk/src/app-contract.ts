@@ -1364,12 +1364,6 @@ export interface PluginSidebarThreadActivity {
   backgroundAgents: number;
   backgroundCommands: number;
   planMode: number;
-  /**
-   * @deprecated Always 0 since bb stopped tracking provider Goals in core. A
-   * provider plugin reads its own Goal state with
-   * {@link PluginSdkApp.experimental_useThreadExtensionState}.
-   */
-  goals: number;
 }
 
 /**

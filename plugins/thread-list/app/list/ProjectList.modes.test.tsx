@@ -135,7 +135,6 @@ function makeThread(overrides: SidebarThreadOverrides = {}): SidebarThread {
       backgroundAgents: 0,
       backgroundCommands: 0,
       planMode: 1,
-      goals: 0,
     },
     runtimeStatus: "active",
     ...overrides,

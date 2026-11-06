@@ -88,7 +88,6 @@ function activity(
     backgroundAgents: 0,
     backgroundCommands: 0,
     planMode: 0,
-    goals: 0,
     ...overrides,
   };
 }
