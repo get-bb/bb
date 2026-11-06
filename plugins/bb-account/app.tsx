@@ -536,6 +536,7 @@ function SignInDialog({
     describeStartError: errorText,
     onSignedIn: closeOnSignedIn,
     observedLogin: login,
+    openOnStart: true,
   });
 
   useEffect(() => {

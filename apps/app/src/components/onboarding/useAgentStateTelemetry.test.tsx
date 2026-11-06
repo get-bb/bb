@@ -29,6 +29,7 @@ function state(
     canUpdate: true,
     loginCommand: null,
     localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
   };
 }
 

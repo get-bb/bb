@@ -73,7 +73,6 @@ import {
   InlineTextLink,
   PendingStatus,
   QuietTextAction,
-  SignInPanel,
 } from "@bb/shared-ui/sign-in-panel";
 import { CONNECT_REALTIME_CHANNEL, type ConnectStatus } from "@/src/types";
 
@@ -1144,6 +1143,7 @@ function TurnOffDialog({
 function useConnectAccountLogin(
   onSignedIn: () => void,
   onFailed: () => void,
+  openOnStart: boolean,
 ): AccountLogin {
   const sdk = useSdk();
   const transport = useMemo<AccountLoginTransport>(
@@ -1181,6 +1181,7 @@ function useConnectAccountLogin(
     describeStartError: signInStartErrorText,
     onSignedIn,
     observedLogin: null,
+    openOnStart,
   });
   const onFailedRef = useRef(onFailed);
   useEffect(() => {
@@ -1212,10 +1213,10 @@ function AccountSignInCard({
   onFailed: () => void;
   onSignedIn: () => void;
 }) {
-  const navigate = useBbNavigate();
   const { login, starting, error, start, cancel } = useConnectAccountLogin(
     onSignedIn,
     onFailed,
+    false,
   );
 
   if (login === null) {
@@ -1271,29 +1272,41 @@ function AccountSignInCard({
   }
 
   return (
-    <div className="w-full max-w-md">
-      <SignInPanel
-        status="Remote access turns on automatically after you sign in."
-        instruction={
-          <>
-            Finish signing in on{" "}
-            <InlineTextLink
-              href={login.verificationUrl}
-              onOpen={navigate.openUrl}
-            >
-              {hostOf(login.verificationUrl)}
-            </InlineTextLink>
-            .
-          </>
-        }
-        variant={{
-          kind: "code",
-          code: login.userCode,
-          label: "Sign-in code",
-          onCopyCode: (code) => void copyTextWithSdkToast(code),
-        }}
-        toggles={<QuietTextAction onClick={cancel}>Cancel</QuietTextAction>}
-      />
+    <div className="space-y-2.5 rounded-md border border-border bg-surface-recessed/50 px-3 py-3">
+      <p className="text-xs text-muted-foreground">
+        Confirm this code on {hostOf(login.verificationUrl)}:
+      </p>
+      <p
+        aria-label="Sign-in code"
+        className="font-mono text-base font-semibold tracking-widest"
+      >
+        {login.userCode}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" asChild>
+          <UrlLink
+            href={login.verificationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open getbb.app
+            <Icon name="ExternalLink" className="size-3.5" />
+          </UrlLink>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={cancel}
+        >
+          Cancel
+        </Button>
+      </div>
+      <p className="flex items-center gap-2 text-xs text-subtle-foreground">
+        <Icon name="Spinner" className="size-3.5 animate-spin" />
+        Waiting for you to approve it. You can approve from any device.
+      </p>
     </div>
   );
 }
@@ -2146,24 +2159,46 @@ function ConnectSetupGuideSection({
   const { login, starting, error, start, cancel } = useConnectAccountLogin(
     refetch,
     reportSignInFailed,
+    true,
   );
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
-  const [codeOpen, setCodeOpen] = useState(false);
+  const [openFooterPanel, setOpenFooterPanel] = useState<
+    "signInCode" | "pairingForm" | null
+  >(null);
+  const toggleFooterPanel = (panel: "signInCode" | "pairingForm") =>
+    setOpenFooterPanel((open) => (open === panel ? null : panel));
+  const [codePairing, setCodePairing] = useState<{
+    id: number;
+    statusAtPairing: ConnectStatus | null;
+  } | null>(null);
+  const codePairingCountRef = useRef(0);
   const signedInLoginId = login?.state === "signed-in" ? login.id : null;
+  const turnOnKey =
+    signedInLoginId ?? (codePairing === null ? null : `code:${codePairing.id}`);
   const remoteAccessOff = status !== null && status.paired && !status.enabled;
-  const turnedOnForLoginRef = useRef<string | null>(null);
+  const turnedOnForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (signedInLoginId === null || !remoteAccessOff) return;
-    if (turnedOnForLoginRef.current === signedInLoginId) return;
-    turnedOnForLoginRef.current = signedInLoginId;
+    if (turnOnKey === null || !remoteAccessOff) return;
+    if (turnedOnForRef.current === turnOnKey) return;
+    turnedOnForRef.current = turnOnKey;
     rpc
       .call("setRemoteAccess", { enabled: true })
       .then(refetch, (rpcError: unknown) => {
         setTurnOnError(errorText(rpcError));
         onSetupFailed("turn_on");
       });
-  }, [onSetupFailed, refetch, remoteAccessOff, rpc, signedInLoginId]);
+  }, [onSetupFailed, refetch, remoteAccessOff, rpc, turnOnKey]);
+  useEffect(() => {
+    if (
+      codePairing !== null &&
+      status !== null &&
+      status !== codePairing.statusAtPairing &&
+      !status.paired
+    ) {
+      setCodePairing(null);
+    }
+  }, [codePairing, status]);
 
   if (
     status !== null &&
@@ -2177,13 +2212,16 @@ function ConnectSetupGuideSection({
   const connectingState =
     status !== null && status.paired && status.enabled ? status.state : null;
   const connecting = connectingState !== null;
+  const turningOnAfterPairing = codePairing !== null && turnOnError === null;
   const signingIn =
-    login !== null &&
-    (login.state === "pending" ||
-      (login.state === "signed-in" && turnOnError === null));
+    turningOnAfterPairing ||
+    (login !== null &&
+      (login.state === "pending" ||
+        (login.state === "signed-in" && turnOnError === null)));
   const setUp = () => {
     setTurnOnError(null);
-    setCodeOpen(false);
+    setOpenFooterPanel(null);
+    setCodePairing(null);
     if (status === null) {
       refetch();
       return;
@@ -2209,18 +2247,24 @@ function ConnectSetupGuideSection({
 
   const showsContent =
     connecting ||
+    turningOnAfterPairing ||
     (login !== null && login.state !== "pending") ||
     error !== null ||
     turnOnError !== null ||
     loadError !== null;
-  const pairingStatus =
+  const pendingSignIn =
     status !== null &&
     !status.paired &&
     !connecting &&
     login?.state === "pending"
-      ? status
+      ? { status, login }
       : null;
   const paired = () => {
+    codePairingCountRef.current += 1;
+    setCodePairing({
+      id: codePairingCountRef.current,
+      statusAtPairing: status,
+    });
     cancel();
     refetch();
   };
@@ -2231,25 +2275,42 @@ function ConnectSetupGuideSection({
       title="bb connect"
       description={SETUP_GUIDE_DESCRIPTION}
       footer={
-        pairingStatus === null ? null : (
+        pendingSignIn === null ? null : (
           <div className="px-3 pb-3">
             <InlinePanel
               flush
               flushBottom
               hasBody={false}
               toggles={
-                <DisclosureToggle
-                  expanded={codeOpen}
-                  onToggle={() => setCodeOpen((open) => !open)}
-                >
-                  Have a pairing code?
-                </DisclosureToggle>
+                <>
+                  <DisclosureToggle
+                    expanded={openFooterPanel === "signInCode"}
+                    onToggle={() => toggleFooterPanel("signInCode")}
+                  >
+                    Show pairing code
+                  </DisclosureToggle>
+                  <DisclosureToggle
+                    expanded={openFooterPanel === "pairingForm"}
+                    onToggle={() => toggleFooterPanel("pairingForm")}
+                  >
+                    Have a pairing code?
+                  </DisclosureToggle>
+                </>
               }
               expanded={
-                codeOpen ? (
+                openFooterPanel === "signInCode" ? (
+                  <div className="border-t border-border-hairline p-3">
+                    <CodeDisplay
+                      code={pendingSignIn.login.userCode}
+                      label="bb connect sign-in code"
+                      copyLabel="Copy code"
+                      onCopy={(code) => void copyTextWithSdkToast(code)}
+                    />
+                  </div>
+                ) : openFooterPanel === "pairingForm" ? (
                   <div className="border-t border-border-hairline p-3">
                     <PairForm
-                      dashboardUrl={pairingStatus.dashboardUrl}
+                      dashboardUrl={pendingSignIn.status.dashboardUrl}
                       layout="setupGuide"
                       onSubmitted={onSetupStarted}
                       onFailed={reportPairingFailed}
@@ -2264,11 +2325,7 @@ function ConnectSetupGuideSection({
           </div>
         )
       }
-      panel={
-        connecting
-          ? null
-          : setupGuideLoginPanel(login, navigate.openUrl)
-      }
+      panel={connecting ? null : setupGuideLoginPanel(login, navigate.openUrl)}
       action={
         connecting || signingIn ? undefined : (
           <Button
@@ -2294,7 +2351,9 @@ function ConnectSetupGuideSection({
                 ? "bb connect is reconnecting…"
                 : "bb connect is starting…"}
             </PendingStatus>
-          ) : turnOnError !== null ? null : (
+          ) : turnOnError !== null ? null : turningOnAfterPairing ? (
+            <PendingStatus>Signed in. Turning on bb connect…</PendingStatus>
+          ) : (
             setupGuideLoginContent(login)
           )}
           {error !== null ? <SetupGuideError>{error}</SetupGuideError> : null}

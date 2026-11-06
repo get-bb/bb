@@ -33,11 +33,13 @@ export function useAccountLogin({
   describeStartError,
   onSignedIn,
   observedLogin,
+  openOnStart,
 }: {
   transport: AccountLoginTransport;
   describeStartError: (error: unknown) => string;
   onSignedIn: () => void;
   observedLogin: LoginView | null;
+  openOnStart: boolean;
 }): AccountLogin {
   const navigate = useBbNavigate();
   const [ownLogin, setOwnLogin] = useState<LoginView | null>(null);
@@ -60,14 +62,16 @@ export function useAccountLogin({
       (view) => {
         setStarting(false);
         setOwnLogin(view);
-        if (view.state === "pending") navigate.openUrl(view.verificationUrl);
+        if (openOnStart && view.state === "pending") {
+          navigate.openUrl(view.verificationUrl);
+        }
       },
       (startError: unknown) => {
         setStarting(false);
         setError(describeStartError(startError));
       },
     );
-  }, [describeStartError, navigate, transport]);
+  }, [describeStartError, navigate, openOnStart, transport]);
 
   const pendingId = login?.state === "pending" ? login.id : null;
   useEffect(() => {

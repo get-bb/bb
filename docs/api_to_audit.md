@@ -1359,7 +1359,7 @@ Devices step (current guide), which renders `PluginSettingsSections` for
 setup guide rows in both variants instead, which would make this prop
 unnecessary.
 
-## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `ProviderInfo.internal_DO_NOT_USE_guidedSignIn`
+## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 
 Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
 
@@ -1369,13 +1369,14 @@ the guide runs the provider's login command, keeps its terminal behind Show
 terminal, reads the sign-in link and code from the output, and shows them in
 the row. Every other provider is terminal-first: the guide opens the login
 terminal in the row. The validator fills `false` when the field is absent and
-refuses a non-boolean. The server projects it onto `ProviderInfo` only when
-true, so the field is absent for every other provider. Today's guide ignores
-it.
+refuses a non-boolean. The server keeps it on the provider registration and
+projects it onto every provider-states row (`GET /system/provider-states`) as
+a required boolean, so the Agent step's row and its sign-in mode come from the
+same response. It is not part of `ProviderInfo`. Today's guide ignores it.
 
 Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
 Cursor agent only. Core caller: the onboarding Agent step
-(`OnboardingFlow`), which reads `ProviderInfo.internal_DO_NOT_USE_guidedSignIn`
+(`OnboardingFlow`), which reads `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 instead of a list of provider ids.
 
 **Audit before stabilizing.** Decide whether the provider should describe its

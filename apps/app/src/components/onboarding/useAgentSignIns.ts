@@ -25,14 +25,32 @@ interface SignInSession {
 type SignInOutcome = "ready" | "exited" | "failed" | "cancelled";
 
 type SignInFailureReason =
-  | OperationFailureReason
-  | "no_host"
-  | "command_failed"
-  | "unsupported";
+  OperationFailureReason | "no_host" | "command_failed" | "unsupported";
 
 interface SignInExit {
   exitCode: number | null;
   at: number;
+  rowOpen: boolean;
+}
+
+export type RefetchProviderStates = (options: {
+  cancelRefetch: boolean;
+}) => void;
+
+function exitOutcome(exit: SignInExit, ready: boolean): SignInOutcome {
+  if (ready) return "ready";
+  return exit.exitCode === 0 ? "exited" : "failed";
+}
+
+function agentReady(
+  states: readonly SystemProviderState[] | undefined,
+  providerId: string,
+): boolean {
+  return (
+    states?.some(
+      (state) => state.providerId === providerId && state.status === "ready",
+    ) ?? false
+  );
 }
 
 export interface AgentSignInTerminals {
@@ -82,7 +100,7 @@ export function useAgentSignIns({
   statesSettledAt: number;
   isLocalHost: (hostId: string) => boolean;
   terminals: AgentSignInTerminals;
-  refetchStates: () => void;
+  refetchStates: RefetchProviderStates;
 }) {
   const [signIns, setSignIns] = useState<ReadonlyMap<string, SignInSession>>(
     () => new Map(),
@@ -102,6 +120,10 @@ export function useAgentSignIns({
     () => new Map(),
   );
   const exitsRef = useRef<Map<string, SignInExit>>(new Map());
+  const statesRef = useRef(states);
+  useEffect(() => {
+    statesRef.current = states;
+  }, [states]);
 
   const record = useCallback(
     (
@@ -123,20 +145,62 @@ export function useAgentSignIns({
     [entry],
   );
 
+  const recordOutcome = useCallback(
+    (providerId: string, outcome: SignInOutcome) =>
+      record(
+        providerId,
+        outcome,
+        outcome === "failed" ? "command_failed" : undefined,
+      ),
+    [record],
+  );
+
   const bumpRequest = (providerId: string): number => {
     const next = (requestsRef.current.get(providerId) ?? 0) + 1;
     requestsRef.current.set(providerId, next);
     return next;
   };
 
-  const end = useCallback(
-    (
-      providerId: string,
-      outcome: SignInOutcome = "cancelled",
-      failureReason?: SignInFailureReason,
-    ) => {
+  const closeRow = useCallback(
+    (providerId: string, outcome: SignInOutcome | null, refetch: boolean) => {
       const current = signInsRef.current.get(providerId);
-      if (current === undefined) {
+      if (current === undefined) return;
+      signInsRef.current.delete(providerId);
+      if (outcome !== null) recordOutcome(providerId, outcome);
+      setSignIns(new Map(signInsRef.current));
+      setViews((previous) => withoutEntry(previous, providerId));
+      terminals.close(current.session.id);
+      if (refetch) refetchStates({ cancelRefetch: true });
+    },
+    [recordOutcome, refetchStates, terminals],
+  );
+
+  const takeExit = useCallback((providerId: string) => {
+    const exit = exitsRef.current.get(providerId);
+    if (exit === undefined) return undefined;
+    exitsRef.current.delete(providerId);
+    setExits(new Map(exitsRef.current));
+    return exit;
+  }, []);
+
+  const resolveExit = useCallback(
+    (providerId: string, ready: boolean) => {
+      const exit = takeExit(providerId);
+      if (exit === undefined) return;
+      const outcome = exitOutcome(exit, ready);
+      if (!exit.rowOpen) {
+        recordOutcome(providerId, outcome);
+        return;
+      }
+      if (!ready) setFailedProviderIds((ids) => withKey(ids, providerId));
+      closeRow(providerId, outcome, false);
+    },
+    [closeRow, recordOutcome, takeExit],
+  );
+
+  const end = useCallback(
+    (providerId: string, outcome: SignInOutcome = "cancelled") => {
+      if (!signInsRef.current.has(providerId)) {
         const request = requestsRef.current.get(providerId);
         if (request !== undefined) {
           requestsRef.current.set(providerId, request + 1);
@@ -144,29 +208,30 @@ export function useAgentSignIns({
         }
         return;
       }
-      signInsRef.current.delete(providerId);
-      if (exitsRef.current.delete(providerId)) {
-        setExits(new Map(exitsRef.current));
-      }
-      record(providerId, outcome, failureReason);
-      setSignIns(new Map(signInsRef.current));
-      setViews((previous) => withoutEntry(previous, providerId));
-      terminals.close(current.session.id);
-      refetchStates();
+      takeExit(providerId);
+      closeRow(providerId, outcome, true);
     },
-    [record, refetchStates, terminals],
+    [closeRow, takeExit],
   );
 
   const endRef = useRef(end);
+  const resolveExitRef = useRef(resolveExit);
   useEffect(() => {
     endRef.current = end;
-  }, [end]);
+    resolveExitRef.current = resolveExit;
+  }, [end, resolveExit]);
   useEffect(
     () => () => {
       for (const providerId of requestsRef.current.keys()) {
         requestsRef.current.set(
           providerId,
           (requestsRef.current.get(providerId) ?? 0) + 1,
+        );
+      }
+      for (const providerId of [...exitsRef.current.keys()]) {
+        resolveExitRef.current(
+          providerId,
+          agentReady(statesRef.current, providerId),
         );
       }
       for (const providerId of [...signInsRef.current.keys()]) {
@@ -177,54 +242,45 @@ export function useAgentSignIns({
   );
 
   const fail = useCallback(
-    (providerId: string, outcome: "exited" | "failed" = "failed") => {
+    (providerId: string) => {
       if (!signInsRef.current.has(providerId)) return;
       setFailedProviderIds((ids) => withKey(ids, providerId));
-      end(
-        providerId,
-        outcome,
-        outcome === "failed" ? "command_failed" : undefined,
-      );
+      end(providerId, "failed");
     },
     [end],
   );
 
   const handleExit = useCallback(
     (providerId: string, exitCode: number | null) => {
-      if (!failUnreadyExits) {
-        if (exitCode !== 0) {
-          fail(providerId);
-          return;
-        }
-        end(providerId, "exited");
-        return;
-      }
       if (
         !signInsRef.current.has(providerId) ||
         exitsRef.current.has(providerId)
       ) {
         return;
       }
-      exitsRef.current.set(providerId, { exitCode, at: Date.now() });
+      exitsRef.current.set(providerId, {
+        exitCode,
+        at: Date.now(),
+        rowOpen: failUnreadyExits,
+      });
       setExits(new Map(exitsRef.current));
-      refetchStates();
+      if (!failUnreadyExits) {
+        if (exitCode !== 0) {
+          setFailedProviderIds((ids) => withKey(ids, providerId));
+        }
+        closeRow(providerId, null, false);
+      }
+      refetchStates({ cancelRefetch: true });
     },
-    [end, fail, failUnreadyExits, refetchStates],
+    [closeRow, failUnreadyExits, refetchStates],
   );
 
   useEffect(() => {
     for (const [providerId, exit] of exits) {
       if (statesSettledAt <= exit.at) continue;
-      const ready = states?.some(
-        (state) => state.providerId === providerId && state.status === "ready",
-      );
-      if (ready === true) {
-        end(providerId, "ready");
-      } else {
-        fail(providerId, exit.exitCode === 0 ? "exited" : "failed");
-      }
+      resolveExit(providerId, agentReady(states, providerId));
     }
-  }, [end, exits, fail, states, statesSettledAt]);
+  }, [exits, resolveExit, states, statesSettledAt]);
 
   const setView = useCallback((providerId: string, view: AgentSignInView) => {
     setViews((previous) =>
@@ -238,7 +294,7 @@ export function useAgentSignIns({
   useEffect(() => {
     if (activeCount === 0) return;
     const interval = window.setInterval(
-      refetchStates,
+      () => refetchStates({ cancelRefetch: false }),
       SIGN_IN_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(interval);
@@ -265,6 +321,9 @@ export function useAgentSignIns({
     if (command === null) {
       record(providerId, "failed", "unsupported");
       return;
+    }
+    if (exitsRef.current.get(providerId)?.rowOpen === false) {
+      resolveExit(providerId, agentReady(states, providerId));
     }
     if (concurrent) {
       end(providerId);
