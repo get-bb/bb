@@ -209,6 +209,7 @@ async function runItem<T>(
   const { itemKey } = args;
   args.inFlight.add(itemKey);
   const startedAt = Date.now();
+  let ranPastDetach = false;
   const settled = Promise.resolve()
     .then(() => definition.process(args.item))
     .then(
@@ -220,7 +221,9 @@ async function runItem<T>(
         recordSweepFailure(deps, {
           error,
           itemKey,
-          now: args.now + Math.max(0, Date.now() - startedAt),
+          now: ranPastDetach
+            ? args.now + Math.max(0, Date.now() - startedAt)
+            : args.now,
           sweep,
         });
         return "failed" as const;
@@ -238,7 +241,10 @@ async function runItem<T>(
     });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const detached = new Promise<"detached">((resolve) => {
-    timer = setTimeout(() => resolve("detached"), ITEM_DETACH_AFTER_MS);
+    timer = setTimeout(() => {
+      ranPastDetach = true;
+      resolve("detached");
+    }, ITEM_DETACH_AFTER_MS);
     timer.unref();
   });
   const outcome = await Promise.race([settled, detached]);

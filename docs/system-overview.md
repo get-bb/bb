@@ -62,9 +62,10 @@ everything else:
 
 - A failure is written to `sweep_item_failures` (sweep, item key, attempts,
   retry time, last error), and the remaining items still run.
-- The item is left out of later passes until its retry time, counted from
-  when it failed: 1 minute, doubling to at most 1 hour. `list` receives these keys as `excludedKeys` so
-  queries with a `LIMIT` can leave them out in SQL.
+- The item is left out of later passes until its retry time: 1 minute,
+  doubling to at most 1 hour, counted from the pass, or from when it failed
+  if it ran past the 60-second detach below. `list` receives these keys as
+  `excludedKeys` so queries with a `LIMIT` can leave them out in SQL.
 - Each failure logs a warning; from the fifth attempt on, an error.
 - A success clears the record. A record whose item has not been listed for an
   hour past its retry time is dropped, and startup drops records of sweeps that
