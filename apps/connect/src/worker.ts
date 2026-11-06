@@ -539,7 +539,12 @@ const gate = {
       db,
       isTunnelDial ? { fresh: true } : undefined,
     );
-    if (!resolved) return text(`bb connect: no server for "${label}"\n`, 404);
+    if (!resolved) {
+      return text(
+        `bb connect: no server for "${label}"\n`,
+        isTunnelDial ? 403 : 404,
+      );
+    }
 
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
