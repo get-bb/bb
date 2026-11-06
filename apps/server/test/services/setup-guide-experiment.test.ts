@@ -40,56 +40,28 @@ function flagsResponse(body: unknown, status = 200): Response {
 interface FlagStub {
   enabled?: boolean;
   variant: string | null;
-  payload?: string;
 }
 
-function flagEntry(key: string, flag: FlagStub) {
+function flagBody(guide?: FlagStub) {
   return {
-    key,
-    enabled: flag.enabled ?? true,
-    variant: flag.variant,
-    metadata: {
-      id: 1,
-      version: 2,
-      ...(flag.payload === undefined ? {} : { payload: flag.payload }),
-    },
-  };
-}
-
-function flagBody(args: { guide?: FlagStub; plugins?: FlagStub }) {
-  return {
-    flags: {
-      ...(args.guide === undefined
+    flags:
+      guide === undefined
         ? {}
         : {
-            "setup-guide-redesign": flagEntry(
-              "setup-guide-redesign",
-              args.guide,
-            ),
-          }),
-      ...(args.plugins === undefined
-        ? {}
-        : {
-            "onboarding-featured-plugins": flagEntry(
-              "onboarding-featured-plugins",
-              args.plugins,
-            ),
-          }),
-    },
+            "setup-guide-redesign": {
+              key: "setup-guide-redesign",
+              enabled: guide.enabled ?? true,
+              variant: guide.variant,
+              metadata: { id: 1, version: 2 },
+            },
+          },
     errorsWhileComputingFlags: false,
   };
 }
 
 const DEFAULTS: SetupGuideAssignments = {
   guide: { variant: "control", source: "default" },
-  plugins: {
-    variant: "control",
-    source: "default",
-    featuredPluginEntryIds: null,
-  },
 };
-
-const PLUGIN_LIST = JSON.stringify({ plugins: ["memory", "inline-vis"] });
 
 describe("setup guide experiment", () => {
   let dataDir: string;
@@ -124,45 +96,22 @@ describe("setup guide experiment", () => {
       .mockResolvedValue(flagsResponse(body));
   }
 
-  it("forces only the guide with the override and still evaluates the plugin flag", async () => {
-    const fetch = respondWith(
-      flagBody({
-        guide: { variant: "control" },
-        plugins: { variant: "new", payload: PLUGIN_LIST },
-      }),
-    );
-    const experiment = await create({
-      fetch,
-      override: "new",
-      telemetry: createTelemetry().telemetry,
-    });
+  it("uses the override without evaluating the flag", async () => {
+    for (const telemetry of [
+      createTelemetry().telemetry,
+      createNoopTelemetryService(),
+    ]) {
+      const fetch = respondWith(flagBody({ variant: "control" }));
+      const experiment = await create({ fetch, override: "new", telemetry });
 
-    await expect(experiment.resolve()).resolves.toEqual({
-      guide: { variant: "new", source: "override" },
-      plugins: {
-        variant: "new",
-        source: "flag",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      },
-    });
+      await expect(experiment.resolve()).resolves.toEqual({
+        guide: { variant: "new", source: "override" },
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    }
   });
 
-  it("forces the guide without telemetry and leaves the plugin flag on control", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>();
-    const experiment = await create({
-      fetch,
-      override: "new",
-      telemetry: createNoopTelemetryService(),
-    });
-
-    await expect(experiment.resolve()).resolves.toEqual({
-      ...DEFAULTS,
-      guide: { variant: "new", source: "override" },
-    });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("returns control for both flags without fetching when telemetry is unavailable or off", async () => {
+  it("returns control without fetching when telemetry is unavailable or off", async () => {
     for (const telemetry of [
       createNoopTelemetryService(),
       createTelemetry(false).telemetry,
@@ -174,16 +123,8 @@ describe("setup guide experiment", () => {
     }
   });
 
-  it("evaluates both flags in one request and reads the plugin list from the plugin flag", async () => {
-    const fetch = respondWith(
-      flagBody({
-        guide: {
-          variant: "new",
-          payload: JSON.stringify({ plugins: ["tasks"] }),
-        },
-        plugins: { variant: "new", payload: PLUGIN_LIST },
-      }),
-    );
+  it("evaluates the flag once and tags later events with its variant", async () => {
+    const fetch = respondWith(flagBody({ variant: "new" }));
     const { telemetry, setSharedProperty } = createTelemetry();
     const experiment = await create({ fetch, telemetry });
 
@@ -192,14 +133,7 @@ describe("setup guide experiment", () => {
       experiment.resolve(),
     ]);
 
-    expect(first).toEqual({
-      guide: { variant: "new", source: "flag" },
-      plugins: {
-        variant: "new",
-        source: "flag",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      },
-    });
+    expect(first).toEqual({ guide: { variant: "new", source: "flag" } });
     expect(second).toBe(first);
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0] ?? [];
@@ -209,81 +143,17 @@ describe("setup guide experiment", () => {
       api_key: "phc_test",
       distinct_id: "install",
     });
-    expect(setSharedProperty).toHaveBeenCalledWith(
+    expect(setSharedProperty).toHaveBeenCalledExactlyOnceWith(
       "$feature/setup-guide-redesign",
       "new",
     );
-    expect(setSharedProperty).toHaveBeenCalledWith(
-      "$feature/onboarding-featured-plugins",
-      "new",
-    );
-  });
-
-  it("falls back each flag to control on its own", async () => {
-    const onlyPlugins = await create({
-      fetch: respondWith(
-        flagBody({ plugins: { variant: "new", payload: PLUGIN_LIST } }),
-      ),
-      telemetry: createTelemetry().telemetry,
-    });
-    await expect(onlyPlugins.resolve()).resolves.toEqual({
-      guide: DEFAULTS.guide,
-      plugins: {
-        variant: "new",
-        source: "flag",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      },
-    });
-
-    const onlyGuide = await create({
-      fetch: respondWith(
-        flagBody({
-          guide: { variant: "new" },
-          plugins: { enabled: false, variant: null },
-        }),
-      ),
-      telemetry: createTelemetry().telemetry,
-    });
-    await expect(onlyGuide.resolve()).resolves.toEqual({
-      guide: { variant: "new", source: "flag" },
-      plugins: DEFAULTS.plugins,
-    });
-  });
-
-  it("keeps the plugin variant but drops an invalid or control payload", async () => {
-    const cases: FlagStub[] = [
-      { variant: "new", payload: "not json" },
-      { variant: "new", payload: JSON.stringify({ plugins: "memory" }) },
-      { variant: "new", payload: JSON.stringify({ plugins: [] }) },
-      { variant: "new", payload: JSON.stringify({ plugins: ["Bad Id"] }) },
-      { variant: "control", payload: PLUGIN_LIST },
-    ];
-    for (const plugins of cases) {
-      const experiment = await create({
-        fetch: respondWith(flagBody({ plugins })),
-        telemetry: createTelemetry().telemetry,
-      });
-      await expect(experiment.resolve()).resolves.toEqual({
-        guide: DEFAULTS.guide,
-        plugins: {
-          variant: plugins.variant,
-          source: "flag",
-          featuredPluginEntryIds: null,
-        },
-      });
-    }
   });
 
   it("falls back to control for unknown variants and failed requests", async () => {
     const responses: Array<() => Promise<Response>> = [
       async () => flagsResponse({ flags: {}, errorsWhileComputingFlags: true }),
-      async () =>
-        flagsResponse(
-          flagBody({
-            guide: { variant: "redesign-b" },
-            plugins: { variant: "list-b" },
-          }),
-        ),
+      async () => flagsResponse(flagBody({ variant: "redesign-b" })),
+      async () => flagsResponse(flagBody({ enabled: false, variant: null })),
       async () => flagsResponse({ unexpected: true }),
       async () => flagsResponse({ error: "bad key" }, 401),
       async () => new Response("not json", { status: 200 }),
@@ -317,15 +187,10 @@ describe("setup guide experiment", () => {
     await expect(experiment.resolve()).resolves.toEqual(DEFAULTS);
   });
 
-  it("persists both assignments on exposure and reuses them after a restart", async () => {
+  it("persists the assignment on exposure and reuses it after a restart", async () => {
     const first = createTelemetry();
     const experiment = await create({
-      fetch: respondWith(
-        flagBody({
-          guide: { variant: "new" },
-          plugins: { variant: "new", payload: PLUGIN_LIST },
-        }),
-      ),
+      fetch: respondWith(flagBody({ variant: "new" })),
       telemetry: first.telemetry,
     });
 
@@ -343,38 +208,17 @@ describe("setup guide experiment", () => {
       ],
       [
         {
-          name: "$feature_flag_called",
-          properties: {
-            $feature_flag: "onboarding-featured-plugins",
-            $feature_flag_response: "new",
-          },
-        },
-      ],
-      [
-        {
           name: "onboarding_exposed",
           properties: {
             entry: "first_run",
             setup_guide_variant: "new",
             setup_guide_source: "flag",
-            featured_plugins_variant: "new",
-            featured_plugins_source: "flag",
-            $set: {
-              setup_guide_variant: "new",
-              featured_plugins_variant: "new",
-            },
+            $set: { setup_guide_variant: "new" },
           },
         },
       ],
     ]);
-    const saved = {
-      guide: { variant: "new", source: "flag" },
-      plugins: {
-        variant: "new",
-        source: "flag",
-        featuredPluginEntryIds: ["memory", "inline-vis"],
-      },
-    };
+    const saved = { guide: { variant: "new", source: "flag" } };
     expect(
       JSON.parse(
         await readFile(join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME), "utf8"),
@@ -391,38 +235,25 @@ describe("setup guide experiment", () => {
       "$feature/setup-guide-redesign",
       "new",
     );
-    expect(restarted.setSharedProperty).toHaveBeenCalledWith(
-      "$feature/onboarding-featured-plugins",
-      "new",
-    );
     await expect(afterRestart.resolve()).resolves.toEqual(saved);
     expect(restartedFetch).not.toHaveBeenCalled();
   });
 
-  it("keeps the guide override out of the saved file", async () => {
+  it("does not save an override", async () => {
     const experiment = await create({
-      fetch: respondWith(flagBody({ plugins: { variant: "control" } })),
+      fetch: respondWith(flagBody({ variant: "control" })),
       override: "new",
       telemetry: createTelemetry().telemetry,
     });
 
     await experiment.recordExposure("first_run");
 
-    expect(
-      JSON.parse(
-        await readFile(join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME), "utf8"),
-      ),
-    ).toEqual({
-      guide: null,
-      plugins: {
-        variant: "control",
-        source: "flag",
-        featuredPluginEntryIds: null,
-      },
-    });
+    await expect(
+      readFile(join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("does not send flag exposures for default assignments", async () => {
+  it("does not send a flag exposure for the default assignment", async () => {
     const { telemetry, capture } = createTelemetry();
     const experiment = await create({
       fetch: vi.fn<typeof globalThis.fetch>(async () => {
@@ -439,12 +270,7 @@ describe("setup guide experiment", () => {
         entry: "replay",
         setup_guide_variant: "control",
         setup_guide_source: "default",
-        featured_plugins_variant: "control",
-        featured_plugins_source: "default",
-        $set: {
-          setup_guide_variant: "control",
-          featured_plugins_variant: "control",
-        },
+        $set: { setup_guide_variant: "control" },
       },
     });
   });
@@ -454,7 +280,7 @@ describe("setup guide experiment", () => {
       join(dataDir, SETUP_GUIDE_ASSIGNMENT_FILE_NAME),
       '{"variant":"other"}',
     );
-    const fetch = respondWith(flagBody({ guide: { variant: "control" } }));
+    const fetch = respondWith(flagBody({ variant: "control" }));
     const experiment = await create({
       fetch,
       telemetry: createTelemetry().telemetry,
@@ -462,19 +288,13 @@ describe("setup guide experiment", () => {
 
     await expect(experiment.resolve()).resolves.toEqual({
       guide: { variant: "control", source: "flag" },
-      plugins: DEFAULTS.plugins,
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("adds both variants only to setup-guide events", async () => {
+  it("adds the variant only to setup-guide events", async () => {
     const experiment = await create({
-      fetch: respondWith(
-        flagBody({
-          guide: { variant: "new" },
-          plugins: { variant: "control" },
-        }),
-      ),
+      fetch: respondWith(flagBody({ variant: "new" })),
       telemetry: createTelemetry().telemetry,
     });
 
@@ -489,7 +309,6 @@ describe("setup guide experiment", () => {
         step: "plugins",
         entry: "first_run",
         setup_guide_variant: "new",
-        featured_plugins_variant: "control",
       },
     });
     const releaseNotes = {
