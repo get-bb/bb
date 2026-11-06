@@ -18,6 +18,8 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AppToasterView } from "@/components/AppToasterView";
+import { appToast } from "@/components/ui/app-toast";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type { OnboardingStepId } from "./onboarding-model";
@@ -123,13 +125,16 @@ function button(name: RegExp): HTMLButtonElement {
   return element;
 }
 
-function stubViewport({ phone }: { phone: boolean }): void {
+type Viewport = "desktop" | "narrow window" | "phone";
+
+function stubViewport(viewport: Viewport): void {
   const spy = vi
     .spyOn(window, "matchMedia")
     .mockImplementation((query: string) => ({
       matches:
-        query === "(max-width: 767px)" ||
-        (phone && query === "(max-width: 640px) and (pointer: coarse)"),
+        (viewport !== "desktop" && query === "(max-width: 767px)") ||
+        (viewport === "phone" &&
+          query === "(max-width: 640px) and (pointer: coarse)"),
       media: query,
       onchange: null,
       addEventListener: () => undefined,
@@ -143,13 +148,19 @@ function stubViewport({ phone }: { phone: boolean }): void {
 
 async function toasterPlacement(): Promise<string> {
   act(() => {
-    toast("Plugin installed", { duration: Number.POSITIVE_INFINITY });
+    appToast.success("Plugin installed", {
+      duration: Number.POSITIVE_INFINITY,
+    });
   });
   return waitFor(() => {
     const toaster = document.querySelector<HTMLElement>(
       "[data-sonner-toaster]",
     );
     if (toaster === null) throw new Error("No toaster");
+    if (!toaster.textContent?.includes("Plugin installed")) {
+      throw new Error("Toast not rendered in the toaster");
+    }
+    expect(Number(toaster.style.zIndex)).toBe(APP_OVERLAY_LAYER.toast);
     return `${toaster.dataset.yPosition}-${toaster.dataset.xPosition}`;
   });
 }
@@ -270,13 +281,15 @@ describe("OnboardingFlow", () => {
   });
 
   it.each([
-    ["new", false, "bottom-right"],
-    ["new", true, "top-center"],
-    ["control", false, "top-center"],
+    ["new", "desktop", "bottom-right"],
+    ["control", "desktop", "bottom-right"],
+    ["new", "narrow window", "bottom-right"],
+    ["new", "phone", "top-center"],
+    ["control", "narrow window", "top-center"],
   ] as const)(
-    "places toasts for a %s guide on a narrow window (phone: %s) at %s",
-    async (variant, phone, placement) => {
-      stubViewport({ phone });
+    "shows toasts for a %s guide on a %s at %s",
+    async (variant, viewport, placement) => {
+      stubViewport(viewport);
       render(<AppToasterView />);
       renderFlow({ initialStep: "plugins", variant });
 
@@ -285,7 +298,7 @@ describe("OnboardingFlow", () => {
   );
 
   it("returns toasts to the app's narrow-window placement once the new guide closes", async () => {
-    stubViewport({ phone: false });
+    stubViewport("narrow window");
     render(<AppToasterView />);
     const { unmount } = renderFlow({ initialStep: "plugins" });
     expect(await toasterPlacement()).toBe("bottom-right");
