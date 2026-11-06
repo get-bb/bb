@@ -7,15 +7,12 @@ export function formatCountdown(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-export function useCountdown(expiresAt: number): number;
-export function useCountdown(expiresAt: number | null): number | null;
-export function useCountdown(expiresAt: number | null): number | null {
+export function useCountdown(expiresAt: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (expiresAt === null) return;
     setNow(Date.now());
     const interval = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(interval);
   }, [expiresAt]);
-  return expiresAt === null ? null : expiresAt - now;
+  return expiresAt - now;
 }

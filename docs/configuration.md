@@ -1069,7 +1069,6 @@ either way.
   plugin releases can go out ahead of a retry scheduled for later (for example
   a provider-retry row waiting hours for a subscription window) and overtake
   it; with it, those rows wait for the retry.
-
 - `threadContextCard` moves a running thread's
   details into the thread context card at the upper-right of its pane: bb's parent
   thread and child threads, the Git plugin's changes, which open the Diff tab,

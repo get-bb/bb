@@ -1366,48 +1366,38 @@ export function RedesignAgentInstallError() {
   );
 }
 
-function RedesignPluginsFrame({
-  enabledIds,
-}: {
-  enabledIds: ReadonlySet<string>;
-}) {
-  return (
-    <TooltipProvider>
-      <OnboardingLayout
-        step="plugins"
-        composition="centered"
-        showSkipAll={false}
-        width="wide"
-        {...STEP_COPY.new.plugins}
-        onPrimary={noop}
-        onBack={noop}
-        onSelectStep={noop}
-        onSkipAll={noop}
-      >
-        <OnboardingPluginGrid compact={false} showHelp={false}>
-          {PLUGINS.map((plugin) => (
-            <OnboardingPluginCard
-              key={plugin.id}
-              density="compact"
-              name={plugin.name}
-              description={plugin.description}
-              icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
-              enabled={enabledIds.has(plugin.id)}
-              pending={false}
-              unavailableReason={null}
-              onToggle={noop}
-            />
-          ))}
-        </OnboardingPluginGrid>
-      </OnboardingLayout>
-    </TooltipProvider>
-  );
-}
-
 export function RedesignPluginJustTurnedOn() {
   return (
     <div className="flex h-screen flex-col">
-      <RedesignPluginsFrame enabledIds={new Set(["browser-automation"])} />
+      <TooltipProvider>
+        <OnboardingLayout
+          step="plugins"
+          composition="centered"
+          showSkipAll={false}
+          width="wide"
+          {...STEP_COPY.new.plugins}
+          onPrimary={noop}
+          onBack={noop}
+          onSelectStep={noop}
+          onSkipAll={noop}
+        >
+          <OnboardingPluginGrid compact={false} showHelp={false}>
+            {PLUGINS.map((plugin) => (
+              <OnboardingPluginCard
+                key={plugin.id}
+                density="compact"
+                name={plugin.name}
+                description={plugin.description}
+                icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
+                enabled={plugin.id === "browser-automation"}
+                pending={false}
+                unavailableReason={null}
+                onToggle={noop}
+              />
+            ))}
+          </OnboardingPluginGrid>
+        </OnboardingLayout>
+      </TooltipProvider>
     </div>
   );
 }
