@@ -91,8 +91,6 @@ function blockedStep(pullRequest: PullRequest): PullRequestNextStep {
   switch (pullRequest.mergeability.mergeStateStatus) {
     case "BEHIND":
       return action(`Behind ${pullRequest.baseRefName}`);
-    case "HAS_HOOKS":
-      return action("Blocked by hooks");
     default:
       return action("Blocked by rules");
   }

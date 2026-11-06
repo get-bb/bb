@@ -123,13 +123,13 @@ function assembleMergeability(
     state = "draft";
   } else if (
     raw.mergeStateStatus === "BLOCKED" ||
-    raw.mergeStateStatus === "BEHIND" ||
-    raw.mergeStateStatus === "HAS_HOOKS"
+    raw.mergeStateStatus === "BEHIND"
   ) {
     state = "blocked";
   } else if (
     raw.mergeable === "MERGEABLE" ||
-    raw.mergeStateStatus === "CLEAN"
+    raw.mergeStateStatus === "CLEAN" ||
+    raw.mergeStateStatus === "HAS_HOOKS"
   ) {
     state = "mergeable";
   } else {
