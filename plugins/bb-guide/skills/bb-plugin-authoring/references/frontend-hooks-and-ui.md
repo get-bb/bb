@@ -196,8 +196,9 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
 - `actions` and `banners` are plugin React components. `useComposer()` inside
   them is bound to the composer that mounted the component. Actions render
   before native voice/submit and are unavailable in compact layout; banners
-  render above the composer. A banner's `chrome` is `"card"` by default or
-  `"bare"`.
+  render above the composer, and not at all on a thread whose composer is
+  hidden because it is archived or its environment is gone. A banner's
+  `chrome` is `"card"` by default or `"bare"`.
 - `plusMenu` rows (the `+` menu) and `sendMenu` rows (the menu beside the send
   button, shown only while the composer can submit) are host-rendered so
   keyboard navigation, focus restoration, and mobile layout remain correct.
