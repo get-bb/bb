@@ -222,6 +222,7 @@ export function buildPluginProviderRegistration(args: {
   return {
     info,
     serverCapabilities,
+    guidedSignIn: declaration.internal_DO_NOT_USE_guidedSignIn,
     bridgeOptions: declaration.experimental_bridgeOptions ?? {},
     extensionKinds: declaration.extensionKinds ?? {},
     visibility: declaration.experimental_visibility ?? "always",

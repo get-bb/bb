@@ -1277,10 +1277,12 @@ export type NormalizedPluginProviderDeclaration = Omit<
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
   | "experimental_resolvesNativeRoots"
+  | "internal_DO_NOT_USE_guidedSignIn"
 > & {
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
   readonly experimental_resolvesNativeRoots: boolean;
+  readonly internal_DO_NOT_USE_guidedSignIn: boolean;
   readonly completedTurnDisplay: PluginProviderCompletedTurnDisplay;
   readonly maintenance: {
     readonly health: boolean;
@@ -1609,6 +1611,12 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" experimental_resolvesNativeRoots must be a boolean`,
     );
   }
+  const guidedSignIn = declaration.internal_DO_NOT_USE_guidedSignIn;
+  if (guidedSignIn !== undefined && typeof guidedSignIn !== "boolean") {
+    throw new Error(
+      `provider "${id}" internal_DO_NOT_USE_guidedSignIn must be a boolean`,
+    );
+  }
   const deriveProviderOptions = declaration.deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
@@ -1651,6 +1659,7 @@ export function validatePluginProviderDeclaration(
       ? {}
       : { experimental_nativeCommandRoots: nativeCommandRoots }),
     experimental_resolvesNativeRoots: resolvesNativeRoots ?? false,
+    internal_DO_NOT_USE_guidedSignIn: guidedSignIn ?? false,
     ...(deriveProviderOptions === undefined
       ? {}
       : { deriveProviderOptions: deriveProviderOptions }),

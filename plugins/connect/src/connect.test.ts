@@ -2365,6 +2365,49 @@ describe("connect plugin", () => {
     );
   });
 
+  it("lookupMachineCode reports whether a phone redeemed the code", async () => {
+    const current = await loadPlugin();
+    const lookups: unknown[] = [];
+    account.route(
+      "api",
+      "POST",
+      "/api/connect/machine-code-lookup",
+      (request) => {
+        lookups.push(request.body);
+        return {
+          status: 200,
+          body: { consumed: true, machineId: "machine-1" },
+        };
+      },
+    );
+    await signIn(current);
+
+    await expect(
+      current.harness.callRpc("lookupMachineCode", { code: "ABCD-EFGH" }),
+    ).resolves.toEqual({ consumed: true, machineId: "machine-1" });
+    expect(lookups).toEqual([{ code: "ABCD-EFGH" }]);
+  });
+
+  it("lookupMachineCode reports not_paired without making a request", async () => {
+    const { harness } = await loadPlugin();
+    await expect(
+      harness.callRpc("lookupMachineCode", { code: "ABCD-EFGH" }),
+    ).rejects.toThrow("not_paired");
+    expect(account.fetches).toEqual([]);
+  });
+
+  it("lookupMachineCode maps a failed lookup to network", async () => {
+    const current = await loadPlugin();
+    account.route("api", "POST", "/api/connect/machine-code-lookup", () => ({
+      status: 500,
+      body: { error: "boom" },
+    }));
+    await signIn(current);
+    await expect(
+      current.harness.callRpc("lookupMachineCode", { code: "ABCD-EFGH" }),
+    ).rejects.toThrow("network");
+  });
+
   it("revokeMachine posts through bb account", async () => {
     const current = await loadPlugin();
     const revoked: unknown[] = [];

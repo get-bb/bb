@@ -143,11 +143,17 @@ describe("Codex credential health and usage", () => {
     accountId: string;
     email: string;
     expSeconds: number;
+    planType?: string;
   }): string {
     const payload = {
       exp: args.expSeconds,
       email: args.email,
-      "https://api.openai.com/auth": { chatgpt_account_id: args.accountId },
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: args.accountId,
+        ...(args.planType === undefined
+          ? {}
+          : { chatgpt_plan_type: args.planType }),
+      },
     };
     return `${base64UrlJson({ alg: "none", typ: "JWT" })}.${base64UrlJson(payload)}.sig`;
   }
@@ -239,6 +245,7 @@ describe("Codex credential health and usage", () => {
         canUpdate: true,
         loginCommand: "codex login --device-auth",
         localLoginCommand: "codex login",
+        internal_DO_NOT_USE_setupGuidePlanLabel: null,
       },
     });
     await expect(getCodexProviderUsage()).resolves.toEqual({
@@ -267,6 +274,31 @@ describe("Codex credential health and usage", () => {
       supported: true,
       usage: { status: "expired" },
     });
+  });
+
+  it("reports the ChatGPT plan for the new setup guide only, keeping main's empty plan label", async () => {
+    for (const [offsetSeconds, status] of [
+      [3600, "ready"],
+      [-60, "expired"],
+    ] as const) {
+      await writeChatGptAuth(
+        createAccessToken({
+          accountId: "account-123",
+          email: "codex@example.com",
+          expSeconds: Math.floor(Date.now() / 1000) + offsetSeconds,
+          planType: "pro",
+        }),
+      );
+
+      await expect(getCodexProviderHealth()).resolves.toMatchObject({
+        health: {
+          status,
+          accountEmail: "codex@example.com",
+          planLabel: null,
+          internal_DO_NOT_USE_setupGuidePlanLabel: "Pro",
+        },
+      });
+    }
   });
 
   it("treats API-key auth as ready with no subscription usage to report", async () => {

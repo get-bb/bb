@@ -1308,6 +1308,63 @@ can close (then `HOST_DAEMON_COMPATIBLE_PROTOCOL_VERSIONS` goes back to the
 current version only). Decide whether the Cloudflare machine tunnel should
 move onto the same frpc runner once next replaces it.
 
+## `app.slots.internal_DO_NOT_USE_setupGuideSection` (`@get-bb/plugin-sdk/app`)
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_setupGuideSection({ id, component })` registers one row
+for the first-run setup guide's "Where you use bb" group. Core renders the
+group heading and the `<ul>`; the component renders the `<li>` (the connect
+plugin uses `SetupOptionRow` from `@bb/shared-ui/setup-option-row`). The
+component receives `InternalDoNotUseSetupGuideSectionProps`:
+`{ onPhone }`. `onPhone` is true when the guide is open on a phone, so the row
+hides install links and phone pairing. Core's `PluginSetupGuideSections`
+renders a plugin's rows through the ordinary plugin slot boundary, and renders
+the caller's `fallback` when the plugin registers none (disabled or not
+installed) or its row crashes.
+
+Callers: the bundled `connect` plugin only. Core caller: the onboarding
+Devices step, which renders `PluginSetupGuideSections` for `connect`.
+
+**Audit before stabilizing.** Decide whether other plugins should contribute
+setup guide rows, which groups they may target, and whether the guide should
+own the row chrome instead of the plugin rendering `SetupOptionRow`.
+
+## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
+
+Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+A provider declaration sets `internal_DO_NOT_USE_guidedSignIn: true` when the
+redesigned first-run setup guide should run its sign-in in the guided panel:
+the guide runs the provider's login command, keeps its terminal behind Show
+terminal, reads the sign-in link and code from the output, and shows them in
+the row. Every other provider is terminal-first: the guide opens the login
+terminal in the row. The validator fills `false` when the field is absent and
+refuses a non-boolean. The server keeps it on the provider registration and
+projects it onto every provider-states row (`GET /system/provider-states`) as
+a required boolean, so the Agent step's row and its sign-in mode come from the
+same response. It is not part of `ProviderInfo`. Today's guide ignores it.
+
+Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
+Cursor agent only. Core caller: the onboarding Agent step
+(`OnboardingFlow`), which reads `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
+instead of a list of provider ids.
+
+**Audit before stabilizing.** Decide whether the provider should describe its
+sign-in output itself (link and code patterns, or a structured sign-in
+request from the bridge) instead of core parsing terminal text, and whether
+Pi's terminal `/login` flow belongs in the same declaration.
+
+## `ProviderHealth.internal_DO_NOT_USE_setupGuidePlanLabel` and `SystemProviderState.internal_DO_NOT_USE_setupGuidePlanLabel`
+
+Internal to bb's own provider plugins: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+A provider bridge's health result may set `internal_DO_NOT_USE_setupGuidePlanLabel` to a plan name (for example "Plus") that only the redesigned first-run setup guide shows next to the account on a ready agent row. `planLabel` keeps its existing meaning, so today's guide and every other surface show what they showed before. The field is optional on the bridge result and passes through older daemons unchanged; the server fills `null` when it is absent, so provider-states rows always carry it.
+
+Callers: `provider-codex` only (its ChatGPT plan). Core caller: the new guide's Agent step (`OnboardingFlow`), which prefers it over `planLabel`.
+
+**Audit before stabilizing.** Decide whether the plan should become part of `planLabel` everywhere (Settings, today's guide) and the field be removed.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **Kept experimental (2026-08-22).** The recording entry shape is a de-facto
