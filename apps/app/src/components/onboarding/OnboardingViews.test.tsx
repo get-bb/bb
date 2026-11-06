@@ -9,6 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
+  RedesignedDevicesStep,
   AgentInstallErrorDetails,
   AgentSignInInstruction,
   AgentSignInPanel,
@@ -708,5 +709,64 @@ describe("Agent rows active at once in the redesign", () => {
     });
     expect((waiting as HTMLButtonElement).disabled).toBe(true);
     expect(waiting.querySelector('[data-icon="Spinner"]')).not.toBeNull();
+  });
+});
+
+describe("RedesignedDevicesStep", () => {
+  it("hides the machine section until bb connect is on", () => {
+    const props = {
+      hostName: "bee",
+      connectSection: <li>bb connect</li>,
+      addMachinePanel: null,
+      onAddMachine: vi.fn(),
+      onCloseAddMachine: vi.fn(),
+    };
+    const { rerender } = render(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines={false} />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByText("Where agents run")).toBeNull();
+    expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.getByText("Where you use bb").className).toContain("sr-only");
+
+    rerender(
+      <TooltipProvider>
+        <RedesignedDevicesStep {...props} showMachines />
+      </TooltipProvider>,
+    );
+    screen.getByText("Where agents run");
+    expect(screen.getByText("Where you use bb").className).not.toContain(
+      "sr-only",
+    );
+    expect(
+      screen
+        .getByText("bb connect")
+        .compareDocumentPosition(screen.getByText("Add another machine")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add a machine" }));
+    expect(props.onAddMachine).toHaveBeenCalledOnce();
+  });
+
+  it("adds no row of its own when bb connect contributes nothing", () => {
+    render(
+      <TooltipProvider>
+        <RedesignedDevicesStep
+          hostName="bee"
+          connectSection={null}
+          showMachines={false}
+          addMachinePanel={null}
+          onAddMachine={vi.fn()}
+          onCloseAddMachine={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByText("Where you use bb")).toBeNull();
+    expect(screen.queryByText(/turned off on this server/u)).toBeNull();
+    expect(screen.queryByText("Add another machine")).toBeNull();
+    expect(screen.queryByText("Get the mobile app")).toBeNull();
   });
 });

@@ -10,9 +10,14 @@ import {
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import type { TerminalOutputChunk, TerminalSession } from "@bb/server-contract";
 import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
-import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
+import {
+  AddMachineDialog,
+  AddMachineInline,
+} from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
+import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
+import { usePluginSlots } from "@/lib/plugin-slots";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -74,6 +79,7 @@ import {
   OnboardingPluginGrid,
   OnboardingPluginGridSkeleton,
   ProjectsStep,
+  RedesignedDevicesStep,
   type OnboardingAgent,
   type OnboardingRepo,
 } from "./OnboardingViews";
@@ -83,6 +89,7 @@ import {
   ONBOARDING_STEPS,
   STEP_COPY,
   connectAccessUrl,
+  devicesShowMachines,
   agentRowSetup,
   connectFlowFailed,
   defaultSelectedRepoPaths,
@@ -1096,6 +1103,7 @@ function DevicesStepContainer({
   redesign,
   entry,
   hostId,
+  hostName,
   closing,
   onBack,
   onFinish,
@@ -1105,6 +1113,7 @@ function DevicesStepContainer({
   redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
+  hostName: string | null;
   closing: boolean;
   onBack: () => void;
   onFinish: () => void;
@@ -1114,6 +1123,7 @@ function DevicesStepContainer({
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
+  const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
   const location = useLocation();
   const [openPathname, setOpenPathname] = useState(location.pathname);
   const [wasClosing, setWasClosing] = useState(closing);
@@ -1130,6 +1140,10 @@ function DevicesStepContainer({
     (host) => host.id !== hostId,
   ).length;
   const connect = connectAccessUrl(configQuery.data?.serverAccess);
+  const connectContributesSection = usePluginSlots().setupGuideSections.some(
+    (section) => section.pluginId === CONNECT_PLUGIN_ID,
+  );
+  const showMachines = devicesShowMachines(connect);
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
@@ -1181,6 +1195,40 @@ function DevicesStepContainer({
     }
     setAddMachineOpen(true);
   };
+  const closeAddMachine = () => {
+    void hostsQuery.refetch();
+    setAddMachineOpen(false);
+  };
+  if (redesign) {
+    return (
+      <OnboardingLayout
+        {...chrome}
+        step="devices"
+        width="wide"
+        {...stepCopy(redesign, "devices")}
+        onPrimary={onFinish}
+        onBack={onBack}
+      >
+        <RedesignedDevicesStep
+          hostName={hostName}
+          showMachines={showMachines}
+          connectSection={
+            connectContributesSection ? (
+              <PluginSetupGuideSections
+                pluginId={CONNECT_PLUGIN_ID}
+                onPhone={onPhone}
+              />
+            ) : null
+          }
+          addMachinePanel={
+            addMachineOpen && showMachines ? <AddMachineInline /> : null
+          }
+          onAddMachine={addMachine}
+          onCloseAddMachine={closeAddMachine}
+        />
+      </OnboardingLayout>
+    );
+  }
   return (
     <OnboardingLayout
       {...chrome}
@@ -1444,6 +1492,7 @@ export function OnboardingFlow({
           redesign={redesign}
           entry={entry}
           hostId={hostId}
+          hostName={primaryHost?.name ?? null}
           closing={closing}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}
