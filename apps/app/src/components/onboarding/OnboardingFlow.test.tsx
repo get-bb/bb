@@ -14,8 +14,9 @@ import {
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
+import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type { OnboardingStepId } from "./onboarding-model";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -77,9 +78,11 @@ function agentLoadFailures(): unknown[] {
 function renderFlow({
   initialStep,
   onClose = vi.fn(),
+  variant = "new",
 }: {
   initialStep: OnboardingStepId;
   onClose?: () => void;
+  variant?: "control" | "new";
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -95,7 +98,7 @@ function renderFlow({
           <OnboardingFlow
             initialStep={initialStep}
             entry="first_run"
-            setupGuide={{ variant: "new", featuredPluginEntryIds: null }}
+            setupGuide={{ variant, featuredPluginEntryIds: null }}
             closing={closing}
             onClose={onClose}
           />
@@ -104,7 +107,10 @@ function renderFlow({
     </QueryClientProvider>
   );
   const view = render(flow(false));
-  return { setClosing: (closing: boolean) => view.rerender(flow(closing)) };
+  return {
+    queryClient,
+    setClosing: (closing: boolean) => view.rerender(flow(closing)),
+  };
 }
 
 function button(name: RegExp): HTMLButtonElement {
@@ -173,6 +179,28 @@ describe("OnboardingFlow", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(finishedOutcomes()).toEqual(["skipped"]);
   });
+
+  it.each([
+    ["control", false],
+    ["new", true],
+  ] as const)(
+    "prefetches the plugin catalog when the guide opens only in the new guide (%s)",
+    (variant, prefetched) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise<never>(() => {})),
+      );
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { queryClient } = renderFlow({ initialStep: "agent", variant });
+
+      expect(
+        queryClient.getQueryState(pluginCatalogSearchQueryKey("")) !==
+          undefined,
+      ).toBe(prefetched);
+    },
+  );
 
   it("offers Retry and Continue when the agent check never answers", () => {
     vi.useFakeTimers();

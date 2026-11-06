@@ -443,6 +443,26 @@ describe("useAgentSignIns", () => {
     expect(recordedOutcomes()).toEqual(["started", "ready"]);
   });
 
+  it.each([
+    ["the redesign", true, false],
+    ["today's guide, as on main", false, true],
+  ] as const)(
+    "polls provider states while signing in, in %s",
+    async (_variant, redesign, cancelRefetch) => {
+      vi.useFakeTimers();
+      const { result, refetchStates } = renderSignIns(redesign);
+      await act(async () => {
+        await result.current.start("codex");
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+
+      expect(refetchStates).toHaveBeenCalledExactlyOnceWith({ cancelRefetch });
+    },
+  );
+
   it("settles an exited sign-in on one slow provider-states response without aborting it", async () => {
     vi.useFakeTimers();
     notifyManager.setScheduler((callback) => callback());
