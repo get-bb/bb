@@ -3920,15 +3920,32 @@ through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit`
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method. The setup guide's
-Plugins step reports `recommendation` `shown` and `selected` with a per-visit
-`recommendation_id`; `selected` also stores that id in server-owned settings
+Plugins step reports `recommendation` `shown`, `selected` and `deselected`
+(a featured plugin switched back off) with a per-visit `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
 `onboarding_operation` reports a guide action's started, succeeded or failed
 outcome with only a public agent id or counts.
+`onboarding_exposed` (`entry`) marks the guide being shown; the server saves
+the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
+`setup_guide_variant` as a person property (`$set`), and sends
+`$feature_flag_called` when the variant came from the PostHog flag. Every
+setup-guide event gets `setup_guide_variant` from the server.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
+
+## `PluginBbSdk.system.experimental_setupGuide`
+
+Reads `GET /api/v1/system/setup-guide`: `{ variant: "control" | "new" }`,
+the first-run setup guide this install sees. Flag resolution, saved assignments, and the
+`BB_SETUP_GUIDE_VARIANT` override are described under Setup guide in
+[configuration.md](configuration.md#general-settings). Core caller:
+`apps/app/src/components/onboarding/OnboardingGate.tsx`.
+
+Stabilize or remove when the setup-guide experiment concludes; decide then
+whether a general server-evaluated experiment surface is wanted, and if so
+replace this single-purpose method with it.
 
 ## `PluginBbSdk.system.experimental_cliCommand`, `experimental_installCliCommand`, and `experimental_removeCliCommand`
 
