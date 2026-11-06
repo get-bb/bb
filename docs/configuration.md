@@ -346,17 +346,18 @@ flag, evaluated for the anonymous install id (3-second timeout). It is
 the flag is missing or disabled, or its variant is unknown. The assignment
 saved in `<dataDir>/setup-guide-assignment.json` is reused.
 `BB_SETUP_GUIDE_VARIANT` forces the variant for QA.
-The Plugins step's featured plugins come from the app's
+The new guide's Plugins step gets its featured plugins from the app's
 `GET /api/v1/system/setup-guide/featured-plugins` request
 (`{ entryIds, alreadyOnEntryIds }`), resolved once per run from the separate
 `onboarding-featured-plugins` PostHog flag in the same way (3-second timeout,
 `control` without telemetry or on any failure) and saved in
 `<dataDir>/featured-plugins-assignment.json`. Its `new` variant's payload
 `{"plugins": ["browser-automation", ...], "alreadyOn": ["push-notifications", ...]}`
-lists bb-official entry ids to feature in either guide; `alreadyOn` (optional,
-a subset of `plugins`) names plugins the new guide shows switched on with the
-switch disabled while they are enabled. `entryIds` is `null` for `control` or
-when the payload is absent or invalid, and the app shows its default list.
+lists bb-official entry ids to feature; `alreadyOn` (optional, a subset of
+`plugins`) names plugins shown switched on with the switch disabled while they
+are enabled. `entryIds` is `null` for `control` or when the payload is absent
+or invalid, and the app shows its default list. Today's guide always shows the
+default list.
 `BB_SETUP_GUIDE_VARIANT` doesn't affect it.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
@@ -391,7 +392,7 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `recommendation`), and once the flag assignment is known every event, including
 `turn_finished`, carries `$feature/setup-guide-redesign`.
 `onboarding_featured_plugins_exposed` (`entry`) is sent once per guide when the
-Plugins step first shows its featured plugins: the server saves that flag's
+new guide's Plugins step first shows its featured plugins: the server saves that flag's
 assignment, adds `featured_plugins_variant` and `featured_plugins_source`
 (`flag` or `default`), sets `featured_plugins_variant` as a person property,
 and sends `$feature_flag_called` when the flag decided the variant. The server

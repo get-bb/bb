@@ -602,17 +602,14 @@ export function useSetupGuideAssignment(options?: QueryOptions) {
   });
 }
 
-export function setupGuideFeaturedPluginsQueryOptions() {
-  return queryOptions({
+export function useSetupGuideFeaturedPlugins(options: { enabled: boolean }) {
+  return useQuery({
     queryKey: systemSetupGuideFeaturedPluginsQueryKey(),
     queryFn: ({ signal }) => fetchSetupGuideFeaturedPlugins(signal),
+    enabled: options.enabled,
     staleTime: Infinity,
     retry: false,
   });
-}
-
-export function useSetupGuideFeaturedPlugins() {
-  return useQuery(setupGuideFeaturedPluginsQueryOptions());
 }
 
 export function useCliCommandStatus(options?: QueryOptions) {

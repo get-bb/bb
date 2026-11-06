@@ -1066,8 +1066,9 @@ function PluginsStepContainer({
   onContinue: () => void;
   onSkip: () => void;
 }) {
+  const redesign = setupGuide.variant === "new";
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
-  const featuredQuery = useSetupGuideFeaturedPlugins();
+  const featuredQuery = useSetupGuideFeaturedPlugins({ enabled: redesign });
   useLoadFailureTelemetry({
     entry: onboardingEntry,
     step: "plugins",
@@ -1088,12 +1089,10 @@ function PluginsStepContainer({
     void refetchCatalog();
   }, [installedCount, refetchCatalog]);
 
-  const redesign = setupGuide.variant === "new";
-  const featured = useMemo(
-    () =>
-      featuredQuery.isPending ? null : featuredPlugins(featuredQuery.data),
-    [featuredQuery.isPending, featuredQuery.data],
-  );
+  const featured = useMemo(() => {
+    if (!redesign) return featuredPlugins(undefined);
+    return featuredQuery.isPending ? null : featuredPlugins(featuredQuery.data);
+  }, [redesign, featuredQuery.isPending, featuredQuery.data]);
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined || featured === null) return null;
@@ -1107,15 +1106,14 @@ function PluginsStepContainer({
     });
   }, [catalogQuery.data?.entries, featured]);
   useEffect(() => {
-    if (entries !== null) onFeaturedPluginsShown();
-  }, [entries, onFeaturedPluginsShown]);
+    if (redesign && entries !== null) onFeaturedPluginsShown();
+  }, [redesign, entries, onFeaturedPluginsShown]);
   const isEnabled = (entry: PluginCatalogSearchEntry) =>
     entry.installed &&
     (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
       ?.enabled ??
       false);
-  const alreadyOnEntryIds =
-    redesign && featured !== null ? featured.alreadyOnEntryIds : NO_ENTRY_IDS;
+  const alreadyOnEntryIds = featured?.alreadyOnEntryIds ?? NO_ENTRY_IDS;
   const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
     redesign
       ? switches.shown(entry.pluginId, isEnabled(entry))

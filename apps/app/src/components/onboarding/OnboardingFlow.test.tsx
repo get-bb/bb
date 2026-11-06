@@ -374,12 +374,15 @@ describe("OnboardingFlow", () => {
     ).toHaveLength(1);
   });
 
-  it("leaves already-on plugins switchable in today's guide", async () => {
+  it("keeps today's featured plugins and sends no featured-plugins exposure in today's guide", async () => {
     renderFeaturedPluginsStep("control");
-    await screen.findByRole("switch", { name: "Enable memory" });
+    await screen.findByRole("switch", { name: "Enable workflows" });
 
-    expect(pluginSwitch("push-notifications").disabled).toBe(false);
-    expect(shownRecommendations()).toEqual(["memory", "push-notifications"]);
+    expect(screen.queryByRole("switch", { name: "Enable memory" })).toBeNull();
+    expect(shownRecommendations()).toEqual(["workflows"]);
+    expect(recordedEventNames()).not.toContain(
+      "onboarding_featured_plugins_exposed",
+    );
   });
 
   it.each([
