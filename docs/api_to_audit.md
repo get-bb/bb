@@ -1339,11 +1339,11 @@ A provider declaration sets `internal_DO_NOT_USE_guidedSignIn: true` when the
 redesigned first-run setup guide should run its sign-in in the guided panel:
 the guide runs the provider's login command, keeps its terminal behind Show
 terminal, reads the sign-in link and code from the output, and shows them in
-the row. Every other
-provider is terminal-first: the guide opens the login terminal in the row. The
-validator fills `false` when the field is absent and refuses a non-boolean.
-The server projects it onto `ProviderInfo` only when true, so the field is
-absent for every other provider. Today's guide ignores it.
+the row. Every other provider is terminal-first: the guide opens the login
+terminal in the row. The validator fills `false` when the field is absent and
+refuses a non-boolean. The server projects it onto `ProviderInfo` only when
+true, so the field is absent for every other provider. Today's guide ignores
+it.
 
 Callers: `provider-claude-code`, `provider-codex`, and `provider-acp` for its
 Cursor agent only. Core caller: the onboarding Agent step
