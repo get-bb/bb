@@ -107,6 +107,28 @@ describe("useDeviceSetupTracking", () => {
     },
   );
 
+  it("records started when Set up is clicked while bb connect's status is unavailable, then its outcome", () => {
+    const hook = render();
+    hook.rerender({ ...baseProps(), connectStatus: "unavailable" });
+    act(() => hook.result.current.startRemoteAccessSetup());
+    act(() => hook.result.current.failRemoteAccessSetup("sign_in"));
+    hook.rerender({ ...baseProps(), connectStatus: "on" });
+
+    expect(recorded()).toEqual([
+      "remote_access started",
+      "remote_access failed",
+      "remote_access succeeded",
+    ]);
+  });
+
+  it("records no remote access failure or success without a start in this guide", () => {
+    const hook = render();
+    act(() => hook.result.current.failRemoteAccessSetup("pairing"));
+    hook.rerender({ ...baseProps(), connectStatus: "on" });
+
+    expect(recorded()).toEqual([]);
+  });
+
   it.each([
     [
       new MachineEnrollmentEndedError("Machine setup cancelled"),

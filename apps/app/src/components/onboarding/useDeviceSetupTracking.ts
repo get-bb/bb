@@ -69,7 +69,7 @@ export function useDeviceSetupTracking({
   }, [connectedMachineCount, record]);
 
   const startRemoteAccessSetup = useCallback(() => {
-    if (connectStatus !== "off" || pending.current.remoteAccess === "started") {
+    if (connectStatus === "on" || pending.current.remoteAccess === "started") {
       return;
     }
     pending.current.remoteAccess = "started";
@@ -78,7 +78,8 @@ export function useDeviceSetupTracking({
 
   const failRemoteAccessSetup = useCallback(
     (stage: InternalDoNotUseSetupFailureStage) => {
-      if (pending.current.remoteAccess === "succeeded") return;
+      const remoteAccess = pending.current.remoteAccess;
+      if (remoteAccess === "idle" || remoteAccess === "succeeded") return;
       pending.current.remoteAccess = "failed";
       recordTelemetryEvent({
         name: "onboarding_operation",
