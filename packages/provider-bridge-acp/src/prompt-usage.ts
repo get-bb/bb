@@ -50,17 +50,23 @@ export function breakdownFromPromptUsage(
   const cacheRead = usage.cachedReadTokens ?? 0;
   const cacheWrite = usage.cachedWriteTokens ?? 0;
   const cached = cacheRead + cacheWrite;
-  const uncached = inputIncludesCache(usage, cached)
+  const includesCache = inputIncludesCache(usage, cached);
+  const uncached = includesCache
     ? Math.max(0, usage.inputTokens - cached)
     : usage.inputTokens;
+  const thought = usage.thoughtTokens ?? 0;
+  const totalWithoutThought =
+    usage.inputTokens + usage.outputTokens + (includesCache ? 0 : cached);
+  const thoughtOutsideOutput =
+    usage.totalTokens === totalWithoutThought + thought;
   return {
     totalTokens: usage.totalTokens,
     inputTokens: uncached,
     cachedInputTokens: cached,
     cacheReadInputTokens: cacheRead,
     cacheWriteInputTokens: cacheWrite,
-    outputTokens: usage.outputTokens,
-    reasoningOutputTokens: usage.thoughtTokens ?? 0,
+    outputTokens: usage.outputTokens + (thoughtOutsideOutput ? thought : 0),
+    reasoningOutputTokens: thought,
   };
 }
 

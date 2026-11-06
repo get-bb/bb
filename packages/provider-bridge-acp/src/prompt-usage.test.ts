@@ -105,6 +105,26 @@ describe("breakdownFromPromptUsage", () => {
     });
   });
 
+  it("adds thought tokens to output when the total counts them separately (OpenCode 2.2.4)", () => {
+    expect(
+      breakdownFromPromptUsage({
+        inputTokens: 8806,
+        outputTokens: 57,
+        totalTokens: 9162,
+        thoughtTokens: 43,
+        cachedReadTokens: 256,
+      }),
+    ).toEqual({
+      totalTokens: 9162,
+      inputTokens: 8806,
+      cachedInputTokens: 256,
+      cacheReadInputTokens: 256,
+      cacheWriteInputTokens: 0,
+      outputTokens: 100,
+      reasoningOutputTokens: 43,
+    });
+  });
+
   it("recognizes cache beside input when the total also counts thought tokens", () => {
     expect(
       breakdownFromPromptUsage({
@@ -114,7 +134,11 @@ describe("breakdownFromPromptUsage", () => {
         thoughtTokens: 10,
         cachedReadTokens: 1000,
       }),
-    ).toMatchObject({ inputTokens: 200, reasoningOutputTokens: 10 });
+    ).toMatchObject({
+      inputTokens: 200,
+      outputTokens: 60,
+      reasoningOutputTokens: 10,
+    });
   });
 
   it("does not subtract cache that is larger than input when the total fits neither convention", () => {
