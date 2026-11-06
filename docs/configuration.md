@@ -399,7 +399,9 @@ fails when its install job finishes, not when the request is accepted, even
 if the guide moved to another step meanwhile; a cancelled install job records
 no outcome. `load`
 records only `failed`, once each time the Agent step's agent states or the
-Plugins step's catalog start failing to load. `finish` records only `failed`,
+Plugins step's catalog start failing to load; in the new guide the Agent step
+also records `timed_out` when its agent states haven't loaded after 10
+seconds and it offers Retry, once per attempt. `finish` records only `failed`,
 with the step the guide closed from, when saving that setup was finished
 fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
 `no_host` (no computer was available: once per guide for `scan`, and each

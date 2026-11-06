@@ -406,7 +406,6 @@ function AgentStepContainer({
     enabled: hostId !== null,
     ...(hostId === null ? {} : { hostId }),
   });
-  useLoadFailureTelemetry({ entry, step: "agent", noHost, query: statesQuery });
   const providersQuery = useSystemProviders(
     hostId === null ? { enabled: false } : { hostId },
   );
@@ -426,6 +425,13 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
+  useLoadFailureTelemetry({
+    entry,
+    step: "agent",
+    noHost,
+    query: statesQuery,
+    timedOut: statesLoad.timedOut,
+  });
   const refetchProviderStates = useCallback<RefetchProviderStates>(
     (options) => {
       void refetchStates(options);
@@ -1055,6 +1061,7 @@ function PluginsStepContainer({
     step: "plugins",
     noHost: false,
     query: catalogQuery,
+    timedOut: false,
   });
   const listQuery = usePluginList({ enabled: true });
   const { refetch: refetchCatalog } = catalogQuery;

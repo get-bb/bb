@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   operationFailureReason,
   type OnboardingStepId,
@@ -14,19 +14,29 @@ export function useLoadFailureTelemetry({
   step,
   noHost,
   query,
+  timedOut,
 }: {
   entry: OnboardingEntry;
   step: OnboardingStepId;
   noHost: boolean;
   query: { isError: boolean; error: unknown };
+  timedOut: boolean;
 }): void {
   const failureReason: OperationFailureReason | "no_host" | null = noHost
     ? "no_host"
     : query.isError
       ? operationFailureReason(query.error)
-      : null;
+      : timedOut
+        ? "timed_out"
+        : null;
+  const failingRef = useRef(false);
   useEffect(() => {
-    if (failureReason === null) return;
+    if (failureReason === null) {
+      failingRef.current = false;
+      return;
+    }
+    if (failingRef.current) return;
+    failingRef.current = true;
     recordTelemetryEvent({
       name: "onboarding_operation",
       properties: {

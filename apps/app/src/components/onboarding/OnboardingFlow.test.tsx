@@ -62,6 +62,18 @@ function finishedOutcomes(): unknown[] {
     );
 }
 
+function agentLoadFailures(): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "onboarding_operation" &&
+      event.properties.step === "agent" &&
+      event.properties.operation === "load"
+        ? [event.properties.failure_reason]
+        : [],
+    );
+}
+
 function renderFlow({
   initialStep,
   onClose = vi.fn(),
@@ -177,6 +189,7 @@ describe("OnboardingFlow", () => {
       screen.getByText("Provider readiness could not be checked."),
     ).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
+    expect(agentLoadFailures()).toEqual(["timed_out"]);
 
     const requestsBeforeRetry = providerStateRequests();
     fireEvent.click(button(/^Retry$/u));
@@ -189,5 +202,6 @@ describe("OnboardingFlow", () => {
     });
     expect(button(/^Retry$/u)).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
+    expect(agentLoadFailures()).toEqual(["timed_out", "timed_out"]);
   });
 });

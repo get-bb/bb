@@ -45,6 +45,7 @@ describe("load failure telemetry", () => {
             step,
             noHost: false,
             query,
+            timedOut: false,
           }),
         { initialProps: loaded },
       );
@@ -71,6 +72,7 @@ describe("load failure telemetry", () => {
         step: "agent",
         noHost: true,
         query: loaded,
+        timedOut: false,
       }),
     );
     expect(recorded()).toEqual([
@@ -82,5 +84,33 @@ describe("load failure telemetry", () => {
         failure_reason: "no_host",
       },
     ]);
+  });
+
+  it("records a load that timed out once per attempt, not again when it then errors", () => {
+    const view = renderHook(
+      (props: { query: QueryState; timedOut: boolean }) =>
+        useLoadFailureTelemetry({
+          entry: "first_run",
+          step: "agent",
+          noHost: false,
+          query: props.query,
+          timedOut: props.timedOut,
+        }),
+      { initialProps: { query: loaded, timedOut: false } },
+    );
+    view.rerender({ query: loaded, timedOut: true });
+    view.rerender({ query: loaded, timedOut: true });
+    view.rerender({ query: unavailable, timedOut: true });
+    view.rerender({ query: loaded, timedOut: false });
+    view.rerender({ query: loaded, timedOut: true });
+
+    const timedOut = {
+      entry: "first_run",
+      step: "agent",
+      operation: "load",
+      outcome: "failed",
+      failure_reason: "timed_out",
+    };
+    expect(recorded()).toEqual([timedOut, timedOut]);
   });
 });
