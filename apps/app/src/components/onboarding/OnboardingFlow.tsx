@@ -13,7 +13,6 @@ import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
-import { useSetPluginEnabled } from "@/components/plugin/useSetPluginEnabled";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -25,7 +24,6 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
-import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { setToasterCompactPlacement } from "@/components/ui/app-toast-runtime";
 import { restartSystemProviderStatesLoad } from "@/hooks/cache-owners/system-cache-effects";
 import {
@@ -34,13 +32,11 @@ import {
   usePrimaryHost,
 } from "@/hooks/queries/host-queries";
 import {
+  pluginCatalogSearchQueryOptions,
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
-import {
-  startCatalogPluginInstall,
-  useCatalogEntryInstallJob,
-} from "@/hooks/queries/plugin-install-job-queries";
+import { useCatalogEntryInstallJob } from "@/hooks/queries/plugin-install-job-queries";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { terminalOutputTailQueryKey } from "@/hooks/queries/query-keys";
@@ -91,7 +87,7 @@ import {
   connectFlowFailed,
   defaultSelectedRepoPaths,
   agentContinueDisabled,
-  ONBOARDING_PLUGINS,
+  ONBOARDING_PLUGIN_ENTRY_IDS,
   hasReadyAgent,
   resolveAgentSetupState,
   setupGuidePlanHealth,
@@ -110,6 +106,11 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
+import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
+import {
+  useOnboardingPluginSwitches,
+  type OnboardingPluginSwitches,
+} from "./useOnboardingPluginSwitches";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useRefetchOnUpdateNeeded } from "./useRefetchOnUpdateNeeded";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
@@ -878,17 +879,20 @@ function ProjectsStepContainer({
 
 function PluginCardContainer({
   entry,
+  compact,
   enabled,
+  switches,
   onChanged,
   onSelected,
 }: {
   entry: PluginCatalogSearchEntry;
+  compact: boolean;
   enabled: boolean;
+  switches: OnboardingPluginSwitches | null;
   onChanged: () => Promise<void>;
   onSelected: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const setPluginEnabled = useSetPluginEnabled();
+  const changePlugin = useOnboardingPluginChange(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const [working, setWorking] = useState(false);
   const [target, setTarget] = useState<boolean | null>(null);
@@ -906,28 +910,33 @@ function PluginCardContainer({
     return () => window.clearTimeout(timer);
   }, [busy, settling]);
 
+  const showFailure = (error: unknown) =>
+    appToast.error(
+      error instanceof Error
+        ? error.message
+        : `Failed to update ${entry.displayName}.`,
+    );
+
   const toggle = async (next: boolean) => {
     if (next) onSelected();
+    if (switches !== null) {
+      switches.set({
+        pluginId: entry.pluginId,
+        enabled: next,
+        serverEnabled: enabled,
+        apply: changePlugin,
+        onFailed: showFailure,
+      });
+      return;
+    }
     setTarget(next);
     setWorking(true);
     try {
-      if (next && !entry.installed) {
-        const job = await startCatalogPluginInstall(fetch, {
-          entryId: entry.entryId,
-          marketplace: entry.marketplace,
-        });
-        applyPluginInstallJob({ queryClient, job });
-      } else {
-        await setPluginEnabled(entry.pluginId, next);
-      }
+      await changePlugin(next);
       await onChanged();
     } catch (error) {
       setTarget(null);
-      appToast.error(
-        error instanceof Error
-          ? error.message
-          : `Failed to update ${entry.displayName}.`,
-      );
+      showFailure(error);
     } finally {
       setWorking(false);
     }
@@ -935,6 +944,7 @@ function PluginCardContainer({
 
   return (
     <OnboardingPluginCard
+      density={compact ? "compact" : "default"}
       name={entry.displayName}
       description={entry.description}
       icon={{
@@ -942,8 +952,12 @@ function PluginCardContainer({
         iconUrl: entry.iconUrl,
         iconTinted: entry.iconTinted,
       }}
-      enabled={target ?? enabled}
-      pending={busy || settling}
+      enabled={
+        switches === null
+          ? (target ?? enabled)
+          : switches.shown(entry.pluginId, enabled)
+      }
+      pending={switches === null && (busy || settling)}
       unavailableReason={
         entry.installed || entry.compatible
           ? null
@@ -958,6 +972,7 @@ function PluginsStepContainer({
   chrome,
   setupGuide,
   entry: onboardingEntry,
+  switches,
   onBack,
   onContinue,
   onSkip,
@@ -965,6 +980,7 @@ function PluginsStepContainer({
   chrome: StepChrome;
   setupGuide: SetupGuide;
   entry: OnboardingEntry;
+  switches: OnboardingPluginSwitches;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
@@ -987,7 +1003,7 @@ function PluginsStepContainer({
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return ONBOARDING_PLUGINS.flatMap(({ entryId }) => {
+    return ONBOARDING_PLUGIN_ENTRY_IDS.flatMap((entryId) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
@@ -996,6 +1012,15 @@ function PluginsStepContainer({
       return entry === undefined ? [] : [entry];
     });
   }, [catalogQuery.data?.entries]);
+  const isEnabled = (entry: PluginCatalogSearchEntry) =>
+    entry.installed &&
+    (installedPlugins?.find((plugin) => plugin.id === entry.pluginId)
+      ?.enabled ??
+      false);
+  const isShownEnabled = (entry: PluginCatalogSearchEntry) =>
+    redesign
+      ? switches.shown(entry.pluginId, isEnabled(entry))
+      : isEnabled(entry);
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
@@ -1031,27 +1056,29 @@ function PluginsStepContainer({
     <OnboardingLayout
       {...chrome}
       step="plugins"
+      width={redesign ? "wide" : "default"}
       {...stepCopy(redesign, "plugins")}
-      secondaryLabel="Skip"
-      onPrimary={onContinue}
+      secondaryLabel={redesign ? undefined : "Skip"}
+      onPrimary={() => {
+        if (redesign && !(entries ?? []).some(isShownEnabled)) onSkip();
+        else onContinue();
+      }}
       onSecondary={onSkip}
       onBack={onBack}
     >
-      <OnboardingPluginGrid compact={chrome.compact}>
+      <OnboardingPluginGrid compact={chrome.compact} showHelp={!redesign}>
         {entries === null ? (
-          <OnboardingPluginGridSkeleton count={ONBOARDING_PLUGINS.length} />
+          <OnboardingPluginGridSkeleton
+            count={ONBOARDING_PLUGIN_ENTRY_IDS.length}
+          />
         ) : (
           entries.map((entry) => (
             <PluginCardContainer
               key={entry.entryId}
               entry={entry}
-              enabled={
-                entry.installed &&
-                (installedPlugins?.find(
-                  (plugin) => plugin.id === entry.pluginId,
-                )?.enabled ??
-                  false)
-              }
+              compact={redesign}
+              enabled={isEnabled(entry)}
+              switches={redesign ? switches : null}
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
@@ -1211,6 +1238,11 @@ export function OnboardingFlow({
   const [stepOutcomes, setStepOutcomes] = useState<
     ReadonlyMap<OnboardingStepId, StepOutcome>
   >(() => new Map());
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!redesign) return;
+    void queryClient.prefetchQuery(pluginCatalogSearchQueryOptions(""));
+  }, [queryClient, redesign]);
   const exposedRef = useRef(false);
   useEffect(() => {
     if (exposedRef.current) return;
@@ -1310,6 +1342,7 @@ export function OnboardingFlow({
       properties: { step, entry },
     });
   }, [entry, step]);
+  const pluginSwitches = useOnboardingPluginSwitches();
   const finishedRef = useRef(false);
   useEffect(() => {
     if (!closing) finishedRef.current = false;
@@ -1398,6 +1431,7 @@ export function OnboardingFlow({
           chrome={chrome}
           setupGuide={setupGuide}
           entry={entry}
+          switches={pluginSwitches}
           onBack={goTo(-1)}
           onContinue={advance("completed")}
           onSkip={advance("skipped")}

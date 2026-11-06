@@ -1366,6 +1366,42 @@ export function RedesignAgentInstallError() {
   );
 }
 
+export function RedesignPluginJustTurnedOn() {
+  return (
+    <div className="flex h-screen flex-col">
+      <TooltipProvider>
+        <OnboardingLayout
+          step="plugins"
+          composition="centered"
+          showSkipAll={false}
+          width="wide"
+          {...STEP_COPY.new.plugins}
+          onPrimary={noop}
+          onBack={noop}
+          onSelectStep={noop}
+          onSkipAll={noop}
+        >
+          <OnboardingPluginGrid compact={false} showHelp={false}>
+            {PLUGINS.map((plugin) => (
+              <OnboardingPluginCard
+                key={plugin.id}
+                density="compact"
+                name={plugin.name}
+                description={plugin.description}
+                icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
+                enabled={plugin.id === "browser-automation"}
+                pending={false}
+                unavailableReason={null}
+                onToggle={noop}
+              />
+            ))}
+          </OnboardingPluginGrid>
+        </OnboardingLayout>
+      </TooltipProvider>
+    </div>
+  );
+}
+
 export function RedesignProjects() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(
     new Set(DEFAULT_REPO_IDS),

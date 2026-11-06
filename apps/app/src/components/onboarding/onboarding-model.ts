@@ -22,16 +22,13 @@ export const ONBOARDING_STEPS: readonly {
 
 export const ONBOARDING_PLUGIN_MARKETPLACE = "bb-official";
 
-export const ONBOARDING_PLUGINS: readonly {
-  entryId: string;
-  pluginId: string;
-}[] = [
-  { entryId: "browser-automation", pluginId: "browser-automation" },
-  { entryId: "workflows", pluginId: "workflows" },
-  { entryId: "monaco-editor", pluginId: "monaco-editor" },
-  { entryId: "prompt-library", pluginId: "bb--prompt-library" },
-  { entryId: "agent-annotations", pluginId: "agent-annotations" },
-  { entryId: "ask-user-question", pluginId: "ask-user-question" },
+export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
+  "browser-automation",
+  "workflows",
+  "monaco-editor",
+  "prompt-library",
+  "agent-annotations",
+  "ask-user-question",
 ];
 
 export const CONNECT_PLUGIN_ID = "connect";
@@ -113,7 +110,7 @@ export const STEP_COPY: Readonly<
     plugins: {
       title: "Make bb yours",
       description:
-        "Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins.",
+        "Customize almost everything in bb with plugins. Turn on a few, change them anytime.",
       primaryLabel: "Continue",
     },
     devices: {
