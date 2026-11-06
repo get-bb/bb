@@ -1,6 +1,4 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
-import type { CliValues } from "@bb/operations";
 import {
   assertNever,
   buildPendingInteractionApprovalResolution,
@@ -33,6 +31,7 @@ import {
   type UserQuestionPendingInteraction,
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
+import { arg, flag } from "../../cli-door.js";
 import {
   clientCommand,
   mountCommands,
@@ -43,11 +42,10 @@ import {
 import { printBorderlessTable } from "../../table.js";
 import { prependErrorContext } from "../helpers.js";
 import {
-  JSON_OPTION,
+  JSON_FLAG,
   OPTIONAL_THREAD_ID,
-  SELF_OPTION,
-  optionalString,
-  stringList,
+  SELF_FLAG,
+  SELF_TARGET,
 } from "./operation-doors.js";
 
 function parseRespondValue(raw: string): JsonValue {
@@ -524,12 +522,6 @@ interface InteractionTarget {
   interactionId: string;
 }
 
-interface InteractionResolveInput extends InteractionTarget {
-  scope?: "session" | "turn";
-  choiceValues?: readonly string[];
-  textValues?: readonly string[];
-}
-
 interface InteractionResolveOutput {
   resolution: PendingInteractionResolution;
   updated: PendingInteraction;
@@ -648,18 +640,24 @@ function formatAnswerResolutionSuccessMessage(
   return `Interaction ${args.interactionId} answered`;
 }
 
-const INTERACTION_POSITIONALS = [
-  { name: "interactionId" },
-  OPTIONAL_THREAD_ID,
-] as const;
+const INTERACTION_POSITIONALS = {
+  interactionId: arg("<interactionId>"),
+  ...OPTIONAL_THREAD_ID,
+};
 
-function prepareTarget(
-  { positionals, options }: CliValues,
+function interactionTarget(
+  {
+    positionals,
+    options,
+  }: {
+    positionals: { interactionId: string; id: string | undefined };
+    options: { self: boolean };
+  },
   client: CliClient,
 ): InteractionTarget {
   return {
-    interactionId: optionalString(positionals.interactionId) ?? "",
-    id: client.threadId(optionalString(positionals.id), options.self === true),
+    interactionId: positionals.interactionId,
+    id: client.threadId(positionals.id, options.self),
   };
 }
 
@@ -667,38 +665,32 @@ function binaryResolutionCommand(
   name: "approve" | "deny",
   description: string,
 ): CliCommand {
-  return clientCommand<InteractionResolveInput, InteractionResolveOutput>({
-    name: `cli.thread.interactions.${name}`,
-    kind: "write",
-    description: `Read the interaction, then resolve it with its ${name} decision (threads.interaction, threads.resolveInteraction)`,
-    door: {
-      path: ["thread", "interactions", name],
-      summary: description,
-      positionals: INTERACTION_POSITIONALS,
-      options: [SELF_OPTION],
-      prepare: prepareTarget,
-      run: (input, client) =>
-        resolveInteraction(client, input, name, (interaction) =>
-          buildBinaryResolution(interaction, name),
-        ),
-      json: (output) => output.updated,
-      print: (output, input) =>
-        formatResolutionSuccessMessage({
-          interactionId: input.interactionId,
-          ...output,
-        }),
-    },
+  return clientCommand({
+    path: ["thread", "interactions", name],
+    summary: description,
+    positionals: INTERACTION_POSITIONALS,
+    options: { self: SELF_FLAG },
+    run: (values, client) =>
+      resolveInteraction(
+        client,
+        interactionTarget(values, client),
+        name,
+        (interaction) => buildBinaryResolution(interaction, name),
+      ),
+    json: (output) => output.updated,
+    print: (output, { positionals }) =>
+      formatResolutionSuccessMessage({
+        interactionId: positionals.interactionId,
+        ...output,
+      }),
   });
 }
 
 const listCommand = publicCommand("threads.interactions", {
   path: ["thread", "interactions", "list"],
   summary: "List interactions for a thread",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [SELF_OPTION],
-  prepare: ({ positionals, options }, client) => ({
-    id: client.threadId(optionalString(positionals.id), options.self === true),
-  }),
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
   print: (items) => {
     if (items.length === 0) return "No interactions found";
     printBorderlessTable(
@@ -722,104 +714,72 @@ const showCommand = publicCommand("threads.interaction", {
   path: ["thread", "interactions", "show"],
   summary: "Show an interaction",
   positionals: INTERACTION_POSITIONALS,
-  options: [SELF_OPTION],
-  prepare: prepareTarget,
+  options: SELF_TARGET,
   print: (interaction) => {
     printInteraction(interaction);
     return null;
   },
 });
 
-const grantCommand = clientCommand<
-  InteractionResolveInput,
-  InteractionResolveOutput
->({
-  name: "cli.thread.interactions.grant",
-  kind: "write",
-  description:
-    "Read the permission interaction, then grant it for the turn or session (threads.interaction, threads.resolveInteraction)",
-  door: {
-    path: ["thread", "interactions", "grant"],
-    summary: "Grant a permission interaction",
-    positionals: INTERACTION_POSITIONALS,
-    options: [
-      SELF_OPTION,
-      JSON_OPTION,
-      flag("--scope <scope>", "Grant scope: turn or session"),
-    ],
-    prepare: (values, client) => {
-      const target = prepareTarget(values, client);
-      return {
-        ...target,
-        scope: parsePermissionGrantScope(optionalString(values.options.scope)),
-      };
-    },
-    run: (input, client) =>
-      resolveInteraction(
-        client,
-        { id: input.id, interactionId: input.interactionId },
-        "grant",
-        (interaction) =>
-          buildPermissionGrantResolution(interaction, input.scope ?? "session"),
-      ),
-    json: (output) => output.updated,
-    print: (output, input) =>
-      formatResolutionSuccessMessage({
-        interactionId: input.interactionId,
-        ...output,
-      }),
+const grantCommand = clientCommand({
+  path: ["thread", "interactions", "grant"],
+  summary: "Grant a permission interaction",
+  positionals: INTERACTION_POSITIONALS,
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    scope: flag("--scope <scope>", "Grant scope: turn or session"),
   },
+  run: (values, client) => {
+    const target = interactionTarget(values, client);
+    const scope = parsePermissionGrantScope(values.options.scope);
+    return resolveInteraction(client, target, "grant", (interaction) =>
+      buildPermissionGrantResolution(interaction, scope),
+    );
+  },
+  json: (output) => output.updated,
+  print: (output, { positionals }) =>
+    formatResolutionSuccessMessage({
+      interactionId: positionals.interactionId,
+      ...output,
+    }),
 });
 
-const answerCommand = clientCommand<
-  InteractionResolveInput,
-  InteractionResolveOutput
->({
-  name: "cli.thread.interactions.answer",
-  kind: "write",
-  description:
-    "Read the user-question interaction, then answer it (threads.interaction, threads.resolveInteraction)",
-  door: {
-    path: ["thread", "interactions", "answer"],
-    summary: "Answer a user-question interaction",
-    positionals: INTERACTION_POSITIONALS,
-    options: [
-      SELF_OPTION,
-      JSON_OPTION,
-      flag(
-        "--choice <questionId=value>",
-        "Select an option value; repeat for multi-select answers",
-        { type: "strings", default: [] },
-      ),
-      flag("--text <questionId=text>", "Provide a free-text answer", {
-        type: "strings",
-        default: [],
-      }),
-    ],
-    prepare: (values, client) => ({
-      ...prepareTarget(values, client),
-      choiceValues: stringList(values.options.choice),
-      textValues: stringList(values.options.text),
+const answerCommand = clientCommand({
+  path: ["thread", "interactions", "answer"],
+  summary: "Answer a user-question interaction",
+  positionals: INTERACTION_POSITIONALS,
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    choice: flag(
+      "--choice <questionId=value>",
+      "Select an option value; repeat for multi-select answers",
+      { type: "strings", default: [] },
+    ),
+    text: flag("--text <questionId=text>", "Provide a free-text answer", {
+      type: "strings",
+      default: [],
     }),
-    run: (input, client) =>
-      resolveInteraction(
-        client,
-        { id: input.id, interactionId: input.interactionId },
-        "answer",
-        (interaction) =>
-          buildUserAnswerResolution({
-            choiceValues: input.choiceValues ?? [],
-            interaction,
-            textValues: input.textValues ?? [],
-          }),
-      ),
-    json: (output) => output.updated,
-    print: (output, input) =>
-      formatAnswerResolutionSuccessMessage({
-        interactionId: input.interactionId,
-        updated: output.updated,
-      }),
   },
+  run: (values, client) =>
+    resolveInteraction(
+      client,
+      interactionTarget(values, client),
+      "answer",
+      (interaction) =>
+        buildUserAnswerResolution({
+          choiceValues: values.options.choice,
+          interaction,
+          textValues: values.options.text,
+        }),
+    ),
+  json: (output) => output.updated,
+  print: (output, { positionals }) =>
+    formatAnswerResolutionSuccessMessage({
+      interactionId: positionals.interactionId,
+      updated: output.updated,
+    }),
 });
 
 const respondCommand = publicCommand("threads.respondToInteraction", {
@@ -827,22 +787,19 @@ const respondCommand = publicCommand("threads.respondToInteraction", {
   summary:
     "Answer a plugin form (a plugin's request or a provider's plugin-defined request) with a JSON value",
   positionals: INTERACTION_POSITIONALS,
-  options: [
-    SELF_OPTION,
-    JSON_OPTION,
-    flag(
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    value: flag(
       "--value <json>",
       "The form's answer as JSON, in the shape the plugin's form defines",
       { required: true },
     ),
-  ],
-  prepare: (values, client) => {
-    const target = prepareTarget(values, client);
-    return {
-      ...target,
-      value: parseRespondValue(optionalString(values.options.value) ?? ""),
-    };
   },
+  prepare: (values, client) => ({
+    ...interactionTarget(values, client),
+    value: parseRespondValue(values.options.value),
+  }),
   failure: (input) => `Failed to respond to interaction ${input.interactionId}`,
   print: (updated, input) =>
     formatAnswerResolutionSuccessMessage({

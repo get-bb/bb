@@ -238,7 +238,6 @@ describe("operation kernel", () => {
         internal: false,
         doors: [],
         http: null,
-        cli: null,
         chain: [
           {
             plugin: "policy",

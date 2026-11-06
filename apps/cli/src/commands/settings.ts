@@ -1,6 +1,4 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
-import type { CliDoorOption } from "@bb/operations";
 import {
   AI_TASKS,
   AI_TEXT_TASKS,
@@ -31,6 +29,7 @@ import type {
   SystemCliCommandStatus,
   SystemProviderInfo,
 } from "@bb/server-contract";
+import { arg, flag } from "../cli-door.js";
 import {
   clientCommand,
   mountCommands,
@@ -39,10 +38,6 @@ import {
 } from "../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
 
 async function currentConfig(client: CliClient) {
   return client.call("system.config", {});
@@ -379,25 +374,26 @@ function isUiPreferenceConflict(error: unknown): boolean {
   return error instanceof BbHttpError && error.status === 409;
 }
 
-const PLATFORM_OPTION: CliDoorOption = flag(
-  "--platform <platform>",
-  "Scope to mac, windows, or linux",
-);
+const PLATFORM_OPTION = {
+  platform: flag("--platform <platform>", "Scope to mac, windows, or linux"),
+};
 
 function platformValue(
-  value: unknown,
+  platform: string | undefined,
 ): "mac" | "windows" | "linux" | undefined {
-  const platform = text(value);
   return platform === undefined
     ? undefined
     : keyboardPlatformSchema.parse(platform);
 }
 
+const KEY = { key: arg("<key>") };
+
+const KEY_VALUE = { key: arg("<key>"), value: arg("<value>") };
+
 const settingsCommands = [
   publicCommand("system.config", {
     path: ["settings", "show"],
     summary: "Show server-backed settings and feature state",
-    print: (result) => JSON.stringify(result, null, 2),
   }),
   publicCommand("system.aiServices", {
     path: ["settings", "ai-services", "show"],
@@ -411,22 +407,22 @@ const settingsCommands = [
   publicCommand("system.setAiServiceSelection", {
     path: ["settings", "ai-services", "set"],
     summary: `Set the service for a task (${AI_TASKS.join(", ")}): automatic, off, or a service id`,
-    positionals: [{ name: "task" }, { name: "choice" }],
-    options: [
-      flag(
+    positionals: { task: arg("<task>"), choice: arg("<choice>") },
+    options: {
+      plugin: flag(
         "--plugin <plugin-id>",
         "Plugin that registers the service, when several plugins use the same service id",
       ),
-    ],
+    },
     async prepare({ positionals, options }, client) {
-      const task = requireAiTask(text(positionals.task) ?? "");
+      const task = requireAiTask(positionals.task);
       const current = await client.call("system.aiServices", {});
       return {
         task,
         selection: resolveAiServiceChoice(current, {
           task,
-          choice: text(positionals.choice) ?? "",
-          pluginId: text(options.plugin),
+          choice: positionals.choice,
+          pluginId: options.plugin,
         }),
       };
     },
@@ -436,13 +432,12 @@ const settingsCommands = [
   publicCommand("system.testAiService", {
     path: ["settings", "ai-services", "test"],
     summary: `Run a sample through the current choice for ${AI_TEXT_TASKS.join(" or ")}`,
-    positionals: [{ name: "task" }],
+    positionals: { task: arg("<task>") },
     prepare({ positionals }) {
-      const taskInput = text(positionals.task) ?? "";
-      const task = aiTextTaskSchema.safeParse(taskInput);
+      const task = aiTextTaskSchema.safeParse(positionals.task);
       if (!task.success) {
         throw new Error(
-          `Unknown task '${taskInput}'. Testable tasks: ${AI_TEXT_TASKS.join(", ")}`,
+          `Unknown task '${positionals.task}'. Testable tasks: ${AI_TEXT_TASKS.join(", ")}`,
         );
       }
       return { task: task.data };
@@ -454,26 +449,21 @@ const settingsCommands = [
     exitCode: (result, _input, json) => (json || result.ok ? 0 : 1),
   }),
   clientCommand({
-    name: "cli.settings.general",
-    kind: "write",
-    description: "Set one Settings → General preference",
-    door: {
-      path: ["settings", "general"],
-      summary: "Set a Settings → General preference",
-      positionals: [{ name: "key" }, { name: "value" }],
-      prepare: ({ positionals }) => ({
-        key: text(positionals.key) ?? "",
-        value: text(positionals.value) ?? "",
-      }),
-      async run({ key, value }, client) {
-        const config = await currentConfig(client);
-        return client.call(
-          "system.generalSettings",
-          updateGeneralSetting(config.generalSettings, key, value),
-        );
-      },
-      print: (_result, { key }) => `${key} updated`,
+    path: ["settings", "general"],
+    summary: "Set a Settings → General preference",
+    positionals: KEY_VALUE,
+    async run({ positionals }, client) {
+      const config = await currentConfig(client);
+      return client.call(
+        "system.generalSettings",
+        updateGeneralSetting(
+          config.generalSettings,
+          positionals.key,
+          positionals.value,
+        ),
+      );
     },
+    print: (_result, { positionals }) => `${positionals.key} updated`,
   }),
   publicCommand("system.generalSettings", {
     path: ["settings", "replay-onboarding"],
@@ -485,85 +475,74 @@ const settingsCommands = [
     print: () => "The setup guide is showing again",
   }),
   clientCommand({
-    name: "cli.settings.completed-turns",
-    kind: "write",
-    description:
-      "Show or set how each provider's finished turns display; reads providers and settings, and writes settings when a display is given",
-    door: {
-      path: ["settings", "completed-turns"],
-      summary:
-        "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
-      positionals: [
-        { name: "providerId", required: false },
-        { name: "display", required: false },
-      ],
-      prepare: ({ positionals }) => ({
-        providerId: text(positionals.providerId),
-        display: text(positionals.display),
-      }),
-      async run(
-        { providerId, display },
-        client,
-      ): Promise<
-        | { kind: "list"; entries: ProviderCompletedTurnDisplayEntry[] }
-        | { kind: "show"; entry: ProviderCompletedTurnDisplayEntry }
-        | { kind: "set"; entry: ProviderCompletedTurnDisplayEntry }
-      > {
-        const [config, providers] = await Promise.all([
-          currentConfig(client),
-          client.call("system.providers", {}),
-        ]);
-        if (providerId === undefined) {
-          return {
-            kind: "list",
-            entries: providers.map((provider) =>
-              describeProviderCompletedTurnDisplay(
-                config.generalSettings,
-                provider,
-              ),
-            ),
-          };
-        }
-        const provider = requireKnownProvider(providers, providerId);
-        if (display === undefined) {
-          return {
-            kind: "show",
-            entry: describeProviderCompletedTurnDisplay(
+    path: ["settings", "completed-turns"],
+    summary:
+      "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
+    positionals: {
+      providerId: arg("[providerId]"),
+      display: arg("[display]"),
+    },
+    async run(
+      { positionals: { providerId, display } },
+      client,
+    ): Promise<
+      | { kind: "list"; entries: ProviderCompletedTurnDisplayEntry[] }
+      | { kind: "show"; entry: ProviderCompletedTurnDisplayEntry }
+      | { kind: "set"; entry: ProviderCompletedTurnDisplayEntry }
+    > {
+      const [config, providers] = await Promise.all([
+        currentConfig(client),
+        client.call("system.providers", {}),
+      ]);
+      if (providerId === undefined) {
+        return {
+          kind: "list",
+          entries: providers.map((provider) =>
+            describeProviderCompletedTurnDisplay(
               config.generalSettings,
               provider,
             ),
-          };
-        }
-        const updated = await client.call(
-          "system.generalSettings",
-          updateProviderCompletedTurnDisplay(
-            config.generalSettings,
-            provider.id,
-            parseCompletedTurnDisplayInput(display),
           ),
-        );
-        return {
-          kind: "set",
-          entry: describeProviderCompletedTurnDisplay(updated, provider),
         };
-      },
-      json: (output) =>
-        output.kind === "list" ? output.entries : output.entry,
-      print(output) {
-        if (output.kind === "list") {
-          if (output.entries.length === 0) return "No providers available";
-          printCompletedTurnDisplayTable(output.entries);
-          return null;
-        }
-        if (output.kind === "show") {
-          printCompletedTurnDisplayTable([output.entry]);
-          return null;
-        }
-        const { entry } = output;
-        return `${entry.providerId} finished turns: ${entry.completedTurnDisplay} (${
-          entry.source === "setting" ? "setting" : "provider default"
-        })`;
-      },
+      }
+      const provider = requireKnownProvider(providers, providerId);
+      if (display === undefined) {
+        return {
+          kind: "show",
+          entry: describeProviderCompletedTurnDisplay(
+            config.generalSettings,
+            provider,
+          ),
+        };
+      }
+      const updated = await client.call(
+        "system.generalSettings",
+        updateProviderCompletedTurnDisplay(
+          config.generalSettings,
+          provider.id,
+          parseCompletedTurnDisplayInput(display),
+        ),
+      );
+      return {
+        kind: "set",
+        entry: describeProviderCompletedTurnDisplay(updated, provider),
+      };
+    },
+    json: (output) => (output.kind === "list" ? output.entries : output.entry),
+    print(output) {
+      if (output.kind === "list") {
+        if (output.entries.length === 0) return "No providers available";
+        printCompletedTurnDisplayTable(output.entries);
+        return null;
+      }
+      if (output.kind === "show") {
+        printCompletedTurnDisplayTable([output.entry]);
+        return null;
+      }
+      const { entry } = output;
+      return `${entry.providerId} finished turns: ${entry.completedTurnDisplay} (${
+        entry.source === "setting" ? "setting" : "provider default"
+      })`;
     },
   }),
   publicCommand("system.uiPreferences", {
@@ -581,124 +560,98 @@ const settingsCommands = [
     },
   }),
   clientCommand({
-    name: "cli.settings.ui.get",
-    kind: "read",
-    description: "Read one UI preference from the preference list",
-    door: {
-      path: ["settings", "ui", "get"],
-      summary: "Show one UI preference",
-      positionals: [{ name: "key" }],
-      prepare: ({ positionals }) => ({
-        key: requireUiPreferenceKey(text(positionals.key) ?? ""),
-      }),
-      async run({ key }, client) {
-        const { preferences } = await client.call("system.uiPreferences", {});
-        return { key, entry: preferences[key] };
-      },
-      json: ({ key, entry }) => ({ key, ...entry }),
-      print: ({ entry }) => JSON.stringify(entry.value),
+    path: ["settings", "ui", "get"],
+    summary: "Show one UI preference",
+    positionals: KEY,
+    async run({ positionals }, client) {
+      const key = requireUiPreferenceKey(positionals.key);
+      const { preferences } = await client.call("system.uiPreferences", {});
+      return { key, entry: preferences[key] };
     },
+    json: ({ key, entry }) => ({ key, ...entry }),
+    print: ({ entry }) => JSON.stringify(entry.value),
   }),
   clientCommand({
-    name: "cli.settings.ui.set",
-    kind: "write",
-    description:
-      "Set a UI preference at its current revision, retrying once after a concurrent change",
-    door: {
-      path: ["settings", "ui", "set"],
-      summary: "Set a UI preference; lists and null take JSON",
-      positionals: [{ name: "key" }, { name: "value" }],
-      prepare({ positionals }) {
-        const key = requireUiPreferenceKey(text(positionals.key) ?? "");
-        return {
+    path: ["settings", "ui", "set"],
+    summary: "Set a UI preference; lists and null take JSON",
+    positionals: KEY_VALUE,
+    async run({ positionals }, client) {
+      const key = requireUiPreferenceKey(positionals.key);
+      const value = parseUiPreferenceInput(key, positionals.value);
+      const write = async () => {
+        const { preferences } = await client.call("system.uiPreferences", {});
+        return client.call("system.updateUiPreference", {
           key,
-          value: parseUiPreferenceInput(key, text(positionals.value) ?? ""),
-        };
-      },
-      async run({ key, value }, client) {
-        const write = async () => {
-          const { preferences } = await client.call("system.uiPreferences", {});
-          return client.call("system.updateUiPreference", {
-            key,
-            expectedRevision: preferences[key].revision,
-            value,
-          });
-        };
-        try {
-          return await write();
-        } catch (error) {
-          if (!isUiPreferenceConflict(error)) throw error;
-          return write();
-        }
-      },
-      print: (_result, { key }) => `${key} updated`,
+          expectedRevision: preferences[key].revision,
+          value,
+        });
+      };
+      try {
+        return await write();
+      } catch (error) {
+        if (!isUiPreferenceConflict(error)) throw error;
+        return write();
+      }
     },
+    print: (_result, { positionals }) => `${positionals.key} updated`,
   }),
   publicCommand("system.resetUiPreference", {
     path: ["settings", "ui", "reset"],
     summary: "Reset a UI preference to its default",
-    positionals: [{ name: "key" }],
+    positionals: KEY,
     prepare: ({ positionals }) => ({
-      key: requireUiPreferenceKey(text(positionals.key) ?? ""),
+      key: requireUiPreferenceKey(positionals.key),
     }),
     print: (_result, { key }) => `${key} reset`,
   }),
   clientCommand({
-    name: "cli.settings.mobile-app",
-    kind: "read",
-    description:
-      "Show the mobile app download links, and the public release details on request",
-    door: {
-      path: ["settings", "mobile-app"],
-      summary: "Show iOS TestFlight and Android APK download links",
-      options: [flag("--details", "Include available public release metadata")],
-      prepare: ({ options }) => ({ details: options.details === true }),
-      async run({ details }, client) {
-        const links = client.sdk().system.mobileAppDownloads();
-        if (!details) return { links, releases: null };
-        return {
-          links,
-          releases: await client.call("system.mobileAppReleases", {}),
-        };
-      },
-      json: ({ links, releases }) =>
-        releases === null ? links : { downloads: links, releases },
-      print({ links, releases }) {
-        console.log(
-          `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
-        );
-        if (releases === null) return null;
-        console.log(
-          releases.android
-            ? `Android ${releases.android.version} (build ${releases.android.versionCode}) · Updated ${releases.android.updatedAt} · ${Math.ceil(releases.android.size / 1024 / 1024)} MB`
-            : "Android release details are unavailable.",
-        );
-        console.log("iOS version and release date are shown in TestFlight.");
-        return null;
-      },
+    path: ["settings", "mobile-app"],
+    summary: "Show iOS TestFlight and Android APK download links",
+    options: {
+      details: flag("--details", "Include available public release metadata"),
+    },
+    async run({ options }, client) {
+      const links = client.sdk().system.mobileAppDownloads();
+      if (!options.details) return { links, releases: null };
+      return {
+        links,
+        releases: await client.call("system.mobileAppReleases", {}),
+      };
+    },
+    json: ({ links, releases }) =>
+      releases === null ? links : { downloads: links, releases },
+    print({ links, releases }) {
+      console.log(
+        `iOS TestFlight: ${links.ios}\nAndroid APK: ${links.android}`,
+      );
+      if (releases === null) return null;
+      console.log(
+        releases.android
+          ? `Android ${releases.android.version} (build ${releases.android.versionCode}) · Updated ${releases.android.updatedAt} · ${Math.ceil(releases.android.size / 1024 / 1024)} MB`
+          : "Android release details are unavailable.",
+      );
+      console.log("iOS version and release date are shown in TestFlight.");
+      return null;
     },
   }),
   publicCommand("system.experiments", {
     path: ["settings", "experiment"],
     summary: "Set an experiment value",
-    positionals: [{ name: "key" }, { name: "value" }],
+    positionals: KEY_VALUE,
     prepare: ({ positionals }) =>
-      experimentUpdate(
-        text(positionals.key) ?? "",
-        text(positionals.value) ?? "",
-      ),
+      experimentUpdate(positionals.key, positionals.value),
     print: (_result, input) => `${Object.keys(input)[0]} updated`,
   }),
   publicCommand("system.generalSettings", {
     path: ["settings", "keyboard", "hints"],
     summary: "Show or hide held-modifier shortcut hints",
-    positionals: [{ name: "value" }],
+    positionals: { value: arg("<value>") },
     async prepare({ positionals }, client) {
       const config = await currentConfig(client);
       return updateGeneralSetting(
         config.generalSettings,
         "showKeyboardHints",
-        text(positionals.value) ?? "",
+        positionals.value,
       );
     },
     print: () => "Keyboard hint visibility updated",
@@ -720,12 +673,12 @@ const settingsCommands = [
   publicCommand("system.keyboardSettings", {
     path: ["settings", "keyboard", "set"],
     summary: "Set a command shortcut; use 'disabled' to clear it",
-    positionals: [{ name: "command" }, { name: "shortcut" }],
-    options: [PLATFORM_OPTION],
+    positionals: { command: arg("<command>"), shortcut: arg("<shortcut>") },
+    options: PLATFORM_OPTION,
     async prepare({ positionals, options }, client) {
       const platform = platformValue(options.platform);
-      const command = keyboardCommandIdSchema.parse(text(positionals.command));
-      const shortcut = text(positionals.shortcut) ?? "";
+      const command = keyboardCommandIdSchema.parse(positionals.command);
+      const shortcut = positionals.shortcut;
       const config = await currentConfig(client);
       const next = config.keybindingOverrides.filter(
         (item) => item.command !== command || item.platform !== platform,
@@ -741,74 +694,60 @@ const settingsCommands = [
       `Shortcut for ${overrides.at(-1)?.command} updated`,
   }),
   clientCommand({
-    name: "cli.settings.keyboard.reset",
-    kind: "write",
-    description:
-      "Remove one command's shortcut override, or every override, from the keyboard settings",
-    door: {
-      path: ["settings", "keyboard", "reset"],
-      summary: "Reset one command override or all keyboard overrides",
-      positionals: [{ name: "command", required: false }],
-      options: [PLATFORM_OPTION],
-      prepare: ({ positionals, options }) => ({
-        platform: platformValue(options.platform),
-        commandInput: text(positionals.command),
-      }),
-      async run({ platform, commandInput }, client) {
-        const config = await currentConfig(client);
-        const command =
-          commandInput === undefined
-            ? undefined
-            : keyboardCommandIdSchema.parse(commandInput);
-        const next = config.keybindingOverrides.filter(
-          (item) =>
-            (command !== undefined && item.command !== command) ||
-            (platform !== undefined && item.platform !== platform),
-        );
-        return client.call("system.keyboardSettings", { overrides: next });
-      },
-      print: (_result, { commandInput }) =>
-        commandInput
-          ? `Shortcut for ${commandInput} reset`
-          : "Keyboard overrides reset",
+    path: ["settings", "keyboard", "reset"],
+    summary: "Reset one command override or all keyboard overrides",
+    positionals: { command: arg("[command]") },
+    options: PLATFORM_OPTION,
+    async run({ positionals, options }, client) {
+      const platform = platformValue(options.platform);
+      const config = await currentConfig(client);
+      const command =
+        positionals.command === undefined
+          ? undefined
+          : keyboardCommandIdSchema.parse(positionals.command);
+      const next = config.keybindingOverrides.filter(
+        (item) =>
+          (command !== undefined && item.command !== command) ||
+          (platform !== undefined && item.platform !== platform),
+      );
+      return client.call("system.keyboardSettings", { overrides: next });
     },
+    print: (_result, { positionals }) =>
+      positionals.command
+        ? `Shortcut for ${positionals.command} reset`
+        : "Keyboard overrides reset",
   }),
   publicCommand("system.usageLimits", {
     path: ["settings", "usage"],
     summary: "Show provider usage limits",
-    options: [
-      flag("--refresh", "Fetch fresh usage instead of a cached result"),
-      flag(
+    options: {
+      refresh: flag(
+        "--refresh",
+        "Fetch fresh usage instead of a cached result",
+      ),
+      machine: flag(
         "--machine <id-or-name>",
         "Machine whose provider usage should be shown",
       ),
-      flag("--host <id-or-name>", "Alias for --machine"),
-    ],
+      host: flag("--host <id-or-name>", "Alias for --machine"),
+    },
     async prepare({ options }, client) {
-      const machine = text(options.machine);
-      const host = text(options.host);
-      const target = resolveMachineTargetOption({
-        ...(machine === undefined ? {} : { machine }),
-        ...(host === undefined ? {} : { host }),
-      });
+      const target = resolveMachineTargetOption(options);
       const hostId =
         target === undefined
           ? undefined
           : await resolveMachineHostId({ serverUrl: client.url, target });
       return {
         ...(hostId === undefined ? {} : { hostId }),
-        ...(options.refresh === true ? { refresh: "true" as const } : {}),
+        ...(options.refresh ? { refresh: "true" as const } : {}),
       };
     },
-    print: (result) => JSON.stringify(result, null, 2),
   }),
   publicCommand("system.version", {
     path: ["settings", "version"],
     summary: "Check the running and latest BB versions",
-    options: [flag("--force", "Bypass the latest-version cache")],
-    prepare: ({ options }) =>
-      options.force === true ? { force: "true" as const } : {},
-    print: (result) => JSON.stringify(result, null, 2),
+    options: { force: flag("--force", "Bypass the latest-version cache") },
+    prepare: ({ options }) => (options.force ? { force: "true" as const } : {}),
   }),
   publicCommand("system.cliCommand", {
     path: ["settings", "cli-command", "show"],

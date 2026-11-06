@@ -13,14 +13,15 @@ import type {
   SystemVersionResponse,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { CliExitError } from "../action.js";
 import {
   JSON_FLAG_DESCRIPTION,
-  type CliDoorOption,
-  type CliDoorPositional,
-  type CliValues,
+  arg,
   flag,
-} from "@bb/operations";
-import { CliExitError } from "../action.js";
+  type CliArgs,
+  type CliFlags,
+  type CliValues,
+} from "../cli-door.js";
 import { CliUsageError } from "../cli-usage-error.js";
 import type { createCliBbSdk } from "../client.js";
 import {
@@ -41,22 +42,6 @@ const INCOMING_SUBJECTS_SHOWN = 10;
 type ProviderCliKey = string;
 type ProviderCliStatus = HostProviderCliStatusResponse[string];
 type ProviderCliStatusResponse = HostProviderCliStatusResponse;
-
-interface UpdatesCommandOptions {
-  json?: boolean;
-  machine?: string;
-}
-
-interface AppUpdateStatusOptions {
-  json?: boolean;
-}
-
-interface AppUpdateApplyOptions {
-  json?: boolean;
-  wait: boolean;
-  whenIdle?: boolean;
-  yes?: boolean;
-}
 
 type CliSdk = ReturnType<typeof createCliBbSdk>;
 
@@ -455,57 +440,34 @@ async function waitForAppUpdate(args: {
   );
 }
 
-const JSON_OPTION: CliDoorOption = flag("--json", JSON_FLAG_DESCRIPTION);
+const JSON_OPTION = { json: flag("--json", JSON_FLAG_DESCRIPTION) };
 
-const MACHINE_OPTION: CliDoorOption = flag(
-  "--machine <id-or-name>",
-  "Limit to one machine",
-);
+const MACHINE_OPTIONS = {
+  machine: flag("--machine <id-or-name>", "Limit to one machine"),
+  ...JSON_OPTION,
+};
 
-function textOption(values: CliValues, flag: string): string | undefined {
-  const value = values.options[flag];
-  return typeof value === "string" ? value : undefined;
-}
-
-function updatesOptions(values: CliValues): UpdatesCommandOptions {
-  const machine = textOption(values, "machine");
-  return {
-    json: values.options.json === true,
-    ...(machine === undefined ? {} : { machine }),
-  };
-}
-
-function updatesCommand(spec: {
-  name: string;
-  kind: "read" | "write";
-  description: string;
+interface UpdatesDoor<Args extends CliArgs, Flags extends CliFlags> {
   path: readonly string[];
   summary: string;
   isDefault?: boolean;
-  positionals?: readonly CliDoorPositional[];
-  options: readonly CliDoorOption[];
-  run(values: CliValues, client: CliClient): Promise<void>;
-}): CliCommand {
-  return clientCommand<CliValues, null>({
-    name: spec.name,
-    kind: spec.kind,
-    description: spec.description,
-    door: {
-      path: spec.path,
-      summary: spec.summary,
-      ...(spec.isDefault === true ? { isDefault: true } : {}),
-      ...(spec.positionals === undefined
-        ? {}
-        : { positionals: spec.positionals }),
-      options: spec.options,
-      noJson: true,
-      prepare: (values) => values,
-      async run(values, client) {
-        await spec.run(values, client);
-        return null;
-      },
-      print: () => null,
+  positionals?: Args;
+  options: Flags;
+  run(values: CliValues<Args, Flags>, client: CliClient): Promise<void>;
+}
+
+function updatesCommand<
+  const Args extends CliArgs = {},
+  const Flags extends CliFlags = {},
+>(door: UpdatesDoor<Args, Flags>): CliCommand {
+  return clientCommand<Args, Flags, null>({
+    ...door,
+    noJson: true,
+    async run(values, client) {
+      await door.run(values, client);
+      return null;
     },
+    print: () => null,
   });
 }
 
@@ -522,32 +484,22 @@ export const appUpdateStatusCommand = publicCommand("system.appUpdate", {
 
 export const appUpdateCommands = [
   updatesCommand({
-    name: "cli.updates.app.apply",
-    kind: "write",
-    description:
-      "Check, confirm, apply or schedule a bb update and follow it until bb restarts",
     path: ["updates", "app", "apply"],
     summary: "Download the available bb update and restart bb into it",
-    options: [
-      flag("--yes", "Update without asking about running threads"),
-      flag(
+    options: {
+      yes: flag("--yes", "Update without asking about running threads"),
+      whenIdle: flag(
         "--when-idle",
         "Update once no thread is running instead of interrupting running threads",
       ),
-      flag(
+      wait: flag(
         "--no-wait",
         "Return once the update starts instead of following it",
       ),
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts: AppUpdateApplyOptions = {
-        json: values.options.json === true,
-        wait: values.options.wait !== false,
-        whenIdle: values.options["when-idle"] === true,
-        yes: values.options.yes === true,
-      };
-      if (opts.whenIdle === true && opts.yes === true) {
+      ...JSON_OPTION,
+    },
+    async run({ options }, client) {
+      if (options.whenIdle && options.yes) {
         throw new CliUsageError({
           code: "invalid_value",
           hint: null,
@@ -566,23 +518,23 @@ export const appUpdateCommands = [
         throw new CliExitError(status.blocked.message, 1);
       }
       if (status.available === null) {
-        if (outputJson(opts, status)) return;
+        if (outputJson(options, status)) return;
         console.log(`bb-app ${formatRevision(status.current)} is up to date.`);
         return;
       }
       const previousResultId = status.lastResult?.id ?? null;
       let started: SystemAppUpdateStatus;
-      if (opts.whenIdle === true) {
+      if (options.whenIdle) {
         started = await callUpdateWhenIdleRoute(() =>
           sdk.system.experimental_scheduleAppUpdate(),
         );
         if (isWaitingForThreads(started)) {
-          if (outputJson(opts, started)) return;
+          if (outputJson(options, started)) return;
           printScheduledUpdate(started);
           return;
         }
       } else {
-        let confirmInterruptingThreads = opts.yes === true;
+        let confirmInterruptingThreads = options.yes;
         if (status.runningThreadCount > 0 && !confirmInterruptingThreads) {
           const count = status.runningThreadCount;
           const { experiments } = await sdk.system.config();
@@ -612,28 +564,28 @@ export const appUpdateCommands = [
           confirmInterruptingThreads,
         });
       }
-      if (!opts.wait) {
-        if (outputJson(opts, started)) return;
+      if (!options.wait) {
+        if (outputJson(options, started)) return;
         console.log(
           `Updating bb to ${status.available.version}. Run bb updates app to follow it.`,
         );
         return;
       }
-      if (!opts.json) {
+      if (!options.json) {
         console.log(`Updating bb to ${status.available.version}`);
       }
       const finished = await waitForAppUpdate({
-        json: opts.json === true,
+        json: options.json,
         previousResultId,
         sdk,
       });
       if (isWaitingForThreads(finished)) {
-        if (outputJson(opts, finished)) return;
+        if (outputJson(options, finished)) return;
         printScheduledUpdate(finished);
         return;
       }
       const result = finished.lastResult;
-      if (outputJson(opts, finished)) {
+      if (outputJson(options, finished)) {
         if (result?.outcome !== "updated") process.exitCode = 1;
         return;
       }
@@ -645,23 +597,16 @@ export const appUpdateCommands = [
     },
   }),
   updatesCommand({
-    name: "cli.updates.app.cancel",
-    kind: "write",
-    description:
-      "Skip a scheduled bb update and report whether one was waiting",
     path: ["updates", "app", "cancel"],
     summary: "Skip a waiting update until a newer version appears",
-    options: [JSON_OPTION],
-    async run(values, client) {
-      const opts: AppUpdateStatusOptions = {
-        json: values.options.json === true,
-      };
+    options: JSON_OPTION,
+    async run({ options }, client) {
       const sdk = client.sdk();
       const before = await sdk.system.appUpdate();
       const status = await callUpdateWhenIdleRoute(() =>
         sdk.system.experimental_cancelScheduledAppUpdate(),
       );
-      if (outputJson(opts, status)) return;
+      if (outputJson(options, status)) return;
       console.log(
         hasScheduledUpdate(before)
           ? "Skipped this version until a newer one appears."
@@ -670,22 +615,12 @@ export const appUpdateCommands = [
     },
   }),
   updatesCommand({
-    name: "cli.updates.app.auto",
-    kind: "write",
-    description: "Read or set automatic bb updates",
     path: ["updates", "app", "auto"],
     summary:
       "Show whether bb updates itself automatically, or turn it on or off. `on` checks every hour and restarts bb into a new version once no thread has run for 15 minutes; `off` stops checking and drops a waiting update",
-    positionals: [{ name: "state", required: false }],
-    options: [JSON_OPTION],
-    async run(values, client) {
-      const state =
-        typeof values.positionals.state === "string"
-          ? values.positionals.state
-          : undefined;
-      const opts: AppUpdateStatusOptions = {
-        json: values.options.json === true,
-      };
+    positionals: { state: arg("[state]") },
+    options: JSON_OPTION,
+    async run({ positionals: { state }, options }, client) {
       if (state !== undefined && state !== "on" && state !== "off") {
         throw new CliUsageError({
           code: "invalid_value",
@@ -702,7 +637,7 @@ export const appUpdateCommands = [
                 enabled: state === "on",
               }),
             );
-      if (outputJson(opts, status)) return;
+      if (outputJson(options, status)) return;
       console.log(
         status.autoUpdate
           ? "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes."
@@ -711,42 +646,31 @@ export const appUpdateCommands = [
     },
   }),
   updatesCommand({
-    name: "cli.updates.app.dismiss",
-    kind: "write",
-    description: "Acknowledge the last bb update result when there is one",
     path: ["updates", "app", "dismiss"],
     summary: "Mark the last update result as seen",
-    options: [JSON_OPTION],
-    async run(values, client) {
-      const opts: AppUpdateStatusOptions = {
-        json: values.options.json === true,
-      };
+    options: JSON_OPTION,
+    async run({ options }, client) {
       const sdk = client.sdk();
       const status = await sdk.system.appUpdate();
       const result = status.lastResult;
       if (result === null || result.acknowledged) {
-        if (outputJson(opts, status)) return;
+        if (outputJson(options, status)) return;
         console.log("No update result to dismiss.");
         return;
       }
       const next = await sdk.system.acknowledgeAppUpdate({ id: result.id });
-      if (outputJson(opts, next)) return;
+      if (outputJson(options, next)) return;
       console.log("Dismissed the last update result.");
     },
   }),
 ];
 
 export const updatesStatusCommand = updatesCommand({
-  name: "cli.updates.status",
-  kind: "read",
-  description:
-    "Combine the bb version, its update status and every machine's provider CLI status",
   path: ["updates", "status"],
   summary: "Show bb and provider CLI update status across machines",
   isDefault: true,
-  options: [MACHINE_OPTION, JSON_OPTION],
-  async run(values, client) {
-    const opts = updatesOptions(values);
+  options: MACHINE_OPTIONS,
+  async run({ options }, client) {
     const sdk = client.sdk();
     const [version, appUpdate, hosts] = await Promise.all([
       sdk.system.version(),
@@ -755,10 +679,10 @@ export const updatesStatusCommand = updatesCommand({
     ]);
     const entries = await collectMachineUpdates(
       sdk,
-      selectUpdateHosts(hosts, opts.machine),
+      selectUpdateHosts(hosts, options.machine),
     );
     if (
-      outputJson(opts, {
+      outputJson(options, {
         app: version,
         appUpdate,
         machines: entries.map((entry) => ({
@@ -779,24 +703,19 @@ export const updatesStatusCommand = updatesCommand({
 });
 
 export const updatesApplyCommand = updatesCommand({
-  name: "cli.updates.apply",
-  kind: "write",
-  description:
-    "Run every available provider CLI install or update across machines",
   path: ["updates", "apply"],
   summary: "Run every available provider CLI install/update",
-  options: [MACHINE_OPTION, JSON_OPTION],
-  async run(values, client) {
-    const opts = updatesOptions(values);
+  options: MACHINE_OPTIONS,
+  async run({ options }, client) {
     const sdk = client.sdk();
     const hosts = await sdk.hosts.list();
     const entries = await collectMachineUpdates(
       sdk,
-      selectUpdateHosts(hosts, opts.machine),
+      selectUpdateHosts(hosts, options.machine),
     );
     const targets = actionableTargets(entries);
     if (targets.length === 0) {
-      if (outputJson(opts, { results: [] })) return;
+      if (outputJson(options, { results: [] })) return;
       const hasManualUpdates = entries.some(
         (entry) =>
           entry.providerStatus !== null &&
@@ -824,7 +743,7 @@ export const updatesApplyCommand = updatesCommand({
     }[] = [];
     for (const target of targets) {
       const actionKind = target.status.installAction?.kind ?? "install";
-      if (!opts.json) {
+      if (!options.json) {
         console.log(
           `${target.status.displayName} on ${target.host.name}: running ${actionKind}…`,
         );
@@ -845,7 +764,7 @@ export const updatesApplyCommand = updatesCommand({
           success,
           message: errorEvent?.type === "error" ? errorEvent.message : null,
         });
-        if (!opts.json) {
+        if (!options.json) {
           console.log(
             success
               ? `${target.status.displayName} on ${target.host.name}: done`
@@ -863,14 +782,14 @@ export const updatesApplyCommand = updatesCommand({
           success: false,
           message,
         });
-        if (!opts.json) {
+        if (!options.json) {
           console.log(
             `${target.status.displayName} on ${target.host.name}: failed (${message})`,
           );
         }
       }
     }
-    if (outputJson(opts, { results })) return;
+    if (outputJson(options, { results })) return;
     const failures = results.filter((result) => !result.success);
     if (failures.length > 0) {
       throw new Error(

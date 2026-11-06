@@ -1,18 +1,6 @@
 import type { Command } from "commander";
-import { YES_FLAG_DESCRIPTION, type CliValues, flag } from "@bb/operations";
+import { YES_FLAG_DESCRIPTION, arg, flag } from "../cli-door.js";
 import { mountCommands, publicCommand } from "../operation-doors.js";
-
-type Options = CliValues["options"];
-
-function text(options: Options, flag: string): string | undefined {
-  const value = options[flag];
-  return typeof value === "string" ? value : undefined;
-}
-
-function positional(values: CliValues, name: string): string {
-  const value = values.positionals[name];
-  return typeof value === "string" ? value : "";
-}
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -31,23 +19,26 @@ function parseLimit(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function commonTarget(options: Options) {
-  const host = text(options, "host");
-  const root = text(options, "root");
-  return {
-    ...(host ? { hostId: host } : {}),
-    ...(root ? { rootPath: root } : {}),
-  };
-}
-
-function listFilterArgs(options: Options): {
+function listArgs(options: {
+  hidden: boolean;
+  exclude: string[];
+  hostId: string | undefined;
+  query: string | undefined;
+  limit: string | undefined;
+}): {
   includeHidden?: boolean;
   excludeNames?: string[];
+  hostId?: string;
+  query?: string;
+  limit?: number;
 } {
-  const exclude = options.exclude;
+  const limit = parseLimit(options.limit);
   return {
-    ...(options.hidden === false ? { includeHidden: false } : {}),
-    ...(Array.isArray(exclude) ? { excludeNames: exclude } : {}),
+    ...(options.hidden ? {} : { includeHidden: false }),
+    ...(options.exclude.length > 0 ? { excludeNames: options.exclude } : {}),
+    ...(options.hostId ? { hostId: options.hostId } : {}),
+    ...(options.query ? { query: options.query } : {}),
+    ...(limit ? { limit } : {}),
   };
 }
 
@@ -62,19 +53,17 @@ const NO_HIDDEN_OPTION = flag(
 const EXCLUDE_OPTION = flag(
   "--exclude <names...>",
   "Entry names or root-relative paths (using /) to skip instead of the default set",
+  { type: "strings" },
 );
-const PATH_POSITIONAL = [{ name: "path" }] as const;
+const TARGET_OPTIONS = { hostId: HOST_OPTION, rootPath: ROOT_OPTION };
+const PATH_POSITIONAL = { path: arg("<path>") };
 
 export const fileCommands = [
   publicCommand("files.read", {
     path: ["file", "read"],
     summary: "Read a file",
     positionals: PATH_POSITIONAL,
-    options: [HOST_OPTION, ROOT_OPTION],
-    prepare: (values) => ({
-      path: positional(values, "path"),
-      ...commonTarget(values.options),
-    }),
+    options: TARGET_OPTIONS,
     print: (result) => {
       if (result.contentEncoding === "utf8")
         process.stdout.write(result.content);
@@ -86,30 +75,30 @@ export const fileCommands = [
     path: ["file", "write"],
     summary: "Write a UTF-8 file",
     positionals: PATH_POSITIONAL,
-    options: [
-      flag("--content <text>", "File content"),
-      flag("--stdin", "Read file content from stdin"),
-      HOST_OPTION,
-      ROOT_OPTION,
-      flag("--create-parents", "Create missing parent directories"),
-      flag(
+    options: {
+      content: flag("--content <text>", "File content"),
+      stdin: flag("--stdin", "Read file content from stdin"),
+      ...TARGET_OPTIONS,
+      createParents: flag(
+        "--create-parents",
+        "Create missing parent directories",
+      ),
+      expectedSha256: flag(
         "--expected-sha256 <hash>",
         "Only write when the current hash matches",
       ),
-    ],
-    prepare: async (values) => {
-      const { options } = values;
-      const content = text(options, "content");
-      const stdin = options.stdin === true;
+    },
+    prepare: async ({ positionals, options }) => {
+      const { content, stdin, hostId, rootPath, expectedSha256 } = options;
       if ((content === undefined) === !stdin) {
         throw new Error("Provide exactly one of --content or --stdin.");
       }
-      const expectedSha256 = text(options, "expected-sha256");
       return {
-        path: positional(values, "path"),
+        path: positionals.path,
         content: stdin ? await readStdin() : (content ?? ""),
-        ...commonTarget(options),
-        ...(options["create-parents"] === true ? { createParents: true } : {}),
+        ...(hostId ? { hostId } : {}),
+        ...(rootPath ? { rootPath } : {}),
+        ...(options.createParents ? { createParents: true } : {}),
         ...(expectedSha256 ? { expectedSha256 } : {}),
       };
     },
@@ -122,58 +111,38 @@ export const fileCommands = [
     path: ["file", "list"],
     summary: "Recursively list files",
     positionals: PATH_POSITIONAL,
-    options: [
-      QUERY_OPTION,
-      LIMIT_OPTION,
-      NO_HIDDEN_OPTION,
-      EXCLUDE_OPTION,
-      HOST_OPTION,
-    ],
-    prepare: (values) => {
-      const { options } = values;
-      const host = text(options, "host");
-      const query = text(options, "query");
-      const limit = parseLimit(text(options, "limit"));
-      return {
-        path: positional(values, "path"),
-        ...listFilterArgs(options),
-        ...(host ? { hostId: host } : {}),
-        ...(query ? { query } : {}),
-        ...(limit ? { limit } : {}),
-      };
+    options: {
+      query: QUERY_OPTION,
+      limit: LIMIT_OPTION,
+      hidden: NO_HIDDEN_OPTION,
+      exclude: EXCLUDE_OPTION,
+      hostId: HOST_OPTION,
     },
+    prepare: ({ positionals, options }) => ({
+      path: positionals.path,
+      ...listArgs(options),
+    }),
     print: (result) => result.files.map((entry) => entry.path),
   }),
   publicCommand("files.listPaths", {
     path: ["file", "paths"],
     summary: "List matching files and directories",
     positionals: PATH_POSITIONAL,
-    options: [
-      QUERY_OPTION,
-      LIMIT_OPTION,
-      flag("--files", "Include files"),
-      flag("--directories", "Include directories"),
-      NO_HIDDEN_OPTION,
-      EXCLUDE_OPTION,
-      HOST_OPTION,
-    ],
-    prepare: (values) => {
-      const { options } = values;
-      const files = options.files === true;
-      const directories = options.directories === true;
-      const host = text(options, "host");
-      const query = text(options, "query");
-      const limit = parseLimit(text(options, "limit"));
-      return {
-        path: positional(values, "path"),
-        includeFiles: files || !directories,
-        includeDirectories: directories || !files,
-        ...listFilterArgs(options),
-        ...(host ? { hostId: host } : {}),
-        ...(query ? { query } : {}),
-        ...(limit ? { limit } : {}),
-      };
+    options: {
+      query: QUERY_OPTION,
+      limit: LIMIT_OPTION,
+      files: flag("--files", "Include files"),
+      directories: flag("--directories", "Include directories"),
+      hidden: NO_HIDDEN_OPTION,
+      exclude: EXCLUDE_OPTION,
+      hostId: HOST_OPTION,
     },
+    prepare: ({ positionals, options }) => ({
+      path: positionals.path,
+      includeFiles: options.files || !options.directories,
+      includeDirectories: options.directories || !options.files,
+      ...listArgs(options),
+    }),
     print: (result) =>
       result.paths.map((entry) => `${entry.kind}\t${entry.path}`),
   }),
@@ -181,28 +150,20 @@ export const fileCommands = [
     path: ["file", "mkdir"],
     summary: "Create a directory",
     positionals: PATH_POSITIONAL,
-    options: [
-      flag("--recursive", "Create missing parent directories"),
-      HOST_OPTION,
-      ROOT_OPTION,
-    ],
-    prepare: (values) => ({
-      path: positional(values, "path"),
-      ...commonTarget(values.options),
-      ...(values.options.recursive === true ? { recursive: true } : {}),
-    }),
+    options: {
+      recursive: flag("--recursive", "Create missing parent directories"),
+      ...TARGET_OPTIONS,
+    },
     print: (_result, input) => `Created directory ${input.path}`,
   }),
   publicCommand("files.move", {
     path: ["file", "move"],
     summary: "Move a file or directory",
-    positionals: [{ name: "source" }, { name: "destination" }],
-    options: [HOST_OPTION, ROOT_OPTION],
-    prepare: (values) => ({
-      sourcePath: positional(values, "source"),
-      destinationPath: positional(values, "destination"),
-      ...commonTarget(values.options),
-    }),
+    positionals: {
+      sourcePath: arg("<source>"),
+      destinationPath: arg("<destination>"),
+    },
+    options: TARGET_OPTIONS,
     print: (_result, input) =>
       `Moved ${input.sourcePath} to ${input.destinationPath}`,
   }),
@@ -210,18 +171,12 @@ export const fileCommands = [
     path: ["file", "remove"],
     summary: "Remove a file or directory",
     positionals: PATH_POSITIONAL,
-    options: [
-      flag("--recursive", "Remove a directory recursively"),
-      flag("--yes", YES_FLAG_DESCRIPTION),
-      HOST_OPTION,
-      ROOT_OPTION,
-    ],
+    options: {
+      recursive: flag("--recursive", "Remove a directory recursively"),
+      yes: flag("--yes", YES_FLAG_DESCRIPTION),
+      ...TARGET_OPTIONS,
+    },
     confirm: (input) => `Remove ${input.path}?`,
-    prepare: (values) => ({
-      path: positional(values, "path"),
-      ...commonTarget(values.options),
-      ...(values.options.recursive === true ? { recursive: true } : {}),
-    }),
     print: (_result, input) => `Removed ${input.path}`,
   }),
 ];

@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import {
@@ -14,6 +13,7 @@ import {
   threadEnvironmentUnavailableApiErrorSchema,
 } from "@bb/server-contract";
 import { CliExitError } from "../../action.js";
+import { arg, flag } from "../../cli-door.js";
 import {
   clientCommand,
   mountCommands,
@@ -22,11 +22,10 @@ import {
   type CliCommand,
 } from "../../operation-doors.js";
 import {
-  JSON_OPTION,
+  JSON_FLAG,
   OPTIONAL_THREAD_ID,
-  SELF_OPTION,
-  optionalString,
-  stringList,
+  SELF_FLAG,
+  SELF_TARGET,
   threadArchiveCommands,
 } from "./operation-doors.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
@@ -60,15 +59,15 @@ interface ThreadTellInput {
   id: string;
   message: string;
   mode: ThreadTellDeliveryMode;
-  model?: string;
-  permissionMode?: PermissionMode;
-  reasoningLevel?: ReasoningLevel;
-  serviceTier?: ServiceTier;
-  senderThreadId?: string;
-  plan?: boolean;
+  model: string | undefined;
+  permissionMode: PermissionMode | undefined;
+  reasoningLevel: ReasoningLevel | undefined;
+  serviceTier: ServiceTier | undefined;
+  senderThreadId: string | undefined;
+  plan: boolean;
   files: readonly string[];
   images: readonly string[];
-  sendAt?: number;
+  sendAt: number | undefined;
   compactFirst: boolean;
 }
 
@@ -84,11 +83,6 @@ interface ThreadUpdateBody {
   reasoningLevel?: ReasoningLevel;
   visibility?: ThreadVisibility;
   parentNotifications?: ThreadParentNotifications;
-}
-
-interface ThreadDeleteInput {
-  id: string;
-  confirmChildThreads: boolean;
 }
 
 const UPLOAD_HELP =
@@ -108,14 +102,8 @@ function threadAction(
   return publicCommand(operation, {
     path: ["thread", name],
     summary: description,
-    positionals: [OPTIONAL_THREAD_ID],
-    options: [SELF_OPTION],
-    prepare: ({ positionals, options }, client) => ({
-      id: client.threadId(
-        optionalString(positionals.id),
-        options.self === true,
-      ),
-    }),
+    positionals: OPTIONAL_THREAD_ID,
+    options: SELF_TARGET,
     json: (_output, input) => ({ ok: true, threadId: input.id }),
     print: (_output, input) => `Thread ${input.id} ${done}`,
   });
@@ -129,14 +117,8 @@ function pinCommand(
   return publicCommand(name === "pin" ? "threads.pin" : "threads.unpin", {
     path: ["thread", name],
     summary: description,
-    positionals: [OPTIONAL_THREAD_ID],
-    options: [SELF_OPTION],
-    prepare: ({ positionals, options }, client) => ({
-      id: client.threadId(
-        optionalString(positionals.id),
-        options.self === true,
-      ),
-    }),
+    positionals: OPTIONAL_THREAD_ID,
+    options: SELF_TARGET,
     print: (thread) => `Thread ${thread.id} ${done}`,
   });
 }
@@ -144,33 +126,44 @@ function pinCommand(
 const updateCommand = publicCommand("threads.update", {
   path: ["thread", "update"],
   summary: "Update a thread",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [
-    SELF_OPTION,
-    JSON_OPTION,
-    flag("--title <title>", "Set the thread title"),
-    flag("--parent-thread <id>", "Set the parent thread id"),
-    flag("--clear-parent-thread", "Clear the parent thread id"),
-    flag("--section <id>", "Move the thread into a section"),
-    flag("--clear-section", "Remove the thread from its section"),
-    flag(
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    title: flag("--title <title>", "Set the thread title"),
+    parentThread: flag("--parent-thread <id>", "Set the parent thread id"),
+    clearParentThread: flag(
+      "--clear-parent-thread",
+      "Clear the parent thread id",
+    ),
+    section: flag("--section <id>", "Move the thread into a section"),
+    clearSection: flag("--clear-section", "Remove the thread from its section"),
+    model: flag(
       "--model <model>",
       "Set the sticky model applied on the thread's next turn",
     ),
-    flag(
+    reasoningLevel: flag(
       "--reasoning-level <level>",
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     ),
-    flag("--visibility <visibility>", "Thread visibility: visible or hidden"),
-    flag("--parent-notifications <value>", PARENT_NOTIFICATIONS_HELP),
-  ],
+    visibility: flag(
+      "--visibility <visibility>",
+      "Thread visibility: visible or hidden",
+    ),
+    parentNotifications: flag(
+      "--parent-notifications <value>",
+      PARENT_NOTIFICATIONS_HELP,
+    ),
+  },
   prepare: ({ positionals, options }, client) => {
-    const title = optionalString(options.title);
-    const parentThread = optionalString(options["parent-thread"]);
-    const clearParentThread = options["clear-parent-thread"] === true;
-    const section = optionalString(options.section);
-    const clearSection = options["clear-section"] === true;
-    const model = optionalString(options.model);
+    const {
+      title,
+      parentThread,
+      clearParentThread,
+      section,
+      clearSection,
+      model,
+    } = options;
     if (parentThread && clearParentThread) {
       throw new Error(
         "Cannot combine --parent-thread with --clear-parent-thread.",
@@ -179,16 +172,13 @@ const updateCommand = publicCommand("threads.update", {
     if (section && clearSection) {
       throw new Error("Cannot combine --section with --clear-section.");
     }
-    const reasoningLevel = parseReasoningLevel(
-      optionalString(options["reasoning-level"]),
-    );
-    const visibilityValue = optionalString(options.visibility);
+    const reasoningLevel = parseReasoningLevel(options.reasoningLevel);
     const visibility =
-      visibilityValue === undefined
+      options.visibility === undefined
         ? undefined
-        : threadVisibilitySchema.parse(visibilityValue);
+        : threadVisibilitySchema.parse(options.visibility);
     const parentNotifications = parseParentNotifications(
-      optionalString(options["parent-notifications"]),
+      options.parentNotifications,
     );
     if (
       !parentThread &&
@@ -205,10 +195,7 @@ const updateCommand = publicCommand("threads.update", {
         "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --parent-notifications.",
       );
     }
-    const threadId = client.threadId(
-      optionalString(positionals.id),
-      options.self === true,
-    );
+    const threadId = client.threadId(positionals.id, options.self);
     const parentThreadId = resolveExplicitIdFlag({
       flagName: "--parent-thread",
       value: parentThread,
@@ -265,11 +252,8 @@ const restoreEnvironmentCommand = publicCommand("threads.restoreEnvironment", {
   path: ["thread", "restore-environment"],
   summary:
     "Restore the workspace of a thread whose environment was destroyed, when its environment provider supports restoring",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [SELF_OPTION],
-  prepare: ({ positionals, options }, client) => ({
-    id: client.threadId(optionalString(positionals.id), options.self === true),
-  }),
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
   failure: (input) => `Failed to restore the workspace for thread ${input.id}`,
   print: (thread, input) =>
     `Thread ${input.id} is restoring its workspace (status: ${thread.status})`,
@@ -279,81 +263,67 @@ const regenerateTitleCommand = publicCommand("threads.regenerateTitle", {
   path: ["thread", "regenerate-title"],
   summary:
     "Replace a thread's title with one generated from its task and latest messages",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [SELF_OPTION],
-  prepare: ({ positionals, options }, client) => ({
-    id: client.threadId(optionalString(positionals.id), options.self === true),
-  }),
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
   failure: (input) => `Failed to regenerate the title of thread ${input.id}`,
   print: (thread) => `Thread ${thread.id} titled "${thread.title}"`,
 });
 
-const deleteCommand = clientCommand<ThreadDeleteInput, null>({
-  name: "cli.thread.delete",
-  kind: "write",
-  description:
-    "Read the thread for its title, confirm, then delete it (threads.get, threads.delete)",
-  door: {
-    path: ["thread", "delete"],
-    summary: "Delete a thread permanently",
-    positionals: [{ name: "id" }],
-    options: [
-      flag("--yes", "Skip the confirmation prompt"),
-      flag(
-        "--confirm-child-threads",
-        "Confirm deleting a thread with child threads",
-      ),
-    ],
-    prepare: ({ positionals, options }) => ({
-      id: optionalString(positionals.id) ?? "",
-      confirmChildThreads: options["confirm-child-threads"] === true,
-    }),
-    declined: (input) => ({ message: `Thread ${input.id} deletion cancelled` }),
-    async run(input, client) {
-      const thread = await client.call("threads.get", { id: input.id });
-      await client.confirm(
-        `Delete thread "${thread.title ?? thread.titleFallback ?? thread.id}" permanently? This cannot be undone.`,
-      );
-      await client.call("threads.delete", {
-        id: input.id,
-        childThreadsConfirmed: input.confirmChildThreads,
-      });
-      return null;
-    },
-    failure: (input) => `Failed to delete thread ${input.id}`,
-    json: (_output, input) => ({ ok: true, threadId: input.id }),
-    print: (_output, input) => `Thread ${input.id} deleted`,
+const deleteCommand = clientCommand({
+  path: ["thread", "delete"],
+  summary: "Delete a thread permanently",
+  positionals: { id: arg("<id>") },
+  options: {
+    yes: flag("--yes", "Skip the confirmation prompt"),
+    confirmChildThreads: flag(
+      "--confirm-child-threads",
+      "Confirm deleting a thread with child threads",
+    ),
   },
+  declined: ({ positionals }) => ({
+    message: `Thread ${positionals.id} deletion cancelled`,
+  }),
+  async run({ positionals, options }, client) {
+    const thread = await client.call("threads.get", { id: positionals.id });
+    await client.confirm(
+      `Delete thread "${thread.title ?? thread.titleFallback ?? thread.id}" permanently? This cannot be undone.`,
+    );
+    await client.call("threads.delete", {
+      id: positionals.id,
+      childThreadsConfirmed: options.confirmChildThreads,
+    });
+    return null;
+  },
+  failure: ({ positionals }) => `Failed to delete thread ${positionals.id}`,
+  json: (_output, { positionals }) => ({ ok: true, threadId: positionals.id }),
+  print: (_output, { positionals }) => `Thread ${positionals.id} deleted`,
 });
 
 const editMessageCommand = publicCommand("threads.editMessage", {
   path: ["thread", "edit-message"],
   summary: "Replace an accepted user message and rerun from that point",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [
-    flag("--message <text>", "Replacement message text"),
-    flag(
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    message: flag("--message <text>", "Replacement message text"),
+    messageFile: flag(
       "--message-file <path>",
       `Read the replacement message from a file; ${TEXT_FILE_HELP_SUFFIX}`,
     ),
-    SELF_OPTION,
-    flag(
+    self: SELF_FLAG,
+    expectedRequestSequence: flag(
       "--expected-request-sequence <sequence>",
       "Edit the message at this event sequence (default: the latest editable message)",
     ),
-  ],
+  },
   async prepare({ positionals, options }, client) {
-    const threadId = client.threadId(
-      optionalString(positionals.id),
-      options.self === true,
-    );
+    const threadId = client.threadId(positionals.id, options.self);
     const message = await requireTextInput({
-      file: optionalString(options["message-file"]),
+      file: options.messageFile,
       fileLabel: "--message-file",
-      inline: optionalString(options.message),
+      inline: options.message,
       inlineLabel: "--message <text>",
     });
-    const sequence = optionalString(options["expected-request-sequence"]);
+    const sequence = options.expectedRequestSequence;
     const expectedRequestSequence =
       sequence === undefined ? undefined : Number(sequence);
     if (
@@ -381,118 +351,97 @@ const editMessageCommand = publicCommand("threads.editMessage", {
     `Thread ${input.id} message replaced; workspace changes were kept`,
 });
 
-const tellCommand = clientCommand<ThreadTellInput, PostThreadMessageResult>({
-  name: "cli.thread.tell",
-  kind: "write",
-  description:
-    "Upload local attachments, then send a follow-up (projects.uploadAttachment, threads.send; threads.get for the project and the restore hint)",
-  door: {
-    path: ["thread", "tell"],
-    summary: "Send a follow-up message to a thread",
-    aliases: ["message", "send"],
-    positionals: [{ name: "id" }, { name: "message", required: false }],
-    options: [
-      flag(
-        "--message-file <path>",
-        `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
-      ),
-      JSON_OPTION,
-      flag("--model <model>", "Model ID for this message"),
-      flag("--service-tier <tier>", SERVICE_TIER_HELP),
-      flag(
-        "--reasoning-level <level>",
-        "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
-      ),
-      flag("--permission-mode <mode>", PERMISSION_MODE_HELP),
-      flag(
-        "--mode <mode>",
-        "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
-      ),
-      flag("--send-at <when>", SEND_AT_HELP),
-      flag(
-        "--compact-first",
-        "Compact the idle thread's context first, then send this message when compaction finishes",
-      ),
-      flag("--plan", PLAN_HELP),
-      flag("--file <path>", UPLOAD_HELP, { type: "strings", default: [] }),
-      flag("--image <path>", UPLOAD_HELP, { type: "strings", default: [] }),
-    ],
-    async prepare({ positionals, options }) {
-      const id = optionalString(positionals.id) ?? "";
-      const message = await requireTextInput({
-        file: optionalString(options["message-file"]),
-        fileLabel: "--message-file",
-        inline: optionalString(positionals.message),
-        inlineLabel: "<message>",
-      });
-      const mode = resolveThreadMessageMode(optionalString(options.mode));
-      const model = optionalString(options.model);
-      const permissionMode = parsePermissionMode(
-        optionalString(options["permission-mode"]),
-      );
-      const reasoningLevel = parseReasoningLevel(
-        optionalString(options["reasoning-level"]),
-      );
-      const serviceTier = parseServiceTier(
-        optionalString(options["service-tier"]),
-      );
-      const senderThreadId = resolveSenderThreadId(id);
-      const sendAtValue = optionalString(options["send-at"]);
-      return {
-        id,
-        message,
-        mode,
-        ...(model === undefined ? {} : { model }),
-        ...(permissionMode === undefined ? {} : { permissionMode }),
-        ...(reasoningLevel === undefined ? {} : { reasoningLevel }),
-        ...(serviceTier === undefined ? {} : { serviceTier }),
-        ...(senderThreadId === undefined ? {} : { senderThreadId }),
-        ...(options.plan === true ? { plan: true } : {}),
-        files: stringList(options.file),
-        images: stringList(options.image),
-        ...(sendAtValue === undefined
-          ? {}
-          : { sendAt: parseSendAt(sendAtValue) }),
-        compactFirst: options["compact-first"] === true,
-      };
-    },
-    run: (input, client) => postThreadMessage(client, input),
-    json: (response, input) => ({ threadId: input.id, ...response }),
-    print: (response, input) =>
-      input.compactFirst
-        ? `Thread ${input.id} compacting; the message sends when compaction finishes`
-        : describeThreadTellOutcome(input.id, response),
+const tellCommand = clientCommand({
+  path: ["thread", "tell"],
+  summary: "Send a follow-up message to a thread",
+  aliases: ["message", "send"],
+  positionals: { id: arg("<id>"), message: arg("[message]") },
+  options: {
+    messageFile: flag(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    ),
+    json: JSON_FLAG,
+    model: flag("--model <model>", "Model ID for this message"),
+    serviceTier: flag("--service-tier <tier>", SERVICE_TIER_HELP),
+    reasoningLevel: flag(
+      "--reasoning-level <level>",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
+    ),
+    permissionMode: flag("--permission-mode <mode>", PERMISSION_MODE_HELP),
+    mode: flag(
+      "--mode <mode>",
+      "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
+    ),
+    sendAt: flag("--send-at <when>", SEND_AT_HELP),
+    compactFirst: flag(
+      "--compact-first",
+      "Compact the idle thread's context first, then send this message when compaction finishes",
+    ),
+    plan: flag("--plan", PLAN_HELP),
+    file: flag("--file <path>", UPLOAD_HELP, { type: "strings", default: [] }),
+    image: flag("--image <path>", UPLOAD_HELP, {
+      type: "strings",
+      default: [],
+    }),
   },
+  async run({ positionals, options }, client) {
+    const id = positionals.id;
+    const message = await requireTextInput({
+      file: options.messageFile,
+      fileLabel: "--message-file",
+      inline: positionals.message,
+      inlineLabel: "<message>",
+    });
+    return postThreadMessage(client, {
+      id,
+      message,
+      mode: resolveThreadMessageMode(options.mode),
+      model: options.model,
+      permissionMode: parsePermissionMode(options.permissionMode),
+      reasoningLevel: parseReasoningLevel(options.reasoningLevel),
+      serviceTier: parseServiceTier(options.serviceTier),
+      senderThreadId: resolveSenderThreadId(id),
+      plan: options.plan,
+      files: options.file,
+      images: options.image,
+      sendAt:
+        options.sendAt === undefined ? undefined : parseSendAt(options.sendAt),
+      compactFirst: options.compactFirst,
+    });
+  },
+  json: (response, { positionals }) => ({
+    threadId: positionals.id,
+    ...response,
+  }),
+  print: (response, { positionals, options }) =>
+    options.compactFirst
+      ? `Thread ${positionals.id} compacting; the message sends when compaction finishes`
+      : describeThreadTellOutcome(positionals.id, response),
 });
 
 const retryCommand = publicCommand("threads.retry", {
   path: ["thread", "retry"],
   summary: "Retry the failed turn on a thread",
-  positionals: [OPTIONAL_THREAD_ID],
-  options: [
-    SELF_OPTION,
-    flag(
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    self: SELF_FLAG,
+    turn: flag(
       "--turn <requestId>",
       "Retry this turn request id specifically; fails when it is not the thread's failed turn",
     ),
-    flag("--send-at <when>", SEND_AT_HELP),
-    flag("--reason <text>", "Why it is being retried, shown on the queued row"),
-  ],
-  prepare: ({ positionals, options }, client) => {
-    const threadId = client.threadId(
-      optionalString(positionals.id),
-      options.self === true,
-    );
-    const turn = optionalString(options.turn);
-    const sendAt = optionalString(options["send-at"]);
-    const reason = optionalString(options.reason);
-    return {
-      id: threadId,
-      turnRequestId: turn ?? null,
-      sendAt: sendAt === undefined ? null : parseSendAt(sendAt),
-      reason: reason ?? DEFAULT_TURN_RETRY_REASON,
-    };
+    sendAt: flag("--send-at <when>", SEND_AT_HELP),
+    reason: flag(
+      "--reason <text>",
+      "Why it is being retried, shown on the queued row",
+    ),
   },
+  prepare: ({ positionals, options }, client) => ({
+    id: client.threadId(positionals.id, options.self),
+    turnRequestId: options.turn ?? null,
+    sendAt: options.sendAt === undefined ? null : parseSendAt(options.sendAt),
+    reason: options.reason ?? DEFAULT_TURN_RETRY_REASON,
+  }),
   json: (response, input) => ({ threadId: input.id, ...response }),
   print: (response, input) => describeThreadRetryOutcome(input.id, response),
 });
@@ -557,7 +506,7 @@ async function postThreadMessage(
   const input = await uploadClientAttachmentInputs({
     input: buildPromptInputs({
       message: args.message,
-      ...(args.plan === undefined ? {} : { plan: args.plan }),
+      plan: args.plan,
       files: args.files,
       images: args.images,
     }),

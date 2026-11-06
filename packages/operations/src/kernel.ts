@@ -98,7 +98,6 @@ export interface OperationInspection {
   internal: boolean;
   doors: string[];
   http: { method: string; path: string } | null;
-  cli: string | null;
   chain: {
     plugin: string;
     tier: HookTier;
@@ -599,7 +598,7 @@ export function createOperationKernel<Http>(
     inspect() {
       return [...definitions.values()]
         .map((operation) => {
-          const { http, cli } = operation.doors;
+          const { http } = operation.doors;
           return {
             name: operation.name,
             kind: operation.kind,
@@ -611,7 +610,6 @@ export function createOperationKernel<Http>(
               http === undefined
                 ? null
                 : { method: http.method.toUpperCase(), path: http.path },
-            cli: cli === undefined ? null : cli.path.join(" "),
             chain: ranked(chains.get(operation.name) ?? []).map(
               ({ plugin, tier, failClosed, match }) => ({
                 plugin,

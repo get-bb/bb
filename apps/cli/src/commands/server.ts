@@ -12,15 +12,16 @@ import {
   SERVER_CONNECT_HOLD_FILE_NAME,
 } from "@bb/server-archive";
 import type { ServerMoveStatus } from "@bb/server-contract";
+import { CliExitError } from "../action.js";
 import {
   JSON_FLAG_DESCRIPTION,
   YES_FLAG_DESCRIPTION,
-  type CliDoorOption,
-  type CliDoorPositional,
-  type CliValues,
+  arg,
   flag,
-} from "@bb/operations";
-import { CliExitError } from "../action.js";
+  type CliArgs,
+  type CliFlags,
+  type CliValues,
+} from "../cli-door.js";
 import {
   clientCommand,
   mountCommands,
@@ -60,27 +61,12 @@ import {
   serverMoveAbandonWarning,
 } from "./server-move.js";
 
-interface JsonCommandOptions {
-  json?: boolean;
-}
-
-interface ServerMoveCommandOptions extends JsonCommandOptions {
-  to?: string;
-  address?: string;
-  check?: boolean;
-  archiveExistingData?: boolean;
-}
-
-interface ServerExportCommandOptions extends JsonCommandOptions {
-  out: string;
-}
-
-interface LocalServerCommandOptions extends JsonCommandOptions {
-  dataDir?: string;
-}
-
-interface UnlockCommandOptions extends LocalServerCommandOptions {
-  force?: boolean;
+interface ServerMoveCommandOptions {
+  to: string | undefined;
+  address: string | undefined;
+  check: boolean;
+  archiveExistingData: boolean;
+  json: boolean;
 }
 
 const SERVER_EXPORT_UNENCRYPTED_WARNING =
@@ -221,7 +207,7 @@ async function runServerMove(
         targetHostId,
         serverUrl,
         stopRunningWork: true,
-        archiveExistingTargetServerData: opts.archiveExistingData === true,
+        archiveExistingTargetServerData: opts.archiveExistingData,
       }),
     );
   } catch (error) {
@@ -249,111 +235,69 @@ async function runServerMove(
   if (!opts.json) console.log(formatServerMovedMessage(outcome.status));
 }
 
-const JSON_OPTION: CliDoorOption = flag("--json", JSON_FLAG_DESCRIPTION);
+const JSON_OPTION = flag("--json", JSON_FLAG_DESCRIPTION);
 
-const YES_OPTION: CliDoorOption = flag("--yes", YES_FLAG_DESCRIPTION);
+const YES_OPTION = flag("--yes", YES_FLAG_DESCRIPTION);
 
-function dataDirOption(description: string): CliDoorOption {
+function dataDirOption(description: string) {
   return flag("--data-dir <dir>", description);
 }
 
-function textOption(values: CliValues, flag: string): string | undefined {
-  const value = values.options[flag];
-  return typeof value === "string" ? value : undefined;
-}
-
-function isSet(values: CliValues, flag: string): boolean {
-  return values.options[flag] === true;
-}
-
-function localServerOptions(values: CliValues): LocalServerCommandOptions {
-  const dataDir = textOption(values, "data-dir");
-  return {
-    json: isSet(values, "json"),
-    ...(dataDir === undefined ? {} : { dataDir }),
-  };
-}
-
-function serverCommand(spec: {
-  name: string;
-  kind: "read" | "write";
-  description: string;
+interface ServerDoor<Args extends CliArgs, Flags extends CliFlags> {
   path: readonly string[];
   summary: string;
   interrupt?: string;
-  positionals?: readonly CliDoorPositional[];
-  options: readonly CliDoorOption[];
-  run(values: CliValues, client: CliClient): Promise<void>;
-}): CliCommand {
-  return clientCommand<CliValues, null>({
-    name: spec.name,
-    kind: spec.kind,
-    description: spec.description,
-    door: {
-      path: spec.path,
-      summary: spec.summary,
-      ...(spec.interrupt === undefined ? {} : { interrupt: spec.interrupt }),
-      ...(spec.positionals === undefined
-        ? {}
-        : { positionals: spec.positionals }),
-      options: spec.options,
-      noJson: true,
-      prepare: (values) => values,
-      async run(values, client) {
-        await spec.run(values, client);
-        return null;
-      },
-      print: () => null,
+  positionals?: Args;
+  options: Flags;
+  run(values: CliValues<Args, Flags>, client: CliClient): Promise<void>;
+}
+
+function serverCommand<
+  const Args extends CliArgs = {},
+  const Flags extends CliFlags = {},
+>(door: ServerDoor<Args, Flags>): CliCommand {
+  return clientCommand<Args, Flags, null>({
+    ...door,
+    noJson: true,
+    async run(values, client) {
+      await door.run(values, client);
+      return null;
     },
+    print: () => null,
   });
 }
 
 export const serverCommands = [
   serverCommand({
-    name: "cli.server.move",
-    kind: "write",
-    description:
-      "Check, confirm, start and follow a move of the bb server to another machine",
     path: ["server", "move"],
     summary: "Move the bb server to another machine (experimental)",
     interrupt: STOPPED_FOLLOWING_MESSAGE,
-    options: [
-      flag("--to <machine>", "Machine ID or name that should run the server"),
-      flag(
+    options: {
+      to: flag(
+        "--to <machine>",
+        "Machine ID or name that should run the server",
+      ),
+      address: flag(
         "--address <url>",
         "Address machines and apps use to reach the new server (direct-address setups)",
       ),
-      flag("--check", "Print the checklist without moving"),
-      flag(
+      check: flag("--check", "Print the checklist without moving"),
+      archiveExistingData: flag(
         "--archive-existing-data",
         "Move existing bb server data on the target aside before the move",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    run: (values, client) => {
-      const to = textOption(values, "to");
-      const address = textOption(values, "address");
-      return runServerMove(client, {
-        ...(to === undefined ? {} : { to }),
-        ...(address === undefined ? {} : { address }),
-        check: isSet(values, "check"),
-        archiveExistingData: isSet(values, "archive-existing-data"),
-        json: isSet(values, "json"),
-      });
+      yes: YES_OPTION,
+      json: JSON_OPTION,
     },
+    run: ({ options }, client) => runServerMove(client, options),
   }),
   serverCommand({
-    name: "cli.server.move.status",
-    kind: "read",
-    description: "Show the server move and exit with its recovery code",
     path: ["server", "move", "status"],
     summary: "Show the server move in progress or the last completed move",
-    options: [JSON_OPTION],
-    async run(values, client) {
-      const opts: JsonCommandOptions = { json: isSet(values, "json") };
+    options: { json: JSON_OPTION },
+    async run({ options }, client) {
       const response = await client.sdk().experimental_server.moveStatus();
-      if (!outputJson(opts, response)) {
+      if (!outputJson(options, response)) {
         printServerMoveStatusResponse(response);
       }
       if (response.move?.state === "recovery_required") {
@@ -365,22 +309,17 @@ export const serverCommands = [
     },
   }),
   serverCommand({
-    name: "cli.server.move.cancel",
-    kind: "write",
-    description:
-      "Cancel a server move, confirming first when it needs recovery",
     path: ["server", "move", "cancel"],
     summary:
       "Cancel the server move before the switch starts, or abandon a move that needs recovery",
-    options: [
-      flag(
+    options: {
+      yes: flag(
         "--yes",
         "Skip the confirmation before abandoning a move that needs recovery",
       ),
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts: JsonCommandOptions = { json: isSet(values, "json") };
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
       const sdk = client.sdk();
       const { move: current } = await sdk.experimental_server.moveStatus();
       if (current?.state === "recovery_required") {
@@ -392,7 +331,7 @@ export const serverCommands = [
         );
       }
       const status = await sdk.experimental_server.cancelMove();
-      if (outputJson(opts, status)) return;
+      if (outputJson(options, status)) return;
       if (status.state === "cancelled") {
         console.log(
           status.error?.step === "switch"
@@ -405,25 +344,17 @@ export const serverCommands = [
     },
   }),
   serverCommand({
-    name: "cli.server.export",
-    kind: "read",
-    description:
-      "Stream the server export to a local file and check its SHA-256 digest",
     path: ["server", "export"],
     summary: "Export the bb server's data to an archive",
     interrupt: "Stopped the export.",
-    options: [
-      flag("--out <file>", "Write the archive to this file", {
+    options: {
+      out: flag("--out <file>", "Write the archive to this file", {
         required: true,
       }),
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts: ServerExportCommandOptions = {
-        json: isSet(values, "json"),
-        out: textOption(values, "out") ?? "",
-      };
-      const outPath = resolve(opts.out);
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
+      const outPath = resolve(options.out);
       await assertWritableOutPath(outPath);
       const response = await callServerMoveRoute(() =>
         client.sdk().experimental_server.export({ signal: client.signal }),
@@ -442,7 +373,7 @@ export const serverCommands = [
         sha256: exported.sha256,
         warning: SERVER_EXPORT_UNENCRYPTED_WARNING,
       };
-      if (outputJson(opts, result)) return;
+      if (outputJson(options, result)) return;
       console.log(
         `Exported the bb server to ${outPath} (${formatServerDataSize(exported.sizeBytes)})`,
       );
@@ -450,29 +381,21 @@ export const serverCommands = [
     },
   }),
   serverCommand({
-    name: "cli.server.import",
-    kind: "write",
-    description: "Install a server export into a local data directory",
     path: ["server", "import"],
     summary:
       "Install an export into a local data directory (does not call a server)",
-    positionals: [{ name: "file" }],
-    options: [
-      dataDirOption(
+    positionals: { file: arg("<file>") },
+    options: {
+      dataDir: dataDirOption(
         "Data directory to import into (default: BB_DATA_DIR or ~/.bb)",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const file =
-        typeof values.positionals.file === "string"
-          ? values.positionals.file
-          : "";
-      const opts = localServerOptions(values);
-      const dataDir = resolveLocalDataDir(opts.dataDir);
+      yes: YES_OPTION,
+      json: JSON_OPTION,
+    },
+    async run({ positionals, options }, client) {
+      const dataDir = resolveLocalDataDir(options.dataDir);
       const result = await importServerArchive({
-        archivePath: resolve(file),
+        archivePath: resolve(positionals.file),
         dataDir,
         confirm: async (message) => {
           await client.confirm(message);
@@ -482,7 +405,7 @@ export const serverCommands = [
         cliVersion: resolveBbCliVersion(),
       });
       if (result === null) return;
-      if (outputJson(opts, result)) return;
+      if (outputJson(options, result)) return;
       if (result.rolledBackInterruptedImport) {
         console.log(`Rolled back an interrupted import in ${dataDir}.`);
       }
@@ -500,33 +423,26 @@ export const serverCommands = [
     },
   }),
   serverCommand({
-    name: "cli.server.unlock",
-    kind: "write",
-    description: "Unlock an old local server copy left by a move",
     path: ["server", "unlock"],
     summary:
       "Let an old server copy left by a move start again (does not call a server)",
-    options: [
-      dataDirOption(
+    options: {
+      dataDir: dataDirOption(
         "Data directory of the old server copy (default: BB_DATA_DIR or ~/.bb)",
       ),
-      flag(
+      force: flag(
         "--force",
         "Unlock even when the new server still answers at its address",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts: UnlockCommandOptions = {
-        ...localServerOptions(values),
-        force: isSet(values, "force"),
-      };
-      const dataDir = resolveLocalDataDir(opts.dataDir);
+      yes: YES_OPTION,
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
+      const dataDir = resolveLocalDataDir(options.dataDir);
       const lock = await readServerMovedFile(dataDir);
       if (lock === null) {
         const result = { dataDir, unlocked: false, removedConfigKeys: [] };
-        if (!outputJson(opts, result)) {
+        if (!outputJson(options, result)) {
           console.log(`${dataDir} is not locked by a server move.`);
         }
         return;
@@ -542,7 +458,7 @@ export const serverCommands = [
           `A background service (${serviceFile}) runs this computer as a machine from ${dataDir}. Unlocking would start a second host daemon on the same data. Remove the service first: ${formatMachineServiceRemoval(serviceFile)}`,
         );
       }
-      if (!opts.force) {
+      if (!options.force) {
         const probe = await probeMovedServer({ dataDir, lock });
         if (probe.kind === "running") {
           throw new Error(
@@ -566,7 +482,7 @@ export const serverCommands = [
       );
       await client.confirm(`Unlock the old bb server copy in ${dataDir}?`);
       const removedConfigKeys = await unlockServerCopy(dataDir);
-      if (outputJson(opts, { dataDir, unlocked: true, removedConfigKeys }))
+      if (outputJson(options, { dataDir, unlocked: true, removedConfigKeys }))
         return;
       if (removedConfigKeys.length > 0) {
         console.log(
@@ -579,58 +495,48 @@ export const serverCommands = [
     },
   }),
   serverCommand({
-    name: "cli.server.install-machine-service",
-    kind: "write",
-    description:
-      "Install a local background service that keeps this computer connected as a machine",
     path: ["server", "install-machine-service"],
     summary:
       "Keep this computer connected as a machine with a background service after its server moved away",
-    options: [
-      dataDirOption(
+    options: {
+      dataDir: dataDirOption(
         "Data directory the server moved away from (default: BB_DATA_DIR or ~/.bb)",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts = localServerOptions(values);
+      yes: YES_OPTION,
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
       const result = await installMachineService({
         confirm: async (message) => {
           await client.confirm(message);
           return true;
         },
-        dataDir: resolveLocalDataDir(opts.dataDir),
-        installerOutput: opts.json ? "stderr" : "stdout",
+        dataDir: resolveLocalDataDir(options.dataDir),
+        installerOutput: options.json ? "stderr" : "stdout",
         report: (line) => console.error(line),
       });
       if (result === null) return;
-      if (outputJson(opts, result)) return;
+      if (outputJson(options, result)) return;
       console.log(
         `This computer now stays connected to ${result.toHostName} as a machine, even when bb is closed. The service updates bb whenever the server does.`,
       );
     },
   }),
   serverCommand({
-    name: "cli.server.allow-connect",
-    kind: "write",
-    description:
-      "Remove the bb connect hold from an imported local server copy",
     path: ["server", "allow-connect"],
     summary:
       "Let bb account and bb connect start from an imported server copy (does not call a server)",
-    options: [
-      dataDirOption(
+    options: {
+      dataDir: dataDirOption(
         "Data directory of the imported server (default: BB_DATA_DIR or ~/.bb)",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts = localServerOptions(values);
-      const dataDir = resolveLocalDataDir(opts.dataDir);
+      yes: YES_OPTION,
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
+      const dataDir = resolveLocalDataDir(options.dataDir);
       if (!existsSync(join(dataDir, SERVER_CONNECT_HOLD_FILE_NAME))) {
-        if (!outputJson(opts, { dataDir, connectHoldRemoved: false })) {
+        if (!outputJson(options, { dataDir, connectHoldRemoved: false })) {
           console.log(`${dataDir} has no bb connect hold.`);
         }
         return;
@@ -642,33 +548,29 @@ export const serverCommands = [
         `Let bb account and bb connect start from the imported bb server in ${dataDir}?`,
       );
       const connectHoldRemoved = await removeServerConnectHoldFile(dataDir);
-      if (outputJson(opts, { dataDir, connectHoldRemoved })) return;
+      if (outputJson(options, { dataDir, connectHoldRemoved })) return;
       console.log(
         `Removed the bb connect hold from ${dataDir}. bb account and bb connect start the next time this server starts; restart bb if it's already running.`,
       );
     },
   }),
   serverCommand({
-    name: "cli.server.delete-old-copy",
-    kind: "write",
-    description: "Delete the old local server copy left by a move",
     path: ["server", "delete-old-copy"],
     summary:
       "Delete the old server copy left by a move (does not call a server)",
-    options: [
-      dataDirOption(
+    options: {
+      dataDir: dataDirOption(
         "Data directory of the old server copy (default: BB_DATA_DIR or ~/.bb)",
       ),
-      YES_OPTION,
-      JSON_OPTION,
-    ],
-    async run(values, client) {
-      const opts = localServerOptions(values);
-      const dataDir = resolveLocalDataDir(opts.dataDir);
+      yes: YES_OPTION,
+      json: JSON_OPTION,
+    },
+    async run({ options }, client) {
+      const dataDir = resolveLocalDataDir(options.dataDir);
       const lock = await readServerMovedFile(dataDir);
       if (lock === null || lock.oldCopyEntries.length === 0) {
         const result = { dataDir, deleted: false, deletedEntries: [] };
-        if (!outputJson(opts, result)) {
+        if (!outputJson(options, result)) {
           console.log(
             lock === null
               ? `No old server copy here: ${dataDir} is not locked by a server move.`
@@ -681,7 +583,7 @@ export const serverCommands = [
         `Delete the old bb server copy in ${dataDir} (${String(lock.oldCopyEntries.length)} entries)? The server now runs on ${lock.toHostName}; this cannot be undone.`,
       );
       const result = await deleteOldServerCopy(dataDir, lock);
-      if (outputJson(opts, result)) return;
+      if (outputJson(options, result)) return;
       console.log(
         `Deleted the old bb server copy from ${dataDir} (${String(result.deletedEntries.length)} entries). This computer keeps running as a regular machine.`,
       );

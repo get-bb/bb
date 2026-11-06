@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
 import {
   threadStatusSchema,
@@ -11,6 +10,7 @@ import {
   type ThreadCountGroupBy,
 } from "@bb/server-contract";
 import type { ThreadCountResult } from "@bb/sdk";
+import { flag } from "../../cli-door.js";
 import { mountCommand, publicCommand } from "../../operation-doors.js";
 import { columnWidths, printBorderlessTable } from "../../table.js";
 import { joinValues } from "../helpers.js";
@@ -21,41 +21,38 @@ const GROUP_COLUMN_HEADS: Record<ThreadCountGroupBy, string> = {
   project: "Project",
 };
 
-function stringOption(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
 export const threadCountCommand = publicCommand("threads.count", {
   path: ["thread", "count"],
   summary:
     "Count threads without listing them; excludes archived and hidden threads",
-  options: [
-    flag(
+  options: {
+    status: flag(
       "--status <status>",
       `Count threads in this status: ${joinValues(threadStatusValues)}`,
     ),
-    flag("--host <id>", "Count threads whose environment is on this machine"),
-    flag("--provider <id>", "Count threads running on this provider"),
-    flag("--project <id>", "Count threads in this project"),
-    flag(
+    host: flag(
+      "--host <id>",
+      "Count threads whose environment is on this machine",
+    ),
+    provider: flag("--provider <id>", "Count threads running on this provider"),
+    project: flag("--project <id>", "Count threads in this project"),
+    parent: flag(
       "--parent <id|none>",
       `Count children of this thread, or '${THREAD_COUNT_ROOT_PARENT}' for threads with no parent`,
     ),
-    flag("--by <dimension>", "Group the count by host, provider, or project"),
-  ],
+    by: flag(
+      "--by <dimension>",
+      "Group the count by host, provider, or project",
+    ),
+  },
   prepare: ({ options }) => {
-    const groupBy = parseGroupBy(stringOption(options.by));
-    const status = stringOption(options.status);
-    const hostId = stringOption(options.host);
-    const providerId = stringOption(options.provider);
-    const projectId = stringOption(options.project);
-    const parentThreadId = stringOption(options.parent);
+    const groupBy = parseGroupBy(options.by || undefined);
     return {
-      ...(status ? { status: parseStatus(status) } : {}),
-      ...(hostId ? { hostId } : {}),
-      ...(providerId ? { providerId } : {}),
-      ...(projectId ? { projectId } : {}),
-      ...(parentThreadId ? { parentThreadId } : {}),
+      ...(options.status ? { status: parseStatus(options.status) } : {}),
+      ...(options.host ? { hostId: options.host } : {}),
+      ...(options.provider ? { providerId: options.provider } : {}),
+      ...(options.project ? { projectId: options.project } : {}),
+      ...(options.parent ? { parentThreadId: options.parent } : {}),
       ...(groupBy ? { groupBy } : {}),
     };
   },

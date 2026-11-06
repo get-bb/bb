@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
 import {
   builtInThemes,
@@ -10,16 +9,13 @@ import {
   type AppTheme,
   type FaviconColorPreference,
 } from "@bb/domain";
+import { arg, flag } from "../cli-door.js";
 import {
   clientCommand,
   mountCommands,
   publicCommand,
   type CliClient,
 } from "../operation-doors.js";
-
-function text(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
 
 async function activeTheme(client: CliClient): Promise<AppTheme> {
   return (await client.call("system.config", {})).appearance;
@@ -97,18 +93,20 @@ export const themeCommands = [
   publicCommand("system.appearance", {
     path: ["theme", "set"],
     summary: "Switch to a built-in, custom, or plugin-contributed theme by id",
-    positionals: [{ name: "id" }],
-    options: [
-      flag(
+    positionals: { id: arg("<id>") },
+    options: {
+      faviconColor: flag(
         "--favicon-color <color>",
         "Set the favicon color in the same appearance update",
       ),
-    ],
+    },
     async prepare({ positionals, options }, client) {
-      const themeId = text(positionals.id) ?? "";
-      const requested = text(options["favicon-color"]);
-      if (requested !== undefined) {
-        return { themeId, faviconColor: parseFaviconColor(requested) };
+      const themeId = positionals.id;
+      if (options.faviconColor !== undefined) {
+        return {
+          themeId,
+          faviconColor: parseFaviconColor(options.faviconColor),
+        };
       }
       return {
         themeId,
@@ -126,9 +124,9 @@ export const themeCommands = [
   publicCommand("system.appearance", {
     path: ["theme", "favicon", "set"],
     summary: `Set the favicon color (${FAVICON_COLORS.join(", ")}, or default)`,
-    positionals: [{ name: "color" }],
+    positionals: { color: arg("<color>") },
     async prepare({ positionals }, client) {
-      const faviconColor = parseFaviconColor(text(positionals.color) ?? "");
+      const faviconColor = parseFaviconColor(positionals.color);
       return { themeId: (await activeTheme(client)).themeId, faviconColor };
     },
     print: (updated) => `Favicon color set to ${updated.faviconColor}`,
@@ -145,41 +143,34 @@ export const themeCommands = [
     print: (updated) => `Favicon color reset to ${updated.faviconColor}`,
   }),
   clientCommand({
-    name: "cli.theme.show",
-    kind: "read",
-    description:
+    path: ["theme", "show"],
+    summary:
       "Show the active theme, or resolve a theme by id without activating it",
-    door: {
-      path: ["theme", "show"],
-      summary:
-        "Show the active theme, or resolve a theme by id without activating it",
-      positionals: [{ name: "id", required: false }],
-      options: [
-        flag("--css", "Print the theme's CSS (custom and plugin themes only)"),
-      ],
-      prepare: ({ positionals, options }) => ({
-        id: text(positionals.id),
-        css: options.css === true,
-      }),
-      run: ({ id }, client) =>
-        id === undefined
-          ? activeTheme(client)
-          : client.call("system.resolveTheme", { id }),
-      print(theme, { id, css }) {
-        if (css) {
-          return theme.customCss !== null
-            ? theme.customCss
-            : "// Built-in theme CSS is bundled in the app, not stored on disk.";
-        }
-        if (id === undefined) {
-          console.log(`Active: ${describeTheme(theme)}`);
-          console.log(`Favicon color: ${theme.faviconColor}`);
-        } else {
-          console.log(`Theme: ${describeTheme(theme)}`);
-        }
-        console.log(`Code theme: ${describeCodeTheme(theme)}`);
-        return null;
-      },
+    positionals: { id: arg("[id]") },
+    options: {
+      css: flag(
+        "--css",
+        "Print the theme's CSS (custom and plugin themes only)",
+      ),
+    },
+    run: ({ positionals: { id } }, client) =>
+      id === undefined
+        ? activeTheme(client)
+        : client.call("system.resolveTheme", { id }),
+    print(theme, { positionals: { id }, options: { css } }) {
+      if (css) {
+        return theme.customCss !== null
+          ? theme.customCss
+          : "// Built-in theme CSS is bundled in the app, not stored on disk.";
+      }
+      if (id === undefined) {
+        console.log(`Active: ${describeTheme(theme)}`);
+        console.log(`Favicon color: ${theme.faviconColor}`);
+      } else {
+        console.log(`Theme: ${describeTheme(theme)}`);
+      }
+      console.log(`Code theme: ${describeCodeTheme(theme)}`);
+      return null;
     },
   }),
   publicCommand("system.appearance", {

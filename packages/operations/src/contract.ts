@@ -19,86 +19,8 @@ export interface HttpDoor {
   headers?: Readonly<Record<string, string>>;
 }
 
-export type CliDoorValueType =
-  | "string"
-  | "boolean"
-  | "integer"
-  | "number"
-  | "strings";
-
-export interface CliDoorPositional {
-  name: string;
-  field?: string;
-  description?: string;
-  required?: boolean;
-  variadic?: boolean;
-}
-
-export interface CliDoorOption {
-  flag: string;
-  field?: string;
-  type: CliDoorValueType;
-  description: string;
-  placeholder?: string;
-  required?: boolean;
-  short?: string;
-  default?: string | number | boolean | readonly string[];
-  hidden?: boolean;
-  negatable?: boolean;
-}
-
-export type CliContextField = "threadId" | "projectId" | "cwd";
-
-export interface CliDoorSelf {
-  field: string;
-  from: CliContextField;
-  flag: string;
-  description: string;
-}
-
-export type CliValue = string | number | boolean | string[] | undefined;
-
-export interface CliDoorDeclined {
-  message?: string;
-  exitCode?: number;
-  refusal?: string;
-}
-
-export type CliDoorPrinted = string | readonly string[] | null;
-
-export interface CliValues {
-  positionals: Readonly<Record<string, string | string[] | undefined>>;
-  options: Readonly<Record<string, CliValue>>;
-}
-
-export interface CliDoor<Input = unknown, Output = unknown, Client = unknown> {
-  path: readonly string[];
-  summary: string;
-  description?: string;
-  aliases?: readonly string[];
-  hidden?: boolean;
-  isDefault?: boolean;
-  usage?: string;
-  helpAfter?: string;
-  positionals?: readonly CliDoorPositional[];
-  options?: readonly CliDoorOption[];
-  self?: CliDoorSelf;
-  fixed?: Readonly<Record<string, unknown>>;
-  noJson?: boolean;
-  json?(output: Output, input: Input): unknown;
-  confirm?(input: Input): string | null;
-  declined?(input: Input): CliDoorDeclined;
-  interrupt?: string;
-  prepare?(values: CliValues, client: Client): Input | Promise<Input>;
-  run?(input: Input, client: Client): Output | Promise<Output>;
-  print?(output: Output, input: Input): CliDoorPrinted;
-  failure?(input: Input): string;
-  exitCode?(output: Output, input: Input, json: boolean): number;
-}
-
-export interface OperationDoors<Input = unknown, Output = unknown> {
+export interface OperationDoors {
   http?: HttpDoor;
-  cli?: CliDoor<Input, Output>;
 }
 
 export interface Operation<Input = unknown, Output = unknown> {
@@ -107,7 +29,7 @@ export interface Operation<Input = unknown, Output = unknown> {
   readonly hooks: HookPolicy;
   readonly internal: boolean;
   readonly description: string | null;
-  readonly doors: OperationDoors<Input, Output>;
+  readonly doors: OperationDoors;
   readonly serialized: boolean;
   parse(raw: unknown): Input | Promise<Input>;
   checkOutput?(output: unknown): string | null;
@@ -123,7 +45,7 @@ export interface OperationOptions<Input, Output> {
   hooks?: HookPolicy;
   internal?: boolean;
   description?: string;
-  doors?: OperationDoors<Input, Output>;
+  doors?: OperationDoors;
   serialized?: boolean;
   parse(raw: unknown): Input | Promise<Input>;
   checkOutput?(output: unknown): string | null;

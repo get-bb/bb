@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import {
   GIT_PLUGIN_ID,
   type WorkspaceDiffTarget,
@@ -33,6 +32,7 @@ import {
   THREAD_EVENT_LIST_PAGE_SIZE,
   THREAD_MESSAGE_CONTEXT_LIMIT,
 } from "@bb/server-contract";
+import { flag } from "../../cli-door.js";
 import {
   clientCommand,
   mountCommands,
@@ -44,27 +44,31 @@ import {
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "../environment-helpers.js";
+import {
+  JSON_FLAG,
+  OPTIONAL_THREAD_ID,
+  SELF_FLAG,
+  SELF_TARGET,
+} from "./operation-doors.js";
 import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
 
 interface ThreadShowCommandOptions {
-  self?: boolean;
-  workStatus?: boolean;
-  gitDiff?: boolean;
-  diffTarget?: string;
-  diffSha?: string;
-  diffMergeBase?: string;
-  json?: boolean;
+  workStatus: boolean;
+  gitDiff: boolean;
+  diffTarget: string | undefined;
+  diffSha: string | undefined;
+  diffMergeBase: string | undefined;
+  json: boolean;
 }
 
 interface ThreadLogCommandOptions {
-  self?: boolean;
-  json?: boolean;
-  format?: string;
-  limit?: string;
-  afterSeq?: string;
-  all?: boolean;
-  message?: string;
-  context?: string;
+  json: boolean;
+  format: string;
+  limit: string | undefined;
+  afterSeq: string | undefined;
+  all: boolean;
+  message: string | undefined;
+  context: string | undefined;
 }
 
 const THREAD_LOG_DEFAULT_EVENT_LIMIT = 100;
@@ -248,447 +252,356 @@ function deprecatedGitFlagsNotice(args: {
   ].join("\n");
 }
 
-const SELF_OPTION = flag(
-  "--self",
-  "Target the current thread (from BB_THREAD_ID)",
-);
+export const threadShowCommand = clientCommand({
+  path: ["thread", "show"],
+  summary: "Show thread details and pull request status",
+  aliases: ["get", "view", "status"],
+  positionals: OPTIONAL_THREAD_ID,
+  noJson: true,
+  options: {
+    self: SELF_FLAG,
+    json: JSON_FLAG,
+    workStatus: flag("--work-status", "", { hidden: true }),
+    gitDiff: flag("--git-diff", "", { hidden: true }),
+    diffTarget: flag("--diff-target <type>", "", { hidden: true }),
+    diffSha: flag("--diff-sha <sha>", "", { hidden: true }),
+    diffMergeBase: flag("--diff-merge-base <branch>", "", { hidden: true }),
+  },
+  run: async ({ positionals, options: opts }, client) => {
+    const threadId = client.threadId(positionals.id, opts.self);
+    const sdk = client.sdk();
+    const thread = await sdk.threads.get({ threadId });
 
-function stringOption(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function hiddenOption(flag: string, placeholder?: string) {
-  return {
-    flag,
-    type:
-      placeholder === undefined ? ("boolean" as const) : ("string" as const),
-    description: "",
-    hidden: true,
-    ...(placeholder === undefined ? {} : { placeholder }),
-  };
-}
-
-interface ThreadShowInput {
-  threadId: string;
-  opts: ThreadShowCommandOptions;
-}
-
-export const threadShowCommand = clientCommand<ThreadShowInput, null>({
-  name: "cli.thread.show",
-  kind: "read",
-  description:
-    "Read the thread with threads.get, then its environment, pull request and pending todos",
-  door: {
-    path: ["thread", "show"],
-    summary: "Show thread details and pull request status",
-    aliases: ["get", "view", "status"],
-    positionals: [{ name: "id", required: false }],
-    noJson: true,
-    options: [
-      SELF_OPTION,
-      flag("--json", "Print machine-readable JSON output"),
-      hiddenOption("work-status"),
-      hiddenOption("git-diff"),
-      hiddenOption("diff-target", "type"),
-      hiddenOption("diff-sha", "sha"),
-      hiddenOption("diff-merge-base", "branch"),
-    ],
-    prepare: ({ positionals, options }, client) => {
-      const opts: ThreadShowCommandOptions = {
-        self: options.self === true,
-        workStatus: options["work-status"] === true,
-        gitDiff: options["git-diff"] === true,
-        diffTarget: stringOption(options["diff-target"]),
-        diffSha: stringOption(options["diff-sha"]),
-        diffMergeBase: stringOption(options["diff-merge-base"]),
-        json: options.json === true,
-      };
-      const id = positionals.id;
-      return {
-        threadId: client.threadId(
-          typeof id === "string" ? id : undefined,
-          opts.self === true,
-        ),
-        opts,
-      };
-    },
-    run: async ({ threadId, opts }, client) => {
-      const sdk = client.sdk();
-      const thread = await sdk.threads.get({ threadId });
-
-      const statusPayload: ThreadStatusPayload = { thread };
-      let environment: Environment | null | undefined;
-      const getEnvironment = async () => {
-        if (!thread.environmentId) {
-          return null;
-        }
-        if (environment !== undefined) {
-          return environment;
-        }
-        environment = await sdk.environments.get({
-          environmentId: thread.environmentId,
-        });
-        return environment;
-      };
-      const deprecatedFlags = usedDeprecatedGitFlags(opts);
-      if (deprecatedFlags.length > 0) {
-        console.error(
-          deprecatedGitFlagsNotice({
-            opts,
-            usedFlags: deprecatedFlags,
-            environmentId: thread.environmentId,
-            environmentMergeBaseBranch: resolveEnvironmentMergeBaseBranch(
-              await getEnvironment(),
-            ),
-          }),
-        );
-      }
-      const requireMergeBaseBranch = async (override?: string) => {
-        const environment = await getEnvironment();
-        const mergeBaseBranch =
-          override ?? resolveEnvironmentMergeBaseBranch(environment);
-        if (!mergeBaseBranch) {
-          throw new Error(
-            "Thread environment does not have a merge base branch",
-          );
-        }
-        return mergeBaseBranch;
-      };
-
-      let fetchedWorkStatus: FetchedWorkStatus | undefined;
-      if (opts.workStatus && thread.environmentId) {
-        const mergeBaseBranch = await requireMergeBaseBranch();
-        fetchedWorkStatus = await fetchWorkStatus({
-          environmentId: thread.environmentId,
-          mergeBaseBranch,
-          sdk,
-        });
-      }
-
-      let fetchedGitDiff: FetchedGitDiff | undefined;
-      if (opts.gitDiff && thread.environmentId) {
-        const diffTarget = (opts.diffTarget ?? "all").trim();
-        const query: CliEnvironmentDiffQuery = (() => {
-          switch (diffTarget) {
-            case "uncommitted":
-              return { target: "uncommitted" };
-            case "branch_committed":
-              return {
-                target: "branch_committed",
-                mergeBaseBranch: opts.diffMergeBase,
-              };
-            case "all":
-              return {
-                target: "all",
-                mergeBaseBranch: opts.diffMergeBase,
-              };
-            case "commit":
-              if (!opts.diffSha) {
-                throw new Error(
-                  "--diff-sha is required when --diff-target commit is used",
-                );
-              }
-              return {
-                target: "commit",
-                sha: opts.diffSha,
-              };
-            default:
-              throw new Error(
-                "Unsupported --diff-target. Use uncommitted, branch_committed, all, or commit.",
-              );
-          }
-        })();
-        const target: WorkspaceDiffTarget =
-          query.target === "branch_committed" || query.target === "all"
-            ? {
-                type: query.target,
-                mergeBaseBranch: await requireMergeBaseBranch(
-                  query.mergeBaseBranch,
-                ),
-              }
-            : query.target === "commit"
-              ? { type: "commit", sha: query.sha }
-              : { type: "uncommitted" };
-        fetchedGitDiff = await fetchGitDiff({
-          environmentId: thread.environmentId,
-          target,
-          sdk,
-        });
-      }
-
-      const fetchedPullRequest = thread.environmentId
-        ? await fetchPullRequest({
-            environmentId: thread.environmentId,
-            sdk,
-          })
-        : null;
-
-      const environmentInfo = thread.environmentId
-        ? await fetchEnvironmentInfo({
-            environmentId: thread.environmentId,
-            sdk,
-          })
-        : null;
-
-      const pendingTodos = await fetchThreadPendingTodos({
-        sdk,
-        threadId,
-      });
-
-      if (opts.json) {
-        const environment = await getEnvironment();
-        const jsonPayload: ThreadShowJsonPayload = {
-          ...statusPayload,
-          environment: threadShowEnvironmentJson(
-            environment,
-            fetchedPullRequest,
-          ),
-          pendingTodos,
-        };
-        if (fetchedWorkStatus !== undefined) {
-          jsonPayload.workStatus = fetchedWorkStatus.available
-            ? fetchedWorkStatus.status
-            : null;
-        }
-        if (fetchedGitDiff !== undefined) {
-          jsonPayload.gitDiff = fetchedGitDiff.available
-            ? fetchedGitDiff.diff
-            : null;
-        }
-        outputJson(opts, jsonPayload);
+    const statusPayload: ThreadStatusPayload = { thread };
+    let environment: Environment | null | undefined;
+    const getEnvironment = async () => {
+      if (!thread.environmentId) {
         return null;
       }
+      if (environment !== undefined) {
+        return environment;
+      }
+      environment = await sdk.environments.get({
+        environmentId: thread.environmentId,
+      });
+      return environment;
+    };
+    const deprecatedFlags = usedDeprecatedGitFlags(opts);
+    if (deprecatedFlags.length > 0) {
+      console.error(
+        deprecatedGitFlagsNotice({
+          opts,
+          usedFlags: deprecatedFlags,
+          environmentId: thread.environmentId,
+          environmentMergeBaseBranch: resolveEnvironmentMergeBaseBranch(
+            await getEnvironment(),
+          ),
+        }),
+      );
+    }
+    const requireMergeBaseBranch = async (override?: string) => {
+      const environment = await getEnvironment();
+      const mergeBaseBranch =
+        override ?? resolveEnvironmentMergeBaseBranch(environment);
+      if (!mergeBaseBranch) {
+        throw new Error("Thread environment does not have a merge base branch");
+      }
+      return mergeBaseBranch;
+    };
 
-      printThreadStatus(statusPayload, environmentInfo, fetchedPullRequest);
+    let fetchedWorkStatus: FetchedWorkStatus | undefined;
+    if (opts.workStatus && thread.environmentId) {
+      const mergeBaseBranch = await requireMergeBaseBranch();
+      fetchedWorkStatus = await fetchWorkStatus({
+        environmentId: thread.environmentId,
+        mergeBaseBranch,
+        sdk,
+      });
+    }
 
-      printPendingTodos(pendingTodos);
-
-      if (fetchedWorkStatus !== undefined) {
-        if (fetchedWorkStatus.available) {
-          const ws = fetchedWorkStatus.status;
-          console.log("");
-          console.log("Work status:");
-          console.log(`  State:    ${ws.workingTree.state}`);
-          if (ws.branch.currentBranch) {
-            console.log(`  Branch:   ${ws.branch.currentBranch}`);
-          }
-          console.log(`  Changed files: ${ws.workingTree.fileCount}`);
-          if (ws.workingTree.lineStatsComplete) {
-            console.log(`  Insertions:    +${ws.workingTree.insertions}`);
-            console.log(`  Deletions:     -${ws.workingTree.deletions}`);
-          } else {
-            console.log("  Line stats: unavailable for untracked files");
-          }
-          if (ws.mergeBase) {
-            console.log(`  Merge base:   ${ws.mergeBase.mergeBaseBranch}`);
-            console.log(
-              `  Ahead: ${ws.mergeBase.aheadCount}  Behind: ${ws.mergeBase.behindCount}${ws.mergeBase.squashMergeCheckComplete ? "" : " (squash-merge check incomplete)"}`,
+    let fetchedGitDiff: FetchedGitDiff | undefined;
+    if (opts.gitDiff && thread.environmentId) {
+      const diffTarget = (opts.diffTarget ?? "all").trim();
+      const query: CliEnvironmentDiffQuery = (() => {
+        switch (diffTarget) {
+          case "uncommitted":
+            return { target: "uncommitted" };
+          case "branch_committed":
+            return {
+              target: "branch_committed",
+              mergeBaseBranch: opts.diffMergeBase,
+            };
+          case "all":
+            return {
+              target: "all",
+              mergeBaseBranch: opts.diffMergeBase,
+            };
+          case "commit":
+            if (!opts.diffSha) {
+              throw new Error(
+                "--diff-sha is required when --diff-target commit is used",
+              );
+            }
+            return {
+              target: "commit",
+              sha: opts.diffSha,
+            };
+          default:
+            throw new Error(
+              "Unsupported --diff-target. Use uncommitted, branch_committed, all, or commit.",
             );
-          }
-        } else {
-          console.log("");
-          console.log(`Work status: ${fetchedWorkStatus.message}`);
         }
-      }
+      })();
+      const target: WorkspaceDiffTarget =
+        query.target === "branch_committed" || query.target === "all"
+          ? {
+              type: query.target,
+              mergeBaseBranch: await requireMergeBaseBranch(
+                query.mergeBaseBranch,
+              ),
+            }
+          : query.target === "commit"
+            ? { type: "commit", sha: query.sha }
+            : { type: "uncommitted" };
+      fetchedGitDiff = await fetchGitDiff({
+        environmentId: thread.environmentId,
+        target,
+        sdk,
+      });
+    }
 
-      if (fetchedGitDiff) {
-        console.log("");
-        if (fetchedGitDiff.available) {
-          const gitDiff = fetchedGitDiff.diff;
-          console.log("Git diff:");
-          if (gitDiff.files.trim().length > 0) {
-            console.log(`  Files:\n${gitDiff.files.trimEnd()}`);
-          }
-          if (gitDiff.shortstat.trim().length > 0) {
-            console.log(`  Summary: ${gitDiff.shortstat.trim()}`);
-          }
-          if (gitDiff.diff) {
-            console.log("");
-            console.log(gitDiff.diff);
-          }
-          if (gitDiff.truncated) {
-            console.log("  (diff truncated)");
-          }
-        } else {
-          console.log(`Git diff: ${fetchedGitDiff.message}`);
-        }
+    const fetchedPullRequest = thread.environmentId
+      ? await fetchPullRequest({
+          environmentId: thread.environmentId,
+          sdk,
+        })
+      : null;
+
+    const environmentInfo = thread.environmentId
+      ? await fetchEnvironmentInfo({
+          environmentId: thread.environmentId,
+          sdk,
+        })
+      : null;
+
+    const pendingTodos = await fetchThreadPendingTodos({
+      sdk,
+      threadId,
+    });
+
+    if (opts.json) {
+      const environment = await getEnvironment();
+      const jsonPayload: ThreadShowJsonPayload = {
+        ...statusPayload,
+        environment: threadShowEnvironmentJson(environment, fetchedPullRequest),
+        pendingTodos,
+      };
+      if (fetchedWorkStatus !== undefined) {
+        jsonPayload.workStatus = fetchedWorkStatus.available
+          ? fetchedWorkStatus.status
+          : null;
       }
+      if (fetchedGitDiff !== undefined) {
+        jsonPayload.gitDiff = fetchedGitDiff.available
+          ? fetchedGitDiff.diff
+          : null;
+      }
+      outputJson(opts, jsonPayload);
       return null;
-    },
-    print: () => null,
+    }
+
+    printThreadStatus(statusPayload, environmentInfo, fetchedPullRequest);
+
+    printPendingTodos(pendingTodos);
+
+    if (fetchedWorkStatus !== undefined) {
+      if (fetchedWorkStatus.available) {
+        const ws = fetchedWorkStatus.status;
+        console.log("");
+        console.log("Work status:");
+        console.log(`  State:    ${ws.workingTree.state}`);
+        if (ws.branch.currentBranch) {
+          console.log(`  Branch:   ${ws.branch.currentBranch}`);
+        }
+        console.log(`  Changed files: ${ws.workingTree.fileCount}`);
+        if (ws.workingTree.lineStatsComplete) {
+          console.log(`  Insertions:    +${ws.workingTree.insertions}`);
+          console.log(`  Deletions:     -${ws.workingTree.deletions}`);
+        } else {
+          console.log("  Line stats: unavailable for untracked files");
+        }
+        if (ws.mergeBase) {
+          console.log(`  Merge base:   ${ws.mergeBase.mergeBaseBranch}`);
+          console.log(
+            `  Ahead: ${ws.mergeBase.aheadCount}  Behind: ${ws.mergeBase.behindCount}${ws.mergeBase.squashMergeCheckComplete ? "" : " (squash-merge check incomplete)"}`,
+          );
+        }
+      } else {
+        console.log("");
+        console.log(`Work status: ${fetchedWorkStatus.message}`);
+      }
+    }
+
+    if (fetchedGitDiff) {
+      console.log("");
+      if (fetchedGitDiff.available) {
+        const gitDiff = fetchedGitDiff.diff;
+        console.log("Git diff:");
+        if (gitDiff.files.trim().length > 0) {
+          console.log(`  Files:\n${gitDiff.files.trimEnd()}`);
+        }
+        if (gitDiff.shortstat.trim().length > 0) {
+          console.log(`  Summary: ${gitDiff.shortstat.trim()}`);
+        }
+        if (gitDiff.diff) {
+          console.log("");
+          console.log(gitDiff.diff);
+        }
+        if (gitDiff.truncated) {
+          console.log("  (diff truncated)");
+        }
+      } else {
+        console.log(`Git diff: ${fetchedGitDiff.message}`);
+      }
+    }
+    return null;
   },
+  print: () => null,
 });
 
-interface ThreadLogInput {
-  threadId: string;
-  opts: ThreadLogCommandOptions;
-}
+export const threadLogCommand = clientCommand({
+  path: ["thread", "log"],
+  summary: "Show thread event log",
+  aliases: ["messages", "timeline"],
+  positionals: OPTIONAL_THREAD_ID,
+  noJson: true,
+  options: {
+    self: SELF_FLAG,
+    json: flag(
+      "--json",
+      "Print machine-readable JSON output (alias for --format json)",
+    ),
+    format: flag(
+      "--format <format>",
+      "Output format: json (raw events), minimal (compact timeline), verbose (expanded timeline)",
+      { default: "minimal" },
+    ),
+    limit: flag(
+      "--limit <count>",
+      `Maximum entries to print: events for json (oldest first, default ${THREAD_LOG_DEFAULT_EVENT_LIMIT}); user-message turns for minimal/verbose (newest first, default 20, max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX})`,
+    ),
+    afterSeq: flag(
+      "--after-seq <seq>",
+      "Return events after this sequence number; json format only",
+    ),
+    all: flag(
+      "--all",
+      "Print the whole thread by paging through every entry (cannot be combined with --limit)",
+    ),
+    message: flag(
+      "--message <seq>",
+      "Print one message: the msg value of a message link or @thread:<id>#msg=<seq> mention",
+    ),
+    context: flag(
+      "--context <count>",
+      `With --message, also print up to this many messages before and after it (0-${THREAD_MESSAGE_CONTEXT_LIMIT})`,
+    ),
+  },
+  run: async ({ positionals, options: opts }, client) => {
+    const threadId = client.threadId(positionals.id, opts.self);
+    const sdk = client.sdk();
+    const format = resolveThreadTimelineTextFormat(opts);
 
-export const threadLogCommand = clientCommand<ThreadLogInput, null>({
-  name: "cli.thread.log",
-  kind: "read",
-  description:
-    "Page through threads.events or threads.timeline (or read threads.message) and print the thread log",
-  door: {
-    path: ["thread", "log"],
-    summary: "Show thread event log",
-    aliases: ["messages", "timeline"],
-    positionals: [{ name: "id", required: false }],
-    noJson: true,
-    options: [
-      SELF_OPTION,
-      flag(
-        "--json",
-        "Print machine-readable JSON output (alias for --format json)",
-      ),
-      flag(
-        "--format <format>",
-        "Output format: json (raw events), minimal (compact timeline), verbose (expanded timeline)",
-        { default: "minimal" },
-      ),
-      flag(
-        "--limit <count>",
-        `Maximum entries to print: events for json (oldest first, default ${THREAD_LOG_DEFAULT_EVENT_LIMIT}); user-message turns for minimal/verbose (newest first, default 20, max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX})`,
-      ),
-      flag(
-        "--after-seq <seq>",
-        "Return events after this sequence number; json format only",
-      ),
-      flag(
-        "--all",
-        "Print the whole thread by paging through every entry (cannot be combined with --limit)",
-      ),
-      flag(
-        "--message <seq>",
-        "Print one message: the msg value of a message link or @thread:<id>#msg=<seq> mention",
-      ),
-      flag(
-        "--context <count>",
-        `With --message, also print up to this many messages before and after it (0-${THREAD_MESSAGE_CONTEXT_LIMIT})`,
-      ),
-    ],
-    prepare: ({ positionals, options }, client) => {
-      const opts: ThreadLogCommandOptions = {
-        self: options.self === true,
-        json: options.json === true,
-        format: stringOption(options.format),
-        limit: stringOption(options.limit),
-        afterSeq: stringOption(options["after-seq"]),
-        all: options.all === true,
-        message: stringOption(options.message),
-        context: stringOption(options.context),
-      };
-      const id = positionals.id;
-      return {
-        threadId: client.threadId(
-          typeof id === "string" ? id : undefined,
-          opts.self === true,
-        ),
-        opts,
-      };
-    },
-    run: async ({ threadId, opts }, client) => {
-      const sdk = client.sdk();
-      const format = resolveThreadTimelineTextFormat(opts);
+    if (opts.message !== undefined) {
+      await printThreadLogMessage(sdk, { threadId, format, opts });
+      return null;
+    }
+    if (opts.context !== undefined) {
+      throw new Error("--context requires --message");
+    }
 
-      if (opts.message !== undefined) {
-        await printThreadLogMessage(sdk, { threadId, format, opts });
-        return null;
-      }
-      if (opts.context !== undefined) {
-        throw new Error("--context requires --message");
-      }
+    if (opts.all && opts.limit !== undefined) {
+      throw new Error("--all cannot be combined with --limit");
+    }
+    if (format !== "json" && opts.afterSeq !== undefined) {
+      throw new Error("--after-seq is only supported with --format json");
+    }
 
-      if (opts.all && opts.limit !== undefined) {
-        throw new Error("--all cannot be combined with --limit");
-      }
-      if (format !== "json" && opts.afterSeq !== undefined) {
-        throw new Error("--after-seq is only supported with --format json");
-      }
-
-      if (format === "json") {
-        const events = opts.all
-          ? await listAllThreadLogEvents(sdk, threadId, opts.afterSeq)
-          : await listThreadLogEventsPage(sdk, {
-              threadId,
-              limit: parseThreadLogLimit(
-                opts.limit,
-                THREAD_LOG_DEFAULT_EVENT_LIMIT,
-              ),
-              afterSeq: opts.afterSeq,
-            });
-        console.log(JSON.stringify(events.rows, null, 2));
-        if (events.hasMore) {
-          const lastSeq = events.rows[events.rows.length - 1]?.seq;
-          console.error(
-            `Showing the oldest ${events.rows.length} events${
-              opts.afterSeq === undefined ? "" : ` after seq ${opts.afterSeq}`
-            }; more exist. Use --after-seq ${lastSeq} for the next page or --all for the whole thread.`,
-          );
-        }
-        return null;
-      }
-
-      const segmentLimit = opts.all
-        ? THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX
-        : parseThreadLogLimit(opts.limit, null);
-      if (
-        segmentLimit !== null &&
-        segmentLimit > THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX
-      ) {
-        throw new Error(
-          `--limit must be at most ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX} for minimal/verbose formats; use --all for the whole thread.`,
+    if (format === "json") {
+      const events = opts.all
+        ? await listAllThreadLogEvents(sdk, threadId, opts.afterSeq)
+        : await listThreadLogEventsPage(sdk, {
+            threadId,
+            limit: parseThreadLogLimit(
+              opts.limit,
+              THREAD_LOG_DEFAULT_EVENT_LIMIT,
+            ),
+            afterSeq: opts.afterSeq,
+          });
+      console.log(JSON.stringify(events.rows, null, 2));
+      if (events.hasMore) {
+        const lastSeq = events.rows[events.rows.length - 1]?.seq;
+        console.error(
+          `Showing the oldest ${events.rows.length} events${
+            opts.afterSeq === undefined ? "" : ` after seq ${opts.afterSeq}`
+          }; more exist. Use --after-seq ${lastSeq} for the next page or --all for the whole thread.`,
         );
       }
-      const timelineQuery = {
-        threadId,
-        ...(format === "verbose" ? { includeNestedRows: "true" as const } : {}),
-        ...(segmentLimit === null
-          ? {}
-          : { segmentLimit: String(segmentLimit) }),
-      };
-      const timeline: ThreadTimelineResponse =
-        await sdk.threads.timeline(timelineQuery);
-      let rows = timeline.rows;
-      let page = timeline.timelinePage;
-      while (opts.all && page.olderCursor !== null) {
-        const older: ThreadTimelineResponse = await sdk.threads.timeline({
-          ...timelineQuery,
-          beforeAnchorSeq: String(page.olderCursor.anchorSeq),
-          beforeAnchorId: page.olderCursor.anchorId,
-        });
-        rows = prependOlderTimelineRows({
-          olderRows: older.rows,
-          loadedRows: rows,
-        });
-        page = older.timelinePage;
-      }
-      const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
-      const text = formatThreadTimelineText(rows, {
-        verbose: format === "verbose",
-        color,
-      });
-      const notice =
-        page.olderCursor !== null
-          ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
-          : null;
-      console.log(notice === null ? text : `${text}\n\n${notice}`);
       return null;
-    },
-    print: () => null,
+    }
+
+    const segmentLimit = opts.all
+      ? THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX
+      : parseThreadLogLimit(opts.limit, null);
+    if (
+      segmentLimit !== null &&
+      segmentLimit > THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX
+    ) {
+      throw new Error(
+        `--limit must be at most ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX} for minimal/verbose formats; use --all for the whole thread.`,
+      );
+    }
+    const timelineQuery = {
+      threadId,
+      ...(format === "verbose" ? { includeNestedRows: "true" as const } : {}),
+      ...(segmentLimit === null ? {} : { segmentLimit: String(segmentLimit) }),
+    };
+    const timeline: ThreadTimelineResponse =
+      await sdk.threads.timeline(timelineQuery);
+    let rows = timeline.rows;
+    let page = timeline.timelinePage;
+    while (opts.all && page.olderCursor !== null) {
+      const older: ThreadTimelineResponse = await sdk.threads.timeline({
+        ...timelineQuery,
+        beforeAnchorSeq: String(page.olderCursor.anchorSeq),
+        beforeAnchorId: page.olderCursor.anchorId,
+      });
+      rows = prependOlderTimelineRows({
+        olderRows: older.rows,
+        loadedRows: rows,
+      });
+      page = older.timelinePage;
+    }
+    const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
+    const text = formatThreadTimelineText(rows, {
+      verbose: format === "verbose",
+      color,
+    });
+    const notice =
+      page.olderCursor !== null
+        ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
+        : null;
+    console.log(notice === null ? text : `${text}\n\n${notice}`);
+    return null;
   },
+  print: () => null,
 });
 
 export const threadOutputCommand = publicCommand("threads.output", {
   path: ["thread", "output"],
   summary: "Get the final output of a thread",
-  positionals: [{ name: "id", field: "id", required: false }],
-  self: {
-    field: "id",
-    from: "threadId",
-    flag: "self",
-    description: "Target the current thread (from BB_THREAD_ID)",
-  },
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_TARGET,
   print: (result) => (result.output ? result.output : "(no output)"),
 });
 
@@ -945,7 +858,7 @@ function resolveThreadTimelineTextFormat(
   if (opts.json) {
     return "json";
   }
-  const normalized = (opts.format ?? "minimal").trim().toLowerCase();
+  const normalized = opts.format.trim().toLowerCase();
   if (normalized === "json") {
     return "json";
   }

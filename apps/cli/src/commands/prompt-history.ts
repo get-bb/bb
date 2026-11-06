@@ -1,6 +1,6 @@
-import { flag } from "@bb/operations";
 import type { Command } from "commander";
 import type { PromptHistoryListEntry } from "@bb/domain";
+import { flag } from "../cli-door.js";
 import { mountCommands, publicCommand } from "../operation-doors.js";
 import { columnWidths, printBorderlessTable, truncateCell } from "../table.js";
 
@@ -42,12 +42,10 @@ export const promptHistoryCommands = [
   publicCommand("promptHistory.list", {
     path: ["prompt-history", "list"],
     summary: "List prompt history newest first",
-    options: [
-      flag("--cursor <cursor>", "Continue from an earlier page", {
-        field: "cursor",
-      }),
-      flag("--limit <number>", "Maximum entries to return", { field: "limit" }),
-    ],
+    options: {
+      cursor: flag("--cursor <cursor>", "Continue from an earlier page"),
+      limit: flag("--limit <number>", "Maximum entries to return"),
+    },
     print(result, input) {
       if (result.entries.length === 0) {
         console.log("No prompt history found");

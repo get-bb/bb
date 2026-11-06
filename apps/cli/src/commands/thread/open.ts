@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import path from "node:path";
 import type { Command } from "commander";
 import { isRawThreadId } from "@bb/domain";
@@ -8,6 +7,7 @@ import {
   type ThreadOpenFile,
   type ThreadOpenSplit,
 } from "@bb/server-contract";
+import { arg, flag } from "../../cli-door.js";
 import {
   clientCommand,
   mountCommand,
@@ -27,12 +27,6 @@ interface ThreadOpenFileRequest {
   path: string;
 }
 
-interface ThreadOpenInput {
-  target: ThreadOpenTarget;
-  lineNumber: number | null;
-  requestedSplit: ThreadOpenSplit | undefined;
-}
-
 interface ThreadOpenOutput {
   target: ThreadOpenTarget;
   split: ThreadOpenSplit;
@@ -40,98 +34,73 @@ interface ThreadOpenOutput {
   delivered: number;
 }
 
-export const threadOpenCommand = clientCommand<
-  ThreadOpenInput,
-  ThreadOpenOutput
->({
-  name: "cli.thread.open",
-  kind: "write",
-  description:
-    "Resolve the thread and file (reading threads.get and environments.get for absolute paths), then run threads.open",
-  door: {
-    path: ["thread", "open"],
-    summary: "Open a BB thread, optionally with a file in its panel",
-    usage: "[id] [path] [options]",
-    positionals: [
-      {
-        name: "id",
-        required: false,
-        description:
-          "Thread ID. Inside a BB thread, omit it to target the current thread; a lone argument that is not a thread ID opens that file in the current thread",
-      },
-      {
-        name: "path",
-        required: false,
-        description: "Thread-relative or absolute file path to open",
-      },
-    ],
-    options: [
-      flag("--line <number>", "Line number to focus"),
-      flag(
-        "--split <placement>",
-        "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane",
-      ),
-    ],
-    prepare: ({ positionals, options }) => {
-      const first = positionals.id;
-      const second = positionals.path;
-      const target = resolveThreadOpenTarget(
-        typeof first === "string" ? first : undefined,
-        typeof second === "string" ? second : undefined,
-      );
-      const lineNumber = parseLineNumber(
-        typeof options.line === "string" ? options.line : undefined,
-      );
-      const requestedSplit =
-        options.split === undefined
-          ? undefined
-          : threadOpenSplitSchema.parse(options.split);
-      if (target.inputPath === null && lineNumber !== null) {
-        throw new Error("--line requires a file path.");
-      }
-      return { target, lineNumber, requestedSplit };
-    },
-    run: async ({ target, lineNumber, requestedSplit }, client) => {
-      const file: ThreadOpenFile | null =
-        target.inputPath === null
-          ? null
-          : {
-              ...(await resolveThreadOpenFileRequest({
-                inputPath: target.inputPath,
-                client,
-                threadId: target.threadId,
-              })),
-              lineNumber,
-            };
-      const result = await client.call("threads.open", {
-        id: target.threadId,
-        ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
-        file,
-      });
-      return {
-        target,
-        split: requestedSplit ?? "replace",
-        file,
-        delivered: result.delivered,
-      };
-    },
-    json: ({ target, split, file, delivered }) => ({
-      threadId: target.threadId,
-      split,
+export const threadOpenCommand = clientCommand({
+  path: ["thread", "open"],
+  summary: "Open a BB thread, optionally with a file in its panel",
+  usage: "[id] [path] [options]",
+  positionals: {
+    id: arg(
+      "[id]",
+      "Thread ID. Inside a BB thread, omit it to target the current thread; a lone argument that is not a thread ID opens that file in the current thread",
+    ),
+    path: arg("[path]", "Thread-relative or absolute file path to open"),
+  },
+  options: {
+    line: flag("--line <number>", "Line number to focus"),
+    split: flag(
+      "--split <placement>",
+      "Open in right, down, left, top, or replace placement; edge placements add panes through pane 8, then replace the focused pane",
+    ),
+  },
+  run: async ({ positionals, options }, client): Promise<ThreadOpenOutput> => {
+    const target = resolveThreadOpenTarget(positionals.id, positionals.path);
+    const lineNumber = parseLineNumber(options.line);
+    const requestedSplit =
+      options.split === undefined
+        ? undefined
+        : threadOpenSplitSchema.parse(options.split);
+    if (target.inputPath === null && lineNumber !== null) {
+      throw new Error("--line requires a file path.");
+    }
+    const file: ThreadOpenFile | null =
+      target.inputPath === null
+        ? null
+        : {
+            ...(await resolveThreadOpenFileRequest({
+              inputPath: target.inputPath,
+              client,
+              threadId: target.threadId,
+            })),
+            lineNumber,
+          };
+    const result = await client.call("threads.open", {
+      id: target.threadId,
+      ...(requestedSplit === undefined ? {} : { split: requestedSplit }),
       file,
-      delivered,
-      inputPath: target.inputPath,
-    }),
-    print: ({ target, split, file, delivered }) => {
-      printThreadContextLabel(target.resolved);
-      const lines = [`Thread: ${target.threadId}`, `Split: ${split}`];
-      if (file !== null) {
-        lines.push(`Source: ${file.source}`, `Path: ${file.path}`);
-        if (file.lineNumber !== null) lines.push(`Line: ${file.lineNumber}`);
-      }
-      lines.push(`Delivered: ${delivered}`);
-      return lines;
-    },
+    });
+    return {
+      target,
+      split: requestedSplit ?? "replace",
+      file,
+      delivered: result.delivered,
+    };
+  },
+  json: ({ target, split, file, delivered }) => ({
+    threadId: target.threadId,
+    split,
+    file,
+    delivered,
+    inputPath: target.inputPath,
+  }),
+  print: ({ target, split, file, delivered }) => {
+    printThreadContextLabel(target.resolved);
+    const lines = [`Thread: ${target.threadId}`, `Split: ${split}`];
+    if (file !== null) {
+      lines.push(`Source: ${file.source}`, `Path: ${file.path}`);
+      if (file.lineNumber !== null) lines.push(`Line: ${file.lineNumber}`);
+    }
+    lines.push(`Delivered: ${delivered}`);
+    return lines;
   },
 });
 

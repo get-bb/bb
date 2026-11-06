@@ -302,6 +302,17 @@ function collectFieldNames(
   }
 }
 
+export function routeInputFields(route: RouteDefinition): ReadonlySet<string> {
+  const fields = new Set<string>(routeParamNames(route.path));
+  const request = route.request;
+  if (request.source === "json" && request.field !== null) {
+    fields.add(request.field);
+  } else if (request.source === "json" || request.source === "query") {
+    collectFieldNames(request.schema, fields, new Set());
+  }
+  return fields;
+}
+
 export function routeFieldClash(
   name: string,
   route: RouteDefinition,

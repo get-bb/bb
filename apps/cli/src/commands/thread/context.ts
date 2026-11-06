@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { arg, flag } from "../../cli-door.js";
 import { mountCommand, publicCommand } from "../../operation-doors.js";
 
 function count(value: number): string {
@@ -9,12 +10,11 @@ export const threadContextCommand = publicCommand("threads.context", {
   path: ["thread", "context"],
   summary:
     "Show the latest recorded context window usage and available breakdown",
-  positionals: [{ name: "id", field: "id", required: false }],
-  self: {
-    field: "id",
-    from: "threadId",
-    flag: "self",
-    description: "Use the current thread",
+  positionals: { id: arg("[id]") },
+  options: {
+    self: flag("--self", "Use the current thread", {
+      context: { field: "id", from: "threadId" },
+    }),
   },
   print: (result) => {
     const usage = result.usage;

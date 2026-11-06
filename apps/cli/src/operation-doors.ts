@@ -1,25 +1,29 @@
 import { Command, Option } from "commander";
 import {
-  cliCommandFromDoor,
-  defineOperation,
-  type CliDoor,
-  type CliDoorDeclined,
-  type CliDoorPrinted,
-  type CliValues,
-  type GeneratedCliDeclined,
-  type GeneratedCliOption,
-  type GeneratedCliPositional,
-  type Operation,
-  type OperationKind,
-} from "@bb/operations";
-import {
-  publicOperation,
+  publicOperationRouteDefinition,
+  routeInputFields,
   type PublicOperationInput,
   type PublicOperationName,
   type PublicOperationOutput,
 } from "@bb/server-contract";
 import type { BbSdk } from "@bb/sdk";
 import { CliExitError, action } from "./action.js";
+import {
+  commanderFlagName,
+  flagValue,
+  mapInput,
+  mappedFields,
+  mountedArgs,
+  mountedFlags,
+  type CliArgs,
+  type CliDoorCommon,
+  type CliDoorDeclined,
+  type CliDoorPrinted,
+  type CliFlags,
+  type CliValues,
+  type MountedArg,
+  type MountedFlag,
+} from "./cli-door.js";
 import { createCliBbSdk } from "./client.js";
 import { createOperationCaller } from "./operation-call.js";
 import {
@@ -60,57 +64,112 @@ export interface CliClient {
   log(text: string): void;
 }
 
-export type CliDoorFor<Input, Output> = CliDoor<Input, Output, CliClient>;
+export interface PublicDoor<
+  Name extends PublicOperationName,
+  Args extends CliArgs,
+  Flags extends CliFlags,
+> extends CliDoorCommon<
+  Args,
+  Flags,
+  PublicOperationInput<Name>,
+  PublicOperationOutput<Name>
+> {
+  fixed?: Readonly<Record<string, unknown>>;
+  prepare?(
+    values: CliValues<Args, Flags>,
+    client: CliClient,
+  ): PublicOperationInput<Name> | Promise<PublicOperationInput<Name>>;
+  run?(
+    input: PublicOperationInput<Name>,
+    client: CliClient,
+  ): PublicOperationOutput<Name> | Promise<PublicOperationOutput<Name>>;
+}
+
+export interface ClientDoor<
+  Args extends CliArgs,
+  Flags extends CliFlags,
+  Output,
+> extends CliDoorCommon<Args, Flags, CliValues<Args, Flags>, Output> {
+  run(
+    values: CliValues<Args, Flags>,
+    client: CliClient,
+  ): Output | Promise<Output>;
+}
+
+interface ErasedDoor extends CliDoorCommon<
+  CliArgs,
+  CliFlags,
+  unknown,
+  unknown
+> {
+  prepare(values: CliValues, client: CliClient): unknown;
+  run?(input: unknown, client: CliClient): unknown;
+}
 
 export interface CliCommand {
-  operation: Operation;
-  door: CliDoor<unknown, unknown, CliClient>;
+  readonly operation: PublicOperationName | null;
+  readonly door: ErasedDoor;
 }
 
-const registry = new Map<string, CliCommand>();
-
-export function registeredCliCommands(): ReadonlyMap<string, CliCommand> {
-  return registry;
+function erase(door: object): ErasedDoor {
+  return door as ErasedDoor;
 }
 
-function remember(command: CliCommand): CliCommand {
-  registry.set(command.operation.name, command);
-  return command;
-}
-
-export function publicCommand<Name extends PublicOperationName>(
-  name: Name,
-  door: CliDoorFor<PublicOperationInput<Name>, PublicOperationOutput<Name>>,
-): CliCommand {
-  return remember({
-    operation: publicOperation(name),
-    door: door as CliDoor<unknown, unknown, CliClient>,
+function defaultPrepare(
+  name: PublicOperationName,
+  door: ErasedDoor & { fixed?: Readonly<Record<string, unknown>> },
+): ErasedDoor["prepare"] {
+  const args = mountedArgs(door.positionals ?? {});
+  const { flags } = mountedFlags(door.options ?? {}, {
+    json: door.noJson !== true,
+    confirm: door.confirm !== undefined,
   });
+  const mapping = { fixed: door.fixed ?? {}, args, flags };
+  const route = publicOperationRouteDefinition(name);
+  const accepted = route === null ? new Set<string>() : routeInputFields(route);
+  const unknown = mappedFields(mapping).filter((field) => !accepted.has(field));
+  if (unknown.length > 0) {
+    throw new Error(
+      `bb ${door.path.join(" ")}: ${name} takes no ${unknown.join(", ")}; map it in prepare`,
+    );
+  }
+  return (values, client) =>
+    mapInput(mapping, values, (field, explicit, requested) => {
+      if (field === "threadId") return client.threadId(explicit, requested);
+      if (field === "projectId") {
+        return explicit ?? client.context().projectId ?? "";
+      }
+      return explicit ?? process.cwd();
+    });
 }
 
-export interface ClientOperationOptions<Input, Output> {
-  name: string;
-  kind: OperationKind;
-  description: string;
-  door: CliDoorFor<Input, Output> & {
-    run(input: Input, client: CliClient): Output | Promise<Output>;
+export function publicCommand<
+  Name extends PublicOperationName,
+  const Args extends CliArgs = {},
+  const Flags extends CliFlags = {},
+>(name: Name, door: PublicDoor<Name, Args, Flags>): CliCommand {
+  const erased = erase(door);
+  return {
+    operation: name,
+    door: {
+      ...erased,
+      prepare:
+        door.prepare === undefined
+          ? defaultPrepare(name, erased)
+          : erased.prepare,
+    },
   };
 }
 
-export function clientCommand<Input, Output>(
-  options: ClientOperationOptions<Input, Output>,
-): CliCommand {
-  const operation = defineOperation<Input, Output>({
-    name: options.name,
-    kind: options.kind,
-    hooks: "observe",
-    description: options.description,
-    parse: (raw) => raw as Input,
-  });
-  return remember({
-    operation,
-    door: options.door as CliDoor<unknown, unknown, CliClient>,
-  });
+export function clientCommand<
+  const Args extends CliArgs = {},
+  const Flags extends CliFlags = {},
+  Output = null,
+>(door: ClientDoor<Args, Flags, Output>): CliCommand {
+  return {
+    operation: null,
+    door: { ...erase(door), prepare: (values) => values },
+  };
 }
 
 class CliConfirmStop extends Error {
@@ -124,10 +183,16 @@ class CliConfirmStop extends Error {
   }
 }
 
+interface Declined {
+  message: string | null;
+  exitCode: number;
+  refusal: string | null;
+}
+
 interface CliClientControls {
   yes: boolean;
   interrupt: string | null;
-  declined(override: CliDoorDeclined | undefined): GeneratedCliDeclined;
+  declined(override: CliDoorDeclined | undefined): Declined;
 }
 
 interface MountedClient {
@@ -138,7 +203,7 @@ interface MountedClient {
 
 async function confirmOrStop(
   question: string,
-  declined: GeneratedCliDeclined,
+  declined: Declined,
 ): Promise<void> {
   if (declined.refusal !== null && !process.stdin.isTTY) {
     throw new CliConfirmStop(null, declined.refusal, 1);
@@ -189,14 +254,12 @@ function createClient(
     },
     context() {
       if (deps.getContext !== undefined) return deps.getContext();
+      const projectId = resolveContextProjectId();
+      const threadId = resolveContextThreadId();
       return {
         serverUrl: url,
-        ...(resolveContextProjectId() === undefined
-          ? {}
-          : { projectId: resolveContextProjectId() }),
-        ...(resolveContextThreadId() === undefined
-          ? {}
-          : { threadId: resolveContextThreadId() }),
+        ...(projectId === undefined ? {} : { projectId }),
+        ...(threadId === undefined ? {} : { threadId }),
       };
     },
     threadId(explicit, self) {
@@ -224,44 +287,29 @@ function printOutput(printed: CliDoorPrinted): void {
   for (const line of printed) console.log(line);
 }
 
-function camelCase(flag: string): string {
-  return flag.replace(/-([a-z])/g, (_match, letter: string) =>
-    letter.toUpperCase(),
-  );
+function argumentSyntax(entry: MountedArg): string {
+  const name = entry.variadic ? `${entry.name}...` : entry.name;
+  return entry.required ? `<${name}>` : `[${name}]`;
 }
 
-function argumentSyntax(positional: GeneratedCliPositional): string {
-  const name = positional.variadic ? `${positional.name}...` : positional.name;
-  return positional.required ? `<${name}>` : `[${name}]`;
+function optionFlags(entry: MountedFlag): string {
+  const long = entry.negatable ? `--no-${entry.flag}` : `--${entry.flag}`;
+  const names = entry.short === undefined ? long : `-${entry.short}, ${long}`;
+  if (entry.type === "boolean") return names;
+  return `${names} <${entry.placeholder ?? entry.flag}>`;
 }
 
-function optionFlags(option: GeneratedCliOption): string {
-  const long = option.negatable ? `--no-${option.flag}` : `--${option.flag}`;
-  const names = option.short === null ? long : `-${option.short}, ${long}`;
-  if (option.type === "boolean") return names;
-  const placeholder = option.placeholder ?? option.flag;
-  return `${names} <${placeholder}>`;
-}
-
-function commanderOption(option: GeneratedCliOption): Option {
-  const built = new Option(optionFlags(option), option.description);
-  if (option.type === "strings") {
+function commanderOption(entry: MountedFlag): Option {
+  const built = new Option(optionFlags(entry), entry.description);
+  if (entry.type === "strings") {
     built.argParser((value: string, previous: string[] | undefined) =>
       collectOption(value, previous ?? []),
     );
   }
-  if (option.defaultValue !== null) built.default(option.defaultValue);
-  if (option.required) built.makeOptionMandatory(true);
-  if (option.hidden) built.hideHelp();
+  if (entry.default !== undefined) built.default(entry.default);
+  if (entry.required === true) built.makeOptionMandatory(true);
+  if (entry.hidden === true) built.hideHelp();
   return built;
-}
-
-function optionValue(
-  option: GeneratedCliOption,
-  value: CliValues["options"][string],
-): CliValues["options"][string] {
-  if (option.type === "strings" && value === undefined) return [];
-  return value;
 }
 
 function commandPath(command: Command): string[] {
@@ -284,18 +332,20 @@ export function mountCommand(
   command: CliCommand,
   deps: CliClientDeps,
 ): Command {
-  const generated = cliCommandFromDoor<CliClient>(
-    command.operation.name,
-    command.door,
-  );
+  const { door } = command;
+  const args = mountedArgs(door.positionals ?? {});
+  const { flags, hasJson, hasYes } = mountedFlags(door.options ?? {}, {
+    json: door.noJson !== true,
+    confirm: door.confirm !== undefined,
+  });
   const parentPath = commandPath(parent);
-  const relative = generated.path.slice(parentPath.length);
+  const relative = door.path.slice(parentPath.length);
   if (
     relative.length === 0 ||
-    parentPath.some((word, index) => generated.path[index] !== word)
+    parentPath.some((word, index) => door.path[index] !== word)
   ) {
     throw new Error(
-      `bb ${generated.path.join(" ")} cannot be mounted under bb ${parentPath.join(" ")}`,
+      `bb ${door.path.join(" ")} cannot be mounted under bb ${parentPath.join(" ")}`,
     );
   }
   let target = parent;
@@ -303,60 +353,55 @@ export function mountCommand(
     target = findOrCreateGroup(target, word);
   }
   const mounted = target
-    .command(generated.path.at(-1) ?? "", {
-      ...(generated.hidden ? { hidden: true } : {}),
-      ...(generated.isDefault ? { isDefault: true } : {}),
+    .command(relative.at(-1) ?? "", {
+      ...(door.hidden === true ? { hidden: true } : {}),
+      ...(door.isDefault === true ? { isDefault: true } : {}),
     })
-    .description(generated.description ?? generated.summary);
-  for (const positional of generated.positionals) {
-    mounted.argument(argumentSyntax(positional), positional.description ?? "");
+    .description(door.description ?? door.summary);
+  for (const entry of args) {
+    mounted.argument(argumentSyntax(entry), entry.description ?? "");
   }
-  if (generated.usage !== null) mounted.usage(generated.usage);
-  if (generated.aliases.length > 0) mounted.aliases([...generated.aliases]);
-  for (const option of generated.options) {
-    mounted.addOption(commanderOption(option));
+  if (door.usage !== undefined) mounted.usage(door.usage);
+  if (door.aliases !== undefined && door.aliases.length > 0) {
+    mounted.aliases([...door.aliases]);
   }
-  if (generated.helpAfter !== null) {
-    mounted.addHelpText("after", generated.helpAfter);
+  for (const entry of flags) mounted.addOption(commanderOption(entry));
+  if (door.helpAfter !== undefined) {
+    mounted.addHelpText("after", door.helpAfter);
   }
+  const interrupt = door.interrupt ?? null;
   mounted.action(
-    action(async (...args: unknown[]) => {
-      const values = args.slice(0, generated.positionals.length);
-      const opts = (args[generated.positionals.length] ?? {}) as Record<
-        string,
-        CliValues["options"][string]
-      >;
-      const positionals = Object.fromEntries(
-        generated.positionals.map((positional, index) => {
-          const value = values[index];
-          return [
-            positional.name,
-            typeof value === "string" || Array.isArray(value)
-              ? (value as string | string[])
-              : undefined,
-          ];
-        }),
-      );
-      const options = Object.fromEntries(
-        generated.options.map((option) => [
-          option.flag,
-          optionValue(option, opts[camelCase(option.flag)]),
-        ]),
-      );
-      const json = generated.hasJson && opts.json === true;
+    action(async (...received: unknown[]) => {
+      const raw = (received[args.length] ?? {}) as Record<string, unknown>;
+      const values: CliValues = {
+        positionals: Object.fromEntries(
+          args.map((entry, index) => {
+            const value = received[index];
+            if (entry.variadic) {
+              return [entry.key, Array.isArray(value) ? value : []];
+            }
+            return [entry.key, typeof value === "string" ? value : undefined];
+          }),
+        ),
+        options: Object.fromEntries(
+          flags.map((entry) => [
+            entry.key,
+            flagValue(entry, raw[commanderFlagName(entry)]),
+          ]),
+        ),
+      };
+      const json = hasJson && raw.json === true;
       let prepared: { input: unknown } | null = null;
       const mountedClient = createClient(deps, {
-        yes: generated.hasYes && opts.yes === true,
-        interrupt: generated.interrupt,
+        yes: hasYes && raw.yes === true,
+        interrupt,
         declined: (override) => {
           const declared =
-            prepared === null
-              ? { message: null, exitCode: 0, refusal: null }
-              : generated.declined(prepared.input);
+            prepared === null ? {} : (door.declined?.(prepared.input) ?? {});
           return {
-            message: override?.message ?? declared.message,
-            exitCode: override?.exitCode ?? declared.exitCode,
-            refusal: override?.refusal ?? declared.refusal,
+            message: override?.message ?? declared.message ?? null,
+            exitCode: override?.exitCode ?? declared.exitCode ?? 0,
+            refusal: override?.refusal ?? declared.refusal ?? null,
           };
         },
       });
@@ -364,37 +409,25 @@ export function mountCommand(
       let output: unknown;
       let input: unknown;
       try {
-        input = await generated.toInput(
-          {
-            positionals,
-            options,
-            resolveContext(field, explicit, requested) {
-              if (field === "threadId")
-                return client.threadId(explicit, requested);
-              if (field === "projectId") {
-                return explicit ?? client.context().projectId ?? "";
-              }
-              return explicit ?? process.cwd();
-            },
-          },
-          client,
-        );
+        input = await door.prepare(values, client);
         prepared = { input };
-        const question = generated.confirmMessage(input);
+        const question = door.confirm?.(input) ?? null;
         if (question !== null) await client.confirm(question);
         try {
-          output = await generated.execute(input, client, (request) =>
-            client.call(
-              command.operation.name as PublicOperationName,
-              request as PublicOperationInput<PublicOperationName>,
-            ),
-          );
+          if (door.run !== undefined) {
+            output = await door.run(input, client);
+          } else if (command.operation !== null) {
+            output = await client.call(
+              command.operation,
+              input as PublicOperationInput<PublicOperationName>,
+            );
+          }
         } catch (error: unknown) {
           if (error instanceof CliConfirmStop) throw error;
-          if (mountedClient.interrupted() && generated.interrupt !== null) {
-            throw new CliExitError(generated.interrupt, 130);
+          if (mountedClient.interrupted() && interrupt !== null) {
+            throw new CliExitError(interrupt, 130);
           }
-          const prefix = generated.failure(input);
+          const prefix = door.failure?.(input) ?? null;
           throw prefix === null ? error : prependErrorContext(prefix, error);
         }
       } catch (error: unknown) {
@@ -407,11 +440,18 @@ export function mountCommand(
         mountedClient.release();
       }
       if (json) {
-        outputJson({ json: true }, generated.jsonValue(output, input));
+        outputJson(
+          { json: true },
+          door.json === undefined ? output : door.json(output, input),
+        );
       } else {
-        printOutput(generated.print(output, input));
+        printOutput(
+          door.print === undefined
+            ? JSON.stringify(output, null, 2)
+            : door.print(output, input),
+        );
       }
-      const code = generated.exitCode(output, input, json);
+      const code = door.exitCode?.(output, input, json) ?? 0;
       if (code !== 0) process.exitCode = code;
     }),
   );

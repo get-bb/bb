@@ -1,16 +1,6 @@
 export type {
   CallerDoor,
   CallerPrincipal,
-  CliContextField,
-  CliDoor,
-  CliDoorDeclined,
-  CliDoorOption,
-  CliDoorPositional,
-  CliDoorPrinted,
-  CliValue,
-  CliValues,
-  CliDoorSelf,
-  CliDoorValueType,
   HookPolicy,
   HttpDoor,
   HttpDoorMethod,
@@ -61,21 +51,3 @@ export {
   createOperationKernel,
   deny,
 } from "./kernel.js";
-export type {
-  CliFlagExtras,
-  CliInvocation,
-  CliOptionValue,
-  GeneratedCliCommand,
-  GeneratedCliDeclined,
-  GeneratedCliOption,
-  GeneratedCliPositional,
-} from "./cli-door.js";
-export {
-  CliDoorUsageError,
-  flag,
-  JSON_FLAG_DESCRIPTION,
-  YES_FLAG_DESCRIPTION,
-  cliCommandFromDoor,
-  cliCommandFromOperation,
-  cliCommandsFromOperations,
-} from "./cli-door.js";

@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import type {
   ProviderCommand,
   PublicOperationOutput,
@@ -6,11 +5,13 @@ import type {
   ThreadTimelineSessionOption,
 } from "@bb/server-contract";
 import type { Command } from "commander";
+import { flag } from "../../cli-door.js";
 import {
   clientCommand,
   mountCommands,
   publicCommand,
 } from "../../operation-doors.js";
+import { OPTIONAL_THREAD_ID } from "./operation-doors.js";
 
 export function parseSessionOptionAssignments(args: {
   options: readonly ThreadTimelineSessionOption[] | null;
@@ -119,17 +120,16 @@ function fullTimeline(
 }
 
 const SELF_THREAD = {
-  field: "id",
-  from: "threadId",
-  flag: "self",
-  description: "Use the current thread",
-} as const;
+  self: flag("--self", "Use the current thread", {
+    context: { field: "id", from: "threadId" },
+  }),
+};
 
 export const threadCommandsCommand = publicCommand("threads.timeline", {
   path: ["thread", "commands"],
   summary: "List the slash commands the thread's agent has advertised",
-  positionals: [{ name: "id", field: "id", required: false }],
-  self: SELF_THREAD,
+  positionals: OPTIONAL_THREAD_ID,
+  options: SELF_THREAD,
   fixed: { summaryOnly: "true" },
   json: (timeline) => ({
     commands: fullTimeline(timeline).providerCommands,
@@ -138,80 +138,49 @@ export const threadCommandsCommand = publicCommand("threads.timeline", {
     formatThreadProviderCommands(fullTimeline(timeline).providerCommands),
 });
 
-interface ThreadOptionsInput {
-  threadId: string;
-  set: string[];
-  clear: string[];
-}
-
-function strings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
-export const threadOptionsCommand = clientCommand<
-  ThreadOptionsInput,
-  readonly ThreadTimelineSessionOption[] | null
->({
-  name: "cli.thread.options",
-  kind: "write",
-  description:
-    "Read session options with threads.timeline, apply --set/--clear with threads.update, then read them again",
-  door: {
-    path: ["thread", "options"],
-    summary:
-      "List the session options the thread's agent reports, or choose values applied on the thread's next turn",
-    positionals: [{ name: "id", required: false }],
-    options: [
-      flag("--self", "Use the current thread"),
-      flag(
-        "--set <option=value>",
-        "Choose a value for an option, applied on the next turn (repeatable)",
-        { type: "strings" },
-      ),
-      flag(
-        "--clear <option>",
-        "Drop a choice that has not been applied yet (repeatable)",
-        { type: "strings" },
-      ),
-    ],
-    prepare: ({ positionals, options }, client) => {
-      const id = positionals.id;
-      return {
-        threadId: client.threadId(
-          typeof id === "string" ? id : undefined,
-          options.self === true,
-        ),
-        set: strings(options.set),
-        clear: strings(options.clear),
-      };
-    },
-    run: async ({ threadId, set, clear }, client) => {
-      const readOptions = async () =>
-        fullTimeline(
-          await client.call("threads.timeline", {
-            id: threadId,
-            summaryOnly: "true",
-          }),
-        ).sessionOptions;
-      let options = await readOptions();
-      if (set.length > 0 || clear.length > 0) {
-        await client.call("threads.update", {
-          id: threadId,
-          sessionOptions: parseSessionOptionAssignments({
-            options,
-            set,
-            clear,
-          }),
-        });
-        options = await readOptions();
-      }
-      return options;
-    },
-    json: (options) => ({ options }),
-    print: (options) => formatThreadSessionOptions(options),
+export const threadOptionsCommand = clientCommand({
+  path: ["thread", "options"],
+  summary:
+    "List the session options the thread's agent reports, or choose values applied on the thread's next turn",
+  positionals: OPTIONAL_THREAD_ID,
+  options: {
+    self: flag("--self", "Use the current thread"),
+    set: flag(
+      "--set <option=value>",
+      "Choose a value for an option, applied on the next turn (repeatable)",
+      { type: "strings" },
+    ),
+    clear: flag(
+      "--clear <option>",
+      "Drop a choice that has not been applied yet (repeatable)",
+      { type: "strings" },
+    ),
   },
+  run: async ({ positionals, options: flags }, client) => {
+    const threadId = client.threadId(positionals.id, flags.self);
+    const readOptions = async () =>
+      fullTimeline(
+        await client.call("threads.timeline", {
+          id: threadId,
+          summaryOnly: "true",
+        }),
+      ).sessionOptions;
+    let options = await readOptions();
+    if (flags.set.length > 0 || flags.clear.length > 0) {
+      await client.call("threads.update", {
+        id: threadId,
+        sessionOptions: parseSessionOptionAssignments({
+          options,
+          set: flags.set,
+          clear: flags.clear,
+        }),
+      });
+      options = await readOptions();
+    }
+    return options;
+  },
+  json: (options) => ({ options }),
+  print: (options) => formatThreadSessionOptions(options),
 });
 
 export function registerSessionStateCommands(

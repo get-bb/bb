@@ -1,13 +1,12 @@
-import { flag } from "@bb/operations";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import type { CliValues } from "@bb/operations";
 import {
   pluginMarketplaceListResponseSchema,
   pluginMarketplaceMutationResponseSchema,
   pluginMarketplaceRefreshResponseSchema,
   type PluginMarketplace,
 } from "@bb/server-contract";
+import { arg, flag } from "../cli-door.js";
 import { mountCommands, publicCommand } from "../operation-doors.js";
 import { renderBorderlessTable } from "../table.js";
 
@@ -40,33 +39,27 @@ function printMarketplace(marketplace: PluginMarketplace): void {
   }
 }
 
-function textValue(values: CliValues, name: string): string | undefined {
-  const value = values.positionals[name] ?? values.options[name];
-  return typeof value === "string" ? value : undefined;
-}
-
-const JSON_OPTION = flag("--json", "Output JSON");
+const JSON_OPTION = { json: flag("--json", "Output JSON") };
 
 const marketplaceCommands = [
   publicCommand("marketplaces.add", {
     path: ["marketplace", "add"],
     summary:
       "Add a marketplace from an https manifest URL, git:<url>[@<ref>], or path:<directory> (validates and caches the catalog; installs nothing)",
-    positionals: [{ name: "source" }],
-    options: [
-      flag(
+    positionals: { source: arg("<source>") },
+    options: {
+      subdirectory: flag(
         "--subdirectory <path>",
         "Read marketplace.json from this directory of a git: repository instead of its root",
       ),
-      JSON_OPTION,
-    ],
-    prepare: (values) => {
-      const subdirectory = textValue(values, "subdirectory");
-      return {
-        source: normalizeSource(textValue(values, "source") ?? ""),
-        ...(subdirectory === undefined ? {} : { subdirectory }),
-      };
+      ...JSON_OPTION,
     },
+    prepare: ({ positionals, options }) => ({
+      source: normalizeSource(positionals.source),
+      ...(options.subdirectory === undefined
+        ? {}
+        : { subdirectory: options.subdirectory }),
+    }),
     json: (output) =>
       pluginMarketplaceMutationResponseSchema.parse(output).marketplace,
     print: (output) => {
@@ -80,7 +73,7 @@ const marketplaceCommands = [
   publicCommand("marketplaces.list", {
     path: ["marketplace", "list"],
     summary: "List the marketplaces bb reads catalogs from",
-    options: [JSON_OPTION],
+    options: JSON_OPTION,
     json: (output) =>
       pluginMarketplaceListResponseSchema.parse(output).marketplaces,
     print: (output) => {
@@ -123,8 +116,8 @@ const marketplaceCommands = [
     path: ["marketplace", "refresh"],
     summary:
       "Re-read one marketplace catalog, or every one of them. Discovery metadata and icons only: a refresh never installs, updates, or runs plugin code",
-    positionals: [{ name: "name", field: "name", required: false }],
-    options: [JSON_OPTION],
+    positionals: { name: arg("[name]") },
+    options: JSON_OPTION,
     json: (output) =>
       pluginMarketplaceRefreshResponseSchema.parse(output).results,
     print: (output) =>
@@ -142,8 +135,8 @@ const marketplaceCommands = [
     path: ["marketplace", "remove"],
     summary:
       "Forget a marketplace. bb-official and bb-community cannot be removed. Installed plugins keep their direct sources",
-    positionals: [{ name: "name", field: "name" }],
-    options: [JSON_OPTION],
+    positionals: { name: arg("<name>") },
+    options: JSON_OPTION,
     json: (output) => ({ convertedPluginIds: output.convertedPluginIds }),
     print: (removed, input) => {
       const lines = [`Removed marketplace ${input.name}.`];

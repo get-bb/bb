@@ -3,7 +3,7 @@
 The server's public actions are operations in one registry, the operations
 kernel (`packages/operations`, held by the server in `apps/server/src/kernel`).
 An operation has a name, a kind (`read` | `write`), a hook policy, an input
-parser, an output check and doors (`http`, `cli`). One owner implements it,
+parser, an output check and an HTTP door. One owner implements it,
 anyone calls it, and every call runs as a caller.
 
 This is the foundation: core routes and core `bb` commands run through it, and
@@ -83,29 +83,53 @@ hooks today; the server exposes no way to add one.
 
 ## CLI doors
 
-Every core `bb` command is a door on an operation (`apps/cli/src/operation-doors.ts`):
+Every core `bb` command is declared as a door (`apps/cli/src/cli-door.ts`,
+mounted by `apps/cli/src/operation-doors.ts`):
 
-- `publicCommand(name, door)` mounts a command for a public operation and
-  sends it through the operation's own route (`apps/cli/src/operation-call.ts`,
-  the CLI's transport plus the contract's route table).
-- `clientCommand` declares a command whose `run` composes several operations,
-  waits, polls, streams, or works locally (starting the server, the guide).
+- `publicCommand(name, door)` is one call of a public operation, sent through
+  the operation's own route (`apps/cli/src/operation-call.ts`, the CLI's
+  transport plus the contract's route table).
+- `clientCommand(door)` is a command whose `run(values, client)` chains
+  operations, waits, polls, streams, or works locally (starting the server,
+  the guide).
 
-A door (`CliDoor`) names a path, aliases, help text (`summary`, `description`,
-`usage`, `helpAfter`), `isDefault`, positionals, flags, a `--self` context
-fill, `confirm` (adds `--yes`), `declined`, `interrupt`, `prepare(values,
-client)` to build the input, an optional `run`, `print`, `json` (or `noJson`),
-`failure` and `exitCode`. Flags are one line each:
-`flag("--name <name>", "Set the project name")`, with `-s, ` for a short
-name, `--no-` for a negatable flag, and `{ type, field, required, default,
-hidden }` for the rest. `--json` and `--yes` are appended unless a door
-declares them. `cliCommandFromDoor` (`packages/operations/src/cli-door.ts`) is
-the one generator; the mount builds the commander command from it.
+Flags and arguments are records, and their values are typed from the spec:
 
-`client.confirm` returns at once under `--yes`; otherwise it asks, and a "no"
-prints the door's `declined` message and exits with its code. A door that
-declares `interrupt` gets a `client.signal` that SIGINT aborts, and a `run`
-that fails after the abort exits 130 with the `interrupt` text.
+```ts
+publicCommand("projects.branches", {
+  path: ["project", "branches"],
+  summary: "List branches available for a project source",
+  positionals: { id: arg("<id>") },
+  options: {
+    hostId: flag("--host <id>", "Source machine ID", { required: true }),
+    query: flag("--query <query>", "Branch-name filter"),
+    limit: flag("--limit <count>", "Maximum branches"),
+  },
+});
+```
+
+`flag("--x", …)` is a boolean, `--no-x` a negatable boolean, `--x <v>` a
+string (`{ type: "integer" | "number" | "strings" }` for the rest, `required`
+or `default` to drop `undefined`). `arg("<x>")` is a string, `[x]` optional,
+`<x...>` a list. Code reads `values.options.hostId`; a misspelt key does not
+compile. Record order is help order.
+
+A `publicCommand` without `prepare` builds its input by key: each argument
+and flag becomes the input field of the same name (or its `field`), with
+`undefined`, `false`, `""` and `[]` left out and `fixed` merged in. A flag with
+`context: { field, from }` fills that field from the CLI context
+(`--self` and `BB_THREAD_ID`). Registration fails if a key is not one of the
+operation's input fields (`routeInputFields`), so a command that needs any
+other mapping declares `prepare(values, client)`.
+
+The rest of a door: aliases, help text (`summary`, `description`, `usage`,
+`helpAfter`), `isDefault`, `confirm` (adds `--yes`), `declined`, `interrupt`,
+`print`, `json` (or `noJson`), `failure` and `exitCode`. `--json` and `--yes`
+are appended unless a door declares them. `client.confirm` returns at once
+under `--yes`; otherwise it asks, and a "no" prints the door's `declined`
+message and exits with its code. A door that declares `interrupt` gets a
+`client.signal` that SIGINT aborts, and a `run` that fails after the abort
+exits 130 with the `interrupt` text.
 
 Not mounted from doors: the hidden `bb environment status|branches|diff`
 redirects to `bb git`, and the `bb <plugin> …` proxy.

@@ -1,4 +1,3 @@
-import { flag } from "@bb/operations";
 import {
   GIT_PLUGIN_ID,
   environmentStatusSchema,
@@ -7,12 +6,12 @@ import {
 } from "@bb/domain";
 import type { Command } from "commander";
 import { environmentSchema } from "@bb/domain";
-import type { CliValues } from "@bb/operations";
 import {
   commitActionResponseSchema,
   updateEnvironmentRequestSchema,
   type UpdateEnvironmentRequest,
 } from "@bb/server-contract";
+import { arg, flag, JSON_FLAG_DESCRIPTION } from "../cli-door.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import {
   clientCommand,
@@ -79,23 +78,17 @@ function booleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
 }
 
-type Options = CliValues["options"];
-
-function text(options: Options, flag: string): string | undefined {
-  const value = options[flag];
-  return typeof value === "string" ? value : undefined;
-}
-
-function idOf(values: CliValues): string {
-  const value = values.positionals.id;
-  return typeof value === "string" ? value : "";
-}
-
-function environmentUpdateRequest(options: Options): UpdateEnvironmentRequest {
-  const mergeBaseBranch = text(options, "merge-base-branch");
-  const name = text(options, "name");
-  const clearMergeBaseBranch = options["clear-merge-base-branch"] === true;
-  const clearName = options["clear-name"] === true;
+function environmentUpdateRequest({
+  mergeBaseBranch,
+  clearMergeBaseBranch,
+  name,
+  clearName,
+}: {
+  mergeBaseBranch: string | undefined;
+  clearMergeBaseBranch: boolean;
+  name: string | undefined;
+  clearName: boolean;
+}): UpdateEnvironmentRequest {
   if (mergeBaseBranch !== undefined && clearMergeBaseBranch) {
     throw new Error(
       "Cannot combine --merge-base-branch with --clear-merge-base-branch.",
@@ -121,42 +114,42 @@ function environmentUpdateRequest(options: Options): UpdateEnvironmentRequest {
   return updateEnvironmentRequestSchema.parse(request);
 }
 
-const ID_POSITIONAL = [{ name: "id" }] as const;
+const ID_POSITIONAL = { id: arg("<id>") };
 
 export const environmentCommands = [
   publicCommand("environments.cleanup", {
     path: ["environment", "cleanup"],
     summary: "Clean up an unused provider-managed environment",
     positionals: ID_POSITIONAL,
-    options: [
-      flag(
+    options: {
+      recover: flag(
         "--recover",
         "After inspection, acknowledge interrupted hooks and retry failed cleanup (Linux, same-user cwd/maps guard; inspect other users separately)",
       ),
-    ],
-    prepare: (values) => ({
-      id: idOf(values),
-      recover: booleanQueryValue(values.options.recover === true),
+    },
+    prepare: ({ positionals, options }) => ({
+      id: positionals.id,
+      recover: booleanQueryValue(options.recover),
     }),
     print: () => "Environment cleanup requested.",
   }),
   publicCommand("system.environmentProviders", {
     path: ["environment", "providers"],
     summary: "List registered environment providers",
-    options: [
-      flag(
+    options: {
+      project: flag(
         "--project <id>",
         "List structurally eligible providers for this project",
       ),
-      flag("--machine <id-or-name>", "Scope eligibility to this machine"),
-      flag("--host <id-or-name>", "Alias for --machine"),
-    ],
-    prepare: async (values, client) => {
-      const project = text(values.options, "project");
-      const machineTarget = resolveMachineTargetOption({
-        machine: text(values.options, "machine"),
-        host: text(values.options, "host"),
-      });
+      machine: flag(
+        "--machine <id-or-name>",
+        "Scope eligibility to this machine",
+      ),
+      host: flag("--host <id-or-name>", "Alias for --machine"),
+    },
+    prepare: async ({ options }, client) => {
+      const project = options.project;
+      const machineTarget = resolveMachineTargetOption(options);
       if (machineTarget !== undefined && project === undefined) {
         throw new Error("--machine or --host requires --project <id>.");
       }
@@ -197,43 +190,32 @@ export const environmentCommands = [
   publicCommand("environments.list", {
     path: ["environment", "list"],
     summary: "List environments, including destroyed ones when requested",
-    options: [
-      flag("--project <id>", "Only environments in this project"),
-      flag(
+    options: {
+      project: flag("--project <id>", "Only environments in this project"),
+      provider: flag(
         "--provider <id>",
         "Only environments produced by this environment provider",
       ),
-      flag("--host <id-or-name>", "Only environments on this machine"),
-      flag(
+      host: flag("--host <id-or-name>", "Only environments on this machine"),
+      instanceKey: flag(
         "--instance-key <key>",
         "Only the environment its provider named with this instance key",
       ),
-      flag(
+      status: flag(
         "--status <status>",
         "Only environments in this status: provisioning, ready, error, destroyed",
       ),
-      flag("--limit <n>", "At most this many rows, oldest first"),
-      flag("--offset <n>", "Skip this many rows"),
-    ],
-    prepare: async (values, client) => {
-      const { options } = values;
-      const limit = parseNonNegativeIntegerOption(
-        text(options, "limit"),
-        "--limit",
-      );
-      const offset = parseNonNegativeIntegerOption(
-        text(options, "offset"),
-        "--offset",
-      );
-      const host = text(options, "host");
+      limit: flag("--limit <n>", "At most this many rows, oldest first"),
+      offset: flag("--offset <n>", "Skip this many rows"),
+    },
+    prepare: async ({ options }, client) => {
+      const limit = parseNonNegativeIntegerOption(options.limit, "--limit");
+      const offset = parseNonNegativeIntegerOption(options.offset, "--offset");
+      const { host, project, provider, instanceKey, status } = options;
       const hostId =
         host === undefined
           ? undefined
           : await resolveMachineHostId({ serverUrl: client.url, target: host });
-      const project = text(options, "project");
-      const provider = text(options, "provider");
-      const instanceKey = text(options, "instance-key");
-      const status = text(options, "status");
       return {
         ...(project ? { projectId: project } : {}),
         ...(hostId === undefined ? {} : { hostId }),
@@ -253,46 +235,34 @@ export const environmentCommands = [
       ),
   }),
   clientCommand({
-    name: "cli.environment.delete",
-    kind: "write",
-    description:
-      "Request environment cleanup, then read its lifecycle for the human summary",
-    door: {
-      path: ["environment", "delete"],
-      summary:
-        "Request provider cleanup; refused while threads are live or stopping",
-      positionals: ID_POSITIONAL,
-      prepare: (values) => ({
-        id: idOf(values),
-        json: values.options.json === true,
-      }),
-      run: async (input, client) => {
-        const result = await client.call("environments.delete", {
-          id: input.id,
-        });
-        const environment = input.json
-          ? null
-          : environmentSchema.parse(
-              await client.call("environments.get", { id: input.id }),
-            );
-        return { result, environment };
-      },
-      json: (output) => output.result,
-      print: ({ environment }, input) =>
-        environment === null
-          ? null
-          : [
-              `Cleanup requested for environment ${input.id}.`,
-              `Lifecycle: ${environment.lifecycle.phase}`,
-            ],
+    path: ["environment", "delete"],
+    summary:
+      "Request provider cleanup; refused while threads are live or stopping",
+    positionals: ID_POSITIONAL,
+    options: { json: flag("--json", JSON_FLAG_DESCRIPTION) },
+    run: async ({ positionals: { id }, options }, client) => {
+      const result = await client.call("environments.delete", { id });
+      const environment = options.json
+        ? null
+        : environmentSchema.parse(
+            await client.call("environments.get", { id }),
+          );
+      return { result, environment };
     },
+    json: (output) => output.result,
+    print: ({ environment }, { positionals }) =>
+      environment === null
+        ? null
+        : [
+            `Cleanup requested for environment ${positionals.id}.`,
+            `Lifecycle: ${environment.lifecycle.phase}`,
+          ],
   }),
   publicCommand("environments.get", {
     path: ["environment", "show"],
     summary: "Show environment details",
     aliases: ["get"],
     positionals: ID_POSITIONAL,
-    prepare: (values) => ({ id: idOf(values) }),
     json: (output) => environmentSchema.parse(output),
     print: (output) => {
       const env = environmentSchema.parse(output);
@@ -333,21 +303,17 @@ export const environmentCommands = [
     path: ["environment", "paths"],
     summary: "Search an environment's files and directories",
     positionals: ID_POSITIONAL,
-    options: [
-      flag("--query <query>", "Fuzzy path query"),
-      flag("--limit <count>", "Maximum paths"),
-      flag("--files", "Include files"),
-      flag("--directories", "Include directories"),
-    ],
-    prepare: (values) => {
-      const { options } = values;
-      const limit = text(options, "limit");
+    options: {
+      query: flag("--query <query>", "Fuzzy path query"),
+      limit: flag("--limit <count>", "Maximum paths"),
+      files: flag("--files", "Include files"),
+      directories: flag("--directories", "Include directories"),
+    },
+    prepare: ({ positionals, options }) => {
+      const { query, limit, files, directories } = options;
       validateLimit(limit);
-      const files = options.files === true;
-      const directories = options.directories === true;
-      const query = text(options, "query");
       return {
-        id: idOf(values),
+        id: positionals.id,
         includeFiles: booleanQueryValue(files || !directories),
         includeDirectories: booleanQueryValue(directories || !files),
         ...(query !== undefined ? { query } : {}),
@@ -364,18 +330,21 @@ export const environmentCommands = [
     path: ["environment", "update"],
     summary: "Update environment metadata",
     positionals: ID_POSITIONAL,
-    options: [
-      flag(
+    options: {
+      mergeBaseBranch: flag(
         "--merge-base-branch <branch>",
         "Set the merge-base branch override",
       ),
-      flag("--clear-merge-base-branch", "Clear the merge-base branch override"),
-      flag("--name <name>", "Set the environment display name"),
-      flag("--clear-name", "Clear the environment display name"),
-    ],
-    prepare: (values) => ({
-      id: idOf(values),
-      ...environmentUpdateRequest(values.options),
+      clearMergeBaseBranch: flag(
+        "--clear-merge-base-branch",
+        "Clear the merge-base branch override",
+      ),
+      name: flag("--name <name>", "Set the environment display name"),
+      clearName: flag("--clear-name", "Clear the environment display name"),
+    },
+    prepare: ({ positionals, options }) => ({
+      id: positionals.id,
+      ...environmentUpdateRequest(options),
     }),
     print: (environment, input) => {
       const lines = [`Environment ${environment.id} updated`];
@@ -398,7 +367,7 @@ export const environmentCommands = [
     path: ["environment", "commit"],
     summary: "Commit changes in an environment",
     positionals: ID_POSITIONAL,
-    prepare: (values) => ({ id: idOf(values), action: "commit" as const }),
+    fixed: { action: "commit" },
     failure: (input) => `Failed to commit in environment ${input.id}`,
     json: (output) => commitActionResponseSchema.parse(output),
     print: (output) =>
@@ -408,7 +377,6 @@ export const environmentCommands = [
     path: ["environment", "archive-threads"],
     summary: "Archive every active thread in an environment",
     positionals: ID_POSITIONAL,
-    prepare: (values) => ({ id: idOf(values) }),
     print: (result, input) =>
       `Archived ${result.archivedThreadIds.length} thread(s) in environment ${input.id}`,
   }),

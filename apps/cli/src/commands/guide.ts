@@ -1,7 +1,7 @@
 import { Command } from "commander";
-import type { CliValues } from "@bb/operations";
 import { createGuideArea } from "@bb/sdk/node";
 import { CliUsageError } from "../action.js";
+import { arg } from "../cli-door.js";
 import { CORE_COMMAND_GROUPS } from "../command-groups.js";
 import { clientCommand, mountCommands } from "../operation-doors.js";
 
@@ -99,61 +99,39 @@ type GuideOutput =
   | { kind: "chapter"; rendered: GuideRender }
   | { kind: "overview"; content: string };
 
-interface GuideInput {
-  chapter: string | undefined;
-  group: string | undefined;
-}
-
-function positional(values: CliValues, name: string): string | undefined {
-  const value = values.positionals[name];
-  return typeof value === "string" ? value : undefined;
-}
-
-export const guideCommand = clientCommand<GuideInput, GuideOutput>({
-  name: "cli.guide",
-  kind: "read",
-  description: "Render the bb guide and command index locally",
-  door: {
-    path: ["guide"],
-    summary:
-      "Show the BB system overview and CLI guide; `bb guide commands [group]` lists every core command on one page",
-    positionals: [
-      { name: "chapter", required: false },
-      { name: "group", required: false },
-    ],
-    prepare: (values) => ({
-      chapter: positional(values, "chapter"),
-      group: positional(values, "group"),
-    }),
-    async run({ chapter, group }) {
-      if (chapter === "commands") {
-        return {
-          kind: "commands",
-          chapter,
-          group,
-          commands: await buildCommandIndex(group),
-        };
-      }
-      const rendered = createGuideArea().render({ chapter });
-      if (chapter) return { kind: "chapter", rendered };
-      return { kind: "overview", content: rendered.content };
-    },
-    json(output) {
-      if (output.kind === "commands") {
-        return { chapter: output.chapter, commands: output.commands };
-      }
-      if (output.kind === "chapter") return output.rendered;
-      return { overview: output.content };
-    },
-    print(output) {
-      if (output.kind === "chapter") return output.rendered.content;
-      if (output.kind === "overview") return output.content;
-      const lines = output.commands.map((entry) =>
-        formatCommandIndexLine(entry, output.group !== undefined),
-      );
-      if (output.group !== undefined) return lines.join("\n");
-      return `${lines.join("\n")}\n\nRun \`bb guide commands <group>\` (for example \`bb guide commands thread\`) to include every option. Commands contributed by plugins are listed by \`bb plugin list\`.`;
-    },
+export const guideCommand = clientCommand({
+  path: ["guide"],
+  summary:
+    "Show the BB system overview and CLI guide; `bb guide commands [group]` lists every core command on one page",
+  positionals: { chapter: arg("[chapter]"), group: arg("[group]") },
+  async run({ positionals: { chapter, group } }): Promise<GuideOutput> {
+    if (chapter === "commands") {
+      return {
+        kind: "commands",
+        chapter,
+        group,
+        commands: await buildCommandIndex(group),
+      };
+    }
+    const rendered = createGuideArea().render({ chapter });
+    if (chapter) return { kind: "chapter", rendered };
+    return { kind: "overview", content: rendered.content };
+  },
+  json(output) {
+    if (output.kind === "commands") {
+      return { chapter: output.chapter, commands: output.commands };
+    }
+    if (output.kind === "chapter") return output.rendered;
+    return { overview: output.content };
+  },
+  print(output) {
+    if (output.kind === "chapter") return output.rendered.content;
+    if (output.kind === "overview") return output.content;
+    const lines = output.commands.map((entry) =>
+      formatCommandIndexLine(entry, output.group !== undefined),
+    );
+    if (output.group !== undefined) return lines.join("\n");
+    return `${lines.join("\n")}\n\nRun \`bb guide commands <group>\` (for example \`bb guide commands thread\`) to include every option. Commands contributed by plugins are listed by \`bb plugin list\`.`;
   },
 });
 
