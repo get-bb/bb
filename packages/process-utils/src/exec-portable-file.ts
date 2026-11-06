@@ -83,24 +83,12 @@ async function execPortableFileUnbounded(
     forceKillAfterDelay: 1_000,
     reject: false,
   });
-  const diagnostic = args.includes("bb-delay");
-  const diagnosticStart = Date.now();
-  const trace = (stage: string) => {
-    if (diagnostic) console.error(JSON.stringify({ stage, pid: subprocess.pid, elapsed: Date.now() - diagnosticStart, exit: subprocess.exitCode, signal: subprocess.signalCode }));
-  };
-  trace("spawned");
-  subprocess.once("exit", () => trace("exit"));
-  subprocess.once("close", () => trace("close"));
   const stopProcess = createProcessStop(subprocess);
   let stopPromise: Promise<ProcessStopResult> | undefined;
   let canceled = false;
   let timedOut = false;
   function stop(): void {
-    trace("stop requested");
-    stopPromise ??= stopProcess({ gracePeriodMs: 1_000 }).then(result => {
-      trace(`stop ${result.treeTermination}`);
-      return result;
-    });
+    stopPromise ??= stopProcess({ gracePeriodMs: 1_000 });
     void stopPromise.catch(() => undefined);
   }
   const onAbort = (): void => {
@@ -141,7 +129,6 @@ async function execPortableFileUnbounded(
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", onAbort);
   });
-  trace("execa settled");
   await stopPromise;
   const output = {
     stdout: Buffer.from(result.stdout).toString("utf8"),
