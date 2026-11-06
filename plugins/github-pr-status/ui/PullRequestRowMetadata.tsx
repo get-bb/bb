@@ -17,6 +17,7 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
+  getPullRequestNextStep,
   type GithubCheckStatus,
 } from "./display";
 import { useRefetchOnShowAndFocus } from "./refetch-on-show";
@@ -53,26 +54,6 @@ function AttentionGlyph({ kind }: { kind: "blocked" | "running" }) {
   );
 }
 
-function pullRequestNumberClassName(pullRequest: PullRequest): string {
-  if (pullRequest.state === "draft") return "text-subtle-foreground";
-  const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
-  if (pullRequest.state !== "open") return state.className;
-  switch (pullRequest.attention) {
-    case "changes_requested":
-    case "conflicts":
-    case "blocked":
-      return "text-destructive-text";
-  }
-  switch (getPullRequestGithubCheckStatus(pullRequest)) {
-    case "failure":
-      return "text-warning-text";
-    case "pending":
-      return "text-timeline-accent";
-    default:
-      return state.className;
-  }
-}
-
 export function PullRequestBadge({
   pullRequest,
 }: {
@@ -82,20 +63,18 @@ export function PullRequestBadge({
   const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const checks = getPullRequestGithubCheckStatus(pullRequest);
   const counts = checks === null ? null : checkCounts(pullRequest);
-  const conflicts =
-    (pullRequest.state === "open" || pullRequest.state === "draft") &&
-    pullRequest.attention === "conflicts";
+  const nextStep = getPullRequestNextStep(pullRequest);
+  const action =
+    nextStep?.tone === "action" ? nextStep.label.toLowerCase() : null;
   const glyph =
-    conflicts || checks === "failure"
-      ? "blocked"
-      : checks === "pending"
-        ? "running"
-        : null;
+    action !== null ? "blocked" : checks === "pending" ? "running" : null;
   const label = [
-    `Pull request #${pullRequest.number}`,
-    state.label.toLowerCase(),
-    conflicts ? "conflicts" : null,
-    checks === null ? null : CHECKS_LABEL[checks],
+    ...new Set([
+      `Pull request #${pullRequest.number}`,
+      state.label.toLowerCase(),
+      action,
+      checks === null ? null : CHECKS_LABEL[checks],
+    ]),
   ]
     .filter((part) => part !== null)
     .join(", ");
@@ -107,7 +86,13 @@ export function PullRequestBadge({
       className="flex shrink-0 items-center gap-1 text-xs leading-3.5 tabular-nums"
       onPointerEnter={hovered ? undefined : () => setHovered(true)}
     >
-      <span className={pullRequestNumberClassName(pullRequest)}>
+      <span
+        className={
+          pullRequest.state === "draft"
+            ? "text-subtle-foreground"
+            : state.className
+        }
+      >
         #{pullRequest.number}
       </span>
       {glyph === null ? null : <AttentionGlyph kind={glyph} />}

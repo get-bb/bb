@@ -2,7 +2,7 @@ See the GitHub pull request for each thread's branch where you already work: a b
 
 ## What you get
 
-- A badge under each sidebar thread's title with the pull request's number in its state's color, followed by a yellow dot while checks run or a red cross when they fail or it has conflicts; hover it for the title and check counts. Turn on the Thread row metadata experiment, then Organize → Rows → Metadata.
+- A badge under each sidebar thread's title with the pull request's number in its state's color, followed by a red cross when it needs action (failing checks, changes requested, conflicts, behind its base or blocked by rules) or else a yellow dot while checks run; hover it for the title and check counts. Turn on the Thread row metadata experiment, then Organize → Rows → Metadata.
 - One rolled-up status per pull request: checks, review, conflicts, merge queue and auto-merge.
 - Ready for review, Convert to draft and Merge (merge, squash or rebase).
 - Live updates while you watch: pending checks are re-checked every 30 seconds and other open or draft PRs every 5 minutes, in one batched GitHub request per machine, and views refresh only when something changed.
