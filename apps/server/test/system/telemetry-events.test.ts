@@ -57,8 +57,10 @@ describe("client telemetry events", () => {
         },
         {
           name: "new_thread_blocker",
-          properties: { reason: "sign_in" },
+          properties: { reason: "sign_in", has_draft: false },
         },
+        { name: "new_thread_composer_viewed", properties: {} },
+        { name: "new_thread_draft_started", properties: {} },
         {
           name: "onboarding_operation",
           properties: {
@@ -226,7 +228,15 @@ describe("client telemetry events", () => {
         },
         {
           name: "new_thread_blocker",
-          properties: { reason: "sign_in", message: "Not signed in." },
+          properties: {
+            reason: "sign_in",
+            has_draft: true,
+            message: "Not signed in.",
+          },
+        },
+        {
+          name: "new_thread_draft_started",
+          properties: { text: "private prompt" },
         },
         {
           name: "recommendation",

@@ -315,8 +315,21 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
             "model_selection",
             "project_setup",
           ]),
+          has_draft: z.boolean(),
         })
         .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_composer_viewed"),
+      properties: z.object({}).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_draft_started"),
+      properties: z.object({}).strict(),
     })
     .strict(),
   z

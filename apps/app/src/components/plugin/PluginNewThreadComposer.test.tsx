@@ -23,6 +23,7 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sdk } from "@/lib/sdk";
 import type {
   ExperimentalComposerSelection,
   NewThreadRequest,
@@ -804,6 +805,58 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(new Set(surfaceStates.map((state) => state.promptDraft)).size).toBe(
       1,
     );
+  });
+
+  it("reports the composer view and the first draft once each", () => {
+    const record = vi.mocked(sdk.system.experimental_recordTelemetryEvent);
+    record.mockClear();
+    render(newThreadElement("proj_1"));
+    for (const text of ["h", "hi", ""]) {
+      act(() => {
+        latestPromptBoxProps().onChange(text, []);
+      });
+    }
+    const names = record.mock.calls.map(([event]) => event.name);
+    expect(
+      names.filter((name) => name === "new_thread_composer_viewed"),
+    ).toHaveLength(1);
+    expect(
+      names.filter((name) => name === "new_thread_draft_started"),
+    ).toHaveLength(1);
+  });
+
+  it("reports a blocker before the user types and again once a draft exists", async () => {
+    const record = vi.mocked(sdk.system.experimental_recordTelemetryEvent);
+    record.mockClear();
+    render(newThreadElement("proj_2"));
+    await act(async () => {
+      latestPromptBoxProps().modeConfig.environment.onSelectHost("host_2");
+    });
+    await waitFor(() => {
+      expect(record).toHaveBeenCalledWith({
+        name: "new_thread_blocker",
+        properties: { reason: "project_setup", has_draft: false },
+      });
+    });
+    act(() => {
+      latestPromptBoxProps().onChange("hello", []);
+    });
+    act(() => {
+      latestPromptBoxProps().onChange("hello again", []);
+    });
+    const blockers = record.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.name === "new_thread_blocker");
+    expect(blockers).toEqual([
+      {
+        name: "new_thread_blocker",
+        properties: { reason: "project_setup", has_draft: false },
+      },
+      {
+        name: "new_thread_blocker",
+        properties: { reason: "project_setup", has_draft: true },
+      },
+    ]);
   });
 
   it("forwards a requested mention menu placement to the prompt box", () => {
