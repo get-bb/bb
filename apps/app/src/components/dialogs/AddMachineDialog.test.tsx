@@ -21,6 +21,7 @@ import { Dialog, DialogContent } from "@bb/shared-ui/dialog";
 import {
   AddMachineContent,
   AddMachineInline,
+  MachineEnrollmentEndedError,
   ManualMachineSetup,
   QuickMachineSetupView,
 } from "./AddMachineDialog";
@@ -297,6 +298,65 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
   expect(sdk.hosts.delete).toHaveBeenCalledWith({ hostId: reservedHost.id });
   await screen.findByText("expired enrollment command");
   rendered.unmount();
+});
+
+it.each([
+  ["dialog", "ManualMachineSetup"],
+  ["inline", "AddMachineInline"],
+] as const)(
+  "reports enrollment failures from the %s setup but not its own close",
+  async (_surface, component) => {
+    const failure = new Error("Connection lost");
+    stubManualLaunch(() => {
+      vi.mocked(sdk.hosts.experimental_create).mockRejectedValueOnce(failure);
+    });
+    const onEnrollmentFailed = vi.fn();
+    const rendered = renderInDialog(
+      component === "AddMachineInline" ? (
+        <AddMachineInline onEnrollmentFailed={onEnrollmentFailed} />
+      ) : (
+        <ManualMachineSetup
+          serverMachineName={null}
+          onOpenChange={() => {}}
+          onEnrollmentFailed={onEnrollmentFailed}
+        />
+      ),
+    );
+    await waitFor(() =>
+      expect(onEnrollmentFailed).toHaveBeenCalledExactlyOnceWith(failure),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("bb machine enroll test");
+    rendered.unmount();
+    await waitFor(() => expect(sdk.hosts.delete).toHaveBeenCalled());
+    expect(onEnrollmentFailed).toHaveBeenCalledOnce();
+  },
+);
+
+it("reports a machine whose setup ended without connecting as ended", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const onEnrollmentFailed = vi.fn();
+  stubManualLaunch(() => {
+    vi.mocked(sdk.hosts.get).mockResolvedValue({
+      ...reservedHost,
+      connectMachineId: null,
+      threadStorageRootPath: null,
+      lifecycle: { ...reservedHost.lifecycle, phase: "destroyed" },
+    });
+  });
+  renderInDialog(
+    <ManualMachineSetup
+      serverMachineName={null}
+      onOpenChange={() => {}}
+      onEnrollmentFailed={onEnrollmentFailed}
+    />,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  expect(onEnrollmentFailed).toHaveBeenCalledExactlyOnceWith(
+    expect.any(MachineEnrollmentEndedError),
+  );
 });
 
 it("shows the enrollment command inline", async () => {

@@ -7,6 +7,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
+import { BbHttpError } from "@bb/sdk/browser";
 import type { SystemProviderState } from "@bb/server-contract";
 import { useCallback, type ReactNode } from "react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -61,6 +62,7 @@ function fakeTerminals() {
 function renderSignIns(
   concurrent: boolean,
   states: SystemProviderState[] = [provider("codex"), provider("claude-code")],
+  hostId: string | null = "host_1",
 ) {
   const terminals = fakeTerminals();
   const refetchStates = vi.fn();
@@ -69,7 +71,7 @@ function renderSignIns(
       useAgentSignIns({
         redesign: concurrent,
         entry: "first_run",
-        hostId: "host_1",
+        hostId,
         states: props.states,
         statesSettledAt: props.statesSettledAt,
         isLocalHost: () => true,
@@ -243,6 +245,90 @@ describe("useAgentSignIns", () => {
       await result.current.start("claude-code");
     });
     expect([...result.current.failedProviderIds]).toEqual(["codex"]);
+  });
+
+  describe.each([
+    ["the redesign", true],
+    ["today's guide", false],
+  ] as const)("telemetry in %s", (_variant, concurrent) => {
+    function recorded() {
+      return vi
+        .mocked(recordTelemetryEvent)
+        .mock.calls.map(([event]) => event.properties);
+    }
+
+    it("names the agent and records a non-zero exit as a failed command", async () => {
+      const states = [provider("codex"), provider("claude-code")];
+      const { result, rerender } = renderSignIns(concurrent, states);
+      await act(async () => {
+        await result.current.start("codex");
+      });
+      act(() => result.current.handleExit("codex", 1));
+      rerender({ states, statesSettledAt: settledAfterNow() });
+
+      expect(recorded()).toEqual([
+        { entry: "first_run", outcome: "started", resource_id: "codex" },
+        {
+          entry: "first_run",
+          outcome: "failed",
+          resource_id: "codex",
+          failure_reason: "command_failed",
+        },
+      ]);
+    });
+
+    it("records why the sign-in terminal could not be created", async () => {
+      const { result, terminals } = renderSignIns(concurrent);
+      vi.mocked(terminals.create).mockRejectedValueOnce(
+        new BbHttpError({
+          body: null,
+          code: "host_unavailable",
+          message: "Host is not connected",
+          status: 502,
+        }),
+      );
+      await act(async () => {
+        await result.current.start("codex");
+      });
+
+      expect(recorded()).toEqual([
+        { entry: "first_run", outcome: "started", resource_id: "codex" },
+        {
+          entry: "first_run",
+          outcome: "failed",
+          resource_id: "codex",
+          failure_reason: "host_unavailable",
+        },
+      ]);
+    });
+
+    it.each([
+      ["no_host", null, [provider("codex")]],
+      ["not_found", "host_1", []],
+      ["unsupported", "host_1", [provider("codex", { loginCommand: null })]],
+    ] as const)(
+      "records a sign-in that could not start as %s",
+      async (failureReason, hostId, states) => {
+        const { result, terminals } = renderSignIns(
+          concurrent,
+          [...states],
+          hostId,
+        );
+        await act(async () => {
+          await result.current.start("codex");
+        });
+
+        expect(terminals.create).not.toHaveBeenCalled();
+        expect(recorded()).toEqual([
+          {
+            entry: "first_run",
+            outcome: "failed",
+            resource_id: "codex",
+            failure_reason: failureReason,
+          },
+        ]);
+      },
+    );
   });
 
   it("shows the failed state when the sign-in exits cleanly before the agent is ready", async () => {

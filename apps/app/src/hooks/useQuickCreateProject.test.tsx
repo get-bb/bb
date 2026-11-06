@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   hosts: [] as Host[] | undefined,
   isLoadingHosts: false,
   mutate: vi.fn(),
+  pickerOptions: null as unknown,
   navigate: vi.fn(),
   onClose: vi.fn(),
   onOpen: vi.fn(),
@@ -34,23 +35,44 @@ vi.mock("@/hooks/queries/host-queries", async (importOriginal) => ({
 }));
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
-  useLocalPathPicker: () => ({
-    isAvailable: true,
-    hostId: "host_atum",
-    hostName: "atum",
-    openPathEntry: mocks.openPathEntry,
-    openPicker: mocks.openPicker,
-    platform: "linux",
-    projectPathDialog: {
-      isOpen: false,
-      onClose: mocks.onClose,
-      onOpen: mocks.onOpen,
-      onOpenChange: mocks.onOpenChange,
-      target: null,
-    },
-    submitProjectPath: vi.fn(),
-  }),
+  useLocalPathPicker: (options: unknown) => {
+    mocks.pickerOptions = options;
+    return {
+      isAvailable: true,
+      hostId: "host_atum",
+      hostName: "atum",
+      openPathEntry: mocks.openPathEntry,
+      openPicker: mocks.openPicker,
+      platform: "linux",
+      projectPathDialog: {
+        isOpen: false,
+        onClose: mocks.onClose,
+        onOpen: mocks.onOpen,
+        onOpenChange: mocks.onOpenChange,
+        target: null,
+      },
+      submitProjectPath: vi.fn(),
+    };
+  },
 }));
+
+function submitArgs() {
+  return mocks.pickerOptions as {
+    submit: (params: {
+      path: string;
+      hostId: string;
+      target: { kind: "create" };
+      closeDialog: () => void;
+    }) => void;
+  };
+}
+
+function mutateCallbacks() {
+  return mocks.mutate.mock.lastCall?.[1] as {
+    onSuccess: (project: { id: string }) => void;
+    onError: (error: unknown) => void;
+  };
+}
 
 vi.mock("@/lib/root-compose-selection", () => ({
   useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
@@ -85,6 +107,40 @@ describe("useQuickCreateProject", () => {
     act(() => result.current.openCreateDialog());
 
     expect(mocks.openPathEntry).toHaveBeenCalledWith({ kind: "create" });
+  });
+
+  it("reports a create opened with an observer as started, then its outcome", () => {
+    const { result } = renderHook(() => useQuickCreateProject());
+    const submit = () =>
+      submitArgs().submit({
+        path: "/home/me/notes",
+        hostId: "host_atum",
+        target: { kind: "create" },
+        closeDialog: vi.fn(),
+      });
+    const observer = { onStarted: vi.fn(), onSettled: vi.fn() };
+
+    act(() => result.current.openObservedCreateDialog(observer));
+    expect(mocks.openPathEntry).toHaveBeenCalledWith({ kind: "create" });
+    act(() => submit());
+    expect(observer.onStarted).toHaveBeenCalledOnce();
+    const failure = new Error("exists");
+    act(() => mutateCallbacks().onError(failure));
+    expect(observer.onSettled).toHaveBeenLastCalledWith({
+      outcome: "failed",
+      error: failure,
+    });
+
+    act(() => submit());
+    act(() => mutateCallbacks().onSuccess({ id: "prj_notes" }));
+    expect(observer.onSettled).toHaveBeenLastCalledWith({
+      outcome: "succeeded",
+    });
+    expect(observer.onStarted).toHaveBeenCalledTimes(2);
+
+    act(() => result.current.openCreateDialog());
+    act(() => submit());
+    expect(observer.onStarted).toHaveBeenCalledTimes(2);
   });
 
   it("exposes every machine for the dialog's picker", () => {

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { BbHttpError } from "@bb/sdk/browser";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
@@ -84,29 +85,42 @@ describe("onboarding project imports", () => {
     },
   );
 
-  it("records how many selected projects imported before a failure", async () => {
+  it("records how many selected projects imported before a failure and why it failed", async () => {
     createProject
       .mockResolvedValueOnce({ id: "proj_atlas-web" })
-      .mockRejectedValueOnce(new Error("exists"));
+      .mockRejectedValueOnce(
+        new BbHttpError({
+          body: null,
+          code: "host_unavailable",
+          message: "Host is not connected",
+          status: 502,
+        }),
+      );
     const view = arrange();
     await act(() => view.result.current.importProjects("host_local", repos));
     expect(
       vi
         .mocked(recordTelemetryEvent)
         .mock.calls.map(([event]) => event.properties),
-    ).toEqual(
-      [
-        ["started", 0],
-        ["failed", 1],
-      ].map(([outcome, succeeded]) => ({
+    ).toEqual([
+      {
         entry: "first_run",
         step: "projects",
         operation: "import",
-        outcome,
+        outcome: "started",
         item_count: 3,
-        succeeded_count: succeeded,
-      })),
-    );
+        succeeded_count: 0,
+      },
+      {
+        entry: "first_run",
+        step: "projects",
+        operation: "import",
+        outcome: "failed",
+        item_count: 3,
+        succeeded_count: 1,
+        failure_reason: "host_unavailable",
+      },
+    ]);
   });
 
   it("does not preselect imports when the setup guide is replayed", async () => {

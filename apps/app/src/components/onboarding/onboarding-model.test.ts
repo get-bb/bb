@@ -4,6 +4,7 @@ import type {
   ServerAccessStatus,
   SystemProviderState,
 } from "@bb/server-contract";
+import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { describe, expect, it } from "vitest";
 import {
   agentContinueDisabled,
@@ -15,7 +16,9 @@ import {
   defaultSelectedRepoPaths,
   skippedStepIds,
   hasReadyAgent,
+  operationFailureReason,
   parseSignInOutput,
+  projectsPrimaryAction,
   resolveAgentSetupState,
   setupGuidePlanHealth,
   resolveSignInCommand,
@@ -582,6 +585,40 @@ describe("parseSignInOutput", () => {
   });
 });
 
+describe("operationFailureReason", () => {
+  it.each([
+    ["host_unavailable", 502, "host_unavailable"],
+    ["command_timeout", 502, "timed_out"],
+    [null, 504, "timed_out"],
+    ["project_not_found", 404, "not_found"],
+    ["unauthorized", 401, "permission"],
+    ["forbidden", 403, "permission"],
+    ["project_not_found", 502, "other"],
+    [null, 500, "other"],
+  ] as const)(
+    "maps the %s error code with status %s to %s",
+    (code, status, reason) => {
+      expect(
+        operationFailureReason(
+          new BbHttpError({ body: null, code, message: "failed", status }),
+        ),
+      ).toBe(reason);
+    },
+  );
+
+  it("reports a request that ran out of time as timed out", () => {
+    expect(operationFailureReason(new BbRequestTimeoutError(30_000))).toBe(
+      "timed_out",
+    );
+  });
+
+  it("reports errors without an HTTP status as other", () => {
+    expect(operationFailureReason(new TypeError("Failed to fetch"))).toBe(
+      "other",
+    );
+  });
+});
+
 const PI_AUTH_URL =
   "https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=MXdVe-PfEWSN";
 const PI_CHANGELOG_URL = "https://pi.dev/changelog";
@@ -655,6 +692,47 @@ describe("skippedStepIds", () => {
         ),
       ].sort(),
     ).toEqual(["agent", "plugins"]);
+  });
+});
+
+describe("projectsPrimaryAction", () => {
+  const atOpen = new Set(["prj_existing"]);
+
+  it("imports the selection", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 2,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("import");
+  });
+
+  it("completes the step when a folder was added during the guide", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing", "prj_added_folder"],
+      }),
+    ).toBe("completed");
+  });
+
+  it("skips the step when nothing was selected or added, counting earlier projects as not added", () => {
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: atOpen,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
+    expect(
+      projectsPrimaryAction({
+        selectedCount: 0,
+        existingProjectIds: null,
+        projectIds: ["prj_existing"],
+      }),
+    ).toBe("skipped");
   });
 });
 

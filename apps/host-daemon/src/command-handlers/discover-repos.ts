@@ -31,6 +31,7 @@ const SKIP_DIRECTORY_PREFIXES = ["tmp-", "tmp_"];
 const ACTIVITY_MARKERS = ["HEAD", "index", join("logs", "HEAD")];
 const WALK_BUDGET_MS = 3_000;
 const WALK_CONCURRENCY = 32;
+const PERMISSION_ERROR_CODES = new Set(["EACCES", "EPERM"]);
 const MS_PER_DAY = 86_400_000;
 
 interface FoundRepo {
@@ -114,13 +115,31 @@ function createLimiter(limit: number) {
   };
 }
 
+function isPermissionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    PERMISSION_ERROR_CODES.has(error.code)
+  );
+}
+
 async function walkForRepos(
   root: string,
   maxDepth: number,
   deadline: number,
-): Promise<{ repos: FoundRepo[]; truncated: boolean }> {
+): Promise<{
+  repos: FoundRepo[];
+  truncated: boolean;
+  unreadableCount: number;
+}> {
   const repos: FoundRepo[] = [];
   let truncated = false;
+  let unreadableCount = 0;
+  const countUnreadable = (error: unknown): null => {
+    if (isPermissionError(error)) unreadableCount += 1;
+    return null;
+  };
   const limitOpenDirectories = createLimiter(WALK_CONCURRENCY);
 
   const readDirectory = async (
@@ -130,7 +149,13 @@ async function walkForRepos(
     children: string[];
     gitMarker: "directory" | "file" | null;
   } | null> => {
-    const handle = await withDeadline(opendir(dir), deadline, closeLateDir);
+    const handle = await withDeadline(
+      opendir(dir).catch(countUnreadable),
+      deadline,
+      (lateHandle) => {
+        if (lateHandle !== null) closeLateDir(lateHandle);
+      },
+    );
     if (handle === null) {
       if (Date.now() > deadline) truncated = true;
       return null;
@@ -158,8 +183,8 @@ async function walkForRepos(
         }
         children.push(entry.name);
       }
-    } catch {
-      return null;
+    } catch (error) {
+      return countUnreadable(error);
     }
     return { children, gitMarker };
   };
@@ -194,7 +219,7 @@ async function walkForRepos(
   };
 
   await walk(root, 0);
-  return { repos, truncated };
+  return { repos, truncated, unreadableCount };
 }
 
 async function readOriginUrl(repoPath: string): Promise<string | null> {
@@ -216,7 +241,7 @@ export async function discoverRepos(
 ): Promise<DiscoverReposResult> {
   const home = args.home ?? homedir();
   const now = args.now ?? Date.now();
-  const { repos, truncated } = await walkForRepos(
+  const { repos, truncated, unreadableCount } = await walkForRepos(
     home,
     args.maxDepth,
     Date.now() + (args.walkBudgetMs ?? WALK_BUDGET_MS),
@@ -238,5 +263,6 @@ export async function discoverRepos(
       })),
     ),
     truncated,
+    unreadableCount,
   };
 }

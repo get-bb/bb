@@ -765,6 +765,151 @@ describe("connect settings section", () => {
       }),
     );
   });
+
+  it("reports setup started when sign-in starts, not when the section opens", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    const signIn = await slot.findByRole("button", {
+      name: "Sign in to your bb account",
+    });
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.click(signIn);
+    await slot.findByText("K7QP-2M4X");
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+  });
+
+  it("reports setup started again when a failed sign-in is retried", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({
+        login: pendingLogin("denied"),
+        status: signedInAccount,
+      }),
+    });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Sign in to your bb account" }),
+    );
+    const retry = await slot.findByRole(
+      "button",
+      { name: "Try again" },
+      { timeout: 4_000 },
+    );
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+    fireEvent.click(retry);
+    expect(onSetupStarted).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports setup started when a pairing code is submitted or remote access is turned on", async () => {
+    const onSetupStarted = vi.fn();
+    const account = fakeAccountSdk({ redeemCode: () => signedInAccount });
+    const unpaired = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+    fireEvent.click(
+      await unpaired.findByRole("button", { name: "Have a pairing code?" }),
+    );
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.change(unpaired.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+    await waitFor(() => expect(onSetupStarted).toHaveBeenCalledOnce());
+    cleanup();
+
+    onSetupStarted.mockClear();
+    const off = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupStarted: onSetupStarted },
+      {
+        rpc: {
+          status: () => connected({ enabled: false, state: "disconnected" }),
+          setRemoteAccess: () => connected({ state: "reconnecting" }),
+        },
+      },
+    );
+    const turnOn = await off.findByRole("button", { name: "Turn on" });
+    expect(onSetupStarted).not.toHaveBeenCalled();
+    fireEvent.click(turnOn);
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+  });
+
+  it("reports which setup stage failed when the setup guide renders the section", async () => {
+    const onSetupFailed = vi.fn();
+    const account = fakeAccountSdk({
+      "login.start": () => {
+        throw new Error("HTTP 500: profile_unavailable");
+      },
+      redeemCode: () => {
+        throw new Error("HTTP 500: expired_code");
+      },
+    });
+    const unpaired = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupFailed: onSetupFailed },
+      { sdk: account.sdk, rpc: { status: () => status() } },
+    );
+    fireEvent.click(
+      await unpaired.findByRole("button", {
+        name: "Sign in to your bb account",
+      }),
+    );
+    await waitFor(() =>
+      expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("sign_in"),
+    );
+    fireEvent.click(
+      unpaired.getByRole("button", { name: "Have a pairing code?" }),
+    );
+    fireEvent.change(unpaired.getByLabelText("Pairing code"), {
+      target: { value: "k7qp-2m4x" },
+    });
+    await waitFor(() =>
+      expect(onSetupFailed).toHaveBeenLastCalledWith("pairing"),
+    );
+    cleanup();
+
+    onSetupFailed.mockClear();
+    const off = renderSlot(
+      app.settingsSections[0]!,
+      { internal_DO_NOT_USE_onSetupFailed: onSetupFailed },
+      {
+        rpc: {
+          status: () => connected({ enabled: false, state: "disconnected" }),
+          setRemoteAccess: () => {
+            throw new Error("Remote access is unavailable right now.");
+          },
+        },
+      },
+    );
+    fireEvent.click(await off.findByRole("button", { name: "Turn on" }));
+    await waitFor(() =>
+      expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("turn_on"),
+    );
+  });
 });
 
 describe("Connect settings realtime recovery", () => {
@@ -869,7 +1014,7 @@ describe("connect setup guide section", () => {
   it("offers only Set up while bb connect is off", async () => {
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       { rpc: { status: () => status() } },
     );
 
@@ -886,13 +1031,14 @@ describe("connect setup guide section", () => {
   });
 
   it("starts sign-in from Set up, opens getbb.app, and shows only the getbb.app link without a code or a Cancel", async () => {
+    const onSetupStarted = vi.fn();
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
     });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted, onSetupFailed: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -902,6 +1048,7 @@ describe("connect setup guide section", () => {
 
     fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
     await slot.findByRole("link", { name: "getbb.app" });
+    expect(onSetupStarted).toHaveBeenCalledOnce();
     expect(slot.navigateCalls).toContainEqual({
       method: "openUrl",
       url: "https://getbb.app/link?code=K7QP-2M4X",
@@ -935,7 +1082,7 @@ describe("connect setup guide section", () => {
     });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -977,6 +1124,7 @@ describe("connect setup guide section", () => {
   });
 
   it("pairs with a code while sign-in is pending, cancels that sign-in, and shows bb connect is on", async () => {
+    const onSetupStarted = vi.fn();
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
@@ -988,7 +1136,7 @@ describe("connect setup guide section", () => {
     let currentStatus = status();
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted, onSetupFailed: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -1014,6 +1162,7 @@ describe("connect setup guide section", () => {
         input: { code: "K7QP-2M4X", baseUrl: null },
       }),
     );
+    expect(onSetupStarted).toHaveBeenCalledTimes(2);
     await slot.findByText("bb connect is on");
     expect(account.calls).toContainEqual({
       pluginId: "bb-account",
@@ -1039,7 +1188,7 @@ describe("connect setup guide section", () => {
       status();
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -1085,7 +1234,9 @@ describe("connect setup guide section", () => {
     expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
 
-  it("keeps the pending sign-in when a pairing code is rejected", async () => {
+  it("reports a rejected pairing code as a pairing failure and keeps the pending sign-in", async () => {
+    const onSetupStarted = vi.fn();
+    const onSetupFailed = vi.fn();
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
@@ -1095,7 +1246,7 @@ describe("connect setup guide section", () => {
     });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted, onSetupFailed },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -1111,6 +1262,10 @@ describe("connect setup guide section", () => {
       target: { value: "k7qp-2m4x" },
     });
 
+    await waitFor(() =>
+      expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("pairing"),
+    );
+    expect(onSetupStarted).toHaveBeenCalledTimes(2);
     await slot.findByText(/That code has expired\./u);
     slot.getByText(/Finish signing in on/u);
     expect(
@@ -1134,7 +1289,7 @@ describe("connect setup guide section", () => {
     });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -1166,6 +1321,7 @@ describe("connect setup guide section", () => {
   });
 
   it("shows why bb connect couldn't turn on after signing in", async () => {
+    const onSetupFailed = vi.fn();
     let currentStatus = status({ paired: false, enabled: false });
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
@@ -1176,7 +1332,7 @@ describe("connect setup guide section", () => {
     });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed },
       {
         openUrl: () => true,
         sdk: account.sdk,
@@ -1203,13 +1359,49 @@ describe("connect setup guide section", () => {
     ).toBeTruthy();
     expect(slot.queryByText(/Turning on bb connect/u)).toBeNull();
     slot.getByRole("button", { name: "Set up" });
+    expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("turn_on");
+  });
+
+  it("reports a sign-in that could not start or was denied as a sign-in failure", async () => {
+    const onSetupFailed = vi.fn();
+    let startFails = true;
+    const account = fakeAccountSdk({
+      "login.start": () => {
+        if (startFails) throw new Error("HTTP 500: profile_unavailable");
+        return pendingLogin();
+      },
+      "login.poll": () => ({
+        login: pendingLogin("denied"),
+        status: signedInAccount,
+      }),
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await waitFor(() =>
+      expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("sign_in"),
+    );
+    startFails = false;
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    await waitFor(() => expect(onSetupFailed).toHaveBeenCalledTimes(2), {
+      timeout: 4_000,
+    });
+    expect(onSetupFailed).toHaveBeenLastCalledWith("sign_in");
   });
 
   it("turns remote access back on when this bb is already signed in", async () => {
     let currentStatus = status({ paired: true, enabled: false });
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => currentStatus,
@@ -1235,7 +1427,7 @@ describe("connect setup guide section", () => {
   it("keeps the bb connect row once it is on, with the check under its icon and no bb cloud line", async () => {
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       { rpc: { status: () => connected() } },
     );
 
@@ -1260,7 +1452,7 @@ describe("connect setup guide section", () => {
     let consumed = false;
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => connected(),
@@ -1310,7 +1502,7 @@ describe("connect setup guide section", () => {
     let minted = 0;
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => connected(),
@@ -1339,7 +1531,7 @@ describe("connect setup guide section", () => {
     let minted = 0;
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => connected(),
@@ -1365,7 +1557,7 @@ describe("connect setup guide section", () => {
   it("shows one store QR at a time, then only the pairing code, and can go back", async () => {
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => connected(),
@@ -1408,7 +1600,7 @@ describe("connect setup guide section", () => {
   it("explains the device limit inline", async () => {
     const slot = renderSlot(
       section(),
-      { onPhone: false },
+      { onPhone: false, onSetupStarted: () => {}, onSetupFailed: () => {} },
       {
         rpc: {
           status: () => connected(),
@@ -1427,7 +1619,7 @@ describe("connect setup guide section", () => {
   it("hides the pairing steps on a phone", async () => {
     const slot = renderSlot(
       section(),
-      { onPhone: true },
+      { onPhone: true, onSetupStarted: () => {}, onSetupFailed: () => {} },
       { rpc: { status: () => connected() } },
     );
 
