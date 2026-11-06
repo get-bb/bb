@@ -48,16 +48,18 @@ bb plugin reload github
 ```
 
 A background service refreshes immediately on startup, then waits 15 minutes
-after each completed sync. Each tracked repository uses one bounded `gh api graphql`
-request per sweep, using the existing GitHub CLI authentication. It fetches
-100 open and 50 closed issues, plus 50 open and 30 closed or merged PRs,
-ordered by creation time descending. Labels and assignees are each limited to
-100 per item, matching the previous list commands. Repositories with Issues
-disabled still sync PRs. Failed or incomplete repository responses retain that
-repository’s cached rows.
+after each completed sync. Each tracked repository starts with one `gh api graphql`
+request, using the existing GitHub CLI authentication. It fetches open issues and
+open PRs in pages of 100, with up to 10 pages per open list. It keeps the newest
+1,000 items in each open list and logs a warning with the repository and list name
+when more remain. Closed history stays at 50 issues and 30 closed or merged PRs.
+All lists use creation time in descending order. Labels and assignees are each
+limited to 100 per item. Repositories with Issues disabled still sync PRs. A failed
+or incomplete page retains that repository’s cached rows.
 
-Batching reduces list-fetch process invocations from four to one per repository
-(75%). This does not measure GraphQL rate-limit point savings.
+Repositories whose open lists fit on one page use one list request per sync.
+Only open lists with more pages need further requests, up to 19 requests per
+repository in total.
 Background data may take 15 minutes plus sync time to refresh. The panel's
 Refresh button, the `refresh` RPC, or `bb github sync` starts a sync immediately.
 

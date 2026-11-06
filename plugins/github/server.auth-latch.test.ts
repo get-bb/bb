@@ -71,7 +71,7 @@ if (first === "--version" && second === undefined) {
     err("error connecting to api.github.com\\n");
     process.exit(1);
   }
-  out('{"data":{"repository":{"hasIssuesEnabled":true,"openIssues":{"nodes":[]},"closedIssues":{"nodes":[]},"openPrs":{"nodes":[]},"closedPrs":{"nodes":[]}}}}\\n');
+  out('{"data":{"repository":{"hasIssuesEnabled":true,"openIssues":{"nodes":[],"pageInfo":{"hasNextPage":false}},"closedIssues":{"nodes":[]},"openPrs":{"nodes":[],"pageInfo":{"hasNextPage":false}},"closedPrs":{"nodes":[]}}}}\\n');
 } else {
   out("[]\\n");
 }`,

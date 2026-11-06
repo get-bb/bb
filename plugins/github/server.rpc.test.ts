@@ -54,9 +54,9 @@ beforeEach(() => {
     data: {
       repository: {
         hasIssuesEnabled: true,
-        openIssues: { nodes: openIssue },
+        openIssues: { nodes: openIssue, pageInfo: { hasNextPage: false } },
         closedIssues: { nodes: [] },
-        openPrs: { nodes: openPull },
+        openPrs: { nodes: openPull, pageInfo: { hasNextPage: false } },
         closedPrs: { nodes: [] },
       },
     },
