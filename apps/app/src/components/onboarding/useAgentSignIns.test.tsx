@@ -9,14 +9,7 @@ import {
 import { act, renderHook } from "@testing-library/react";
 import type { SystemProviderState } from "@bb/server-contract";
 import { useCallback, type ReactNode } from "react";
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
 import {
@@ -363,6 +356,26 @@ describe("useAgentSignIns", () => {
     expect([...result.current.failedProviderIds]).toEqual(["codex"]);
     expect(recordedOutcomes()).toEqual(["started", "ready"]);
   });
+
+  it.each([
+    ["the redesign", true, false],
+    ["today's guide, as on main", false, true],
+  ] as const)(
+    "polls provider states while signing in, in %s",
+    async (_variant, redesign, cancelRefetch) => {
+      vi.useFakeTimers();
+      const { result, refetchStates } = renderSignIns(redesign);
+      await act(async () => {
+        await result.current.start("codex");
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+
+      expect(refetchStates).toHaveBeenCalledExactlyOnceWith({ cancelRefetch });
+    },
+  );
 
   it("settles an exited sign-in on one slow provider-states response without aborting it", async () => {
     vi.useFakeTimers();
