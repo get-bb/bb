@@ -25,6 +25,11 @@ describe("retiredSdkMemberWarnings", () => {
       "const { diffFiles, diffBranches: branches, list } = bb.sdk.environments;",
       ["diffBranches", "diffFiles"],
     ],
+    [
+      "the Viewed methods",
+      "await sdk.environments.experimental_markDiffViewed(args); const { experimental_diffViewed } = bb.sdk.environments;",
+      ["experimental_diffViewed", "experimental_markDiffViewed"],
+    ],
   ])("flags %s", (_label, source, names) => {
     expect(retiredNames(source)).toEqual(names);
   });

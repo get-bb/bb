@@ -38,7 +38,10 @@ import {
 } from "@/lib/plugin-slots";
 import { resolveThreadMentionDropTarget } from "@/lib/thread-mention-drop";
 import { registerComposerPlugin } from "@/test/fixtures/composer-plugin";
-import { registerMinimalComposer } from "@/test/fixtures/minimal-composer";
+import {
+  minimalComposerLastRender,
+  registerMinimalComposer,
+} from "@/test/fixtures/minimal-composer";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { createInertScrollPositionKeeper } from "@/test/scroll-position-keeper";
 import { testTypeaheadConfig } from "@/test/fixtures/composer-search";
@@ -458,6 +461,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe.each(SURFACES)("retired renderer members in the $name", (surface) => {
+  it("still match useComposer() for composers built before their removal", async () => {
+    registerMinimalComposer();
+    renderSurface(surface);
+    await composerBox();
+    const { renderer, composer } = minimalComposerLastRender;
+    expect(composer).not.toBeNull();
+    expect(Reflect.get(renderer ?? {}, "key")).toBe(composer?.key);
+    expect(Reflect.get(renderer ?? {}, "view")).toMatchObject({
+      scope: composer?.scope,
+    });
+  });
+});
+
 describe.each(COMPOSERS)("$name", (composer) => {
   beforeEach(async () => {
     await composer.register();
@@ -572,6 +589,9 @@ describe.each(COMPOSERS)("$name", (composer) => {
       );
       expect(rejected).toBe(surface.pluginSubmit === "rejects");
       if (surface.pluginSubmit === "rejects") {
+        await expect(handle.submit()).rejects.toThrow(
+          "This composer cannot submit programmatically.",
+        );
         expect(onSubmit).not.toHaveBeenCalled();
         expect(onModifierSubmit).not.toHaveBeenCalled();
         return;

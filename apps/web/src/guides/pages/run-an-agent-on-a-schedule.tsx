@@ -344,7 +344,7 @@ export const guide: Guide = {
     },
   ],
   closer: {
-    title: "Have the report ready by morning",
+    title: "Have the report ready by morning.",
     body: "Free and open source. Use the agents and machines you already have.",
   },
 };

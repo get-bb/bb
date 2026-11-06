@@ -15,9 +15,13 @@ import { gitPriority, withGitPriority } from "./host/git.js";
 import type {
   WorkspaceResolutionFailure,
 } from "bb-environment-provider-host/git-types";
-import { listBranchOptions } from "bb-environment-provider-host/branch-options";
+import {
+  listBranchOptions,
+  refreshRemoteBranches,
+} from "bb-environment-provider-host/branch-options";
 import {
   detectGitRepo,
+  readGitRepo,
   workspaceResolutionFailureFromError,
 } from "bb-environment-provider-host/workspace-git";
 
@@ -210,10 +214,21 @@ export default experimental_defineHostEntry({
           path,
           limit,
           priority: "interactive",
-          remoteRefresh: "background",
+          remoteRefresh: "none",
           ...(query === undefined ? {} : { query }),
           ...(selectedBranch === undefined ? {} : { selectedBranch }),
         }),
       ),
+    fetchRemoteBranches: ({ path }) => {
+      const options = { priority: "interactive" } as const;
+      void readGitRepo(path, options)
+        .then((repo) =>
+          repo === null
+            ? undefined
+            : refreshRemoteBranches(repo, options, "background"),
+        )
+        .catch(() => undefined);
+      return Promise.resolve({ ok: true as const });
+    },
   },
 });

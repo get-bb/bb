@@ -1,21 +1,20 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONNECT_CODE_TTL_MS,
   MAX_PER_ACCOUNT,
   connectCode,
   resolveServerCredential,
-  schema,
+  type ConnectDb,
   server,
   sha256Hex,
   user,
+  first,
 } from "@bb/connect-db";
-import {
-  connectDbMigrationFiles,
-  readConnectDbMigration,
-} from "@bb/connect-db/testing";
 import {
   LINK_EXPIRED_ROW_PRUNE_LIMIT,
   LINK_DELIVERY_GRACE_MS,
@@ -39,19 +38,15 @@ import {
   redeemConnectCode,
 } from "./api.js";
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let database: TestConnectDb;
+let db: ConnectDb;
 let closeTunnel: ReturnType<typeof vi.fn<(label: string) => Promise<void>>>;
 let deps: Deps;
 const T0 = Date.UTC(2026, 8, 22, 12);
 
-beforeEach(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of connectDbMigrationFiles()) {
-    sqlite.exec(readConnectDbMigration(file));
-  }
-  db = drizzle(sqlite, { schema });
+beforeEach(async () => {
+  database = await createTestConnectDb();
+  db = database.db;
   closeTunnel = vi.fn<(label: string) => Promise<void>>(async () => {});
   deps = {
     db,
@@ -62,27 +57,25 @@ beforeEach(() => {
   };
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
 
-function seedUser(
+async function seedUser(
   id: string,
   over: { githubLogin?: string; image?: string } = {},
-): void {
+): Promise<void> {
   const now = new Date();
-  db.insert(user)
-    .values({
-      id,
-      name: `Name ${id}`,
-      email: `${id}@example.com`,
-      emailVerified: true,
-      image: over.image ?? null,
-      githubLogin: over.githubLogin ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  await db.insert(user).values({
+    id,
+    name: `Name ${id}`,
+    email: `${id}@example.com`,
+    emailVerified: true,
+    image: over.image ?? null,
+    githubLogin: over.githubLogin ?? null,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 const ORIGIN = { clientIp: "203.0.113.7", location: "Lisbon, Portugal" };
@@ -113,26 +106,32 @@ async function start(now = T0) {
   return started.body;
 }
 
-function linkRow(code: string) {
-  return db.select().from(connectCode).where(eq(connectCode.code, code)).get();
+async function linkRow(code: string) {
+  return await first(
+    db.select().from(connectCode).where(eq(connectCode.code, code)).limit(1),
+  );
 }
 
-function currentOwner(serverId: string) {
-  const row = db
-    .select({ credentialHash: server.credentialHash })
-    .from(server)
-    .where(eq(server.id, serverId))
-    .get();
+async function currentOwner(serverId: string) {
+  const row = await first(
+    db
+      .select({ credentialHash: server.credentialHash })
+      .from(server)
+      .where(eq(server.id, serverId))
+      .limit(1),
+  );
   if (!row?.credentialHash) throw new Error(`${serverId} is not paired`);
   return { id: serverId, credentialHash: row.credentialHash };
 }
 
-function primaryServerId(userId: string): string {
-  const row = db
-    .select({ id: server.id })
-    .from(server)
-    .where(eq(server.userId, userId))
-    .get();
+async function primaryServerId(userId: string): Promise<string> {
+  const row = await first(
+    db
+      .select({ id: server.id })
+      .from(server)
+      .where(eq(server.userId, userId))
+      .limit(1),
+  );
   if (!row) throw new Error("no server");
   return row.id;
 }
@@ -148,7 +147,7 @@ describe("startServerLink", () => {
     expect(started.expiresAt).toBe(T0 + CONNECT_CODE_TTL_MS);
     expect(started.intervalMs).toBe(LINK_POLL_INTERVAL_MS);
 
-    expect(linkRow(started.userCode)).toMatchObject({
+    expect(await linkRow(started.userCode)).toMatchObject({
       purpose: "server-link",
       userId: null,
       serverId: null,
@@ -171,10 +170,12 @@ describe("startServerLink", () => {
   it("strips control and bidi-control characters from the client name", async () => {
     const started = await startWith(" \u202ebb\u0007 desktop\u2066\u200f\n");
     if (started.status !== 200) throw new Error("link start failed");
-    expect(linkRow(started.body.userCode)?.clientName).toBe("bb desktop");
+    expect((await linkRow(started.body.userCode))?.clientName).toBe(
+      "bb desktop",
+    );
     const apostrophe = await startWith("Sawyer’s MacBook Pro");
     if (apostrophe.status !== 200) throw new Error("link start failed");
-    expect(linkRow(apostrophe.body.userCode)?.clientName).toBe(
+    expect((await linkRow(apostrophe.body.userCode))?.clientName).toBe(
       "Sawyer’s MacBook Pro",
     );
   });
@@ -187,7 +188,7 @@ describe("startServerLink", () => {
       T0,
     );
     expect(refused).toEqual({ status: 429, body: { error: "rate-limited" } });
-    expect(db.select().from(connectCode).all()).toHaveLength(0);
+    expect(await db.select().from(connectCode)).toHaveLength(0);
     const admitted = await startServerLink(
       limited,
       { clientName: "bb", clientIp: "203.0.113.7", location: null },
@@ -198,7 +199,7 @@ describe("startServerLink", () => {
   });
 
   it("prunes a bounded batch of long-expired, unapproved link requests", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const staleAt =
       T0 - LINK_EXPIRED_ROW_RETENTION_MS - CONNECT_CODE_TTL_MS - 1;
@@ -211,18 +212,16 @@ describe("startServerLink", () => {
       deps,
       "u1",
       approvedOld.userCode,
-      { kind: "existing", serverId: primaryServerId("u1") },
+      { kind: "existing", serverId: await primaryServerId("u1") },
       staleAt,
     );
     const recentlyExpired = await start(T0 - CONNECT_CODE_TTL_MS - 1);
 
     const fresh = await start(T0);
 
-    const remaining = db
-      .select({ code: connectCode.code })
-      .from(connectCode)
-      .all()
-      .map((row) => row.code);
+    const remaining = (
+      await db.select({ code: connectCode.code }).from(connectCode)
+    ).map((row) => row.code);
     expect(remaining).toHaveLength(3 + 3);
     expect(remaining).toEqual(
       expect.arrayContaining([
@@ -271,7 +270,7 @@ describe("linkRequestOrigin", () => {
 
 describe("link flow", () => {
   it("goes pending, then approved with a new server", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
 
@@ -346,13 +345,13 @@ describe("link flow", () => {
   });
 
   it("replaces an existing server's credential only after the code is typed", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
-    db.update(server)
+    const primary = await primaryServerId("u1");
+    await db
+      .update(server)
       .set({ credentialHash: await sha256Hex("bbcred_old") })
-      .where(eq(server.id, primary))
-      .run();
+      .where(eq(server.id, primary));
     const started = await start();
 
     expect(
@@ -373,7 +372,7 @@ describe("link flow", () => {
         T0,
       ),
     ).toEqual({ error: "code-mismatch" });
-    expect(linkRow(started.userCode)?.approvedAt).toBeNull();
+    expect((await linkRow(started.userCode))?.approvedAt).toBeNull();
     expect(
       await approveServerLink(
         deps,
@@ -403,7 +402,7 @@ describe("link flow", () => {
   });
 
   it("lets a user without a handle claim one before approving", async () => {
-    seedUser("u1", { githubLogin: "Sawyer-Hood" });
+    await seedUser("u1", { githubLogin: "Sawyer-Hood" });
     const started = await start();
 
     expect(
@@ -463,8 +462,8 @@ describe("link flow", () => {
   });
 
   it("refuses a second approval, including from a different account", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     await claimHandle(deps, "u1", "sawyer");
     await claimHandle(deps, "u2", "mallory");
     const started = await start();
@@ -474,7 +473,7 @@ describe("link flow", () => {
         deps,
         "u1",
         started.userCode,
-        { kind: "existing", serverId: primaryServerId("u1") },
+        { kind: "existing", serverId: await primaryServerId("u1") },
         T0,
       ),
     ).toMatchObject({ ok: true });
@@ -483,7 +482,7 @@ describe("link flow", () => {
         deps,
         "u2",
         started.userCode,
-        { kind: "existing", serverId: primaryServerId("u2") },
+        { kind: "existing", serverId: await primaryServerId("u2") },
         T0,
       ),
     ).toEqual({ error: "used" });
@@ -506,17 +505,19 @@ describe("link flow", () => {
       ),
     ).toEqual({ error: "used" });
     expect(
-      db
-        .select()
-        .from(server)
-        .where(eq(server.subdomain, "mallory-steal"))
-        .get(),
+      await first(
+        db
+          .select()
+          .from(server)
+          .where(eq(server.subdomain, "mallory-steal"))
+          .limit(1),
+      ),
     ).toBeUndefined();
   });
 
   it("does not let an account approve onto another account's server", async () => {
-    seedUser("u1");
-    seedUser("u2");
+    await seedUser("u1");
+    await seedUser("u2");
     await claimHandle(deps, "u1", "sawyer");
     await claimHandle(deps, "u2", "mallory");
     const started = await start();
@@ -525,7 +526,7 @@ describe("link flow", () => {
         deps,
         "u2",
         started.userCode,
-        { kind: "existing", serverId: primaryServerId("u1") },
+        { kind: "existing", serverId: await primaryServerId("u1") },
         T0,
       ),
     ).toEqual({ error: "not-found" });
@@ -536,7 +537,7 @@ describe("link flow", () => {
   });
 
   it("still delivers a code approved before it expired", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
     await approveServerLink(
@@ -561,7 +562,7 @@ describe("link flow", () => {
   });
 
   it("stops delivering an approved code once the delivery grace after expiry has passed", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
     await approveServerLink(
@@ -582,9 +583,9 @@ describe("link flow", () => {
   });
 
   it("denies an approved, unpolled code once the server is disconnected and linked again", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
+    const primary = await primaryServerId("u1");
     const first = await start();
     await approveServerLink(
       deps,
@@ -609,18 +610,18 @@ describe("link flow", () => {
       throw new Error(`expected approval, got ${JSON.stringify(delivered)}`);
     }
 
-    expect(
-      await pollServerLink(deps, first.deviceCode, later + 5_000),
-    ).toEqual({ status: 403, body: { error: "denied" } });
+    expect(await pollServerLink(deps, first.deviceCode, later + 5_000)).toEqual(
+      { status: 403, body: { error: "denied" } },
+    );
     expect(
       (await resolveServerCredential(db, delivered.body.credential))?.server.id,
     ).toBe(primary);
   });
 
   it("denies an approved, unpolled code when another link replaces the server first", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
+    const primary = await primaryServerId("u1");
     const first = await start();
     const second = await start(T0 + 1);
     for (const started of [first, second]) {
@@ -647,9 +648,9 @@ describe("link flow", () => {
   });
 
   it("denies an approved, unpolled code when the dashboard pairs the server again", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
+    const primary = await primaryServerId("u1");
     const started = await start();
     await approveServerLink(
       deps,
@@ -673,9 +674,9 @@ describe("link flow", () => {
   });
 
   it("refuses to deliver when the server was disconnected after approval", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
+    const primary = await primaryServerId("u1");
     const started = await start();
     await approveServerLink(
       deps,
@@ -690,18 +691,20 @@ describe("link flow", () => {
       await pollServerLink(deps, started.deviceCode, T0 + CONNECT_CODE_TTL_MS),
     ).toEqual({ status: 403, body: { error: "denied" } });
     expect(
-      db.select().from(server).where(eq(server.id, primary)).get(),
+      await first(
+        db.select().from(server).where(eq(server.id, primary)).limit(1),
+      ),
     ).toMatchObject({ credentialHash: null, revokedAt: expect.any(Date) });
   });
 
   it("links a server that was disconnected before the approval", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
-    db.update(server)
+    const primary = await primaryServerId("u1");
+    await db
+      .update(server)
       .set({ revokedAt: new Date(T0 - 1) })
-      .where(eq(server.id, primary))
-      .run();
+      .where(eq(server.id, primary));
     const started = await start();
     await approveServerLink(
       deps,
@@ -720,7 +723,7 @@ describe("link flow", () => {
   });
 
   it("re-delivers a fresh credential when a poll response is lost", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
     await approveServerLink(
@@ -764,18 +767,20 @@ describe("link flow", () => {
   });
 
   it("does not re-deliver once the server was replaced or disconnected", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
-    const first = await start();
+    const primary = await primaryServerId("u1");
+    const earlier = await start();
     await approveServerLink(
       deps,
       "u1",
-      first.userCode,
+      earlier.userCode,
       { kind: "existing", serverId: primary },
       T0,
     );
-    expect((await pollServerLink(deps, first.deviceCode, T0)).status).toBe(200);
+    expect((await pollServerLink(deps, earlier.deviceCode, T0)).status).toBe(
+      200,
+    );
 
     const second = await start();
     await approveServerLink(
@@ -791,7 +796,11 @@ describe("link flow", () => {
     }
 
     expect(
-      await pollServerLink(deps, first.deviceCode, T0 + LINK_POLL_INTERVAL_MS),
+      await pollServerLink(
+        deps,
+        earlier.deviceCode,
+        T0 + LINK_POLL_INTERVAL_MS,
+      ),
     ).toEqual({ status: 409, body: { error: "already-used" } });
     expect(
       (await resolveServerCredential(db, replaced.body.credential))?.server.id,
@@ -802,12 +811,14 @@ describe("link flow", () => {
       await pollServerLink(deps, second.deviceCode, T0 + LINK_POLL_INTERVAL_MS),
     ).toEqual({ status: 403, body: { error: "denied" } });
     expect(
-      db.select().from(server).where(eq(server.id, primary)).get(),
+      await first(
+        db.select().from(server).where(eq(server.id, primary)).limit(1),
+      ),
     ).toMatchObject({ credentialHash: null });
   });
 
   it("expires after ten minutes for polling and approval", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
     const expired = T0 + CONNECT_CODE_TTL_MS;
@@ -826,7 +837,7 @@ describe("link flow", () => {
         deps,
         "u1",
         started.userCode,
-        { kind: "existing", serverId: primaryServerId("u1") },
+        { kind: "existing", serverId: await primaryServerId("u1") },
         expired,
       ),
     ).toEqual({ error: "expired" });
@@ -837,7 +848,7 @@ describe("link flow", () => {
   });
 
   it("reports denial to the polling bb", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start();
 
@@ -856,7 +867,7 @@ describe("link flow", () => {
         deps,
         "u1",
         started.userCode,
-        { kind: "existing", serverId: primaryServerId("u1") },
+        { kind: "existing", serverId: await primaryServerId("u1") },
         T0,
       ),
     ).toEqual({ error: "denied" });
@@ -913,12 +924,12 @@ describe("link flow", () => {
   });
 
   it("never redeems an approved link code through the pairing endpoint", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
     const started = await start(Date.now());
     await approveServerLink(deps, "u1", started.userCode, {
       kind: "existing",
-      serverId: primaryServerId("u1"),
+      serverId: await primaryServerId("u1"),
     });
     expect(await redeemConnectCode(deps, started.userCode)).toEqual({
       error: "invalid-code",
@@ -942,13 +953,16 @@ describe("label suggestions", () => {
 
 describe("getAccountMe", () => {
   it("returns the account and server for a live credential", async () => {
-    seedUser("u1", { githubLogin: "sawyerhood", image: "https://img/a.png" });
+    await seedUser("u1", {
+      githubLogin: "sawyerhood",
+      image: "https://img/a.png",
+    });
     await claimHandle(deps, "u1", "sawyer");
-    const primary = primaryServerId("u1");
-    db.update(server)
+    const primary = await primaryServerId("u1");
+    await db
+      .update(server)
       .set({ credentialHash: await sha256Hex("bbcred_live") })
-      .where(eq(server.id, primary))
-      .run();
+      .where(eq(server.id, primary));
 
     expect(await getAccountMe(deps, "bbcred_live")).toEqual({
       status: 200,
@@ -967,15 +981,15 @@ describe("getAccountMe", () => {
   });
 
   it("rejects revoked and unknown credentials", async () => {
-    seedUser("u1");
+    await seedUser("u1");
     await claimHandle(deps, "u1", "sawyer");
-    db.update(server)
+    await db
+      .update(server)
       .set({
         credentialHash: await sha256Hex("bbcred_revoked"),
         revokedAt: new Date(),
       })
-      .where(eq(server.id, primaryServerId("u1")))
-      .run();
+      .where(eq(server.id, await primaryServerId("u1")));
     expect(await getAccountMe(deps, "bbcred_revoked")).toEqual({
       status: 401,
       body: { error: "unauthorized" },

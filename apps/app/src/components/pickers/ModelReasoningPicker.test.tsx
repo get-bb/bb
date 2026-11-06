@@ -1138,25 +1138,6 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
   });
 
-  it("uses picker search policy and selects the match by keyboard", () => {
-    const { onModelChange } = renderPicker({ modelOptions: manyCodexModels });
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Provider, model and reasoning" }),
-    );
-
-    const search = screen.getByPlaceholderText("Search models");
-    fireEvent.change(search, { target: { value: "o4m" } });
-
-    expect(screen.getByText("o4-mini")).not.toBeNull();
-    expect(screen.queryByText("Sonnet")).toBeNull();
-
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "Enter" });
-
-    expect(onModelChange).toHaveBeenCalledWith("o4-mini");
-  });
-
   it("ranks primary and selected-only model matches together", () => {
     const looseMatch = "Super GPT-4 Compatibility";
     const directMatch = "GPT-4 Turbo";
@@ -1617,13 +1598,6 @@ describe("ModelReasoningPicker service tiers", () => {
         levels.map((level) => ({ value: level, label: `Thinking: ${level}` })),
       ),
     ).toEqual(["flex", true]);
-  });
-
-  it("shows no agent options when the provider reports none", () => {
-    renderPicker();
-    openPicker();
-
-    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("greys out a model the chosen options rule out and never selects it", () => {

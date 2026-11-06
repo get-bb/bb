@@ -1,0 +1,39 @@
+diff --git a/dist/chunks/mermaid.core/chunk-GMAD6QVW.mjs b/dist/chunks/mermaid.core/chunk-GMAD6QVW.mjs
+index 99dd1942086bd11492ebeb3672a1e57b41d20e77..38a94d03bd5efdd6a078750fe90e1510dac4118e 100644
+--- a/dist/chunks/mermaid.core/chunk-GMAD6QVW.mjs
++++ b/dist/chunks/mermaid.core/chunk-GMAD6QVW.mjs
+@@ -485,7 +485,7 @@ async function addHtmlSpan(element, node, width, classes, addBackground = false,
+     div.attr("class", "labelBkg");
+   }
+   const bbox = await fastdom_default.measure(() => div.node().getBoundingClientRect());
+-  if (bbox.width === width) {
++  if (bbox.width >= width - 1) {
+     div.style("display", "table");
+     div.style("white-space", "break-spaces");
+     div.style("width", width + "px");
+diff --git a/dist/chunks/mermaid.esm/chunk-LBQO3HYP.mjs b/dist/chunks/mermaid.esm/chunk-LBQO3HYP.mjs
+index d36a9de8f147ec1a312aa61032c11cc99a58751e..ab536c24932f87a09ff0ededb63b174e6d98eedd 100644
+--- a/dist/chunks/mermaid.esm/chunk-LBQO3HYP.mjs
++++ b/dist/chunks/mermaid.esm/chunk-LBQO3HYP.mjs
+@@ -1917,7 +1917,7 @@ async function addHtmlSpan(element, node, width, classes, addBackground = false,
+     div.attr("class", "labelBkg");
+   }
+   const bbox = await fastdom_default.measure(() => div.node().getBoundingClientRect());
+-  if (bbox.width === width) {
++  if (bbox.width >= width - 1) {
+     div.style("display", "table");
+     div.style("white-space", "break-spaces");
+     div.style("width", width + "px");
+diff --git a/dist/mermaid.js b/dist/mermaid.js
+index 2639dea70e87e98012ceb655a2554474e431f7f1..4de36cd23129665b0afd064a5cc9680bceaa4480 100644
+--- a/dist/mermaid.js
++++ b/dist/mermaid.js
+@@ -37393,7 +37393,7 @@ Please report this to https://github.com/markedjs/marked.`, e3) {
+       div.attr("class", "labelBkg");
+     }
+     const bbox = await fastdom_default.measure(() => div.node().getBoundingClientRect());
+-    if (bbox.width === width3) {
++    if (bbox.width >= width3 - 1) {
+       div.style("display", "table");
+       div.style("white-space", "break-spaces");
+       div.style("width", width3 + "px");

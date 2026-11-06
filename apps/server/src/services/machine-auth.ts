@@ -151,6 +151,7 @@ export async function createMachineAuthService(
       provider: "sqlite",
       schema: machineAuthSchema,
     }),
+    advanced: { database: { validateSchema: false } },
     plugins: [
       apiKey([
         {

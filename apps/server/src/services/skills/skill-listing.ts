@@ -215,6 +215,28 @@ async function listBbPluginSkills(deps: AppDeps): Promise<SkillSummary[]> {
     .sort(compareSkillSummaries);
 }
 
+async function listServerSkills(deps: AppDeps): Promise<SkillSummary[]> {
+  return [
+    ...(await listServerOwnedSkills(deps)),
+    ...(await listBbPluginSkills(deps)),
+  ];
+}
+
+async function confirmServerSkillManageable(
+  skill: SkillSummary,
+): Promise<void> {
+  if (!skill.manageable) return;
+  const directory = path.dirname(skill.filePath);
+  const stats = await Promise.all(
+    [path.dirname(directory), directory, skill.filePath].map((entry) =>
+      fs.lstat(entry).catch(() => null),
+    ),
+  );
+  skill.manageable = stats.every(
+    (stat) => stat !== null && !stat.isSymbolicLink(),
+  );
+}
+
 async function projectSkillIndex(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
@@ -244,10 +266,7 @@ async function projectSkillIndex(
       cwd: args.workspace.cwd,
     }),
   ]);
-  const serverSkills = [
-    ...(await listServerOwnedSkills(deps)),
-    ...(await listBbPluginSkills(deps)),
-  ];
+  const serverSkills = await listServerSkills(deps);
   const identities = new Map(sharedSkills.identities);
   for (const { skills } of perProvider) {
     for (const skill of skills)
@@ -257,17 +276,7 @@ async function projectSkillIndex(
       });
   }
   for (const skill of serverSkills) {
-    if (skill.manageable) {
-      const directory = path.dirname(skill.filePath);
-      const stats = await Promise.all(
-        [path.dirname(directory), directory, skill.filePath].map((entry) =>
-          fs.lstat(entry).catch(() => null),
-        ),
-      );
-      skill.manageable = stats.every(
-        (stat) => stat !== null && !stat.isSymbolicLink(),
-      );
-    }
+    await confirmServerSkillManageable(skill);
     const bytes = await fs.readFile(skill.filePath).catch(() => null);
     const realPath = await fs.realpath(skill.filePath).catch(() => null);
     if (bytes !== null && realPath !== null)
@@ -422,6 +431,18 @@ async function resolveProjectSkill(
     workspace: CommandWorkspace;
   },
 ): Promise<IndexedSkillSummary> {
+  const serverSkill = (await listServerSkills(deps)).find(
+    (skill) => skill.id === args.skillId,
+  );
+  if (serverSkill !== undefined) {
+    await confirmServerSkillManageable(serverSkill);
+    return {
+      ...serverSkill,
+      realPath: await fs
+        .realpath(serverSkill.filePath)
+        .catch(() => serverSkill.filePath),
+    };
+  }
   const index = await projectSkillIndex(deps, { workspace: args.workspace });
   const match = index.registrations.find((skill) => skill.id === args.skillId);
   if (!match) {

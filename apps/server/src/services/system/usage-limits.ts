@@ -74,7 +74,7 @@ export async function getProviderUsageLimits(
                 bridgeLaunch,
               },
             }),
-          query.refresh === "true",
+          { refresh: query.refresh === "true" },
         );
         return result.supported ? [provider.id, result.usage] : null;
       } catch {

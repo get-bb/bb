@@ -279,12 +279,34 @@ describe("bb updates command output", () => {
   });
 });
 
+const UPDATE_WHEN_IDLE_OFF =
+  'Updating when idle is off. Turn on the "Update when idle" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
+
+function systemConfig(experiments: {
+  resumeThreadsAfterRestart?: boolean;
+  updateWhenIdle: boolean;
+}) {
+  return vi.fn(async () => ({
+    experiments: { resumeThreadsAfterRestart: false, ...experiments },
+  }));
+}
+
+function errorResponse(status: number, body: object): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function appUpdateStatus(
   overrides: Partial<SystemAppUpdateStatus> = {},
 ): SystemAppUpdateStatus {
   return {
     activity: { phase: "idle" },
+    autoUpdate: false,
+    availableSkipped: false,
     available: {
+      behindSince: null,
       channel: "latest",
       commit: null,
       commitCount: null,
@@ -295,6 +317,7 @@ function appUpdateStatus(
     current: { commit: null, version: "0.0.32" },
     lastResult: null,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
     ...overrides,
   };
@@ -343,6 +366,7 @@ describe("bb updates app command output", () => {
         current: { version: "0.0.32", commit: null },
         lastResult: null,
         runningThreadCount: 0,
+        scheduled: null,
         support: { kind: "supported", mode: "npm" },
       })),
     });
@@ -357,6 +381,7 @@ describe("bb updates app command output", () => {
       "v1.system.app-update.$get": vi.fn(async () =>
         appUpdateStatus({
           available: {
+            behindSince: "2026-11-02T12:00:00.000Z",
             channel: "main",
             commit: "b".repeat(40),
             commitCount: 12,
@@ -377,6 +402,7 @@ describe("bb updates app command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       `bb-app source checkout ${"a".repeat(10)} -> ${"b".repeat(10)} (+12 commits)`,
+      "Behind origin/main since 2026-11-02T12:00:00.000Z",
       "  Fix bug",
       "  Add feature",
       "  … 10 more",
@@ -420,6 +446,7 @@ describe("bb updates app command output", () => {
     stubServerApi({
       "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
       "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: false }),
     });
     readlineMocks.question.mockResolvedValue("y");
 
@@ -487,12 +514,253 @@ describe("bb updates app command output", () => {
         appUpdateStatus({ runningThreadCount: 1 }),
       ),
       "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: true }),
     });
 
     await expect(
       runCommand(["updates", "app", "apply"], register),
     ).rejects.toThrow("process.exit:1");
     expect(apply).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: 1 thread is running. Updating restarts bb and interrupts it. Re-run with --when-idle to update once they finish, or --yes to interrupt them.",
+    );
+  });
+
+  it("bb updates app apply says running threads resume after the update when restarts resume them", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 2 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({
+        resumeThreadsAfterRestart: true,
+        updateWhenIdle: true,
+      }),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(apply).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: 2 threads are running. Updating restarts bb, and they resume after the update. Re-run with --when-idle to update once they finish, or --yes to update now.",
+    );
+  });
+
+  it("bb updates app apply does not suggest --when-idle while its experiment is off", async () => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: false,
+      configurable: true,
+    });
+    const apply = vi.fn(async () => appUpdateStatus());
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 1 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+      "v1.system.config.$get": systemConfig({ updateWhenIdle: false }),
+    });
+
+    await expect(
+      runCommand(["updates", "app", "apply"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(apply).not.toHaveBeenCalled();
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      "Error: Refusing destructive action without an interactive terminal. Re-run with --yes to confirm.",
+    );
+  });
+
+  it.each([
+    [["apply", "--when-idle"], "v1.system.app-update.schedule.$post"],
+    [["cancel"], "v1.system.app-update.schedule.cancel.$post"],
+  ])(
+    "bb updates app %j names the experiment while it is off",
+    async (args, route) => {
+      stubServerApi({
+        "v1.system.app-update.$get": vi.fn(async () =>
+          appUpdateStatus({ runningThreadCount: 1 }),
+        ),
+        [route]: vi.fn(async () =>
+          errorResponse(403, {
+            code: "update_when_idle_experiment_disabled",
+            message: UPDATE_WHEN_IDLE_OFF,
+          }),
+        ),
+      });
+
+      await expect(
+        runCommand(["updates", "app", ...args], register),
+      ).rejects.toThrow("process.exit:1");
+      expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+        `Error: ${UPDATE_WHEN_IDLE_OFF}`,
+      );
+    },
+  );
+
+  it("bb updates app apply --when-idle schedules the update and returns while threads run", async () => {
+    const apply = vi.fn(async () => appUpdateStatus());
+    const schedule = vi.fn(async () =>
+      appUpdateStatus({
+        runningThreadCount: 2,
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
+      }),
+    );
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ runningThreadCount: 2 }),
+      ),
+      "v1.system.app-update.apply.$post": apply,
+      "v1.system.app-update.schedule.$post": schedule,
+    });
+
+    await runCommand(["updates", "app", "apply", "--when-idle"], register);
+
+    expect(schedule).toHaveBeenCalledOnce();
+    expect(apply).not.toHaveBeenCalled();
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "bb will update to 0.0.33 when all threads are idle (2 running).",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
+    ]);
+  });
+
+  it("bb updates app shows how long an automatic update waits for idle", async () => {
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({
+          runningThreadCount: 1,
+          scheduled: {
+            requestedAt: "2026-10-23T00:00:00.000Z",
+            requiredIdleMs: 15 * 60_000,
+          },
+        }),
+      ),
+    });
+
+    await runCommand(["updates", "app"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "bb-app 0.0.32 -> 0.0.33",
+      "bb will update to 0.0.33 once no thread has run for 15 minutes (1 running).",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
+    ]);
+  });
+
+  it("bb updates app cancel stops a scheduled update, even mid-download", async () => {
+    const cancel = vi.fn(async () => appUpdateStatus());
+    const statuses = [
+      appUpdateStatus({
+        activity: {
+          output: [],
+          phase: "preparing",
+          startedAt: "2026-10-23T00:00:00.000Z",
+          step: "Downloading bb-app 0.0.33",
+          targetVersion: "0.0.33",
+        },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
+      }),
+      appUpdateStatus(),
+    ];
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
+      "v1.system.app-update.schedule.cancel.$post": cancel,
+    });
+
+    await runCommand(["updates", "app", "cancel"], register);
+    await runCommand(["updates", "app", "cancel"], register);
+
+    expect(cancel).toHaveBeenCalledTimes(2);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Skipped this version until a newer one appears.",
+      "No update is scheduled.",
+    ]);
+  });
+
+  it("bb updates app auto turns automatic updates on and off and reports the setting", async () => {
+    const setAuto = vi.fn(async (request: { json: { enabled: boolean } }) =>
+      appUpdateStatus({ autoUpdate: request.json.enabled }),
+    );
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () =>
+        appUpdateStatus({ autoUpdate: true }),
+      ),
+      "v1.system.app-update.auto.$post": setAuto,
+    });
+
+    await runCommand(["updates", "app", "auto", "on"], register);
+    await runCommand(["updates", "app", "auto", "off"], register);
+    await runCommand(["updates", "app", "auto"], register);
+
+    expect(setAuto.mock.calls).toEqual([
+      [{ json: { enabled: true } }],
+      [{ json: { enabled: false } }],
+    ]);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes.",
+      "Automatic updates are off.",
+      "Automatic updates are on: bb checks every hour and restarts into a new version once no thread has run for 15 minutes.",
+    ]);
+  });
+
+  it("bb updates app apply --when-idle stops following once a starting thread puts the update back to waiting", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const waiting = appUpdateStatus({
+      runningThreadCount: 1,
+      scheduled: {
+        requestedAt: "2026-10-23T00:00:00.000Z",
+        requiredIdleMs: 5_000,
+      },
+    });
+    const statuses = [
+      appUpdateStatus(),
+      appUpdateStatus({
+        activity: {
+          output: [],
+          phase: "preparing",
+          startedAt: "2026-10-23T00:00:00.000Z",
+          step: "Downloading bb-app 0.0.33",
+          targetVersion: "0.0.33",
+        },
+        scheduled: {
+          requestedAt: "2026-10-23T00:00:00.000Z",
+          requiredIdleMs: 5_000,
+        },
+      }),
+      waiting,
+    ];
+    stubServerApi({
+      "v1.system.app-update.$get": vi.fn(async () => statuses.shift()),
+      "v1.system.app-update.schedule.$post": vi.fn(async () =>
+        appUpdateStatus(),
+      ),
+    });
+
+    const command = runCommand(
+      ["updates", "app", "apply", "--when-idle"],
+      register,
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    await command;
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Updating bb to 0.0.33",
+      "Downloading bb-app 0.0.33…",
+      "bb will update to 0.0.33 when all threads are idle (1 running).",
+      "Run bb updates app apply --yes to update now, or bb updates app cancel to skip this version.",
+    ]);
   });
 
   it("bb updates app apply --yes --no-wait starts the update and returns", async () => {

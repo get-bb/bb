@@ -22,7 +22,7 @@ export const NODE_ESM_REQUIRE_BANNER = [
 ].join("\n");
 
 export const PLUGIN_TOOLCHAIN_PINS = {
-  esbuild: "0.28.1",
+  esbuild: "0.28.2",
   "@tailwindcss/node": "4.3.0",
   "@tailwindcss/oxide": "4.3.0",
   tailwindcss: "4.3.0",

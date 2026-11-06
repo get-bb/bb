@@ -107,7 +107,7 @@ describe.sequential("fake provider reconnect open-work integration", () => {
   );
 
   it(
-    "settles a background task whose provider process died once the same daemon reconnects",
+    "settles a background task when its provider process dies and keeps one settlement after the same daemon reconnects",
     async () => {
       const processes = await recordScriptedEchoProcesses();
       try {
@@ -127,34 +127,38 @@ describe.sequential("fake provider reconnect open-work integration", () => {
           if (ownerPid === null) {
             throw new Error("Expected the scripted bridge to log its pid");
           }
+          const settledStates = [
+            { type: "item/started", status: "pending", taskStatus: "running" },
+            {
+              type: "item/backgroundTask/completed",
+              status: "interrupted",
+              taskStatus: "stopped",
+            },
+          ];
 
           process.kill(ownerPid, "SIGKILL");
           await vi.waitFor(
-            () => expect(() => process.kill(ownerPid, 0)).toThrow(),
+            () =>
+              expect(backgroundTaskStates(harness, thread.id)).toEqual(
+                settledStates,
+              ),
             { timeout: TURN_TIMEOUT_MS, interval: 50 },
           );
-          expect(backgroundTaskStates(harness, thread.id)).toEqual([
-            { type: "item/started", status: "pending", taskStatus: "running" },
-          ]);
 
           const droppedSessionId = dropDaemonSocket(harness);
           await waitForSameDaemonToReconnect(harness, droppedSessionId);
+          await sendTextMessage(harness.api, thread.id, {
+            text: "after the reconnect",
+          });
+          await waitForThreadOutputContaining(
+            harness.api,
+            thread.id,
+            "Response to: after the reconnect",
+            TURN_TIMEOUT_MS,
+          );
 
-          await vi.waitFor(
-            () =>
-              expect(backgroundTaskStates(harness, thread.id)).toEqual([
-                {
-                  type: "item/started",
-                  status: "pending",
-                  taskStatus: "running",
-                },
-                {
-                  type: "item/backgroundTask/completed",
-                  status: "interrupted",
-                  taskStatus: "stopped",
-                },
-              ]),
-            { timeout: RECOVERY_TIMEOUT_MS, interval: 100 },
+          expect(backgroundTaskStates(harness, thread.id)).toEqual(
+            settledStates,
           );
         });
       } finally {

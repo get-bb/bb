@@ -152,7 +152,10 @@ describe("TimelineSelectionMenu", () => {
       function ClippedTimeline() {
         const [layer, setLayer] = useState<HTMLDivElement | null>(null);
         return (
-          <div data-testid="timeline" style={{ overflow: "hidden" }}>
+          <div
+            data-testid="timeline"
+            style={{ overflowX: "hidden", overflowY: "hidden" }}
+          >
             <div ref={setLayer} />
             <TimelineSelectionMenu
               selection={makeSelection({ anchorPoint: release })}

@@ -334,6 +334,7 @@ export function makeQueueEntry(
     },
     failureReason: null,
     payload: { kind: "inline" },
+    systemNotice: null,
     editable: true,
     createdAt: 0,
     updatedAt: 0,

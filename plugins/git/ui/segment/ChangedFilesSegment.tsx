@@ -21,8 +21,8 @@ import {
   selectWorkspaceChangedFilesSection,
   toChangeTally,
   type WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
-import { WorkspaceChangesList } from "@bb/shared-ui/workspace-changes-list";
+} from "../workspace-change-summary.js";
+import { WorkspaceChangesList } from "../workspace-changes-list.js";
 import { useChangedFileActions } from "../changed-files.js";
 import { useMergeBase, type MergeBaseState } from "../merge-base.js";
 import { useGitStatus, useShowGitChanges } from "../queries.js";

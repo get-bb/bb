@@ -325,7 +325,7 @@ export const guide: Guide = {
     COST_FAQ,
   ],
   closer: {
-    title: "Take your agents with you",
+    title: "Take your agents with you.",
     body: "Free and open source. Your agents keep running on your computer.",
   },
 };

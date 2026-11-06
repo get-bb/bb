@@ -6,8 +6,6 @@ import {
   createApplicationLinkApprovals,
   APPLICATION_LINK_APPROVALS_STORAGE_KEY,
 } from "@bb/domain/application-link-approvals";
-import { useQuery } from "@tanstack/react-query";
-import { systemConfigQueryOptions } from "@/hooks/queries/system-queries";
 import { appQueryClient } from "./app-query-client";
 import {
   createApplicationUrlOpener,
@@ -58,25 +56,6 @@ export function resolveApplicationUrlConfirmation(
   current?.resolve(decision);
 }
 
-export function useApplicationLinksEnabled(): boolean {
-  const { data } = useQuery(
-    {
-      ...systemConfigQueryOptions(),
-      enabled: false,
-      select: (config) => config.experiments.applicationLinks,
-    },
-    appQueryClient,
-  );
-  return data === true;
-}
-
-export function applicationLinksEnabled(): boolean {
-  return (
-    appQueryClient.getQueryData(systemConfigQueryOptions().queryKey)
-      ?.experiments.applicationLinks === true
-  );
-}
-
 const openConfirmedApplicationUrl = createApplicationUrlOpener({
   approvals: deviceApprovals,
   confirm: (target) =>
@@ -88,7 +67,6 @@ const openConfirmedApplicationUrl = createApplicationUrlOpener({
 });
 
 export function openApplicationUrl(url: string): void {
-  if (!applicationLinksEnabled()) return;
   void openConfirmedApplicationUrl(url)
     .finally(() => {
       invalidateApplicationLinkApprovals(appQueryClient);

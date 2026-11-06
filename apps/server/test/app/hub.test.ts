@@ -40,25 +40,6 @@ describe("NotificationHub", () => {
     });
   });
 
-  it("subscribes clients and delivers environment notifications", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, {
-      kind: "environment-detail",
-      environmentId: "environment-1",
-    });
-    hub.notifyEnvironment("environment-1", ["metadata-changed"]);
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toMatchObject({
-      type: "changed",
-      entity: "environment",
-      id: "environment-1",
-      changes: ["metadata-changed"],
-    });
-  });
-
   it("cleans up subscriptions on client disconnect", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

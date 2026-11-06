@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   detectGitRepo,
   detectGitRepoKind,
+  ensureGitRepo,
+  hasUncommittedChanges,
   parsePorcelainV2StatusZ,
   readDefaultBranchRefs,
   runGit,
@@ -134,6 +136,18 @@ afterEach(async () => {
 });
 
 describe("runGit", () => {
+  it("reports the exit status of a silent Git failure", async () => {
+    const repoPath = await initEmptyRepo();
+
+    await expect(
+      runGit(["config", "--local", "--get", "bb.missing-setting"], { cwd: repoPath }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "git_command_failed",
+      cause: { exitCode: 1, signal: null, message: "Git exited with code 1" },
+    });
+  });
+
   it("scrubs inherited bb runtime env vars and node mode", async () => {
     const repoPath = await initEmptyRepo();
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
@@ -175,11 +189,32 @@ describe("detectGitRepoKind", () => {
   });
 });
 
+describe("hasUncommittedChanges", () => {
+  it("counts untracked files nested in untracked folders but not ignored or empty ones", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await fs.writeFile(path.join(repoPath, ".gitignore"), "build/\n", "utf8");
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Ignore build"], { cwd: repoPath });
+    await fs.mkdir(path.join(repoPath, "empty", "nested"), { recursive: true });
+    await fs.mkdir(path.join(repoPath, "build"));
+    await fs.writeFile(path.join(repoPath, "build", "out.js"), "x\n", "utf8");
+
+    await expect(hasUncommittedChanges(repoPath)).resolves.toBe(false);
+
+    await fs.mkdir(path.join(repoPath, "new", "deep"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "new", "deep", "a.txt"), "a\n");
+
+    await expect(hasUncommittedChanges(repoPath)).resolves.toBe(true);
+  });
+});
+
 describe("readDefaultBranchRefs", () => {
   it("reports equal local and origin defaults", async () => {
     const { repoPath } = await initDefaultBranchRemoteRepo();
 
-    await expect(readDefaultBranchRefs(repoPath)).resolves.toEqual({
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
       defaultBranch: "main",
       defaultBranchRelation: "equal",
       originDefaultBranch: "origin/main",
@@ -191,7 +226,9 @@ describe("readDefaultBranchRefs", () => {
     await pushRemoteMainCommit(remotePath);
     await runGit(["fetch", "origin"], { cwd: repoPath });
 
-    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
       defaultBranch: "main",
       defaultBranchRelation: "local-behind",
       originDefaultBranch: "origin/main",
@@ -204,7 +241,9 @@ describe("readDefaultBranchRefs", () => {
     await runGit(["add", "."], { cwd: repoPath });
     await runGit(["commit", "-m", "Local edit"], { cwd: repoPath });
 
-    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
       defaultBranch: "main",
       defaultBranchRelation: "local-ahead",
       originDefaultBranch: "origin/main",
@@ -219,17 +258,83 @@ describe("readDefaultBranchRefs", () => {
     await pushRemoteMainCommit(remotePath);
     await runGit(["fetch", "origin"], { cwd: repoPath });
 
-    await expect(readDefaultBranchRefs(repoPath)).resolves.toMatchObject({
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
       defaultBranch: "main",
       defaultBranchRelation: "diverged",
       originDefaultBranch: "origin/main",
     });
   });
 
+  it("prefers origin's default branch over main when both exist locally", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+    await runGit(["branch", "develop"], { cwd: repoPath });
+    await runGit(["push", "origin", "develop"], { cwd: repoPath });
+    await runGit(["remote", "set-head", "origin", "develop"], {
+      cwd: repoPath,
+    });
+
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
+      defaultBranch: "develop",
+      originDefaultBranch: "origin/develop",
+    });
+  });
+
+  it("does not mistake a branch under main/ for main", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "main/feature"], { cwd: repoPath });
+    await runGit(["branch", "master"], { cwd: repoPath });
+
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
+      defaultBranch: "master",
+    });
+  });
+
+  it("falls back to the first local branch by name without main or master", async () => {
+    const repoPath = await initReadGitBlobRepo();
+    await runGit(["branch", "-m", "main", "zeta"], { cwd: repoPath });
+    await runGit(["branch", "beta"], { cwd: repoPath });
+
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toMatchObject({
+      defaultBranch: "beta",
+    });
+  });
+
+  it("still prefers origin/HEAD's branch locally when its remote ref is gone", async () => {
+    const { repoPath } = await initDefaultBranchRemoteRepo();
+    await runGit(["branch", "develop"], { cwd: repoPath });
+    await runGit(
+      [
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/develop",
+      ],
+      { cwd: repoPath },
+    );
+
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
+      defaultBranch: "develop",
+      defaultBranchRelation: undefined,
+      originDefaultBranch: undefined,
+    });
+  });
+
   it("omits origin defaults when no origin ref exists", async () => {
     const repoPath = await initReadGitBlobRepo();
 
-    await expect(readDefaultBranchRefs(repoPath)).resolves.toEqual({
+    await expect(
+      readDefaultBranchRefs(await ensureGitRepo(repoPath)),
+    ).resolves.toEqual({
       defaultBranch: "main",
       defaultBranchRelation: undefined,
       originDefaultBranch: undefined,

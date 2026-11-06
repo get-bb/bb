@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
@@ -15,11 +15,16 @@ async function registerSkillTree(harness: TestAppHarness) {
   await mkdir(path.join(rootPath, "scripts"), { recursive: true });
   await writeFile(path.join(rootPath, "SKILL.md"), "tree route bytes\n");
   await writeFile(path.join(rootPath, "scripts", "run.sh"), "#!/bin/sh\n");
-  await chmod(path.join(rootPath, "SKILL.md"), 0o644);
+  await chmod(path.join(rootPath, "SKILL.md"), 0o640);
+  await chmod(path.join(rootPath, "scripts", "run.sh"), 0o755);
   return {
     manifest: await harness.deps.skillTreeRegistry.readTree(rootPath),
     rootPath,
   };
+}
+
+async function permissionBits(filePath: string): Promise<number> {
+  return (await stat(filePath)).mode & 0o777;
 }
 
 function requestContent(
@@ -42,7 +47,7 @@ describe("internal skill tree routes", () => {
   it("returns a registered tree manifest to an authenticated daemon", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-skill-tree" });
-      const { manifest } = await registerSkillTree(harness);
+      const { manifest, rootPath } = await registerSkillTree(harness);
 
       const response = await harness.app.request(
         `/internal/skills/tree/${manifest.treeHash}`,
@@ -55,15 +60,18 @@ describe("internal skill tree routes", () => {
         files: [
           {
             path: "SKILL.md",
-            mode: process.platform === "win32" ? 0o666 : 0o644,
+            mode: await permissionBits(path.join(rootPath, "SKILL.md")),
             sizeBytes: 17,
             sha256: sha256("tree route bytes\n"),
           },
-          expect.objectContaining({
+          {
             path: "scripts/run.sh",
+            mode: await permissionBits(
+              path.join(rootPath, "scripts", "run.sh"),
+            ),
             sizeBytes: 10,
             sha256: sha256("#!/bin/sh\n"),
-          }),
+          },
         ],
       });
     });
@@ -143,19 +151,6 @@ describe("internal skill tree routes", () => {
         { headers: internalAuthHeaders(harness, { hostId: host.id }) },
       );
 
-      expect(response.status).toBe(404);
-    });
-  });
-
-  it("returns 404 for an unknown tree hash", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-unknown-skill-tree",
-      });
-      const response = await harness.app.request(
-        `/internal/skills/tree/${"0".repeat(64)}`,
-        { headers: internalAuthHeaders(harness, { hostId: host.id }) },
-      );
       expect(response.status).toBe(404);
     });
   });

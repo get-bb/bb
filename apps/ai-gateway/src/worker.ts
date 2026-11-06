@@ -1,9 +1,8 @@
-import { drizzle } from "drizzle-orm/d1";
 import {
   SERVER_CREDENTIAL_CACHE_TTL_MS,
   ServerCredentialCache,
-  schema,
 } from "@bb/connect-db";
+import { openConnectDb } from "@bb/connect-db-pg";
 import { type Env, type GatewayConfig, parseGatewayConfig } from "./config.js";
 import { routeGatewayRequest, unavailableResponse } from "./gateway.js";
 import { pruneAiUsage } from "./metering.js";
@@ -31,7 +30,7 @@ export default {
       return unavailableResponse("hosted generation is not configured");
     }
     return routeGatewayRequest(request, {
-      db: drizzle(env.DB, { schema }),
+      db: openConnectDb(env).db,
       credentials,
       config,
       rateLimiter: env.AI_RATE_LIMITER,
@@ -44,6 +43,11 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await pruneAiUsage(drizzle(env.DB, { schema }), controller.scheduledTime);
+    const opened = openConnectDb(env);
+    try {
+      await pruneAiUsage(opened.db, controller.scheduledTime);
+    } finally {
+      await opened.close();
+    }
   },
 } satisfies ExportedHandler<Env>;

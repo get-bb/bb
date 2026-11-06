@@ -5,9 +5,11 @@ export const AGENTS_FAQ: GuideFaq = {
   question: "Which agents work?",
   answer: (
     <p>
-      Claude Code, Codex, and Pi are built in. Cursor, opencode, and other
-      agents that support the Agent Client Protocol, like Grok Build and Hermes
-      Agent, work once they're installed.
+      Claude Code, Codex, and Pi are built in, and bb supports every agent that
+      speaks the Agent Client Protocol (ACP). Cursor, opencode, and Hermes Agent
+      work once they're installed. Agents like Gemini CLI and GitHub Copilot
+      install from the official ACP agent registry in one click, and you can add
+      any other ACP agent yourself.
     </p>
   ),
 };

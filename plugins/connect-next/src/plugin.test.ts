@@ -279,7 +279,7 @@ describe("connect-next plugin wiring", () => {
   });
 
   it("keeps the tunnel up while the server is moving", async () => {
-    const { host, account } = await load({ enabled: true });
+    const { host, account, tunnel } = await load({ enabled: true });
     account.signIn({ serverId: "srv_1", label: "sawyer", credential: "c" });
     await waitFor(
       () => status(host),
@@ -305,6 +305,7 @@ describe("connect-next plugin wiring", () => {
       () => status(host),
       (current) => current.url === null,
     );
+    await tunnel.idle();
     expect(ingresses[0]?.closed).toBe(true);
   });
 

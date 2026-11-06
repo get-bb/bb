@@ -34,7 +34,10 @@ function appUpdate(
     blocked: null,
     current: { commit: null, version: current },
     lastResult: null,
+    autoUpdate: false,
+    availableSkipped: false,
     runningThreadCount: 0,
+    scheduled: null,
     support: { kind: "supported", mode: "npm" },
   };
 }
@@ -43,7 +46,14 @@ function available(
   version: string,
   channel: "latest" | "nightly" | "main" = "latest",
 ): NonNullable<SystemAppUpdateStatus["available"]> {
-  return { channel, commit: null, commitCount: null, subjects: [], version };
+  return {
+    behindSince: null,
+    channel,
+    commit: null,
+    commitCount: null,
+    subjects: [],
+    version,
+  };
 }
 
 function systemVersion(

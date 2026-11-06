@@ -15,10 +15,7 @@ import {
   resolveApplicationUrlConfirmation,
   applicationLinkApprovals,
 } from "./application-url";
-import { defaultExperiments } from "@bb/domain";
 import { appToast } from "@/components/ui/app-toast";
-import { appQueryClient } from "./app-query-client";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "./app-navigation-host";
 import {
   AppNavigationUrlHost,
@@ -44,13 +41,12 @@ afterEach(() => {
   resolveApplicationUrlConfirmation("cancel");
   localStorage.removeItem(APPLICATION_LINK_APPROVALS_STORAGE_KEY);
   cleanup();
-  appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
   results.length = 0;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-it("gates plugin navigation and direct external opening as the experiment changes", async () => {
+it("asks before opening application links from plugin navigation", async () => {
   const openApplicationUrl = vi.fn(async () => {});
   vi.stubGlobal("bbDesktop", { openApplicationUrl });
   render(
@@ -59,16 +55,7 @@ it("gates plugin navigation and direct external opening as the experiment change
     </AppNavigationUrlHost>,
   );
   fireEvent.click(screen.getByRole("button"));
-  openUrlInExternalBrowser("linear://issue/123");
-  expect(results).toEqual([false]);
-  expect(openApplicationUrl).not.toHaveBeenCalled();
-  act(() => {
-    appQueryClient.setQueryData(systemConfigQueryKey(), {
-      experiments: { ...defaultExperiments, applicationLinks: true },
-    });
-  });
-  fireEvent.click(screen.getByRole("button"));
-  expect(results).toEqual([false, true]);
+  expect(results).toEqual([true]);
   expect(openApplicationUrl).not.toHaveBeenCalled();
   expect(getApplicationUrlConfirmation()?.target.url).toBe(
     "linear://issue/123",
@@ -77,21 +64,9 @@ it("gates plugin navigation and direct external opening as the experiment change
   await waitFor(() =>
     expect(openApplicationUrl).toHaveBeenCalledWith("linear://issue/123"),
   );
-  act(() => {
-    appQueryClient.setQueryData(systemConfigQueryKey(), {
-      experiments: defaultExperiments,
-    });
-  });
-  fireEvent.click(screen.getByRole("button"));
-  openUrlInExternalBrowser("linear://issue/123");
-  expect(results).toEqual([false, true, false]);
-  expect(openApplicationUrl).toHaveBeenCalledOnce();
 });
 
 it("asks to update an older desktop client instead of falling back to browser navigation", async () => {
-  appQueryClient.setQueryData(systemConfigQueryKey(), {
-    experiments: { ...defaultExperiments, applicationLinks: true },
-  });
   const external = vi.fn();
   vi.stubGlobal("bbDesktop", { openExternalUrl: external });
   const error = vi.spyOn(appToast, "error").mockImplementation(() => "toast");
@@ -106,9 +81,6 @@ it("asks to update an older desktop client instead of falling back to browser na
 });
 
 it("owns desktop consent and saved approvals in the web store, including failed launches and revocation", async () => {
-  appQueryClient.setQueryData(systemConfigQueryKey(), {
-    experiments: { ...defaultExperiments, applicationLinks: true },
-  });
   const open = vi.fn(async () => {});
   vi.stubGlobal("bbDesktop", { openApplicationUrl: open });
   const error = vi.spyOn(appToast, "error").mockImplementation(() => "toast");

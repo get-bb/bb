@@ -49,6 +49,7 @@ const DEFAULT_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const DEFAULT_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
 const EXHAUSTED_USAGE_REFRESH_INTERVAL_MS = 30 * 1_000;
 const MAX_INLINE_HOLD_MS = 20_000;
+const TRANSIENT_RETRY_DELAYS_MS = [1_000, 2_000];
 const MAX_REFRESH_BACKOFF_MS = 60_000;
 const MAX_REFRESH_BACKOFFS = 1_024;
 const UPSTREAM_REJECTION_HOLD_MS = 60_000;
@@ -569,7 +570,23 @@ export class AccountPoolHub {
           continue;
         }
         let authRetried = false;
+        let transientRetries = 0;
         let paced = waited.has(selected.account.id);
+        const retryTransient = async (
+          retryAfter: string | null,
+        ): Promise<boolean> => {
+          if (!selected.keepAffinity) return false;
+          const delayMs = transientRetryDelay(
+            transientRetries,
+            retryAfter,
+            this.options.now(),
+          );
+          if (delayMs === null) return false;
+          transientRetries++;
+          await waitForDelay(delayMs, signal);
+          signal.throwIfAborted();
+          return true;
+        };
         while (true) {
           signal.throwIfAborted();
           let upstream: UpstreamResult;
@@ -594,6 +611,7 @@ export class AccountPoolHub {
                 "Account Pooler could not reach " + adapter.upstreamName + ".",
               headers: {},
             };
+            if (await retryTransient(null)) continue;
             break;
           }
           if (request.signal.aborted) {
@@ -671,7 +689,11 @@ export class AccountPoolHub {
               headers: retryAfter === null ? {} : { "retry-after": retryAfter },
             };
             const rejected = response.status === 401 || response.status === 403;
-            if (rejected && secret.kind === "oauth" && !authRetried) {
+            if (!rejected) {
+              if (await retryTransient(retryAfter)) continue;
+              break;
+            }
+            if (secret.kind === "oauth" && !authRetried) {
               authRetried = true;
               try {
                 secret = await abortable(
@@ -702,7 +724,7 @@ export class AccountPoolHub {
               }
               continue;
             }
-            if (rejected && secret.kind === "oauth") {
+            if (secret.kind === "oauth") {
               const accessToken = secret.accessToken;
               const hold = new TransientOAuthRefreshError(
                 adapter.upstreamName +
@@ -724,7 +746,7 @@ export class AccountPoolHub {
                     hold,
                   ),
               );
-            } else if (rejected) {
+            } else {
               const message = failure.message;
               await this.rejectCredential(
                 selected.account,
@@ -1540,6 +1562,18 @@ function accessTokenUnexpired(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function transientRetryDelay(
+  retries: number,
+  retryAfter: string | null,
+  now: number,
+): number | null {
+  const backoffMs = TRANSIENT_RETRY_DELAYS_MS[retries];
+  if (backoffMs === undefined) return null;
+  const delayMs =
+    retryAfter === null ? backoffMs : retryAfterMilliseconds(retryAfter, now);
+  return delayMs <= MAX_INLINE_HOLD_MS ? delayMs : null;
 }
 
 function waitForDelay(

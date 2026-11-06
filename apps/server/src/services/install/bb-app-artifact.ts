@@ -275,7 +275,7 @@ export function createBbAppArtifactService(
       const repoRoot = resolve(packageRoot, "../..");
       await commandRunner(
         "pnpm",
-        ["exec", "turbo", "run", "build:host", "--filter=bb-app"],
+        ["exec", "turbo", "run", "build:host", "--filter=bb-app", "--only"],
         repoRoot,
       );
       hostPackageRoot = join(packageRoot, "host-package");

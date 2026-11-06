@@ -51,6 +51,7 @@ function Queue({
       attachedToComposer
       queuedMessages={queuedMessages}
       sendAction="send-now"
+      threadStatus="active"
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}

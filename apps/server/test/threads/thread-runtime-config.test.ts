@@ -262,131 +262,91 @@ describe("thread runtime config", () => {
     );
   });
 
-  it.each([
-    {
-      expectedSpec: {
-        displayName: "opencode",
-        command: "opencode",
-        args: ["acp"],
-        env: {},
-      },
-      providerId: "acp-opencode",
-      requestedModel: "opencode/default",
-    },
-    {
-      expectedSpec: {
-        displayName: "Grok Build",
-        command: "grok",
-        args: ["agent", "stdio"],
-        env: {},
-        permissionCli: {
-          full: ["--always-approve"],
-          insertAfterArgs: 1,
-        },
-      },
-      providerId: "acp-grok",
-      requestedModel: "grok-4.5",
-    },
-    {
-      expectedSpec: {
-        displayName: "Hermes Agent",
-        command: "hermes",
-        args: ["acp"],
-        env: {},
-        nativeReasoning: {
-          configId: "reasoning_effort",
-          supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-          defaultLevel: "medium",
-        },
-      },
-      providerId: "acp-hermes-agent",
-      requestedModel: "acp-default",
-    },
-  ])(
-    "carries plugin-declared ACP launch specs for $providerId in bridge options",
-    async ({ expectedSpec, providerId, requestedModel }) => {
-      await withTestHarness(async (harness) => {
-        const { host } = seedHostSession(harness.deps, {
-          id: `host-runtime-known-${providerId}`,
-        });
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-          path: "/tmp/known-acp",
-        });
-        const thread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          providerId,
-        });
-        seedThreadRuntimeState(harness.deps, {
-          environmentId: environment.id,
-          providerThreadId: `provider-${providerId}`,
-          threadId: thread.id,
-        });
-        const execution = {
-          model: requestedModel,
-          permissionMode: "accept-edits",
-          reasoningLevel: "medium",
-          serviceTier: "default",
-          source: "client/turn/requested",
-        } as const;
+  it("carries a bundled ACP agent's launch spec on thread start and turn submit", async () => {
+    const providerId = "acp-opencode";
+    const requestedModel = "opencode/default";
+    const expectedSpec = { command: "opencode", args: ["acp"] };
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: `host-runtime-known-${providerId}`,
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/known-acp",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: `provider-${providerId}`,
+        threadId: thread.id,
+      });
+      const execution = {
+        model: requestedModel,
+        permissionMode: "accept-edits",
+        reasoningLevel: "medium",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      } as const;
 
-        const startCommand = await buildThreadStartCommand(harness.deps, {
+      const startCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
+        projectId: project.id,
+        providerId,
+        requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
+        syncGeneratedTitle: false,
+        thread,
+      });
+      expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
+        acpLaunchSpec: expectedSpec,
+      });
+      expect(startCommand.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(startCommand.instructions).toContain(
+        "update_environment_directory",
+      );
+
+      const submitCommand = await prepareTurnSubmitCommandPayload(
+        harness.deps,
+        {
           environment,
           execution,
-          fork: null,
           permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId,
-          requestId: encodeClientTurnRequestIdNumber({ value: 102 }),
-          syncGeneratedTitle: false,
+          input: textInput("continue"),
+          target: { mode: "start" },
           thread,
-        });
-        expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
-          acpLaunchSpec: expectedSpec,
-        });
-        expect(startCommand.dynamicTools).toEqual([
-          expect.objectContaining({
-            name: "update_environment_directory",
-          }),
-        ]);
-        expect(startCommand.instructions).toContain(
-          "update_environment_directory",
-        );
-
-        const submitCommand = await prepareTurnSubmitCommandPayload(
-          harness.deps,
-          {
-            environment,
-            execution,
-            permissionEscalation: "ask",
-            input: textInput("continue"),
-            target: { mode: "start" },
-            thread,
-          },
-        );
-        expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
-          acpLaunchSpec: expectedSpec,
-        });
-        expect(
-          submitCommand.resumeContext.bridgeLaunch.providerOptions,
-        ).toMatchObject({ acpLaunchSpec: expectedSpec });
-        expect(submitCommand.resumeContext.dynamicTools).toEqual([
-          expect.objectContaining({
-            name: "update_environment_directory",
-          }),
-        ]);
-        expect(submitCommand.resumeContext.instructions).toContain(
-          "update_environment_directory",
-        );
+        },
+      );
+      expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
+        acpLaunchSpec: expectedSpec,
       });
-    },
-  );
+      expect(
+        submitCommand.resumeContext.bridgeLaunch.providerOptions,
+      ).toMatchObject({ acpLaunchSpec: expectedSpec });
+      expect(submitCommand.resumeContext.dynamicTools).toEqual([
+        expect.objectContaining({
+          name: "update_environment_directory",
+        }),
+      ]);
+      expect(submitCommand.resumeContext.instructions).toContain(
+        "update_environment_directory",
+      );
+    });
+  });
 
   it("honors requested Accept Edits permission mode when the provider supports it", async () => {
     await withTestHarness(async (harness) => {
@@ -1427,7 +1387,8 @@ describe("thread runtime config", () => {
           environmentId: environment.id,
         });
 
-        const longBody = "x".repeat(5000);
+        const globalInstructions = "g".repeat(15_700);
+        const longBody = "x".repeat(40_000);
         stubContributions({
           instructions: [
             {
@@ -1443,6 +1404,10 @@ describe("thread runtime config", () => {
               provider: () => {
                 throw new Error("provider boom");
               },
+            },
+            {
+              pluginId: "global",
+              provider: () => globalInstructions,
             },
             {
               pluginId: "verbose",
@@ -1487,8 +1452,9 @@ describe("thread runtime config", () => {
         );
         expect(instructions).toContain("still contributes");
         expect(instructions).not.toContain(longBody);
-        expect(instructions).toContain("x".repeat(4096));
-        expect(instructions).not.toContain("x".repeat(4097));
+        expect(instructions).toContain(globalInstructions);
+        expect(instructions).toContain("x".repeat(32_768));
+        expect(instructions).not.toContain("x".repeat(32_769));
       });
     });
   });

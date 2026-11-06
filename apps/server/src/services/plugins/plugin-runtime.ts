@@ -1353,6 +1353,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             row.rootDir,
             deps.appVersion,
             await getPluginBuildToolchain(deps),
+            { minify: true, hostProvidedZod: true },
           );
           logPluginBuildWarnings({
             dataDir: deps.dataDir,

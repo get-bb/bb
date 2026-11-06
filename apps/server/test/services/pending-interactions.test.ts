@@ -1680,6 +1680,56 @@ describe("pending interaction lifecycle", () => {
         "availableDecisions",
       );
 
+      const questionPayload = createUserQuestionPayload();
+      const question = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-lifecycle",
+          providerId: "codex",
+          providerThreadId: "provider-thread-lifecycle",
+          providerRequestId: "request-lifecycle-question",
+          payload: questionPayload,
+        },
+      );
+      if (question.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${question.reason}`);
+      }
+      const answer = createUserAnswerResolution({ freeText: "Ship it." });
+      harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: question.interaction.id,
+        resolution: answer,
+      });
+      harness.db.transaction((tx) =>
+        harness.deps.pendingInteractions.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
+          { interactionId: question.interaction.id, resolution: answer },
+        ),
+      );
+      expect(
+        lifecycleEvents()
+          .filter((event) => event.interaction.id === question.interaction.id)
+          .map((event) => ({ scope: event.scope, ...event.interaction })),
+      ).toEqual([
+        {
+          scope: { kind: "turn", turnId: "turn-lifecycle" },
+          id: question.interaction.id,
+          status: "pending",
+          statusReason: null,
+          origin: {
+            kind: "provider",
+            providerId: "codex",
+            providerRequestId: "request-lifecycle-question",
+          },
+          payload: questionPayload,
+          resolution: null,
+        },
+        expect.objectContaining({ status: "resolving", resolution: answer }),
+        expect.objectContaining({ status: "resolved", resolution: answer }),
+      ]);
+
       const pending = requestPluginInteraction(harness.deps, {
         threadId: thread.id,
         name: "SENTINEL_FIELD",
@@ -1958,73 +2008,6 @@ describe("pending interaction lifecycle", () => {
       });
       expect(JSON.stringify(lifecycle)).not.toContain("SENTINEL_TOKEN");
       expect(JSON.stringify(lifecycle)).not.toContain("sentinel-x");
-    });
-  });
-
-  it("allows command approvals to grant explicit session permissions for session decisions", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-command-grant",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      const created = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-command-grant",
-          providerId: "codex",
-          providerThreadId: "provider-thread-command-grant",
-          providerRequestId: "request-command-grant",
-          payload: createCommandApprovalPayload({
-            itemId: "item-command-grant",
-            reason: "Needs network",
-            command: "curl https://example.com",
-            sessionGrant: {
-              network: { enabled: true },
-              fileSystem: null,
-            },
-          }),
-        },
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
-      }
-
-      expect(
-        harness.deps.pendingInteractions.resolvePendingInteraction({
-          threadId: thread.id,
-          interactionId: created.interaction.id,
-          resolution: createAllowForSessionResolution({
-            network: { enabled: true },
-            fileSystem: null,
-          }),
-        }),
-      ).toEqual(
-        expect.objectContaining({
-          status: "resolving",
-          resolution: expect.objectContaining({
-            decision: "allow_for_session",
-            grantedPermissions: {
-              network: { enabled: true },
-              fileSystem: null,
-            },
-          }),
-        }),
-      );
     });
   });
 

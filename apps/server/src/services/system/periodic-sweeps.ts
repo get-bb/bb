@@ -17,16 +17,12 @@ import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import { sweepMachineLifecycles } from "../machines/provider-orchestration.js";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
-  compactDatabase,
-  DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
-  DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   deleteExpiredRetainedEventOutputs,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
-  getDatabaseCompactionStats,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   getEnvironment,
@@ -39,7 +35,6 @@ import {
   pruneClosedSessions,
   RETAINED_EVENT_OUTPUT_TARGETS,
   runIncrementalVacuum,
-  shouldCompactDatabase,
   shouldRunIncrementalVacuum,
   threads,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
@@ -235,60 +230,28 @@ export async function runDatabaseMaintenanceSweep(
     return;
   }
 
-  const autoVacuumMode = getDatabaseAutoVacuumMode(deps.db);
-
-  if (autoVacuumMode === "incremental") {
-    const freelistStats = getDatabaseFreelistStats(deps.db);
-    if (
-      !shouldRunIncrementalVacuum({
-        minFreelistPages: DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
-        stats: freelistStats,
-      })
-    ) {
-      deps.logger.debug(
-        { freelistStats },
-        "Incremental database vacuum skipped below freelist threshold",
-      );
-      return;
-    }
-    try {
-      const result = await runChunkedIncrementalVacuum(deps.db);
-      deps.logger.info({ result }, "Incremental database vacuum completed");
-    } catch (error) {
-      deps.logger.warn({ err: error }, "Incremental database vacuum failed");
-    }
+  if (getDatabaseAutoVacuumMode(deps.db) !== "incremental") {
     return;
   }
 
-  const activity = getDatabaseMaintenanceActivity(deps.db);
-  if (!isDatabaseMaintenanceIdle(activity)) {
-    deps.logger.debug(
-      { activity },
-      "Database maintenance skipped while app work is active",
-    );
-    return;
-  }
-
-  const stats = getDatabaseCompactionStats(deps.db);
+  const freelistStats = getDatabaseFreelistStats(deps.db);
   if (
-    !shouldCompactDatabase({
-      minReclaimableBytes: DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
-      minReclaimableRatio: DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
-      stats,
+    !shouldRunIncrementalVacuum({
+      minFreelistPages: DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
+      stats: freelistStats,
     })
   ) {
     deps.logger.debug(
-      { stats },
-      "Database maintenance skipped below compaction threshold",
+      { freelistStats },
+      "Incremental database vacuum skipped below freelist threshold",
     );
     return;
   }
-
   try {
-    const result = compactDatabase(deps.db);
-    deps.logger.info({ result }, "Database compaction completed");
+    const result = await runChunkedIncrementalVacuum(deps.db);
+    deps.logger.info({ result }, "Incremental database vacuum completed");
   } catch (error) {
-    deps.logger.warn({ err: error }, "Database compaction failed");
+    deps.logger.warn({ err: error }, "Incremental database vacuum failed");
   }
 }
 

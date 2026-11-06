@@ -16,6 +16,8 @@ export type CommitGitRunner = (
 const COMMIT_CHANGES_CACHE_BYTES = 64 * 1024 * 1024;
 const COMMIT_CHANGES_MAX_ENTRY_BYTES = 1024 * 1024;
 const PATCH_ID_CACHE_BYTES = 8 * 1024 * 1024;
+const UNTOUCHED_COMMIT_CACHE_BYTES = 8 * 1024 * 1024;
+const PATHSPEC_MAX_CHARS = 16 * 1024;
 const CACHE_ENTRY_OVERHEAD_BYTES = 64;
 const COMMIT_CHANGES_BATCH_SIZE = 256;
 const COMMIT_CHANGES_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
@@ -33,6 +35,9 @@ type PatchIdMode = "cherry-pick" | "squash";
 const commitChanges = new ByteBudgetCache<string>(
   COMMIT_CHANGES_CACHE_BYTES,
   COMMIT_CHANGES_MAX_ENTRY_BYTES,
+);
+const untouchedCommits = new ByteBudgetCache<true>(
+  UNTOUCHED_COMMIT_CACHE_BYTES,
 );
 const patchIdCaches: Record<PatchIdMode, ByteBudgetCache<string | null>> = {
   "cherry-pick": new ByteBudgetCache(PATCH_ID_CACHE_BYTES),
@@ -109,6 +114,73 @@ export async function readCommitChanges(
   return changes;
 }
 
+export function longestPath(paths: string[]): string {
+  return paths.reduce((longest, path) =>
+    path.length > longest.length ? path : longest,
+  );
+}
+
+export async function readCommitsTouchingPaths(
+  run: CommitGitRunner,
+  commits: string[],
+  paths: string[],
+): Promise<string[] | null> {
+  const pathSet = new Set(paths);
+  if (commits.length === 0 || pathSet.size === 0) return [];
+  const pathspecs = [...pathSet].map((path) => `:(literal)${path}`);
+  if (pathspecs.join(" ").length > PATHSPEC_MAX_CHARS) return commits;
+  const touching = new Set<string>();
+  const unknown: string[] = [];
+  for (const commit of commits) {
+    const cached = commitChanges.get(commit);
+    if (cached !== undefined) {
+      if (
+        parseRawDiffEntriesZ(cached).some((entry) => pathSet.has(entry.path))
+      ) {
+        touching.add(commit);
+      }
+    } else if (
+      [...pathSet].some(
+        (path) => untouchedCommits.get(`${commit}:${path}`) === undefined,
+      )
+    ) {
+      unknown.push(commit);
+    }
+  }
+  if (unknown.length > 0) {
+    const log = await run(
+      [
+        "log",
+        ...COMMIT_LOG_ARGS,
+        "--no-renames",
+        "--name-only",
+        "--format=%x01%H",
+        "--",
+        ...pathspecs,
+      ],
+      { input: `${unknown.join("\n")}\n` },
+    );
+    if (log.exitCode !== 0) return null;
+    let shown: string | undefined;
+    for (const line of log.stdout.split("\n")) {
+      if (line.startsWith("\u0001")) shown = line.slice(1);
+      else if (line !== "" && shown !== undefined) touching.add(shown);
+    }
+    for (const commit of unknown) {
+      if (touching.has(commit)) continue;
+      for (const path of pathSet) {
+        const key = `${commit}:${path}`;
+        untouchedCommits.set(
+          key,
+          true,
+          key.length + CACHE_ENTRY_OVERHEAD_BYTES,
+        );
+      }
+    }
+  }
+  return commits.filter((commit) => touching.has(commit));
+}
+
 export async function readCommitPatchIds(
   run: CommitGitRunner,
   mode: PatchIdMode,
@@ -180,8 +252,16 @@ export async function readPatchEquivalentCommits(
   right: string[],
 ): Promise<Set<string> | null> {
   if (left.length === 0 || right.length === 0) return new Set();
-  const changes = await readCommitChanges(run, [...left, ...right]);
-  if (!changes) return null;
+  const rightChanges = await readCommitChanges(run, right);
+  if (!rightChanges) return null;
+  const rightPaths = [...rightChanges.values()]
+    .filter((entries) => entries.length > 0)
+    .map((entries) => longestPath(entries.map((entry) => entry.path)));
+  const touchingLeft = await readCommitsTouchingPaths(run, left, rightPaths);
+  if (!touchingLeft) return null;
+  const leftChanges = await readCommitChanges(run, touchingLeft);
+  if (!leftChanges) return null;
+  const changes = new Map([...leftChanges, ...rightChanges]);
   const keysFor = (commits: string[]): Map<string, string> => {
     const keys = new Map<string, string>();
     for (const commit of commits) {

@@ -181,6 +181,15 @@
           "pattern": "^[a-z0-9][a-z0-9-]*$",
           "$comment": "This id must occur in the categories array."
         },
+        "secondaryCategories": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        },
         "screenshots": {
           "type": "array",
           "maxItems": 6,

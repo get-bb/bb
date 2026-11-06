@@ -1,6 +1,6 @@
 import path from "node:path";
-import { getAbsoluteGitDir } from "./git.js";
 import {
+  getAbsoluteGitDir,
   getGitCommonDir,
   type GitProcessOptions,
 } from "bb-environment-provider-host/workspace-git";

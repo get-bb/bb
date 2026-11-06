@@ -1,6 +1,8 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   OAUTH_ACCESS_TOKEN_TTL_MS,
@@ -13,16 +15,12 @@ import {
   oauthCode,
   oauthGrant,
   oauthRefreshToken,
-  schema,
+  type ConnectDb,
   server,
   sha256Hex,
   user,
   verifyMcpAccessToken,
 } from "@bb/connect-db";
-import {
-  connectDbMigrationFiles,
-  readConnectDbMigration,
-} from "@bb/connect-db/testing";
 import {
   type OAuthEnv,
   completeOAuthAuthorization,
@@ -52,8 +50,8 @@ const NEXT_RESOURCE = "https://alice.next.getbb.app/mcp";
 const VERIFIER = "v".repeat(64);
 const JSON_HEADERS = { "content-type": "application/json" };
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let database: TestConnectDb;
+let db: ConnectDb;
 let now: number;
 let challenge: string;
 
@@ -105,36 +103,32 @@ function authorizeParams(over: Record<string, string | null> = {}) {
   return params;
 }
 
-function seedUser(id: string): void {
+async function seedUser(id: string): Promise<void> {
   const at = new Date(T0);
-  db.insert(user)
-    .values({
-      id,
-      name: `Name ${id}`,
-      email: `${id}@example.com`,
-      emailVerified: true,
-      createdAt: at,
-      updatedAt: at,
-    })
-    .run();
+  await db.insert(user).values({
+    id,
+    name: `Name ${id}`,
+    email: `${id}@example.com`,
+    emailVerified: true,
+    createdAt: at,
+    updatedAt: at,
+  });
 }
 
-function seedServer(
+async function seedServer(
   id: string,
   userId: string,
   subdomain: string,
   credentialHash: string | null = null,
-): void {
-  db.insert(server)
-    .values({
-      id,
-      userId,
-      name: `${subdomain}-box`,
-      subdomain,
-      credentialHash,
-      createdAt: new Date(T0),
-    })
-    .run();
+): Promise<void> {
+  await db.insert(server).values({
+    id,
+    userId,
+    name: `${subdomain}-box`,
+    subdomain,
+    credentialHash,
+    createdAt: new Date(T0),
+  });
 }
 
 function redirectParams(result: { kind: string; url?: string }) {
@@ -225,19 +219,14 @@ function refresh(
   });
 }
 
-function liveRefreshRowCount(): number {
-  return db
-    .select()
-    .from(oauthRefreshToken)
-    .all()
-    .filter((row) => row.rotatedAt === null).length;
+async function liveRefreshRowCount(): Promise<number> {
+  return (await db.select().from(oauthRefreshToken)).filter(
+    (row) => row.rotatedAt === null,
+  ).length;
 }
 
-function revokeReasons(): string[] {
-  return db
-    .select()
-    .from(auditLog)
-    .all()
+async function revokeReasons(): Promise<string[]> {
+  return (await db.select().from(auditLog))
     .filter((row) => row.action === "mcp.oauth.revoke")
     .map((row) => JSON.parse(row.detail ?? "{}").reason);
 }
@@ -255,41 +244,59 @@ function revokeRequest(token: string): Promise<Response> {
   );
 }
 
-function grantRows() {
-  return db.select().from(oauthGrant).all();
+async function grantRows() {
+  return await db.select().from(oauthGrant);
 }
 
-function auditActions(): string[] {
-  return db
-    .select({ action: auditLog.action })
-    .from(auditLog)
-    .all()
-    .map((row) => row.action);
+async function auditActions(): Promise<string[]> {
+  return (await db.select({ action: auditLog.action }).from(auditLog)).map(
+    (row) => row.action,
+  );
 }
 
 beforeEach(async () => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of connectDbMigrationFiles()) {
-    sqlite.exec(readConnectDbMigration(file));
-  }
-  db = drizzle(sqlite, { schema });
+  database = await createTestConnectDb();
+  db = database.db;
   now = T0;
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(VERIFIER),
   );
   challenge = Buffer.from(digest).toString("base64url");
-  seedUser("alice");
-  seedUser("bob");
-  seedServer("srv-alice", "alice", "alice", await sha256Hex("bbcred_alice"));
-  seedServer("srv-alice-2", "alice", "alice2", await sha256Hex("bbcred_two"));
-  seedServer("srv-bob", "bob", "bob");
+  await seedUser("alice");
+  await seedUser("bob");
+  await seedServer(
+    "srv-alice",
+    "alice",
+    "alice",
+    await sha256Hex("bbcred_alice"),
+  );
+  await seedServer(
+    "srv-alice-2",
+    "alice",
+    "alice2",
+    await sha256Hex("bbcred_two"),
+  );
+  await seedServer("srv-bob", "bob", "bob");
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
 });
+
+async function tupleVersions(): Promise<unknown[]> {
+  const { rows: tables } = await database.pglite.query<{ name: string }>(
+    "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
+  );
+  const versions: unknown[] = [];
+  for (const { name } of tables) {
+    const { rows } = await database.pglite.query(
+      `SELECT ctid::text AS ctid, xmin::text AS xmin FROM "${name}" ORDER BY ctid`,
+    );
+    versions.push({ name, rows });
+  }
+  return versions;
+}
 
 describe("authorization server metadata", () => {
   it("describes a CIMD-only public-client server under the normalized issuer", () => {
@@ -545,7 +552,7 @@ describe("authorization requests", () => {
     ]) {
       expect((await run()).kind).toBe("error-page");
     }
-    expect(db.select().from(oauthCode).all()).toHaveLength(0);
+    expect(await db.select().from(oauthCode)).toHaveLength(0);
   });
 
   it.each([
@@ -593,7 +600,7 @@ describe("authorization requests", () => {
         message: expect.stringContaining(error),
       });
     }
-    expect(db.select().from(oauthCode).all()).toHaveLength(0);
+    expect(await db.select().from(oauthCode)).toHaveLength(0);
   });
 
   it("never bounces a malformed request to an attacker-hosted client", async () => {
@@ -658,10 +665,10 @@ describe("authorization requests", () => {
   });
 
   it("treats a revoked server as an invalid target", async () => {
-    db.update(server)
+    await db
+      .update(server)
       .set({ revokedAt: new Date(T0) })
-      .where(eq(server.id, "srv-alice"))
-      .run();
+      .where(eq(server.id, "srv-alice"));
     const result = await prepareOAuthAuthorization(
       ENV,
       db,
@@ -687,7 +694,7 @@ describe("authorization requests", () => {
     const params = redirectParams(result);
     expect(params.get("error")).toBe("access_denied");
     expect(params.has("state")).toBe(false);
-    expect(db.select().from(oauthCode).all()).toHaveLength(0);
+    expect(await db.select().from(oauthCode)).toHaveLength(0);
   });
 
   it("stores only the code hash and keeps the redirect URI query", async () => {
@@ -709,7 +716,7 @@ describe("authorization requests", () => {
     expect(url.searchParams.get("iss")).toBe("https://getbb.app");
     const code = url.searchParams.get("code") ?? "";
     expect(code).toMatch(/^bbmcpc_[A-Za-z0-9_-]{43}$/u);
-    const rows = db.select().from(oauthCode).all();
+    const rows = await db.select().from(oauthCode);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       codeHash: await sha256Hex(code),
@@ -731,7 +738,7 @@ describe("authorization requests", () => {
         await tokenRequest(codeBody(await authorize({ scope }))),
       );
       expect(body.scope).toBe("bb");
-      expect(grantRows()[0]?.scope).toBe("bb");
+      expect((await grantRows())[0]?.scope).toBe("bb");
     },
   );
 });
@@ -742,7 +749,7 @@ describe("token endpoint: authorization_code", () => {
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toBe(OAUTH_ACCESS_TOKEN_TTL_MS / 1000);
     expect(body.refresh_token).toMatch(/^bbmcpr_[A-Za-z0-9_-]{43}$/u);
-    const grant = grantRows()[0];
+    const grant = (await grantRows())[0];
     expect(grant).toMatchObject({
       userId: "alice",
       serverId: "srv-alice",
@@ -765,13 +772,13 @@ describe("token endpoint: authorization_code", () => {
     expect(
       await verifyMcpAccessToken(body.access_token, "other-secret", T0),
     ).toBeNull();
-    const stored = db.select().from(oauthRefreshToken).all();
+    const stored = await db.select().from(oauthRefreshToken);
     expect(stored).toHaveLength(1);
     expect(stored[0]?.tokenHash).toBe(await sha256Hex(body.refresh_token));
     expect(stored[0]?.expiresAt.getTime()).toBe(
       T0 + OAUTH_REFRESH_TOKEN_TTL_MS,
     );
-    expect(auditActions()).toEqual(["mcp.oauth.grant"]);
+    expect(await auditActions()).toEqual(["mcp.oauth.grant"]);
   });
 
   it("binds a grant and its tokens to the next address it was issued for", async () => {
@@ -787,8 +794,8 @@ describe("token endpoint: authorization_code", () => {
         }),
       ),
     );
-    expect(grantRows()).toHaveLength(1);
-    expect(grantRows()[0]?.resource).toBe(NEXT_RESOURCE);
+    expect(await grantRows()).toHaveLength(1);
+    expect((await grantRows())[0]?.resource).toBe(NEXT_RESOURCE);
     expect(
       (
         await verifyMcpAccessToken(
@@ -836,7 +843,7 @@ describe("token endpoint: authorization_code", () => {
     const code = await authorize();
     await tokens(await tokenRequest(codeBody(code)));
     await expectTokenError(await tokenRequest(codeBody(code)), "invalid_grant");
-    expect(grantRows()).toHaveLength(1);
+    expect(await grantRows()).toHaveLength(1);
   });
 
   it.each([
@@ -855,7 +862,7 @@ describe("token endpoint: authorization_code", () => {
       "invalid_grant",
     );
     await expectTokenError(await tokenRequest(codeBody(code)), "invalid_grant");
-    expect(grantRows()).toHaveLength(0);
+    expect(await grantRows()).toHaveLength(0);
   });
 
   it("rejects an expired code", async () => {
@@ -866,10 +873,10 @@ describe("token endpoint: authorization_code", () => {
 
   it("rejects a code whose server was revoked before the exchange", async () => {
     const code = await authorize();
-    db.update(server)
+    await db
+      .update(server)
       .set({ revokedAt: new Date(T0) })
-      .where(eq(server.id, "srv-alice"))
-      .run();
+      .where(eq(server.id, "srv-alice"));
     await expectTokenError(await tokenRequest(codeBody(code)), "invalid_grant");
   });
 
@@ -894,7 +901,7 @@ describe("token endpoint: authorization_code", () => {
     const { redirect_uri: _omitted, ...body } = codeBody(await authorize());
     const issued = await tokens(await tokenRequest(body));
     expect(issued.refresh_token).toMatch(/^bbmcpr_/u);
-    expect(grantRows()).toHaveLength(1);
+    expect(await grantRows()).toHaveLength(1);
   });
 
   it("compares a presented resource after normalising it", async () => {
@@ -916,35 +923,33 @@ describe("token endpoint: authorization_code", () => {
         "invalid_grant",
       );
     }
-    expect(grantRows()).toHaveLength(1);
+    expect(await grantRows()).toHaveLength(1);
   });
 
   it("does not write when the code is unknown", async () => {
     await authorize();
-    const before = sqlite.prepare("SELECT total_changes() AS n").get() as {
-      n: number;
-    };
+    const before = await tupleVersions();
     await expectTokenError(
       await tokenRequest(codeBody(`bbmcpc_${"A".repeat(43)}`)),
       "invalid_grant",
     );
-    const after = sqlite.prepare("SELECT total_changes() AS n").get() as {
-      n: number;
-    };
-    expect(after.n).toBe(before.n);
-    expect(db.select().from(oauthCode).all()).toHaveLength(1);
+    expect(await tupleVersions()).toEqual(before);
+    expect(await db.select().from(oauthCode)).toHaveLength(1);
   });
 
   it("keeps an earlier device connected when a second one connects", async () => {
     const laptop = await exchange();
     now += 1000;
     const desktop = await exchange();
-    const grants = grantRows();
+    const grants = await grantRows();
     expect(grants).toHaveLength(2);
     expect(grants.every((grant) => grant.revokedAt === null)).toBe(true);
     await tokens(await refresh(laptop.refresh_token));
     await tokens(await refresh(desktop.refresh_token));
-    expect(auditActions()).toEqual(["mcp.oauth.grant", "mcp.oauth.grant"]);
+    expect(await auditActions()).toEqual([
+      "mcp.oauth.grant",
+      "mcp.oauth.grant",
+    ]);
     expect(await listOAuthGrantsForUser(db, "alice")).toHaveLength(2);
   });
 
@@ -959,11 +964,13 @@ describe("token endpoint: authorization_code", () => {
         codeBody(await authorize({ resource: "https://alice2.getbb.app/mcp" })),
       ),
     );
-    const live = grantRows().filter((grant) => grant.revokedAt === null);
+    const live = (await grantRows()).filter(
+      (grant) => grant.revokedAt === null,
+    );
     expect(live.filter((grant) => grant.serverId === "srv-alice")).toHaveLength(
       OAUTH_MAX_GRANTS_PER_CLIENT,
     );
-    expect(revokeReasons()).toEqual(["superseded", "superseded"]);
+    expect(await revokeReasons()).toEqual(["superseded", "superseded"]);
     for (const oldest of issued.slice(0, 2)) {
       await expectTokenError(
         await refresh(oldest.refresh_token),
@@ -978,32 +985,29 @@ describe("token endpoint: authorization_code", () => {
   it("deletes the user's long-revoked grants when a new grant is created", async () => {
     await exchange();
     await exchange();
-    const [stale, recent] = grantRows();
+    const [stale, recent] = await grantRows();
     if (!stale || !recent) throw new Error("grants were not created");
-    const revokeAt = (id: string, at: number) =>
-      db
+    const revokeAt = async (id: string, at: number) =>
+      await db
         .update(oauthGrant)
         .set({ revokedAt: new Date(at) })
-        .where(eq(oauthGrant.id, id))
-        .run();
-    revokeAt(stale.id, T0);
-    revokeAt(recent.id, T0 + 1000);
-    db.insert(oauthGrant)
-      .values({
-        id: "bob-stale",
-        userId: "bob",
-        serverId: "srv-bob",
-        clientId: CLIENT_ID,
-        clientName: "Claude",
-        resource: "https://bob.getbb.app/mcp",
-        scope: "bb",
-        createdAt: new Date(T0),
-        revokedAt: new Date(T0),
-      })
-      .run();
+        .where(eq(oauthGrant.id, id));
+    await revokeAt(stale.id, T0);
+    await revokeAt(recent.id, T0 + 1000);
+    await db.insert(oauthGrant).values({
+      id: "bob-stale",
+      userId: "bob",
+      serverId: "srv-bob",
+      clientId: CLIENT_ID,
+      clientName: "Claude",
+      resource: "https://bob.getbb.app/mcp",
+      scope: "bb",
+      createdAt: new Date(T0),
+      revokedAt: new Date(T0),
+    });
     now = T0 + OAUTH_REVOKED_GRANT_RETENTION_MS + 500;
     await exchange();
-    const remaining = grantRows().map((grant) => grant.id);
+    const remaining = (await grantRows()).map((grant) => grant.id);
     expect(remaining).not.toContain(stale.id);
     expect(remaining).toContain(recent.id);
     expect(remaining).toContain("bob-stale");
@@ -1024,12 +1028,12 @@ describe("token endpoint: refresh_token", () => {
       now,
     );
     expect(claims).toMatchObject({
-      grantId: grantRows()[0]?.id,
+      grantId: (await grantRows())[0]?.id,
       scope: "bb",
       issuedAt: now,
       expiresAt: now + OAUTH_ACCESS_TOKEN_TTL_MS,
     });
-    expect(grantRows()[0]?.lastUsedAt?.getTime()).toBe(now);
+    expect((await grantRows())[0]?.lastUsedAt?.getTime()).toBe(now);
     now += 5 * 60 * 1000;
     await tokens(await refresh(second.refresh_token));
   });
@@ -1041,10 +1045,10 @@ describe("token endpoint: refresh_token", () => {
     const retried = await tokens(await refresh(first.refresh_token));
     expect(retried.refresh_token).toBe(second.refresh_token);
     expect(retried.access_token).not.toBe(second.access_token);
-    expect(liveRefreshRowCount()).toBe(1);
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect(await liveRefreshRowCount()).toBe(1);
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
     const next = await tokens(await refresh(second.refresh_token));
-    expect(liveRefreshRowCount()).toBe(1);
+    expect(await liveRefreshRowCount()).toBe(1);
     await tokens(await refresh(next.refresh_token));
   });
 
@@ -1055,14 +1059,14 @@ describe("token endpoint: refresh_token", () => {
     now += 1000;
     const replayed = await tokens(await refresh(first.refresh_token));
     expect(replayed.refresh_token).toBe(second.refresh_token);
-    expect(liveRefreshRowCount()).toBe(1);
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect(await liveRefreshRowCount()).toBe(1);
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
     now += OAUTH_REFRESH_REUSE_GRACE_MS + 1;
     await expectTokenError(
       await refresh(replayed.refresh_token),
       "invalid_grant",
     );
-    expect(revokeReasons()).toEqual(["reuse"]);
+    expect(await revokeReasons()).toEqual(["reuse"]);
     await expectTokenError(await refresh(third.refresh_token), "invalid_grant");
   });
 
@@ -1077,9 +1081,9 @@ describe("token endpoint: refresh_token", () => {
       issued.push((await tokens(response)).refresh_token);
     }
     expect(new Set(issued).size).toBe(1);
-    expect(liveRefreshRowCount()).toBe(1);
-    expect(db.select().from(oauthRefreshToken).all()).toHaveLength(2);
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect(await liveRefreshRowCount()).toBe(1);
+    expect(await db.select().from(oauthRefreshToken)).toHaveLength(2);
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
     await tokens(await refresh(issued[0] ?? ""));
   });
 
@@ -1110,7 +1114,7 @@ describe("token endpoint: refresh_token", () => {
         "invalid_grant",
       );
     }
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
     await tokens(await refresh(second.refresh_token));
   });
 
@@ -1119,12 +1123,15 @@ describe("token endpoint: refresh_token", () => {
     const second = await tokens(await refresh(first.refresh_token));
     now += OAUTH_REFRESH_REUSE_GRACE_MS + 1;
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
-    expect(grantRows()[0]?.revokedAt?.getTime()).toBe(now);
+    expect((await grantRows())[0]?.revokedAt?.getTime()).toBe(now);
     await expectTokenError(
       await refresh(second.refresh_token),
       "invalid_grant",
     );
-    expect(auditActions()).toEqual(["mcp.oauth.grant", "mcp.oauth.revoke"]);
+    expect(await auditActions()).toEqual([
+      "mcp.oauth.grant",
+      "mcp.oauth.revoke",
+    ]);
   });
 
   it("keeps a bounded number of refresh rows for a long-lived grant", async () => {
@@ -1133,11 +1140,8 @@ describe("token endpoint: refresh_token", () => {
       now += 60 * 60 * 1000;
       current = await tokens(await refresh(current.refresh_token));
     }
-    const rows = sqlite
-      .prepare("SELECT COUNT(*) AS count FROM oauth_refresh_token")
-      .get() as { count: number };
-    expect(rows.count).toBeLessThanOrEqual(26);
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect(await db.$count(oauthRefreshToken)).toBeLessThanOrEqual(26);
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
 
   it("still detects reuse of a token rotated within the retention window", async () => {
@@ -1148,7 +1152,7 @@ describe("token endpoint: refresh_token", () => {
       current = await tokens(await refresh(current.refresh_token));
     }
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
-    expect(grantRows()[0]?.revokedAt?.getTime()).toBe(now);
+    expect((await grantRows())[0]?.revokedAt?.getTime()).toBe(now);
     await expectTokenError(
       await refresh(current.refresh_token),
       "invalid_grant",
@@ -1171,7 +1175,7 @@ describe("token endpoint: refresh_token", () => {
       await tokenRequest(codeBody("bbmcpc_not-a-real-code")),
       "invalid_grant",
     );
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
 
   it("rejects unknown, expired and wrong-client refresh tokens", async () => {
@@ -1187,12 +1191,12 @@ describe("token endpoint: refresh_token", () => {
     );
     now = T0 + OAUTH_REFRESH_TOKEN_TTL_MS;
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
 
   it("refuses to refresh a revoked grant", async () => {
     const first = await exchange();
-    const grantId = grantRows()[0]?.id ?? "";
+    const grantId = (await grantRows())[0]?.id ?? "";
     expect(await revokeOAuthGrantForUser(db, "bob", grantId)).toBe(false);
     expect(await revokeOAuthGrantForUser(db, "alice", grantId)).toBe(true);
     expect(await revokeOAuthGrantForUser(db, "alice", grantId)).toBe(false);
@@ -1202,15 +1206,15 @@ describe("token endpoint: refresh_token", () => {
 
   it("refuses to refresh once the server is revoked or changes owner", async () => {
     const first = await exchange();
-    db.update(server)
+    await db
+      .update(server)
       .set({ userId: "bob" })
-      .where(eq(server.id, "srv-alice"))
-      .run();
+      .where(eq(server.id, "srv-alice"));
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
-    db.update(server)
+    await db
+      .update(server)
       .set({ userId: "alice", revokedAt: new Date(T0) })
-      .where(eq(server.id, "srv-alice"))
-      .run();
+      .where(eq(server.id, "srv-alice"));
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
   });
 });
@@ -1221,12 +1225,14 @@ describe("revocation endpoint", () => {
     const response = await revokeRequest(first.refresh_token);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("");
-    expect(grantRows()[0]?.revokedAt).not.toBeNull();
+    expect((await grantRows())[0]?.revokedAt).not.toBeNull();
 
     now += 1000;
     const second = await exchange();
     expect((await revokeRequest(second.access_token)).status).toBe(200);
-    expect(grantRows().every((grant) => grant.revokedAt !== null)).toBe(true);
+    expect((await grantRows()).every((grant) => grant.revokedAt !== null)).toBe(
+      true,
+    );
     await expectTokenError(
       await refresh(second.refresh_token),
       "invalid_grant",
@@ -1239,7 +1245,7 @@ describe("revocation endpoint", () => {
     expect((await revokeRequest("bbmcpr_unknown")).status).toBe(200);
     now = T0 + OAUTH_ACCESS_TOKEN_TTL_MS;
     expect((await revokeRequest(first.access_token)).status).toBe(200);
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
   });
 });
 
@@ -1270,7 +1276,7 @@ describe("grant management", () => {
 
   it("scopes the credential API to that credential's server", async () => {
     await exchange();
-    const grantId = grantRows()[0]?.id ?? "";
+    const grantId = (await grantRows())[0]?.id ?? "";
     expect(await listOAuthGrantsForCredential(db, "bbcred_wrong")).toEqual({
       status: 401,
       body: { error: "unauthorized" },
@@ -1295,7 +1301,7 @@ describe("grant management", () => {
     expect(
       await revokeOAuthGrantForCredential(db, "bbcred_two", { grantId }),
     ).toEqual({ status: 200, body: { revoked: false } });
-    expect(grantRows()[0]?.revokedAt).toBeNull();
+    expect((await grantRows())[0]?.revokedAt).toBeNull();
     expect(
       await revokeOAuthGrantForCredential(
         db,
@@ -1304,8 +1310,11 @@ describe("grant management", () => {
         { now: () => now },
       ),
     ).toEqual({ status: 200, body: { revoked: true } });
-    expect(grantRows()[0]?.revokedAt?.getTime()).toBe(now);
-    expect(db.select().from(oauthRefreshToken).all()).toHaveLength(0);
-    expect(auditActions()).toEqual(["mcp.oauth.grant", "mcp.oauth.revoke"]);
+    expect((await grantRows())[0]?.revokedAt?.getTime()).toBe(now);
+    expect(await db.select().from(oauthRefreshToken)).toHaveLength(0);
+    expect(await auditActions()).toEqual([
+      "mcp.oauth.grant",
+      "mcp.oauth.revoke",
+    ]);
   });
 });

@@ -100,3 +100,54 @@ it("maps retired branch and diff arguments to the Git plugin's inputs", async ()
     },
   ]);
 });
+
+it("keeps the retired Viewed methods working through the Git plugin", async () => {
+  const { calls, retired } = sdkWith((method) =>
+    method === "viewed"
+      ? { files: [{ path: "a.ts", revision: "rev-a" }] }
+      : { ok: true },
+  );
+  await expect(
+    retired("experimental_diffViewed")({
+      environmentId: "env_1",
+      target: "commit",
+      sha: "abc1234",
+      paths: ["a.ts"],
+    }),
+  ).resolves.toEqual({ files: [{ path: "a.ts", revision: "rev-a" }] });
+  await expect(
+    retired("experimental_markDiffViewed")({
+      environmentId: "env_1",
+      target: { type: "uncommitted" },
+      path: "a.ts",
+      revision: "rev-a",
+    }),
+  ).resolves.toEqual({ ok: true });
+  await retired("experimental_clearDiffViewed")({
+    environmentId: "env_1",
+    target: { type: "uncommitted" },
+  });
+  expect(calls).toEqual([
+    {
+      url: "http://bb.test/api/v1/plugins/bb--git/rpc/viewed",
+      body: {
+        environmentId: "env_1",
+        target: { type: "commit", sha: "abc1234" },
+        paths: ["a.ts"],
+      },
+    },
+    {
+      url: "http://bb.test/api/v1/plugins/bb--git/rpc/markViewed",
+      body: {
+        environmentId: "env_1",
+        target: { type: "uncommitted" },
+        path: "a.ts",
+        revision: "rev-a",
+      },
+    },
+    {
+      url: "http://bb.test/api/v1/plugins/bb--git/rpc/clearViewed",
+      body: { environmentId: "env_1", target: { type: "uncommitted" } },
+    },
+  ]);
+});

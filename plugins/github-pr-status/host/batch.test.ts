@@ -53,6 +53,48 @@ function raw(number: number) {
 }
 afterEach(() => vi.unstubAllEnvs());
 
+function withChecks(
+  number: number,
+  nodes: object[],
+  endCursor: string | null = null,
+) {
+  return {
+    ...raw(number),
+    commits: {
+      nodes: [
+        {
+          commit: {
+            statusCheckRollup: {
+              contexts: {
+                nodes,
+                pageInfo: { hasNextPage: endCursor !== null, endCursor },
+              },
+            },
+          },
+        },
+      ],
+    },
+  };
+}
+
+function ciJob(
+  name: string,
+  conclusion: string,
+  runNumber: number,
+  event = "pull_request",
+) {
+  return {
+    name,
+    status: "COMPLETED",
+    conclusion,
+    detailsUrl: null,
+    startedAt: "2026-11-04T04:52:33Z",
+    checkSuite: {
+      workflowRun: { runNumber, event, workflow: { databaseId: 240828233 } },
+    },
+  };
+}
+
 describe("host GraphQL batching", () => {
   it("shares duplicate PR loads and batches distinct PRs without mixing their checks", async () => {
     const gh = await installFakeGh({
@@ -295,5 +337,80 @@ describe("host GraphQL batching", () => {
       "found",
     ]);
     expect(await gh.readCalls()).toHaveLength(1);
+  });
+
+  it("ignores checks from a workflow run superseded by a newer run of the same workflow and event", async () => {
+    const pr = withChecks(5, [
+      ciJob("Select CI checks", "CANCELLED", 20437),
+      ciJob("Tests (${{ matrix.shard }}, ubuntu-latest)", "CANCELLED", 20437),
+      ciJob("Select CI checks", "SUCCESS", 20438),
+      ciJob("Tests (packages-build, ubuntu-latest)", "SUCCESS", 20438),
+      ciJob("Push build", "FAILURE", 20436, "push"),
+      {
+        name: "External app",
+        status: "COMPLETED",
+        conclusion: "SUCCESS",
+        detailsUrl: null,
+        startedAt: "2026-11-04T04:52:33Z",
+        checkSuite: { workflowRun: null },
+      },
+      {
+        context: "legacy-status",
+        state: "SUCCESS",
+        targetUrl: null,
+        createdAt: "2026-11-04T04:52:33Z",
+      },
+    ]);
+    await installFakeGh({
+      "api graphql": { resources: { [pr.url]: { data: pr } } },
+    });
+    const result = await getPullRequestByUrl(
+      pr.url,
+      await makeTempDir("bb-pr-superseded-"),
+    );
+    expect(result.outcome === "found" && result.pullRequest.checks).toEqual([
+      expect.objectContaining({
+        name: "Select CI checks",
+        conclusion: "success",
+      }),
+      expect.objectContaining({
+        name: "Tests (packages-build, ubuntu-latest)",
+        conclusion: "success",
+      }),
+      expect.objectContaining({ name: "Push build", conclusion: "failure" }),
+      expect.objectContaining({ name: "External app" }),
+      expect.objectContaining({ name: "legacy-status" }),
+    ]);
+  });
+
+  it("ignores a superseded workflow run whose newer run is on a later checks page", async () => {
+    const firstPage = withChecks(
+      6,
+      [ciJob("Tests (${{ matrix.shard }}, ubuntu-latest)", "CANCELLED", 20437)],
+      "cursor-1",
+    );
+    const secondPage = withChecks(6, [
+      ciJob("Tests (packages-build, ubuntu-latest)", "SUCCESS", 20438),
+    ]);
+    const gh = await installFakeGh({
+      "api graphql": {
+        resources: { [firstPage.url]: { data: firstPage } },
+        whenQueryIncludes: {
+          text: 'after: "cursor-1"',
+          response: { resources: { [firstPage.url]: { data: secondPage } } },
+        },
+      },
+    });
+    const result = await getPullRequestByUrl(
+      firstPage.url,
+      await makeTempDir("bb-pr-superseded-pages-"),
+    );
+    expect(result.outcome === "found" && result.pullRequest.checks).toEqual([
+      expect.objectContaining({
+        name: "Tests (packages-build, ubuntu-latest)",
+        conclusion: "success",
+      }),
+    ]);
+    expect(await gh.readCalls()).toHaveLength(2);
   });
 });

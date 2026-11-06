@@ -1,20 +1,20 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SERVER_OFFLINE_AFTER_MS,
   labelClaim,
   machine,
   profile,
-  schema,
+  type ConnectDb,
   server,
   session,
   sha256Hex,
   user,
+  first,
 } from "@bb/connect-db";
 
 import {
@@ -31,44 +31,33 @@ import {
 import { SECURE_SESSION_COOKIE } from "./cloud-dev.js";
 import { verifyMachineCredential } from "./session.js";
 
-const MIGRATIONS_DIR = fileURLToPath(
-  new URL("../../../packages/connect-db/migrations", import.meta.url),
-);
+let database: TestConnectDb;
+let db: ConnectDb;
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
-
-beforeEach(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
-    if (!file.endsWith(".sql")) continue;
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  db = drizzle(sqlite, { schema });
+beforeEach(async () => {
+  database = await createTestConnectDb();
+  db = database.db;
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
   vi.restoreAllMocks();
 });
 
 const now = new Date("2026-07-01T12:00:00.000Z");
 
-function seedUser(id: string): void {
-  db.insert(user)
-    .values({
-      id,
-      name: id,
-      email: `${id}@example.com`,
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+async function seedUser(id: string): Promise<void> {
+  await db.insert(user).values({
+    id,
+    name: id,
+    email: `${id}@example.com`,
+    emailVerified: true,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
-function seedServer(over: {
+async function seedServer(over: {
   id: string;
   userId: string;
   name: string;
@@ -76,43 +65,41 @@ function seedServer(over: {
   credentialHash?: string | null;
   revokedAt?: Date | null;
   lastSeenAt?: Date | null;
-}): void {
-  db.insert(server)
-    .values({
-      id: over.id,
-      userId: over.userId,
-      name: over.name,
-      subdomain: over.subdomain,
-      credentialHash: "credentialHash" in over ? over.credentialHash : "hash",
-      revokedAt: over.revokedAt ?? null,
-      lastSeenAt: over.lastSeenAt ?? null,
-      createdAt: now,
-    })
-    .run();
+}): Promise<void> {
+  await db.insert(server).values({
+    id: over.id,
+    userId: over.userId,
+    name: over.name,
+    subdomain: over.subdomain,
+    credentialHash: "credentialHash" in over ? over.credentialHash : "hash",
+    revokedAt: over.revokedAt ?? null,
+    lastSeenAt: over.lastSeenAt ?? null,
+    createdAt: now,
+  });
 }
 
 describe("listAccountServers", () => {
   it("returns only the authenticated account's rows with live from last_seen_at", async () => {
-    seedUser("acct-a");
-    seedUser("acct-b");
+    await seedUser("acct-a");
+    await seedUser("acct-b");
     const liveAt = new Date(now.getTime() - 30_000);
     const staleAt = new Date(now.getTime() - SERVER_OFFLINE_AFTER_MS - 1_000);
 
-    seedServer({
+    await seedServer({
       id: "s1",
       userId: "acct-a",
       name: "default",
       subdomain: "sawyer",
       lastSeenAt: liveAt,
     });
-    seedServer({
+    await seedServer({
       id: "s2",
       userId: "acct-a",
       name: "desktop",
       subdomain: "sawyer-desktop",
       lastSeenAt: staleAt,
     });
-    seedServer({
+    await seedServer({
       id: "s3",
       userId: "acct-b",
       name: "default",
@@ -132,31 +119,31 @@ describe("listAccountServers", () => {
   });
 
   it("takes live from each paired server's tunnel object when a lookup is given, and the timestamp when it is unknown", async () => {
-    seedUser("acct-a");
+    await seedUser("acct-a");
     const liveAt = new Date(now.getTime() - 30_000);
     const staleAt = new Date(now.getTime() - SERVER_OFFLINE_AFTER_MS - 1_000);
-    seedServer({
+    await seedServer({
       id: "s1",
       userId: "acct-a",
       name: "connected",
       subdomain: "connected",
       lastSeenAt: staleAt,
     });
-    seedServer({
+    await seedServer({
       id: "s2",
       userId: "acct-a",
       name: "dropped",
       subdomain: "dropped",
       lastSeenAt: liveAt,
     });
-    seedServer({
+    await seedServer({
       id: "s3",
       userId: "acct-a",
       name: "unknown",
       subdomain: "unknown",
       lastSeenAt: liveAt,
     });
-    seedServer({
+    await seedServer({
       id: "s4",
       userId: "acct-a",
       name: "revoked",
@@ -193,8 +180,8 @@ describe("listAccountServers", () => {
   });
 
   it("falls back name to handle and treats unpaired/revoked as not live", async () => {
-    seedUser("acct-a");
-    seedServer({
+    await seedUser("acct-a");
+    await seedServer({
       id: "s1",
       userId: "acct-a",
       name: "   ",
@@ -202,7 +189,7 @@ describe("listAccountServers", () => {
       credentialHash: "hash",
       lastSeenAt: now,
     });
-    seedServer({
+    await seedServer({
       id: "s2",
       userId: "acct-a",
       name: "revoked",
@@ -211,7 +198,7 @@ describe("listAccountServers", () => {
       revokedAt: now,
       lastSeenAt: now,
     });
-    seedServer({
+    await seedServer({
       id: "s3",
       userId: "acct-a",
       name: "never",
@@ -233,9 +220,9 @@ describe("listAccountServers", () => {
 
 describe("verifyServerCredential / resolveAccount", () => {
   it("authenticates a non-revoked server tunnel credential to its owner", async () => {
-    seedUser("acct-a");
+    await seedUser("acct-a");
     const plaintext = "bbcred_server_secret";
-    seedServer({
+    await seedServer({
       id: "s1",
       userId: "acct-a",
       name: "default",
@@ -248,16 +235,16 @@ describe("verifyServerCredential / resolveAccount", () => {
   });
 
   it("revokes only the row authenticated by the presenting server", async () => {
-    seedUser("acct-a");
+    await seedUser("acct-a");
     const plaintext = "bbcred_revoke_this_server";
-    seedServer({
+    await seedServer({
       id: "s1",
       userId: "acct-a",
       name: "default",
       subdomain: "sawyer",
       credentialHash: await sha256Hex(plaintext),
     });
-    seedServer({
+    await seedServer({
       id: "s2",
       userId: "acct-a",
       name: "desktop",
@@ -276,8 +263,7 @@ describe("verifyServerCredential / resolveAccount", () => {
         credentialHash: server.credentialHash,
         revokedAt: server.revokedAt,
       })
-      .from(server)
-      .all();
+      .from(server);
     expect(rows.find((row) => row.id === "s1")).toMatchObject({
       credentialHash: null,
       revokedAt: expect.any(Date),
@@ -291,27 +277,25 @@ describe("verifyServerCredential / resolveAccount", () => {
   });
 
   it("authenticates a machine credential and isolates cross-account rows", async () => {
-    seedUser("acct-a");
-    seedUser("acct-b");
+    await seedUser("acct-a");
+    await seedUser("acct-b");
     const machinePlain = "bbcm_machine_a";
-    db.insert(machine)
-      .values({
-        id: "m1",
-        userId: "acct-a",
-        name: "laptop",
-        credentialHash: await sha256Hex(machinePlain),
-        createdAt: now,
-        revokedAt: null,
-      })
-      .run();
-    seedServer({
+    await db.insert(machine).values({
+      id: "m1",
+      userId: "acct-a",
+      name: "laptop",
+      credentialHash: await sha256Hex(machinePlain),
+      createdAt: now,
+      revokedAt: null,
+    });
+    await seedServer({
       id: "s-a",
       userId: "acct-a",
       name: "default",
       subdomain: "sawyer",
       lastSeenAt: now,
     });
-    seedServer({
+    await seedServer({
       id: "s-b",
       userId: "acct-b",
       name: "default",
@@ -349,7 +333,7 @@ describe("verifyServerCredential / resolveAccount", () => {
   });
 
   it("accepts a valid owner session cookie", async () => {
-    seedUser("acct-a");
+    await seedUser("acct-a");
     const token = "sess_token_abc";
     const secret = "test-better-auth-secret";
     const key = await crypto.subtle.importKey(
@@ -367,16 +351,14 @@ describe("verifyServerCredential / resolveAccount", () => {
     const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
     const cookieValue = `${token}.${sig}`;
 
-    db.insert(session)
-      .values({
-        id: "sess1",
-        token,
-        expiresAt: new Date(Date.now() + 60_000),
-        userId: "acct-a",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    await db.insert(session).values({
+      id: "sess1",
+      token,
+      expiresAt: new Date(Date.now() + 60_000),
+      userId: "acct-a",
+      createdAt: now,
+      updatedAt: now,
+    });
 
     const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
       headers: {
@@ -411,33 +393,31 @@ describe("verifyServerCredential / resolveAccount", () => {
 
 describe("machine label assignment", () => {
   it("sanitizes a host name, suffixes across every namespace, and is idempotent", async () => {
-    seedUser("acct-a");
-    db.insert(profile)
-      .values({ userId: "acct-a", handle: "sawyer-air", createdAt: now })
-      .run();
-    seedServer({
+    await seedUser("acct-a");
+    await db
+      .insert(profile)
+      .values({ userId: "acct-a", handle: "sawyer-air", createdAt: now });
+    await seedServer({
       id: "s2",
       userId: "acct-a",
       name: "second",
       subdomain: "sawyer-air-2",
     });
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-existing",
-          userId: "acct-a",
-          subdomain: "sawyer-air-3",
-          credentialHash: "existing-hash",
-          createdAt: now,
-        },
-        {
-          id: "machine-new",
-          userId: "acct-a",
-          credentialHash: "new-hash",
-          createdAt: now,
-        },
-      ])
-      .run();
+    await db.insert(machine).values([
+      {
+        id: "machine-existing",
+        userId: "acct-a",
+        subdomain: "sawyer-air-3",
+        credentialHash: "existing-hash",
+        createdAt: now,
+      },
+      {
+        id: "machine-new",
+        userId: "acct-a",
+        credentialHash: "new-hash",
+        createdAt: now,
+      },
+    ]);
     expect(sanitizeMachineLabelBase("  Sawyer Air!!!  ", "machine-new")).toBe(
       "sawyer-air",
     );
@@ -450,15 +430,13 @@ describe("machine label assignment", () => {
   });
 
   it("uses machine-<id-prefix> when the desired name is empty or invalid", async () => {
-    seedUser("acct-a");
-    db.insert(machine)
-      .values({
-        id: "ABC-12345-rest",
-        userId: "acct-a",
-        credentialHash: "hash",
-        createdAt: now,
-      })
-      .run();
+    await seedUser("acct-a");
+    await db.insert(machine).values({
+      id: "ABC-12345-rest",
+      userId: "acct-a",
+      credentialHash: "hash",
+      createdAt: now,
+    });
 
     expect(sanitizeMachineLabelBase("", "ABC-12345-rest")).toBe(
       "machine-abc12345",
@@ -469,66 +447,60 @@ describe("machine label assignment", () => {
   });
 
   it("authenticates the assigning machine and refuses revoked credentials", async () => {
-    seedUser("acct-a");
+    await seedUser("acct-a");
     const credential = "bbcm_assigning_machine";
-    db.insert(machine)
-      .values({
-        id: "machine-auth",
-        userId: "acct-a",
-        credentialHash: await sha256Hex(credential),
-        createdAt: now,
-      })
-      .run();
+    await db.insert(machine).values({
+      id: "machine-auth",
+      userId: "acct-a",
+      credentialHash: await sha256Hex(credential),
+      createdAt: now,
+    });
 
     await expect(
       assignMachineLabelForCredential(db, credential, "Sawyer Air"),
     ).resolves.toBe("sawyer-air");
-    db.update(machine)
+    await db
+      .update(machine)
       .set({ revokedAt: now, subdomain: null })
-      .where(eq(machine.id, "machine-auth"))
-      .run();
+      .where(eq(machine.id, "machine-auth"));
     await expect(
       assignMachineLabelForCredential(db, credential, "Sawyer Air"),
     ).resolves.toBeNull();
   });
 
   it("keeps concurrent assignments on one atomic global claim", async () => {
-    seedUser("acct-a");
-    db.insert(machine)
-      .values([
-        {
-          id: "machine-a",
-          userId: "acct-a",
-          credentialHash: "a",
-          createdAt: now,
-        },
-        {
-          id: "machine-b",
-          userId: "acct-a",
-          credentialHash: "b",
-          createdAt: now,
-        },
-      ])
-      .run();
+    await seedUser("acct-a");
+    await db.insert(machine).values([
+      {
+        id: "machine-a",
+        userId: "acct-a",
+        credentialHash: "a",
+        createdAt: now,
+      },
+      {
+        id: "machine-b",
+        userId: "acct-a",
+        credentialHash: "b",
+        createdAt: now,
+      },
+    ]);
 
     const [a, b] = await Promise.all([
       assignMachineLabel(db, "machine-a", "Shared Name"),
       assignMachineLabel(db, "machine-b", "Shared Name"),
     ]);
     expect(new Set([a, b])).toEqual(new Set(["shared-name", "shared-name-2"]));
-    expect(db.select().from(labelClaim).all()).toHaveLength(2);
+    expect(await db.select().from(labelClaim)).toHaveLength(2);
   });
 
   it("loses cleanly when revocation crosses the pre-attach barrier", async () => {
-    seedUser("acct-a");
-    db.insert(machine)
-      .values({
-        id: "machine-race",
-        userId: "acct-a",
-        credentialHash: "hash",
-        createdAt: now,
-      })
-      .run();
+    await seedUser("acct-a");
+    await db.insert(machine).values({
+      id: "machine-race",
+      userId: "acct-a",
+      credentialHash: "hash",
+      createdAt: now,
+    });
     let releaseBarrier: (() => void) | undefined;
     const barrier = new Promise<void>((resolve) => {
       releaseBarrier = resolve;
@@ -545,31 +517,36 @@ describe("machine label assignment", () => {
     });
 
     await attaching;
-    db.update(machine)
+    await db
+      .update(machine)
       .set({ revokedAt: now })
-      .where(eq(machine.id, "machine-race"))
-      .run();
+      .where(eq(machine.id, "machine-race"));
     releaseBarrier?.();
 
     await expect(assignment).resolves.toBeNull();
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-race")).get()
-        ?.subdomain,
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-race"))
+            .limit(1),
+        )
+      )?.subdomain,
     ).toBeNull();
-    expect(db.select().from(labelClaim).all()).toEqual([]);
+    expect(await db.select().from(labelClaim)).toEqual([]);
   });
 
   it("has no pause-after-claim gap against a claim-ignorant server writer", async () => {
-    seedUser("acct-a");
-    seedUser("acct-b");
-    db.insert(machine)
-      .values({
-        id: "machine-atomic",
-        userId: "acct-a",
-        credentialHash: "hash",
-        createdAt: now,
-      })
-      .run();
+    await seedUser("acct-a");
+    await seedUser("acct-b");
+    await db.insert(machine).values({
+      id: "machine-atomic",
+      userId: "acct-a",
+      credentialHash: "hash",
+      createdAt: now,
+    });
     let resumeAttach: (() => void) | undefined;
     const barrier = new Promise<void>((resolve) => {
       resumeAttach = resolve;
@@ -594,8 +571,8 @@ describe("machine label assignment", () => {
     );
 
     await attaching;
-    expect(db.select().from(labelClaim).all()).toEqual([]);
-    seedServer({
+    expect(await db.select().from(labelClaim)).toEqual([]);
+    await seedServer({
       id: "old-writer-server",
       userId: "acct-b",
       name: "default",
@@ -606,19 +583,32 @@ describe("machine label assignment", () => {
 
     await expect(assignment).resolves.toBe("shared-atomic-2");
     expect(
-      db.select().from(server).where(eq(server.id, "old-writer-server")).get()
-        ?.subdomain,
+      (
+        await first(
+          db
+            .select()
+            .from(server)
+            .where(eq(server.id, "old-writer-server"))
+            .limit(1),
+        )
+      )?.subdomain,
     ).toBe("shared-atomic");
     expect(
-      db.select().from(machine).where(eq(machine.id, "machine-atomic")).get()
-        ?.subdomain,
+      (
+        await first(
+          db
+            .select()
+            .from(machine)
+            .where(eq(machine.id, "machine-atomic"))
+            .limit(1),
+        )
+      )?.subdomain,
     ).toBe("shared-atomic-2");
     expect(
-      db
+      await db
         .select({ label: labelClaim.label })
         .from(labelClaim)
-        .orderBy(labelClaim.label)
-        .all(),
+        .orderBy(labelClaim.label),
     ).toEqual([{ label: "shared-atomic" }, { label: "shared-atomic-2" }]);
   });
 });

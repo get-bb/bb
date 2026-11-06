@@ -11,6 +11,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropThreadStatusChangedAtColumn,
+  restoreDiffViewedFilesTable,
   dropQueuedMessageEditHeldUntilColumn,
   rewindQueuedMessageStateMigration,
 } from "./helpers/rewind.js";
@@ -2614,6 +2615,7 @@ describe("migrate", () => {
         providerId: "codex",
       });
       dropThreadStatusChangedAtColumn(db);
+      restoreDiffViewedFilesTable(db);
       db.$client
         .prepare<[number, string]>(
           "UPDATE threads SET updated_at = ? WHERE id = ?",
@@ -2621,7 +2623,7 @@ describe("migrate", () => {
         .run(1_234, thread.id);
       db.$client
         .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(threadStatusChangedAtMigrationWhen);
 

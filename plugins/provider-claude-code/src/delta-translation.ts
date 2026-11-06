@@ -1392,6 +1392,15 @@ export function createClaudeDeltaTranslator(
     return deltas;
   }
 
+  function buildBackgroundTaskSettlementDeltas(
+    threadId: string,
+  ): ThreadDelta[] {
+    const state = statesByThreadId.get(threadId);
+    return state === undefined
+      ? []
+      : buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById });
+  }
+
   function hasOpenTurn(threadId: string): boolean {
     return statesByThreadId.get(threadId)?.mirror.turnOpen === true;
   }
@@ -1421,6 +1430,7 @@ export function createClaudeDeltaTranslator(
 
   return {
     acceptInput,
+    buildBackgroundTaskSettlementDeltas,
     buildSessionSettlementDeltas,
     configureInjectedTools,
     configureSandbox: (enabled: boolean) => {

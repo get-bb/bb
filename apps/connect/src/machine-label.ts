@@ -1,12 +1,13 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import {
   HANDLE_MAX_LENGTH,
+  affectedRowCount,
   machine,
-  schema,
   validateLabel,
   type ConnectDb,
+  first,
 } from "@bb/connect-db";
+import { openGateDb } from "./connect-db.js";
 import { verifyMachineCredentialDetails } from "./session.js";
 import { methodNotAllowed } from "./json-response.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
@@ -46,21 +47,11 @@ function labelWithSuffix(base: string, ordinal: number): string {
 }
 
 function affectedRows(result: unknown): number {
-  if (typeof result === "object" && result !== null) {
-    if ("changes" in result && typeof result.changes === "number") {
-      return result.changes;
-    }
-    if (
-      "meta" in result &&
-      typeof result.meta === "object" &&
-      result.meta !== null &&
-      "changes" in result.meta &&
-      typeof result.meta.changes === "number"
-    ) {
-      return result.meta.changes;
-    }
+  const count = affectedRowCount(result);
+  if (count === null) {
+    throw new Error("machine label update did not report affected rows");
   }
-  throw new Error("machine label update did not report affected rows");
+  return count;
 }
 
 interface MachineLabelAssignmentHooks {
@@ -68,7 +59,10 @@ interface MachineLabelAssignmentHooks {
 }
 
 function isLabelCollision(error: unknown): boolean {
-  return error instanceof Error && /unique constraint/iu.test(error.message);
+  if (!(error instanceof Error)) return false;
+  return (
+    /unique constraint/iu.test(error.message) || isLabelCollision(error.cause)
+  );
 }
 
 export async function assignMachineLabel(
@@ -77,14 +71,16 @@ export async function assignMachineLabel(
   desiredName: string,
   hooks: MachineLabelAssignmentHooks = {},
 ): Promise<string | null> {
-  const row = await db
-    .select({
-      subdomain: machine.subdomain,
-      revokedAt: machine.revokedAt,
-    })
-    .from(machine)
-    .where(eq(machine.id, machineId))
-    .get();
+  const row = await first(
+    db
+      .select({
+        subdomain: machine.subdomain,
+        revokedAt: machine.revokedAt,
+      })
+      .from(machine)
+      .where(eq(machine.id, machineId))
+      .limit(1),
+  );
   if (!row) return null;
   if (row.subdomain !== null) return row.subdomain;
   if (row.revokedAt !== null) return null;
@@ -104,19 +100,20 @@ export async function assignMachineLabel(
             isNull(machine.subdomain),
             isNull(machine.revokedAt),
           ),
-        )
-        .run();
+        );
     } catch (error) {
       if (isLabelCollision(error)) continue;
       throw error;
     }
     if (affectedRows(updateResult) === 1) return candidate;
 
-    const current = await db
-      .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
-      .from(machine)
-      .where(eq(machine.id, machineId))
-      .get();
+    const current = await first(
+      db
+        .select({ subdomain: machine.subdomain, revokedAt: machine.revokedAt })
+        .from(machine)
+        .where(eq(machine.id, machineId))
+        .limit(1),
+    );
     if (!current || current.revokedAt !== null) return null;
     if (current.subdomain !== null) return current.subdomain;
   }
@@ -144,7 +141,7 @@ export async function handleAssignMachineLabel(
     return methodNotAllowed("POST");
   }
 
-  const db = drizzle(env.DB, { schema });
+  const { db } = openGateDb(env);
   const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   const body: unknown = await request.json().catch(() => null);
   if (
