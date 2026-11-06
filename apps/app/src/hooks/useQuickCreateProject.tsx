@@ -109,27 +109,27 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     submit,
   });
 
-  const { openPathEntry } = controller;
   const openCreateDialog = useCallback(() => {
     observerRef.current = null;
     onCreatedRef.current = null;
-    openPathEntry({ kind: "create" });
-  }, [openPathEntry]);
+    controller.openPathEntry({ kind: "create" });
+  }, [controller]);
+
   const openObservedCreateDialog = useCallback(
     (observer: ProjectCreateObserver) => {
       observerRef.current = observer;
       onCreatedRef.current = null;
-      openPathEntry({ kind: "create" });
+      controller.openPathEntry({ kind: "create" });
     },
-    [openPathEntry],
+    [controller],
   );
   const openCreateDialogThen = useCallback(
     (onCreated: (projectId: string) => void) => {
       observerRef.current = null;
       onCreatedRef.current = onCreated;
-      openPathEntry({ kind: "create" });
+      controller.openPathEntry({ kind: "create" });
     },
-    [openPathEntry],
+    [controller],
   );
 
   return useMemo(
