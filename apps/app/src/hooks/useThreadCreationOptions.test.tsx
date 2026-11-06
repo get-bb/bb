@@ -58,6 +58,7 @@ function readyProviderStates(providerId: string): SystemProviderStatesResponse {
         canUpdate: false,
         loginCommand: null,
         localLoginCommand: null,
+        internal_DO_NOT_USE_setupGuidePlanLabel: null,
       },
     ],
   };

@@ -38,6 +38,7 @@ function unknownProviderState(
     canUpdate: false,
     loginCommand: null,
     localLoginCommand: null,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
   };
 }
 
@@ -81,6 +82,8 @@ async function getProviderState(
       displayName: args.provider.displayName,
       ...result.health,
       localLoginCommand: result.health.localLoginCommand ?? null,
+      internal_DO_NOT_USE_setupGuidePlanLabel:
+        result.health.internal_DO_NOT_USE_setupGuidePlanLabel ?? null,
     };
     if (health.status !== "unauthenticated" && health.status !== "expired") {
       return health;
@@ -98,6 +101,7 @@ async function getProviderState(
       planLabel: contributed.label,
       loginCommand: null,
       localLoginCommand: null,
+      internal_DO_NOT_USE_setupGuidePlanLabel: null,
     };
   } catch {
     return unknownProviderState(

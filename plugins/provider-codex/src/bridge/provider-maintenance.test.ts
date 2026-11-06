@@ -245,6 +245,7 @@ describe("Codex credential health and usage", () => {
         canUpdate: true,
         loginCommand: "codex login --device-auth",
         localLoginCommand: "codex login",
+        internal_DO_NOT_USE_setupGuidePlanLabel: null,
       },
     });
     await expect(getCodexProviderUsage()).resolves.toEqual({
@@ -275,7 +276,7 @@ describe("Codex credential health and usage", () => {
     });
   });
 
-  it("reports the ChatGPT plan with the account when ready or expired", async () => {
+  it("reports the ChatGPT plan for the new setup guide only, keeping main's empty plan label", async () => {
     for (const [offsetSeconds, status] of [
       [3600, "ready"],
       [-60, "expired"],
@@ -293,7 +294,8 @@ describe("Codex credential health and usage", () => {
         health: {
           status,
           accountEmail: "codex@example.com",
-          planLabel: "Pro",
+          planLabel: null,
+          internal_DO_NOT_USE_setupGuidePlanLabel: "Pro",
         },
       });
     }

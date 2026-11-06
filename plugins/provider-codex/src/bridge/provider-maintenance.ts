@@ -182,7 +182,7 @@ function healthResult(
     | "unknown",
   args: {
     accountEmail?: string | null;
-    planLabel?: string | null;
+    setupGuidePlanLabel?: string | null;
     installedVersion?: string | null;
     statusMessage?: string | null;
   } = {},
@@ -193,7 +193,8 @@ function healthResult(
       status,
       statusMessage: args.statusMessage ?? null,
       accountEmail: args.accountEmail ?? null,
-      planLabel: args.planLabel ?? null,
+      planLabel: null,
+      internal_DO_NOT_USE_setupGuidePlanLabel: args.setupGuidePlanLabel ?? null,
       installedVersion: args.installedVersion ?? null,
       minimumSupportedVersion: CODEX_MINIMUM_SUPPORTED_VERSION,
       canInstall: true,
@@ -223,14 +224,14 @@ export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
     if (credentials.type === "chatgpt" && credentials.expired) {
       return healthResult("expired", {
         accountEmail: credentials.accountEmail,
-        planLabel: planLabel(credentials.planType),
+        setupGuidePlanLabel: planLabel(credentials.planType),
         installedVersion: version,
       });
     }
     return healthResult("ready", {
       accountEmail:
         credentials.type === "chatgpt" ? credentials.accountEmail : null,
-      planLabel:
+      setupGuidePlanLabel:
         credentials.type === "chatgpt" ? planLabel(credentials.planType) : null,
       installedVersion: version,
     });

@@ -31,6 +31,7 @@ function health(
     canUpdate: true,
     loginCommand: "claude auth login",
     localLoginCommand: null,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
     ...overrides,
   };
 }
