@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
-import { Icon, type IconName } from "./icon";
+import { Icon } from "./icon";
 
 const INLINE_TEXT_LINK_CLASS =
   "rounded-sm text-foreground underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
@@ -13,22 +13,15 @@ export function CodeDisplay({
   code,
   label,
   copyLabel,
-  className,
   onCopy,
 }: {
   code: string;
   label: string;
   copyLabel: string;
-  className?: string;
   onCopy: (code: string) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-3",
-        className,
-      )}
-    >
+    <div className="flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-3">
       <span
         aria-label={label}
         className="select-all font-mono text-xl font-semibold tracking-widest text-foreground"
@@ -84,53 +77,12 @@ export function InlineTextLink({
   );
 }
 
-export function InlineTextButton({
-  children,
-  onClick,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} className={INLINE_TEXT_LINK_CLASS}>
-      {children}
-    </button>
-  );
-}
-
-export function QuietTextAction({
-  icon,
-  children,
-  onClick,
-}: {
-  icon?: IconName;
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      {icon === undefined ? null : (
-        <Icon name={icon} aria-hidden className="size-3.5" />
-      )}
-      <span className="underline underline-offset-2">{children}</span>
-    </button>
-  );
-}
-
 export function DisclosureToggle({
   expanded,
-  leading,
-  caretWhenCollapsed = true,
   children,
   onToggle,
 }: {
   expanded: boolean;
-  leading?: ReactNode;
-  caretWhenCollapsed?: boolean;
   children: ReactNode;
   onToggle: () => void;
 }) {
@@ -145,15 +97,12 @@ export function DisclosureToggle({
         expanded && "bg-state-hover",
       )}
     >
-      {leading}
       <span className="underline underline-offset-2">{children}</span>
-      {expanded || caretWhenCollapsed ? (
-        <Icon
-          name={expanded ? "ChevronDown" : "ChevronRight"}
-          aria-hidden
-          className="size-3.5 text-subtle-foreground"
-        />
-      ) : null}
+      <Icon
+        name={expanded ? "ChevronDown" : "ChevronRight"}
+        aria-hidden
+        className="size-3.5 text-subtle-foreground"
+      />
     </button>
   );
 }
