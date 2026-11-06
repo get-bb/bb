@@ -1317,9 +1317,13 @@ for the first-run setup guide's "Where you use bb" group. Core renders the
 group heading and the `<ul>`; the component renders the `<li>` (the connect
 plugin uses `SetupOptionRow` from `@bb/shared-ui/setup-option-row`). The
 component receives `InternalDoNotUseSetupGuideSectionProps`:
-`{ onPhone }`. `onPhone` is true when the guide is open on a phone, so the row
-hides install links and phone pairing. Core's `PluginSetupGuideSections`
-renders a plugin's rows through the ordinary plugin slot boundary.
+`{ onPhone, onSetupStarted, onSetupFailed }`. `onPhone` is true when the guide
+is open on a phone, so the row hides install links and phone pairing. The row
+calls `onSetupStarted()` when the user starts setting it up and
+`onSetupFailed(stage)` (`InternalDoNotUseSetupFailureStage`: `sign_in`,
+`pairing`, or `turn_on`) when an attempt fails, so the guide can record the
+step. Core's `PluginSetupGuideSections` renders a plugin's rows through
+the ordinary plugin slot boundary.
 
 Callers: the bundled `connect` plugin only. Core caller: the onboarding
 Devices step, which renders `PluginSetupGuideSections` for `connect`.
@@ -1327,6 +1331,32 @@ Devices step, which renders `PluginSetupGuideSections` for `connect`.
 **Audit before stabilizing.** Decide whether other plugins should contribute
 setup guide rows, which groups they may target, and whether the guide should
 own the row chrome instead of the plugin rendering `SetupOptionRow`.
+
+## `PluginSettingsSectionProps.internal_DO_NOT_USE_onSetupStarted` and `internal_DO_NOT_USE_onSetupFailed` (`@get-bb/plugin-sdk/app`)
+
+Internal to bb's bundled `connect` plugin: the `internal_DO_NOT_USE_` prefix marks members that are not part of the plugin API, are not offered to third-party plugins, and may change or disappear in any release.
+
+`internal_DO_NOT_USE_onSetupStarted` is set only when the setup guide renders a
+plugin's settings section inline (the current guide's Devices step expands the
+bb connect settings under Set up). The section calls it when the user actually
+starts setting up: bb connect calls it when getbb.app sign-in starts, a pairing
+code is submitted, or Turn on is pressed, so the current guide records
+`remote_access` `started` at the same moment as the redesigned guide's
+`onSetupStarted`. `internal_DO_NOT_USE_onSetupFailed(stage)` is its failure
+counterpart, called with the same `InternalDoNotUseSetupFailureStage` the
+redesigned guide's `onSetupFailed` receives (`sign_in` when getbb.app sign-in
+can't start or ends denied, expired, or failed; `pairing` when a pairing code
+is rejected; `turn_on` when turning remote access on fails). Core's
+`PluginSettingsSections` passes them through its `onSetupStarted` and
+`onSetupFailed` props; Settings never sets them.
+
+Callers: the bundled `connect` plugin only. Core caller: the onboarding
+Devices step (current guide), which renders `PluginSettingsSections` for
+`connect`.
+
+**Audit before stabilizing.** Decide whether the setup guide should render
+setup guide rows in both variants instead, which would make this prop
+unnecessary.
 
 ## `PluginProviderDeclaration.internal_DO_NOT_USE_guidedSignIn` and `SystemProviderState.internal_DO_NOT_USE_guidedSignIn`
 
@@ -3975,12 +4005,28 @@ through `provider-cli-install-store`), `NewThreadComposer`'s `new_thread_submit`
 `PluginCreateButton`'s `plugin_creation_started`, and Settings → Updates'
 changelog (`release_notes_opened`, inline or on the web). `bb plugin new` sends
 `plugin_creation_started` through the same SDK method. The setup guide's
-Plugins step reports `recommendation` `shown` and `selected` with a per-visit
-`recommendation_id`; `selected` also stores that id in server-owned settings
+Plugins step reports `recommendation` `shown`, `selected` and `deselected`
+(a featured plugin switched back off) with a per-visit `recommendation_id`; `selected` also stores that id in server-owned settings
 until the plugin's next use, disable or uninstall. `NewThreadComposer` also
 reports `new_thread_blocker` once per blocker reason while a draft exists.
+`onboarding_agent_state` adds `agent_statuses`, each agent's provider status
+by id; the server keeps only shipped agent ids.
 `onboarding_operation` reports a guide action's started, succeeded or failed
-outcome with only a public agent id or counts.
+outcome with only a public agent or plugin id or counts and, for the Projects
+step, whether the scan ran out of time and how many folders it could not open.
+A failed operation or `onboarding_sign_in` adds a `failure_reason` from a fixed
+set (`no_host`, `host_unavailable`, `timed_out`, `not_found`, `permission`,
+`command_failed`, `unsupported`, or `other`); a failed `remote_access` adds a
+`failure_stage` (`sign_in`, `pairing`, or `turn_on`) instead.
+`onboarding_left` reports the step a guide was on when the page unloaded
+before the guide finished; it passes the optional second argument
+`{ keepalive: true }`, which sends the request with `fetch`'s `keepalive` so it
+outlives the page. A failed `new_thread_submit` may add `failure_reason` from
+the same fixed set.
+`onboarding_error` reports `kind` (`render`, `uncaught` or
+`unhandled_rejection`) with the guide's step, from `OnboardingErrorTelemetry`
+around the guide in `OnboardingGate`, which reports and rethrows render errors
+and listens for window errors only while the guide is open.
 `onboarding_exposed` (`entry`) marks the guide being shown; the server saves
 the assignment, adds `setup_guide_variant` and `setup_guide_source`, sets
 `setup_guide_variant` as a person property (`$set`), and sends
@@ -4056,7 +4102,9 @@ remove this entry.
 repositories under the machine's home directory with local activity in the
 last 30 days, newest first, each with `path`, `name`, `lastActivityAt`,
 `originUrl`, and the bound `projectId` or null; `truncated` reports an
-exhausted three-second walk budget. The walk skips dot, build, and scratch
+exhausted three-second walk budget, and `unreadableCount` counts folders the
+scan was not allowed to open (`EACCES`/`EPERM`, such as macOS
+privacy-protected folders). The walk skips dot, build, and scratch
 directories, linked worktrees, and submodules. Core callers: the setup guide
 (`OnboardingFlow`) and `bb project discover`; it rides the
 `host.discover_repos` daemon command.

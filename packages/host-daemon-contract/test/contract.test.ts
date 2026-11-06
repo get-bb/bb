@@ -407,6 +407,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     truncated: false,
+    unreadableCount: 0,
   },
   "provider.installation.status": {
     executableName: "codex",
@@ -1067,7 +1068,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(263);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(264);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1090,7 +1091,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(260)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(261)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(262)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(263)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(264)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);

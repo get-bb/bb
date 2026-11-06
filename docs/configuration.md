@@ -355,11 +355,21 @@ first-send events through `POST /api/v1/system/telemetry/events`
 (`sdk.system.experimental_recordTelemetryEvent`), such as `onboarding_started`,
 `onboarding_step_reached`, `onboarding_step_completed`,
 `onboarding_step_skipped`, `onboarding_finished`, `onboarding_agent_state`,
-`onboarding_sign_in`, `new_thread_submit` (started, accepted, or failed),
+`onboarding_sign_in`, `onboarding_left`, `onboarding_error`, `new_thread_submit` (started,
+accepted, or failed),
 `plugin_creation_started` (no properties; sent when you choose New plugin in
 the app or run `bb plugin new`, so it records intent, not a finished plugin),
 and `release_notes_opened` from Settings → Updates (`view` `inline` when the
 notes open under the bb row, `web` for the full notes on getbb.app).
+`onboarding_operation` records setup-guide work by `operation`: `import`
+(selected repos imported together, or one folder added through "Add a folder
+that isn't listed", with `item_count` 1), `remote_access` (`started` when
+getbb.app sign-in starts, a pairing code is submitted, or Turn on is pressed,
+not when the bb connect panel is merely opened), and `add_machine` (`started`
+when the machine setup command is shown). In both guides, Continue on the projects
+step counts as completed only when a project was selected or added during the
+guide (by either route), and Continue on the plugins step only when a featured
+plugin is on; otherwise each counts as skipped.
 `onboarding_exposed` (`entry` `first_run` or `replay`) marks the setup guide
 being shown: the server saves the flag assignment, adds `setup_guide_variant`
 and `setup_guide_source` (`override`, `flag`, or `default`), sets
@@ -368,6 +378,67 @@ and `setup_guide_source` (`override`, `flag`, or `default`), sets
 `setup_guide_variant` to every setup-guide event (`onboarding_*` and onboarding
 `recommendation`), and once the flag assignment is known every event, including
 `turn_finished`, carries `$feature/setup-guide-redesign`.
+`onboarding_operation` records a setup-guide action's `started`,
+`succeeded`, or `failed` outcome with counts only, the same way in both
+guides. A Projects step `scan` adds `timed_out` (true when the repo scan ran
+out of time and the list may be partial) and `unreadable_count` (how many
+folders the scan was not allowed to open, such as macOS Documents or Desktop;
+never their paths). A failed Projects `import` reports `item_count` (repos
+selected) and `succeeded_count` (imported before the failure). Plugins step
+`install` (a featured plugin that wasn't installed yet), `enable`, and
+`disable` carry the plugin's public id in `resource_id`; `install` succeeds or
+fails when its install job finishes, not when the request is accepted, even
+if the guide moved to another step meanwhile; a cancelled install job records
+no outcome. `load`
+records only `failed`, once each time the Agent step's agent states or the
+Plugins step's catalog start failing to load; in the new guide the Agent step
+also records `timed_out` when its agent states haven't loaded after 10
+seconds and it offers Retry, once per attempt. `finish` records only `failed`,
+with the step the guide closed from, when saving that setup was finished
+fails. Every `failed` outcome except `remote_access` adds `failure_reason`:
+`no_host` (no computer was available: once per guide for `scan`, and each
+time the Agent step opens without one for agent `load`), `host_unavailable`, `timed_out`,
+`not_found`, `permission`, `command_failed` (the agent install command, plugin
+install job, or new machine's setup ran and failed), or `other`. A failed
+`remote_access` adds `failure_stage`: `sign_in` (getbb.app sign-in couldn't
+start or ended denied, expired, or failed), `pairing` (a pairing code was
+rejected), or `turn_on` (turning remote access on failed); a retry after a
+failure records a new `started`. `add_machine` can fail before `started` when
+the setup command couldn't be prepared.
+`onboarding_left` (`step`, the step on screen, and `entry`) is sent at most
+once per guide, in either guide, when the page unloads (the browser's
+`pagehide`: closing the tab or window, reloading, or navigating away) while the
+guide is open and before `onboarding_finished`; switching tabs or apps doesn't
+count. It goes as a keepalive request so it survives the unload. In the
+desktop app, closing the window sends it, but quitting the app while a guide
+is open may not when the app runs its own bb server, which stops before the
+window unloads.
+`onboarding_error` (`step`, the step on screen, `entry`, and `kind`) is sent
+while a guide is open, in either guide, when the app hits an error: `render`
+(the guide itself crashed and the app showed its error screen), `uncaught` (an
+uncaught error anywhere in the app window), or `unhandled_rejection` (an
+unhandled promise rejection). It is sent at most once per `kind` and step and
+at most five times per guide, and carries no error message, stack, or file
+name. Crashes of the desktop app's main process, the bb server, or a machine's
+host daemon aren't reported.
+A failed `new_thread_submit` adds `failure_reason` (`host_unavailable`,
+`timed_out`, `not_found`, `permission`, or `other`), from the same mapping as
+setup-guide failures; `started` and `accepted` carry no reason.
+`onboarding_agent_state` (`agent_installed` and `agent_ready`, each `null`
+when unknown) also carries `agent_statuses`, an object from each shipped
+agent's public id the host reports (such as `claude-code` or `codex`) to its
+status: `ready`, `not_installed`, `unauthenticated`, `expired`,
+`unsupported_version`, or `unknown`. Custom agents are left out, and
+`agent_statuses` is absent when the agent states fail to load. It is sent
+again only when one of these values changes.
+`onboarding_sign_in` carries the agent's public id in `resource_id`
+(custom agents report `other`, as agent installs do). A `failed` sign-in adds
+`failure_reason`: `command_failed` (the sign-in command exited non-zero),
+`no_host`, `not_found` (the agent's state wasn't loaded), or `unsupported`
+(the agent has no sign-in command) when it couldn't start, and
+`host_unavailable`, `timed_out`, `not_found`, `permission`, or `other` when
+its terminal couldn't be created. A sign-in that couldn't start records only
+`failed`, without `started`.
 `bb plugin new` sends `plugin_creation_started` with `app_surface` `api`, skips
 it inside a bb agent thread (so an agent acting on New plugin isn't counted
 twice), and skips it silently when no bb server answers within 2 seconds. The

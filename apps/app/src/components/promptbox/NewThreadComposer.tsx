@@ -7,6 +7,7 @@ import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
+import { operationFailureReason } from "@/components/onboarding/onboarding-model";
 import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
@@ -1753,7 +1754,10 @@ export function NewThreadComposer({
       } catch (submitError) {
         recordTelemetryEvent({
           name: "new_thread_submit",
-          properties: { outcome: "failed" },
+          properties: {
+            outcome: "failed",
+            failure_reason: operationFailureReason(submitError),
+          },
         });
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);

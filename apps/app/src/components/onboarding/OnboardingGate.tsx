@@ -7,7 +7,9 @@ import {
   useSetupGuideAssignment,
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
-import type { SetupGuide } from "./onboarding-model";
+import { operationFailureReason, type SetupGuide } from "./onboarding-model";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
+import { OnboardingErrorTelemetry } from "./OnboardingErrorTelemetry";
 
 const OnboardingFlow = lazy(() =>
   import("./OnboardingFlow").then((module) => ({
@@ -77,6 +79,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   if (!firstRun && !keepClosedGuideMounted) return children;
   if (setupGuideQuery.isPending) return null;
   const setupGuide = setupGuideQuery.data ?? CONTROL_SETUP_GUIDE;
+  const entry = seenBefore ? "replay" : "first_run";
 
   return (
     <>
@@ -86,24 +89,44 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           hidden={firstRunClosed}
           className="flex h-dvh w-full flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]"
         >
-          <Suspense fallback={null}>
-            <OnboardingFlow
-              initialStep="agent"
-              setupGuide={setupGuide}
-              entry={seenBefore ? "replay" : "first_run"}
-              closing={firstRunClosed}
-              onClose={() => {
-                setFirstRunClosed(true);
-                updateSettings.mutate(
-                  {
-                    ...settings,
-                    onboardingCompletedAt: new Date().toISOString(),
-                  },
-                  { onError: () => setFirstRunClosed(false) },
-                );
-              }}
-            />
-          </Suspense>
+          <OnboardingErrorTelemetry
+            entry={entry}
+            initialStep="agent"
+            closing={firstRunClosed}
+          >
+            <Suspense fallback={null}>
+              <OnboardingFlow
+                initialStep="agent"
+                setupGuide={setupGuide}
+                entry={entry}
+                closing={firstRunClosed}
+                onClose={(lastStep) => {
+                  setFirstRunClosed(true);
+                  updateSettings.mutate(
+                    {
+                      ...settings,
+                      onboardingCompletedAt: new Date().toISOString(),
+                    },
+                    {
+                      onError: (error) => {
+                        recordTelemetryEvent({
+                          name: "onboarding_operation",
+                          properties: {
+                            entry,
+                            step: lastStep,
+                            operation: "finish",
+                            outcome: "failed",
+                            failure_reason: operationFailureReason(error),
+                          },
+                        });
+                        setFirstRunClosed(false);
+                      },
+                    },
+                  );
+                }}
+              />
+            </Suspense>
+          </OnboardingErrorTelemetry>
         </div>
       </TooltipProvider>
     </>

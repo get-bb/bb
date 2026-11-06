@@ -1233,6 +1233,7 @@ export const discoverReposResultSchema = z
   .object({
     repos: z.array(discoveredRepoSchema),
     truncated: z.boolean(),
+    unreadableCount: z.number().int().nonnegative(),
   })
   .strict();
 export type DiscoverReposResult = z.infer<typeof discoverReposResultSchema>;

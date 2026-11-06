@@ -47,6 +47,7 @@ export type HostDiscoveredRepo = z.infer<typeof hostDiscoveredRepoSchema>;
 export const hostDiscoveredReposResponseSchema = z.object({
   repos: z.array(hostDiscoveredRepoSchema),
   truncated: z.boolean(),
+  unreadableCount: z.number().int().nonnegative(),
 });
 export type HostDiscoveredReposResponse = z.infer<
   typeof hostDiscoveredReposResponseSchema

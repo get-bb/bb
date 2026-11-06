@@ -15,6 +15,7 @@ import {
   AddMachineInline,
 } from "@/components/dialogs/AddMachineDialog";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { machineServerAccessReady } from "@/components/machines/machine-server-access";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { PluginSetupGuideSections } from "@/components/plugin/PluginSetupGuideSections";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -96,6 +97,8 @@ import {
   agentContinueDisabled,
   ONBOARDING_PLUGIN_ENTRY_IDS,
   hasReadyAgent,
+  operationFailureReason,
+  projectsPrimaryAction,
   resolveAgentSetupState,
   setupGuidePlanHealth,
   signInBrowserIsOnMachine,
@@ -113,11 +116,21 @@ import {
   recordTelemetryEvent,
   type OnboardingEntry,
 } from "./onboarding-telemetry";
-import { useOnboardingPluginChange } from "./useOnboardingPluginChange";
+import { useDeviceSetupTracking } from "./useDeviceSetupTracking";
+import { useAgentStateTelemetry } from "./useAgentStateTelemetry";
+import { useLoadFailureTelemetry } from "./useLoadFailureTelemetry";
+import { useOnboardingLeftTelemetry } from "./useOnboardingLeftTelemetry";
+import { useOnboardingErrorStep } from "./OnboardingErrorTelemetry";
+import {
+  useOnboardingPluginChange,
+  useOnboardingPluginInstallOutcomes,
+  type TrackPluginInstall,
+} from "./useOnboardingPluginChange";
 import {
   useOnboardingPluginSwitches,
   type OnboardingPluginSwitches,
 } from "./useOnboardingPluginSwitches";
+import { useProjectsScanTelemetry } from "./useProjectsScanTelemetry";
 import { useOnboardingProjectImport } from "./useOnboardingProjectImport";
 import { useRefetchOnUpdateNeeded } from "./useRefetchOnUpdateNeeded";
 import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
@@ -380,6 +393,7 @@ function AgentStepContainer({
   redesign,
   entry,
   hostId,
+  noHost,
   hostName,
   onContinue,
 }: {
@@ -387,6 +401,7 @@ function AgentStepContainer({
   redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
+  noHost: boolean;
   hostName: string | null;
   onContinue: () => void;
 }) {
@@ -413,6 +428,13 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
+  useLoadFailureTelemetry({
+    entry,
+    step: "agent",
+    noHost,
+    query: statesQuery,
+    timedOut: statesLoad.timedOut,
+  });
   const refetchProviderStates = useCallback<RefetchProviderStates>(
     (options) => {
       void refetchStates(options);
@@ -802,6 +824,31 @@ function ProjectsStepContainer({
     ];
   }, [discovered, hostProjects, now, projectIdsAtOpen]);
 
+  const recordFolderAdd = (
+    result:
+      | { outcome: "started" | "succeeded" }
+      | { outcome: "failed"; error: unknown },
+  ) =>
+    recordTelemetryEvent({
+      name: "onboarding_operation",
+      properties: {
+        entry,
+        step: "projects",
+        operation: "import",
+        outcome: result.outcome,
+        item_count: 1,
+        succeeded_count: result.outcome === "succeeded" ? 1 : 0,
+        ...(result.outcome === "failed"
+          ? { failure_reason: operationFailureReason(result.error) }
+          : {}),
+      },
+    });
+  const addFolder = () =>
+    quickCreateProject.openObservedCreateDialog({
+      onStarted: () => recordFolderAdd({ outcome: "started" }),
+      onSettled: recordFolderAdd,
+    });
+
   const importSelected = () => {
     if (hostId === null || discovered === undefined) return;
     const chosen = discovered.filter(
@@ -827,9 +874,14 @@ function ProjectsStepContainer({
       primaryBusy={importing}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (selectedPaths.size > 0) void importSelected();
-        else if (redesign) onSkip();
-        else onContinue();
+        const action = projectsPrimaryAction({
+          selectedCount: selectedPaths.size,
+          existingProjectIds: projectIdsAtOpen,
+          projectIds: hostProjects.map((project) => project.id),
+        });
+        if (action === "import") importSelected();
+        else if (action === "completed") onContinue();
+        else onSkip();
       }}
       onSecondary={onSkip}
       onBack={onBack}
@@ -864,7 +916,7 @@ function ProjectsStepContainer({
           )
         }
         onSelectNone={() => setSelection(new Set())}
-        onAddFolder={quickCreateProject.openCreateDialog}
+        onAddFolder={addFolder}
         onRetry={() => {
           setRescanning(true);
           void refetchRepos().finally(() => setRescanning(false));
@@ -885,21 +937,31 @@ function ProjectsStepContainer({
 }
 
 function PluginCardContainer({
+  onboardingEntry,
+  trackInstall,
   entry,
   compact,
   enabled,
   switches,
   onChanged,
   onSelected,
+  onDeselected,
 }: {
+  onboardingEntry: OnboardingEntry;
+  trackInstall: TrackPluginInstall;
   entry: PluginCatalogSearchEntry;
   compact: boolean;
   enabled: boolean;
   switches: OnboardingPluginSwitches | null;
   onChanged: () => Promise<void>;
   onSelected: () => void;
+  onDeselected: () => void;
 }) {
-  const changePlugin = useOnboardingPluginChange(entry);
+  const changePlugin = useOnboardingPluginChange({
+    onboardingEntry,
+    plugin: entry,
+    trackInstall,
+  });
   const installJob = useCatalogEntryInstallJob(entry);
   const [working, setWorking] = useState(false);
   const [target, setTarget] = useState<boolean | null>(null);
@@ -926,6 +988,7 @@ function PluginCardContainer({
 
   const toggle = async (next: boolean) => {
     if (next) onSelected();
+    else onDeselected();
     if (switches !== null) {
       switches.set({
         pluginId: entry.pluginId,
@@ -979,6 +1042,7 @@ function PluginsStepContainer({
   chrome,
   setupGuide,
   entry: onboardingEntry,
+  trackInstall,
   switches,
   onBack,
   onContinue,
@@ -987,12 +1051,20 @@ function PluginsStepContainer({
   chrome: StepChrome;
   setupGuide: SetupGuide;
   entry: OnboardingEntry;
+  trackInstall: TrackPluginInstall;
   switches: OnboardingPluginSwitches;
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
+  useLoadFailureTelemetry({
+    entry: onboardingEntry,
+    step: "plugins",
+    noHost: false,
+    query: catalogQuery,
+    timedOut: false,
+  });
   const listQuery = usePluginList({ enabled: true });
   const { refetch: refetchCatalog } = catalogQuery;
   const { refetch: refetchList } = listQuery;
@@ -1031,7 +1103,7 @@ function PluginsStepContainer({
 
   const [recommendationIds] = useState(() => new Map<string, string>());
   const recordRecommendation = useCallback(
-    (pluginId: string, action: "shown" | "selected") => {
+    (pluginId: string, action: "shown" | "selected" | "deselected") => {
       let recommendationId = recommendationIds.get(pluginId);
       if (recommendationId === undefined) {
         recommendationId = nanoid();
@@ -1067,7 +1139,7 @@ function PluginsStepContainer({
       {...stepCopy(redesign, "plugins")}
       secondaryLabel={redesign ? undefined : "Skip"}
       onPrimary={() => {
-        if (redesign && !(entries ?? []).some(isShownEnabled)) onSkip();
+        if (!(entries ?? []).some(isShownEnabled)) onSkip();
         else onContinue();
       }}
       onSecondary={onSkip}
@@ -1082,6 +1154,8 @@ function PluginsStepContainer({
           entries.map((entry) => (
             <PluginCardContainer
               key={entry.entryId}
+              onboardingEntry={onboardingEntry}
+              trackInstall={trackInstall}
               entry={entry}
               compact={redesign}
               enabled={isEnabled(entry)}
@@ -1089,6 +1163,9 @@ function PluginsStepContainer({
               onChanged={refresh}
               onSelected={() =>
                 recordRecommendation(entry.pluginId, "selected")
+              }
+              onDeselected={() =>
+                recordRecommendation(entry.pluginId, "deselected")
               }
             />
           ))
@@ -1147,54 +1224,18 @@ function DevicesStepContainer({
   const connectedMachineCount = hostsQuery.data?.filter(
     (host) => host.id !== hostId && host.status === "connected",
   ).length;
-  const pendingSetup = useRef<{
-    remoteAccess: boolean;
-    machinesBefore: number | null;
-  }>({ remoteAccess: false, machinesBefore: null });
-  const recordDeviceSetup = useCallback(
-    (
-      operation: "remote_access" | "add_machine",
-      outcome: "started" | "succeeded",
-    ) =>
-      recordTelemetryEvent({
-        name: "onboarding_operation",
-        properties: { entry, step: "devices", operation, outcome },
-      }),
-    [entry],
-  );
-  useEffect(() => {
-    if (connect.status !== "on" || !pendingSetup.current.remoteAccess) return;
-    pendingSetup.current.remoteAccess = false;
-    recordDeviceSetup("remote_access", "succeeded");
-  }, [connect.status, recordDeviceSetup]);
-  useEffect(() => {
-    const before = pendingSetup.current.machinesBefore;
-    if (
-      before === null ||
-      connectedMachineCount === undefined ||
-      connectedMachineCount <= before
-    ) {
-      return;
-    }
-    pendingSetup.current.machinesBefore = null;
-    recordDeviceSetup("add_machine", "succeeded");
-  }, [connectedMachineCount, recordDeviceSetup]);
-
-  const startRemoteAccessSetup = () => {
-    if (connect.status !== "off" || pendingSetup.current.remoteAccess) return;
-    pendingSetup.current.remoteAccess = true;
-    recordDeviceSetup("remote_access", "started");
-  };
-  const addMachine = () => {
-    if (
-      connectedMachineCount !== undefined &&
-      pendingSetup.current.machinesBefore === null
-    ) {
-      pendingSetup.current.machinesBefore = connectedMachineCount;
-      recordDeviceSetup("add_machine", "started");
-    }
-    setAddMachineOpen(true);
-  };
+  const { startRemoteAccessSetup, failRemoteAccessSetup, failAddMachine } =
+    useDeviceSetupTracking({
+      entry,
+      connectStatus: connect.status,
+      addMachineCommandShown:
+        addMachineOpen &&
+        (redesign
+          ? showMachines
+          : machineServerAccessReady(configQuery.data?.serverAccess)),
+      connectedMachineCount,
+    });
+  const addMachine = () => setAddMachineOpen(true);
   const closeAddMachine = () => {
     void hostsQuery.refetch();
     setAddMachineOpen(false);
@@ -1217,11 +1258,15 @@ function DevicesStepContainer({
               <PluginSetupGuideSections
                 pluginId={CONNECT_PLUGIN_ID}
                 onPhone={onPhone}
+                onSetupStarted={startRemoteAccessSetup}
+                onSetupFailed={failRemoteAccessSetup}
               />
             ) : null
           }
           addMachinePanel={
-            addMachineOpen && showMachines ? <AddMachineInline /> : null
+            addMachineOpen && showMachines ? (
+              <AddMachineInline onEnrollmentFailed={failAddMachine} />
+            ) : null
           }
           onAddMachine={addMachine}
           onCloseAddMachine={closeAddMachine}
@@ -1239,20 +1284,24 @@ function DevicesStepContainer({
     >
       <DevicesStep
         connect={connect}
-        connectSetup={<PluginSettingsSections pluginId={CONNECT_PLUGIN_ID} />}
+        connectSetup={
+          <PluginSettingsSections
+            pluginId={CONNECT_PLUGIN_ID}
+            onSetupStarted={startRemoteAccessSetup}
+            onSetupFailed={failRemoteAccessSetup}
+          />
+        }
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
-        onToggleConnectSetup={() => {
-          if (!connectSetupOpen) startRemoteAccessSetup();
-          setConnectSetupOpen((open) => !open);
-        }}
+        onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={addMachine}
       />
       <AddMachineDialog
         open={addMachineOpen}
         onOpenChange={setAddMachineOpen}
+        onEnrollmentFailed={failAddMachine}
       />
     </OnboardingLayout>
   );
@@ -1273,7 +1322,7 @@ export function OnboardingFlow({
   entry: OnboardingEntry;
   setupGuide: SetupGuide;
   closing: boolean;
-  onClose: () => void;
+  onClose: (lastStep: OnboardingStepId) => void;
 }) {
   const [step, setStep] = useState(initialStep);
   const redesign = setupGuide.variant === "new";
@@ -1305,67 +1354,27 @@ export function OnboardingFlow({
       new Set(navigationProjects.map((project) => project.id)),
     );
   }
+  const hostsLoaded = useHosts().data !== undefined;
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
   const reposQuery = useHostDiscoveredRepos(hostId);
-  const { dataUpdatedAt, errorUpdatedAt } = reposQuery;
-  const foundCount = reposQuery.data?.repos.length;
-  useEffect(() => {
-    if (dataUpdatedAt === 0) return;
-    recordTelemetryEvent({
-      name: "onboarding_operation",
-      properties: {
-        entry,
-        step: "projects",
-        operation: "scan",
-        outcome: "succeeded",
-        item_count: foundCount,
-      },
-    });
-  }, [dataUpdatedAt, entry, foundCount]);
-  useEffect(() => {
-    if (errorUpdatedAt === 0) return;
-    recordTelemetryEvent({
-      name: "onboarding_operation",
-      properties: {
-        entry,
-        step: "projects",
-        operation: "scan",
-        outcome: "failed",
-      },
-    });
-  }, [entry, errorUpdatedAt]);
+  const noHost = hostsLoaded && primaryHost === null;
+  useProjectsScanTelemetry({
+    entry,
+    scan: reposQuery,
+    noHost: step === "projects" && noHost,
+  });
   const agentStatesQuery = useSystemProviderStates({
     enabled: hostId !== null,
     poll: false,
     ...(hostId === null ? {} : { hostId }),
   });
   const agentStates = agentStatesQuery.data?.providers;
-  const agentStateRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (agentStates === undefined && !agentStatesQuery.isError) return;
-    const knownStates = agentStatesQuery.isError ? undefined : agentStates;
-    const hasUnknown =
-      knownStates?.some((state) => state.status === "unknown") ?? true;
-    const installed =
-      knownStates?.some(
-        (state) =>
-          state.status !== "not_installed" && state.status !== "unknown",
-      ) ?? false;
-    const properties = {
-      entry,
-      agent_installed: installed ? true : hasUnknown ? null : false,
-      agent_ready: hasReadyAgent(knownStates)
-        ? true
-        : hasUnknown
-          ? null
-          : false,
-    };
-    const key = JSON.stringify(properties);
-    if (agentStateRef.current === key) return;
-    agentStateRef.current = key;
-    recordTelemetryEvent({ name: "onboarding_agent_state", properties });
-  }, [agentStates, agentStatesQuery.isError, entry]);
+  useAgentStateTelemetry({
+    entry,
+    states: agentStates,
+    isError: agentStatesQuery.isError,
+  });
   const startReportedRef = useRef(entry !== "first_run");
   useEffect(() => {
     if (startReportedRef.current || agentStates === undefined) return;
@@ -1390,8 +1399,11 @@ export function OnboardingFlow({
       properties: { step, entry },
     });
   }, [entry, step]);
+  const trackPluginInstall = useOnboardingPluginInstallOutcomes(entry);
   const pluginSwitches = useOnboardingPluginSwitches();
   const finishedRef = useRef(false);
+  useOnboardingLeftTelemetry({ entry, step, finishedRef });
+  useOnboardingErrorStep(step);
   useEffect(() => {
     if (!closing) finishedRef.current = false;
   }, [closing]);
@@ -1413,7 +1425,7 @@ export function OnboardingFlow({
       name: "onboarding_finished",
       properties: { outcome, entry, last_step: step },
     });
-    onClose();
+    onClose(step);
   };
   const compact = useMediaQuery(ONBOARDING_COMPACT_QUERY);
   const [desktopInfo] = useState(getBbDesktopInfo);
@@ -1454,6 +1466,7 @@ export function OnboardingFlow({
           redesign={redesign}
           entry={entry}
           hostId={hostId}
+          noHost={noHost}
           hostName={primaryHost?.name ?? null}
           onContinue={advance(
             hasReadyAgent(agentStates) ? "completed" : "skipped",
@@ -1479,6 +1492,7 @@ export function OnboardingFlow({
           chrome={chrome}
           setupGuide={setupGuide}
           entry={entry}
+          trackInstall={trackPluginInstall}
           switches={pluginSwitches}
           onBack={goTo(-1)}
           onContinue={advance("completed")}

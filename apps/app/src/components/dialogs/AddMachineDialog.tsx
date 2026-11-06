@@ -25,16 +25,30 @@ import { sdk } from "@/lib/sdk";
 import { useClipboardCopy } from "@/lib/clipboard";
 import { Link } from "react-router-dom";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getMutationErrorMessage,
+  isAbortLikeError,
+} from "@/lib/mutation-errors";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
+
+export class MachineEnrollmentEndedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MachineEnrollmentEndedError";
+  }
+}
+
+type EnrollmentFailureHandler = (error: unknown) => void;
 
 export function AddMachineDialog({
   open,
   onOpenChange,
+  onEnrollmentFailed,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onEnrollmentFailed?: EnrollmentFailureHandler;
 }) {
   const hosts = useHosts();
   const close = (next: boolean) => {
@@ -44,7 +58,12 @@ export function AddMachineDialog({
   return (
     <Dialog open={open} onOpenChange={close} modal={false}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        {open && <AddMachineContent onOpenChange={close} />}
+        {open && (
+          <AddMachineContent
+            onOpenChange={close}
+            onEnrollmentFailed={onEnrollmentFailed}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -52,8 +71,10 @@ export function AddMachineDialog({
 
 export function AddMachineContent({
   onOpenChange,
+  onEnrollmentFailed,
 }: {
   onOpenChange: (open: boolean) => void;
+  onEnrollmentFailed?: EnrollmentFailureHandler | undefined;
 }) {
   const config = useSystemConfig();
   const hosts = useHosts();
@@ -80,6 +101,7 @@ export function AddMachineContent({
     <ManualMachineSetup
       serverMachineName={serverMachineName}
       onOpenChange={onOpenChange}
+      onEnrollmentFailed={onEnrollmentFailed}
     />
   );
 }
@@ -158,7 +180,20 @@ interface ManualMachineEnrollment {
   regenerate: () => void;
 }
 
-function useManualMachineEnrollment(): ManualMachineEnrollment {
+function useManualMachineEnrollment(
+  onFailed: EnrollmentFailureHandler | undefined,
+): ManualMachineEnrollment {
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => {
+    onFailedRef.current = onFailed;
+  });
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const createController = useRef<AbortController | null>(null);
   const createKey = useRef<string | null>(null);
   const pendingHostIds = useRef(new Set<string>());
@@ -248,7 +283,9 @@ function useManualMachineEnrollment(): ManualMachineEnrollment {
         createKey.current = null;
         pendingHostIds.current.delete(host.id);
         if (host.lifecycle.phase !== "active") {
-          throw new Error(host.lifecycle.message ?? "Machine setup cancelled");
+          throw new MachineEnrollmentEndedError(
+            host.lifecycle.message ?? "Machine setup cancelled",
+          );
         }
         return host;
       } finally {
@@ -259,6 +296,10 @@ function useManualMachineEnrollment(): ManualMachineEnrollment {
     onSuccess: (host: Host) => {
       createKey.current = null;
       setConnectedHost(host);
+    },
+    onError: (error) => {
+      if (!mountedRef.current || isAbortLikeError(error)) return;
+      onFailedRef.current?.(error);
     },
   });
   const start = createMachine.mutate;
@@ -283,11 +324,13 @@ function useManualMachineEnrollment(): ManualMachineEnrollment {
 export function ManualMachineSetup({
   serverMachineName,
   onOpenChange,
+  onEnrollmentFailed,
 }: {
   serverMachineName: string | null;
   onOpenChange: (open: boolean) => void;
+  onEnrollmentFailed?: EnrollmentFailureHandler | undefined;
 }) {
-  const enrollment = useManualMachineEnrollment();
+  const enrollment = useManualMachineEnrollment(onEnrollmentFailed);
   return (
     <ManualMachineSetupView
       command={enrollment.command}
@@ -301,8 +344,12 @@ export function ManualMachineSetup({
   );
 }
 
-export function AddMachineInline() {
-  const enrollment = useManualMachineEnrollment();
+export function AddMachineInline({
+  onEnrollmentFailed,
+}: {
+  onEnrollmentFailed?: EnrollmentFailureHandler;
+}) {
+  const enrollment = useManualMachineEnrollment(onEnrollmentFailed);
   return (
     <QuickMachineSetupView
       command={enrollment.command}

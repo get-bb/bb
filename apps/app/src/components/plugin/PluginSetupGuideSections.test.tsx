@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InternalDoNotUseSetupGuideSectionProps } from "@get-bb/plugin-sdk";
@@ -19,22 +19,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function Section({ onPhone }: InternalDoNotUseSetupGuideSectionProps) {
+function Section({
+  onPhone,
+  onSetupStarted,
+  onSetupFailed,
+}: InternalDoNotUseSetupGuideSectionProps) {
   return (
     <li>
       <span>{onPhone ? "phone row" : "desktop row"}</span>
+      <button type="button" onClick={onSetupStarted}>
+        Set up
+      </button>
+      <button type="button" onClick={() => onSetupFailed("turn_on")}>
+        Fail
+      </button>
     </li>
   );
 }
 
 function renderSections() {
-  return render(
+  const onSetupStarted = vi.fn();
+  const onSetupFailed = vi.fn();
+  const view = render(
     <MemoryRouter>
       <ul>
-        <PluginSetupGuideSections pluginId="connect" onPhone />
+        <PluginSetupGuideSections
+          pluginId="connect"
+          onPhone
+          onSetupStarted={onSetupStarted}
+          onSetupFailed={onSetupFailed}
+        />
       </ul>
     </MemoryRouter>,
   );
+  return { ...view, onSetupStarted, onSetupFailed };
 }
 
 describe("PluginSetupGuideSections", () => {
@@ -45,9 +63,13 @@ describe("PluginSetupGuideSections", () => {
         setupGuideSections: [{ id: "remote-access", component: Section }],
       }),
     );
-    renderSections();
+    const { onSetupStarted, onSetupFailed } = renderSections();
 
     expect(screen.getByText("phone row")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Set up" }));
+    expect(onSetupStarted).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Fail" }));
+    expect(onSetupFailed).toHaveBeenCalledExactlyOnceWith("turn_on");
   });
 
   it("renders nothing when the plugin registers no section", () => {

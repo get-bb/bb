@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { ProviderCliInstallEvent } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BbHttpError } from "@bb/sdk/browser";
+import { BbHttpError, BbRequestTimeoutError } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
@@ -434,11 +434,15 @@ describe("provider CLI install store", () => {
 
 describe("onboarding agent install outcomes", () => {
   it.each([
-    { success: true, outcome: "succeeded" },
-    { success: false, outcome: "failed" },
+    { success: true, outcome: "succeeded", failure: {} },
+    {
+      success: false,
+      outcome: "failed",
+      failure: { failure_reason: "command_failed" },
+    },
   ])(
     "records started then $outcome for a guide install",
-    async ({ success, outcome }) => {
+    async ({ success, outcome, failure }) => {
       startProviderCliInstall({
         hostId: "host_1",
         issue: issueForProvider("codex"),
@@ -455,15 +459,23 @@ describe("onboarding agent install outcomes", () => {
 
       expect(
         telemetryMock.mock.calls.map(([event]) => event.properties),
-      ).toEqual(
-        ["started", outcome].map((value) => ({
+      ).toEqual([
+        {
           entry: "first_run",
           step: "agent",
           operation: "update",
-          outcome: value,
+          outcome: "started",
           resource_id: "codex",
-        })),
-      );
+        },
+        {
+          entry: "first_run",
+          step: "agent",
+          operation: "update",
+          outcome,
+          resource_id: "codex",
+          ...failure,
+        },
+      ]);
     },
   );
 
@@ -481,10 +493,13 @@ describe("onboarding agent install outcomes", () => {
       issue: issueForProvider("codex"),
       onboardingEntry: "replay",
     });
-    installAt(1).reject(new Error("offline"));
+    installAt(1).reject(new BbRequestTimeoutError(30_000));
     await settle();
     expect(
       telemetryMock.mock.calls.map(([event]) => event.properties),
-    ).toMatchObject([{ outcome: "started" }, { outcome: "failed" }]);
+    ).toMatchObject([
+      { outcome: "started" },
+      { outcome: "failed", failure_reason: "timed_out" },
+    ]);
   });
 });

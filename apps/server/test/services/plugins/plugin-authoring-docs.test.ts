@@ -477,7 +477,8 @@ const FRONTEND_SLOT_PROP_FIELDS = {
 type MissingSlotPropField = {
   [S in keyof SlotPropsByName]: Exclude<
     SlotPropKeys<SlotPropsByName[S]>,
-    (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | (typeof FRONTEND_SLOT_PROP_FIELDS)[S][number]
+    | `internal_DO_NOT_USE_${string}`
   >;
 }[keyof SlotPropsByName];
 const _assertAllSlotPropFieldsListed: MissingSlotPropField extends never
