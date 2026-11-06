@@ -44,6 +44,9 @@ export function ExperimentalFileLinkMenu({
       ? []
       : fileOpeners.filter((opener) => opener.extensions.includes(extension));
   const location = getExperimentalFileLocationStart(intent.location);
+  const finderTarget = localTargets.fileOpenTargets.find(
+    (target) => target.id === "finder",
+  );
 
   return (
     <>
@@ -108,6 +111,21 @@ export function ExperimentalFileLinkMenu({
             ))}
           </ContextMenuSubContent>
         </ContextMenuSub>
+      ) : null}
+      {absolutePath !== null && finderTarget !== undefined ? (
+        <ContextMenuItem
+          onSelect={() => {
+            void localTargets.openPathInFileTarget({
+              columnNumber: null,
+              lineNumber: null,
+              path: absolutePath,
+              rememberTarget: false,
+              targetId: finderTarget.id,
+            });
+          }}
+        >
+          Show in Finder
+        </ContextMenuItem>
       ) : null}
       <ContextMenuSeparator />
       <ContextMenuItem

@@ -1253,6 +1253,9 @@ function ThreadDetailViewInternal(
           });
         },
       }));
+      const finderTarget = fileOpenTargets.find(
+        (target) => target.id === "finder",
+      );
       const items: MarkdownLocalFileContextMenuItem[] = [];
       if (openTargetItems.length > 0) {
         items.push({
@@ -1260,6 +1263,20 @@ function ThreadDetailViewInternal(
           items: openTargetItems,
           label: "Open in",
           type: "submenu",
+        });
+      }
+      if (finderTarget !== undefined) {
+        items.push({
+          id: "show-in-finder",
+          label: "Show in Finder",
+          onSelect: () => {
+            void openPathInFileTarget({
+              lineNumber: null,
+              path: link.path,
+              rememberTarget: false,
+              targetId: finderTarget.id,
+            });
+          },
         });
       }
       if (matching.length > 0) {
