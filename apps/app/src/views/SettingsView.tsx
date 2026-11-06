@@ -1149,6 +1149,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "When an update, crash or restart cuts off a running thread or stops a background command a thread is waiting on, bb resumes the thread a few seconds after it comes back and tells the agent what was cut off. Messages you queued meanwhile send after it.",
   },
+  savedThreads: {
+    label: "Save archived threads to files",
+    description:
+      "Save threads out of the database into compressed thread files with bb thread save, or after a delay you choose in the Storage retention plugin, and add bb thread export and import. Saved threads are listed in Settings → Archived threads → Saved to files, where Restore brings them back with their full history. Turning this off stops new saves; saved threads can still be restored.",
+  },
   serverMove: {
     label: "Server move",
     description:

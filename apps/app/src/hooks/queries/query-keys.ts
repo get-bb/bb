@@ -28,6 +28,7 @@ const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 export const THREADS_QUERY_KEY = "threads";
 const THREAD_SEARCH_QUERY_KEY = "threadSearch";
+const SAVED_THREADS_QUERY_KEY = "savedThreads";
 const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 const THREAD_TABS_QUERY_KEY = "threadTabs";
@@ -660,6 +661,23 @@ export function threadSearchQueryKey(
 
 export function threadSearchQueryKeyPrefix(): ThreadSearchQueryKeyPrefix {
   return [THREAD_SEARCH_QUERY_KEY];
+}
+
+export interface SavedThreadsFilters {
+  projectId: string | null;
+  search: string;
+}
+
+export function savedThreadsQueryKey(
+  filters: SavedThreadsFilters,
+): readonly [typeof SAVED_THREADS_QUERY_KEY, SavedThreadsFilters] {
+  return [SAVED_THREADS_QUERY_KEY, filters];
+}
+
+export function savedThreadsQueryKeyPrefix(): readonly [
+  typeof SAVED_THREADS_QUERY_KEY,
+] {
+  return [SAVED_THREADS_QUERY_KEY];
 }
 
 export function archivedThreadsListQueryKey(

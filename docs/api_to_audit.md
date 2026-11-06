@@ -1159,6 +1159,53 @@ Docs: `backend-sdk.md`.
 3. **Actions.** Confirm `archive` and `delete` are the only cascading
    actions worth previewing.
 
+## `bb.sdk.threads.experimental_export` / `experimental_import` / `experimental_save` / `experimental_listSaved` / `experimental_restoreSaved` / `experimental_deleteSaved`
+
+A thread file (`application/zstd`) is zstd-compressed JSONL. The first line is
+a header (`format: "bb.thread"`, `formatVersion`, thread id, title, project,
+provider, and created, archived and exported times). Then come the thread's own
+rows (`threads`, plugin metadata, tabs, prompt history, search segments,
+conversation outline) as `row` lines, every event in sequence order with its
+retained outputs, and the thread's attachments as base64 `attachment` lines.
+A seek table sits in a zstd skippable frame.
+
+- `GET /threads/:id/export` writes one for a thread in the database.
+- `POST /threads/import` takes a file as the multipart `file` field. If the
+  thread exists, it inserts the events the thread lacks (`INSERT OR IGNORE`);
+  if not, it recreates the thread in its project, restoring a saved parent or
+  source thread first. It answers `{ threadId, rows, insertedRows }`: 404 when
+  the project is not on this server, 400 for a file that is not a thread file
+  or uses a format version this bb does not read.
+- `POST /threads/:id/save` records a save request. The `thread-save` item
+  sweep exports and verifies the file in paced slices, then hides the thread
+  and queues it for the `thread-purge` sweep that removes its rows; a failure
+  is backed off by the sweep runner and retried. It answers with the `saving`
+  entry, or 409 while the thread is pinned, running, open in a client, already
+  being saved, has pending work, or is a parent, source or lifecycle owner of a
+  thread still in the database. Restoring a thread whose rows are still being
+  purged cancels the purge and refills what it had removed; a restored
+  archived thread's `archivedAt` restarts at the restore time.
+- `GET /saved-threads` lists saved threads (`saving`, `saved`),
+  `POST /saved-threads/:id/restore` imports a saved file,
+  `DELETE /saved-threads/:id` removes it permanently, and
+  `GET /saved-threads/:id/file` downloads it.
+
+Export, import and save answer 403 `saved_threads_experiment_disabled` while
+the `savedThreads` experiment is off; the saved-thread routes always work.
+Core callers: `bb thread export|import|save` and `bb thread saved
+list|restore|delete`; Settings → Archived threads lists and restores saved
+threads; the Storage & retention plugin's Save archived threads to files policy
+calls `threads.experimental_save`, and restoring from the list goes through the
+same import path.
+
+Stabilization: decide what a cross-server import does with projects,
+environments and provider sessions (it is refused today), commit to reading
+every shipped format version, run one release with the experiment on for
+early adopters without restore failures in telemetry or bug reports, then
+rename project-wide and drop this entry.
+
+Docs: `bb guide thread-lifecycle`, `bb guide customization`.
+
 ## `bb.sdk.threads.experimental_regenerateTitle`
 
 `POST /threads/:id/title/regenerate` asks the thread-title AI service for a new

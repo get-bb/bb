@@ -14,6 +14,7 @@ import {
 } from "@bb/domain";
 import {
   DEFAULT_TURN_RETRY_REASON,
+  threadImportResponseSchema,
   threadTabsResponseSchema,
 } from "@bb/server-contract";
 import type {
@@ -29,6 +30,9 @@ import type {
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadImportResponse,
+  SavedThreadListResponse,
+  SavedThreadResponse,
   ThreadConversationOutlineResponse,
   ThreadCountGroupBy,
   ThreadCountQuery,
@@ -211,6 +215,9 @@ export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
+export type ThreadImportResult = ThreadImportResponse;
+export type SavedThreadResult = SavedThreadResponse;
+export type SavedThreadListResult = SavedThreadListResponse;
 export type ThreadReadStateResult = ThreadResponse;
 export type ThreadRestoreEnvironmentResult = ThreadResponse;
 export type ThreadPinOrderResult = ThreadListResponse;
@@ -335,6 +342,19 @@ export interface ThreadRetryArgs {
 export interface ThreadActionArgs {
   signal?: AbortSignal;
   threadId: string;
+}
+
+export interface SavedThreadListArgs {
+  limit?: number;
+  offset?: number;
+  projectId?: string;
+  search?: string;
+  signal?: AbortSignal;
+}
+
+export interface ThreadImportArgs {
+  file: ArrayBuffer | Blob | Uint8Array;
+  signal?: AbortSignal;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -685,6 +705,42 @@ export interface ThreadsArea {
   experimental_regenerateTitle(
     args: ThreadActionArgs,
   ): Promise<ThreadMutationResult>;
+  /**
+   * Download the thread as a thread file: zstd-compressed JSONL with a header
+   * line, then the thread's rows, every event in sequence order and its
+   * attachments. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_export(args: ThreadActionArgs): Promise<Uint8Array>;
+  /**
+   * Import a thread file: merges the events a thread already in the database
+   * lacks, or recreates a deleted thread in its project. Rejects a file whose
+   * project is not on this server. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_import(args: ThreadImportArgs): Promise<ThreadImportResult>;
+  /**
+   * Save the thread to a thread file and remove it from the database in a
+   * paced background sweep. Resolves at once with the `saving` entry.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_save(args: ThreadActionArgs): Promise<SavedThreadResult>;
+  /**
+   * Threads saved to files, newest first. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listSaved(
+    args?: SavedThreadListArgs,
+  ): Promise<SavedThreadListResult>;
+  /**
+   * Bring a saved thread back from its file, with any saved parent or source
+   * thread it links to. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_restoreSaved(
+    args: ThreadActionArgs,
+  ): Promise<ThreadImportResult>;
+  /**
+   * Permanently delete a saved thread's file. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_deleteSaved(args: ThreadActionArgs): Promise<{ ok: true }>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1406,6 +1462,85 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           param: { id: input.threadId },
         }),
       );
+    },
+    async experimental_export(input) {
+      const response = await transport.resolve(
+        transport.api.v1.threads[":id"].export.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async experimental_save(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].save.$post(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listSaved(input = {}) {
+      return transport.readJson(
+        transport.api.v1["saved-threads"].$get(
+          {
+            query: {
+              ...(input.projectId === undefined
+                ? {}
+                : { projectId: input.projectId }),
+              ...(input.search === undefined ? {} : { search: input.search }),
+              ...(input.limit === undefined
+                ? {}
+                : { limit: String(input.limit) }),
+              ...(input.offset === undefined
+                ? {}
+                : { offset: String(input.offset) }),
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_restoreSaved(input) {
+      return transport.readJson(
+        transport.api.v1["saved-threads"][":id"].restore.$post(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_deleteSaved(input) {
+      return transport.readJson(
+        transport.api.v1["saved-threads"][":id"].$delete(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_import(input) {
+      const form = new FormData();
+      form.set(
+        "file",
+        input.file instanceof Blob
+          ? input.file
+          : new Blob([
+              Uint8Array.from(
+                input.file instanceof Uint8Array
+                  ? input.file
+                  : new Uint8Array(input.file),
+              ),
+            ]),
+        "thread.jsonl.zst",
+      );
+      const baseUrl = transport.baseUrl.replace(/\/$/u, "");
+      const response = await transport.resolve(
+        transport.fetch(`${baseUrl}/api/v1/threads/import`, {
+          body: form,
+          method: "POST",
+          signal: input.signal,
+        }),
+      );
+      return threadImportResponseSchema.parse(await response.json());
     },
     async experimental_listPluginMetadata(input) {
       return transport.readJson(

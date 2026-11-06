@@ -101,6 +101,11 @@ export function registerCli(
               type: "string",
               description: "Idle days before archiving, or never",
             },
+            "save-after": {
+              type: "string",
+              description:
+                "Archived days before saving to a thread file, or never",
+            },
             "delete-after": {
               type: "string",
               description: "Archived days before deleting, or never",
@@ -141,6 +146,10 @@ export function registerCli(
                   input.options["archive-after"],
                   state.policy.archiveAfterDays,
                 ),
+                saveAfterDays: days(
+                  input.options["save-after"],
+                  state.policy.saveAfterDays,
+                ),
                 deleteAfterDays: days(
                   input.options["delete-after"],
                   state.policy.deleteAfterDays,
@@ -155,6 +164,7 @@ export function registerCli(
               }
               if (
                 input.options["archive-after"] !== undefined ||
+                input.options["save-after"] !== undefined ||
                 input.options["delete-after"] !== undefined ||
                 cleanup !== undefined ||
                 devCleanup !== undefined

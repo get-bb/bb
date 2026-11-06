@@ -28,6 +28,7 @@ describe("listServerOwnedEntries", () => {
     );
     expect(inventory.entries.map((entry) => entry.path)).toEqual([
       "AGENTS.md",
+      "archive",
       "attachments",
       "auth-secret",
       "bb.db",

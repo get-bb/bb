@@ -27,6 +27,7 @@ function fixture(subPath = "host_test") {
   let state: State = {
     policy: {
       archiveAfterDays: null,
+      saveAfterDays: null,
       deleteAfterDays: null,
       deleteStorageOnArchive: false,
       deleteDevDataOnCheckoutRemoval: false,

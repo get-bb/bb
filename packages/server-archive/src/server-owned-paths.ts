@@ -11,6 +11,7 @@ export const SERVER_OWNED_TOP_LEVEL_FILES: readonly string[] = [
   "telemetry-id",
 ];
 export const SERVER_OWNED_TOP_LEVEL_DIRECTORIES: readonly string[] = [
+  "archive",
   "attachments",
   "skills",
   "theme",

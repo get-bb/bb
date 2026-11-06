@@ -9,6 +9,7 @@ export const SERVER_OWNED_FIXTURE_PATHS: readonly string[] = [
   "machine-environment-key",
   "AGENTS.md",
   "telemetry-id",
+  "archive/threads/thr_1.jsonl.zst",
   "attachments/thr_1/image.png",
   "skills/review/SKILL.md",
   "theme/custom.css",

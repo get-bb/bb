@@ -151,7 +151,9 @@ export {
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
 export {
+  cancelThreadPurge,
   deleteThreadPurgeBatch,
+  isThreadPurgeRequested,
   nextThreadPurge,
   requestThreadPurge,
 } from "./thread-purges.js";
@@ -423,6 +425,39 @@ export {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   RETAINED_EVENT_OUTPUT_TARGETS,
 } from "../retained-event-output.js";
+export {
+  THREAD_FILE_FORMAT_VERSION,
+  THREAD_FILE_TABLES,
+  deleteSavedThread,
+  getSavedThread,
+  getSavedThreadTotals,
+  hideThreadForSaving,
+  unhideSavedThread,
+  insertThreadHistoryRows,
+  insertThreadTableRow,
+  isThreadSavable,
+  listSavedThreadIds,
+  listSavedThreads,
+  listSavedThreadsInStates,
+  listThreadAttachments,
+  nextThreadSave,
+  readThreadEventWindow,
+  readThreadTableRows,
+  readThreadTableRowsPage,
+  restartThreadArchiveClock,
+  updateSavedThreadInState,
+  upsertSavedThread,
+  type SavedThread,
+  type SavedThreadAttachment,
+  type SavedThreadTotals,
+  type ThreadEventWindow,
+  type ThreadEventWindowArgs,
+  type ThreadFileTable,
+  type ThreadFileTableRow,
+  type ThreadFileValue,
+  type ThreadHistoryEventRow,
+  type ThreadHistoryRetainedOutputRow,
+} from "./saved-threads.js";
 export type {
   AcceptedDaemonEvent,
   AppendDaemonEventInput,
