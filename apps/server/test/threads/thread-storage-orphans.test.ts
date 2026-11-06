@@ -5,7 +5,7 @@ import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract
 import { describe, expect, it, vi } from "vitest";
 import {
   removeOrphanedThreadStorage,
-  runThreadStorageOrphanSweep,
+  threadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_PASS_LIMITS,
 } from "../../src/services/threads/thread-storage-orphans.js";
 import { advanceUntilSettled } from "../helpers/fake-timers.js";
@@ -53,7 +53,10 @@ describe("thread storage orphan cleanup", () => {
         },
       });
       try {
-        runThreadStorageOrphanSweep(harness.deps);
+        await threadStorageOrphanSweep(harness.deps).run(
+          harness.deps,
+          Date.now(),
+        );
         await sleep(20);
         expect(responder.requests).toEqual([]);
       } finally {
@@ -103,19 +106,28 @@ describe("thread storage orphan cleanup", () => {
       const countOf = (type: string) =>
         commandTypes.filter((commandType) => commandType === type).length;
       try {
-        runThreadStorageOrphanSweep(harness.deps);
+        await threadStorageOrphanSweep(harness.deps).run(
+          harness.deps,
+          Date.now(),
+        );
         await vi.waitFor(() => {
           expect(storedIds.size).toBe(50);
         });
         await sleep(20);
 
-        runThreadStorageOrphanSweep(harness.deps);
+        await threadStorageOrphanSweep(harness.deps).run(
+          harness.deps,
+          Date.now(),
+        );
         await vi.waitFor(() => {
           expect(storedIds.size).toBe(0);
         });
         await sleep(20);
 
-        runThreadStorageOrphanSweep(harness.deps);
+        await threadStorageOrphanSweep(harness.deps).run(
+          harness.deps,
+          Date.now(),
+        );
         await sleep(20);
         expect(countOf("host.browse_directory")).toBe(1);
         expect(countOf("host.remove_path")).toBe(

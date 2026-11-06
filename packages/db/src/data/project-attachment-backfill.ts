@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, ne, notInArray, sql } from "drizzle-orm";
 import { storedAttachmentPaths } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -35,7 +35,6 @@ export function ensureProjectAttachmentBackfill(
       phase: "files",
       ...emptyCursor,
       attemptedAt: 0,
-      error: null,
     })
     .onConflictDoNothing()
     .run();
@@ -48,8 +47,12 @@ export function ensureProjectAttachmentBackfill(
 
 export function nextProjectAttachmentBackfill(
   db: DbConnection,
-  now: number,
+  args: { excludedProjectIds: ReadonlySet<string> },
 ): string | null {
+  const notExcluded = (column: typeof projects.id) =>
+    args.excludedProjectIds.size === 0
+      ? undefined
+      : notInArray(column, [...args.excludedProjectIds]);
   const missing = db
     .select({ id: projects.id })
     .from(projects)
@@ -57,7 +60,12 @@ export function nextProjectAttachmentBackfill(
       projectAttachmentBackfills,
       eq(projectAttachmentBackfills.projectId, projects.id),
     )
-    .where(sql`${projectAttachmentBackfills.projectId} IS NULL`)
+    .where(
+      and(
+        sql`${projectAttachmentBackfills.projectId} IS NULL`,
+        notExcluded(projects.id),
+      ),
+    )
     .orderBy(asc(projects.id))
     .limit(1)
     .get();
@@ -69,10 +77,11 @@ export function nextProjectAttachmentBackfill(
       .where(
         and(
           ne(projectAttachmentBackfills.phase, "done"),
-          or(
-            isNull(projectAttachmentBackfills.error),
-            lt(projectAttachmentBackfills.attemptedAt, now - 60_000),
-          ),
+          args.excludedProjectIds.size === 0
+            ? undefined
+            : notInArray(projectAttachmentBackfills.projectId, [
+                ...args.excludedProjectIds,
+              ]),
         ),
       )
       .orderBy(

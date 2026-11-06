@@ -5,7 +5,7 @@ import {
 } from "./thread-pruning-sweep.js";
 import {
   PROJECT_ATTACHMENT_BACKFILL_LIMITS,
-  runProjectAttachmentBackfill,
+  projectAttachmentBackfillSweep,
   runProjectAttachmentPrune,
 } from "../projects/attachment-maintenance.js";
 import {
@@ -13,7 +13,7 @@ import {
   sweepProviderLifecycles,
 } from "../environments/environment-engine.js";
 import {
-  runThreadStorageOrphanSweep,
+  threadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
 } from "../threads/thread-storage-orphans.js";
 import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
@@ -70,11 +70,17 @@ import {
 } from "../threads/archive-undo-grace.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import {
-  runQueuedMessageDispatch,
+  dueScheduledQueueSweep,
+  failedQueueRetrySweep,
+  idleThreadQueueSweep,
+  orphanedPluginWaitSweep,
   type QueueWaitPluginDirectory,
 } from "../threads/queued-message-dispatch.js";
 import { deliverLegacyDeferredThreadMessages } from "../threads/legacy-deferred-messages.js";
-import { releaseOrphanedQueuedMessageDispatchClaims } from "../threads/queued-messages.js";
+import {
+  releaseOrphanedQueuedMessageDispatchClaims,
+  releaseStaleQueuedMessageDispatchClaims,
+} from "../threads/queued-messages.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 import type { OpenPluginDatabase } from "../plugins/plugin-service.js";
 import type Database from "better-sqlite3";
@@ -125,6 +131,7 @@ export type PeriodicSweepJob = PeriodicSweepJobBase &
   (
     | {
         kind: "items";
+        background: boolean;
         sweep(deps: PeriodicSweepDeps, now: number): ItemSweep;
       }
     | {
@@ -177,24 +184,26 @@ async function runPeriodicSweepJob(
 
   state.lastStartedAt = now;
   state.running = true;
-  try {
-    await runEventLoopWork(`sweep:${job.name}`, () =>
-      job.kind === "items"
-        ? job.sweep(deps, now).run(deps, now)
-        : job.run(deps, now),
-    );
-  } catch (error) {
-    deps.logger.error(
-      {
-        err: error,
-        sweepJob: job.name,
-        sweepJobCategory: job.category,
-      },
-      "Periodic sweep job failed",
-    );
-  } finally {
-    state.running = false;
-  }
+  const run = runEventLoopWork(`sweep:${job.name}`, () =>
+    job.kind === "items"
+      ? job.sweep(deps, now).run(deps, now)
+      : job.run(deps, now),
+  )
+    .catch((error: unknown) => {
+      deps.logger.error(
+        {
+          err: error,
+          sweepJob: job.name,
+          sweepJobCategory: job.category,
+        },
+        "Periodic sweep job failed",
+      );
+    })
+    .finally(() => {
+      state.running = false;
+    });
+  if (job.kind === "items" && job.background) return;
+  await run;
 }
 
 export async function runPeriodicSweepJobs(
@@ -639,6 +648,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "environment-provider-lifecycle",
     kind: "items",
+    background: false,
     sweep: providerLifecycleSweep,
   },
   {
@@ -695,6 +705,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "environment-provisioning-orphan-cleanup",
     kind: "items",
+    background: false,
     sweep: environmentProvisioningSweep,
   },
   {
@@ -702,6 +713,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "thread-provisioning",
     kind: "items",
+    background: false,
     sweep: threadProvisioningSweep,
   },
   {
@@ -709,6 +721,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "archived-thread-teardown",
     kind: "items",
+    background: false,
     sweep: archivedThreadTeardownSweep,
   },
   {
@@ -716,6 +729,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "deleted-thread-finalization",
     kind: "items",
+    background: false,
     sweep: deletedThreadFinalizationSweep,
   },
   {
@@ -723,51 +737,54 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "orphan-cleanup",
     name: "turn-start-deadline",
     kind: "items",
+    background: false,
     sweep: turnStartDeadlineSweep,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
-    name: "queued-message-auto-send",
+    name: "queued-message-claim-release",
     kind: "task",
-    run: (deps, now) =>
-      runQueuedMessageDispatch(deps, {
-        kind: "idle-recovery",
-        now,
-      }),
+    run: (deps, now) => releaseStaleQueuedMessageDispatchClaims(deps, now),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "queued-message-auto-send",
+    kind: "items",
+    background: false,
+    sweep: idleThreadQueueSweep,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "due-scheduled-queue-dispatch",
-    kind: "task",
-    run: (deps, now) =>
-      runQueuedMessageDispatch(deps, { kind: "time-reached", now }),
+    kind: "items",
+    background: false,
+    sweep: dueScheduledQueueSweep,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "failed-queue-message-retry",
-    kind: "task",
-    run: (deps, now) =>
-      runQueuedMessageDispatch(deps, { kind: "failed-retry", now }),
+    kind: "items",
+    background: false,
+    sweep: failedQueueRetrySweep,
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "orphaned-queue-wait-clear",
-    kind: "task",
-    run: (deps) =>
-      runQueuedMessageDispatch(deps, {
-        kind: "orphaned-plugin-recovery",
-        plugins: deps.plugins,
-      }),
+    kind: "items",
+    background: false,
+    sweep: (deps) => orphanedPluginWaitSweep(deps, deps.plugins),
   },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",
     name: "project-deletion",
     kind: "items",
+    background: false,
     sweep: projectDeletionSweep,
   },
   {
@@ -775,6 +792,7 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     category: "scheduler",
     name: "plugin-schedule",
     kind: "items",
+    background: false,
     sweep: (deps, now) => deps.pluginSchedules.dueScheduleSweep(now),
   },
   createThreadEventPruningJob(THREAD_PRUNING_SWEEP_LIMITS),
@@ -796,9 +814,10 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "maintenance",
     name: "project-attachment-backfill",
-    kind: "task",
-    run: (deps, now) =>
-      runProjectAttachmentBackfill(
+    kind: "items",
+    background: false,
+    sweep: (deps, now) =>
+      projectAttachmentBackfillSweep(
         deps,
         PROJECT_ATTACHMENT_BACKFILL_LIMITS,
         now,
@@ -815,8 +834,9 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     cadenceMs: THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
     category: "orphan-cleanup",
     name: "thread-storage-orphan-cleanup",
-    kind: "task",
-    run: runThreadStorageOrphanSweep,
+    kind: "items",
+    background: true,
+    sweep: threadStorageOrphanSweep,
   },
 ];
 

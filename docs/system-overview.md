@@ -76,8 +76,11 @@ and sets how many run at once; the runner owns everything else:
   still running, and records its outcome when it settles, so one hung item
   never holds up its job.
 - It yields to the event loop every 8 ms of work.
+- A job marked `background` doesn't hold up the rest of the pass; it is
+  skipped on later passes until it finishes.
 
-Every other job is a `task`. `apps/server/test/system/periodic-sweep-jobs.test.ts`
+Every other job is a `task`: single SQL statements, maintenance passes, the
+two cursor scans, and the few loops whose behaviour the runner would change. `apps/server/test/system/periodic-sweep-jobs.test.ts`
 lists each one with the reason it doesn't need the runner, and a new task job
 fails that test until it is added there. Cursor scans (event pruning, completed
 output migration) are tasks that record failures through the same

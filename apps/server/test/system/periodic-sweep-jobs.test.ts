@@ -12,34 +12,22 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 const TASK_JOBS: Record<string, string> = {
-  "environment-preparation-owner-release":
-    "One bulk UPDATE with no per-item work.",
-  "machine-provider-lifecycle":
-    "Starts each machine's sweep in the background without waiting for it, catches each failure, and keeps retry state on the host row.",
-  "machine-auth-prune": "One bulk DELETE with no per-item work.",
-  "completed-event-output-migration":
-    "Cursor scan per target; a failing target is backed off through the shared failure records while the other targets continue.",
+  "environment-preparation-owner-release": "One bulk UPDATE with no items.",
+  "machine-auth-prune": "One bulk DELETE with no items.",
   "retained-event-output-expiry": "Bulk DELETE of expired rows in batches.",
-  "closed-session-prune": "One bulk DELETE with no per-item work.",
-  "exited-terminal-session-prune": "One bulk DELETE with no per-item work.",
-  "queued-message-auto-send":
-    "Each message records its own failure and retry schedule, which users see in the queue.",
-  "due-scheduled-queue-dispatch":
-    "Each message records its own failure and retry schedule, which users see in the queue.",
-  "failed-queue-message-retry":
-    "Each message records its own failure and retry schedule, which users see in the queue.",
-  "orphaned-queue-wait-clear":
-    "Each message records its own failure and retry schedule, which users see in the queue.",
-  "thread-event-pruning":
-    "Cursor scan; a failing thread is skipped and recorded through the shared failure records, and the policy keeps going.",
-  "database-maintenance": "One maintenance pass with no item list.",
+  "closed-session-prune": "One bulk DELETE with no items.",
+  "exited-terminal-session-prune": "One bulk DELETE with no items.",
+  "queued-message-claim-release": "One bulk UPDATE with no items.",
+  "database-maintenance": "One maintenance pass with no items.",
   "plugin-database-maintenance": "One vacuum check per open plugin database.",
-  "project-attachment-backfill":
-    "One project per pass; each project records its own error and is skipped for 60 s after a failure.",
+  "thread-event-pruning":
+    "Cursor scan; a failing thread is skipped and recorded through the shared failure records.",
+  "completed-event-output-migration":
+    "Cursor scan per target; a failing target is backed off through the shared failure records.",
+  "machine-provider-lifecycle":
+    "Starts every machine's sweep without waiting for it, and re-requests removal for machines whose sweep is still running, which the runner's in-flight skip would prevent.",
   "project-attachment-orphan-prune":
-    "Catches each attachment's failure and keeps claim times on the attachment rows.",
-  "thread-storage-orphan-cleanup":
-    "Per-host queue tied to the daemon session; per-directory errors skip the directory and host errors park the host.",
+    "One project per pass; the cursor moves past the project before pruning it, and each attachment's failure is caught.",
 };
 
 describe("periodic sweep jobs", () => {

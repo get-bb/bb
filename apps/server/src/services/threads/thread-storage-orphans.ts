@@ -14,6 +14,7 @@ import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
 import { isServerMoveFrozen } from "../server-move/freeze-state.js";
+import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 
 const THREAD_ID_LOOKUP_BATCH_SIZE = 1_000;
 
@@ -36,44 +37,40 @@ interface HostOrphanQueue {
   threadIds: string[];
 }
 
-const runningHostIds = new Set<string>();
 const orphanQueueByHostId = new Map<string, HostOrphanQueue>();
 
-export function runThreadStorageOrphanSweep(deps: LoggedWorkSessionDeps): void {
-  const activity = getDatabaseMaintenanceActivity(deps.db);
-  if (!isDatabaseMaintenanceIdle(activity)) {
-    deps.logger.debug(
-      { activity },
-      "Thread storage orphan cleanup skipped while app work is active",
-    );
-    return;
-  }
-  for (const hostId of deps.hub.listConnectedHostIds()) {
-    const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
-    const queue = orphanQueueByHostId.get(hostId);
-    if (
-      sessionId === null ||
-      runningHostIds.has(hostId) ||
-      (queue?.sessionId === sessionId &&
-        (queue.parked || queue.threadIds.length === 0))
-    ) {
-      continue;
-    }
-    runningHostIds.add(hostId);
-    void removeOrphanedThreadStorage(deps, {
-      hostId,
-      limits: THREAD_STORAGE_ORPHAN_PASS_LIMITS,
-    })
-      .catch((error) => {
-        deps.logger.warn(
-          { err: error, hostId },
-          "Thread storage orphan cleanup failed",
+export function threadStorageOrphanSweep(
+  deps: LoggedWorkSessionDeps,
+): ItemSweep {
+  return defineItemSweep({
+    name: "thread-storage-orphan-cleanup",
+    concurrency: Number.POSITIVE_INFINITY,
+    list: () => {
+      const activity = getDatabaseMaintenanceActivity(deps.db);
+      if (!isDatabaseMaintenanceIdle(activity)) {
+        deps.logger.debug(
+          { activity },
+          "Thread storage orphan cleanup skipped while app work is active",
         );
-      })
-      .finally(() => {
-        runningHostIds.delete(hostId);
+        return [];
+      }
+      return deps.hub.listConnectedHostIds().filter((hostId) => {
+        const sessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+        const queue = orphanQueueByHostId.get(hostId);
+        return !(
+          sessionId === null ||
+          (queue?.sessionId === sessionId &&
+            (queue.parked || queue.threadIds.length === 0))
+        );
       });
-  }
+    },
+    key: (hostId) => hostId,
+    process: (hostId) =>
+      removeOrphanedThreadStorage(deps, {
+        hostId,
+        limits: THREAD_STORAGE_ORPHAN_PASS_LIMITS,
+      }),
+  });
 }
 
 export async function removeOrphanedThreadStorage(
