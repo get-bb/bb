@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -154,6 +155,7 @@ describe("core environment scripts", () => {
   it.runIf(process.platform === "win32")(
     "stops the programs Git Bash started when a Windows hook is cancelled",
     async () => {
+      const startedAt = new Date().toISOString();
       const workspacePath = await workspace(
         "setup",
         [
@@ -192,6 +194,34 @@ describe("core environment scripts", () => {
           return false;
         }
       });
+      if (alive.length > 0) {
+        const observedAt = new Date().toISOString();
+        const filter = alive.map((pid) => `ProcessId = ${pid}`).join(" OR ");
+        const details = spawnSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-Command",
+            `Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | ConvertTo-Json -Compress`,
+          ],
+          {
+            encoding: "utf8",
+            timeout: 1500,
+            maxBuffer: 64 * 1024,
+            windowsHide: true,
+          },
+        );
+        console.error("Windows hook cancellation left live PIDs", {
+          startedAt,
+          observedAt,
+          pids,
+          alive,
+          status: details.status,
+          error: details.error?.message,
+          stdout: details.stdout,
+          stderr: details.stderr,
+        });
+      }
       expect(alive).toEqual([]);
     },
     20_000,
