@@ -9,6 +9,7 @@ export type {
   RouteDefinition,
   RouteMethod,
   RouteParams,
+  RouteParsedInput,
 } from "./route-descriptor.js";
 export type {
   RouteCallInput,
@@ -33,4 +34,5 @@ export {
   queryRequest,
   textResponse,
 } from "./route-descriptor.js";
-export { typedRoutes } from "./typed-routes.js";
+export { mountRoute } from "./mount-route.js";
+export type { MountRouteOptions, RouteParsedBody } from "./mount-route.js";

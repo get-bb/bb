@@ -30,7 +30,15 @@ import {
   toolCallResponseSchema,
 } from "@bb/domain";
 import { z } from "zod";
-import type { Endpoint } from "@bb/hono-typed-routes";
+import {
+  binaryResponse,
+  defineRoute,
+  jsonRequest,
+  jsonResponse,
+  noRequest,
+  queryRequest,
+  type ApiSchemaFromRouteDescriptors,
+} from "@bb/hono-typed-routes";
 import { hostPlatformSchema } from "./local.js";
 
 const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
@@ -1033,75 +1041,78 @@ export type HostDaemonSkillTreeContentRequest = z.infer<
   typeof hostDaemonSkillTreeContentRequestSchema
 >;
 
-export type HostDaemonInternalSchema = {
-  "/skills/tree/:hash": {
-    $get: Endpoint<Record<never, never>, HostDaemonSkillTreeManifest, 200>;
-  };
-  "/skills/tree/:hash/content": {
-    $post: Endpoint<
-      { json: HostDaemonSkillTreeContentRequest },
-      Uint8Array,
-      200,
-      "binary"
-    >;
-  };
-  "/plugins/:pluginId/host/:digest": {
-    $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
-  };
-  "/hosts/enroll-key": {
-    $post: Endpoint<
-      { json: HostDaemonEnrollKeyRequest },
-      HostDaemonEnrollKeyResponse,
-      201
-    >;
-  };
-  "/hosts/enroll": {
-    $post: Endpoint<
-      { json: HostDaemonEnrollRequest },
-      HostDaemonEnrollResponse,
-      201
-    >;
-  };
-  "/session/open": {
-    $post: Endpoint<
-      { json: HostDaemonSessionOpenRequest },
-      HostDaemonSessionOpenResponse,
-      201
-    >;
-  };
-  "/session/project-attachment-content": {
-    $get: Endpoint<
-      { query: HostDaemonProjectAttachmentContentQuery },
-      Uint8Array,
-      200,
-      "binary"
-    >;
-  };
-  "/session/events": {
-    $post: Endpoint<
-      { json: HostDaemonEventBatchRequest },
-      HostDaemonEventBatchResponse
-    >;
-  };
-  "/session/tool-call": {
-    $post: Endpoint<
-      { json: HostDaemonToolCallRequest },
-      HostDaemonToolCallResponse
-    >;
-  };
-  "/session/interactive-request": {
-    $post: Endpoint<
-      { json: HostDaemonInteractiveRequest },
-      HostDaemonInteractiveRequestResponse
-    >;
-  };
-  "/session/interactive-request/interrupt": {
-    $post: Endpoint<
-      { json: HostDaemonInteractiveInterruptRequest },
-      HostDaemonInteractiveInterruptResponse
-    >;
-  };
+export const hostDaemonInternalRoutes = {
+  skillTree: defineRoute({
+    path: "/skills/tree/:hash",
+    method: "get",
+    request: noRequest(),
+    response: jsonResponse<HostDaemonSkillTreeManifest>(),
+  }),
+  skillTreeContent: defineRoute({
+    path: "/skills/tree/:hash/content",
+    method: "post",
+    request: jsonRequest(hostDaemonSkillTreeContentRequestSchema),
+    response: binaryResponse<Uint8Array>(),
+  }),
+  pluginHostArtifact: defineRoute({
+    path: "/plugins/:pluginId/host/:digest",
+    method: "get",
+    request: noRequest(),
+    response: binaryResponse<Uint8Array>(),
+  }),
+  enrollKey: defineRoute({
+    path: "/hosts/enroll-key",
+    method: "post",
+    request: jsonRequest(hostDaemonEnrollKeyRequestSchema),
+    response: jsonResponse<HostDaemonEnrollKeyResponse>({ status: 201 }),
+  }),
+  enroll: defineRoute({
+    path: "/hosts/enroll",
+    method: "post",
+    request: jsonRequest(hostDaemonEnrollRequestSchema),
+    response: jsonResponse<HostDaemonEnrollResponse>({ status: 201 }),
+  }),
+  sessionOpen: defineRoute({
+    path: "/session/open",
+    method: "post",
+    request: jsonRequest(hostDaemonSessionOpenRequestSchema),
+    response: jsonResponse<HostDaemonSessionOpenResponse>({ status: 201 }),
+  }),
+  projectAttachmentContent: defineRoute({
+    path: "/session/project-attachment-content",
+    method: "get",
+    request: queryRequest(hostDaemonProjectAttachmentContentQuerySchema),
+    response: binaryResponse<Uint8Array>(),
+  }),
+  events: defineRoute({
+    path: "/session/events",
+    method: "post",
+    request: jsonRequest(hostDaemonEventBatchRequestSchema),
+    response: jsonResponse<HostDaemonEventBatchResponse>(),
+  }),
+  toolCall: defineRoute({
+    path: "/session/tool-call",
+    method: "post",
+    request: jsonRequest(hostDaemonToolCallRequestSchema),
+    response: jsonResponse<HostDaemonToolCallResponse>(),
+  }),
+  interactiveRequest: defineRoute({
+    path: "/session/interactive-request",
+    method: "post",
+    request: jsonRequest(hostDaemonInteractiveRequestSchema),
+    response: jsonResponse<HostDaemonInteractiveRequestResponse>(),
+  }),
+  interactiveInterrupt: defineRoute({
+    path: "/session/interactive-request/interrupt",
+    method: "post",
+    request: jsonRequest(hostDaemonInteractiveInterruptRequestSchema),
+    response: jsonResponse<HostDaemonInteractiveInterruptResponse>(),
+  }),
 };
+
+export type HostDaemonInternalSchema = ApiSchemaFromRouteDescriptors<
+  typeof hostDaemonInternalRoutes
+>;
 
 function parseProtocolHeader(protocolHeader: string | undefined): string[] {
   if (!protocolHeader) {

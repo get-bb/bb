@@ -8,7 +8,6 @@ export * from "./public-operations.js";
 export * from "./thread-timeline.js";
 export * from "./thread-timeline-delta.js";
 
-export { typedRoutes } from "@bb/hono-typed-routes";
 
 export {
   changedMessageLenientSchema,

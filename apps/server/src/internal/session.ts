@@ -9,12 +9,10 @@ import {
 } from "@bb/db";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
-  hostDaemonProjectAttachmentContentQuerySchema,
   isCompatibleHostDaemonProtocolVersion,
   hostDaemonSessionOpenRequestSchema,
   SERVER_MOVED_ERROR_CODE,
-  typedRoutes,
-  type HostDaemonInternalSchema,
+  hostDaemonInternalRoutes,
   type ServerMovedErrorDetails,
 } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
@@ -34,6 +32,7 @@ import { handleHostSessionOpened } from "./session-owner-side-effects.js";
 import { resolveReportedConnectMachineId } from "./hosts.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { HostEnvironmentSync } from "../services/hosts/host-environment-sync.js";
+import { mountInternalRoute } from "../kernel/http-door.js";
 
 const sessionOpenCompatibilitySchema = z
   .object({
@@ -84,9 +83,6 @@ export function registerInternalSessionRoutes(
         idleProviderSessionTimeoutMinutes,
       });
     }
-  });
-  const { get } = typedRoutes<HostDaemonInternalSchema>(app, {
-    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
   app.post("/session/open", async (context) => {
@@ -244,9 +240,9 @@ export function registerInternalSessionRoutes(
     );
   });
 
-  get(
-    "/session/project-attachment-content",
-    hostDaemonProjectAttachmentContentQuerySchema,
+  mountInternalRoute(
+    app,
+    hostDaemonInternalRoutes.projectAttachmentContent,
     async (context, query) => {
       const session = requireAuthenticatedDaemonSession({
         context,

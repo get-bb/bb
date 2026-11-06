@@ -1,6 +1,7 @@
-import type {
-  RouteDefinition,
-  RouteOperationInput,
+import {
+  mountRoute,
+  type RouteDefinition,
+  type RouteOperationInput,
 } from "@bb/hono-typed-routes";
 import {
   isOperationBody,
@@ -150,4 +151,14 @@ export function assertEveryOperationImplemented(routes: OperationRoutes): void {
       `Operations without an implementation: ${missing.join(", ")}`,
     );
   }
+}
+
+export function mountInternalRoute<Route extends RouteDefinition>(
+  app: Hono,
+  route: Route,
+  handle: Parameters<typeof mountRoute<Route>>[2],
+): void {
+  mountRoute(app, route, handle, {
+    invalidRequest: (message) => new ApiError(400, "invalid_request", message),
+  });
 }

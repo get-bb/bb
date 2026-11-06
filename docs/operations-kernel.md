@@ -37,7 +37,12 @@ tables: everything comes from the route definition.
   implementation (`assertEveryOperationImplemented`).
 - **Not operations.** `/internal/*` daemon routes, WebSockets, plugin wire
   routes (`/plugins/:id/rpc/:method`, `/plugins/:id/cli`,
-  `/plugins/:id/http/*`), and asset serving.
+  `/plugins/:id/http/*`), and asset serving. The daemon routes and the
+  daemon's own local API are still declared with `defineRoute`
+  (`hostDaemonInternalRoutes`, `hostDaemonLocalRoutes`) and mounted with
+  `mountRoute` from `@bb/hono-typed-routes`, which parses the body or query
+  with the route's schema and checks a JSON result against its response type;
+  their hono client types are derived from those definitions.
 
 ## Registering implementations
 
