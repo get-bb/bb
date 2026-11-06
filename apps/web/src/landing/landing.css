@@ -909,6 +909,14 @@ html:has(.nav-sticky) {
   max-width: 700px;
 }
 
+@media (max-width: 560px) {
+  .hero:has(.sub-wide) h1,
+  .hero .sub-wide {
+    max-width: none;
+    text-wrap: pretty;
+  }
+}
+
 .providers {
   display: flex;
   align-items: center;
@@ -941,6 +949,10 @@ html:has(.nav-sticky) {
 
 .agent-row .plogo {
   color: var(--ink);
+}
+
+.agent-phone-more {
+  display: none;
 }
 
 .agent-more {
@@ -3401,6 +3413,133 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     display: inline;
   }
 
+  .providers.agent-row {
+    container: agent-row / inline-size;
+    column-gap: 16px;
+  }
+
+  .agent-row .agent-more,
+  .agent-row .agent-logo-3,
+  .agent-row .agent-logo-4,
+  .agent-row .agent-logo-5,
+  .agent-row .agent-logo-6,
+  .agent-row .agent-logo-7,
+  .agent-row .agent-logo-8,
+  .agent-row .agent-logo-9 {
+    display: none;
+  }
+
+  .agent-row .agent-phone-more {
+    display: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--subtle);
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+
+  .agent-row .agent-phone-more-3 {
+    display: inline;
+  }
+
+  @container agent-row (min-width: 232px) {
+    .agent-row .agent-logo-3 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-4 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 274px) {
+    .agent-row .agent-logo-4 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-5 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 316px) {
+    .agent-row .agent-logo-5 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-6 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 358px) {
+    .agent-row .agent-logo-6 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-7 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 400px) {
+    .agent-row .agent-logo-7 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-8 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 442px) {
+    .agent-row .agent-logo-8 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-9 {
+      display: inline;
+    }
+  }
+
+  @container agent-row (min-width: 484px) {
+    .agent-row .agent-logo-9 {
+      display: block;
+    }
+
+    .agent-row .agent-phone-more {
+      display: none;
+    }
+
+    .agent-row .agent-phone-more-10 {
+      display: inline;
+    }
+  }
+
   /* Same fixed-px problem as the dots below: the desktop wash uses a 640px
      radial that can't fade within the narrow mobile hero, leaving a tinted
      rectangle with hard side edges/corners. Re-size it relative to the hero
@@ -4072,6 +4211,33 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   width: var(--icon-sm);
   height: var(--icon-sm);
   color: var(--subtle);
+}
+
+.mock-ui .rhb-ctx-ic,
+.mock-ui .rhb-perm {
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .mock-ui .rhb-context {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mock-ui .rhb-ctx:has(+ .rhb-perm) {
+    flex-shrink: 0;
+  }
+
+  .mock-ui .rhb-ctx {
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .mock-ui .rhb-ctx-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .mock-ui .rhb-perm {

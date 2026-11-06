@@ -496,7 +496,7 @@ export function MockComposer({
         {project ? (
           <span className="rhb-ctx">
             <FolderIcon className="rhb-ctx-ic" />
-            {project}
+            <span className="rhb-ctx-label">{project}</span>
           </span>
         ) : null}
         <span className="rhb-ctx">
@@ -505,12 +505,12 @@ export function MockComposer({
           ) : (
             <FolderIcon className="rhb-ctx-ic" />
           )}
-          {env}
+          <span className="rhb-ctx-label">{env}</span>
         </span>
         {checkout ? (
           <span className="rhb-ctx">
             <GitBranchIcon className="rhb-ctx-ic" />
-            {checkout}
+            <span className="rhb-ctx-label">{checkout}</span>
           </span>
         ) : null}
         <span className="rhb-perm">

@@ -19,6 +19,17 @@ describe("AgentRow", () => {
     expect(html).toContain('aria-label="10 more agents">+10 more');
   });
 
+  it("offers a phone count for every number of marks that fits", () => {
+    const html = renderToStaticMarkup(
+      <AgentRow registryIds={["claude-acp", "goose", "kiro", "cline"]} />,
+    );
+    for (let shown = 3; shown <= 10; shown += 1) {
+      expect(html).toContain(
+        `class="agent-phone-more agent-phone-more-${shown}" aria-label="${13 - shown} more agents">+${13 - shown} more`,
+      );
+    }
+  });
+
   it("drops the desktop count when the registry couldn't be read", () => {
     const html = renderToStaticMarkup(<AgentRow registryIds={null} />);
     expect(html).not.toContain("agent-more");

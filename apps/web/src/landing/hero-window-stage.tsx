@@ -93,7 +93,13 @@ import {
 } from "./app-mock-parts";
 
 const LinearGlyph: IconComp = ({ className }) => (
-  <img src={linearLogo} alt="" className={className} />
+  <span
+    className={className}
+    style={{
+      maskImage: `url(${JSON.stringify(linearLogo)})`,
+      WebkitMaskImage: `url(${JSON.stringify(linearLogo)})`,
+    }}
+  />
 );
 const SentryGlyph: IconComp = ({ className }) => (
   <svg

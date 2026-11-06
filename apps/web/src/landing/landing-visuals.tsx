@@ -198,6 +198,8 @@ const AGENT_ROW = [
   { Icon: HermesAgentIcon, registry: [] },
 ] as const;
 
+const AGENT_ROW_PHONE_COUNTS = [3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 export function moreRegistryAgents(
   ids: readonly string[] | null | undefined,
 ): number | null {
@@ -214,27 +216,29 @@ export function AgentRow({
   registryIds?: readonly string[] | null;
 }) {
   const more = moreRegistryAgents(registryIds);
-  const mobileMore =
-    AGENT_ROW.length - PROVIDER_ICONS_MOBILE_VISIBLE + (more ?? 0);
   return (
     <div className="providers agent-row">
       <span className="label">Bring your own subscription</span>
       {AGENT_ROW.map(({ Icon }, i) => (
-        <Icon
-          key={i}
-          className={
-            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
-          }
-        />
+        <Icon key={i} className={`plogo agent-logo agent-logo-${i}`} />
       ))}
       {more ? (
         <span className="agent-more" aria-label={`${more} more agents`}>
           +{more} more
         </span>
       ) : null}
-      <span className="pmore" aria-label={`${mobileMore} more agents`}>
-        +{mobileMore} more
-      </span>
+      {AGENT_ROW_PHONE_COUNTS.map((shown) => {
+        const hidden = AGENT_ROW.length - shown + (more ?? 0);
+        return hidden > 0 ? (
+          <span
+            key={shown}
+            className={`agent-phone-more agent-phone-more-${shown}`}
+            aria-label={`${hidden} more agents`}
+          >
+            +{hidden} more
+          </span>
+        ) : null;
+      })}
     </div>
   );
 }
