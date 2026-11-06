@@ -2060,7 +2060,11 @@ function ConnectSetupGuideSection({
   );
   const [turningOn, setTurningOn] = useState(false);
   const [turnOnError, setTurnOnError] = useState<string | null>(null);
-  const [codeOpen, setCodeOpen] = useState(false);
+  const [openFooterPanel, setOpenFooterPanel] = useState<
+    "signInCode" | "pairingForm" | null
+  >(null);
+  const toggleFooterPanel = (panel: "signInCode" | "pairingForm") =>
+    setOpenFooterPanel((open) => (open === panel ? null : panel));
   const [codePairing, setCodePairing] = useState<{
     id: number;
     statusAtPairing: ConnectStatus | null;
@@ -2113,7 +2117,7 @@ function ConnectSetupGuideSection({
   const setUp = () => {
     onSetupStarted();
     setTurnOnError(null);
-    setCodeOpen(false);
+    setOpenFooterPanel(null);
     setCodePairing(null);
     if (status === null) {
       refetch();
@@ -2143,12 +2147,12 @@ function ConnectSetupGuideSection({
     error !== null ||
     turnOnError !== null ||
     loadError !== null;
-  const pairingStatus =
+  const pendingSignIn =
     status !== null &&
     !status.paired &&
     !connecting &&
     login?.state === "pending"
-      ? status
+      ? { status, login }
       : null;
   const paired = () => {
     codePairingCountRef.current += 1;
@@ -2166,25 +2170,42 @@ function ConnectSetupGuideSection({
       title="bb connect"
       description={SETUP_GUIDE_DESCRIPTION}
       footer={
-        pairingStatus === null ? null : (
+        pendingSignIn === null ? null : (
           <div className="px-3 pb-3">
             <InlinePanel
               flush
               flushBottom
               hasBody={false}
               toggles={
-                <DisclosureToggle
-                  expanded={codeOpen}
-                  onToggle={() => setCodeOpen((open) => !open)}
-                >
-                  Have a pairing code?
-                </DisclosureToggle>
+                <>
+                  <DisclosureToggle
+                    expanded={openFooterPanel === "signInCode"}
+                    onToggle={() => toggleFooterPanel("signInCode")}
+                  >
+                    Show pairing code
+                  </DisclosureToggle>
+                  <DisclosureToggle
+                    expanded={openFooterPanel === "pairingForm"}
+                    onToggle={() => toggleFooterPanel("pairingForm")}
+                  >
+                    Have a pairing code?
+                  </DisclosureToggle>
+                </>
               }
               expanded={
-                codeOpen ? (
+                openFooterPanel === "signInCode" ? (
+                  <div className="border-t border-border-hairline p-3">
+                    <CodeDisplay
+                      code={pendingSignIn.login.userCode}
+                      label="bb connect sign-in code"
+                      copyLabel="Copy code"
+                      onCopy={(code) => void copyTextWithSdkToast(code)}
+                    />
+                  </div>
+                ) : openFooterPanel === "pairingForm" ? (
                   <div className="border-t border-border-hairline p-3">
                     <PairForm
-                      dashboardUrl={pairingStatus.dashboardUrl}
+                      dashboardUrl={pendingSignIn.status.dashboardUrl}
                       layout="setupGuide"
                       onPaired={paired}
                     />
