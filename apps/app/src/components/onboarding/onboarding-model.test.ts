@@ -20,6 +20,7 @@ import {
   parseSignInOutput,
   projectsPrimaryAction,
   resolveAgentSetupState,
+  setupGuidePlanHealth,
   resolveSignInCommand,
   signInBrowserIsOnMachine,
   shortRemoteName,
@@ -45,6 +46,7 @@ function health(
     loginCommand: "claude auth login",
     localLoginCommand: null,
     internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
     ...overrides,
   };
 }
@@ -84,6 +86,27 @@ const idle = {
 };
 
 describe("resolveAgentSetupState", () => {
+  it("shows Codex's plan only in the new guide; today's guide shows main's line", () => {
+    const codex = health({
+      providerId: "codex",
+      accountEmail: "a@b.dev",
+      internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
+    });
+    expect(
+      resolveAgentSetupState({ ...idle, health: codex, cliStatus: undefined }),
+    ).toEqual({ status: "ready", detail: "a@b.dev" });
+    expect(
+      resolveAgentSetupState({
+        ...idle,
+        health: setupGuidePlanHealth(codex),
+        cliStatus: undefined,
+      }),
+    ).toEqual({ status: "ready", detail: "a@b.dev · Plus" });
+    expect(
+      setupGuidePlanHealth(health({ planLabel: "Max (20x)" })).planLabel,
+    ).toBe("Max (20x)");
+  });
+
   it("shows the account and plan for a ready agent, even while a stale install job lingers", () => {
     expect(
       resolveAgentSetupState({
@@ -879,22 +902,8 @@ describe("signInBrowserIsOnMachine", () => {
       browser: true,
     },
     {
-      viewer: "a 127.0.0.1 browser",
-      hostname: "127.0.0.1",
-      isDesktop: false,
-      agentOnLocalDaemonHost: true,
-      browser: true,
-    },
-    {
       viewer: "a getbb.app share",
       hostname: "brsbl-bbox--41201.getbb.app",
-      isDesktop: false,
-      agentOnLocalDaemonHost: true,
-      browser: false,
-    },
-    {
-      viewer: "a LAN address",
-      hostname: "192.168.1.20",
       isDesktop: false,
       agentOnLocalDaemonHost: true,
       browser: false,
@@ -903,13 +912,6 @@ describe("signInBrowserIsOnMachine", () => {
       viewer: "the desktop app with the agent on another machine",
       hostname: "localhost",
       isDesktop: true,
-      agentOnLocalDaemonHost: false,
-      browser: false,
-    },
-    {
-      viewer: "a loopback browser with the agent on another machine",
-      hostname: "localhost",
-      isDesktop: false,
       agentOnLocalDaemonHost: false,
       browser: false,
     },

@@ -472,13 +472,9 @@ function AgentRow({
   const { state } = agent;
   const loudFailure = state.status === "installFailed" && !quiet;
   const setup = agent.setup ?? "signIn";
-  const quietSubline =
-    agent.subline !== undefined && agent.subline !== null
-      ? null
-      : quietAgentSubline(state, setup);
-  const hasQuietSubtitle =
-    (agent.subline !== undefined && agent.subline !== null) ||
-    quietSubline !== null;
+  const hasSubline = agent.subline !== undefined && agent.subline !== null;
+  const quietSubline = hasSubline ? null : quietAgentSubline(state, setup);
+  const hasQuietSubtitle = hasSubline || quietSubline !== null;
   const inProgress =
     state.status === "checking" ||
     (state.status === "signingIn" && hasQuietSubtitle);
@@ -512,9 +508,7 @@ function AgentRow({
                   className="size-3.5 shrink-0 animate-spin text-subtle-foreground"
                 />
               ) : null}
-              {quiet &&
-              agent.subline !== undefined &&
-              agent.subline !== null ? (
+              {quiet && hasSubline ? (
                 <span className="min-w-0 text-xs text-muted-foreground">
                   {agent.subline}
                 </span>
@@ -1130,7 +1124,6 @@ export function OnboardingPluginGridSkeleton({ count }: { count: number }) {
 
 interface OnboardingPluginCardProps {
   density?: "default" | "compact";
-  showStateLabel?: boolean;
   name: string;
   description: string;
   icon: { icon: string | null; iconUrl: string | null; iconTinted: boolean };
@@ -1143,7 +1136,6 @@ interface OnboardingPluginCardProps {
 
 export function OnboardingPluginCard({
   density = "default",
-  showStateLabel = true,
   name,
   description,
   icon,
@@ -1182,7 +1174,7 @@ export function OnboardingPluginCard({
               aria-hidden
               className="size-3.5 animate-spin"
             />
-          ) : !showStateLabel ? null : enabled ? (
+          ) : density === "compact" ? null : enabled ? (
             "On"
           ) : (
             "Off"
@@ -1361,8 +1353,6 @@ export function AgentInstallErrorDetails({ log }: { log: string }) {
   return (
     <div className="mt-3">
       <InlinePanel
-        flush
-        flushBottom
         hasBody={false}
         toggles={
           <DisclosureToggle expanded={open} onToggle={() => setOpen(!open)}>
@@ -1474,8 +1464,6 @@ export function AgentSignInPanel({
   return (
     <div className="mt-3">
       <SignInPanel
-        flush
-        flushBottom
         status={!connect && codeSubmitted ? "Finishing sign-in…" : undefined}
         variant={variant}
         toggles={

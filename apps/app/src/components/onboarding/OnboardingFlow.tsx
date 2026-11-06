@@ -30,6 +30,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
+import { setToasterCompactPlacement } from "@/components/ui/app-toast-runtime";
 import { restartSystemProviderStatesLoad } from "@/hooks/cache-owners/system-cache-effects";
 import {
   useHostDiscoveredRepos,
@@ -101,6 +102,7 @@ import {
   operationFailureReason,
   projectsPrimaryAction,
   resolveAgentSetupState,
+  setupGuidePlanHealth,
   signInBrowserIsOnMachine,
   shortRemoteName,
   skippedStepIds,
@@ -468,8 +470,7 @@ function AgentStepContainer({
     [closeTerminalMutate, createTerminalAsync],
   );
   const signIns = useAgentSignIns({
-    concurrent: redesign,
-    failUnreadyExits: redesign,
+    redesign,
     entry,
     hostId,
     states,
@@ -611,7 +612,7 @@ function AgentStepContainer({
                 />
               ) : undefined,
             state: resolveAgentSetupState({
-              health,
+              health: redesign ? setupGuidePlanHealth(health) : health,
               cliStatus: cliStatusQuery.data?.[health.providerId],
               installing:
                 awaitingInstallInfoIds.has(health.providerId) ||
@@ -1018,7 +1019,6 @@ function PluginCardContainer({
   return (
     <OnboardingPluginCard
       density={compact ? "compact" : "default"}
-      showStateLabel={!compact}
       name={entry.displayName}
       description={entry.description}
       icon={{
@@ -1354,6 +1354,12 @@ export function OnboardingFlow({
 }) {
   const [step, setStep] = useState(initialStep);
   const redesign = setupGuide.variant === "new";
+  const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
+  useEffect(() => {
+    if (!redesign) return;
+    setToasterCompactPlacement(onPhone);
+    return () => setToasterCompactPlacement(null);
+  }, [onPhone, redesign]);
   const [stepOutcomes, setStepOutcomes] = useState<
     ReadonlyMap<OnboardingStepId, StepOutcome>
   >(() => new Map());

@@ -7,6 +7,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
@@ -1176,9 +1177,7 @@ describe("plugin update service and routes", () => {
     ]);
     expect(await readFile(secretPath, "utf8")).toBe("restart-secret");
     await stat(oldArtifact.path);
-    expect(listPluginStateSnapshots(db, "updater")).toMatchObject([
-      { status: "restored" },
-    ]);
+    expect(listPluginStateSnapshots(db, "updater")).toEqual([]);
   }, 60_000);
 
   function upsertNpmRow(
@@ -1250,7 +1249,7 @@ describe("plugin update service and routes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("deletes the replaced version once the update settles and keeps rollback state through the grace period", async () => {
+  it("deletes the replaced version and its rollback snapshot once the update settles", async () => {
     await installUpdater();
     await service.stop();
     let clock = Date.now();
@@ -1287,7 +1286,10 @@ describe("plugin update service and routes", () => {
       ok: true,
       result: { applied: true },
     });
-    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(1);
+    expect(listPluginStateSnapshots(db, "updater")).toEqual([]);
+    await expect(
+      readdir(join(workDir, "data", "plugins", "snapshots", "updater")),
+    ).resolves.toEqual([]);
     const remaining = listPluginArtifacts(db, "updater");
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).toBe(
@@ -1302,7 +1304,6 @@ describe("plugin update service and routes", () => {
     await service.stop();
     service = makeService();
     await service.start();
-    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
     expect(listPluginArtifacts(db, "updater")).toEqual(remaining);
   }, 60_000);
 

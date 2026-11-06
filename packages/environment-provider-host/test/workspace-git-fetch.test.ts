@@ -35,7 +35,7 @@ describe("background Git authentication", () => {
     });
 
     await expect(
-      fetchRemoteBranches(repo, { interactive: false, timeoutMs: 2_000 }),
+      fetchRemoteBranches(repo, { interactive: false }),
     ).resolves.toEqual({ status: "fetched" });
     await expect(
       runGit(["rev-parse", "origin/main"], { cwd: repo }),

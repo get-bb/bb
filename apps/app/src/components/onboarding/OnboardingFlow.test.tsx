@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import {
   MemoryRouter,
@@ -14,7 +15,11 @@ import {
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { AppToasterView } from "@/components/AppToasterView";
+import { appToast } from "@/components/ui/app-toast";
+import { APP_OVERLAY_LAYER } from "@/components/ui/app-overlay-layers";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import type {
   PluginCatalogSearchData,
@@ -119,6 +124,7 @@ function renderFlow({
   return {
     queryClient,
     setClosing: (closing: boolean) => view.rerender(flow(closing)),
+    unmount: view.unmount,
   };
 }
 
@@ -207,11 +213,52 @@ function button(name: RegExp): HTMLButtonElement {
   return element;
 }
 
+type Viewport = "desktop" | "narrow window" | "phone";
+
+function stubViewport(viewport: Viewport): void {
+  const spy = vi
+    .spyOn(window, "matchMedia")
+    .mockImplementation((query: string) => ({
+      matches:
+        (viewport !== "desktop" && query === "(max-width: 767px)") ||
+        (viewport === "phone" &&
+          query === "(max-width: 640px) and (pointer: coarse)"),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+  onTestFinished(() => spy.mockRestore());
+}
+
+async function toasterPlacement(): Promise<string> {
+  act(() => {
+    appToast.success("Plugin installed", {
+      duration: Number.POSITIVE_INFINITY,
+    });
+  });
+  return waitFor(() => {
+    const toaster = document.querySelector<HTMLElement>(
+      "[data-sonner-toaster]",
+    );
+    if (toaster === null) throw new Error("No toaster");
+    if (!toaster.textContent?.includes("Plugin installed")) {
+      throw new Error("Toast not rendered in the toaster");
+    }
+    expect(Number(toaster.style.zIndex)).toBe(APP_OVERLAY_LAYER.toast);
+    return `${toaster.dataset.yPosition}-${toaster.dataset.xPosition}`;
+  });
+}
+
 function providerStateRequests(): number {
   return sdkCalls.filter((call) => call === "system.providerStates").length;
 }
 
 afterEach(() => {
+  toast.dismiss();
   cleanup();
   vi.clearAllMocks();
   router.navigate = null;
@@ -220,25 +267,11 @@ afterEach(() => {
 });
 
 describe("OnboardingFlow", () => {
-  it("lets Start using bb finish again after the close it started was undone", () => {
-    const onClose = vi.fn();
-    const { setClosing } = renderFlow({ initialStep: "devices", onClose });
-
-    fireEvent.click(button(/Start using bb/u));
-    fireEvent.click(button(/Start using bb/u));
-    expect(onClose).toHaveBeenCalledTimes(1);
-
-    setClosing(true);
-    setClosing(false);
-    fireEvent.click(button(/Start using bb/u));
-
-    expect(onClose).toHaveBeenCalledTimes(2);
-  });
-
   it("keeps the guide on its last step when the user navigates while a failing Finish save is pending", () => {
     const onClose = vi.fn();
     const { setClosing } = renderFlow({ initialStep: "devices", onClose });
 
+    fireEvent.click(button(/Start using bb/u));
     fireEvent.click(button(/Start using bb/u));
     expect(onClose).toHaveBeenCalledTimes(1);
     setClosing(true);
@@ -347,5 +380,31 @@ describe("OnboardingFlow", () => {
 
     expect(pluginSwitch("push-notifications").disabled).toBe(false);
     expect(shownRecommendations()).toEqual(["memory", "push-notifications"]);
+  });
+
+  it.each([
+    ["new", "narrow window", "bottom-right"],
+    ["new", "phone", "top-center"],
+    ["control", "narrow window", "top-center"],
+  ] as const)(
+    "shows toasts for a %s guide on a %s at %s",
+    async (variant, viewport, placement) => {
+      stubViewport(viewport);
+      render(<AppToasterView />);
+      renderFlow({ initialStep: "plugins", variant });
+
+      expect(await toasterPlacement()).toBe(placement);
+    },
+  );
+
+  it("returns toasts to the app's narrow-window placement once the new guide closes", async () => {
+    stubViewport("narrow window");
+    render(<AppToasterView />);
+    const { unmount } = renderFlow({ initialStep: "plugins" });
+    expect(await toasterPlacement()).toBe("bottom-right");
+
+    unmount();
+
+    expect(await toasterPlacement()).toBe("top-center");
   });
 });

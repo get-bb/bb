@@ -25,7 +25,10 @@ interface SignInSession {
 type SignInOutcome = "ready" | "exited" | "failed" | "cancelled";
 
 type SignInFailureReason =
-  OperationFailureReason | "no_host" | "command_failed" | "unsupported";
+  | OperationFailureReason
+  | "no_host"
+  | "command_failed"
+  | "unsupported";
 
 interface SignInExit {
   exitCode: number | null;
@@ -82,8 +85,7 @@ function withoutEntry<K, V>(map: ReadonlyMap<K, V>, key: K): ReadonlyMap<K, V> {
 }
 
 export function useAgentSignIns({
-  concurrent,
-  failUnreadyExits,
+  redesign,
   entry,
   hostId,
   states,
@@ -92,8 +94,7 @@ export function useAgentSignIns({
   terminals,
   refetchStates,
 }: {
-  concurrent: boolean;
-  failUnreadyExits: boolean;
+  redesign: boolean;
   entry: OnboardingEntry;
   hostId: string | null;
   states: readonly SystemProviderState[] | undefined;
@@ -261,10 +262,10 @@ export function useAgentSignIns({
       exitsRef.current.set(providerId, {
         exitCode,
         at: Date.now(),
-        rowOpen: failUnreadyExits,
+        rowOpen: redesign,
       });
       setExits(new Map(exitsRef.current));
-      if (!failUnreadyExits) {
+      if (!redesign) {
         if (exitCode !== 0) {
           setFailedProviderIds((ids) => withKey(ids, providerId));
         }
@@ -272,7 +273,7 @@ export function useAgentSignIns({
       }
       refetchStates({ cancelRefetch: true });
     },
-    [closeRow, failUnreadyExits, refetchStates],
+    [closeRow, redesign, refetchStates],
   );
 
   useEffect(() => {
@@ -294,11 +295,11 @@ export function useAgentSignIns({
   useEffect(() => {
     if (activeCount === 0) return;
     const interval = window.setInterval(
-      () => refetchStates({ cancelRefetch: !failUnreadyExits }),
+      () => refetchStates({ cancelRefetch: !redesign }),
       SIGN_IN_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(interval);
-  }, [activeCount, failUnreadyExits, refetchStates]);
+  }, [activeCount, redesign, refetchStates]);
 
   useEffect(() => {
     for (const providerId of signIns.keys()) {
@@ -325,7 +326,7 @@ export function useAgentSignIns({
     if (exitsRef.current.get(providerId)?.rowOpen === false) {
       resolveExit(providerId, agentReady(states, providerId));
     }
-    if (concurrent) {
+    if (redesign) {
       end(providerId);
     } else {
       for (const other of [...signInsRef.current.keys()]) end(other);

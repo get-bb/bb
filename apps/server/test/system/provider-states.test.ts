@@ -239,6 +239,50 @@ describe("getProviderStates", () => {
     });
   });
 
+  it("keeps the setup-guide plan out of planLabel and fills null when a bridge doesn't send it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.health") {
+            return {
+              ok: true,
+              result: {
+                supported: true,
+                health:
+                  request.command.providerId === "codex"
+                    ? {
+                        ...readyHealth("codex"),
+                        internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
+                      }
+                    : readyHealth(request.command.providerId),
+              },
+            };
+          }
+          throw new Error(`Unexpected command ${request.command.type}`);
+        },
+      });
+
+      const result = await getProviderStates(harness.deps, {
+        hostId: host.id,
+      });
+      const byId = new Map(
+        result.providers.map((provider) => [provider.providerId, provider]),
+      );
+
+      expect(byId.get("codex")).toMatchObject({
+        planLabel: null,
+        internal_DO_NOT_USE_setupGuidePlanLabel: "Plus",
+      });
+      expect(byId.get("claude-code")).toMatchObject({
+        planLabel: null,
+        internal_DO_NOT_USE_setupGuidePlanLabel: null,
+      });
+    });
+  });
+
   it("does not start a health probe the provider did not declare", async () => {
     await withTestHarness(async (harness) => {
       harness.deps.providerRegistry.register(

@@ -515,3 +515,12 @@ export function advanceThreadPruning(
     db.$client.pragma(`busy_timeout = ${timeout}`);
   }
 }
+
+export function deleteThreadScopedPruningCursors(
+  db: DbConnection,
+  threadId: string,
+): void {
+  db.delete(threadPruningCursors)
+    .where(eq(threadPruningCursors.scope, threadId))
+    .run();
+}

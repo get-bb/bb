@@ -1291,6 +1291,7 @@ function storyHealth(
     loginCommand: null,
     localLoginCommand: null,
     internal_DO_NOT_USE_guidedSignIn: false,
+    internal_DO_NOT_USE_setupGuidePlanLabel: null,
   };
 }
 
@@ -1305,33 +1306,6 @@ export function RedesignAgentSignInJustClicked() {
             <AgentSignInPanel
               connect={false}
               agentName="Claude Code"
-              view={{ guide: null, terminalVisible: false, started: false }}
-              code=""
-              codeSubmitted={false}
-              terminal={null}
-              onCodeChange={noop}
-              onSubmitCode={noop}
-              onCopy={noop}
-              onToggleTerminal={noop}
-            />
-          ),
-        }}
-      />
-    </div>
-  );
-}
-
-export function RedesignAgentSignInJustClickedCodex() {
-  return (
-    <div className="flex h-screen flex-col">
-      <RedesignAgentFrame
-        signingIn={null}
-        states={{ codex: { status: "signingIn" } }}
-        expanded={{
-          codex: (
-            <AgentSignInPanel
-              connect={false}
-              agentName="Codex"
               view={{ guide: null, terminalVisible: false, started: false }}
               code=""
               codeSubmitted={false}
@@ -1394,10 +1368,8 @@ export function RedesignAgentInstallError() {
 
 function RedesignPluginsFrame({
   enabledIds,
-  pendingIds = new Set<string>(),
 }: {
   enabledIds: ReadonlySet<string>;
-  pendingIds?: ReadonlySet<string>;
 }) {
   return (
     <TooltipProvider>
@@ -1417,12 +1389,11 @@ function RedesignPluginsFrame({
             <OnboardingPluginCard
               key={plugin.id}
               density="compact"
-              showStateLabel={false}
               name={plugin.name}
               description={plugin.description}
               icon={{ icon: plugin.icon, iconUrl: null, iconTinted: false }}
               enabled={enabledIds.has(plugin.id)}
-              pending={pendingIds.has(plugin.id)}
+              pending={false}
               unavailableReason={null}
               onToggle={noop}
             />

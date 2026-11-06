@@ -184,6 +184,16 @@ interface ResolveAgentSetupStateArgs {
   whileInstallInfoPending: "checking" | "offerInstall";
 }
 
+export function setupGuidePlanHealth(
+  health: SystemProviderState,
+): SystemProviderState {
+  return {
+    ...health,
+    planLabel:
+      health.internal_DO_NOT_USE_setupGuidePlanLabel ?? health.planLabel,
+  };
+}
+
 export function resolveAgentSetupState({
   health,
   cliStatus,
