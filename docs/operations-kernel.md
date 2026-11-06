@@ -148,6 +148,11 @@ Differences from main that a user, a script or an HTTP client can observe:
 | Plugin management routes with a malformed body or query (catalog install, marketplace add/refresh, safe mode, settings, update check, rpc discovery) | Handler-specific body, sometimes 422 | 400 `{ code: "invalid_request", message }`; invalid or empty JSON is 400 "Invalid JSON request body"; semantic errors keep their bodies | Input validation belongs to the operation's schema |
 | `POST /plugins/:id/token` with no body | 200 | 400 (CLI and SDK always send `{}`) | It is a JSON-body operation |
 | `searchMentions`, `POST /plugins/install` | Browser guard before input parsing | After input parsing | The guard reads `request` inside the operation |
+| SDK path parameters (every `sdk.*` method, so plugins' `bb.sdk`, the app and the CLI) | Sent unescaped by most methods, so an id containing `/` reached the wrong route; plugin, marketplace and job ids were `encodeURIComponent`-escaped | Escaped per path segment, keeping the characters a path segment allows (`:`, `@`, `+`, …); multi-segment file paths keep their `/` | One request builder for every route |
+| SDK with a base URL ending in `/` | `//api/v1/...` for the typed-client methods | `/api/v1/...` | The client strips the trailing slash |
+| `sdk.plugins.enable`, `disable`, `reload`, `installJobs.cancel` | Sent an empty `{}` JSON body | No body (their routes take none) | Requests are built from the route |
+| `sdk.plugins.catalog.search` | Spaces in the query as `%20` | As `+` (the server decodes both) | The typed client encodes queries |
+| `POST /internal/skills/tree/:hash/content` with an invalid body | Generic error | 400 `invalid_request`, like the other daemon routes | Internal routes mount through one helper |
 
 ## What builds on this later
 
