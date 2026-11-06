@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import {
   MemoryRouter,
@@ -14,7 +15,9 @@ import {
 } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { AppToasterView } from "@/components/AppToasterView";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import { pluginCatalogSearchQueryKey } from "@/hooks/queries/query-keys";
 import type { OnboardingStepId } from "./onboarding-model";
@@ -98,6 +101,7 @@ function renderFlow({
   return {
     queryClient,
     setClosing: (closing: boolean) => view.rerender(flow(closing)),
+    unmount: view.unmount,
   };
 }
 
@@ -107,11 +111,43 @@ function button(name: RegExp): HTMLButtonElement {
   return element;
 }
 
+function stubViewport({ phone }: { phone: boolean }): void {
+  const spy = vi
+    .spyOn(window, "matchMedia")
+    .mockImplementation((query: string) => ({
+      matches:
+        query === "(max-width: 767px)" ||
+        (phone && query === "(max-width: 640px) and (pointer: coarse)"),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+  onTestFinished(() => spy.mockRestore());
+}
+
+async function toasterPlacement(): Promise<string> {
+  act(() => {
+    toast("Plugin installed", { duration: Number.POSITIVE_INFINITY });
+  });
+  return waitFor(() => {
+    const toaster = document.querySelector<HTMLElement>(
+      "[data-sonner-toaster]",
+    );
+    if (toaster === null) throw new Error("No toaster");
+    return `${toaster.dataset.yPosition}-${toaster.dataset.xPosition}`;
+  });
+}
+
 function providerStateRequests(): number {
   return sdkCalls.filter((call) => call === "system.providerStates").length;
 }
 
 afterEach(() => {
+  toast.dismiss();
   cleanup();
   vi.clearAllMocks();
   router.navigate = null;
@@ -217,5 +253,31 @@ describe("OnboardingFlow", () => {
     });
     expect(button(/^Retry$/u)).toBeTruthy();
     expect(button(/Continue/u).disabled).toBe(false);
+  });
+
+  it.each([
+    ["new", false, "bottom-right"],
+    ["new", true, "top-center"],
+    ["control", false, "top-center"],
+  ] as const)(
+    "places toasts for a %s guide on a narrow window (phone: %s) at %s",
+    async (variant, phone, placement) => {
+      stubViewport({ phone });
+      render(<AppToasterView />);
+      renderFlow({ initialStep: "plugins", variant });
+
+      expect(await toasterPlacement()).toBe(placement);
+    },
+  );
+
+  it("returns toasts to the app's narrow-window placement once the new guide closes", async () => {
+    stubViewport({ phone: false });
+    render(<AppToasterView />);
+    const { unmount } = renderFlow({ initialStep: "plugins" });
+    expect(await toasterPlacement()).toBe("bottom-right");
+
+    unmount();
+
+    expect(await toasterPlacement()).toBe("top-center");
   });
 });

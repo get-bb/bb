@@ -31,6 +31,7 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
+import { setToasterCompactPlacement } from "@/components/ui/app-toast-runtime";
 import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
 import { restartSystemProviderStatesLoad } from "@/hooks/cache-owners/system-cache-effects";
 import {
@@ -1259,6 +1260,12 @@ export function OnboardingFlow({
 }) {
   const [step, setStep] = useState(initialStep);
   const redesign = setupGuide.variant === "new";
+  const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
+  useEffect(() => {
+    if (!redesign) return;
+    setToasterCompactPlacement(onPhone);
+    return () => setToasterCompactPlacement(null);
+  }, [onPhone, redesign]);
   const [stepOutcomes, setStepOutcomes] = useState<
     ReadonlyMap<OnboardingStepId, StepOutcome>
   >(() => new Map());
