@@ -1131,7 +1131,10 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
+export async function sweepProviderLifecycles(
+  deps: Deps,
+  options?: { background: true },
+): Promise<void> {
   const pending: Promise<void>[] = [];
   for (const record of listEnvironmentProviders()) {
     for (const row of listProviderLifecycleEnvironments(
@@ -1155,7 +1158,7 @@ export async function sweepProviderLifecycles(deps: Deps): Promise<void> {
     }
     await yieldToEventLoop();
   }
-  await Promise.all(pending);
+  if (options?.background !== true) await Promise.all(pending);
   releaseFinishedEnvironmentPreparationOwners(deps.db);
 }
 
