@@ -4,6 +4,11 @@ import {
   type TouchSensorOptions,
 } from "@dnd-kit/core";
 import { flushSync } from "react-dom";
+import {
+  beginLongPress,
+  isLongPressStill,
+  trackLongPressScrolls,
+} from "@/components/ui/long-press-guards";
 
 const TOUCH_HOLD_DELAY_MS = 500;
 const TOUCH_DRAG_DISTANCE_PX = 12;
@@ -45,8 +50,18 @@ export class SidebarTouchSensor {
     this.document.addEventListener("visibilitychange", this.handleCancel);
     this.document.defaultView?.addEventListener("blur", this.handleCancel);
     this.document.defaultView?.addEventListener("resize", this.handleCancel);
+    const pressTarget = this.activator ?? (event.target instanceof Element ? event.target : null);
+    const press =
+      pressTarget === null
+        ? null
+        : beginLongPress(pressTarget, touch.clientX, touch.clientY);
+    if (press === null) return;
     this.timer = setTimeout(() => {
       this.timer = null;
+      if (!isLongPressStill(press)) {
+        this.handleCancel();
+        return;
+      }
       this.armed = true;
       this.activator?.setAttribute("data-sidebar-touch-armed", "true");
       if (this.armedChip) {
@@ -114,6 +129,7 @@ export class SidebarTouchSensor {
     if (typeof window === "undefined") {
       return () => {};
     }
+    trackLongPressScrolls(window);
     const noop = () => {};
     window.addEventListener("touchmove", noop, {
       capture: false,
