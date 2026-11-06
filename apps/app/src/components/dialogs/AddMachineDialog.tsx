@@ -28,7 +28,6 @@ import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
-const ENROLLMENT_POLL_MS = 1_000;
 
 export function AddMachineDialog({
   open,
@@ -239,9 +238,7 @@ function useManualMachineEnrollment(): ManualMachineEnrollment {
                   },
             );
           }
-          await new Promise<void>((resolve) =>
-            setTimeout(resolve, ENROLLMENT_POLL_MS),
-          );
+          await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
           controller.signal.throwIfAborted();
           host = await sdk.hosts.get({
             hostId: host.id,
