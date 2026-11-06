@@ -107,6 +107,7 @@ const AUTOMATION: AutomationDetailResponse = {
     model: "claude-opus-5",
     reasoningLevel: "medium",
     permissionMode: "auto",
+    visibility: "visible",
     environment: { type: "host", workspace: { type: "personal" } },
   },
   origin: "human",
@@ -128,6 +129,7 @@ const REUSE_ENVIRONMENT_EXECUTION = {
   model: "gpt-5.6-codex",
   reasoningLevel: "medium",
   permissionMode: "accept-edits",
+  visibility: "visible",
   environment: { type: "reuse", environmentId: "env_test" },
 } satisfies AutomationDetailResponse["execution"];
 
@@ -174,6 +176,66 @@ function AutomationDetailView({
 }
 
 describe("Automation detail recipe", () => {
+  it("edits initial visibility without changing the prompt and omits the control for existing threads", () => {
+    const onUpdate = vi.fn(async (_update: AgentExecutionUpdate) => {});
+    const execution = {
+      ...REUSE_ENVIRONMENT_EXECUTION,
+      visibility: "visible" as const,
+    };
+    const props = {
+      execution,
+      editing: true,
+      personalProject: false,
+      projectContextLabel: "Test project",
+      pending: false,
+      onCancel: () => {},
+      onUpdate,
+    };
+    const { rerender } = render(<AgentAutomationDefinition {...props} />);
+    const visibility = screen.getByRole("switch", {
+      name: "Start new threads hidden",
+    });
+    expect(visibility.getAttribute("aria-checked")).toBe("false");
+    expect(
+      (screen.getByRole("button", { name: "Save Prompt" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(visibility);
+    expect(visibility.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Save Prompt" }));
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: execution.prompt,
+        visibility: "hidden",
+      }),
+    );
+    rerender(
+      <AgentAutomationDefinition
+        {...props}
+        execution={{ ...execution, visibility: "hidden" }}
+        editing={false}
+      />,
+    );
+    expect(
+      (
+        screen.getByRole("switch", {
+          name: "Start new threads hidden",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    rerender(
+      <AgentAutomationDefinition
+        {...props}
+        execution={{ ...execution, targetThreadId: "thr_existing" }}
+      />,
+    );
+    expect(
+      screen.queryByRole("switch", { name: "Start new threads hidden" }),
+    ).toBeNull();
+  });
   it("explains a failed agent run in the header and in its run row", () => {
     const error = "Target thread thr_target was archived";
     const run = {
@@ -243,6 +305,7 @@ describe("Automation detail recipe", () => {
           model: "test",
           reasoningLevel: "medium",
           permissionMode: "auto",
+          visibility: "visible",
           environment: { type: "host", workspace: { type: "personal" } },
         }}
         editing={false}
@@ -418,6 +481,7 @@ describe("Automation detail recipe", () => {
       reasoningLevel: "high",
       serviceTier: "fast",
       permissionMode: "full",
+      visibility: "visible",
     });
     expect(
       await screen.findByRole("textbox", { name: "Saved prompt" }),
@@ -471,6 +535,7 @@ describe("Automation detail recipe", () => {
       reasoningLevel: "medium",
       serviceTier: null,
       permissionMode: "accept-edits",
+      visibility: "visible",
     });
   });
 
@@ -510,6 +575,7 @@ describe("Automation detail recipe", () => {
       reasoningLevel: "high",
       serviceTier: "fast",
       permissionMode: "full",
+      visibility: "visible",
     });
   });
 
@@ -526,6 +592,7 @@ describe("Automation detail recipe", () => {
             model: "claude-opus-5",
             reasoningLevel: "medium",
             permissionMode: "auto",
+            visibility: "visible",
             environment: {
               type: "host",
               hostId: "host_local",
@@ -592,6 +659,7 @@ describe("Automation detail recipe", () => {
             model: "gpt-5",
             reasoningLevel: "medium",
             permissionMode: "auto",
+            visibility: "visible",
             environment: {
               type: "host",
               hostId: "host_local",

@@ -17,6 +17,7 @@ Agent mode flags:
 --service-tier <tier>          Literal tier id the provider lists, including none
 --clear-service-tier           Clear the tier; cannot combine with --service-tier
 --permission-mode <mode>       accept-edits, auto, or full
+--visibility <visible|hidden>  Initial visibility of newly spawned threads (default visible)
 --target-thread <id>           Reuse/re-prompt an existing thread
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path
 --new-environment <kind>       Create a new environment (worktree)
@@ -26,6 +27,11 @@ Agent mode flags:
 When `--permission-mode` is omitted, the plugin chooses Approve for me
 (`auto`) when the provider supports it and otherwise uses Full Access
 (`full`).
+
+Use `--visibility hidden` for background routines that should start out of the
+thread list. It controls initial visibility when a run creates a new thread;
+`--target-thread` preserves the existing thread's visibility. A hidden thread
+stays hidden on failure unless the routine explicitly reveals it.
 
 Script mode flags:
 

@@ -143,6 +143,7 @@ export async function executeAgentRun(
           ? {}
           : { serviceTier: args.execution.serviceTier }),
         permissionMode: args.execution.permissionMode,
+        visibility: args.execution.visibility,
       }),
     );
     setAutomationRunThread(db, { runId: args.run.id, threadId: thread.id });
