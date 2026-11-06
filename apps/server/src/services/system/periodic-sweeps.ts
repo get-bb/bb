@@ -12,11 +12,12 @@ import {
   providerLifecycleSweep,
   sweepProviderLifecycles,
 } from "../environments/environment-engine.js";
+import { threadPurgeSweep } from "../threads/thread-purge.js";
 import {
   threadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
 } from "../threads/thread-storage-orphans.js";
-import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray, notExists } from "drizzle-orm";
 import {
   machineLifecycleSweep,
   machineRemovalRequestSweep,
@@ -47,6 +48,7 @@ import {
   RETAINED_EVENT_OUTPUT_TARGETS,
   runIncrementalVacuum,
   shouldRunIncrementalVacuum,
+  threadPurges,
   threads,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
   DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
@@ -432,7 +434,17 @@ function deletedThreadFinalizationSweep(
           storageDeletedAt: threads.storageDeletedAt,
         })
         .from(threads)
-        .where(isNotNull(threads.deletedAt))
+        .where(
+          and(
+            isNotNull(threads.deletedAt),
+            notExists(
+              deps.db
+                .select({ threadId: threadPurges.threadId })
+                .from(threadPurges)
+                .where(eq(threadPurges.threadId, threads.id)),
+            ),
+          ),
+        )
         .all(),
     key: (thread) => thread.id,
     process: (thread) => {
@@ -719,6 +731,13 @@ export const PERIODIC_SWEEP_JOBS: readonly PeriodicSweepJob[] = [
     name: "deleted-thread-finalization",
     background: false,
     sweep: deletedThreadFinalizationSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "orphan-cleanup",
+    name: "thread-purge",
+    background: true,
+    sweep: threadPurgeSweep,
   },
   {
     cadenceMs: 0,

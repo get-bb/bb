@@ -45,6 +45,7 @@ import {
   handleHostSessionOpened,
 } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 interface FakeDaemonSocket {
   close(code?: number, reason?: string): void;
@@ -2009,6 +2010,7 @@ describe("public terminal routes", () => {
       sessionId: fixture.session.id,
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    await runThreadPurges(fixture.harness.deps);
     expect(
       listTerminalSessionsByThread(fixture.harness.db, fixture.thread.id),
     ).toEqual([]);

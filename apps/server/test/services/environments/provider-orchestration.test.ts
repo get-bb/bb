@@ -81,6 +81,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { runThreadPurges } from "../../helpers/thread-purges.js";
 
 function setup(
   harness: TestAppHarness,
@@ -1788,6 +1789,7 @@ describe("core environment orchestration", () => {
         beginProjectDeletion(harness.deps, {
           projectId: fixture.context.project.id,
         });
+        await runThreadPurges(harness.deps);
         await advanceProjectDeletion(harness.deps, {
           projectId: fixture.context.project.id,
         });

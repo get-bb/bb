@@ -26,6 +26,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 interface ActiveThreadStopFixture {
   environment: EnvironmentRow;
@@ -118,6 +119,7 @@ describe("thread stop dispatch", () => {
       await reportQueuedCommandSuccess(harness, successfulDelete, {
         providerCheckpointId: null,
       });
+      await runThreadPurges(harness.deps);
 
       expect(getThread(harness.db, thread.id)).toBeNull();
     });

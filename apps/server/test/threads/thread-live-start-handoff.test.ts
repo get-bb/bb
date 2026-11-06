@@ -31,6 +31,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 const START_EXECUTION = {
   model: "gpt-5",
@@ -194,6 +195,7 @@ describe("live thread start handoff", () => {
         await reportQueuedCommandSuccess(harness, storageDeleteCommand, {
           providerCheckpointId: null,
         });
+        await runThreadPurges(harness.deps);
         expect(getThread(harness.db, fixture.thread.id)).toBeNull();
       } finally {
         await failLiveStartRpc({
@@ -388,6 +390,7 @@ describe("live thread start handoff", () => {
             status: "idle",
           });
         } else {
+          await runThreadPurges(harness.deps);
           expect(getThread(harness.db, fixture.thread.id)).toBeNull();
         }
 

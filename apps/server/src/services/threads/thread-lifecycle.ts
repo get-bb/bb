@@ -18,7 +18,7 @@ import {
 } from "drizzle-orm";
 import {
   getLatestThreadSequence,
-  deleteThread,
+  requestThreadPurge,
   environments,
   events,
   getEnvironment,
@@ -2244,7 +2244,10 @@ export function finalizeStoppedThreadInTransaction(
     )
       return;
     if (providerEnvironmentHasPendingWork(deps.db, finalizedThread.id)) return;
-    deleteThread(deps.db, deps.hub, finalizedThread.id);
+    requestThreadPurge(deps.db, {
+      now: Date.now(),
+      threadId: finalizedThread.id,
+    });
     if (finalizedThread.environmentId !== null)
       refreshProviderRetirement(deps, finalizedThread.environmentId);
   }
