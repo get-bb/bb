@@ -150,6 +150,7 @@ export const systemProviderStateSchema = providerHealthSchema.extend({
   providerId: z.string().min(1),
   displayName: z.string().min(1),
   localLoginCommand: z.string().min(1).nullable(),
+  internal_DO_NOT_USE_guidedSignIn: z.boolean(),
 });
 export type SystemProviderState = z.infer<typeof systemProviderStateSchema>;
 

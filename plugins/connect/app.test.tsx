@@ -165,15 +165,25 @@ describe("connect settings section", () => {
       method: "login.start",
       input: { baseUrl: null },
     });
-    expect(slot.navigateCalls).toContainEqual({
-      method: "openUrl",
-      url: "https://getbb.app/link?code=K7QP-2M4X",
-    });
+    expect(
+      slot.navigateCalls.filter((call) => call.method === "openUrl"),
+    ).toEqual([]);
+    slot.getByText("Confirm this code on getbb.app:");
+    expect(slot.getByLabelText("Sign-in code").textContent).toBe("K7QP-2M4X");
     const link = slot.getByRole("link", {
-      name: "getbb.app",
+      name: /Open getbb\.app/,
     }) as HTMLAnchorElement;
     expect(link.href).toBe("https://getbb.app/link?code=K7QP-2M4X");
-    slot.getByText("Remote access turns on automatically after you sign in.");
+    expect(link.target).toBe("_blank");
+    slot.getByRole("button", { name: "Cancel" });
+    slot.getByText(
+      "Waiting for you to approve it. You can approve from any device.",
+    );
+    expect(
+      slot.queryByText(
+        "Remote access turns on automatically after you sign in.",
+      ),
+    ).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(1_999));
     expect(polls).toBe(0);
@@ -985,6 +995,54 @@ describe("connect setup guide section", () => {
     expect(slot.queryByLabelText("Pairing code")).toBeNull();
   });
 
+  it("keeps the sign-in code behind Show pairing code, one footer panel open at a time", async () => {
+    const account = fakeAccountSdk({
+      "login.start": () => pendingLogin(),
+      "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
+    });
+    const slot = renderSlot(
+      section(),
+      { onPhone: false, onSetupStarted: () => {} },
+      {
+        openUrl: () => true,
+        sdk: account.sdk,
+        rpc: { status: () => status() },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Set up" }));
+    const showCode = await slot.findByRole("button", {
+      name: "Show pairing code",
+    });
+    const havePairingCode = slot.getByRole("button", {
+      name: "Have a pairing code?",
+    });
+    expect(showCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+
+    fireEvent.click(showCode);
+    expect(showCode.getAttribute("aria-expanded")).toBe("true");
+    expect(slot.getByLabelText("bb connect sign-in code").textContent).toBe(
+      "K7QP-2M4X",
+    );
+    slot.getByRole("button", { name: "Copy code" });
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
+
+    fireEvent.click(havePairingCode);
+    expect(havePairingCode.getAttribute("aria-expanded")).toBe("true");
+    expect(showCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+    slot.getByLabelText("Pairing code");
+
+    fireEvent.click(showCode);
+    expect(havePairingCode.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.queryByLabelText("Pairing code")).toBeNull();
+    slot.getByLabelText("bb connect sign-in code");
+
+    fireEvent.click(showCode);
+    expect(slot.queryByText("K7QP-2M4X")).toBeNull();
+  });
+
   it("pairs with a code while sign-in is pending, cancels that sign-in, and shows bb connect is on", async () => {
     const onSetupStarted = vi.fn();
     const account = fakeAccountSdk({
@@ -1036,7 +1094,7 @@ describe("connect setup guide section", () => {
     ).toBeNull();
   });
 
-  it("does not leave the pending sign-in showing after pairing when bb connect is still off", async () => {
+  it("turns bb connect on after pairing with a code when it was off, without showing Set up in between", async () => {
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => ({ login: pendingLogin(), status: signedInAccount }),
@@ -1045,14 +1103,23 @@ describe("connect setup guide section", () => {
       }),
       redeemCode: () => signedInAccount,
     });
-    let currentStatus = status();
+    let statusAfterPairing: ((value: ConnectStatus) => void) | null = null;
+    let currentStatus: () => ConnectStatus | Promise<ConnectStatus> = () =>
+      status();
     const slot = renderSlot(
       section(),
       { onPhone: false, onSetupStarted: () => {} },
       {
         openUrl: () => true,
         sdk: account.sdk,
-        rpc: { status: () => currentStatus },
+        rpc: {
+          status: () => currentStatus(),
+          setRemoteAccess: (input: unknown) => {
+            expect(input).toEqual({ enabled: true });
+            currentStatus = () => connected();
+            return connected();
+          },
+        },
       },
     );
 
@@ -1060,17 +1127,31 @@ describe("connect setup guide section", () => {
     fireEvent.click(
       await slot.findByRole("button", { name: "Have a pairing code?" }),
     );
-    currentStatus = status({ paired: true, enabled: false });
+    currentStatus = () =>
+      new Promise<ConnectStatus>((resolve) => {
+        statusAfterPairing = resolve;
+      });
     fireEvent.change(slot.getByLabelText("Pairing code"), {
       target: { value: "k7qp-2m4x" },
     });
 
-    await slot.findByRole("button", { name: "Set up" });
+    await slot.findByText("Signed in. Turning on bb connect…");
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(slot.queryByText(/Finish signing in on/u)).toBeNull();
     expect(slot.queryByText(/cancelled/u)).toBeNull();
     expect(
       slot.queryByRole("button", { name: "Have a pairing code?" }),
     ).toBeNull();
+
+    await waitFor(() => expect(statusAfterPairing).not.toBeNull());
+    await act(async () => {
+      statusAfterPairing?.(status({ paired: true, enabled: false }));
+    });
+    await slot.findByText("bb connect is on");
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "setRemoteAccess"),
+    ).toHaveLength(1);
+    expect(slot.queryByRole("button", { name: "Set up" })).toBeNull();
   });
 
   it("keeps the pending sign-in when a pairing code is rejected", async () => {

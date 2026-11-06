@@ -1,9 +1,29 @@
 // @vitest-environment jsdom
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import type { SystemProviderState } from "@bb/server-contract";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { useCallback, type ReactNode } from "react";
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
-import { useAgentSignIns, type AgentSignInTerminals } from "./useAgentSignIns";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
+import {
+  useAgentSignIns,
+  type AgentSignInTerminals,
+  type RefetchProviderStates,
+} from "./useAgentSignIns";
 
 vi.mock("./onboarding-telemetry", () => ({
   recordTelemetryEvent: vi.fn(),
@@ -26,6 +46,7 @@ function provider(
     canUpdate: true,
     loginCommand: `${providerId} login`,
     localLoginCommand: null,
+    internal_DO_NOT_USE_guidedSignIn: false,
     ...overrides,
   };
 }
@@ -71,8 +92,17 @@ function settledAfterNow(): number {
   return Date.now() + 1;
 }
 
+function recordedOutcomes(): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "onboarding_sign_in" ? [event.properties.outcome] : [],
+    );
+}
+
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("useAgentSignIns", () => {
@@ -264,6 +294,7 @@ describe("useAgentSignIns", () => {
 
     expect(result.current.signIns.size).toBe(0);
     expect(result.current.failedProviderIds.size).toBe(0);
+    expect(recordedOutcomes()).toEqual(["started", "ready"]);
   });
 
   it("shows no failure when the user cancels with X as the sign-in exits", async () => {
@@ -279,6 +310,139 @@ describe("useAgentSignIns", () => {
 
     expect(result.current.signIns.size).toBe(0);
     expect(result.current.failedProviderIds.size).toBe(0);
+    expect(recordedOutcomes()).toEqual(["started", "cancelled"]);
+  });
+
+  describe.each([
+    ["the redesign", true],
+    ["today's guide", false],
+  ] as const)("an exited sign-in in %s", (_variant, redesign) => {
+    it.each([
+      [0, true, "ready"],
+      [1, true, "ready"],
+      [null, true, "ready"],
+      [0, false, "exited"],
+      [1, false, "failed"],
+      [null, false, "failed"],
+    ] as const)(
+      "exiting with %s when the agent is ready=%s records %s once a fresh state lands",
+      async (exitCode, ready, outcome) => {
+        const { result, rerender } = renderSignIns(redesign, [
+          provider("codex"),
+        ]);
+        await act(async () => {
+          await result.current.start("codex");
+        });
+
+        act(() => result.current.handleExit("codex", exitCode));
+        expect(recordedOutcomes()).toEqual(["started"]);
+        rerender({
+          states: [provider("codex", ready ? { status: "ready" } : {})],
+          statesSettledAt: settledAfterNow(),
+        });
+
+        expect(recordedOutcomes()).toEqual(["started", outcome]);
+      },
+    );
+  });
+
+  it("keeps today's failed row after a non-zero exit even when the agent turns out ready", async () => {
+    const { result, rerender } = renderSignIns(false, [provider("codex")]);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+
+    act(() => result.current.handleExit("codex", 1));
+    expect(result.current.signIns.size).toBe(0);
+    expect([...result.current.failedProviderIds]).toEqual(["codex"]);
+    rerender({
+      states: [provider("codex", { status: "ready" })],
+      statesSettledAt: settledAfterNow(),
+    });
+
+    expect([...result.current.failedProviderIds]).toEqual(["codex"]);
+    expect(recordedOutcomes()).toEqual(["started", "ready"]);
+  });
+
+  it("settles an exited sign-in on one slow provider-states response without aborting it", async () => {
+    vi.useFakeTimers();
+    notifyManager.setScheduler((callback) => callback());
+    onTestFinished(() => notifyManager.setScheduler(defaultScheduler));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const server = { ready: false, fetches: 0, aborts: 0 };
+    const terminals = fakeTerminals();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => {
+        const query = useQuery({
+          queryKey: ["provider-states"],
+          queryFn: ({ signal }) => {
+            server.fetches += 1;
+            const ready = server.ready;
+            signal.addEventListener("abort", () => {
+              server.aborts += 1;
+            });
+            return new Promise<SystemProviderState[]>((resolve) => {
+              setTimeout(
+                () =>
+                  resolve([
+                    provider("codex", ready ? { status: "ready" } : {}),
+                  ]),
+                5_000,
+              );
+            });
+          },
+        });
+        const { refetch } = query;
+        const refetchStates = useCallback<RefetchProviderStates>(
+          (options) => {
+            void refetch(options);
+          },
+          [refetch],
+        );
+        return useAgentSignIns({
+          concurrent: true,
+          failUnreadyExits: true,
+          entry: "first_run",
+          hostId: "host_1",
+          states: query.data,
+          statesSettledAt: Math.max(query.dataUpdatedAt, query.errorUpdatedAt),
+          isLocalHost: () => true,
+          terminals,
+          refetchStates,
+        });
+      },
+      { wrapper },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(server.fetches).toBe(1);
+    expect(result.current.signIns.size).toBe(0);
+    await act(async () => {
+      await result.current.start("codex");
+    });
+    const fetchesBeforeExit = server.fetches;
+
+    server.ready = true;
+    act(() => result.current.handleExit("codex", 0));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(result.current.signIns.size).toBe(0);
+    expect(recordedOutcomes()).toEqual(["started", "ready"]);
+    expect(server.aborts).toBe(0);
+    expect(server.fetches).toBe(fetchesBeforeExit + 1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(server.fetches).toBe(fetchesBeforeExit + 1);
+    queryClient.clear();
   });
 
   it("keeps today's quiet return to Sign in after a clean exit in the control guide", async () => {

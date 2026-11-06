@@ -125,6 +125,7 @@ import { useSendAfterFirstOutput } from "./useSendAfterFirstOutput";
 import {
   useAgentSignIns,
   type AgentSignInTerminals,
+  type RefetchProviderStates,
   type SignInMethod,
 } from "./useAgentSignIns";
 
@@ -412,9 +413,12 @@ function AgentStepContainer({
     redesign && statesLoading,
     AGENT_STATES_LOAD_TIMEOUT_MS,
   );
-  const refetchProviderStates = useCallback(() => {
-    void refetchStates();
-  }, [refetchStates]);
+  const refetchProviderStates = useCallback<RefetchProviderStates>(
+    (options) => {
+      void refetchStates(options);
+    },
+    [refetchStates],
+  );
   const { refetch: refetchCliStatus } = cliStatusQuery;
   const refetchCliStatusOnce = useCallback(() => {
     void refetchCliStatus({ cancelRefetch: false });
@@ -556,8 +560,7 @@ function AgentStepContainer({
           const connectFlow = redesign
             ? terminalConnectFlow(health.providerId)
             : null;
-          const parsed =
-            !redesign || info?.internal_DO_NOT_USE_guidedSignIn === true;
+          const parsed = !redesign || health.internal_DO_NOT_USE_guidedSignIn;
           const view = signIns.views.get(health.providerId) ?? null;
           const instructionReady = view !== null && view.started;
           return {
@@ -1116,6 +1119,7 @@ function DevicesStepContainer({
   entry,
   hostId,
   hostName,
+  closing,
   onBack,
   onFinish,
   onLeave,
@@ -1125,6 +1129,7 @@ function DevicesStepContainer({
   entry: OnboardingEntry;
   hostId: string | null;
   hostName: string | null;
+  closing: boolean;
   onBack: () => void;
   onFinish: () => void;
   onLeave: () => void;
@@ -1135,8 +1140,14 @@ function DevicesStepContainer({
   const [addMachineOpen, setAddMachineOpen] = useState(false);
   const onPhone = useMediaQuery(ONBOARDING_PHONE_QUERY);
   const location = useLocation();
-  const [initialPathname] = useState(location.pathname);
-  const navigatedAway = location.pathname !== initialPathname;
+  const [openPathname, setOpenPathname] = useState(location.pathname);
+  const [wasClosing, setWasClosing] = useState(closing);
+  if (wasClosing !== closing) {
+    setWasClosing(closing);
+    if (!closing) setOpenPathname(location.pathname);
+  }
+  const navigatedAway =
+    !closing && !wasClosing && location.pathname !== openPathname;
   useEffect(() => {
     if (navigatedAway) onLeave();
   }, [navigatedAway, onLeave]);
@@ -1454,6 +1465,7 @@ export function OnboardingFlow({
           entry={entry}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
+          closing={closing}
           onBack={goTo(-1)}
           onFinish={() => close("completed")}
           onLeave={() => close("skipped")}

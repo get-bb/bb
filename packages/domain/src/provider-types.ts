@@ -140,7 +140,6 @@ export const providerInfoSchema = z.object({
   serviceTiers: z.array(providerOptionDescriptorSchema).optional(),
   reasoningLevels: z.array(providerOptionDescriptorSchema).optional(),
   extensionKinds: providerExtensionKindsSchema.optional(),
-  internal_DO_NOT_USE_guidedSignIn: z.literal(true).optional(),
 });
 export type ProviderInfo = z.infer<typeof providerInfoSchema>;
 

@@ -22,6 +22,27 @@ type SignInOutcome = "ready" | "exited" | "failed" | "cancelled";
 interface SignInExit {
   exitCode: number | null;
   at: number;
+  rowOpen: boolean;
+}
+
+export type RefetchProviderStates = (options: {
+  cancelRefetch: boolean;
+}) => void;
+
+function exitOutcome(exit: SignInExit, ready: boolean): SignInOutcome {
+  if (ready) return "ready";
+  return exit.exitCode === 0 ? "exited" : "failed";
+}
+
+function agentReady(
+  states: readonly SystemProviderState[] | undefined,
+  providerId: string,
+): boolean {
+  return (
+    states?.some(
+      (state) => state.providerId === providerId && state.status === "ready",
+    ) ?? false
+  );
 }
 
 export interface AgentSignInTerminals {
@@ -71,7 +92,7 @@ export function useAgentSignIns({
   statesSettledAt: number;
   isLocalHost: (hostId: string) => boolean;
   terminals: AgentSignInTerminals;
-  refetchStates: () => void;
+  refetchStates: RefetchProviderStates;
 }) {
   const [signIns, setSignIns] = useState<ReadonlyMap<string, SignInSession>>(
     () => new Map(),
@@ -91,6 +112,19 @@ export function useAgentSignIns({
     () => new Map(),
   );
   const exitsRef = useRef<Map<string, SignInExit>>(new Map());
+  const statesRef = useRef(states);
+  useEffect(() => {
+    statesRef.current = states;
+  }, [states]);
+
+  const record = useCallback(
+    (outcome: SignInOutcome | "started") =>
+      recordTelemetryEvent({
+        name: "onboarding_sign_in",
+        properties: { entry, outcome },
+      }),
+    [entry],
+  );
 
   const bumpRequest = (providerId: string): number => {
     const next = (requestsRef.current.get(providerId) ?? 0) + 1;
@@ -98,10 +132,46 @@ export function useAgentSignIns({
     return next;
   };
 
+  const closeRow = useCallback(
+    (providerId: string, outcome: SignInOutcome | null, refetch: boolean) => {
+      const current = signInsRef.current.get(providerId);
+      if (current === undefined) return;
+      signInsRef.current.delete(providerId);
+      if (outcome !== null) record(outcome);
+      setSignIns(new Map(signInsRef.current));
+      setViews((previous) => withoutEntry(previous, providerId));
+      terminals.close(current.session.id);
+      if (refetch) refetchStates({ cancelRefetch: true });
+    },
+    [record, refetchStates, terminals],
+  );
+
+  const takeExit = useCallback((providerId: string) => {
+    const exit = exitsRef.current.get(providerId);
+    if (exit === undefined) return undefined;
+    exitsRef.current.delete(providerId);
+    setExits(new Map(exitsRef.current));
+    return exit;
+  }, []);
+
+  const resolveExit = useCallback(
+    (providerId: string, ready: boolean) => {
+      const exit = takeExit(providerId);
+      if (exit === undefined) return;
+      const outcome = exitOutcome(exit, ready);
+      if (!exit.rowOpen) {
+        record(outcome);
+        return;
+      }
+      if (!ready) setFailedProviderIds((ids) => withKey(ids, providerId));
+      closeRow(providerId, outcome, false);
+    },
+    [closeRow, record, takeExit],
+  );
+
   const end = useCallback(
     (providerId: string, outcome: SignInOutcome = "cancelled") => {
-      const current = signInsRef.current.get(providerId);
-      if (current === undefined) {
+      if (!signInsRef.current.has(providerId)) {
         const request = requestsRef.current.get(providerId);
         if (request !== undefined) {
           requestsRef.current.set(providerId, request + 1);
@@ -109,32 +179,30 @@ export function useAgentSignIns({
         }
         return;
       }
-      signInsRef.current.delete(providerId);
-      if (exitsRef.current.delete(providerId)) {
-        setExits(new Map(exitsRef.current));
-      }
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome },
-      });
-      setSignIns(new Map(signInsRef.current));
-      setViews((previous) => withoutEntry(previous, providerId));
-      terminals.close(current.session.id);
-      refetchStates();
+      takeExit(providerId);
+      closeRow(providerId, outcome, true);
     },
-    [entry, refetchStates, terminals],
+    [closeRow, takeExit],
   );
 
   const endRef = useRef(end);
+  const resolveExitRef = useRef(resolveExit);
   useEffect(() => {
     endRef.current = end;
-  }, [end]);
+    resolveExitRef.current = resolveExit;
+  }, [end, resolveExit]);
   useEffect(
     () => () => {
       for (const providerId of requestsRef.current.keys()) {
         requestsRef.current.set(
           providerId,
           (requestsRef.current.get(providerId) ?? 0) + 1,
+        );
+      }
+      for (const providerId of [...exitsRef.current.keys()]) {
+        resolveExitRef.current(
+          providerId,
+          agentReady(statesRef.current, providerId),
         );
       }
       for (const providerId of [...signInsRef.current.keys()]) {
@@ -145,50 +213,45 @@ export function useAgentSignIns({
   );
 
   const fail = useCallback(
-    (providerId: string, outcome: "exited" | "failed" = "failed") => {
+    (providerId: string) => {
       if (!signInsRef.current.has(providerId)) return;
       setFailedProviderIds((ids) => withKey(ids, providerId));
-      end(providerId, outcome);
+      end(providerId, "failed");
     },
     [end],
   );
 
   const handleExit = useCallback(
     (providerId: string, exitCode: number | null) => {
-      if (!failUnreadyExits) {
-        if (exitCode !== 0) {
-          fail(providerId);
-          return;
-        }
-        end(providerId, "exited");
-        return;
-      }
       if (
         !signInsRef.current.has(providerId) ||
         exitsRef.current.has(providerId)
       ) {
         return;
       }
-      exitsRef.current.set(providerId, { exitCode, at: Date.now() });
+      exitsRef.current.set(providerId, {
+        exitCode,
+        at: Date.now(),
+        rowOpen: failUnreadyExits,
+      });
       setExits(new Map(exitsRef.current));
-      refetchStates();
+      if (!failUnreadyExits) {
+        if (exitCode !== 0) {
+          setFailedProviderIds((ids) => withKey(ids, providerId));
+        }
+        closeRow(providerId, null, false);
+      }
+      refetchStates({ cancelRefetch: true });
     },
-    [end, fail, failUnreadyExits, refetchStates],
+    [closeRow, failUnreadyExits, refetchStates],
   );
 
   useEffect(() => {
     for (const [providerId, exit] of exits) {
       if (statesSettledAt <= exit.at) continue;
-      const ready = states?.some(
-        (state) => state.providerId === providerId && state.status === "ready",
-      );
-      if (ready === true) {
-        end(providerId, "ready");
-      } else {
-        fail(providerId, exit.exitCode === 0 ? "exited" : "failed");
-      }
+      resolveExit(providerId, agentReady(states, providerId));
     }
-  }, [end, exits, fail, states, statesSettledAt]);
+  }, [exits, resolveExit, states, statesSettledAt]);
 
   const setView = useCallback((providerId: string, view: AgentSignInView) => {
     setViews((previous) =>
@@ -202,7 +265,7 @@ export function useAgentSignIns({
   useEffect(() => {
     if (activeCount === 0) return;
     const interval = window.setInterval(
-      refetchStates,
+      () => refetchStates({ cancelRefetch: false }),
       SIGN_IN_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(interval);
@@ -224,6 +287,9 @@ export function useAgentSignIns({
       requestedMethod ?? (isLocalHost(hostId) ? "local" : "remote");
     const command = resolveSignInCommand(state, method === "local");
     if (command === null) return;
+    if (exitsRef.current.get(providerId)?.rowOpen === false) {
+      resolveExit(providerId, agentReady(states, providerId));
+    }
     if (concurrent) {
       end(providerId);
     } else {
@@ -237,10 +303,7 @@ export function useAgentSignIns({
     setFailedProviderIds((ids) => withoutKey(ids, providerId));
     const request = bumpRequest(providerId);
     setStartingProviderIds((ids) => withKey(ids, providerId));
-    recordTelemetryEvent({
-      name: "onboarding_sign_in",
-      properties: { entry, outcome: "started" },
-    });
+    record("started");
     const title = `Sign in to ${state.displayName}`;
     await terminals.closeAbandoned({ hostId, title });
     let session: TerminalSession;
@@ -250,17 +313,11 @@ export function useAgentSignIns({
       if (requestsRef.current.get(providerId) === request) {
         setStartingProviderIds((ids) => withoutKey(ids, providerId));
       }
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "failed" },
-      });
+      record("failed");
       return;
     }
     if (requestsRef.current.get(providerId) !== request) {
-      recordTelemetryEvent({
-        name: "onboarding_sign_in",
-        properties: { entry, outcome: "cancelled" },
-      });
+      record("cancelled");
       terminals.close(session.id);
       return;
     }

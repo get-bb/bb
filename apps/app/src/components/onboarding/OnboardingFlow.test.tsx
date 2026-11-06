@@ -7,12 +7,17 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import {
+  MemoryRouter,
+  useNavigate,
+  type NavigateFunction,
+} from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hostsQueryOptions } from "@/hooks/queries/host-queries";
 import type { OnboardingStepId } from "./onboarding-model";
+import { recordTelemetryEvent } from "./onboarding-telemetry";
 import { OnboardingFlow } from "./OnboardingFlow";
 
 const sdkCalls = vi.hoisted(() => [] as string[]);
@@ -42,6 +47,21 @@ vi.mock("@/hooks/useRealtimeSubscription", async (importOriginal) => {
 });
 vi.mock("./onboarding-telemetry", () => ({ recordTelemetryEvent: vi.fn() }));
 
+const router: { navigate: NavigateFunction | null } = { navigate: null };
+
+function NavigateProbe() {
+  router.navigate = useNavigate();
+  return null;
+}
+
+function finishedOutcomes(): unknown[] {
+  return vi
+    .mocked(recordTelemetryEvent)
+    .mock.calls.flatMap(([event]) =>
+      event.name === "onboarding_finished" ? [event.properties.outcome] : [],
+    );
+}
+
 function renderFlow({
   initialStep,
   onClose = vi.fn(),
@@ -58,6 +78,7 @@ function renderFlow({
   const flow = (closing: boolean) => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
+        <NavigateProbe />
         <TooltipProvider>
           <OnboardingFlow
             initialStep={initialStep}
@@ -86,6 +107,8 @@ function providerStateRequests(): number {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
+  router.navigate = null;
   vi.useRealTimers();
   sdkCalls.length = 0;
 });
@@ -104,6 +127,39 @@ describe("OnboardingFlow", () => {
     fireEvent.click(button(/Start using bb/u));
 
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the guide on its last step when the user navigates while a failing Finish save is pending", () => {
+    const onClose = vi.fn();
+    const { setClosing } = renderFlow({ initialStep: "devices", onClose });
+
+    fireEvent.click(button(/Start using bb/u));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    setClosing(true);
+    act(() => {
+      void router.navigate?.("/threads/thr_1");
+    });
+    setClosing(false);
+    setClosing(false);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(finishedOutcomes()).toEqual(["completed"]);
+    button(/Start using bb/u);
+    fireEvent.click(button(/Start using bb/u));
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(finishedOutcomes()).toEqual(["completed", "completed"]);
+  });
+
+  it("still closes the open guide as skipped when the user navigates away", () => {
+    const onClose = vi.fn();
+    renderFlow({ initialStep: "devices", onClose });
+
+    act(() => {
+      void router.navigate?.("/threads/thr_1");
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(finishedOutcomes()).toEqual(["skipped"]);
   });
 
   it("offers Retry and Continue when the agent check never answers", () => {
