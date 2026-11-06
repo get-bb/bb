@@ -60,7 +60,7 @@ export function ServersScreen() {
       title: `Remove ${profile.label}?`,
       message:
         profile.mode === "connect"
-          ? "The app forgets this server and its device credential. The phone stays listed under Machines in the getbb.app dashboard until you revoke it there."
+          ? "The app forgets this server and its device credential. The phone stays listed under Devices in the getbb.app dashboard until you remove it there."
           : "The app forgets this server. Nothing on the server changes.",
       actionLabel: "Remove",
       onConfirm: () => remove(profile),
@@ -215,7 +215,7 @@ export function ServersScreen() {
         message={
           confirmingRemoval
             ? target?.mode === "connect"
-              ? "This removes the server and its device credential from this phone. Revoke the phone separately in getbb.app → Machines."
+              ? "This removes the server and its device credential from this phone. Remove the phone separately in getbb.app → Devices."
               : "This removes the server from this phone. Nothing on the server changes."
             : target?.serverUrl
         }

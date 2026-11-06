@@ -461,7 +461,7 @@ describe("MCP bearer authentication", () => {
     expect(captured).toHaveLength(2);
   });
 
-  it("writes lastUsedAt only for a grant's first use", async () => {
+  it("writes lastUsedAt at most once an hour per grant", async () => {
     const { env, ctx, waitUntil } = makeEnv(() => new Response("origin"));
     const request = async () => {
       const response = await worker.fetch(
@@ -481,10 +481,15 @@ describe("MCP bearer authentication", () => {
 
     vi.setSystemTime(START + MCP_GRANT_CACHE_TTL_MS + 1);
     await request();
-    vi.setSystemTime(START + 6 * 60 * 60 * 1000);
-    await request();
     expect(waitUntil).toHaveBeenCalledTimes(1);
     expect((await lastUsedAt(grantId))?.getTime()).toBe(START);
+
+    const later = START + 6 * 60 * 60 * 1000;
+    vi.setSystemTime(later);
+    await request();
+    await request();
+    expect(waitUntil).toHaveBeenCalledTimes(2);
+    expect((await lastUsedAt(grantId))?.getTime()).toBe(later);
   });
 
   it("streams an event-stream response without buffering or caching it", async () => {

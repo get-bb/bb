@@ -153,8 +153,14 @@ export async function registerServerAccess(
         await bb.storage.kv.set(grantKey(hostId), { intent });
         signal.throwIfAborted();
         const pending = intent;
+        const host = await bb.sdk.hosts.get({ hostId }).catch(() => null);
+        signal.throwIfAborted();
         const redeemed = await cloud
-          .redeemMachineCode({ ...pending, signal })
+          .redeemMachineCode({
+            ...pending,
+            deviceName: host?.name.trim() || null,
+            signal,
+          })
           .catch(() => {
             signal.throwIfAborted();
             return null;

@@ -21,6 +21,7 @@ import {
 import {
   invalidateDesktopSessionGrant,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   type DesktopSessionAccount,
 } from "./desktop-session.js";
 import { resolveConnectRuntime } from "./cloud-dev.js";
@@ -208,10 +209,11 @@ export async function handleCreateDesktopSession(
   if (request.method !== "POST") {
     return methodNotAllowed("POST");
   }
-  const { account, runtime } = await resolveRequestAccount(request, env);
+  const { account, db, runtime } = await resolveRequestAccount(request, env);
   if (!account) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
+  await recordDesktopSessionUse(account.grant, db);
   const cookie = await issueDesktopSessionCookie(account, {
     baseDomain: env.BASE_DOMAIN,
     name: runtime.desktopSessionCookieName,

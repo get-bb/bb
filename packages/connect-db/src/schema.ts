@@ -10,6 +10,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { MACHINE_KINDS } from "./constants.js";
 
 const timestampMs = customType<{ data: Date; driverData: number | string }>({
   dataType: () => "bigint",
@@ -164,6 +165,7 @@ export const machine = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name"),
+    kind: text("kind", { enum: MACHINE_KINDS }),
     subdomain: text("subdomain").unique(),
     credentialHash: text("credential_hash").notNull(),
     lastSeenAt: timestampMs("last_seen_at"),

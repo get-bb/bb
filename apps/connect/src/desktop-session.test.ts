@@ -17,6 +17,7 @@ import {
   DESKTOP_SESSION_TTL_MS,
   createDesktopSessionCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
   type DesktopSessionAccount,
 } from "./desktop-session.js";
@@ -99,6 +100,42 @@ async function legacyDesktopCookie(
   );
   return `${payload}.${Buffer.from(signature).toString("base64url")}`;
 }
+
+describe("recordDesktopSessionUse", () => {
+  async function lastSeen(id: string): Promise<number | null> {
+    const [row] = await db
+      .select({ lastSeenAt: machine.lastSeenAt })
+      .from(machine)
+      .where(eq(machine.id, id));
+    return row?.lastSeenAt?.getTime() ?? null;
+  }
+
+  it("records use for a machine grant at most once a minute", async () => {
+    const account = await seedMachine("acct-use");
+    const now = Date.now();
+
+    await recordDesktopSessionUse(account.grant, db, now);
+    expect(await lastSeen("machine-acct-use")).toBe(now);
+
+    await recordDesktopSessionUse(account.grant, db, now + 30_000);
+    expect(await lastSeen("machine-acct-use")).toBe(now);
+
+    await recordDesktopSessionUse(account.grant, db, now + 61_000);
+    expect(await lastSeen("machine-acct-use")).toBe(now + 61_000);
+  });
+
+  it("ignores session grants and revoked machines", async () => {
+    const account = await seedMachine("acct-revoked");
+    await db
+      .update(machine)
+      .set({ revokedAt: new Date() })
+      .where(eq(machine.id, "machine-acct-revoked"));
+
+    await recordDesktopSessionUse(account.grant, db);
+    await recordDesktopSessionUse({ kind: "session", sessionId: "ses-1" }, db);
+    expect(await lastSeen("machine-acct-revoked")).toBeNull();
+  });
+});
 
 describe("desktop session cookie", () => {
   it("lasts seven days and asks for a rolling refresh once a day old", async () => {

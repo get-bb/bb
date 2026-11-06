@@ -155,6 +155,7 @@ vi.mock("./servers.js", () => ({
 
 vi.mock("./desktop-session.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./desktop-session.js")>()),
+  recordDesktopSessionUse: vi.fn(async () => {}),
   verifyDesktopSessionCookie: vi.fn(),
 }));
 
@@ -208,7 +209,10 @@ import {
   handleDisconnectServer,
   handleListAccountServers,
 } from "./servers.js";
-import { verifyDesktopSessionCookie } from "./desktop-session.js";
+import {
+  recordDesktopSessionUse,
+  verifyDesktopSessionCookie,
+} from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
@@ -236,6 +240,7 @@ const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
 const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
+const mockRecordDesktopSessionUse = vi.mocked(recordDesktopSessionUse);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
 function sessionDetails(userId = OWNER, needsRefresh = false) {
@@ -2085,6 +2090,10 @@ describe("gate worker share hosts", () => {
       ).toString(),
     );
     expect(payload).toMatchObject({ userId: OWNER, grant });
+    expect(mockRecordDesktopSessionUse).toHaveBeenCalledWith(
+      grant,
+      expect.anything(),
+    );
   });
 
   it("does not roll a desktop cookie that belongs to another account", async () => {
@@ -2104,6 +2113,7 @@ describe("gate worker share hosts", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toBeNull();
+    expect(mockRecordDesktopSessionUse).not.toHaveBeenCalled();
   });
 
   it("uses the desktop cookie when a stale GitHub session belongs to another account", async () => {

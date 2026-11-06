@@ -29,6 +29,7 @@ import {
 import {
   desktopSessionSetCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { authorizeMcpToken } from "./mcp-gate.js";
@@ -279,6 +280,7 @@ async function resolveDesktopSession(
   ) {
     return { userId: verified.userId, setCookie: null };
   }
+  await recordDesktopSessionUse(verified.refreshGrant, db);
   const runtime = resolveConnectRuntime(env);
   const renewed = await issueDesktopSessionCookie(
     { userId: verified.userId, grant: verified.refreshGrant },

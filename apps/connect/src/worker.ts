@@ -39,6 +39,7 @@ import {
 import {
   desktopSessionSetCookie,
   issueDesktopSessionCookie,
+  recordDesktopSessionUse,
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { serveWithCache } from "./cache.js";
@@ -758,6 +759,7 @@ const gate = {
     const setCookies: string[] = [];
     const desktopRefreshGrant = verifiedDesktop?.refreshGrant ?? null;
     if (desktopUserId === resolved.userId && desktopRefreshGrant !== null) {
+      ctx.waitUntil(recordDesktopSessionUse(desktopRefreshGrant, db));
       const renewed = await issueDesktopSessionCookie(
         { userId: desktopUserId, grant: desktopRefreshGrant },
         {

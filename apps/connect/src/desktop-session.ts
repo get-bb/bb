@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import {
   CONNECT_SESSION_EXPIRES_IN_SECONDS,
   CONNECT_SESSION_UPDATE_AGE_SECONDS,
@@ -16,6 +16,7 @@ const DESKTOP_SESSION_REFRESH_BEFORE_EXPIRY_MS =
   1000;
 const LEGACY_DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 const GRANT_TTL_MS = 60_000;
+const DESKTOP_SESSION_USE_WRITE_MS = 60_000;
 const GRANT_MISS_TTL_MS = 20_000;
 
 export type DesktopSessionGrant =
@@ -46,6 +47,27 @@ function grantKey(grant: DesktopSessionGrant): string {
   return grant.kind === "session"
     ? `session:${grant.sessionId}`
     : `${grant.kind}:${grant.credentialHash}`;
+}
+
+export async function recordDesktopSessionUse(
+  grant: DesktopSessionGrant,
+  db: ConnectDb,
+  now: number = Date.now(),
+): Promise<void> {
+  if (grant.kind !== "machine") return;
+  await db
+    .update(machine)
+    .set({ lastSeenAt: new Date(now) })
+    .where(
+      and(
+        eq(machine.credentialHash, grant.credentialHash),
+        isNull(machine.revokedAt),
+        or(
+          isNull(machine.lastSeenAt),
+          lt(machine.lastSeenAt, new Date(now - DESKTOP_SESSION_USE_WRITE_MS)),
+        ),
+      ),
+    );
 }
 
 export function invalidateDesktopSessionGrant(

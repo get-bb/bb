@@ -457,6 +457,42 @@ describe("POST /api/gate/resolve", () => {
     ).toBeNull();
   });
 
+  it("records a phone's use when its desktop session cookie is renewed", async () => {
+    const credentialHash = await sha256Hex("bbcm_phone_renewal");
+    await query(
+      db,
+      "INSERT INTO machine (id, user_id, name, kind, credential_hash, created_at) VALUES ('mch-phone', $1, 'phone', 'mobile', $2, $3)",
+      [OWNER, credentialHash, NOW],
+    );
+    const lastSeen = async () =>
+      (
+        await query<{ lastSeenAt: number | null }>(
+          db,
+          `SELECT last_seen_at AS "lastSeenAt" FROM machine WHERE id = 'mch-phone'`,
+          [],
+        )
+      )[0]?.lastSeenAt ?? null;
+    const grant = { kind: "machine" as const, credentialHash };
+
+    const fresh = await createDesktopSessionCookie(
+      { userId: OWNER, grant },
+      SECRET,
+      NOW + 6.5 * DAY_MS,
+    );
+    await resolve({ desktopSession: fresh });
+    expect(await lastSeen()).toBeNull();
+
+    const ageing = await createDesktopSessionCookie(
+      { userId: OWNER, grant },
+      SECRET,
+      NOW + DAY_MS,
+    );
+    expect(
+      (await resolve({ desktopSession: ageing })).desktopSession,
+    ).toMatchObject({ userId: OWNER });
+    expect(Number(await lastSeen())).toBeGreaterThanOrEqual(NOW);
+  });
+
   it("checks the link credential against the label's own hash and refuses revoked servers", async () => {
     expect((await resolve({ credential: SERVER_CREDENTIAL })).credential).toBe(
       true,
