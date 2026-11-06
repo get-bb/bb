@@ -1473,7 +1473,7 @@ function StoragePage({
                 <Icon name="Pin" className="mt-px size-3.5 shrink-0" />
                 <p>
                   <span className="text-foreground">
-                    Pinned threads are never archived or deleted.
+                    Pinned threads are never archived, saved or deleted.
                   </span>{" "}
                   Automation targets aren’t protected on their own, so pin the
                   ones you want to keep.
