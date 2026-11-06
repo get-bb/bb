@@ -3,7 +3,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
   deletePluginArtifact,
   deletePluginStateSnapshot,
-  listExpiredPluginStateSnapshots,
+  listDiscardablePluginStateSnapshots,
   listGarbageCollectablePluginArtifacts,
   listInstalledPluginIdsOverlappingPath,
   listPluginArtifactsAtOrUnderPath,
@@ -11,6 +11,7 @@ import {
   listPluginArtifactsUnderPath,
   type DbConnection,
   type PluginArtifactRow,
+  type PluginStateSnapshotRow,
 } from "@bb/db";
 import type {
   PluginCachePruneEntry,
@@ -168,17 +169,28 @@ async function executeArtifactRemovals(args: {
   return removedIds;
 }
 
+export async function removePluginStateSnapshot(
+  db: DbConnection,
+  snapshot: PluginStateSnapshotRow,
+): Promise<void> {
+  await rm(snapshot.snapshotPath, { recursive: true, force: true });
+  deletePluginStateSnapshot(db, snapshot.id);
+}
+
 export async function garbageCollectPluginArtifacts(args: {
   db: DbConnection;
   dataDir: string;
   now: number;
   retentionMs: number;
+  snapshotsCreatedBefore: number;
   warn: (message: string) => void;
 }): Promise<void> {
-  for (const snapshot of listExpiredPluginStateSnapshots(args.db, args.now)) {
+  for (const snapshot of listDiscardablePluginStateSnapshots(args.db, {
+    createdBefore: args.snapshotsCreatedBefore,
+    now: args.now,
+  })) {
     try {
-      await rm(snapshot.snapshotPath, { recursive: true, force: true });
-      deletePluginStateSnapshot(args.db, snapshot.id);
+      await removePluginStateSnapshot(args.db, snapshot);
     } catch (error) {
       args.warn(
         `plugin snapshot GC failed for ${snapshot.id}: ${error instanceof Error ? error.message : String(error)}`,
