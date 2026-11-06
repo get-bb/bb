@@ -11,6 +11,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostOnlineRpc } from "../hosts/online-rpc.js";
+import { preservePathPluginsInside } from "../plugins/path-plugin-preservation.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
 import { isServerMoveFrozen } from "../server-move/freeze-state.js";
 
@@ -111,11 +112,13 @@ export async function removeOrphanedThreadStorage(
     const threadId = queue.threadIds.shift();
     if (threadId === undefined) break;
     attempted += 1;
+    const storagePath = joinHostPathSegments(queue.rootPath, threadId);
     try {
+      await preservePathPluginsInside(deps.db, storagePath);
       await callHostOnlineRpc(deps, {
         command: {
           type: "host.remove_path",
-          path: joinHostPathSegments(queue.rootPath, threadId),
+          path: storagePath,
           recursive: true,
           rootPath: queue.rootPath,
         },

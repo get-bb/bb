@@ -762,6 +762,7 @@ export function createPluginApi(options: {
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));
+      database.pragma("auto_vacuum = INCREMENTAL");
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
       databaseHandle = database;

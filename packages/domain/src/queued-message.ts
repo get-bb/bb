@@ -62,6 +62,7 @@ export const queuedMessageWaitingOnKindValues = [
   "provisioning",
   "host-offline",
   "interaction",
+  "app-update",
   "plugin",
   "superseded",
 ] as const;
@@ -100,6 +101,7 @@ export const queuedMessageWaitingOnSchema = z.discriminatedUnion("kind", [
     hostName: queuedMessageWaitHostNameSchema,
   }),
   z.object({ kind: z.literal("interaction") }),
+  z.object({ kind: z.literal("app-update") }),
   z.object({
     kind: z.literal("plugin"),
     pluginId: pluginIdSchema,
@@ -194,6 +196,8 @@ export const queuedMessagePayloadSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type QueuedMessagePayload = z.infer<typeof queuedMessagePayloadSchema>;
+
+export const RESTART_RESUME_RETRY_REASON = "bb restarted";
 
 /**
  * Core's own taxonomy for a queued row that is a SYSTEM notice rather than

@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.118",
+  "version": "0.6.128",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -164,36 +164,36 @@
     "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.62.0",
+    "@tanstack/react-query": "^5.106.1",
     "cross-spawn": "^7.0.6",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-acp": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
+    "@bb/query-tags": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/skill-index": "workspace:*",
     "@bb/tsconfig": "workspace:*",
-    "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "better-sqlite3": "12.10.0",
-    "cron-parser": "^5.5.0",
-    "esbuild": "^0.28.0",
-    "hono": "4.11.9",
-    "jsdom": "^29.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "rollup": "^4.62.2",
-    "rollup-plugin-dts": "^6.4.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "^5.10.3",
+    "esbuild": "^0.28.2",
+    "hono": "4.13.16",
+    "jsdom": "^29.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "rollup": "^4.67.5",
+    "rollup-plugin-dts": "^6.5.1",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1",
-    "@bb/query-tags": "workspace:*"
+    "vitest": "^4.1.12"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",

@@ -3,6 +3,7 @@ import {
   mergeHostAndProviderEnvironment,
 } from "../hosts/host-environment.js";
 import { getEnvironment, getHost, getProject } from "@bb/db";
+import { PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   DynamicTool,
   InstructionMode,
@@ -40,8 +41,6 @@ import { markTurnTraceSpan } from "../system/turn-trace.js";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, end the current turn; bb starts the next turn in the updated environment automatically so you can continue there.";
-
-const PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS = 4096;
 
 export interface ThreadRuntimeCommandEnvironment {
   hostId: string;
@@ -249,8 +248,8 @@ export async function resolveThreadRuntimeCommandConfig(
       continue;
     }
     if (text === null || text.trim().length === 0) continue;
-    if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
-      text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
+    if (text.length > PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS) {
+      text = text.slice(0, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS);
     }
     instructionSections.push(
       `The following instructions come from the BB plugin "${contribution.pluginId}":`,

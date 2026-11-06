@@ -1,5 +1,7 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { ThreadMachineStatusBanner } from "./ThreadMachineStatus";
 
 const provider = {
@@ -14,8 +16,12 @@ const provider = {
   supportsSuspend: true,
 };
 
+afterEach(() => {
+  cleanup();
+});
+
 function renderBanner(phase: "suspending" | "suspended" | "resuming") {
-  const markup = renderToStaticMarkup(
+  const { container } = render(
     <ThreadMachineStatusBanner
       host={{
         name: "Modal sandbox ugxe6e",
@@ -29,11 +35,9 @@ function renderBanner(phase: "suspending" | "suspended" | "resuming") {
     />,
   );
   return {
-    markup,
-    status: markup
-      .match(/role="status">(.*?)<\/div>/)?.[1]
-      ?.replace(/<[^>]+>/g, ""),
-    buttons: [...markup.matchAll(/<button([^>]*)>(.*?)<\/button>/g)],
+    markup: container.innerHTML,
+    status: screen.getByRole("status"),
+    buttons: screen.queryAllByRole("button"),
   };
 }
 
@@ -41,12 +45,12 @@ describe("ThreadMachineStatusBanner", () => {
   it("names the paused state generically and keeps the provider icon", () => {
     const { markup, status, buttons } = renderBanner("suspended");
 
-    expect(status).toBe("Machine is paused");
-    expect(markup).toContain('data-icon="Cloud"');
+    expect(status.textContent).toBe("Machine is paused");
+    expect(status.querySelector('[data-icon="Cloud"]')).not.toBeNull();
     expect(markup).not.toContain("Modal sandbox ugxe6e");
     expect(markup).not.toContain(provider.displayName);
-    expect(buttons.map((button) => button[2])).toEqual(["Resume"]);
-    expect(buttons[0]?.[1]).not.toContain('disabled=""');
+    expect(buttons.map((button) => button.textContent)).toEqual(["Resume"]);
+    expect(buttons[0]?.hasAttribute("disabled")).toBe(false);
   });
 
   it.each([
@@ -55,7 +59,7 @@ describe("ThreadMachineStatusBanner", () => {
   ] as const)("renders the durable %s phase", (phase, expected) => {
     const { status, buttons } = renderBanner(phase);
 
-    expect(status).toBe(expected);
+    expect(status.textContent).toBe(expected);
     expect(buttons).toEqual([]);
   });
 });

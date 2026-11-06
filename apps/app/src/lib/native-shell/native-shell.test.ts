@@ -7,9 +7,6 @@ import {
   type NativeShellHandshake,
 } from "@bb/mobile-bridge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultExperiments } from "@bb/domain";
-import { appQueryClient } from "../app-query-client";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 import {
   openApplicationUrl,
   resolveApplicationUrlConfirmation,
@@ -69,7 +66,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
   Reflect.deleteProperty(window as unknown as Record<string, unknown>, "bb");
   Reflect.deleteProperty(
     window as unknown as Record<string, unknown>,
@@ -162,9 +158,6 @@ describe("application link compatibility", () => {
     "uses an acknowledged native request only with bridge version 3 (version %s)",
     async (bridgeVersion) => {
       installShell({ bridgeVersion });
-      appQueryClient.setQueryData(systemConfigQueryKey(), {
-        experiments: { ...defaultExperiments, applicationLinks: true },
-      });
       const error = vi
         .spyOn(appToast, "error")
         .mockImplementation(() => "toast");

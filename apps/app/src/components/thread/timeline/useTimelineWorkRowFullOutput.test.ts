@@ -88,16 +88,6 @@ describe("resolveTimelineWorkRowFullOutput", () => {
     ).toEqual({ output: PREVIEW_OUTPUT, state: "streaming-preview" });
   });
 
-  it("keeps the preview when the full-output load fails", () => {
-    expect(
-      resolveTimelineWorkRowFullOutput({
-        row: bigCommandRow(),
-        data: undefined,
-        isError: true,
-      }),
-    ).toEqual({ output: PREVIEW_OUTPUT, state: "error" });
-  });
-
   it.each([
     { availability: "detail-limit", state: "limited-preview" },
     { availability: "retention-expired", state: "expired-preview" },

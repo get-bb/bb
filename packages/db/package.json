@@ -34,17 +34,17 @@
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/text-utils": "workspace:*",
-    "better-sqlite3": "12.10.0",
-    "drizzle-orm": "^0.38.0",
-    "nanoid": "^5.0.9"
+    "better-sqlite3": "12.11.1",
+    "drizzle-orm": "^0.45.4",
+    "nanoid": "^5.1.16"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "drizzle-kit": "^0.30.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.5",
+    "drizzle-kit": "^0.31.11",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

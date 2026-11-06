@@ -18,7 +18,7 @@ import { userExecutableProcessOptions } from "../user-executable-env.js";
 import {
   finalizeListedFiles,
   finalizeListedPaths,
-  listWorkspacePaths,
+  listWorkspacePathCandidates,
 } from "./file-list.js";
 import {
   readFileForTransport,
@@ -76,13 +76,15 @@ export async function listHostFiles(
 
     return await finalizeListedFiles({
       filePaths: (
-        await listWorkspacePaths({
+        await listWorkspacePathCandidates({
           root: realRootPath,
           includeHidden: command.includeHidden,
           excludeNames: command.excludeNames,
           respectGitIgnore: command.respectGitIgnore,
           includeFiles: true,
           includeDirectories: false,
+          limit: command.limit,
+          ...(command.query ? { query: command.query } : {}),
         })
       ).map((entry) => entry.path),
       limit: command.limit,
@@ -112,13 +114,15 @@ export async function listHostPaths(
     });
 
     return await finalizeListedPaths({
-      paths: await listWorkspacePaths({
+      paths: await listWorkspacePathCandidates({
         root: realRootPath,
         includeFiles: command.includeFiles,
         includeDirectories: command.includeDirectories,
         includeHidden: command.includeHidden,
         excludeNames: command.excludeNames,
         respectGitIgnore: command.respectGitIgnore,
+        limit: command.limit,
+        ...(command.query ? { query: command.query } : {}),
       }),
       limit: command.limit,
       includeFiles: command.includeFiles,

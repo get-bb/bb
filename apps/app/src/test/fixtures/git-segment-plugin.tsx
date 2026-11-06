@@ -3,7 +3,7 @@ import type { ExperimentalThreadContextSegmentProps } from "@get-bb/plugin-sdk";
 import { experimental_THREAD_CONTEXT_SEGMENT_GROUPS } from "@get-bb/plugin-sdk/app";
 import type {
   WorkspaceChangedFilesSection,
-} from "@bb/shared-ui/workspace-change-summary";
+} from "../../../../../plugins/git/ui/workspace-change-summary";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,

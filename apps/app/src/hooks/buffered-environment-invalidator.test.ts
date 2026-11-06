@@ -17,7 +17,7 @@ describe("createBufferedEnvironmentInvalidator", () => {
 
     invalidator.markChanged("env-1", ["work-status-changed"]);
     vi.advanceTimersByTime(50);
-    invalidator.markChanged("env-1", ["thread-storage-changed"]);
+    invalidator.markChanged("env-1", ["git-refs-changed"]);
     vi.advanceTimersByTime(99);
 
     expect(flushChangedEnvironmentIds).not.toHaveBeenCalled();
@@ -27,7 +27,7 @@ describe("createBufferedEnvironmentInvalidator", () => {
     expect(flushChangedEnvironmentIds).toHaveBeenCalledTimes(1);
     expect(flushChangedEnvironmentIds).toHaveBeenCalledWith([
       {
-        changeKinds: ["work-status-changed", "thread-storage-changed"],
+        changeKinds: ["work-status-changed", "git-refs-changed"],
         environmentId: "env-1",
       },
     ]);
@@ -44,7 +44,7 @@ describe("createBufferedEnvironmentInvalidator", () => {
 
     invalidator.markChanged("env-1", ["work-status-changed"]);
     vi.advanceTimersByTime(90);
-    invalidator.markChanged("env-2", ["thread-storage-changed"]);
+    invalidator.markChanged("env-2", ["git-refs-changed"]);
     vi.advanceTimersByTime(90);
     invalidator.markChanged("env-1", ["work-status-changed"]);
     vi.advanceTimersByTime(69);
@@ -60,7 +60,7 @@ describe("createBufferedEnvironmentInvalidator", () => {
         environmentId: "env-1",
       },
       {
-        changeKinds: ["thread-storage-changed"],
+        changeKinds: ["git-refs-changed"],
         environmentId: "env-2",
       },
     ]);

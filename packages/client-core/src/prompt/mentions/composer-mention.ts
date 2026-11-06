@@ -83,16 +83,6 @@ export function promptTextMentionFromComposerMention(
   };
 }
 
-export function composerDraftFromPromptDraft(
-  draft: PromptDraftState,
-): ComposerDraftShape {
-  return {
-    text: draft.text,
-    mentions: draft.mentions.map(composerMentionFromPromptTextMention),
-    attachments: draft.attachments,
-  };
-}
-
 export function promptDraftFromComposerDraft(
   draft: ComposerDraftShape,
 ): PromptDraftState {

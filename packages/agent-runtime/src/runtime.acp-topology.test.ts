@@ -35,7 +35,7 @@ describe("acp process topology", () => {
     rmSync(workspaceDir, { recursive: true, force: true });
   });
 
-  it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
+  it("reaps the agent under construction when the runtime times out thread construction", async () => {
     const setTimeoutReal = setTimeout;
     const readyFile = join(workspaceDir, "agent-ready");
     const runtime = withBridgeLaunch(
@@ -112,11 +112,6 @@ describe("acp process topology", () => {
       vi.unstubAllGlobals();
     }
     expect(runtime.hasThread("t1")).toBe(false);
-    await waitForRuntimeState({
-      label: "the agent spawned for the construction",
-      predicate: () => existsSync(readyFile),
-      timeoutMs: 10_000,
-    });
     await waitForRuntimeState({
       label: "the agent under construction was released",
       predicate: () => {

@@ -86,6 +86,22 @@ interface RawRunRow extends Omit<WorkflowRunRow, "notificationSent"> {
   notificationSent: 0 | 1;
 }
 
+const statements = new WeakMap<Db, Map<string, Database.Statement>>();
+
+function statement(db: Db, sql: string): Database.Statement {
+  let cache = statements.get(db);
+  if (cache === undefined) {
+    cache = new Map();
+    statements.set(db, cache);
+  }
+  let prepared = cache.get(sql);
+  if (prepared === undefined) {
+    prepared = db.prepare(sql);
+    cache.set(sql, prepared);
+  }
+  return prepared;
+}
+
 function runRow(value: unknown): WorkflowRunRow {
   const row = value as RawRunRow;
   return { ...row, notificationSent: row.notificationSent === 1 };
@@ -256,7 +272,8 @@ export function createRun(
 ): WorkflowRunRow {
   const id = `wfr_${randomUUID()}`;
   const now = Date.now();
-  db.prepare(
+  statement(
+    db,
     `INSERT INTO workflow_runs (
        id, project_id, origin_thread_id, environment_id, origin_provider,
        origin_model, origin_reasoning_level, origin_permission_mode,
@@ -274,7 +291,7 @@ export function createRun(
 }
 
 export function getRun(db: Db, id: string): WorkflowRunRow | null {
-  return optionalRun(db.prepare(`${RUN_SELECT} WHERE id = ?`).get(id));
+  return optionalRun(statement(db, `${RUN_SELECT} WHERE id = ?`).get(id));
 }
 
 export function getRunRequired(db: Db, id: string): WorkflowRunRow {
@@ -288,11 +305,10 @@ export function getLatestRunForOriginThread(
   originThreadId: string,
 ): WorkflowRunRow | null {
   return optionalRun(
-    db
-      .prepare(
-        `${RUN_SELECT} WHERE origin_thread_id = ? ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
-      )
-      .get(originThreadId),
+    statement(
+      db,
+      `${RUN_SELECT} WHERE origin_thread_id = ? ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
+    ).get(originThreadId),
   );
 }
 
@@ -300,11 +316,11 @@ export function listActiveRunsForOriginThread(
   db: Db,
   originThreadId: string,
 ): WorkflowRunRow[] {
-  return db
-    .prepare(
-      `${RUN_SELECT} WHERE origin_thread_id = ? AND status IN ('queued', 'running')
+  return statement(
+    db,
+    `${RUN_SELECT} WHERE origin_thread_id = ? AND status IN ('queued', 'running')
        ORDER BY created_at DESC, workflow_runs.rowid DESC`,
-    )
+  )
     .all(originThreadId)
     .map(runRow);
 }
@@ -313,10 +329,10 @@ export function listRuns(
   db: Db,
   args: { projectId: string; limit: number },
 ): WorkflowRunRow[] {
-  return db
-    .prepare(
-      `${RUN_SELECT} WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
-    )
+  return statement(
+    db,
+    `${RUN_SELECT} WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
+  )
     .all(args.projectId, args.limit)
     .map(runRow);
 }
@@ -326,26 +342,23 @@ export function claimQueuedRun(
   maxActiveRuns: number,
 ): WorkflowRunRow | null {
   return db.transaction(() => {
-    const active = db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running'`,
-      )
-      .get() as { count: number };
+    const active = statement(
+      db,
+      `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running'`,
+    ).get() as { count: number };
     if (active.count >= maxActiveRuns) return null;
     const row = optionalRun(
-      db
-        .prepare(
-          `${RUN_SELECT} WHERE status = 'queued' ORDER BY created_at LIMIT 1`,
-        )
-        .get(),
+      statement(
+        db,
+        `${RUN_SELECT} WHERE status = 'queued' ORDER BY created_at LIMIT 1`,
+      ).get(),
     );
     if (row === null) return null;
-    const changed = db
-      .prepare(
-        `UPDATE workflow_runs SET status = 'running', started_at = COALESCE(started_at, ?)
+    const changed = statement(
+      db,
+      `UPDATE workflow_runs SET status = 'running', started_at = COALESCE(started_at, ?)
          WHERE id = ? AND status = 'queued'`,
-      )
-      .run(Date.now(), row.id).changes;
+    ).run(Date.now(), row.id).changes;
     return changed === 1 ? getRunRequired(db, row.id) : null;
   })();
 }
@@ -360,29 +373,29 @@ export function settleRun(
   },
 ): WorkflowCallRow[] {
   return db.transaction(() => {
-    const outstanding = db
-      .prepare(
-        `${CALL_SELECT} WHERE run_id = ? AND status IN ('queued', 'running')`,
-      )
+    const outstanding = statement(
+      db,
+      `${CALL_SELECT} WHERE run_id = ? AND status IN ('queued', 'running')`,
+    )
       .all(args.id)
       .map(callRow);
     const now = Date.now();
-    const changed = db
-      .prepare(
-        `UPDATE workflow_runs SET status = @status, result_json = @resultJson,
+    const changed = statement(
+      db,
+      `UPDATE workflow_runs SET status = @status, result_json = @resultJson,
          error = @error, finished_at = @now
          WHERE id = @id AND status IN ('queued', 'running')`,
-      )
-      .run({
-        id: args.id,
-        status: args.status,
-        resultJson:
-          args.status === "succeeded" ? JSON.stringify(args.result) : null,
-        error: args.error,
-        now,
-      }).changes;
+    ).run({
+      id: args.id,
+      status: args.status,
+      resultJson:
+        args.status === "succeeded" ? JSON.stringify(args.result) : null,
+      error: args.error,
+      now,
+    }).changes;
     if (changed === 0) return [];
-    db.prepare(
+    statement(
+      db,
       `UPDATE workflow_calls SET status = 'cancelled',
        error = 'Parent workflow finished before this call', finished_at = ?
        WHERE run_id = ? AND status IN ('queued', 'running')`,
@@ -392,13 +405,15 @@ export function settleRun(
 }
 
 export function updateRunPhase(db: Db, id: string, phase: string): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_runs SET phase = ? WHERE id = ? AND status = 'running'`,
   ).run(phase, id);
 }
 
 export function markNotificationSent(db: Db, id: string): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_runs SET notification_sent = 1,
      notification_outcome = 'delivered', notification_next_attempt_at = NULL,
      notification_error = NULL
@@ -411,7 +426,8 @@ export function settleNotificationUndeliverable(
   id: string,
   error: string,
 ): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_runs SET notification_sent = 1,
      notification_outcome = 'abandoned', notification_next_attempt_at = NULL,
      notification_error = ?
@@ -423,7 +439,8 @@ export function recordNotificationFailure(
   db: Db,
   args: { id: string; error: string; nextAttemptAt: number },
 ): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_runs SET
        notification_next_attempt_at = @nextAttemptAt,
        notification_error = @error
@@ -433,42 +450,43 @@ export function recordNotificationFailure(
 
 export function beginNotificationAttempt(db: Db, id: string): boolean {
   return (
-    db
-      .prepare(
-        `UPDATE workflow_runs SET
+    statement(
+      db,
+      `UPDATE workflow_runs SET
            notification_attempt_count = notification_attempt_count + 1,
            notification_next_attempt_at = NULL
          WHERE id = ? AND notification_sent = 0`,
-      )
-      .run(id).changes === 1
+    ).run(id).changes === 1
   );
 }
 
 export function recoverInterruptedRuns(db: Db): string[] {
   return db.transaction(() => {
-    const childRows = db
-      .prepare(
-        `SELECT calls.child_thread_id AS childThreadId
+    const childRows = statement(
+      db,
+      `SELECT calls.child_thread_id AS childThreadId
          FROM workflow_calls calls
          JOIN workflow_runs runs ON runs.id = calls.run_id
          WHERE runs.status = 'running' AND calls.status = 'running'
            AND calls.child_thread_id IS NOT NULL`,
-      )
-      .all() as Array<{ childThreadId: string }>;
+    ).all() as Array<{ childThreadId: string }>;
     const now = Date.now();
-    db.prepare(
+    statement(
+      db,
       `UPDATE workflow_calls SET status = 'succeeded', error = NULL, finished_at = ?
        WHERE status = 'running' AND result_json IS NOT NULL AND run_id IN (
          SELECT id FROM workflow_runs WHERE status = 'running'
        )`,
     ).run(now);
-    db.prepare(
+    statement(
+      db,
       `UPDATE workflow_calls SET status = 'cancelled', error = 'Plugin restarted', finished_at = ?
        WHERE status IN ('queued', 'running') AND run_id IN (
          SELECT id FROM workflow_runs WHERE status = 'running'
        )`,
     ).run(now);
-    db.prepare(
+    statement(
+      db,
       `UPDATE workflow_runs SET status = 'queued', error = NULL, finished_at = NULL
        WHERE status = 'running'`,
     ).run();
@@ -482,9 +500,10 @@ export function getCall(
   callIndex: number,
 ): WorkflowCallRow | null {
   return optionalCall(
-    db
-      .prepare(`${CALL_SELECT} WHERE run_id = ? AND call_index = ?`)
-      .get(runId, callIndex),
+    statement(db, `${CALL_SELECT} WHERE run_id = ? AND call_index = ?`).get(
+      runId,
+      callIndex,
+    ),
   );
 }
 
@@ -493,13 +512,12 @@ export function getCallByChildThread(
   threadId: string,
 ): WorkflowCallRow | null {
   return optionalCall(
-    db.prepare(`${CALL_SELECT} WHERE child_thread_id = ?`).get(threadId),
+    statement(db, `${CALL_SELECT} WHERE child_thread_id = ?`).get(threadId),
   );
 }
 
 export function listCallsForRun(db: Db, runId: string): WorkflowCallRow[] {
-  return db
-    .prepare(`${CALL_SELECT} WHERE run_id = ? ORDER BY call_index`)
+  return statement(db, `${CALL_SELECT} WHERE run_id = ? ORDER BY call_index`)
     .all(runId)
     .map(callRow);
 }
@@ -508,36 +526,35 @@ export function listCallsForRunPage(
   db: Db,
   args: { runId: string; afterCallIndex: number; limit: number },
 ): WorkflowCallRow[] {
-  return db
-    .prepare(
-      `${CALL_SELECT} WHERE run_id = ? AND call_index > ?
+  return statement(
+    db,
+    `${CALL_SELECT} WHERE run_id = ? AND call_index > ?
        ORDER BY call_index LIMIT ?`,
-    )
+  )
     .all(args.runId, args.afterCallIndex, args.limit)
     .map(callRow);
 }
 
 export function countCallsForRun(db: Db, runId: string): WorkflowCallCounts {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS total,
+  const row = statement(
+    db,
+    `SELECT COUNT(*) AS total,
        COALESCE(SUM(status = 'queued'), 0) AS queued,
        COALESCE(SUM(status = 'running'), 0) AS running,
        COALESCE(SUM(status = 'succeeded'), 0) AS succeeded,
        COALESCE(SUM(status = 'failed'), 0) AS failed,
        COALESCE(SUM(status = 'cancelled'), 0) AS cancelled
        FROM workflow_calls WHERE run_id = ?`,
-    )
-    .get(runId) as WorkflowCallCounts;
+  ).get(runId) as WorkflowCallCounts;
   return row;
 }
 
 export function listRunningCalls(db: Db): WorkflowCallRow[] {
-  return db
-    .prepare(
-      `${CALL_SELECT} WHERE status = 'running' AND child_thread_id IS NOT NULL
+  return statement(
+    db,
+    `${CALL_SELECT} WHERE status = 'running' AND child_thread_id IS NOT NULL
        ORDER BY COALESCE(last_activity_at, started_at), id`,
-    )
+  )
     .all()
     .map(callRow);
 }
@@ -547,12 +564,12 @@ export function listTimedOutRuns(
   now: number,
   limit: number,
 ): WorkflowRunRow[] {
-  return db
-    .prepare(
-      `${RUN_SELECT} WHERE status = 'running' AND started_at IS NOT NULL
+  return statement(
+    db,
+    `${RUN_SELECT} WHERE status = 'running' AND started_at IS NOT NULL
        AND started_at + json_extract(settings_json, '$.totalRunTimeoutMs') <= ?
        ORDER BY started_at, id LIMIT ?`,
-    )
+  )
     .all(now, limit)
     .map(runRow);
 }
@@ -577,7 +594,8 @@ export function startCall(
     const existing = getCall(db, args.runId, args.callIndex);
     const now = Date.now();
     const id = existing?.id ?? `wfc_${randomUUID()}`;
-    db.prepare(
+    statement(
+      db,
       `INSERT INTO workflow_calls (
        id, run_id, call_index, cache_key, prompt, options_json,
        resolved_provider, resolved_model, resolved_reasoning_level,
@@ -625,7 +643,8 @@ export function startCall(
 }
 
 export function markCallReplayedSameRun(db: Db, callId: string): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_calls SET replay_source = 'same-run'
      WHERE id = ? AND status = 'succeeded' AND result_json IS NOT NULL`,
   ).run(callId);
@@ -636,16 +655,16 @@ export function attachCallThread(
   callId: string,
   threadId: string,
 ): boolean {
-  db.prepare(`INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
+  statement(
+    db,
+    `INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
     SELECT ?, calls.run_id, calls.id, runs.origin_thread_id FROM workflow_calls calls
-    JOIN workflow_runs runs ON runs.id = calls.run_id WHERE calls.id = ?`).run(
-    threadId,
-    callId,
-  );
+    JOIN workflow_runs runs ON runs.id = calls.run_id WHERE calls.id = ?`,
+  ).run(threadId, callId);
   return (
-    db
-      .prepare(
-        `UPDATE workflow_calls SET status = 'running', child_thread_id = ?,
+    statement(
+      db,
+      `UPDATE workflow_calls SET status = 'running', child_thread_id = ?,
          error = NULL, started_at = ?, last_activity_at = ?
        WHERE id = ? AND status = 'queued'
          AND EXISTS (
@@ -653,8 +672,7 @@ export function attachCallThread(
            WHERE workflow_runs.id = workflow_calls.run_id
              AND workflow_runs.status = 'running'
          )`,
-      )
-      .run(threadId, Date.now(), Date.now(), callId).changes === 1
+    ).run(threadId, Date.now(), Date.now(), callId).changes === 1
   );
 }
 
@@ -663,17 +681,16 @@ export function queueCallProviderRetry(
   callId: string,
   error: string,
 ): WorkflowCallRow | null {
-  const changed = db
-    .prepare(
-      `UPDATE workflow_calls SET status = 'queued', child_thread_id = NULL,
+  const changed = statement(
+    db,
+    `UPDATE workflow_calls SET status = 'queued', child_thread_id = NULL,
        provider_retry_attempts = provider_retry_attempts + 1,
        error = ?, started_at = NULL, last_activity_at = ?, finished_at = NULL
        WHERE id = ? AND status IN ('queued', 'failed') AND result_json IS NULL`,
-    )
-    .run(error, Date.now(), callId).changes;
+  ).run(error, Date.now(), callId).changes;
   return changed === 0
     ? null
-    : optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId));
+    : optionalCall(statement(db, `${CALL_SELECT} WHERE id = ?`).get(callId));
 }
 
 export function storeStructuredResult(
@@ -683,16 +700,15 @@ export function storeStructuredResult(
 ): StoreStructuredResultOutcome {
   const resultJson = JSON.stringify(result);
   return db.transaction(() => {
-    const changed = db
-      .prepare(
-        `UPDATE workflow_calls SET result_json = ?, last_activity_at = ?
+    const changed = statement(
+      db,
+      `UPDATE workflow_calls SET result_json = ?, last_activity_at = ?
          WHERE id = ? AND status = 'running' AND result_json IS NULL`,
-      )
-      .run(resultJson, Date.now(), callId).changes;
+    ).run(resultJson, Date.now(), callId).changes;
     if (changed === 1) return "accepted";
 
     const row = optionalCall(
-      db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+      statement(db, `${CALL_SELECT} WHERE id = ?`).get(callId),
     );
     if (row?.resultJson === null || row === null) return "inactive";
     try {
@@ -706,16 +722,15 @@ export function storeStructuredResult(
 }
 
 export function incrementRepairAttempts(db: Db, callId: string): number | null {
-  const changed = db
-    .prepare(
-      `UPDATE workflow_calls SET repair_attempts = repair_attempts + 1,
+  const changed = statement(
+    db,
+    `UPDATE workflow_calls SET repair_attempts = repair_attempts + 1,
        last_activity_at = ?
        WHERE id = ? AND status = 'running' AND result_json IS NULL`,
-    )
-    .run(Date.now(), callId).changes;
+  ).run(Date.now(), callId).changes;
   if (changed === 0) return null;
   const row = optionalCall(
-    db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+    statement(db, `${CALL_SELECT} WHERE id = ?`).get(callId),
   );
   if (row === null) throw new Error(`Unknown workflow call ${callId}`);
   return row.repairAttempts;
@@ -730,7 +745,8 @@ export function settleCall(
     error: string | null;
   },
 ): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_calls SET status = @status,
        result_json = COALESCE(result_json, @resultJson), error = @error,
        finished_at = @now WHERE id = @id AND status IN ('queued', 'running')`,
@@ -772,13 +788,13 @@ function equalJsonValues(left: JsonValue, right: JsonValue): boolean {
 export function cancelRun(db: Db, id: string): boolean {
   return db.transaction(() => {
     const now = Date.now();
-    const changed = db
-      .prepare(
-        `UPDATE workflow_runs SET status = 'cancelled', error = 'Cancelled', finished_at = ?
+    const changed = statement(
+      db,
+      `UPDATE workflow_runs SET status = 'cancelled', error = 'Cancelled', finished_at = ?
          WHERE id = ? AND status IN ('queued', 'running')`,
-      )
-      .run(now, id).changes;
-    db.prepare(
+    ).run(now, id).changes;
+    statement(
+      db,
       `UPDATE workflow_calls SET status = 'cancelled', error = 'Cancelled', finished_at = ?
        WHERE run_id = ? AND status IN ('queued', 'running')`,
     ).run(now, id);
@@ -788,13 +804,12 @@ export function cancelRun(db: Db, id: string): boolean {
 
 export function activeChildThreadsForRun(db: Db, runId: string): string[] {
   return (
-    db
-      .prepare(
-        `SELECT child_thread_id AS childThreadId FROM workflow_calls
+    statement(
+      db,
+      `SELECT child_thread_id AS childThreadId FROM workflow_calls
          WHERE run_id = ? AND status IN ('queued', 'running')
            AND child_thread_id IS NOT NULL`,
-      )
-      .all(runId) as Array<{ childThreadId: string }>
+    ).all(runId) as Array<{ childThreadId: string }>
   ).map((row) => row.childThreadId);
 }
 
@@ -803,13 +818,13 @@ export function listPendingNotificationRuns(
   now = Date.now(),
   limit = 100,
 ): WorkflowRunRow[] {
-  return db
-    .prepare(
-      `${RUN_SELECT} WHERE notification_sent = 0
+  return statement(
+    db,
+    `${RUN_SELECT} WHERE notification_sent = 0
        AND status IN ('succeeded', 'failed', 'cancelled')
        AND (notification_next_attempt_at IS NULL OR notification_next_attempt_at <= ?)
        ORDER BY finished_at, id LIMIT ?`,
-    )
+  )
     .all(now, limit)
     .map(runRow);
 }
@@ -856,14 +871,15 @@ export function listExpiredTerminalRuns(
   now: number,
   limit: number,
 ): ExpiredTerminalRuns {
-  const due = db
-    .prepare(`SELECT id FROM workflow_runs INDEXED BY workflow_runs_expiry_idx
+  const due = statement(
+    db,
+    `SELECT id FROM workflow_runs INDEXED BY workflow_runs_expiry_idx
     WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1
-    AND finished_at + json_extract(settings_json, '$.retentionDays') * 86400000 <= ? LIMIT 1`)
-    .get(now);
+    AND finished_at + json_extract(settings_json, '$.retentionDays') * 86400000 <= ? LIMIT 1`,
+  ).get(now);
   if (!due) return { runIds: [] };
   const runIds = (
-    db.prepare(EXPIRED_TERMINAL_RUN_IDS_SQL).all(now, now, limit) as Array<{
+    statement(db, EXPIRED_TERMINAL_RUN_IDS_SQL).all(now, now, limit) as Array<{
       id: string;
     }>
   ).map((row) => row.id);
@@ -891,16 +907,20 @@ export function ownWorker(
   callId: string,
   originThreadId: string,
 ): void {
-  db.prepare(`INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
-    VALUES (?, ?, ?, ?)`).run(threadId, runId, callId, originThreadId);
+  statement(
+    db,
+    `INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
+    VALUES (?, ?, ?, ?)`,
+  ).run(threadId, runId, callId, originThreadId);
 }
 
 export function workerOrigins(db: Db, now: number): string[] {
   return (
-    db
-      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running')
-    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL AND next_cleanup_at <= ?`)
-      .all(now) as Array<{ id: string }>
+    statement(
+      db,
+      `SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running')
+    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL AND next_cleanup_at <= ?`,
+    ).all(now) as Array<{ id: string }>
   ).map((row) => row.id);
 }
 
@@ -915,18 +935,36 @@ export function retiredWorkers(
   db: Db,
   now: number,
 ): Array<{ threadId: string; callId: string }> {
-  return db
-    .prepare(`SELECT workers.thread_id AS threadId, workers.call_id AS callId
+  return statement(
+    db,
+    `SELECT workers.thread_id AS threadId, workers.call_id AS callId
     ${RETIRED_WORKER_FROM} AND workers.next_cleanup_at <= ?
-    ORDER BY workers.next_cleanup_at, workers.thread_id LIMIT 100`)
-    .all(now) as Array<{ threadId: string; callId: string }>;
+    ORDER BY workers.next_cleanup_at, workers.thread_id LIMIT 100`,
+  ).all(now) as Array<{ threadId: string; callId: string }>;
+}
+
+export function nextMaintenanceDueAt(db: Db): number | null {
+  const row = statement(
+    db,
+    `SELECT MIN(due) AS due FROM (
+       SELECT MIN(started_at + json_extract(settings_json, '$.totalRunTimeoutMs')) AS due
+       FROM workflow_runs WHERE status = 'running' AND started_at IS NOT NULL
+       UNION ALL
+       SELECT MIN(COALESCE(notification_next_attempt_at, 0)) FROM workflow_runs
+       WHERE notification_sent = 0 AND status IN ('succeeded', 'failed', 'cancelled')
+       UNION ALL
+       SELECT MIN(workers.next_cleanup_at) ${RETIRED_WORKER_FROM}
+     )`,
+  ).get() as { due: number | null };
+  return row.due;
 }
 
 export function isWorkerRetired(db: Db, threadId: string): boolean {
   return (
-    db
-      .prepare(`SELECT 1 ${RETIRED_WORKER_FROM} AND workers.thread_id = ?`)
-      .get(threadId) !== undefined
+    statement(
+      db,
+      `SELECT 1 ${RETIRED_WORKER_FROM} AND workers.thread_id = ?`,
+    ).get(threadId) !== undefined
   );
 }
 
@@ -935,20 +973,24 @@ export function recordWorkerCleanup(
   threadId: string,
   archived: boolean,
 ): void {
-  db.prepare(
+  statement(
+    db,
     `UPDATE workflow_workers SET archived_at = ?,
       next_cleanup_at = ? + min(60000, 1000 << min(cleanup_attempts, 6)),
       cleanup_attempts = cleanup_attempts + 1 WHERE thread_id = ?`,
   ).run(archived ? Date.now() : null, Date.now(), threadId);
-  db.prepare(`DELETE FROM workflow_workers WHERE archived_at IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE id = workflow_workers.run_id)`).run();
+  statement(
+    db,
+    `DELETE FROM workflow_workers WHERE archived_at IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM workflow_runs WHERE id = workflow_workers.run_id)`,
+  ).run();
 }
 
 export function hasWorker(db: Db, threadId: string): boolean {
   return (
-    db
-      .prepare(`SELECT 1 FROM workflow_workers WHERE thread_id = ?`)
-      .get(threadId) !== undefined
+    statement(db, `SELECT 1 FROM workflow_workers WHERE thread_id = ?`).get(
+      threadId,
+    ) !== undefined
   );
 }
 
@@ -956,8 +998,11 @@ export function abandonOriginNotifications(
   db: Db,
   originThreadId: string,
 ): void {
-  db.prepare(`UPDATE workflow_runs SET notification_sent = 1,
+  statement(
+    db,
+    `UPDATE workflow_runs SET notification_sent = 1,
     notification_outcome = 'abandoned', notification_next_attempt_at = NULL,
     notification_error = 'Origin thread is archived or deleted'
-    WHERE origin_thread_id = ? AND notification_sent = 0`).run(originThreadId);
+    WHERE origin_thread_id = ? AND notification_sent = 0`,
+  ).run(originThreadId);
 }

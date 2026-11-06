@@ -184,7 +184,8 @@ export function resolveCreateThreadExecutionDefaults(
   const disabled = registry.disabledProviderIds();
   const storedProviderId =
     args.storedDefaults !== null &&
-    !disabled.has(args.storedDefaults.providerId)
+    !disabled.has(args.storedDefaults.providerId) &&
+    registry.get(args.storedDefaults.providerId) !== null
       ? args.storedDefaults.providerId
       : undefined;
   const isProductDefault =
@@ -204,7 +205,18 @@ export function resolveCreateThreadExecutionDefaults(
     );
   }
   const registration = registry.get(providerId);
-  if (registration !== null && !registration.info.available) {
+  if (registration === null) {
+    const registeredProviderIds = registry
+      .list()
+      .map((provider) => provider.info.id)
+      .join(", ");
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Unknown provider "${providerId}". Registered provider ids: ${registeredProviderIds || "(none)"}.`,
+    );
+  }
+  if (!registration.info.available) {
     throw new ApiError(
       409,
       "provider_unavailable",
@@ -283,6 +295,29 @@ async function resolveProjectDefaultHostId(
   return requireConnectedPrimaryHostId(deps);
 }
 
+async function projectSourceHasWorktreeBase(
+  deps: WorkSessionDeps,
+  hostId: string,
+  path: string,
+): Promise<boolean> {
+  const { checkout } = await callHostRetryableOnlineRpc(deps, {
+    hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: { type: "host.inspect_git_checkout", path },
+  });
+  if (checkout.kind === "branch") return true;
+  const inspection = await callHostRetryableOnlineRpc(deps, {
+    hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "host.inspect_git_source",
+      path,
+      remoteRefresh: "background",
+    },
+  });
+  return resolveDefaultWorktreeBaseBranch(inspection) !== null;
+}
+
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
   args: { projectId: string },
@@ -306,17 +341,7 @@ export async function resolveProjectDefaultThreadEnvironment(
     hostId,
     projectId: args.projectId,
   });
-  const checkout = await callHostRetryableOnlineRpc(deps, {
-    hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "host.inspect_git_source",
-      path: source.path,
-      remoteRefresh: "background",
-    },
-  });
-  const baseBranch = resolveDefaultWorktreeBaseBranch(checkout);
-  if (baseBranch === null) {
+  if (!(await projectSourceHasWorktreeBase(deps, hostId, source.path))) {
     return {
       type: "provider",
       environmentProviderId: requireDefaultEnvironmentProvider(
@@ -333,7 +358,7 @@ export async function resolveProjectDefaultThreadEnvironment(
       DEFAULT_ENVIRONMENT_PROVIDER_ID.gitWorktree,
     ),
     machine: { type: "existing", hostId },
-    inputs: worktreeProviderInputs({ kind: "named", name: baseBranch }),
+    inputs: worktreeProviderInputs({ kind: "default" }),
   };
 }
 

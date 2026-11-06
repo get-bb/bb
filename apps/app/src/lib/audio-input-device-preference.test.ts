@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildAudioInputConstraints,
   parsePreferredAudioInputDeviceId,
   requestAudioInputStream,
 } from "./audio-input-device-preference";
@@ -13,13 +12,6 @@ describe("audio input device preference", () => {
     expect(parsePreferredAudioInputDeviceId("studio-mic", null)).toBe(
       "studio-mic",
     );
-  });
-
-  it("builds default and exact-device getUserMedia constraints", () => {
-    expect(buildAudioInputConstraints(null)).toEqual({ audio: true });
-    expect(buildAudioInputConstraints("studio-mic")).toEqual({
-      audio: { deviceId: { exact: "studio-mic" } },
-    });
   });
 });
 

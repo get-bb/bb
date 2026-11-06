@@ -491,6 +491,24 @@ export type PluginExtensionInteractionResolution = z.infer<
   typeof pluginExtensionInteractionResolutionSchema
 >;
 
+const resolutionDiscriminatorKeys = new Set<PropertyKey>(["decision", "kind"]);
+
+function pendingInteractionResolutionError(issue: z.core.$ZodRawIssue): string {
+  if (issue.code !== "invalid_union") {
+    return approvalDecisionDiscriminatorError;
+  }
+  for (const branch of issue.errors) {
+    const first = branch[0];
+    if (
+      first !== undefined &&
+      !resolutionDiscriminatorKeys.has(first.path[0] ?? "")
+    ) {
+      return first.message;
+    }
+  }
+  return approvalDecisionDiscriminatorError;
+}
+
 export const pendingInteractionResolutionSchema = z.union(
   [
     approvalPendingInteractionResolutionSchema,
@@ -498,7 +516,7 @@ export const pendingInteractionResolutionSchema = z.union(
     pluginPendingInteractionResolutionSchema,
     pluginExtensionInteractionResolutionSchema,
   ],
-  approvalDecisionDiscriminatorError,
+  { error: pendingInteractionResolutionError },
 );
 export type PendingInteractionResolution = z.infer<
   typeof pendingInteractionResolutionSchema

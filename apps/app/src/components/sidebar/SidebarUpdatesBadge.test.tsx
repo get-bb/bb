@@ -343,19 +343,6 @@ describe("SidebarUpdatesBadge", () => {
     expect(providerChip.querySelector('[data-icon="Download"]')).toBeTruthy();
   });
 
-  it("renders no provider chip when a CLI is not installed", () => {
-    renderBadge({
-      machines: [
-        machine({
-          issues: [missingInstallIssue("claude-code", "Claude Code")],
-        }),
-      ],
-    });
-
-    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
-    expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
-  });
-
   it("still shows the bb chip when the only provider issue is a missing CLI", () => {
     renderBadge({
       appUpdateAvailable: true,

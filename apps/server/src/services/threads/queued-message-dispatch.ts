@@ -12,6 +12,7 @@ import {
   listQueuedThreadMessagesByWaitHolder,
   listQueuedThreadMessagesWaitingOnKind,
   listRetryableFailedQueuedThreadMessages,
+  listThreadIdsWithAppUpdateQueueWaits,
   listThreadIdsWithHostOfflineQueueWaits,
 } from "@bb/db";
 import {
@@ -46,6 +47,7 @@ export type QueuedMessageDispatchWake =
   | { kind: "interaction-settled"; threadId: string }
   | { kind: "edit-released"; queuedMessageId: string; threadId: string }
   | { kind: "host-connected"; hostId: string }
+  | { kind: "app-update-released" }
   | { kind: "time-reached"; now: number }
   | { kind: "plugin-recheck" }
   | { kind: "plugin-unregistered"; pluginId: string }
@@ -129,6 +131,7 @@ function dispatchWakeContext(
     case "failed-retry":
       return { now: wake.now, wake: wake.kind };
     case "orphaned-plugin-recovery":
+    case "app-update-released":
       return { wake: wake.kind };
     case "time-reached":
       return { now: wake.now, wake: wake.kind };
@@ -256,6 +259,20 @@ async function executePreparedQueuedMessageDispatch(
       )) {
         for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
           kind: "host-offline",
+          threadId,
+        })) {
+          await attemptAutomaticQueuedMessage(deps, row, {
+            now: Date.now(),
+            respectRequeuePacing: false,
+            retryingFailure: false,
+          });
+        }
+      }
+      return;
+    case "app-update-released":
+      for (const threadId of listThreadIdsWithAppUpdateQueueWaits(deps.db)) {
+        for (const row of listQueuedThreadMessagesWaitingOnKind(deps.db, {
+          kind: "app-update",
           threadId,
         })) {
           await attemptAutomaticQueuedMessage(deps, row, {

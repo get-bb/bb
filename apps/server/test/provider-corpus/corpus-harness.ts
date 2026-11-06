@@ -29,6 +29,7 @@ import { resolveProviderPlanCommand } from "../../src/services/providers/provide
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
 import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
 import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
+import { clearTimelineProjectionFolds } from "../../src/services/threads/timeline-projection-fold.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
   shortenTimelineResponseOutputs,
@@ -201,6 +202,7 @@ export function buildRouteTimelinePage(
 export function clearCrossBuildTimelineCaches(db: DbConnection): void {
   clearStoredEventDecodeCache(db);
   clearTimelineSelectionMemo(db);
+  clearTimelineProjectionFolds(db);
 }
 
 export function selectionWasReused(

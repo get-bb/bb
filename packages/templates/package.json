@@ -30,15 +30,15 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "gray-matter": "^4.0.3",
-    "handlebars": "^4.7.8",
-    "semver": "^7.7.4"
+    "handlebars": "^4.7.10",
+    "semver": "^7.8.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
-    "@types/semver": "^7.7.1",
+    "@types/node": "^22.20.5",
+    "@types/semver": "^7.8.0",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.12"
   }
 }

@@ -29,6 +29,7 @@ import {
   OAUTH_ROTATED_REFRESH_RETENTION_MS,
   isWellFormedOAuthCode,
   isWellFormedOAuthRefreshToken,
+  first,
 } from "@bb/connect-db";
 import type { Env } from "./env.js";
 
@@ -463,17 +464,19 @@ async function validateAuthorization(
   if (parsedResource === null) {
     return fail("invalid_target", "resource must be a bb server MCP URL");
   }
-  const target = await db
-    .select()
-    .from(server)
-    .where(
-      and(
-        eq(server.subdomain, parsedResource.handle),
-        eq(server.userId, userId),
-        isNull(server.revokedAt),
-      ),
-    )
-    .get();
+  const target = await first(
+    db
+      .select()
+      .from(server)
+      .where(
+        and(
+          eq(server.subdomain, parsedResource.handle),
+          eq(server.userId, userId),
+          isNull(server.revokedAt),
+        ),
+      )
+      .limit(1),
+  );
   if (!target) {
     return fail(
       "invalid_target",
@@ -546,26 +549,20 @@ export async function completeOAuthAuthorization(
   }
   const now = (deps.now ?? Date.now)();
   const code = randomSecret(OAUTH_CODE_PREFIX);
-  await db
-    .delete(oauthCode)
-    .where(lt(oauthCode.expiresAt, new Date(now)))
-    .run();
-  await db
-    .insert(oauthCode)
-    .values({
-      codeHash: await sha256Hex(code),
-      userId,
-      serverId: validated.server.id,
-      clientId: validated.client.clientId,
-      clientName: validated.client.clientName,
-      redirectUri: validated.redirectUri,
-      resource: validated.resource,
-      scope: MCP_SCOPE,
-      codeChallenge: validated.codeChallenge,
-      expiresAt: new Date(now + OAUTH_CODE_TTL_MS),
-      createdAt: new Date(now),
-    })
-    .run();
+  await db.delete(oauthCode).where(lt(oauthCode.expiresAt, new Date(now)));
+  await db.insert(oauthCode).values({
+    codeHash: await sha256Hex(code),
+    userId,
+    serverId: validated.server.id,
+    clientId: validated.client.clientId,
+    clientName: validated.client.clientName,
+    redirectUri: validated.redirectUri,
+    resource: validated.resource,
+    scope: MCP_SCOPE,
+    codeChallenge: validated.codeChallenge,
+    expiresAt: new Date(now + OAUTH_CODE_TTL_MS),
+    createdAt: new Date(now),
+  });
   return authorizationRedirect(
     validated.redirectUri,
     validated.issuer,
@@ -583,16 +580,13 @@ async function writeAudit(
   detail: Record<string, string>,
   now: number,
 ): Promise<void> {
-  await db
-    .insert(auditLog)
-    .values({
-      id: crypto.randomUUID(),
-      userId,
-      action,
-      detail: JSON.stringify(detail),
-      createdAt: new Date(now),
-    })
-    .run();
+  await db.insert(auditLog).values({
+    id: crypto.randomUUID(),
+    userId,
+    action,
+    detail: JSON.stringify(detail),
+    createdAt: new Date(now),
+  });
 }
 
 async function revokeGrantRow(
@@ -604,13 +598,11 @@ async function revokeGrantRow(
   const revoked = await db
     .update(oauthGrant)
     .set({ revokedAt: new Date(now) })
-    .where(and(eq(oauthGrant.id, grant.id), isNull(oauthGrant.revokedAt)))
-    .run();
+    .where(and(eq(oauthGrant.id, grant.id), isNull(oauthGrant.revokedAt)));
   if (rowsChanged(revoked) === 0) return false;
   await db
     .delete(oauthRefreshToken)
-    .where(eq(oauthRefreshToken.grantId, grant.id))
-    .run();
+    .where(eq(oauthRefreshToken.grantId, grant.id));
   await writeAudit(
     db,
     grant.userId,
@@ -663,8 +655,7 @@ export async function listOAuthGrantsForUser(
     .from(oauthGrant)
     .innerJoin(server, eq(server.id, oauthGrant.serverId))
     .where(and(eq(oauthGrant.userId, userId), isNull(oauthGrant.revokedAt)))
-    .orderBy(desc(oauthGrant.createdAt))
-    .all();
+    .orderBy(desc(oauthGrant.createdAt));
   return rows.map(toGrantView);
 }
 
@@ -673,11 +664,13 @@ export async function revokeOAuthGrantForUser(
   userId: string,
   grantId: string,
 ): Promise<boolean> {
-  const grant = await db
-    .select()
-    .from(oauthGrant)
-    .where(and(eq(oauthGrant.id, grantId), eq(oauthGrant.userId, userId)))
-    .get();
+  const grant = await first(
+    db
+      .select()
+      .from(oauthGrant)
+      .where(and(eq(oauthGrant.id, grantId), eq(oauthGrant.userId, userId)))
+      .limit(1),
+  );
   if (!grant) return false;
   return revokeGrantRow(db, grant, "user", Date.now());
 }
@@ -704,8 +697,7 @@ export async function listOAuthGrantsForCredential(
         isNull(oauthGrant.revokedAt),
       ),
     )
-    .orderBy(desc(oauthGrant.createdAt))
-    .all();
+    .orderBy(desc(oauthGrant.createdAt));
   return { status: 200, body: { grants: rows.map(toGrantView) } };
 }
 
@@ -720,17 +712,19 @@ export async function revokeOAuthGrantForCredential(
   if (typeof input.grantId !== "string" || input.grantId === "") {
     return { status: 400, body: { error: "invalid-request" } };
   }
-  const grant = await db
-    .select()
-    .from(oauthGrant)
-    .where(
-      and(
-        eq(oauthGrant.id, input.grantId),
-        eq(oauthGrant.serverId, resolved.server.id),
-        eq(oauthGrant.userId, resolved.userId),
-      ),
-    )
-    .get();
+  const grant = await first(
+    db
+      .select()
+      .from(oauthGrant)
+      .where(
+        and(
+          eq(oauthGrant.id, input.grantId),
+          eq(oauthGrant.serverId, resolved.server.id),
+          eq(oauthGrant.userId, resolved.userId),
+        ),
+      )
+      .limit(1),
+  );
   if (!grant) return { status: 200, body: { revoked: false } };
   const revoked = await revokeGrantRow(
     db,
@@ -772,17 +766,19 @@ async function activeServerForGrant(
   serverId: string,
   userId: string,
 ): Promise<boolean> {
-  const row = await db
-    .select({ id: server.id })
-    .from(server)
-    .where(
-      and(
-        eq(server.id, serverId),
-        eq(server.userId, userId),
-        isNull(server.revokedAt),
-      ),
-    )
-    .get();
+  const row = await first(
+    db
+      .select({ id: server.id })
+      .from(server)
+      .where(
+        and(
+          eq(server.id, serverId),
+          eq(server.userId, userId),
+          isNull(server.revokedAt),
+        ),
+      )
+      .limit(1),
+  );
   return row !== undefined;
 }
 
@@ -806,15 +802,12 @@ async function insertRefreshToken(
   tokenHash: string,
   now: number,
 ): Promise<void> {
-  await db
-    .insert(oauthRefreshToken)
-    .values({
-      tokenHash,
-      grantId,
-      expiresAt: new Date(now + OAUTH_REFRESH_TOKEN_TTL_MS),
-      createdAt: new Date(now),
-    })
-    .run();
+  await db.insert(oauthRefreshToken).values({
+    tokenHash,
+    grantId,
+    expiresAt: new Date(now + OAUTH_REFRESH_TOKEN_TTL_MS),
+    createdAt: new Date(now),
+  });
 }
 
 async function tokenResponse(
@@ -871,8 +864,7 @@ async function trimGrantsForClient(
     )
     .orderBy(desc(oauthGrant.createdAt), desc(oauthGrant.id))
     .limit(OAUTH_MAX_GRANTS_PER_CLIENT)
-    .offset(OAUTH_MAX_GRANTS_PER_CLIENT - 1)
-    .all();
+    .offset(OAUTH_MAX_GRANTS_PER_CLIENT - 1);
   for (const earlier of excess) {
     await revokeGrantRow(db, earlier, "superseded", now);
   }
@@ -886,8 +878,7 @@ async function trimGrantsForClient(
           new Date(now - OAUTH_REVOKED_GRANT_RETENTION_MS),
         ),
       ),
-    )
-    .run();
+    );
 }
 
 async function exchangeAuthorizationCode(
@@ -910,17 +901,18 @@ async function exchangeAuthorizationCode(
     tokenError("invalid_grant", "authorization code is invalid or expired");
   if (!isWellFormedOAuthCode(code)) return invalid();
   const codeHash = await sha256Hex(code);
-  const known = await db
-    .select({ codeHash: oauthCode.codeHash })
-    .from(oauthCode)
-    .where(eq(oauthCode.codeHash, codeHash))
-    .get();
+  const known = await first(
+    db
+      .select({ codeHash: oauthCode.codeHash })
+      .from(oauthCode)
+      .where(eq(oauthCode.codeHash, codeHash))
+      .limit(1),
+  );
   if (!known) return invalid();
   const consumed = await db
     .delete(oauthCode)
     .where(eq(oauthCode.codeHash, codeHash))
-    .returning()
-    .all();
+    .returning();
   const row = consumed[0];
   if (!row) return invalid();
   if (row.expiresAt.getTime() <= now) return invalid();
@@ -948,7 +940,7 @@ async function exchangeAuthorizationCode(
     scope: row.scope,
     createdAt: new Date(now),
   };
-  await db.insert(oauthGrant).values(grant).run();
+  await db.insert(oauthGrant).values(grant);
   await writeAudit(
     db,
     grant.userId,
@@ -1017,8 +1009,7 @@ async function rotateRefreshToken(
       expiresAt: new Date(now + OAUTH_REFRESH_TOKEN_TTL_MS),
       createdAt: new Date(now),
     })
-    .onConflictDoNothing()
-    .run();
+    .onConflictDoNothing();
   if (presented.rotatedAt === null) {
     await db
       .update(oauthRefreshToken)
@@ -1028,8 +1019,7 @@ async function rotateRefreshToken(
           eq(oauthRefreshToken.tokenHash, presented.tokenHash),
           isNull(oauthRefreshToken.rotatedAt),
         ),
-      )
-      .run();
+      );
   }
   return { outcome: "rotated", refreshToken };
 }
@@ -1052,12 +1042,14 @@ async function exchangeRefreshToken(
     tokenError("invalid_grant", "refresh token is invalid or expired");
   if (!isWellFormedOAuthRefreshToken(refreshToken)) return invalid();
   const tokenHash = await sha256Hex(refreshToken);
-  const row = await db
-    .select({ token: oauthRefreshToken, grant: oauthGrant })
-    .from(oauthRefreshToken)
-    .innerJoin(oauthGrant, eq(oauthGrant.id, oauthRefreshToken.grantId))
-    .where(eq(oauthRefreshToken.tokenHash, tokenHash))
-    .get();
+  const row = await first(
+    db
+      .select({ token: oauthRefreshToken, grant: oauthGrant })
+      .from(oauthRefreshToken)
+      .innerJoin(oauthGrant, eq(oauthGrant.id, oauthRefreshToken.grantId))
+      .where(eq(oauthRefreshToken.tokenHash, tokenHash))
+      .limit(1),
+  );
   if (!row) return invalid();
   const { token, grant } = row;
   if (token.expiresAt.getTime() <= now) return invalid();
@@ -1073,8 +1065,7 @@ async function exchangeRefreshToken(
     if (!(await revokeGrantRow(db, grant, "reuse", now))) {
       await db
         .delete(oauthRefreshToken)
-        .where(eq(oauthRefreshToken.grantId, grant.id))
-        .run();
+        .where(eq(oauthRefreshToken.grantId, grant.id));
     }
     return invalid();
   }
@@ -1091,13 +1082,11 @@ async function exchangeRefreshToken(
           ),
         ),
       ),
-    )
-    .run();
+    );
   await db
     .update(oauthGrant)
     .set({ lastUsedAt: new Date(now) })
-    .where(eq(oauthGrant.id, grant.id))
-    .run();
+    .where(eq(oauthGrant.id, grant.id));
   return tokenResponse(env, grant, rotation.refreshToken, now);
 }
 
@@ -1136,21 +1125,25 @@ async function grantForPresentedToken(
 ): Promise<GrantRow | undefined> {
   if (token.startsWith(OAUTH_REFRESH_TOKEN_PREFIX)) {
     if (!isWellFormedOAuthRefreshToken(token)) return undefined;
-    const row = await db
-      .select({ grant: oauthGrant })
-      .from(oauthRefreshToken)
-      .innerJoin(oauthGrant, eq(oauthGrant.id, oauthRefreshToken.grantId))
-      .where(eq(oauthRefreshToken.tokenHash, await sha256Hex(token)))
-      .get();
+    const row = await first(
+      db
+        .select({ grant: oauthGrant })
+        .from(oauthRefreshToken)
+        .innerJoin(oauthGrant, eq(oauthGrant.id, oauthRefreshToken.grantId))
+        .where(eq(oauthRefreshToken.tokenHash, await sha256Hex(token)))
+        .limit(1),
+    );
     return row?.grant;
   }
   const claims = await verifyMcpAccessToken(token, env.BETTER_AUTH_SECRET, now);
   if (claims === null) return undefined;
-  return db
-    .select()
-    .from(oauthGrant)
-    .where(eq(oauthGrant.id, claims.grantId))
-    .get();
+  return first(
+    db
+      .select()
+      .from(oauthGrant)
+      .where(eq(oauthGrant.id, claims.grantId))
+      .limit(1),
+  );
 }
 
 export async function handleOAuthRevokeRequest(

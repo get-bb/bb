@@ -178,7 +178,7 @@ describe("runDatabaseMaintenanceSweep", () => {
     );
   });
 
-  it("skips busy legacy databases before dbstat or full maintenance", async () => {
+  it("leaves idle auto_vacuum=NONE databases untouched without scanning pages", async () => {
     const tempDatabase = createTempDatabasePath();
     try {
       createLegacyDatabaseFile(tempDatabase.dbPath);
@@ -190,7 +190,6 @@ describe("runDatabaseMaintenanceSweep", () => {
       try {
         migrate(db);
         expect(getDatabaseAutoVacuumMode(db)).toBe("none");
-        markDatabaseBusy(db);
         buildFreelist(db);
         const before = getDatabaseFreelistStats(db);
         slowQueryLogger.clear();
@@ -198,9 +197,7 @@ describe("runDatabaseMaintenanceSweep", () => {
         await runDatabaseMaintenanceSweep({ db, logger: testLogger });
 
         expect(getDatabaseAutoVacuumMode(db)).toBe("none");
-        expect(getDatabaseFreelistStats(db).freelistCount).toBe(
-          before.freelistCount,
-        );
+        expect(getDatabaseFreelistStats(db)).toEqual(before);
         expect(
           slowQueryLogger.debugLogs.some((log) => log.sql.includes("dbstat")),
         ).toBe(false);

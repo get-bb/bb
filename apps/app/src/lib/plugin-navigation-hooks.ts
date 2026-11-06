@@ -27,6 +27,7 @@ import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import {
   normalizeExperimentalFileOpenOptions,
+  normalizeExperimentalFilePreviewOptions,
   normalizeExperimentalLiveFileTarget,
 } from "@/lib/live-file-navigation";
 import {
@@ -164,10 +165,18 @@ export function useBbNavigate(): BbNavigate {
     BbNavigate["experimental_openFilePreview"]
   >(
     (options) => {
-      const normalized = normalizeExperimentalFileOpenOptions(options);
-      return normalized !== null && appNavigation.openFilePreview(normalized);
+      const normalized = normalizeExperimentalFilePreviewOptions(options);
+      if (normalized === null) return false;
+      return appNavigation.openFilePreview(
+        normalized.opener === null
+          ? normalized.options
+          : {
+              ...normalized.options,
+              viewer: { pluginId, openerId: normalized.opener },
+            },
+      );
     },
-    [appNavigation],
+    [appNavigation, pluginId],
   );
   const experimental_openFileExternally = useCallback<
     BbNavigate["experimental_openFileExternally"]

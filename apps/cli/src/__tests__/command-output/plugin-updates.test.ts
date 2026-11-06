@@ -25,6 +25,7 @@ const pluginList = (id: string, source: string) => ({
       publisherLabel: null,
       isOrphanedBuiltin: false,
       sourceDisplay: `npm · ${id} · tracks compatible`,
+      sourceNotice: null,
       updateState: {},
       enabled: true,
       description: null,

@@ -186,10 +186,12 @@ export interface PluginStorage {
   kv: PluginKvStorage;
   /**
    * The plugin's own SQLite database at <dataDir>/plugins/<id>/data.db — the
-   * server's better-sqlite3, WAL mode, busy_timeout 5000. Returns the same
-   * open handle for the whole plugin load, so calling it per request is
-   * cheap; a new handle is opened only on the first call or after the
-   * plugin closed the previous one. The host closes handles on
+   * server's better-sqlite3, WAL mode, busy_timeout 5000. A file the host
+   * creates uses incremental auto_vacuum, so the plugin can return freed
+   * pages with `PRAGMA incremental_vacuum`; bb never runs a full VACUUM on
+   * it. Returns the same open handle for the whole plugin load, so calling it
+   * per request is cheap; a new handle is opened only on the first call or
+   * after the plugin closed the previous one. The host closes handles on
    * dispose/reload; a closed handle throws on use.
    */
   database(): Database.Database;
@@ -1270,7 +1272,7 @@ export interface PluginAgentConfiguration {
   /** Skill frontmatter names from this plugin's manifest skill roots.
    * Duplicate or unknown names reject this plugin's complete selection. */
   skills: string[];
-  /** Optional dynamic instructions. Output is truncated to 4096 characters. */
+  /** Optional dynamic instructions. Output is truncated to 32768 characters. */
   instructions?: string;
 }
 
@@ -1736,7 +1738,7 @@ export interface PluginAgents {
    * provider session is next constructed (thread start or resume after a
    * daemon restart, environment switch, or provider restart), never
    * mid-session. Must be synchronous and fast — it sits on the
-   * thread-start path. Output longer than 4096 characters is truncated; a
+   * thread-start path. Output longer than 32768 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.
    */

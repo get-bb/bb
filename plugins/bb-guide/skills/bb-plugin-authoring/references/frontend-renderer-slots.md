@@ -60,7 +60,7 @@ Original }`. `experimental_fullFileContents` is either
   `submission`, `mentionTriggers`, `commandTriggers`, `resolveMentionLink`,
   `attachments`, `history`, `voice`, sizing and
   collapse state, and bb's `executionControls`, `handoff` and
-  `compactBeforeSend` controls to place as you like), `view`, `key`,
+  `compactBeforeSend` controls to place as you like),
   `inputLocked`, `focusComposerShortcut`, `decorationSources` (bb's and
   other plugins' highlight rules, in paint order), and host services
   (`threadLinks.parse`/`cached`/`resolve`, `clipboard.readMessage`/

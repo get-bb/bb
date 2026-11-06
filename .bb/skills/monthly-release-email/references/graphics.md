@@ -144,9 +144,10 @@ Final PNGs go one level up.
 7. **Components in Ladle.** Run
    `pnpm exec ladle serve --port <p> --host 127.0.0.1` from `apps/app` in the
    tag worktree. Story IDs are in `http://127.0.0.1:<p>/meta.json`; open
-   `?story=<id>&mode=preview&theme=light`. If every story renders blank,
-   `.ladle/plugin-sdk-app.ts` is missing exports that
-   `src/lib/plugin-sdk-app-impl.tsx` has; add them locally. Add local-only
+   `?story=<id>&mode=preview&theme=light`. Tags that still have
+   `.ladle/plugin-sdk-app.ts` use a hand-written SDK shim: if every story
+   renders blank or the build reports a missing export, add the missing names
+   from `src/lib/plugin-sdk-app-impl.tsx` to it locally. Add local-only
    stories for realistic sample data and never commit them.
 8. **Mobile.** Load the thread at 390×780 CSS px, 2× scale, emulating a mobile
    device; the mobile apps wrap the same web app.

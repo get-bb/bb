@@ -788,8 +788,6 @@ describe("mention resolve time box", () => {
             id: "stuck",
             label: "Stuck",
             search: () => [{ id: "one", title: "One" }],
-            // Never settles: without the time box this would hang
-            // POST /threads/:id/send indefinitely.
             resolve: () => new Promise(() => {}),
           });
         }

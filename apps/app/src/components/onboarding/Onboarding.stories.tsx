@@ -62,7 +62,7 @@ const SIGNED_OUT: AgentSetupState = {
 };
 const CLAUDE_READY: AgentSetupState = {
   status: "ready",
-  detail: "sawyer@acme.dev · Max (20x)",
+  detail: "sawyer@acme.dev · Ultra",
 };
 const CODEX_READY: AgentSetupState = {
   status: "ready",

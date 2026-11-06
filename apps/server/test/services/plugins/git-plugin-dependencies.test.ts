@@ -132,7 +132,7 @@ it("uses the shipped npm and Node runtime when PATH contains no executables", as
   const original = manifest({});
   await writeFile(join(rootDir, "package.json"), original);
 
-  expect(await runInstallCommand("npm", ["--version"])).toBe("11.16.0");
+  expect(await runInstallCommand("npm", ["--version"])).toBe("11.21.2");
   await installGitDependencies(rootDir);
 
   expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);

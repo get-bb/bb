@@ -343,7 +343,7 @@ describe("thread runtime mutations", () => {
     }
   });
 
-  it("forwards execution input sources when sending a thread message", async () => {
+  it("forwards execution input sources and compactFirst when sending a thread message", async () => {
     const queryClient = createTestQueryClient();
     const mutation = new MutationObserver(
       queryClient,
@@ -355,32 +355,15 @@ describe("thread runtime mutations", () => {
       mode: "auto",
       input: [{ type: "text", text: "Run this", mentions: [] }],
       executionInputSources,
+      compactFirst: true,
     });
 
     expect(sdk.threads.send).toHaveBeenCalledWith(
       expect.objectContaining({
         executionInputSources,
+        compactFirst: true,
         threadId: "thread-1",
       }),
-    );
-  });
-
-  it("forwards compactFirst when sending a thread message", async () => {
-    const queryClient = createTestQueryClient();
-    const mutation = new MutationObserver(
-      queryClient,
-      sendThreadMessageMutationOptions(queryClient),
-    );
-
-    await mutation.mutate({
-      id: "thread-1",
-      mode: "queue-if-active",
-      input: [{ type: "text", text: "Resume", mentions: [] }],
-      compactFirst: true,
-    });
-
-    expect(sdk.threads.send).toHaveBeenCalledWith(
-      expect.objectContaining({ compactFirst: true, threadId: "thread-1" }),
     );
   });
 

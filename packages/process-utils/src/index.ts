@@ -1,5 +1,6 @@
 export * from "./spawn.js";
 export * from "./managed-process.js";
+export * from "./oom-score.js";
 export * from "./exec-portable-file.js";
 export * from "./process-group.js";
 export { terminateWindowsProcessTrees } from "./windows-process-tree.js";

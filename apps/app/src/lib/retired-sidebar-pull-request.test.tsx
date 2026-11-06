@@ -19,17 +19,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
   useQuery: () => ({ data: keyedQuery.pluginEnabled }),
 }));
 
-vi.mock("@get-bb/plugin-sdk/app", () => ({
-  experimental_useRpcKeyedQuery: (options: { keys: readonly string[] }) => ({
-    data: keyedQuery.data,
-    error: null,
-    isLoading: false,
-    isFetching: false,
-    refetch: () => keyedQuery.refetch(options.keys),
-  }),
-  experimental_useRpcMutation: () => ({ mutate: vi.fn(), isPending: false }),
-}));
-
 vi.mock("@/lib/plugin-sdk-hooks", () => ({
   experimental_useRpcKeyedQuery: (options: { keys: readonly string[] }) => ({
     data: keyedQuery.data,

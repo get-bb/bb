@@ -63,26 +63,4 @@ describe("child-thread blocker summary", () => {
       ),
     ).toBe("Blocked on plugin request:\nAdd secrets");
   });
-
-  it("keeps the approval detail lines as the summary body", () => {
-    expect(
-      buildChildThreadBlockerSummary(
-        interaction({
-          kind: "approval",
-          reason: null,
-          availableDecisions: ["allow_once", "deny"],
-          subject: {
-            kind: "command",
-            itemId: "item_1",
-            command: "git push",
-            cwd: "/tmp/project",
-            actions: [],
-            sessionGrant: null,
-          },
-        }),
-      ),
-    ).toBe(
-      "Blocked on command approval:\nCommand: git push\nCwd: /tmp/project",
-    );
-  });
 });

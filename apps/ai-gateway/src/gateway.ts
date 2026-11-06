@@ -221,21 +221,18 @@ async function writeRequestLog(
   entry: RequestLogEntry,
 ): Promise<void> {
   try {
-    await deps.db
-      .insert(aiRequestLog)
-      .values({
-        id: crypto.randomUUID(),
-        userId: entry.userId,
-        serverId: entry.serverId,
-        model: entry.model,
-        promptTokens: entry.promptTokens,
-        completionTokens: entry.completionTokens,
-        costMicros: entry.costMicros,
-        latencyMs: Math.max(0, entry.finishedAt - entry.startedAt),
-        outcome: entry.outcome,
-        createdAt: new Date(entry.finishedAt),
-      })
-      .run();
+    await deps.db.insert(aiRequestLog).values({
+      id: crypto.randomUUID(),
+      userId: entry.userId,
+      serverId: entry.serverId,
+      model: entry.model,
+      promptTokens: entry.promptTokens,
+      completionTokens: entry.completionTokens,
+      costMicros: entry.costMicros,
+      latencyMs: Math.max(0, entry.finishedAt - entry.startedAt),
+      outcome: entry.outcome,
+      createdAt: new Date(entry.finishedAt),
+    });
   } catch (error) {
     console.error("bb ai gateway: request log write failed", error);
   }

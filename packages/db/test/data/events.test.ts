@@ -90,6 +90,7 @@ function setup() {
     source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
   });
   const thread = createThread(db, noopNotifier, {
+    status: "idle",
     projectId: project.id,
     providerId: "codex",
   });

@@ -120,7 +120,7 @@ afterEach(async () => {
 describe("path watch ignores", () => {
   it("subscribes with heavy-tree and git metadata ignores", async () => {
     const { root } = await buildThreadStorageFixture();
-    const ignoreLists: string[][] = [];
+    const ignoreLists: Array<Array<string | RegExp>> = [];
     vi.spyOn(parcelWatcher, "subscribe").mockImplementation(
       async (_dir, _callback, options) => {
         ignoreLists.push([...(options?.ignore ?? [])]);

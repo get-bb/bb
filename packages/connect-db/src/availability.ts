@@ -1,15 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { type HandleValidationError, validateLabel } from "./constants.js";
-import { labelClaim } from "./schema.js";
+import { first } from "./query.js";
+import { labelClaim, type schema } from "./schema.js";
 
-// oxlint-disable-next-line typescript/no-explicit-any
-export type ConnectDb = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>,
-  any
->;
+export type ConnectDb = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 export type LabelAvailability =
   | { available: true; label: string }
@@ -29,11 +24,13 @@ export async function checkLabelAvailability(
   const invalid = validateLabel(label);
   if (invalid) return { available: false, reason: "invalid", error: invalid };
 
-  const claim = await db
-    .select({ kind: labelClaim.kind })
-    .from(labelClaim)
-    .where(eq(labelClaim.label, label))
-    .get();
+  const claim = await first(
+    db
+      .select({ kind: labelClaim.kind })
+      .from(labelClaim)
+      .where(eq(labelClaim.label, label))
+      .limit(1),
+  );
   if (claim) {
     return {
       available: false,

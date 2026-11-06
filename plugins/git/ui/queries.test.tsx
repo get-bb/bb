@@ -68,3 +68,49 @@ it("only requests the branch search a typist settles on", async () => {
   await waitFor(() => expect(branchCalls()).toHaveLength(2));
   expect(branchCalls()[1]?.input).toMatchObject({ query: "main" });
 });
+
+it("keeps the last branches on screen while the next search loads", async () => {
+  typed = "";
+  let releaseSearch = () => {};
+  const rpc: Partial<PluginRpcTestHandlers<typeof gitRpcContract>> = {
+    branches: ({ query }) => {
+      const result = {
+        branches: query === undefined ? ["main", "release"] : ["release"],
+        branchesTruncated: false,
+        remoteBranches: [],
+        remoteBranchesTruncated: false,
+        selectedBranch: null,
+      };
+      if (query === undefined) return result;
+      return new Promise((resolve) => {
+        releaseSearch = () => resolve(result);
+      });
+    },
+  };
+  const rendered = renderSlot(
+    { component: Branches },
+    {},
+    {
+      rpc: rpc as PluginRpcTestHandlers<typeof gitRpcContract>,
+      experimental_rpcContract: gitRpcContract,
+      pluginId: "bb--git",
+    },
+  );
+  await waitFor(() =>
+    expect(rendered.container.textContent).toBe("main,release"),
+  );
+  await act(async () => {
+    type("rel");
+  });
+  await waitFor(() =>
+    expect(
+      rendered.rpcCalls.filter((call) => call.method === "branches"),
+    ).toHaveLength(2),
+  );
+  expect(rendered.container.textContent).toBe("main,release");
+
+  await act(async () => {
+    releaseSearch();
+  });
+  await waitFor(() => expect(rendered.container.textContent).toBe("release"));
+});

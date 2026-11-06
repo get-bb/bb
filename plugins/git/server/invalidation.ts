@@ -18,8 +18,7 @@ const MIN_FLUSH_INTERVAL_MS = 1_000;
 
 const CACHE_KEEPING_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set([
   "metadata-changed",
-  "thread-storage-changed",
-  "diff-viewed-changed",
+  "git-branches-changed",
 ]);
 
 export function tagsForEnvironmentChanges(
@@ -27,6 +26,7 @@ export function tagsForEnvironmentChanges(
   changes: readonly EnvironmentChangeKind[],
 ): { tags: string[]; clearCaches: boolean; refsChanged: boolean } {
   const tags = new Set<string>();
+  let refsChanged = false;
   for (const change of changes) {
     switch (change) {
       case "work-status-changed":
@@ -38,9 +38,10 @@ export function tagsForEnvironmentChanges(
         tags.add(gitStatusTag(environmentId));
         tags.add(gitFilesTag(environmentId));
         tags.add(gitRefsTag(environmentId));
+        refsChanged = true;
         break;
-      case "diff-viewed-changed":
-        tags.add(gitViewedTag(environmentId));
+      case "git-branches-changed":
+        tags.add(gitRefsTag(environmentId));
         break;
       case "status-changed":
       case "environment-created":
@@ -49,13 +50,14 @@ export function tagsForEnvironmentChanges(
         tags.add(gitFilesTag(environmentId));
         tags.add(gitRefsTag(environmentId));
         tags.add(gitViewedTag(environmentId));
+        refsChanged = true;
         break;
     }
   }
   return {
     tags: [...tags],
     clearCaches: changes.some((change) => !CACHE_KEEPING_CHANGES.has(change)),
-    refsChanged: tags.has(gitRefsTag(environmentId)),
+    refsChanged,
   };
 }
 
@@ -87,7 +89,10 @@ export function createCoalescedInvalidator(
       (lastFlushAt.get(environmentId) ?? Number.NEGATIVE_INFINITY) +
         MIN_FLUSH_INTERVAL_MS,
     );
-    entry.timer = setTimeout(() => flush(environmentId), Math.max(0, at - now()));
+    entry.timer = setTimeout(
+      () => flush(environmentId),
+      Math.max(0, at - now()),
+    );
   }
 
   return {

@@ -1,3 +1,5 @@
+import { monotonicNowMs, observeEventLoopGaps } from "./event-loop-gaps.js";
+
 export interface StallWindowBatch {
   epochOffsetMs: number;
   droppedWindows: number;
@@ -42,33 +44,29 @@ export function parseStallWindowBatch(value: unknown): StallWindowBatch {
   };
 }
 
+export const STALL_WINDOW_THRESHOLD_MS = 100;
+
 export function startStallWindowCollector() {
-  const now = () => Number(process.hrtime.bigint()) / 1e6;
-  const epochOffsetMs = Date.now() - now();
-  let previous = now();
+  const epochOffsetMs = Date.now() - monotonicNowMs();
   let droppedWindows = 0;
   let windows: StallWindowBatch["windows"] = [];
-  const observe = () => {
-    const endedAt = now();
-    const duration = endedAt - previous;
-    if (duration >= 100 && duration < 60_000) {
-      if (windows.length < 128) windows.push({ startedAt: previous, endedAt });
+  const gaps = observeEventLoopGaps((startedAt, endedAt) => {
+    const duration = endedAt - startedAt;
+    if (duration >= STALL_WINDOW_THRESHOLD_MS && duration < 60_000) {
+      if (windows.length < 128) windows.push({ startedAt, endedAt });
       else droppedWindows++;
     }
-    previous = endedAt;
-  };
-  const timer = setInterval(observe, 20);
-  timer.unref();
+  });
   return {
     take(): StallWindowBatch {
-      observe();
+      gaps.flush();
       const batch = { epochOffsetMs, droppedWindows, windows };
       windows = [];
       droppedWindows = 0;
       return batch;
     },
     stop() {
-      clearInterval(timer);
+      gaps.stop();
     },
   };
 }

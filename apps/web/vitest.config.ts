@@ -10,6 +10,7 @@ export default defineWorkspaceTestConfig({
   define: { __SITE_ORIGIN__: JSON.stringify("https://web.test") },
   resolve: { alias: { "@": srcDir } },
   test: {
+    globalSetup: ["test/setup/connect-db-template.ts"],
     silent: "passed-only",
     projects: sharedWorkerProjects({
       pkgDir: __dirname,

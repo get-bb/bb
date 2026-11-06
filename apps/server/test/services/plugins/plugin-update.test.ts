@@ -96,6 +96,156 @@ async function commitPlugin(
   return git(repo, ["rev-parse", "HEAD"]);
 }
 
+let seedDir: string;
+
+beforeAll(async () => {
+  seedDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-seeds-"));
+  const seedRepo = join(seedDir, "repo");
+  await mkdir(seedRepo, { recursive: true });
+  await git(seedRepo, ["init", "-q", "-b", "main"]);
+  await git(seedRepo, ["config", "user.email", "test@example.com"]);
+  await git(seedRepo, ["config", "user.name", "Test"]);
+  await commitPlugin(seedRepo, "1.0.0");
+
+  const tagged = join(seedDir, "tagged");
+  await mkdir(tagged, { recursive: true });
+  await git(tagged, ["init", "-q", "-b", "main"]);
+  await git(tagged, ["config", "user.email", "test@example.com"]);
+  await git(tagged, ["config", "user.name", "Test"]);
+  await writeFile(
+    join(tagged, "package.json"),
+    JSON.stringify({
+      name: "bb-plugin-tagged",
+      version: "1.0.0",
+      bb: {
+        name: "Tagged fixture",
+        description: "Tagged release fixture.",
+        branding: { icon: "Zap" },
+        server: "./server.ts",
+      },
+    }),
+  );
+  await writeFile(
+    join(tagged, "server.ts"),
+    `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
+  );
+  await git(tagged, ["add", "-A"]);
+  await git(tagged, ["commit", "-qm", "1.0.0"]);
+  await git(tagged, ["tag", "v1.0.0"]);
+});
+
+afterAll(async () => {
+  await rm(seedDir, { recursive: true, force: true });
+});
+
+async function createPluginUpdateFixture(
+  options: {
+    afterArtifactPromoted?: (args: {
+      pluginId: string;
+      artifactId: string;
+      path: string;
+    }) => Promise<void>;
+    onArtifactMaterialize?: () => void;
+  } = {},
+) {
+  const db = createMigratedConnection();
+  const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-"));
+  const repo = join(workDir, "repo");
+  cpSync(join(seedDir, "repo"), repo, { recursive: true });
+  let materializationCount = 0;
+  const service = createPluginService({
+    aiServices: createAiServiceRegistry(),
+    telemetry: createNoopTelemetryService(),
+    db,
+    hub: {
+      getDaemonSessionIdForHost: () => null,
+      notifyPluginChanged: () => {},
+      onWatchedTargets: () => () => {},
+      notifyPluginSignal: () => 0,
+      notifySystem: () => {},
+    },
+    logger,
+    dataDir: join(workDir, "data"),
+    appVersion: "1.0.0",
+    loadTimeoutMs: 2000,
+    stabilizationWindowMs: 0,
+    afterArtifactPromoted: options.afterArtifactPromoted,
+    onArtifactMaterialize: () => {
+      materializationCount += 1;
+      options.onArtifactMaterialize?.();
+    },
+  });
+  const app = new Hono();
+  const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
+  registerPluginUpdateJobRoutes(app, updateJobs);
+  registerPluginRoutes(
+    app,
+    { config: { serverPort: 3334 }, db },
+    service,
+    createPluginInstallJobs({ notifyChanged: () => {} }),
+    updateJobs,
+  );
+  return {
+    db,
+    workDir,
+    repo,
+    service,
+    app,
+    async taggedRepo() {
+      const tagged = join(workDir, "tagged");
+      cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
+      return tagged;
+    },
+    async installUpdater() {
+      await service.install(`git:${repo}@main`, { kind: "root" });
+    },
+    get materializationCount() {
+      return materializationCount;
+    },
+  };
+}
+
+async function restorePhaseOneCloneHistory(
+  fixture: { db: DbConnection; workDir: string },
+  pluginId: string,
+  sourceRepo: string,
+): Promise<void> {
+  const rootDir = getInstalledPlugin(fixture.db, pluginId)?.rootDir;
+  if (rootDir === undefined) throw new Error(`missing ${pluginId}`);
+  const clone = join(fixture.workDir, `phase-one-clone-${pluginId}`);
+  await run("git", ["clone", "--quiet", "--no-checkout", sourceRepo, clone]);
+  await rename(join(clone, ".git"), join(rootDir, ".git"));
+}
+
+async function releaseTag(repoDir: string, tag: string): Promise<string> {
+  await writeFile(join(repoDir, "release.txt"), tag);
+  await git(repoDir, ["add", "-A"]);
+  await git(repoDir, ["commit", "-qm", tag]);
+  await git(repoDir, ["tag", tag]);
+  return git(repoDir, ["rev-parse", "HEAD"]);
+}
+
+const taggedTest = it.extend<{
+  fixture: Awaited<ReturnType<typeof createPluginUpdateFixture>>;
+}>({
+  fixture: async ({}, use) => {
+    const fixture = await createPluginUpdateFixture();
+    try {
+      await use(fixture);
+    } finally {
+      try {
+        await fixture.service.stop();
+      } finally {
+        try {
+          fixture.db.$client.close();
+        } finally {
+          await rm(fixture.workDir, { recursive: true, force: true });
+        }
+      }
+    }
+  },
+});
+
 describe("plugin update scheduling", () => {
   it("waits one full interval when no plugins are eligible for update checks", async () => {
     const HOUR = 60 * 60 * 1_000;
@@ -331,7 +481,6 @@ describe("plugin update scheduling", () => {
 });
 
 describe("plugin update service and routes", () => {
-  let seedDir: string;
   let db: DbConnection;
   let workDir: string;
   let repo: string;
@@ -346,85 +495,15 @@ describe("plugin update service and routes", () => {
       }) => Promise<void>)
     | undefined;
 
-  beforeAll(async () => {
-    seedDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-seeds-"));
-    const seedRepo = join(seedDir, "repo");
-    await mkdir(seedRepo, { recursive: true });
-    await git(seedRepo, ["init", "-q", "-b", "main"]);
-    await git(seedRepo, ["config", "user.email", "test@example.com"]);
-    await git(seedRepo, ["config", "user.name", "Test"]);
-    await commitPlugin(seedRepo, "1.0.0");
-
-    const tagged = join(seedDir, "tagged");
-    await mkdir(tagged, { recursive: true });
-    await git(tagged, ["init", "-q", "-b", "main"]);
-    await git(tagged, ["config", "user.email", "test@example.com"]);
-    await git(tagged, ["config", "user.name", "Test"]);
-    await writeFile(
-      join(tagged, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-tagged",
-        version: "1.0.0",
-        bb: {
-          name: "Tagged fixture",
-          description: "Tagged release fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await writeFile(
-      join(tagged, "server.ts"),
-      `export default function plugin(bb: any) { bb.log.info("tagged"); }`,
-    );
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "1.0.0"]);
-    await git(tagged, ["tag", "v1.0.0"]);
-  });
-
-  afterAll(async () => {
-    await rm(seedDir, { recursive: true, force: true });
-  });
-
   beforeEach(async () => {
-    db = createMigratedConnection();
-    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-update-"));
-    repo = join(workDir, "repo");
-    cpSync(join(seedDir, "repo"), repo, { recursive: true });
     afterArtifactPromoted = undefined;
     materializationCount = 0;
-    service = createPluginService({
-      aiServices: createAiServiceRegistry(),
-      telemetry: createNoopTelemetryService(),
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginChanged: () => {},
-        onWatchedTargets: () => () => {},
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      dataDir: join(workDir, "data"),
-      appVersion: "1.0.0",
-      loadTimeoutMs: 2000,
-      stabilizationWindowMs: 0,
+    ({ db, workDir, repo, service, app } = await createPluginUpdateFixture({
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
       onArtifactMaterialize: () => {
         materializationCount += 1;
       },
-    });
-    await service.install(`git:${repo}@main`, { kind: "root" });
-    app = new Hono();
-    const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
-    registerPluginUpdateJobRoutes(app, updateJobs);
-    registerPluginRoutes(
-      app,
-      { config: { serverPort: 3334 }, db },
-      service,
-      createPluginInstallJobs({ notifyChanged: () => {} }),
-      updateJobs,
-    );
+    }));
   });
 
   afterEach(async () => {
@@ -434,9 +513,14 @@ describe("plugin update service and routes", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
+  async function installUpdater(): Promise<void> {
+    await service.install(`git:${repo}@main`, { kind: "root" });
+  }
+
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",
     async (selector) => {
+      await installUpdater();
       const tagged = await taggedRepo();
       await service.install(`git:${tagged}@${selector}`, { kind: "root" });
       const offline = join(workDir, "offline");
@@ -474,6 +558,7 @@ describe("plugin update service and routes", () => {
   );
 
   it("keeps a multi-plugin check usable when one npm registry is offline", async () => {
+    await installUpdater();
     const updateState = {
       lastCheckAt: null,
       availableCompatibleVersion: null,
@@ -618,18 +703,8 @@ describe("plugin update service and routes", () => {
     expect(fetched.filter((url) => url.includes("api.github.com"))).toEqual([]);
   });
 
-  async function restorePhaseOneCloneHistory(
-    pluginId: string,
-    sourceRepo: string,
-  ): Promise<void> {
-    const rootDir = getInstalledPlugin(db, pluginId)?.rootDir;
-    if (rootDir === undefined) throw new Error(`missing ${pluginId}`);
-    const clone = join(workDir, `phase-one-clone-${pluginId}`);
-    await run("git", ["clone", "--quiet", "--no-checkout", sourceRepo, clone]);
-    await rename(join(clone, ".git"), join(rootDir, ".git"));
-  }
-
   it("accepts an update before activation finishes and exposes its result after reconnect", async () => {
+    await installUpdater();
     const nextCommit = await commitPlugin(repo, "1.1.0");
     let release = () => {};
     const gate = new Promise<void>((resolve) => {
@@ -675,10 +750,11 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
+    await installUpdater();
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("updater");
-    await restorePhaseOneCloneHistory("updater", repo);
+    await restorePhaseOneCloneHistory({ db, workDir }, "updater", repo);
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const checkedResponse = await app.request("/plugins/updates/check", {
       method: "POST",
@@ -730,6 +806,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks a git candidate without installing or building it", async () => {
+    await installUpdater();
     const candidate = await commitPlugin(
       repo,
       "1.2.0",
@@ -752,7 +829,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks for updates after marketplace removal converts provenance", async () => {
-    await service.remove("updater");
     await service.installCatalogPlugin({
       marketplace: "acme-plugins",
       entryId: "updater",
@@ -807,6 +883,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("returns an actionable 422 and keeps the installed commit for an incompatible candidate", async () => {
+    await installUpdater();
     const installedCommit = await git(repo, ["rev-parse", "HEAD"]);
     const incompatibleCommit = await commitPlugin(repo, "2.0.0", {
       bb: ">=99.0.0",
@@ -850,6 +927,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("serializes two updates for one plugin so only one applies", async () => {
+    await installUpdater();
     const before = getInstalledPluginRegistration(db, "updater");
     if (before === undefined) throw new Error("missing installed updater");
     const oldRoot = before.rootDir;
@@ -894,6 +972,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {
+    await installUpdater();
     const installedCommit = getInstalledPluginRegistration(
       db,
       "updater",
@@ -970,6 +1049,7 @@ describe("plugin update service and routes", () => {
   }, 60_000);
 
   it("finishes an interrupted rollback before loading plugins after restart", async () => {
+    await installUpdater();
     const pluginDir = join(workDir, "data", "plugins", "updater");
     const databasePath = join(pluginDir, "data.db");
     const secretPath = join(pluginDir, "secrets", "token");
@@ -1142,6 +1222,7 @@ describe("plugin update service and routes", () => {
   }
 
   it("shares one in-flight full sweep between concurrent callers", async () => {
+    await installUpdater();
     const first = service.checkForUpdates();
     expect(service.checkForUpdates()).toBe(first);
     await first;
@@ -1170,6 +1251,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("deletes the replaced version once the update settles and keeps rollback state through the grace period", async () => {
+    await installUpdater();
     await service.stop();
     let clock = Date.now();
     const makeService = () =>
@@ -1225,6 +1307,7 @@ describe("plugin update service and routes", () => {
   }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
+    await installUpdater();
     await commitPlugin(repo, "1.1.0");
     let releasePromotion: (() => void) | undefined;
     let reportPromotion: (() => void) | undefined;
@@ -1253,6 +1336,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("orders disablement after an in-flight update without re-enabling it", async () => {
+    await installUpdater();
     await commitPlugin(repo, "1.1.0");
     let releasePromotion: (() => void) | undefined;
     let reportPromotion: (() => void) | undefined;
@@ -1284,6 +1368,7 @@ describe("plugin update service and routes", () => {
   });
 
   it("uses isolated staging directories for concurrent check and update", async () => {
+    await installUpdater();
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const [checked, applied] = await Promise.all([
       service.checkForUpdates("updater"),
@@ -1299,7 +1384,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("checks, updates, and rolls back a nested git plugin", async () => {
-    await service.remove("updater");
     const nestedRoot = join(repo, "plugins", "nested");
     const commitNested = async (
       version: string,
@@ -1371,7 +1455,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
-    await service.remove("updater");
     await git(repo, ["tag", "v1"]);
     await service.install(`git:${repo}@v1`, { kind: "root" });
     const response = await app.request("/plugins/updater/update", {
@@ -1387,7 +1470,6 @@ describe("plugin update service and routes", () => {
   });
 
   it("loads a legacy-layout plugin unchanged, then migrates lazily on update", async () => {
-    await service.remove("updater");
     const legacyRoot = join(
       workDir,
       "data",
@@ -1443,303 +1525,337 @@ describe("plugin update service and routes", () => {
     cpSync(join(seedDir, "tagged"), tagged, { recursive: true });
     return tagged;
   }
+});
 
-  async function releaseTag(repoDir: string, tag: string): Promise<string> {
-    await writeFile(join(repoDir, "release.txt"), tag);
-    await git(repoDir, ["add", "-A"]);
-    await git(repoDir, ["commit", "-qm", tag]);
-    await git(repoDir, ["tag", tag]);
-    return git(repoDir, ["rev-parse", "HEAD"]);
-  }
+describe.concurrent("plugin tagged release updates", () => {
+  taggedTest(
+    "offers and applies a newer tag inside a git semver range",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      const nextCommit = await releaseTag(tagged, "v1.1.0");
+      await releaseTag(tagged, "v2.0.0");
 
-  it("offers and applies a newer tag inside a git semver range", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-    const nextCommit = await releaseTag(tagged, "v1.1.0");
-    await releaseTag(tagged, "v2.0.0");
-
-    const checked = await service.checkForUpdates("tagged");
-    expect(checked).toMatchObject([
-      {
-        id: "tagged",
-        outcome: "update-available",
-        installed: { label: "1.0.0" },
-        candidate: {
-          version: nextCommit,
-          label: "1.1.0",
-          display: expect.stringContaining("@v1.1.0"),
+      const checked = await service.checkForUpdates("tagged");
+      expect(checked).toMatchObject([
+        {
+          id: "tagged",
+          outcome: "update-available",
+          installed: { label: "1.0.0" },
+          candidate: {
+            version: nextCommit,
+            label: "1.1.0",
+            display: expect.stringContaining("@v1.1.0"),
+          },
         },
-      },
-    ]);
-    expect(
-      service.list().find((entry) => entry.id === "tagged")?.updateState,
-    ).toMatchObject({ availableVersion: nextCommit, availableLabel: "1.1.0" });
+      ]);
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        availableVersion: nextCommit,
+        availableLabel: "1.1.0",
+      });
 
-    const applied = await service.applyUpdate("tagged");
-    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitRange: "^1.0.0",
-      sourceGitResolvedTag: "v1.1.0",
-      gitResolvedCommit: nextCommit,
-    });
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      { id: "tagged", outcome: "current" },
-    ]);
-  });
+      const applied = await service.applyUpdate("tagged");
+      expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRange: "^1.0.0",
+        sourceGitResolvedTag: "v1.1.0",
+        gitResolvedCommit: nextCommit,
+      });
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        { id: "tagged", outcome: "current" },
+      ]);
+    },
+  );
 
-  it("names a rolled-back release by its tag version", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-    await writeFile(
-      join(tagged, "server.ts"),
-      'export default function plugin() { throw new Error("tagged activation failed"); }',
-    );
-    const brokenCommit = await releaseTag(tagged, "v1.1.0");
+  taggedTest(
+    "names a rolled-back release by its tag version",
+    async ({ fixture }) => {
+      const { service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      await writeFile(
+        join(tagged, "server.ts"),
+        'export default function plugin() { throw new Error("tagged activation failed"); }',
+      );
+      const brokenCommit = await releaseTag(tagged, "v1.1.0");
 
-    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
-      ok: true,
-      result: { applied: false, outcome: "rolled-back" },
-    });
-    expect(
-      service.list().find((entry) => entry.id === "tagged")?.updateState,
-    ).toMatchObject({
-      availableLabel: "1.1.0",
-      lastFailure: { version: brokenCommit, label: "1.1.0" },
-    });
-  });
+      await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+        ok: true,
+        result: { applied: false, outcome: "rolled-back" },
+      });
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        availableLabel: "1.1.0",
+        lastFailure: { version: brokenCommit, label: "1.1.0" },
+      });
+    },
+  );
 
-  it("labels update state saved before versions carried labels", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-    const nextCommit = await releaseTag(tagged, "v1.1.0");
-    const [checked] = await service.checkForUpdates("tagged");
-    if (checked?.candidate === undefined) {
-      throw new Error("expected an update candidate");
-    }
-    const { label: _installedLabel, ...installed } = checked.installed;
-    const { label: _candidateLabel, ...candidate } = checked.candidate;
-    db.$client
-      .prepare("UPDATE plugins SET update_status_detail = ? WHERE id = ?")
-      .run(JSON.stringify({ ...checked, installed, candidate }), "tagged");
+  taggedTest(
+    "labels update state saved before versions carried labels",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      const nextCommit = await releaseTag(tagged, "v1.1.0");
+      const [checked] = await service.checkForUpdates("tagged");
+      if (checked?.candidate === undefined) {
+        throw new Error("expected an update candidate");
+      }
+      const { label: _installedLabel, ...installed } = checked.installed;
+      const { label: _candidateLabel, ...candidate } = checked.candidate;
+      db.$client
+        .prepare("UPDATE plugins SET update_status_detail = ? WHERE id = ?")
+        .run(JSON.stringify({ ...checked, installed, candidate }), "tagged");
 
-    expect(
-      service.listUpdateResults().find((entry) => entry.id === "tagged"),
-    ).toMatchObject({
-      installed: { label: checked.installed.version.slice(0, 7) },
-      candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
-    });
-    expect(
-      service.list().find((entry) => entry.id === "tagged")?.updateState,
-    ).toMatchObject({
-      outcome: "update-available",
-      availableVersion: nextCommit,
-      availableLabel: nextCommit.slice(0, 7),
-    });
-  });
+      expect(
+        service.listUpdateResults().find((entry) => entry.id === "tagged"),
+      ).toMatchObject({
+        installed: { label: checked.installed.version.slice(0, 7) },
+        candidate: { version: nextCommit, label: nextCommit.slice(0, 7) },
+      });
+      expect(
+        service.list().find((entry) => entry.id === "tagged")?.updateState,
+      ).toMatchObject({
+        outcome: "update-available",
+        availableVersion: nextCommit,
+        availableLabel: nextCommit.slice(0, 7),
+      });
+    },
+  );
 
-  it("refuses to resolve a release tag that was moved to another commit", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-    const installed = getInstalledPluginRegistration(db, "tagged");
-    await writeFile(join(tagged, "release.txt"), "rewritten");
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "rewrite"]);
-    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
-    const moved = await git(tagged, ["rev-parse", "HEAD"]);
+  taggedTest(
+    "refuses to resolve a release tag that was moved to another commit",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      const installed = getInstalledPluginRegistration(db, "tagged");
+      await writeFile(join(tagged, "release.txt"), "rewritten");
+      await git(tagged, ["add", "-A"]);
+      await git(tagged, ["commit", "-qm", "rewrite"]);
+      await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
+      const moved = await git(tagged, ["rev-parse", "HEAD"]);
 
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      {
-        id: "tagged",
-        outcome: "unavailable",
-        detail: expect.stringContaining("security check failed"),
-      },
-    ]);
-    const applied = await service.applyUpdate("tagged");
-    expect(applied).toMatchObject({
-      ok: false,
-      error: expect.stringContaining(
-        `${installed?.gitResolvedCommit ?? ""} to ${moved}`,
-      ),
-    });
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitResolvedTag: "v1.0.0",
-      gitResolvedCommit: installed?.gitResolvedCommit,
-    });
-  });
-
-  it("protects an unclassified Phase 1 exact-tag row in a full update sweep", async () => {
-    const tagged = await taggedRepo();
-    const source = `git:${tagged}@v1.0.0`;
-    await service.install(source, { kind: "root" });
-    await expect(service.install(source, { kind: "root" })).rejects.toThrow(
-      /already installed/,
-    );
-    const installed = getInstalledPluginRegistration(db, "tagged");
-    db.$client
-      .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
-      .run("tagged");
-
-    await writeFile(join(tagged, "release.txt"), "rewritten exact tag");
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "rewrite exact tag"]);
-    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
-
-    const checked = await service.checkForUpdates();
-    expect(checked).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "updater" }),
-        expect.objectContaining({
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        {
           id: "tagged",
           outcome: "unavailable",
-          detail: expect.stringContaining(
-            `moved from ${installed?.gitResolvedCommit ?? ""}`,
-          ),
-        }),
-      ]),
-    );
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitRefKind: "tag",
-      gitResolvedCommit: installed?.gitResolvedCommit,
-    });
-    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
-      ok: false,
-      error: expect.stringContaining("security check failed"),
-    });
-  });
+          detail: expect.stringContaining("security check failed"),
+        },
+      ]);
+      const applied = await service.applyUpdate("tagged");
+      expect(applied).toMatchObject({
+        ok: false,
+        error: expect.stringContaining(
+          `${installed?.gitResolvedCommit ?? ""} to ${moved}`,
+        ),
+      });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitResolvedTag: "v1.0.0",
+        gitResolvedCommit: installed?.gitResolvedCommit,
+      });
+    },
+  );
 
-  it("refuses to turn a legacy tag pin into a same-name branch", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
-    const installed = getInstalledPluginRegistration(db, "tagged");
-    db.$client
-      .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
-      .run("tagged");
-    await restorePhaseOneCloneHistory("tagged", tagged);
+  taggedTest(
+    "protects an unclassified Phase 1 exact-tag row in a full update sweep",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo, installUpdater } = fixture;
+      await installUpdater();
+      const tagged = await taggedRepo();
+      const source = `git:${tagged}@v1.0.0`;
+      await service.install(source, { kind: "root" });
+      await expect(service.install(source, { kind: "root" })).rejects.toThrow(
+        /already installed/,
+      );
+      const installed = getInstalledPluginRegistration(db, "tagged");
+      db.$client
+        .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
+        .run("tagged");
 
-    await git(tagged, ["tag", "-d", "v1.0.0"]);
-    await writeFile(join(tagged, "release.txt"), "attacker code");
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "attacker"]);
-    await git(tagged, ["branch", "v1.0.0"]);
+      await writeFile(join(tagged, "release.txt"), "rewritten exact tag");
+      await git(tagged, ["add", "-A"]);
+      await git(tagged, ["commit", "-qm", "rewrite exact tag"]);
+      await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
 
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      {
-        id: "tagged",
-        outcome: "unavailable",
-        detail: expect.stringContaining("recorded it as a tag"),
-      },
-    ]);
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitRefKind: null,
-      gitResolvedCommit: installed?.gitResolvedCommit,
-    });
-    expect(service.list()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "tagged",
-          updateState: expect.objectContaining({
+      const checked = await service.checkForUpdates();
+      expect(checked).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "updater" }),
+          expect.objectContaining({
+            id: "tagged",
             outcome: "unavailable",
-            detail: expect.stringContaining("security check failed"),
+            detail: expect.stringContaining(
+              `moved from ${installed?.gitResolvedCommit ?? ""}`,
+            ),
           }),
+        ]),
+      );
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRefKind: "tag",
+        gitResolvedCommit: installed?.gitResolvedCommit,
+      });
+      await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining("security check failed"),
+      });
+    },
+  );
+
+  taggedTest(
+    "refuses to turn a legacy tag pin into a same-name branch",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo, workDir } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
+      const installed = getInstalledPluginRegistration(db, "tagged");
+      db.$client
+        .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
+        .run("tagged");
+      await restorePhaseOneCloneHistory({ db, workDir }, "tagged", tagged);
+
+      await git(tagged, ["tag", "-d", "v1.0.0"]);
+      await writeFile(join(tagged, "release.txt"), "attacker code");
+      await git(tagged, ["add", "-A"]);
+      await git(tagged, ["commit", "-qm", "attacker"]);
+      await git(tagged, ["branch", "v1.0.0"]);
+
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        {
+          id: "tagged",
+          outcome: "unavailable",
+          detail: expect.stringContaining("recorded it as a tag"),
+        },
+      ]);
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitRefKind: null,
+        gitResolvedCommit: installed?.gitResolvedCommit,
+      });
+      expect(service.list()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "tagged",
+            updateState: expect.objectContaining({
+              outcome: "unavailable",
+              detail: expect.stringContaining("security check failed"),
+            }),
+          }),
+        ]),
+      );
+      await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining('publishes "v1.0.0" as a branch'),
+      });
+    },
+  );
+
+  taggedTest(
+    "falls back to the newest compatible release in a range",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+      const compatible = await releaseTag(tagged, "v1.1.0");
+      await writeFile(
+        join(tagged, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-tagged",
+          version: "1.2.0",
+          engines: { bb: ">=99.0.0" },
+          bb: {
+            name: "Tagged fixture",
+            description: "Tagged release fixture.",
+            branding: { icon: "Zap" },
+            server: "./server.ts",
+          },
         }),
-      ]),
-    );
-    await expect(service.applyUpdate("tagged")).resolves.toMatchObject({
-      ok: false,
-      error: expect.stringContaining('publishes "v1.0.0" as a branch'),
-    });
-  });
+      );
+      const blockedCommit = await releaseTag(tagged, "v1.2.0");
 
-  it("falls back to the newest compatible release in a range", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-    const compatible = await releaseTag(tagged, "v1.1.0");
-    await writeFile(
-      join(tagged, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-tagged",
-        version: "1.2.0",
-        engines: { bb: ">=99.0.0" },
-        bb: {
-          name: "Tagged fixture",
-          description: "Tagged release fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        {
+          id: "tagged",
+          outcome: "update-available",
+          candidate: {
+            version: compatible,
+            display: expect.stringContaining("@v1.1.0"),
+          },
+          blocked: { version: blockedCommit },
         },
-      }),
-    );
-    const blockedCommit = await releaseTag(tagged, "v1.2.0");
+      ]);
+      const afterFirstCheck = fixture.materializationCount;
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        { id: "tagged", outcome: "update-available" },
+      ]);
+      expect(fixture.materializationCount).toBe(afterFirstCheck);
 
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      {
-        id: "tagged",
-        outcome: "update-available",
-        candidate: {
-          version: compatible,
-          display: expect.stringContaining("@v1.1.0"),
+      const applied = await service.applyUpdate("tagged");
+      expect(applied).toMatchObject({ ok: true, result: { applied: true } });
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitResolvedTag: "v1.1.0",
+        gitResolvedCommit: compatible,
+      });
+    },
+  );
+
+  taggedTest(
+    "installs the newest compatible release from a git range",
+    async ({ fixture }) => {
+      const { db, service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      const compatible = await git(tagged, ["rev-parse", "v1.0.0"]);
+      await writeFile(
+        join(tagged, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-tagged",
+          version: "1.1.0",
+          engines: { bb: ">=99.0.0" },
+          bb: {
+            name: "Tagged fixture",
+            description: "Tagged release fixture.",
+            branding: { icon: "Zap" },
+            server: "./server.ts",
+          },
+        }),
+      );
+      await releaseTag(tagged, "v1.1.0");
+
+      await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
+
+      expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
+        sourceGitResolvedTag: "v1.0.0",
+        gitResolvedCommit: compatible,
+      });
+    },
+  );
+
+  taggedTest(
+    "refuses an exact-tag install whose tag moved",
+    async ({ fixture }) => {
+      const { service, taggedRepo } = fixture;
+      const tagged = await taggedRepo();
+      await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        { id: "tagged", outcome: "pinned" },
+      ]);
+
+      await writeFile(join(tagged, "release.txt"), "rewritten");
+      await git(tagged, ["add", "-A"]);
+      await git(tagged, ["commit", "-qm", "rewrite"]);
+      await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
+
+      expect(await service.checkForUpdates("tagged")).toMatchObject([
+        {
+          id: "tagged",
+          outcome: "unavailable",
+          detail: expect.stringContaining('git tag "v1.0.0"'),
         },
-        blocked: { version: blockedCommit },
-      },
-    ]);
-    const afterFirstCheck = materializationCount;
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      { id: "tagged", outcome: "update-available" },
-    ]);
-    expect(materializationCount).toBe(afterFirstCheck);
-
-    const applied = await service.applyUpdate("tagged");
-    expect(applied).toMatchObject({ ok: true, result: { applied: true } });
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitResolvedTag: "v1.1.0",
-      gitResolvedCommit: compatible,
-    });
-  });
-
-  it("installs the newest compatible release from a git range", async () => {
-    const tagged = await taggedRepo();
-    const compatible = await git(tagged, ["rev-parse", "v1.0.0"]);
-    await writeFile(
-      join(tagged, "package.json"),
-      JSON.stringify({
-        name: "bb-plugin-tagged",
-        version: "1.1.0",
-        engines: { bb: ">=99.0.0" },
-        bb: {
-          name: "Tagged fixture",
-          description: "Tagged release fixture.",
-          branding: { icon: "Zap" },
-          server: "./server.ts",
-        },
-      }),
-    );
-    await releaseTag(tagged, "v1.1.0");
-
-    await service.install(`git:${tagged}@semver:^1.0.0`, { kind: "root" });
-
-    expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({
-      sourceGitResolvedTag: "v1.0.0",
-      gitResolvedCommit: compatible,
-    });
-  });
-
-  it("refuses an exact-tag install whose tag moved", async () => {
-    const tagged = await taggedRepo();
-    await service.install(`git:${tagged}@v1.0.0`, { kind: "root" });
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      { id: "tagged", outcome: "pinned" },
-    ]);
-
-    await writeFile(join(tagged, "release.txt"), "rewritten");
-    await git(tagged, ["add", "-A"]);
-    await git(tagged, ["commit", "-qm", "rewrite"]);
-    await git(tagged, ["tag", "-f", "v1.0.0", "HEAD"]);
-
-    expect(await service.checkForUpdates("tagged")).toMatchObject([
-      {
-        id: "tagged",
-        outcome: "unavailable",
-        detail: expect.stringContaining('git tag "v1.0.0"'),
-      },
-    ]);
-  });
+      ]);
+    },
+  );
 });

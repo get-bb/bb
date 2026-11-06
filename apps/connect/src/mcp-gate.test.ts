@@ -1,9 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
-import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
+import {
+  type TestConnectDb,
+  createTestConnectDb,
+} from "@bb/connect-db-pg/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GATE_OAUTH_CLIENT_HEADER,
@@ -12,15 +11,21 @@ import {
   MCP_LOCAL_PATH,
   type McpAccessTokenClaims,
   oauthGrant,
-  schema,
+  type ConnectDb,
   server,
   signMcpAccessToken,
   user,
+  first,
 } from "@bb/connect-db";
 
 const holder = vi.hoisted(() => ({ db: null as unknown }));
 
-vi.mock("drizzle-orm/d1", () => ({ drizzle: () => holder.db }));
+vi.mock("./connect-db.js", () => ({
+  openGateDb: () => ({
+    db: holder.db,
+    close: async () => {},
+  }),
+}));
 
 vi.mock("./cache.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./cache.js")>()),
@@ -52,9 +57,6 @@ import { GATE_AUTH_HEADER } from "./protocol-headers.js";
 import { TUNNEL_OFFLINE_HEADER } from "./tunnel-do.js";
 import worker from "./worker.js";
 
-const MIGRATIONS_DIR = fileURLToPath(
-  new URL("../../../packages/connect-db/migrations", import.meta.url),
-);
 const BASE = "getbb.app";
 const SECRET = "test-secret";
 const OWNER = "user-owner";
@@ -62,8 +64,8 @@ const OTHER = "user-other";
 const SESSION_COOKIE = "__Secure-better-auth.session_token=session-token";
 const START = Date.UTC(2026, 9, 11, 12);
 
-let sqlite: Database.Database;
-let db: ReturnType<typeof drizzleSqlite<typeof schema>>;
+let database: TestConnectDb;
+let db: ConnectDb;
 let sequence = 0;
 let handle = "";
 let otherHandle = "";
@@ -71,52 +73,47 @@ let serverId = "";
 let otherServerId = "";
 let grantId = "";
 
-function seedGrant(over: {
+async function seedGrant(over: {
   id: string;
   userId?: string;
   serverId?: string;
   revokedAt?: Date | null;
   lastUsedAt?: Date | null;
-}): void {
-  db.insert(oauthGrant)
-    .values({
-      id: over.id,
-      userId: over.userId ?? OWNER,
-      serverId: over.serverId ?? serverId,
-      clientId: "client-1",
-      clientName: "Claude",
-      resource: `https://${handle}.${BASE}/mcp`,
-      scope: "bb",
-      createdAt: new Date(START),
-      lastUsedAt: over.lastUsedAt ?? null,
-      revokedAt: over.revokedAt ?? null,
-    })
-    .run();
+}): Promise<void> {
+  await db.insert(oauthGrant).values({
+    id: over.id,
+    userId: over.userId ?? OWNER,
+    serverId: over.serverId ?? serverId,
+    clientId: "client-1",
+    clientName: "Claude",
+    resource: `https://${handle}.${BASE}/mcp`,
+    scope: "bb",
+    createdAt: new Date(START),
+    lastUsedAt: over.lastUsedAt ?? null,
+    revokedAt: over.revokedAt ?? null,
+  });
 }
 
-function seedServer(id: string, userId: string, subdomain: string): void {
-  db.insert(server)
-    .values({
-      id,
-      userId,
-      name: subdomain,
-      subdomain,
-      credentialHash: "hash",
-      createdAt: new Date(START),
-    })
-    .run();
+async function seedServer(
+  id: string,
+  userId: string,
+  subdomain: string,
+): Promise<void> {
+  await db.insert(server).values({
+    id,
+    userId,
+    name: subdomain,
+    subdomain,
+    credentialHash: "hash",
+    createdAt: new Date(START),
+  });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(START);
-  sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
-    if (!file.endsWith(".sql")) continue;
-    sqlite.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  db = drizzleSqlite(sqlite, { schema });
+  database = await createTestConnectDb();
+  db = database.db;
   holder.db = db;
   sequence += 1;
   handle = `mcpowner${sequence}`;
@@ -125,20 +122,18 @@ beforeEach(() => {
   otherServerId = `srv-other-${sequence}`;
   grantId = `grant-${sequence}`;
   for (const id of [OWNER, OTHER]) {
-    db.insert(user)
-      .values({
-        id,
-        name: id,
-        email: `${id}@example.com`,
-        emailVerified: true,
-        createdAt: new Date(START),
-        updatedAt: new Date(START),
-      })
-      .run();
+    await db.insert(user).values({
+      id,
+      name: id,
+      email: `${id}@example.com`,
+      emailVerified: true,
+      createdAt: new Date(START),
+      updatedAt: new Date(START),
+    });
   }
-  seedServer(serverId, OWNER, handle);
-  seedServer(otherServerId, OWNER, otherHandle);
-  seedGrant({ id: grantId });
+  await seedServer(serverId, OWNER, handle);
+  await seedServer(otherServerId, OWNER, otherHandle);
+  await seedGrant({ id: grantId });
   vi.mocked(verifySessionCookieDetails).mockResolvedValue({
     sessionId: "session-owner",
     userId: OWNER,
@@ -151,8 +146,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  sqlite.close();
+afterEach(async () => {
+  await database.close();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
@@ -169,7 +164,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
         },
       }),
     },
-    DB: {} as D1Database,
+    HYPERDRIVE: {} as Hyperdrive,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: SECRET,
     GATE_EVENTS: { writeDataPoint: vi.fn() },
@@ -224,13 +219,17 @@ async function expectChallenge(
   expect(await response.json()).toEqual({ error: "unauthorized" });
 }
 
-function lastUsedAt(id: string): Date | null {
+async function lastUsedAt(id: string): Promise<Date | null> {
   return (
-    db
-      .select({ lastUsedAt: oauthGrant.lastUsedAt })
-      .from(oauthGrant)
-      .where(eq(oauthGrant.id, id))
-      .get()?.lastUsedAt ?? null
+    (
+      await first(
+        db
+          .select({ lastUsedAt: oauthGrant.lastUsedAt })
+          .from(oauthGrant)
+          .where(eq(oauthGrant.id, id))
+          .limit(1),
+      )
+    )?.lastUsedAt ?? null
   );
 }
 
@@ -262,10 +261,10 @@ describe("MCP protected resource metadata", () => {
       ctx,
     );
     expect(unknown.status).toBe(404);
-    db.update(server)
+    await db
+      .update(server)
       .set({ revokedAt: new Date(START) })
-      .where(eq(server.id, serverId))
-      .run();
+      .where(eq(server.id, serverId));
     const revoked = await worker.fetch(visit(path), env as never, ctx);
     expect(revoked.status).toBe(404);
     expect(captured).toHaveLength(0);
@@ -353,9 +352,9 @@ describe("MCP bearer authentication", () => {
 
   it("rejects tokens that do not belong to this server, user, resource or grant", async () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
-    seedGrant({ id: `${grantId}-revoked`, revokedAt: new Date(START) });
-    seedGrant({ id: `${grantId}-other-user`, userId: OTHER });
-    seedGrant({ id: `${grantId}-other-server`, serverId: otherServerId });
+    await seedGrant({ id: `${grantId}-revoked`, revokedAt: new Date(START) });
+    await seedGrant({ id: `${grantId}-other-user`, userId: OTHER });
+    await seedGrant({ id: `${grantId}-other-server`, serverId: otherServerId });
     const valid = await token();
     const [payload, signature] = valid.slice("bbmcp_".length).split(".");
     const forgedPayload = btoa(
@@ -423,10 +422,10 @@ describe("MCP bearer authentication", () => {
 
   it("rejects every token once the server is revoked", async () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
-    db.update(server)
+    await db
+      .update(server)
       .set({ revokedAt: new Date(START) })
-      .where(eq(server.id, serverId))
-      .run();
+      .where(eq(server.id, serverId));
     await expectChallenge(
       await worker.fetch(
         visit("/mcp", {
@@ -451,10 +450,10 @@ describe("MCP bearer authentication", () => {
         ctx,
       );
     expect((await request()).status).toBe(200);
-    db.update(oauthGrant)
+    await db
+      .update(oauthGrant)
       .set({ revokedAt: new Date(START) })
-      .where(eq(oauthGrant.id, grantId))
-      .run();
+      .where(eq(oauthGrant.id, grantId));
     vi.setSystemTime(START + MCP_GRANT_CACHE_TTL_MS - 1);
     expect((await request()).status).toBe(200);
     vi.setSystemTime(START + MCP_GRANT_CACHE_TTL_MS + 1);
@@ -478,14 +477,14 @@ describe("MCP bearer authentication", () => {
     await request();
     await request();
     expect(waitUntil).toHaveBeenCalledTimes(1);
-    expect(lastUsedAt(grantId)?.getTime()).toBe(START);
+    expect((await lastUsedAt(grantId))?.getTime()).toBe(START);
 
     vi.setSystemTime(START + MCP_GRANT_CACHE_TTL_MS + 1);
     await request();
     vi.setSystemTime(START + 6 * 60 * 60 * 1000);
     await request();
     expect(waitUntil).toHaveBeenCalledTimes(1);
-    expect(lastUsedAt(grantId)?.getTime()).toBe(START);
+    expect((await lastUsedAt(grantId))?.getTime()).toBe(START);
   });
 
   it("streams an event-stream response without buffering or caching it", async () => {
