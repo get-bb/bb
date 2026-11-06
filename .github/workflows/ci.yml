@@ -14,7 +14,7 @@ jobs:
           package-manager-cache: false
       - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - uses: ./.github/actions/windows-dependency-cache
-      - run: pnpm install --frozen-lockfile --ignore-scripts --filter bb-plugin-provider-codex... --filter @bb/db... --filter @bb/scripts...
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter '!@bb/mobile'
       - name: Build prerequisites and first full package
         run: pnpm exec turbo run test --filter=bb-plugin-provider-codex --force --output-logs=full
       - name: Repeat full package
