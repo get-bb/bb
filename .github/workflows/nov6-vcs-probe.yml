@@ -1,0 +1,28 @@
+name: VCS admission Windows diagnosis
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.x
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - uses: ./.github/actions/windows-dependency-cache
+        continue-on-error: true
+      - shell: bash
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/db..."
+      - shell: bash
+        run: pnpm exec turbo run test --filter=@bb/process-utils -- test/vcs-process-admission.test.ts
+      - shell: bash
+        run: |
+          for iteration in {1..10}; do
+            echo "REPETITION $iteration"
+            pnpm --filter @bb/process-utils exec vitest run --config vitest.config.ts test/vcs-process-admission.test.ts --silent=false || exit $?
+          done
