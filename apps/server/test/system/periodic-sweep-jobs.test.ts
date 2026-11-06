@@ -10,6 +10,7 @@ import {
   seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 describe("periodic sweep jobs", () => {
   it("gives every job a unique name that matches the item sweep it runs", async () => {
@@ -49,6 +50,7 @@ describe("periodic sweep jobs", () => {
 
       await runThreadLifecycleSweep(harness.deps);
       close.mockRestore();
+      await runThreadPurges(harness.deps);
 
       expect(getThread(harness.db, healthy.id)).toBeNull();
       expect(getThread(harness.db, broken.id)?.deletedAt).toEqual(

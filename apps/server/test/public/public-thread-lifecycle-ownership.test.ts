@@ -26,6 +26,7 @@ import {
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { runThreadPurges } from "../helpers/thread-purges.js";
 
 async function remove(harness: TestAppHarness, id: string) {
   return harness.app.request(`/api/v1/threads/${id}`, {
@@ -76,6 +77,7 @@ describe("lifecycle ownership deletion", () => {
           child.id,
         );
         for (let i = 0; i < 3; i++) await runThreadLifecycleSweep(harness.deps);
+        await runThreadPurges(harness.deps);
         for (const thread of descendants)
           expect(getThread(harness.db, thread.id)).toBeNull();
       });
@@ -125,6 +127,7 @@ describe("lifecycle ownership deletion", () => {
         });
         if (archived) archiveThread(harness.db, harness.deps.hub, child.id);
         expect((await remove(harness, owner.id)).status).toBe(200);
+        await runThreadPurges(harness.deps);
         expect(getThread(harness.db, nested.id)).toBeNull();
         expect(getThread(harness.db, owner.id)?.deletedAt).toEqual(
           expect.any(Number),
@@ -161,6 +164,7 @@ describe("lifecycle ownership deletion", () => {
           providerCheckpointId: null,
         });
         await runThreadLifecycleSweep(harness.deps);
+        await runThreadPurges(harness.deps);
         expect(getThread(harness.db, owner.id)).toBeNull();
         expect(getThread(harness.db, child.id)).toBeNull();
         expect(getThread(harness.db, sidebar.id)).toBeNull();
@@ -205,6 +209,7 @@ describe("cross-project lifecycle ownership", () => {
         beginProjectDeletion(harness.deps, { projectId });
         for (let i = 0; i < 3; i++) {
           await runThreadLifecycleSweep(harness.deps);
+          await runThreadPurges(harness.deps);
           await advanceProjectDeletion(harness.deps, { projectId });
         }
         expect(getProject(harness.db, projectId)).toBeNull();
@@ -451,6 +456,7 @@ it("keeps an owning project pending while cross-project host cleanup fails and c
       providerCheckpointId: null,
     });
     await runThreadLifecycleSweep(harness.deps);
+    await runThreadPurges(harness.deps);
     await advanceProjectDeletion(harness.deps, { projectId: ownerProject.id });
     expect(getProject(harness.db, ownerProject.id)).toBeNull();
     expect(getThread(harness.db, child.id)).toBeNull();

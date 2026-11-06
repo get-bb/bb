@@ -710,6 +710,17 @@ export const threadPluginMetadata = sqliteTable(
   (table) => [primaryKey({ columns: [table.threadId, table.pluginId] })],
 );
 
+export const threadPurges = sqliteTable(
+  "thread_purges",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    requestedAt: integer("requested_at").notNull(),
+  },
+  (table) => [index("thread_purges_requested_idx").on(table.requestedAt)],
+);
+
 export const threadTabs = sqliteTable("thread_tabs", {
   threadId: text("thread_id")
     .primaryKey()
