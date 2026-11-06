@@ -27,6 +27,7 @@ import { Route as OauthRevokeRouteImport } from "./routes/oauth.revoke";
 import { Route as OauthAuthorizeRouteImport } from "./routes/oauth.authorize";
 import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
 import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
+import { Route as DownloadIndexRouteImport } from "./routes/download.index";
 import { Route as DownloadWindowsRouteImport } from "./routes/download.windows";
 import { Route as DownloadMacosRouteImport } from "./routes/download.macos";
 import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
@@ -142,6 +143,11 @@ const MarketplacePluginIdRoute = MarketplacePluginIdRouteImport.update({
 const GuidesSlugRoute = GuidesSlugRouteImport.update({
   id: "/guides/$slug",
   path: "/guides/$slug",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const DownloadIndexRoute = DownloadIndexRouteImport.update({
+  id: "/download/",
+  path: "/download/",
   getParentRoute: () => rootRouteImport,
 } as any);
 const DownloadWindowsRoute = DownloadWindowsRouteImport.update({
@@ -304,6 +310,7 @@ export interface FileRoutesByFullPath {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
@@ -350,6 +357,7 @@ export interface FileRoutesByTo {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/download": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace/$pluginId": typeof MarketplacePluginIdRoute;
@@ -397,6 +405,7 @@ export interface FileRoutesById {
   "/compare/$slug": typeof CompareSlugRoute;
   "/download/linux": typeof DownloadLinuxRoute;
   "/download/macos": typeof DownloadMacosRoute;
+  "/download/": typeof DownloadIndexRoute;
   "/download/windows": typeof DownloadWindowsRoute;
   "/guides/$slug": typeof GuidesSlugRoute;
   "/marketplace_/$pluginId": typeof MarketplacePluginIdRoute;
@@ -445,6 +454,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/download/"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
@@ -491,6 +501,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/download"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace/$pluginId"
@@ -537,6 +548,7 @@ export interface FileRouteTypes {
     | "/compare/$slug"
     | "/download/linux"
     | "/download/macos"
+    | "/download/"
     | "/download/windows"
     | "/guides/$slug"
     | "/marketplace_/$pluginId"
@@ -584,6 +596,7 @@ export interface RootRouteChildren {
   CompareSlugRoute: typeof CompareSlugRoute;
   DownloadLinuxRoute: typeof DownloadLinuxRoute;
   DownloadMacosRoute: typeof DownloadMacosRoute;
+  DownloadIndexRoute: typeof DownloadIndexRoute;
   DownloadWindowsRoute: typeof DownloadWindowsRoute;
   GuidesSlugRoute: typeof GuidesSlugRoute;
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute;
@@ -732,6 +745,13 @@ declare module "@tanstack/react-router" {
       path: "/guides/$slug";
       fullPath: "/guides/$slug";
       preLoaderRoute: typeof GuidesSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/download/": {
+      id: "/download/";
+      path: "/download";
+      fullPath: "/download/";
+      preLoaderRoute: typeof DownloadIndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/download/windows": {
@@ -959,6 +979,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompareSlugRoute: CompareSlugRoute,
   DownloadLinuxRoute: DownloadLinuxRoute,
   DownloadMacosRoute: DownloadMacosRoute,
+  DownloadIndexRoute: DownloadIndexRoute,
   DownloadWindowsRoute: DownloadWindowsRoute,
   GuidesSlugRoute: GuidesSlugRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,

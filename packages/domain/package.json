@@ -49,6 +49,11 @@
       "types": "./src/update-state.ts",
       "default": "./src/update-state.ts"
     },
+    "./mobile-app": {
+      "source": "./src/mobile-app.ts",
+      "types": "./src/mobile-app.ts",
+      "default": "./src/mobile-app.ts"
+    },
     "./plugin-cli": {
       "source": "./src/plugin-cli.ts",
       "types": "./src/plugin-cli.ts",
